@@ -1,4 +1,6 @@
-"""种子 GET 的有界重试、缓存与冷却策略离线回归。"""
+"""
+种子 GET 的有界重试、缓存与冷却策略离线回归。
+"""
 
 import json
 from datetime import datetime
@@ -21,7 +23,9 @@ CONTENT = b"d4:infod4:name10:Series.mkv6:lengthi1eee"
 
 
 def _response(status=200, content=CONTENT):
-    """使用真实 Response 保证错误状态的布尔值不会掩盖状态码。"""
+    """
+    使用真实 Response 保证错误状态的布尔值不会掩盖状态码。
+    """
     response = Response()
     response.status_code = status
     response._content = content
@@ -31,7 +35,9 @@ def _response(status=200, content=CONTENT):
 
 @pytest.fixture
 def boundary(monkeypatch):
-    """隔离 HTTP、缓存和等待，保留真实种子解析与用例编排。"""
+    """
+    隔离 HTTP、缓存和等待，保留真实种子解析与用例编排。
+    """
     port = Mock()
     monkeypatch.setattr(download, "_require_torrent_port", Mock(return_value=port))
     cache = Mock()
@@ -47,7 +53,9 @@ def boundary(monkeypatch):
 
 @pytest.mark.parametrize("failure", [None, 403, 500, 502, 503, 525, b"", b"d4:info", b"<html>CF</html>"])
 def test_transient_failure_recovers_without_invalid_cache(boundary, failure):
-    """网络异常的 None、代理错误和截断响应均可恢复，保持访问参数。"""
+    """
+    网络异常的 None、代理错误和截断响应均可恢复，保持访问参数。
+    """
     helper, port, cache, sleep = boundary
     failed = _response(failure) if isinstance(failure, int) else (
         _response(content=failure) if failure is not None else None
@@ -66,7 +74,9 @@ def test_transient_failure_recovers_without_invalid_cache(boundary, failure):
 
 @pytest.mark.parametrize("status", [None, 403, 525])
 def test_exhausted_retry_is_bounded_and_does_not_poison_url(boundary, status):
-    """失败耗尽后保留最终原因，总共三次请求且不写 24 小时缓存。"""
+    """
+    失败耗尽后保留最终原因，总共三次请求且不写 24 小时缓存。
+    """
     helper, port, cache, sleep = boundary
     port.request.return_value = None if status is None else _response(status)
 
@@ -82,7 +92,9 @@ def test_exhausted_retry_is_bounded_and_does_not_poison_url(boundary, status):
 
 @pytest.mark.parametrize("status", [401, 404, 410, 429])
 def test_permanent_errors_and_rate_limit_are_not_retried(boundary, status):
-    """确定失效地址保留无效缓存，429 保留站点流控语义且不短退避。"""
+    """
+    确定失效地址保留无效缓存，429 保留站点流控语义且不短退避。
+    """
     helper, port, _, sleep = boundary
     port.request.return_value = _response(status)
 
@@ -95,7 +107,9 @@ def test_permanent_errors_and_rate_limit_are_not_retried(boundary, status):
 
 @pytest.mark.parametrize("signed,cache_invalid", [(True, True), (False, False)])
 def test_signed_and_indirect_links_keep_single_attempt(boundary, signed, cache_invalid):
-    """签名刷新和换票继续由上层持有重试预算。"""
+    """
+    签名刷新和换票继续由上层持有重试预算。
+    """
     helper, port, _, sleep = boundary
     port.request.return_value = _response(403)
     url = URL + "&t=1&sign=old" if signed else URL
@@ -108,7 +122,9 @@ def test_signed_and_indirect_links_keep_single_attempt(boundary, signed, cache_i
 
 
 def test_first_download_confirmation_post_is_not_retried(boundary):
-    """识别首次下载确认页后只提交一次 POST，不重复有副作用的操作。"""
+    """
+    识别首次下载确认页后只提交一次 POST，不重复有副作用的操作。
+    """
     helper, port, _, sleep = boundary
     page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
     port.request.side_effect = [_response(content=page), _response(503)]
@@ -123,7 +139,9 @@ def test_first_download_confirmation_post_is_not_retried(boundary):
 
 
 def test_first_download_confirmation_preserves_quota_error(boundary):
-    """确认 POST 遇到站点限流时保留原因，不把限流页当作失效种子。"""
+    """
+    确认 POST 遇到站点限流时保留原因，不把限流页当作失效种子。
+    """
     helper, port, _, _ = boundary
     page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
     message = "相同種子當天最多下載10次"
@@ -135,7 +153,9 @@ def test_first_download_confirmation_preserves_quota_error(boundary):
 
 
 def test_first_download_confirmation_empty_response_is_transient(boundary):
-    """确认请求的空响应不证明种子无效，不能污染资源黑名单。"""
+    """
+    确认请求的空响应不证明种子无效，不能污染资源黑名单。
+    """
     helper, port, _, _ = boundary
     page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
     port.request.side_effect = [_response(content=page), _response(content=b"")]
@@ -153,7 +173,9 @@ def test_first_download_confirmation_empty_response_is_transient(boundary):
     '<form action="?"><input name="token" value="a&amp;b"><button name="confirm" value="yes">下载</button></form>',
 ])
 def test_first_download_form_variants_are_confirmed(boundary, form):
-    """按 HTML 表单语义提交确认，兼容属性顺序、引号、实体和提交按钮。"""
+    """
+    按 HTML 表单语义提交确认，兼容属性顺序、引号、实体和提交按钮。
+    """
     helper, port, cache, sleep = boundary
     page = ("下载种子文件" + form).encode()
     port.request.side_effect = [_response(content=page), _response()]
@@ -173,7 +195,9 @@ def test_first_download_form_variants_are_confirmed(boundary, form):
 
 
 def test_first_download_form_never_posts_credentials_to_other_origin(boundary):
-    """确认表单不能把站点 Cookie 和隐藏凭据发送到其他来源。"""
+    """
+    确认表单不能把站点 Cookie 和隐藏凭据发送到其他来源。
+    """
     helper, port, _, _ = boundary
     page = '下载种子文件<form action="https://other.example/download.php"><input name="token" value="secret"></form>'
     port.request.return_value = _response(content=page.encode())
@@ -184,7 +208,9 @@ def test_first_download_form_never_posts_credentials_to_other_origin(boundary):
 
 
 def test_failed_confirmation_blacklists_original_url_after_redirect(boundary):
-    """确认后仍返回 HTML 时屏蔽原资源地址，刷新候选使用同一个黑名单键。"""
+    """
+    确认后仍返回 HTML 时屏蔽原资源地址，刷新候选使用同一个黑名单键。
+    """
     helper, port, _, _ = boundary
     redirect = _response(302)
     redirect.headers["Location"] = "https://tracker.example/download.php?id=39&confirm=1"
@@ -197,7 +223,9 @@ def test_failed_confirmation_blacklists_original_url_after_redirect(boundary):
 
 
 def test_chain_blacklist_suppresses_repeated_requests_and_notifications(boundary):
-    """多轮下载同一失败资源只提醒首次，并阻止后续请求和错误通知。"""
+    """
+    多轮下载同一失败资源只提醒首次，并阻止后续请求和错误通知。
+    """
     _, port, _, _ = boundary
     port.request.return_value = _response(content=b"<html>invalid torrent</html>")
     chain = object.__new__(DownloadChain)
@@ -214,12 +242,16 @@ def test_chain_blacklist_suppresses_repeated_requests_and_notifications(boundary
 @pytest.mark.parametrize("error", ["种子数据有误，请确认链接是否正确",
                                    "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"])
 def test_invalid_torrent_data_has_resource_cooldown(error):
-    """无效种子及确认失败使用资源级冷却，重启也不会退回每小时通知。"""
+    """
+    无效种子及确认失败使用资源级冷却，重启也不会退回每小时通知。
+    """
     assert DownloadFailureOwner._download_failure_ttl(error) == 86400
 
 
 def test_invalid_content_preparation_preserves_persisted_resource_cooldown(boundary, monkeypatch):
-    """单任务准备保留无效种子原因，持久化冷却不能再被统一空内容错误覆盖。"""
+    """
+    单任务准备保留无效种子原因，持久化冷却不能再被统一空内容错误覆盖。
+    """
     _, port, _, _ = boundary
     port.request.return_value = _response(content=b"<html>invalid torrent</html>")
     chain = object.__new__(DownloadChain)
@@ -247,7 +279,9 @@ def test_invalid_content_preparation_preserves_persisted_resource_cooldown(bound
 
 
 def test_redirected_get_retries_at_destination(boundary):
-    """重定向目标上的瞬时错误也重试，并保留原始 URL 的成功缓存键。"""
+    """
+    重定向目标上的瞬时错误也重试，并保留原始 URL 的成功缓存键。
+    """
     helper, port, cache, sleep = boundary
     redirect = _response(302)
     redirect.headers["Location"] = "https://tracker.example/file.torrent"
@@ -261,7 +295,9 @@ def test_redirected_get_retries_at_destination(boundary):
 
 
 def test_second_retry_can_recover(boundary):
-    """第二次退避后成功时只缓存最终合法种子。"""
+    """
+    第二次退避后成功时只缓存最终合法种子。
+    """
     helper, port, cache, sleep = boundary
     port.request.side_effect = [None, _response(content=b"d4:info"), _response()]
     assert helper.download_torrent(URL)[1] == CONTENT
@@ -272,7 +308,9 @@ def test_second_retry_can_recover(boundary):
 
 @pytest.mark.parametrize("content", [b"", b"d4:info", b"<html>CF</html>"])
 def test_invalid_content_exhaustion_never_caches_response(boundary, content):
-    """无效内容耗尽重试后进入黑名单，空响应仍按瞬时失败处理。"""
+    """
+    无效内容耗尽重试后进入黑名单，空响应仍按瞬时失败处理。
+    """
     helper, port, cache, _ = boundary
     port.request.return_value = _response(content=content)
     assert helper.download_torrent(URL)[1] is None
@@ -283,7 +321,9 @@ def test_invalid_content_exhaustion_never_caches_response(boundary, content):
 
 @pytest.mark.parametrize("content", [CONTENT, b"magnet:?xt=urn:btih:abc"])
 def test_valid_response_has_no_retry(boundary, content):
-    """合法种子和磁力响应只发起一次请求。"""
+    """
+    合法种子和磁力响应只发起一次请求。
+    """
     helper, port, _, sleep = boundary
     port.request.return_value = _response(content=content)
     assert helper.download_torrent(URL)[1]
@@ -292,7 +332,9 @@ def test_valid_response_has_no_retry(boundary, content):
 
 
 def test_valid_cache_bypasses_network(boundary):
-    """已有合法种子缓存时不发起请求或退避。"""
+    """
+    已有合法种子缓存时不发起请求或退避。
+    """
     helper, port, cache, sleep = boundary
     cache.get.return_value = CONTENT
     assert helper.download_torrent(URL)[1] == CONTENT
@@ -308,7 +350,9 @@ def test_valid_cache_bypasses_network(boundary):
     ("torrent not found", 86400),
 ])
 def test_generic_empty_download_is_transient(error, ttl):
-    """空内容不证明资源失效；明确文件损坏或删除继续按一天冷却。"""
+    """
+    空内容不证明资源失效；明确文件损坏或删除继续按一天冷却。
+    """
     assert DownloadFailureOwner._download_failure_ttl(error) == ttl
 
 
@@ -322,7 +366,9 @@ def test_generic_empty_download_is_transient(error, ttl):
 @pytest.mark.parametrize("status", [200, 403, 429])
 @pytest.mark.parametrize("field", ["message", "msg"])
 def test_rate_limit_json_preserves_reason_without_retry(boundary, message, ttl, status, field):
-    """站点明确限流优先于 HTTP 状态，不解析为种子、不重试或污染无效地址缓存。"""
+    """
+    站点明确限流优先于 HTTP 状态，不解析为种子、不重试或污染无效地址缓存。
+    """
     helper, port, cache, sleep = boundary
     port.request.return_value = _response(status, json.dumps({"code": "1", field: message}, ensure_ascii=False).encode())
     parser = Mock(wraps=helper.get_fileinfo_from_torrent_content)
@@ -346,7 +392,9 @@ def test_rate_limit_json_preserves_reason_without_retry(boundary, message, ttl, 
     b'{"message":"too many requests"', b'["too many requests"]',
 ])
 def test_other_json_does_not_become_rate_limit(boundary, content):
-    """无关错误、非文本字段和截断 JSON 保留原有恢复预算。"""
+    """
+    无关错误、非文本字段和截断 JSON 保留原有恢复预算。
+    """
     helper, port, _, sleep = boundary
     port.request.side_effect = [_response(content=content), _response()]
     assert helper.download_torrent(URL)[1] == CONTENT
@@ -355,7 +403,9 @@ def test_other_json_does_not_become_rate_limit(boundary, content):
 
 
 def test_rate_limit_at_redirect_destination_is_not_retried(boundary):
-    """重定向落地返回配额错误时停止请求，不能继续消耗下载次数。"""
+    """
+    重定向落地返回配额错误时停止请求，不能继续消耗下载次数。
+    """
     helper, port, _, sleep = boundary
     redirect = _response(302)
     redirect.headers["Location"] = "https://tracker.example/file.torrent"
@@ -368,7 +418,9 @@ def test_rate_limit_at_redirect_destination_is_not_retried(boundary):
 
 @pytest.mark.parametrize("link_type", ["ordinary", "signed", "indirect"])
 def test_daily_quota_reaches_notification_and_persisted_cooldown(boundary, monkeypatch, link_type):
-    """真实准备流程保留限流原因到通知和冷却记录，签名与换票也不得刷新重试。"""
+    """
+    真实准备流程保留限流原因到通知和冷却记录，签名与换票也不得刷新重试。
+    """
     _, port, cache, sleep = boundary
     message = "相同種子當天最多下載10次"
     port.request.return_value = _response(content=json.dumps({"code": "1", "message": message}).encode())

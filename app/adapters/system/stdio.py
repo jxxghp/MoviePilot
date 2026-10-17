@@ -1,3 +1,7 @@
+"""
+把标准输出按完整行交给日志系统，控制缓冲与关闭时的剩余内容刷新。
+"""
+
 from __future__ import annotations
 
 import io
@@ -19,7 +23,9 @@ class RotatingLineStream(io.TextIOBase):
     encoding = "utf-8"
 
     def __init__(self, log_file: Path, max_bytes: int, backup_count: int):
-        """创建写入指定滚动日志文件的文本流。"""
+        """
+        创建写入指定滚动日志文件的文本流。
+        """
         super().__init__()
         self._buffer = ""
         self._lock = threading.Lock()
@@ -40,15 +46,21 @@ class RotatingLineStream(io.TextIOBase):
         self._logger.addHandler(handler)
 
     def writable(self) -> bool:
-        """声明该文本流支持写入。"""
+        """
+        声明该文本流支持写入。
+        """
         return True
 
     def isatty(self) -> bool:
-        """声明该日志流不是交互式终端。"""
+        """
+        声明该日志流不是交互式终端。
+        """
         return False
 
     def write(self, message: str) -> int:
-        """缓冲消息并按完整行写入滚动日志。"""
+        """
+        缓冲消息并按完整行写入滚动日志。
+        """
         if not message:
             return 0
 
@@ -60,7 +72,9 @@ class RotatingLineStream(io.TextIOBase):
         return len(message)
 
     def flush(self) -> None:
-        """写出剩余缓冲区并刷新底层处理器。"""
+        """
+        写出剩余缓冲区并刷新底层处理器。
+        """
         with self._lock:
             if self._buffer:
                 self._logger.info(self._buffer)

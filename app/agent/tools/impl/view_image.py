@@ -1,4 +1,6 @@
-"""图片查看工具：把 URL 或本地图片转换为 Agent 可消费的视觉输入。"""
+"""
+图片查看工具：把 URL 或本地图片转换为 Agent 可消费的视觉输入。
+"""
 
 import base64
 import binascii
@@ -36,45 +38,48 @@ SUPPORTED_IMAGE_MIME_TYPES = {
 
 
 class ViewImageError(ValueError):
-    """携带稳定错误码的图片查看失败。"""
+    """
+    携带稳定错误码的图片查看失败。
+    """
 
     def __init__(self, code: str, message: str) -> None:
-        """保存可供 Agent 判断的错误码和脱敏说明。"""
+        """
+        保存可供 Agent 判断的错误码和脱敏说明。
+        """
         super().__init__(message)
         self.code = code
         self.message = message
 
 
+# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
 class ViewImageInput(BaseModel):  # type: ignore[misc]
-    """图片查看工具的输入参数模型。"""
+    """
+    图片查看工具的输入参数模型。
+    """
 
     url: Optional[str] = Field(
         None,
-        description=(
-            "HTTP(S) image URL or a data:image/...;base64,... URL. "
-            "The remote URL must be publicly reachable and return a supported image."
-        ),
+        description="HTTP(S) 图片地址或 data:image/...;base64,...；远端 URL 必须公网可达并返回受支持的图片",
     )
     file_path: Optional[str] = Field(
         None,
-        description=(
-            "Local image path. Non-administrator users may only read files under the Agent configuration directory."
-        ),
+        description="本地图片路径；非管理员仅可读取 Agent 配置目录内文件",
     )
     image_data: Optional[Union[str, bytes]] = Field(
         None,
-        description=(
-            "Base64 image content, a data:image/...;base64,... URL, or raw image bytes. Use exactly one image source."
-        ),
+        description="Base64 图片内容、data:image/...;base64,... 或原始图片字节；只能选择一种图片来源",
     )
-    detail: Literal["auto", "low", "high"] = Field(
+    detail: Literal['auto', 'low', 'high'] = Field(
         "auto",
-        description="Image detail hint passed to models that support it.",
+        description="传给支持此设置的模型的图片细节提示：auto、low 或 high，默认 auto",
     )
 
+    # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
     @model_validator(mode="after")  # type: ignore[misc]
     def require_one_source(self) -> "ViewImageInput":
-        """确保图片来源恰好是 URL、本地路径或图片内容中的一个。"""
+        """
+        确保图片来源恰好是 URL、本地路径或图片内容中的一个。
+        """
         has_url = bool(self.url and self.url.strip())
         has_file_path = bool(self.file_path and self.file_path.strip())
         has_image_data = bool(self.image_data)
@@ -84,26 +89,38 @@ class ViewImageInput(BaseModel):  # type: ignore[misc]
 
 
 class ViewImageTool(MoviePilotTool):
-    """读取远程或本地图片，并为支持视觉的模型生成真实图像输入。"""
+    """
+    读取远程或本地图片，并为支持视觉的模型生成真实图像输入。
+    """
 
-    name: str = "view_image"
-    tags: list[str] = [
-        ToolTag.Read,
-        ToolTag.File,
-        ToolTag.Web,
-    ]
-    description: str = (
-        "View an image so a multimodal model can inspect its actual pixels. "
-        "Provide exactly one of url, file_path, or image_data. Supports public HTTP(S) "
-        "image URLs, data:image/...;base64,... URLs, Base64/raw image content, and local image paths. Local access follows "
-        "the Agent file permission boundary; private-network URLs are blocked. "
-        "Use this when visual inspection is needed, and do not claim to have seen "
-        "the image unless the tool returns an image observation."
+    name: str = Field(
+        default="view_image",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = ViewImageInput
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.File, ToolTag.Web],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default=(
+            "将图片的实际像素提供给多模态模型查看。"
+            "url、file_path 和 image_data 必须且只能提供一项。"
+            "支持公网 HTTP(S) 图片地址、data:image/...;base64,... 地址、Base64 或原始图片内容以及本地路径。"
+            "本地读取遵守 Agent 文件权限边界，禁止私网 URL。"
+            "需要视觉检查时使用；"
+            "只有工具返回图片观察结果后才能声称已查看图片。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=ViewImageInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
 
     def get_tool_message(self, **kwargs: Any) -> Optional[str]:
-        """根据图片来源生成不泄露查询参数的工具提示。"""
+        """
+        根据图片来源生成不泄露查询参数的工具提示。
+        """
         file_path = str(kwargs.get("file_path") or "").strip()
         url = str(kwargs.get("url") or "").strip()
         image_data = kwargs.get("image_data")
@@ -124,7 +141,9 @@ class ViewImageTool(MoviePilotTool):
         return "查看图片"
 
     def format_agent_result(self, result: Any, **tool_arguments: Any) -> Union[str, list[dict[str, Any]]]:
-        """在通用文本截断前把成功结果转换成模型可接收的图像内容块。"""
+        """
+        在通用文本截断前把成功结果转换成模型可接收的图像内容块。
+        """
         try:
             payload = json.loads(result) if isinstance(result, str) else result
             if not isinstance(payload, dict):
@@ -185,7 +204,9 @@ class ViewImageTool(MoviePilotTool):
         detail: Literal["auto", "low", "high"] = "auto",
         **kwargs: Any,
     ) -> str:
-        """读取并验证图片，返回供 Agent formatter 使用的结构化结果。"""
+        """
+        读取并验证图片，返回供 Agent formatter 使用的结构化结果。
+        """
         del kwargs
         clean_url = str(url or "").strip()
         clean_file_path = str(file_path or "").strip()
@@ -244,12 +265,15 @@ class ViewImageTool(MoviePilotTool):
             return self._failure(error.code, error.message, source_type)
         except FileNotFoundError, IsADirectoryError, PermissionError:
             return self._failure("local_file_unavailable", "本地图片不存在、不是文件或没有读取权限。", source_type)
-        except Exception as error:  # noqa: BLE001 - 图片读取边界必须稳定返回失败合同
+        # 工具边界统一接收外部能力异常，并返回可供模型恢复的失败结果。
+        except Exception as error:  # noqa: BLE001
             logger.warning("Agent 查看图片失败: %s", type(error).__name__)
             return self._failure("image_read_failed", "读取图片失败，请检查图片来源和格式。", source_type)
 
     async def _validate_remote_url(self, url: str) -> None:
-        """校验远程图片 URL 的协议、主机、DNS 和私网边界。"""
+        """
+        校验远程图片 URL 的协议、主机、DNS 和私网边界。
+        """
         if len(url) > IMAGE_MAX_URL_CHARS:
             raise ViewImageError("invalid_url", "图片 URL 过长。")
         try:
@@ -272,7 +296,9 @@ class ViewImageTool(MoviePilotTool):
             raise ViewImageError("unsafe_url", "图片 URL 未通过公网地址安全校验。")
 
     async def _fetch_remote_image(self, url: str) -> bytes:
-        """以流式方式下载远程图片，拒绝超大响应和未经校验的重定向。"""
+        """
+        以流式方式下载远程图片，拒绝超大响应和未经校验的重定向。
+        """
         request = AsyncRequestUtils(
             accept_type="image/*",
             timeout=IMAGE_FETCH_TIMEOUT,
@@ -315,7 +341,9 @@ class ViewImageTool(MoviePilotTool):
 
     @staticmethod
     def _read_local_file(path: Path) -> bytes:
-        """在线程池中读取有限大小的本地图片字节。"""
+        """
+        在线程池中读取有限大小的本地图片字节。
+        """
         if not path.exists():
             raise FileNotFoundError(path)
         if not path.is_file():
@@ -328,7 +356,9 @@ class ViewImageTool(MoviePilotTool):
 
     @staticmethod
     def _decode_data_url(url: str) -> bytes:
-        """解码受限的 base64 图片 data URL，不接受可执行或文本数据。"""
+        """
+        解码受限的 base64 图片 data URL，不接受可执行或文本数据。
+        """
         header, separator, encoded = url.partition(",")
         if not separator or len(url) > IMAGE_MAX_BASE64_CHARS:
             raise ViewImageError("invalid_url", "图片 data URL 无效或超过大小上限。")
@@ -348,7 +378,9 @@ class ViewImageTool(MoviePilotTool):
 
     @staticmethod
     def _decode_image_content(content: Union[str, bytes]) -> bytes:
-        """解码纯 Base64、data URL 或原始图片字节，并限制输入大小。"""
+        """
+        解码纯 Base64、data URL 或原始图片字节，并限制输入大小。
+        """
         if isinstance(content, bytes):
             image_bytes = content
         elif isinstance(content, str):
@@ -370,7 +402,9 @@ class ViewImageTool(MoviePilotTool):
 
     @staticmethod
     def _validate_image_bytes(image_bytes: bytes) -> tuple[str, int, int]:
-        """验证真实图片格式、像素和解码结果，防止伪造 MIME 或损坏数据进入模型。"""
+        """
+        验证真实图片格式、像素和解码结果，防止伪造 MIME 或损坏数据进入模型。
+        """
         if not image_bytes or len(image_bytes) > IMAGE_MAX_BYTES:
             raise ViewImageError("image_too_large", "图片为空或超过大小上限。")
         try:
@@ -391,7 +425,9 @@ class ViewImageTool(MoviePilotTool):
 
     @staticmethod
     def _success(**payload: Any) -> str:
-        """生成包含完整 base64 图像数据的内部成功结果。"""
+        """
+        生成包含完整 base64 图像数据的内部成功结果。
+        """
         return json.dumps(
             {"success": True, "execution_outcome": ExecutionOutcome.SUCCEEDED.value, **payload},
             ensure_ascii=False,
@@ -399,7 +435,9 @@ class ViewImageTool(MoviePilotTool):
 
     @staticmethod
     def _failure(code: str, message: str, source_type: Optional[str] = None) -> str:
-        """生成不携带原始图片数据的结构化失败结果。"""
+        """
+        生成不携带原始图片数据的结构化失败结果。
+        """
         payload: dict[str, Any] = {
             "success": False,
             "execution_outcome": ExecutionOutcome.FAILED.value,

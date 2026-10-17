@@ -1,4 +1,6 @@
-"""订阅更新显式清空可选设置的回归测试。"""
+"""
+订阅更新显式清空可选设置的回归测试。
+"""
 
 from types import SimpleNamespace
 from typing import Optional
@@ -38,10 +40,14 @@ OPTIONAL_SETTINGS = {
 
 
 class _SubscribeRow:
-    """提供更新端点所需字段的最小订阅替身。"""
+    """
+    提供更新端点所需字段的最小订阅替身。
+    """
 
     def __init__(self) -> None:
-        """构造包含已有分辨率限制的订阅。"""
+        """
+        构造包含已有分辨率限制的订阅。
+        """
         self.id = 1
         self.username = "alice"
         self.type = "电影"
@@ -50,24 +56,34 @@ class _SubscribeRow:
         self.lack_episode = 0
 
     def to_dict(self) -> dict:
-        """返回当前订阅快照。"""
+        """
+        返回当前订阅快照。
+        """
         return dict(self.__dict__)
 
 
 class _MutationService:
-    """记录端点交给订阅写服务的更新 payload。"""
+    """
+    记录端点交给订阅写服务的更新 payload。
+    """
 
     def __init__(self, subscribe: _SubscribeRow) -> None:
-        """保存订阅替身并初始化待观察的更新载荷。"""
+        """
+        保存订阅替身并初始化待观察的更新载荷。
+        """
         self.subscribe = subscribe
         self.payload = None
 
     async def get_accessible(self, _subscribe_id: int, _actor) -> _SubscribeRow:
-        """返回当前用户可访问的订阅。"""
+        """
+        返回当前用户可访问的订阅。
+        """
         return self.subscribe
 
     async def update(self, _subscribe_id: int, payload: dict, _actor, **_kwargs):
-        """应用更新并返回已发布事件的变更结果。"""
+        """
+        应用更新并返回已发布事件的变更结果。
+        """
         old = self.subscribe.to_dict()
         self.payload = dict(payload)
         self.subscribe.__dict__.update(payload)
@@ -82,7 +98,9 @@ class _MutationService:
 @pytest.mark.parametrize("field, previous", OPTIONAL_SETTINGS.items())
 @pytest.mark.parametrize("empty", ["", None])
 async def test_update_subscribe_clears_explicit_optional_setting(field, previous, empty) -> None:
-    """表单空字符串与 JSON null 都应显式清空旧设置，包含历史纯空格识别词。"""
+    """
+    表单空字符串与 JSON null 都应显式清空旧设置，包含历史纯空格识别词。
+    """
     subscribe = _SubscribeRow()
     setattr(subscribe, field, previous)
     mutation = _MutationService(subscribe)
@@ -103,7 +121,9 @@ async def test_update_subscribe_clears_explicit_optional_setting(field, previous
 
 
 def test_subscribe_omitted_optional_settings_are_not_written() -> None:
-    """省略可选设置时不能用模型默认值覆盖已有设置。"""
+    """
+    省略可选设置时不能用模型默认值覆盖已有设置。
+    """
     subscribe = Subscribe(id=1, name="新名称")
 
     assert subscribe.to_public_write_payload(exclude_unset=True) == {"name": "新名称"}
@@ -111,7 +131,9 @@ def test_subscribe_omitted_optional_settings_are_not_written() -> None:
 
 @pytest.mark.parametrize("field, value", OPTIONAL_SETTINGS.items())
 def test_subscribe_preserves_nonempty_optional_settings(field, value) -> None:
-    """非空设置保持原值，识别词中的有意义空白也不得被自动裁剪。"""
+    """
+    非空设置保持原值，识别词中的有意义空白也不得被自动裁剪。
+    """
     subscribe = Subscribe.model_validate({field: value})
 
     assert subscribe.to_public_write_payload(exclude_unset=True) == {field: value}
@@ -120,14 +142,18 @@ def test_subscribe_preserves_nonempty_optional_settings(field, value) -> None:
 @pytest.mark.parametrize("field", ["min_bitrate", "min_bit_depth", "min_sample_rate"])
 @pytest.mark.parametrize("value", [0, "0", "24"])
 def test_subscribe_preserves_numeric_optional_settings(field: str, value) -> None:
-    """音频下限中的显式零值和数字字符串继续按数值处理。"""
+    """
+    音频下限中的显式零值和数字字符串继续按数值处理。
+    """
     subscribe = Subscribe.model_validate({field: value})
 
     assert subscribe.to_public_write_payload(exclude_unset=True) == {field: int(value)}
 
 
 def test_subscribe_empty_metadata_fields_remain_omitted() -> None:
-    """名称、类型、集数等字段仍沿用空字符串回退默认值的历史行为。"""
+    """
+    名称、类型、集数等字段仍沿用空字符串回退默认值的历史行为。
+    """
     subscribe = Subscribe(
         name="", type="", season="", total_episode="", start_episode="",
         sites="", filter_groups="",
@@ -141,7 +167,9 @@ def test_subscribe_empty_metadata_fields_remain_omitted() -> None:
 @pytest.mark.parametrize("media_type", [MediaType.TV, MediaType.MUSIC])
 @pytest.mark.parametrize("empty", ["", None])
 def test_update_subscribe_persists_cleared_optional_settings(db, media_type: MediaType, empty: Optional[str]) -> None:
-    """真实写服务提交后重新读库，清空结果和修改事件都必须保留，未提交字段不得改变。"""
+    """
+    真实写服务提交后重新读库，清空结果和修改事件都必须保留，未提交字段不得改变。
+    """
     db.watermark(SubscribeModel, OutboxMessage)
     row = db.add(SubscribeModel(
         name="清空设置测试",
@@ -162,9 +190,13 @@ def test_update_subscribe_persists_cleared_optional_settings(db, media_type: Med
     published = []
 
     async def execute(session: AsyncSession):
-        """通过请求模型、端点、写服务和真实事务执行清空。"""
+        """
+        通过请求模型、端点、写服务和真实事务执行清空。
+        """
         async def publish(payload: dict) -> None:
-            """只记录事件，避免向真实插件或外部服务派发。"""
+            """
+            只记录事件，避免向真实插件或外部服务派发。
+            """
             published.append(payload)
 
         mutation = SubscriptionMutationService(

@@ -1,4 +1,6 @@
-"""Application 重复逻辑收敛后的共享纯函数回归测试。"""
+"""
+Application 重复逻辑收敛后的共享纯函数回归测试。
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +16,9 @@ PROJECT_ROOT = Path(__file__).parents[1]
 
 
 def test_application_refactor_modules_follow_single_word_leaf_names() -> None:
-    """本轮新增应用模块使用单词文件名，并按同一模块进入子目录。"""
+    """
+    本轮新增应用模块使用单词文件名，并按同一模块进入子目录。
+    """
     application_root = PROJECT_ROOT / "app" / "application"
     refactored_files = [
         application_root / "download" / "validation.py",
@@ -52,7 +56,9 @@ def test_application_refactor_modules_follow_single_word_leaf_names() -> None:
 
 
 def test_condition_field_ids_preserves_nested_declaration_order() -> None:
-    """条件树公共遍历必须保留 all/any/not 的声明顺序。"""
+    """
+    条件树公共遍历必须保留 all/any/not 的声明顺序。
+    """
     node = ClassificationConditionGroup(
         all=[
             ClassificationCondition(field="media.title", operator="exists"),
@@ -79,13 +85,17 @@ def test_condition_field_ids_preserves_nested_declaration_order() -> None:
 
 @pytest.mark.parametrize("value", ["", "a" * 39, "g" * 40, "a" * 41])
 def test_validate_torrent_hash_rejects_non_v1_hash(value: str) -> None:
-    """下载应用服务必须拒绝长度或字符集不符合 v1 Hash 的输入。"""
+    """
+    下载应用服务必须拒绝长度或字符集不符合 v1 Hash 的输入。
+    """
     with pytest.raises(ValueError, match="hash 格式无效"):
         validate_torrent_hash(value)
 
 
 def test_build_subscribe_payload_filters_fields_and_requires_identity() -> None:
-    """中心服务公共载荷投影只保留白名单字段并要求媒体身份完整。"""
+    """
+    中心服务公共载荷投影只保留白名单字段并要求媒体身份完整。
+    """
     payload = build_subscribe_payload(
         {
             "name": "Demo",

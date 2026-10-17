@@ -1,3 +1,7 @@
+"""
+提供系统运维、升级、资源代理及兼容设置路由入口。
+"""
+
 import asyncio
 import io
 import json
@@ -7,7 +11,9 @@ from typing import Annotated, Any, Optional
 from urllib.parse import urlsplit
 
 import anyio
-import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
+
+# 导入时注册 AVIF 解码器，因此保留未直接引用的依赖。
+import pillow_avif  # noqa: F401  # pylint: disable=unused-import
 from fastapi import Body, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -47,6 +53,8 @@ from app.application.scheduling import get_scheduler
 from app.application.security.image import normalize_image_domain, site_image_domains
 from app.application.security.url import SecurityUtils
 from app.application.site.query import get_configured_site_query_service
+
+# 站点目录由外部资源加载，静态检查无法解析其动态导出。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.system import LogFileData, LogNotFoundError
 from app.chain.media import MediaChain
@@ -84,7 +92,7 @@ router = ResponseAPIRouter()
 router.routes.extend(system_identifiers_router.routes)
 router.routes.extend(module_router.routes)
 
-# Re-export setting handlers for existing endpoint-level imports and tests.
+# 重导出设置处理函数，兼容既有端点路径的导入和测试。
 __all__ = [
     "catalog_settings",
     "describe_setting",
@@ -111,7 +119,9 @@ _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
 
 
 def _project_public_storages(value: Any) -> list[dict[str, Any]]:
-    """存储配置只公开名称和类型，与 /storage/options 一致，config 中的连接配置不返回。"""
+    """
+    存储配置只公开名称和类型，与 /storage/options 一致，config 中的连接配置不返回。
+    """
     if not isinstance(value, list):
         return []
     return [
@@ -122,7 +132,9 @@ def _project_public_storages(value: Any) -> list[dict[str, Any]]:
 
 
 async def _get_image_proxy_allowed_domains() -> set[str]:
-    """合并站点快照与当前图片代理配置，仍逐请求执行 DNS 安全校验。"""
+    """
+    合并站点快照与当前图片代理配置，仍逐请求执行 DNS 安全校验。
+    """
     runtime_settings = get_runtime_settings()
     allowed_domains = set(runtime_settings.get("SECURITY_IMAGE_DOMAINS", []))
     allowed_domains.update(await site_image_domains.get(get_configured_site_query_service()))
@@ -140,7 +152,9 @@ async def _get_image_proxy_allowed_domains() -> set[str]:
 
 
 def _get_image_proxy_trusted_hosts() -> set[str]:
-    """返回已启用媒体服务器的主机（host / play_host），图片代理可直接信任。"""
+    """
+    返回已启用媒体服务器的主机（host / play_host），图片代理可直接信任。
+    """
     trusted_hosts: set[str] = set()
     try:
         for conf in get_mediaserver_configs():
@@ -151,6 +165,7 @@ def _get_image_proxy_trusted_hosts() -> set[str]:
                 parsed = urlsplit(host if "://" in host else f"https://{host}")
                 if parsed.scheme in {"http", "https"} and parsed.netloc:
                     trusted_hosts.add(parsed.netloc.lower())
+    # 配置异常时继续执行图片代理的兼容回退，不阻断请求。
     except Exception as err:  # noqa: BLE001 - 配置不可用时不影响图片代理
         logger.debug(f"读取媒体服务器配置失败，图片代理不信任任何媒体服务器主机：{err}")
         return set()
@@ -158,7 +173,9 @@ def _get_image_proxy_trusted_hosts() -> set[str]:
 
 
 def _database_backup_artifact_data(artifact: Any) -> _SchemaDatabaseBackupArtifactData:
-    """将内部备份制品映射为不含宿主路径的 Web DTO。"""
+    """
+    将内部备份制品映射为不含宿主路径的 Web DTO。
+    """
     return _SchemaDatabaseBackupArtifactData(
         name=artifact.name,
         db_type=artifact.db_type,
@@ -187,7 +204,9 @@ async def _build_log_zip_response(
     runtime: HostRuntime,
     allow_empty: bool = False,
 ) -> StreamingResponse:
-    """读取受限日志条目并生成兼容 ZIP 响应。"""
+    """
+    读取受限日志条目并生成兼容 ZIP 响应。
+    """
     try:
         entries = await runtime.system.collect_logs(name)
     except LogNotFoundError as error:
@@ -207,7 +226,9 @@ def _build_log_zip_data(
     name: str,
     entries: list[LogFileData],
 ) -> tuple[bytes, str]:
-    """只负责把应用服务提供的日志内容编码为 ZIP framing。"""
+    """
+    只负责把应用服务提供的日志内容编码为 ZIP framing。
+    """
     zip_buffer = io.BytesIO()
     filename_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     safe_name = (name or "logs").strip().lower().replace("/", "-") or "logs"
@@ -250,7 +271,9 @@ async def fetch_image(
         return None
 
     async def validate_redirect(target: str) -> bool:
-        """逐跳重新验证目标，不把原图片的签名或主机信任扩散给跳转地址。"""
+        """
+        逐跳重新验证目标，不把原图片的签名或主机信任扩散给跳转地址。
+        """
         return await SecurityUtils.is_safe_image_redirect_url_async(
             target,
             allowed_domains,
@@ -492,7 +515,9 @@ async def list_database_backups(
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> list[_SchemaDatabaseBackupArtifactData]:
-    """列出当前备份目录中的正式制品，不触发内容校验。"""
+    """
+    列出当前备份目录中的正式制品，不触发内容校验。
+    """
     try:
         artifacts = await run_in_threadpool_to_completion(get_database_governance().list_backups)
     except Exception as error:
@@ -509,7 +534,9 @@ async def list_database_backups(
 async def create_database_backup(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaDatabaseBackupArtifactData:
-    """创建、校验并原子发布当前活动数据库的一致快照。"""
+    """
+    创建、校验并原子发布当前活动数据库的一致快照。
+    """
     try:
         artifact = await run_in_threadpool_to_completion(get_database_governance().create_backup)
     except DatabaseBackupInProgressError as error:
@@ -529,7 +556,9 @@ async def verify_database_backup(
     name: str,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaDatabaseBackupVerificationData:
-    """校验一个受管制品，响应不包含宿主路径或适配器错误明细。"""
+    """
+    校验一个受管制品，响应不包含宿主路径或适配器错误明细。
+    """
     try:
         verification = await run_in_threadpool_to_completion(
             get_database_governance().verify_backup,
@@ -557,7 +586,9 @@ async def delete_database_backup(
     name: str,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse[None]:
-    """删除一个受管制品，只接受备份目录内的合法文件名。"""
+    """
+    删除一个受管制品，只接受备份目录内的合法文件名。
+    """
     try:
         await run_in_threadpool_to_completion(
             get_database_governance().delete_backup,
@@ -671,7 +702,9 @@ async def get_progress(
     locale = LocaleHelper.get_current_locale()
 
     async def event_generator():
-        """定期输出当前处理进度，在断开或系统停止时退出。"""
+        """
+        定期输出当前处理进度，在断开或系统停止时退出。
+        """
         try:
             while not runtime_stop_state.is_system_stopped:
                 if await request.is_disconnected():
@@ -752,7 +785,9 @@ async def get_message(
     message = MessageHelper()
 
     async def event_generator():
-        """输出积压消息和空闲心跳，在断开或系统停止时退出。"""
+        """
+        输出积压消息和空闲心跳，在断开或系统停止时退出。
+        """
         try:
             while not runtime_stop_state.is_system_stopped:
                 if await request.is_disconnected():
@@ -779,7 +814,9 @@ async def _get_logging_impl(
     _: _SchemaTokenPayload = Depends(_verify_log_resource_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
 ):
-    """把应用服务提供的日志数据映射为文本或 SSE 响应。"""
+    """
+    把应用服务提供的日志数据映射为文本或 SSE 响应。
+    """
     resolved_logfile = logfile or "moviepilot.log"
     if length == -1:
         try:
@@ -797,7 +834,9 @@ async def _get_logging_impl(
         raise HTTPException(status_code=404, detail="Not Found") from error
 
     async def event_generator():
-        """只为原始日志行添加 SSE data framing。"""
+        """
+        仅将原始日志行包装为 SSE 的 data 消息。
+        """
         try:
             async for line in source:
                 yield f"data: {line}\n\n"
@@ -832,7 +871,9 @@ async def get_logging(
     _: _SchemaTokenPayload = Depends(_verify_log_resource_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
 ):
-    """实时日志的兼容公开入口。"""
+    """
+    实时日志的兼容公开入口。
+    """
     return await _get_logging_impl(request, length, logfile, _, runtime)
 
 
@@ -1033,7 +1074,9 @@ def upgrade_system(
     _: ApiPrincipal = Depends(get_current_active_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
 ):
-    """保留 Dev 更新入口；Release 更新必须使用后台下载与确认安装流程。"""
+    """
+    保留 Dev 更新入口；Release 更新必须使用后台下载与确认安装流程。
+    """
     result = runtime.system.upgrade(mode)
     return _SchemaResponse(success=result.success, message=result.message)
 
@@ -1047,7 +1090,9 @@ def system_update_status(
     _: ApiPrincipal = Depends(get_current_active_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
 ):
-    """返回后台检查、下载或待安装状态（仅管理员）。"""
+    """
+    返回后台检查、下载或待安装状态（仅管理员）。
+    """
     return _SchemaResponse(success=True, data=runtime.system.update_status())
 
 
@@ -1060,7 +1105,9 @@ def check_system_update(
     _: ApiPrincipal = Depends(get_current_active_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
 ):
-    """查询最高正式 V3 版本和站点资源，可刷新旧待安装目标（仅管理员）。"""
+    """
+    查询最高正式 V3 版本和站点资源，可刷新旧待安装目标（仅管理员）。
+    """
     return _SchemaResponse(success=True, data=runtime.system.check_update())
 
 
@@ -1074,7 +1121,9 @@ def download_system_update(
     runtime: HostRuntime = Depends(get_host_runtime),
     request: Annotated[_SchemaSystemUpdateRequest | None, Body()] = None,
 ):
-    """单类或合并下载更新并立即返回状态；all 准备全部最新制品（仅管理员）。"""
+    """
+    单类或合并下载更新并立即返回状态；all 准备全部最新制品（仅管理员）。
+    """
     result = runtime.system.download_update(request.target if request else "application")
     return _SchemaResponse(success=result.success, data=result.data, message=result.message)
 
@@ -1089,7 +1138,9 @@ def install_system_update(
     runtime: HostRuntime = Depends(get_host_runtime),
     request: Annotated[_SchemaSystemUpdateRequest | None, Body()] = None,
 ):
-    """校验所选制品后重启安装；all 要求全部更新就绪并只重启一次（仅管理员）。"""
+    """
+    校验所选制品后重启安装；all 要求全部更新就绪并只重启一次（仅管理员）。
+    """
     result = runtime.system.install_update(request.target if request else "application")
     return _SchemaResponse(success=result.success, message=result.message)
 
@@ -1123,5 +1174,5 @@ def run_scheduler2(jobid: str, _: Annotated[str, Depends(verify_apitoken)]):
     return _SchemaResponse(success=True)
 
 
-# Keep the settings routes in the legacy system router while owning their code separately.
+# 设置实现由独立模块维护，路由仍挂载到原有 system 入口。
 router.routes.extend(system_settings_router.routes)

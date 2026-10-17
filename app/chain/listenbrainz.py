@@ -1,3 +1,7 @@
+"""
+ListenBrainz 音乐榜单与推荐能力的模块调度入口。
+"""
+
 from typing import Any
 
 from app.chain.base import ChainBase
@@ -19,7 +23,9 @@ __all__ = [
 
 
 class ListenBrainzChain(ChainBase):
-    """ListenBrainz 音乐榜单与新发行来源链。"""
+    """
+    ListenBrainz 音乐榜单与新发行来源链。
+    """
 
     result_source = MediaSource.MusicBrainz
 
@@ -30,7 +36,9 @@ class ListenBrainzChain(ChainBase):
             count: int = 30,
             entity: str = MUSIC_ENTITY_RECORDING,
     ) -> list[MusicInfo]:
-        """分页读取 ListenBrainz 全站音乐榜单。"""
+        """
+        分页读取 ListenBrainz 全站音乐榜单。
+        """
         result = self.run_module(
             "music_chart",
             range_name=range_name,
@@ -47,7 +55,9 @@ class ListenBrainzChain(ChainBase):
             count: int = 30,
             entity: str = MUSIC_ENTITY_RECORDING,
     ) -> list[MusicInfo]:
-        """异步分页读取 ListenBrainz 全站音乐榜单。"""
+        """
+        异步分页读取 ListenBrainz 全站音乐榜单。
+        """
         result = await self.async_run_module(
             "music_chart",
             range_name=range_name,
@@ -66,7 +76,9 @@ class ListenBrainzChain(ChainBase):
             page: int = 1,
             count: int = 30,
     ) -> list[MusicInfo]:
-        """异步分页读取 ListenBrainz 官方新发行专辑。"""
+        """
+        异步分页读取 ListenBrainz 官方新发行专辑。
+        """
         result = await self.async_run_module(
             "music_fresh_releases",
             days=days,
@@ -80,7 +92,9 @@ class ListenBrainzChain(ChainBase):
 
     @classmethod
     def _music_infos(cls, result: Any, limit: int) -> list[MusicInfo]:
-        """将榜单模块结果转换为带 MusicBrainz 身份的音乐列表。"""
+        """
+        将榜单模块结果转换为带 MusicBrainz 身份的音乐列表。
+        """
         candidates = result if isinstance(result, list) else []
         infos = [
             item if isinstance(item, MusicInfo) else MusicInfo.from_dict(item)

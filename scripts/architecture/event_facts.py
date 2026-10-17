@@ -1,4 +1,6 @@
-"""静态收集可证明的宿主 EventManager producer 与 consumer 事实。"""
+"""
+静态收集可证明的宿主 EventManager 的发布与消费事实。
+"""
 
 import ast
 import hashlib
@@ -8,7 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, TypeAlias
 
+# 省略优先级参数时使用固定标识，避免把默认值解析成动态表达式。
 _DEFAULT_IDENTITY = "<default>"
+# 无法静态解析的处理函数或优先级使用固定标识，不包含易变行号。
 _DYNAMIC_IDENTITY = "<dynamic>"
 _EVENT_MANAGER_METHODS = {"add_event_listener", "register"}
 _PRODUCER_METHODS = {
@@ -23,6 +27,7 @@ _COMPREHENSION_SCOPES = (
     ast.DictComp,
     ast.GeneratorExp,
 )
+# 这些节点建立独立名称绑定边界，外层局部名称收集不得直接穿透。
 _FUNCTION_SCOPES = (
     ast.FunctionDef,
     ast.AsyncFunctionDef,
@@ -34,7 +39,12 @@ _FUNCTION_SCOPES = (
 
 @dataclass(frozen=True, slots=True)
 class _Symbol:
-    """记录 canonical module、EventManager 类或实例的静态来源。"""
+    """
+    记录规范来源模块、EventManager 类或实例的静态来源。
+
+    :param kind: 已确认的来源类别：模块、事件管理器类或工厂、管理器或发布器实例、注入字段所属对象、类型检查标记
+    :param value: 来源附加信息，保存规范模块或类路径、实例来源标记；无需附加信息时默认空字符串
+    """
 
     kind: Literal[
         "module",
@@ -50,7 +60,14 @@ class _Symbol:
 
 @dataclass(frozen=True, slots=True)
 class _EventSelection:
-    """记录一次注册可静态确定的事件集合及未知余项。"""
+    """
+    记录一次注册可静态确定的事件集合及未知余项。
+
+    :param events: 可静态确认的事件成员完整名称，按确定顺序保存
+    :param kind: 选择形式：member 为单个成员，enum 为枚举类，list 为事件列表
+    :param dynamic: 是否包含无法静态确认的事件部分，默认 False
+    :param invalid: 是否包含不符合注册契约的内容，默认 False
+    """
 
     events: tuple[str, ...]
     kind: Literal["member", "enum", "list"]
@@ -60,7 +77,12 @@ class _EventSelection:
 
 @dataclass(frozen=True, slots=True)
 class _BoundEventMethod:
-    """记录已证明 receiver 的 EventManager 或 EventPublisher 绑定方法。"""
+    """
+    记录来源已证明的调用对象的 EventManager 或 EventPublisher 绑定方法。
+
+    :param method: 已绑定的监听注册或事件发布方法名，仅接受声明中的六种方法
+    :param receiver_kind: 接收调用的对象来源类别，用于区分管理器实例、自身调用及注入端口
+    """
 
     method: Literal[
         "add_event_listener",
@@ -75,7 +97,13 @@ class _BoundEventMethod:
 
 @dataclass(frozen=True, slots=True)
 class _DecoratorFactory:
-    """记录尚未应用到 handler 的 EventManager.register 返回值。"""
+    """
+    记录尚未应用到处理函数的 EventManager.register 返回值。
+
+    :param selection: 装饰器工厂已绑定的事件选择结果
+    :param priority: 优先级表达式的稳定标识；省略时为 <default>，无法解析时为 <dynamic>
+    :param receiver_kind: 调用 register 的对象来源类别
+    """
 
     selection: _EventSelection
     priority: str
@@ -84,7 +112,15 @@ class _DecoratorFactory:
 
 @dataclass(frozen=True, slots=True)
 class _Registration:
-    """记录已证明 receiver 后解析出的注册调用。"""
+    """
+    记录调用对象来源已确认的事件注册。
+
+    :param method: 注册入口名称，区分 add_event_listener 与 register
+    :param selection: 该次注册包含的静态事件及动态、无效标记
+    :param handler: 处理函数的稳定标识；匿名函数记为 <lambda>，无法解析时为 <dynamic>
+    :param priority: 优先级表达式的稳定标识；省略时为 <default>，无法解析时为 <dynamic>
+    :param receiver_kind: 发起注册的对象来源类别
+    """
 
     method: Literal["add_event_listener", "register"]
     selection: _EventSelection
@@ -99,7 +135,9 @@ _ScopeValue: TypeAlias = (
 
 
 def _expression_name(node: ast.AST | None) -> str:
-    """返回 Name/Attribute 表达式的稳定点分名称。"""
+    """
+    返回 Name/Attribute 表达式的稳定点分名称。
+    """
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -109,7 +147,9 @@ def _expression_name(node: ast.AST | None) -> str:
 
 
 def _handler_identity(node: ast.AST | None) -> str:
-    """返回不含源码位置的 handler identity。"""
+    """
+    返回不含源码位置的处理函数标识。
+    """
     if name := _expression_name(node):
         return name
     if isinstance(node, ast.Lambda):
@@ -118,7 +158,9 @@ def _handler_identity(node: ast.AST | None) -> str:
 
 
 def _priority_identity(node: ast.AST | None) -> str:
-    """返回不含源码位置的 priority identity。"""
+    """
+    返回不含源码位置的优先级标识。
+    """
     if node is None:
         return _DEFAULT_IDENTITY
     if isinstance(node, ast.Constant):
@@ -129,7 +171,12 @@ def _priority_identity(node: ast.AST | None) -> str:
 
 
 def fingerprint_event_fact(fact: Mapping[str, object]) -> str:
-    """计算排除诊断行号与已有摘要后的字段敏感 SHA256。"""
+    """
+    计算排除诊断行号与已有摘要后的字段敏感 SHA256。
+
+    :param fact: 一条事件事实，line 与已有 fingerprint 不参与摘要
+    :return: 稳定 JSON 编码的 SHA256 十六进制摘要
+    """
     payload = {
         key: value
         for key, value in fact.items()
@@ -145,7 +192,9 @@ def fingerprint_event_fact(fact: Mapping[str, object]) -> str:
 
 
 def _fact_sort_key(item: dict[str, Any]) -> tuple[str, str, int, str]:
-    """返回逐调用 Event fact 的确定排序键。"""
+    """
+    返回逐调用事件事实的确定排序键。
+    """
     return (
         str(item["caller"]),
         str(item["qualname"]),
@@ -155,7 +204,9 @@ def _fact_sort_key(item: dict[str, Any]) -> tuple[str, str, int, str]:
 
 
 def _annotation_names(node: ast.AST | None) -> set[str]:
-    """提取类型注解中的有限点分名称。"""
+    """
+    提取类型注解中的有限点分名称。
+    """
     if node is None:
         return set()
     if isinstance(node, ast.Name):
@@ -170,7 +221,9 @@ def _annotation_names(node: ast.AST | None) -> set[str]:
 
 
 def _bound_names(target: ast.AST) -> set[str]:
-    """返回赋值目标在当前 lexical scope 绑定的名称。"""
+    """
+    返回赋值目标在当前词法作用域绑定的名称。
+    """
     if isinstance(target, ast.Name):
         return {target.id}
     if isinstance(target, (ast.List, ast.Tuple)):
@@ -185,7 +238,9 @@ def _bound_names(target: ast.AST) -> set[str]:
 
 
 def _pattern_bound_names(pattern: ast.pattern) -> set[str]:
-    """返回结构化匹配 pattern 捕获到当前 scope 的名称。"""
+    """
+    返回结构化匹配模式捕获到当前作用域的名称。
+    """
     if isinstance(pattern, ast.MatchAs):
         names = _pattern_bound_names(pattern.pattern) if pattern.pattern else set()
         if pattern.name:
@@ -226,7 +281,9 @@ def _pattern_bound_names(pattern: ast.pattern) -> set[str]:
 def _function_local_names(
     node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
 ) -> set[str]:
-    """按 Python lexical scope 预收集函数局部绑定，避免回退到同名全局。"""
+    """
+    按 Python 词法作用域预收集函数局部绑定，避免回退到同名全局。
+    """
     parents: dict[ast.AST, ast.AST] = {}
     for parent in ast.walk(node):
         for child in ast.iter_child_nodes(parent):
@@ -237,7 +294,9 @@ def _function_local_names(
         *,
         cross_comprehensions: bool = False,
     ) -> bool:
-        """判断节点是否属于当前函数而非嵌套 scope。"""
+        """
+        判断节点是否属于当前函数而非嵌套作用域。
+        """
         parent = parents.get(candidate)
         while parent is not None and parent is not node:
             if isinstance(parent, _FUNCTION_SCOPES):
@@ -302,7 +361,9 @@ def _event_port_symbol(
     annotation: ast.AST | None,
     canonical_aliases: Mapping[str, str] | None = None,
 ) -> _Symbol | None:
-    """把明确的 EventPublisher/EventManager 注解转换为 receiver provenance。"""
+    """
+    把明确的 EventPublisher/EventManager 注解转换为调用对象来源。
+    """
     annotation_names = _annotation_names(annotation)
     leaf_names = {name.rsplit(".", 1)[-1] for name in annotation_names}
     if any(name.endswith("EventPublisher") for name in leaf_names):
@@ -323,7 +384,9 @@ def _function_parameter_symbols(
     node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
     canonical_aliases: Mapping[str, str] | None = None,
 ) -> dict[str, _Symbol]:
-    """收集函数参数上明确声明的 Event 发布端口。"""
+    """
+    收集函数参数上明确声明的 Event 发布端口。
+    """
     arguments = (
         *node.args.posonlyargs,
         *node.args.args,
@@ -349,7 +412,9 @@ def _resolve_import_from_module(
     node: ast.ImportFrom,
     package_modules: set[str],
 ) -> str:
-    """把绝对或相对 from-import 解析为 canonical 来源模块。"""
+    """
+    把绝对或相对 from-import 解析为规范来源模块。
+    """
     if not node.level:
         return node.module or ""
     current_parts = module_name.split(".")
@@ -368,7 +433,9 @@ def _resolve_import_from_module(
 
 
 def _statement_bound_names(statement: ast.stmt) -> set[str]:
-    """返回模块语句直接或条件分支可能绑定的名称。"""
+    """
+    返回模块语句直接或条件分支可能绑定的名称。
+    """
     if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
         return {statement.name}
     if isinstance(statement, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
@@ -393,13 +460,17 @@ def _statement_bound_names(statement: ast.stmt) -> set[str]:
 
 
 def _runtime_module_statements(tree: ast.Module) -> list[ast.stmt]:
-    """展开可证明的 TYPE_CHECKING 运行期分支，保留其余顶层语句。"""
+    """
+    展开可证明的 TYPE_CHECKING 运行期分支，保留其余顶层语句。
+    """
     type_checking_names: set[str] = set()
     typing_modules: set[str] = set()
     runtime_statements: list[ast.stmt] = []
 
     def runtime_value(test: ast.expr) -> bool | None:
-        """判断表达式是否是当前未遮蔽的 typing.TYPE_CHECKING。"""
+        """
+        判断表达式是否是当前未遮蔽的 typing.TYPE_CHECKING。
+        """
         negate = isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not)
         target = test.operand if negate else test
         name = _expression_name(target)
@@ -409,7 +480,9 @@ def _runtime_module_statements(tree: ast.Module) -> list[ast.stmt]:
         return negate if proven else None
 
     def visit(statements: list[ast.stmt]) -> None:
-        """按模块执行顺序收集可证明会运行的语句。"""
+        """
+        按模块执行顺序收集可证明会运行的语句。
+        """
         for statement in statements:
             if isinstance(statement, ast.If):
                 value = runtime_value(statement.test)
@@ -445,7 +518,9 @@ def _module_import_aliases(
     module_name: str,
     package_modules: set[str],
 ) -> dict[str, str]:
-    """收集解析类继承关系所需的模块级 import 别名。"""
+    """
+    收集解析类继承关系所需的模块级导入别名。
+    """
     aliases: dict[str, str] = {}
     for node in statements:
         if isinstance(node, ast.Import):
@@ -473,12 +548,16 @@ def _module_class_aliases(
     module_name: str,
     package_modules: set[str],
 ) -> dict[str, str]:
-    """收集运行期可证明的模块级简单类别名及其 canonical 目标。"""
+    """
+    收集运行期可证明的模块级简单类别名及其规范目标。
+    """
     aliases: dict[str, str] = {}
     bindings: dict[str, str] = {}
 
     def resolve(node: ast.expr) -> str:
-        """仅从当前未遮蔽绑定解析类别名右值。"""
+        """
+        仅从当前未遮蔽绑定解析类别名右值。
+        """
         name = _expression_name(node)
         if not name:
             return ""
@@ -541,7 +620,9 @@ def _iter_classes(
     statements: list[ast.stmt],
     prefix: tuple[str, ...] = (),
 ) -> list[tuple[str, ast.ClassDef]]:
-    """按 lexical qualname 返回语句中的类定义，不进入函数 scope。"""
+    """
+    按词法限定名返回语句中的类定义，不进入函数作用域。
+    """
     classes: list[tuple[str, ast.ClassDef]] = []
     for statement in statements:
         if not isinstance(statement, ast.ClassDef):
@@ -558,7 +639,9 @@ def _canonical_class_name(
     module_name: str,
     aliases: dict[str, str],
 ) -> str:
-    """把有限 Name/Attribute 基类表达式还原成 canonical 类名。"""
+    """
+    把有限 Name/Attribute 基类表达式还原成规范类名。
+    """
     name = _expression_name(node)
     if not name:
         return ""
@@ -572,7 +655,9 @@ def _discover_injected_event_fields(
     trees: dict[str, ast.Module],
     package_modules: set[str],
 ) -> dict[_InjectedFieldKey, dict[str, _Symbol]]:
-    """按 owning class 发现构造注入字段，并沿已知继承关系传播。"""
+    """
+    按所属类发现构造注入字段，并沿已知继承关系传播。
+    """
     runtime_statements = {
         module_name: _runtime_module_statements(tree)
         for module_name, tree in trees.items()
@@ -601,7 +686,9 @@ def _discover_injected_event_fields(
     }
 
     def resolve_class_alias(canonical: str) -> str:
-        """传递解析简单类别名，并拒绝循环别名。"""
+        """
+        传递解析简单类别名，并拒绝循环别名。
+        """
         visited: set[str] = set()
         while canonical in class_aliases and canonical not in visited:
             visited.add(canonical)
@@ -693,7 +780,9 @@ def _discover_injected_event_fields(
             starts: set[str],
             relations: dict[str, set[str]],
         ) -> set[str]:
-            """返回给定继承方向上的传递闭包。"""
+            """
+            返回给定继承方向上的传递闭包。
+            """
             pending = list(starts)
             reached: set[str] = set()
             while pending:
@@ -718,7 +807,9 @@ def _discover_injected_event_fields(
 
 
 class _EventFactCollector(ast.NodeVisitor):
-    """以有限 lexical provenance 收集单个宿主模块的 Event 事实。"""
+    """
+    以有限词法来源追踪收集单个宿主模块的事件事实。
+    """
 
     def __init__(
         self,
@@ -729,7 +820,9 @@ class _EventFactCollector(ast.NodeVisitor):
         module_final_scope: dict[str, _ScopeValue] | None = None,
         injected_fields: dict[_InjectedFieldKey, dict[str, _Symbol]] | None = None,
     ) -> None:
-        """初始化模块、事件枚举、收集模式及已证明的注入字段。"""
+        """
+        初始化模块、事件枚举、收集模式及已证明的注入字段。
+        """
         self._module_name = module_name
         self._event_members = event_members
         self._collect_facts = collect_facts
@@ -744,11 +837,15 @@ class _EventFactCollector(ast.NodeVisitor):
         self.consumers: list[dict[str, Any]] = []
 
     def module_scope(self) -> dict[str, _ScopeValue]:
-        """返回按模块执行顺序收敛后的符号状态。"""
+        """
+        返回按模块执行顺序收敛后的符号状态。
+        """
         return dict(self._scopes[0])
 
     def _lookup(self, name: str) -> _ScopeValue:
-        """从内向外解析 lexical binding。"""
+        """
+        从内向外解析词法绑定。
+        """
         skip_class_scope = self._scope_kinds[-1] == "comprehension"
         for scope, kind in reversed(list(zip(self._scopes, self._scope_kinds))):
             if skip_class_scope and kind == "class":
@@ -758,14 +855,18 @@ class _EventFactCollector(ast.NodeVisitor):
         return None
 
     def _set(self, name: str, value: _ScopeValue) -> None:
-        """在当前 lexical scope 写入或清空 binding。"""
+        """
+        在当前词法作用域写入或清空绑定。
+        """
         self._scopes[-1][name] = value
 
     @staticmethod
     def _merge_scope_states(
         states: list[list[dict[str, _ScopeValue]]],
     ) -> list[dict[str, _ScopeValue]]:
-        """仅保留所有控制流路径一致的静态 provenance。"""
+        """
+        仅保留所有控制流路径一致的静态来源信息。
+        """
         return [
             {
                 name: (
@@ -787,7 +888,9 @@ class _EventFactCollector(ast.NodeVisitor):
         scopes: list[dict[str, _ScopeValue]],
         scope_kinds: list[str],
     ) -> dict[str, _ScopeValue]:
-        """无事实副作用地计算一组语句执行后的最内层 scope。"""
+        """
+        无事实副作用地计算一组语句执行后的最内层作用域。
+        """
         discovery = _EventFactCollector(
             self._module_name,
             self._event_members,
@@ -807,7 +910,9 @@ class _EventFactCollector(ast.NodeVisitor):
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
     ) -> dict[str, _ScopeValue]:
-        """构造函数调用期的局部符号，并保留明确的参数端口 provenance。"""
+        """
+        构造函数调用期的局部符号，并保留明确的参数端口来源信息。
+        """
         scope: dict[str, _ScopeValue] = {
             name: None for name in _function_local_names(node)
         }
@@ -849,7 +954,9 @@ class _EventFactCollector(ast.NodeVisitor):
         return scope
 
     def _symbol_for_canonical(self, canonical: str) -> _ScopeValue:
-        """把有限 canonical 路径转换为 collector symbol。"""
+        """
+        把已知规范路径转换为收集器使用的符号。
+        """
         if canonical == "app.runtime.events.eventmanager":
             return _Symbol("manager_instance", "canonical_singleton")
         if canonical == "app.runtime.events.EventManager":
@@ -874,7 +981,9 @@ class _EventFactCollector(ast.NodeVisitor):
         return None
 
     def _runtime_type_checking_value(self, test: ast.expr) -> bool | None:
-        """仅对可证明的 typing.TYPE_CHECKING 返回确定运行期分支。"""
+        """
+        仅对可证明的 typing.TYPE_CHECKING 返回确定运行期分支。
+        """
         negate = isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not)
         target = test.operand if negate else test
         resolved = self._resolve(target)
@@ -883,7 +992,9 @@ class _EventFactCollector(ast.NodeVisitor):
         return None
 
     def _resolve(self, node: ast.AST) -> _ScopeValue:
-        """解析有限 import/module/赋值别名，不跨函数推断返回值。"""
+        """
+        解析已知导入、模块和赋值别名，不跨函数推断返回值。
+        """
         if isinstance(node, ast.Name):
             return self._lookup(node.id)
         if isinstance(node, ast.Attribute):
@@ -960,7 +1071,9 @@ class _EventFactCollector(ast.NodeVisitor):
         allow_enum: bool,
         allow_list: bool,
     ) -> _EventSelection:
-        """解析单个事件、enum 类或 register 接受的静态 list。"""
+        """
+        解析单个事件、枚举类或 register 接受的静态列表。
+        """
         if isinstance(node, ast.List):
             if not allow_list:
                 return _EventSelection((), "list", dynamic=True)
@@ -1013,7 +1126,9 @@ class _EventFactCollector(ast.NodeVisitor):
         parameter_names: tuple[str, ...],
         required_names: frozenset[str],
     ) -> dict[str, ast.AST] | None:
-        """按真实 Python 调用规则绑定有限签名，拒绝未知或重复参数。"""
+        """
+        按真实 Python 调用规则绑定有限签名，拒绝未知或重复参数。
+        """
         if len(node.args) > len(parameter_names) or any(
             isinstance(argument, ast.Starred) for argument in node.args
         ):
@@ -1032,7 +1147,9 @@ class _EventFactCollector(ast.NodeVisitor):
         return arguments
 
     def _registration(self, node: ast.Call) -> _Registration | None:
-        """仅解析 receiver 已证明为 canonical EventManager 实例的注册。"""
+        """
+        仅解析调用对象来源已证明为规范 EventManager 实例的注册。
+        """
         bound_method = self._resolve(node.func)
         if not (
             isinstance(bound_method, _BoundEventMethod)
@@ -1075,7 +1192,9 @@ class _EventFactCollector(ast.NodeVisitor):
         self,
         node: ast.Call,
     ) -> tuple[_BoundEventMethod, _EventSelection] | None:
-        """解析 receiver 与调用签名均可证明的 Event producer。"""
+        """
+        解析调用对象与调用签名均可证明的事件发布。
+        """
         bound_method = self._resolve(node.func)
         if not (
             isinstance(bound_method, _BoundEventMethod)
@@ -1102,7 +1221,9 @@ class _EventFactCollector(ast.NodeVisitor):
         self,
         node: ast.Call,
     ) -> tuple[_DecoratorFactory, ast.AST] | None:
-        """解析合法的 decorator(f) 或 decorator(f=...) 立即应用。"""
+        """
+        解析合法的 decorator(f) 或 decorator(f=...) 立即应用。
+        """
         factory = self._resolve(node.func)
         if not isinstance(factory, _DecoratorFactory):
             return None
@@ -1123,7 +1244,9 @@ class _EventFactCollector(ast.NodeVisitor):
         method: str,
         receiver_kind: str,
     ) -> dict[str, Any]:
-        """构造带 line-free fingerprint 的逐调用基础事实。"""
+        """
+        构造带不含行号的指纹的逐调用基础事实。
+        """
         fact = {
             "caller": self._module_name,
             "line": node.lineno,
@@ -1148,7 +1271,9 @@ class _EventFactCollector(ast.NodeVisitor):
         priority: str,
         registration_kind: Literal["decorator", "listener"],
     ) -> None:
-        """写入一条 handler、kind 和 priority 完整的 consumer 事实。"""
+        """
+        记录包含处理函数、注册类型和优先级的完整事件消费事实。
+        """
         if not self._collect_facts:
             return
         fact = self._base_fact(
@@ -1171,7 +1296,9 @@ class _EventFactCollector(ast.NodeVisitor):
         method: _BoundEventMethod,
         selection: _EventSelection,
     ) -> None:
-        """写入一条 receiver 已证明的 producer 事实。"""
+        """
+        写入一条调用对象来源已证明的事件发布事实。
+        """
         if not self._collect_facts:
             return
         self.producers.append(
@@ -1184,7 +1311,9 @@ class _EventFactCollector(ast.NodeVisitor):
         )
 
     def _record_decorator(self, decorator: ast.expr, handler: str) -> bool:
-        """记录直接或简单赋值别名形式的 register decorator。"""
+        """
+        记录直接或简单赋值别名形式的 register 装饰器。
+        """
         factory = self._resolve(decorator)
         if not isinstance(factory, _DecoratorFactory):
             return False
@@ -1204,20 +1333,26 @@ class _EventFactCollector(ast.NodeVisitor):
         decorators: list[ast.expr],
         handler: str,
     ) -> None:
-        """按定义期 scope 访问装饰器，Event register 只在实际应用时记账。"""
+        """
+        按定义期作用域访问装饰器，事件注册只在实际应用时记账。
+        """
         for decorator in decorators:
             if not self._record_decorator(decorator, handler):
                 self.visit(decorator)
 
     def visit_Import(self, node: ast.Import) -> None:
-        """发布模块 import 及其别名。"""
+        """
+        发布模块导入及其别名。
+        """
         for alias in node.names:
             bound_name = alias.asname or alias.name.split(".", 1)[0]
             canonical = alias.name if alias.asname else bound_name
             self._set(bound_name, self._symbol_for_canonical(canonical))
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        """发布 canonical from-import 及其别名。"""
+        """
+        发布规范来源的 from-import 及其别名。
+        """
         if node.level or not node.module:
             for alias in node.names:
                 if alias.name != "*":
@@ -1232,7 +1367,9 @@ class _EventFactCollector(ast.NodeVisitor):
             )
 
     def visit_Assign(self, node: ast.Assign) -> None:
-        """按执行顺序传播或清空简单赋值别名。"""
+        """
+        按执行顺序传播或清空简单赋值别名。
+        """
         value = self._resolve(node.value)
         self.visit(node.value)
         for target in node.targets:
@@ -1240,7 +1377,9 @@ class _EventFactCollector(ast.NodeVisitor):
                 self._set(name, value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        """传播带注解且有值的简单赋值别名。"""
+        """
+        传播带注解且有值的简单赋值别名。
+        """
         value = self._resolve(node.value) if node.value is not None else None
         if node.value is not None:
             self.visit(node.value)
@@ -1248,13 +1387,17 @@ class _EventFactCollector(ast.NodeVisitor):
             self._set(name, value)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
-        """增量赋值使目标 provenance 失效。"""
+        """
+        增量赋值使目标来源信息失效。
+        """
         self.visit(node.value)
         for name in _bound_names(node.target):
             self._set(name, None)
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
-        """传播海象表达式的简单别名。"""
+        """
+        传播海象表达式的简单别名。
+        """
         value = self._resolve(node.value)
         self.visit(node.value)
         scope_index = len(self._scopes) - 1
@@ -1264,13 +1407,17 @@ class _EventFactCollector(ast.NodeVisitor):
             self._scopes[scope_index][name] = value
 
     def visit_Delete(self, node: ast.Delete) -> None:
-        """删除名称后清空其 provenance。"""
+        """
+        删除名称后清空其来源信息。
+        """
         for target in node.targets:
             for name in _bound_names(target):
                 self._set(name, None)
 
     def visit_If(self, node: ast.If) -> None:
-        """精确执行 TYPE_CHECKING 分支，其余条件保守合并 binding。"""
+        """
+        精确执行 TYPE_CHECKING 分支，其余条件保守合并绑定。
+        """
         self.visit(node.test)
         runtime_value = self._runtime_type_checking_value(node.test)
         if runtime_value is not None:
@@ -1290,15 +1437,21 @@ class _EventFactCollector(ast.NodeVisitor):
         self._scopes = self._merge_scope_states([body_scopes, else_scopes])
 
     def visit_For(self, node: ast.For) -> None:
-        """让循环目标遮蔽旧绑定，并保守合并零次与迭代路径。"""
+        """
+        让循环目标遮蔽旧绑定，并保守合并零次与迭代路径。
+        """
         self._visit_for(node)
 
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
-        """按同步循环相同规则处理异步循环目标。"""
+        """
+        按同步循环相同规则处理异步循环目标。
+        """
         self._visit_for(node)
 
     def _visit_for(self, node: ast.For | ast.AsyncFor) -> None:
-        """实现同步和异步循环共享的 provenance 分析。"""
+        """
+        实现同步和异步循环共享的来源信息分析。
+        """
         self.visit(node.iter)
         original = [dict(scope) for scope in self._scopes]
         for name in _bound_names(node.target):
@@ -1314,7 +1467,9 @@ class _EventFactCollector(ast.NodeVisitor):
         self._scopes = self._merge_scope_states([loop_exit, else_scopes])
 
     def visit_While(self, node: ast.While) -> None:
-        """保守合并 while 的零次、迭代和 else 路径。"""
+        """
+        保守合并 while 的零次、迭代和 else 路径。
+        """
         self.visit(node.test)
         original = [dict(scope) for scope in self._scopes]
         for statement in node.body:
@@ -1328,15 +1483,21 @@ class _EventFactCollector(ast.NodeVisitor):
         self._scopes = self._merge_scope_states([loop_exit, else_scopes])
 
     def visit_With(self, node: ast.With) -> None:
-        """按进入顺序分析 context，并清空 with 目标的旧 provenance。"""
+        """
+        按进入顺序分析上下文管理器，并清空 with 目标的旧来源信息。
+        """
         self._visit_with(node)
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
-        """按同步 with 相同规则处理异步上下文目标。"""
+        """
+        按同步 with 相同规则处理异步上下文目标。
+        """
         self._visit_with(node)
 
     def _visit_with(self, node: ast.With | ast.AsyncWith) -> None:
-        """实现同步和异步上下文管理器共享的绑定分析。"""
+        """
+        实现同步和异步上下文管理器共享的绑定分析。
+        """
         for item in node.items:
             self.visit(item.context_expr)
             if item.optional_vars is not None:
@@ -1346,7 +1507,9 @@ class _EventFactCollector(ast.NodeVisitor):
             self.visit(statement)
 
     def visit_Match(self, node: ast.Match) -> None:
-        """隔离 match case 捕获名称并保守合并所有匹配路径。"""
+        """
+        隔离 match case 捕获名称并保守合并所有匹配路径。
+        """
         self.visit(node.subject)
         original = [dict(scope) for scope in self._scopes]
         states = [original]
@@ -1363,15 +1526,21 @@ class _EventFactCollector(ast.NodeVisitor):
         self._scopes = self._merge_scope_states(states)
 
     def visit_Try(self, node: ast.Try) -> None:
-        """隔离异常处理路径，并让异常别名在 handler 内外失效。"""
+        """
+        隔离异常处理路径，并让异常别名在异常处理体内外失效。
+        """
         self._visit_try(node)
 
     def visit_TryStar(self, node: ast.TryStar) -> None:
-        """按普通 try 相同规则处理异常组分支。"""
+        """
+        按普通 try 相同规则处理异常组分支。
+        """
         self._visit_try(node)
 
     def _visit_try(self, node: ast.Try | ast.TryStar) -> None:
-        """实现 try 与 try-star 共享的保守控制流合并。"""
+        """
+        实现 try 与 try-star 共享的保守控制流合并。
+        """
         original = [dict(scope) for scope in self._scopes]
         exception_states = [original]
         for statement in node.body:
@@ -1406,7 +1575,9 @@ class _EventFactCollector(ast.NodeVisitor):
         generators: list[ast.comprehension],
         expressions: tuple[ast.expr, ...],
     ) -> None:
-        """在独立 lexical scope 内分析推导式目标和表达式。"""
+        """
+        在独立词法作用域内分析推导式目标和表达式。
+        """
         first, *remaining = generators
         self.visit(first.iter)
         outer_original = [dict(scope) for scope in self._scopes]
@@ -1430,34 +1601,48 @@ class _EventFactCollector(ast.NodeVisitor):
         self._scopes = self._merge_scope_states([outer_original, outer_after])
 
     def visit_ListComp(self, node: ast.ListComp) -> None:
-        """在独立 scope 内分析列表推导式。"""
+        """
+        在独立作用域内分析列表推导式。
+        """
         self._visit_comprehension(node.generators, (node.elt,))
 
     def visit_SetComp(self, node: ast.SetComp) -> None:
-        """在独立 scope 内分析集合推导式。"""
+        """
+        在独立作用域内分析集合推导式。
+        """
         self._visit_comprehension(node.generators, (node.elt,))
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
-        """在独立 scope 内分析生成器表达式。"""
+        """
+        在独立作用域内分析生成器表达式。
+        """
         self._visit_comprehension(node.generators, (node.elt,))
 
     def visit_DictComp(self, node: ast.DictComp) -> None:
-        """在独立 scope 内分析字典推导式。"""
+        """
+        在独立作用域内分析字典推导式。
+        """
         self._visit_comprehension(node.generators, (node.key, node.value))
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        """按定义期装饰器和调用期 lexical scope 分别分析函数。"""
+        """
+        按定义期装饰器和调用期词法作用域分别分析函数。
+        """
         self._visit_function(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        """按普通函数相同规则分析异步函数。"""
+        """
+        按普通函数相同规则分析异步函数。
+        """
         self._visit_function(node)
 
     def _visit_function(
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> None:
-        """实现同步和异步函数共享的 scope 分析。"""
+        """
+        实现同步和异步函数共享的作用域分析。
+        """
         if not self._collect_facts:
             self._set(node.name, None)
             return
@@ -1495,7 +1680,9 @@ class _EventFactCollector(ast.NodeVisitor):
         self._set(node.name, None)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        """在类定义期 scope 记录类装饰器和方法装饰器。"""
+        """
+        在类定义期作用域记录类装饰器和方法装饰器。
+        """
         if not self._collect_facts:
             self._set(node.name, None)
             return
@@ -1516,7 +1703,9 @@ class _EventFactCollector(ast.NodeVisitor):
         self._set(node.name, None)
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        """让 lambda 参数遮蔽同名模块 alias。"""
+        """
+        让 lambda 参数遮蔽同名模块别名。
+        """
         if not self._collect_facts:
             return
         for expression in (
@@ -1550,7 +1739,9 @@ class _EventFactCollector(ast.NodeVisitor):
         self._scope_kinds = saved_kinds
 
     def visit_Call(self, node: ast.Call) -> None:
-        """记录 receiver 与调用签名均可证明的 producer/consumer。"""
+        """
+        记录调用对象与调用签名均可证明的事件发布或消费。
+        """
         producer = self._producer_call(node)
         if producer is not None:
             method, selection = producer
@@ -1588,10 +1779,10 @@ def collect_event_facts(
     event_members: dict[str, tuple[str, ...]],
 ) -> dict[str, list[dict[str, Any]]]:
     """
-    收集宿主 EventManager 的逐调用 producer 与 consumer 事实。
+    收集宿主 EventManager 的逐调用事件发布与消费事实。
 
-    只有可追溯到 canonical EventManager、其内部 ``self`` 或明确注入事件端口的
-    调用才进入事实。插件模块与未知同名 receiver 始终忽略；每条事实携带排除行号
+    只有可追溯到规范 EventManager、其内部 ``self`` 或明确注入事件端口的
+    调用才进入事实。插件模块与未知同名调用对象始终忽略；每条事实携带排除行号
     的字段敏感 SHA256，供基线稳定追踪。
 
     :param modules: 宿主模块名到 Python 源码路径的映射

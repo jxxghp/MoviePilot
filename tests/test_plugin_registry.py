@@ -1,3 +1,7 @@
+"""
+验证插件注册、实例发现与状态管理。
+"""
+
 from types import SimpleNamespace
 
 from app.runtime.extensions.plugin.registry import PluginRegistry
@@ -5,7 +9,9 @@ from app.schemas.plugin import PluginRuntimeStatus
 
 
 def test_registry_owns_classes_instances_and_stable_snapshots():
-    """注册表集中持有类与实例，快照不受后续热重载修改影响。"""
+    """
+    注册表集中持有类与实例，快照不受后续热重载修改影响。
+    """
     registry = PluginRegistry()
     plugin_class = type("Demo", (), {})
     plugin_instance = SimpleNamespace(plugin_name="演示")
@@ -30,7 +36,9 @@ def test_registry_owns_classes_instances_and_stable_snapshots():
 
 
 def test_registry_clear_preserves_compatibility_mapping_identity():
-    """整体停止插件时原地清空，旧调用方持有的字典引用继续有效。"""
+    """
+    整体停止插件时原地清空，旧调用方持有的字典引用继续有效。
+    """
     registry = PluginRegistry()
     classes = registry.classes
     running = registry.running
@@ -46,7 +54,9 @@ def test_registry_clear_preserves_compatibility_mapping_identity():
 
 
 def test_registry_tracks_runtime_status_generation_and_settling():
-    """状态与后台收敛变化只在真实改变时推进刷新代次。"""
+    """
+    状态与后台收敛变化只在真实改变时推进刷新代次。
+    """
     registry = PluginRegistry()
 
     registry.set_runtime_status("Demo", PluginRuntimeStatus.READY)
@@ -67,7 +77,9 @@ def test_registry_tracks_runtime_status_generation_and_settling():
 
 
 def test_registry_tracks_restart_requirement_independently_from_runtime_status():
-    """重启激活是正交维度，重复记录只合并发行包并推进真实变化。"""
+    """
+    重启激活是正交维度，重复记录只合并发行包并推进真实变化。
+    """
     registry = PluginRegistry()
     registry.set_runtime_status("Demo", PluginRuntimeStatus.ACTIVE)
     baseline_generation = registry.generation
@@ -89,7 +101,9 @@ def test_registry_tracks_restart_requirement_independently_from_runtime_status()
 
 
 def test_registry_clear_removes_restart_requirements():
-    """整体清空注册表时不能保留已卸载插件的重启要求。"""
+    """
+    整体清空注册表时不能保留已卸载插件的重启要求。
+    """
     registry = PluginRegistry()
     registry.mark_restart_required("Demo", ("native-demo",))
 

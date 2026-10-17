@@ -1,4 +1,6 @@
-"""提供统一的错误文本规范化，不改变业务层已经生成的错误含义。"""
+"""
+提供统一的错误文本规范化，不改变业务层已经生成的错误含义。
+"""
 
 from typing import Literal, Optional
 
@@ -25,7 +27,9 @@ def public_error_message(
     context: PublicErrorContext = "generic",
     fallback: Optional[str] = None,
 ) -> str:
-    """返回业务层提供的错误文案，仅清理空白并为空值提供兜底。"""
+    """
+    返回业务层提供的错误文案，仅清理空白并为空值提供兜底。
+    """
     if error is None:
         return fallback or _CONTEXT_FALLBACKS[context]
     message = " ".join(str(error).split())

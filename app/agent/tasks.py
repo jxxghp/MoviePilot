@@ -1,4 +1,6 @@
-"""Agent 后台提示、持久化定时任务与心跳执行 owner。"""
+"""
+Agent 后台提示、持久化定时任务与心跳执行 owner。
+"""
 
 import asyncio
 import uuid
@@ -21,7 +23,9 @@ from app.schemas.types import MessageType
 
 
 class AgentTaskOwner(AgentLifecycleOwner):
-    """执行不绑定交互请求的 Agent 后台与调度任务。"""
+    """
+    执行不绑定交互请求的 Agent 后台与调度任务。
+    """
 
     async def run_background_prompt(
             self,
@@ -154,7 +158,9 @@ class AgentTaskOwner(AgentLifecycleOwner):
 
     @staticmethod
     def _build_heartbeat_prompt() -> str:
-        """使用程序内置 System Tasks 定义构建心跳任务提示词。"""
+        """
+        使用程序内置 System Tasks 定义构建心跳任务提示词。
+        """
         return prompt_manager.render_system_task_message("heartbeat")
 
     async def heartbeat_check_jobs(self) -> None:

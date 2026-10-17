@@ -1,3 +1,7 @@
+"""
+面向 HTTP API 管理工具目录、参数兼容转换和受策略约束的执行。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +31,9 @@ class ToolDefinition:
     """
 
     def __init__(self, name: str, description: str, input_schema: Dict[str, Any]):
-        """保存严格工具目录对外展示的名称、说明和参数合同。"""
+        """
+        保存严格工具目录对外展示的名称、说明和参数合同。
+        """
         self.name = name
         self.description = description
         self.input_schema = input_schema
@@ -47,11 +53,13 @@ class MoviePilotToolsManager:
         data: Optional[AgentDataContext] = None,
     ):
         """
-        初始化工具管理器
+        初始化面向 HTTP API 的工具目录和终端所有权。
 
-        Args:
-            user_id: 用户ID
-            session_id: 会话ID
+        :param user_id: 可信入口解析的用户标识，默认 api_user
+        :param session_id: 工具会话标识；None 时生成独立随机标识
+        :param is_admin: 入口确认的管理员身份，默认 True
+        :param policy_orchestrator: 工具策略编排器；None 时延迟取得运行时策略
+        :param data: 组合根注入的数据上下文；未注入时为 None
         """
         self.user_id = user_id
         self.session_id = session_id if session_id is not None else uuid.uuid4().hex
@@ -68,7 +76,9 @@ class MoviePilotToolsManager:
         self._catalog_managed_by_factory = False
 
     def _invalidate_catalog_locked(self) -> None:
-        """在持有工具锁时清除由旧数据上下文构造的目录快照。"""
+        """
+        在持有工具锁时清除由旧数据上下文构造的目录快照。
+        """
         self.tools = []
         self.catalog = None
         self._plugin_agent_tools_revision = -1
@@ -76,7 +86,9 @@ class MoviePilotToolsManager:
         self._catalog_managed_by_factory = False
 
     def set_data_context(self, data: AgentDataContext) -> None:
-        """绑定组合根上下文，并使工厂拥有的旧工具快照原子失效。"""
+        """
+        绑定组合根上下文，并使工厂拥有的旧工具快照原子失效。
+        """
         with self._tools_lock:
             if self._data is data:
                 return
@@ -86,14 +98,18 @@ class MoviePilotToolsManager:
             self._invalidate_catalog_locked()
 
     def reset_data_context(self) -> None:
-        """撤销当前 lifespan 数据上下文，并清除引用旧仓储的工具快照。"""
+        """
+        撤销当前 lifespan 数据上下文，并清除引用旧仓储的工具快照。
+        """
         with self._tools_lock:
             self._data = None
             self._invalidate_catalog_locked()
 
     @staticmethod
     def _summarize_error(error: Exception) -> str:
-        """仅在错误路径加载策略脱敏器，保持默认导入轻量。"""
+        """
+        仅在错误路径加载策略脱敏器，保持默认导入轻量。
+        """
         from app.agent.policy.sanitizer import summarize_error
 
         return summarize_error(error)
@@ -138,7 +154,9 @@ class MoviePilotToolsManager:
                 raise
 
     def _load_tools(self) -> None:
-        """显式刷新工具目录，并保证外部调用原子发布完整快照。"""
+        """
+        显式刷新工具目录，并保证外部调用原子发布完整快照。
+        """
         with self._tools_lock:
             self._load_tools_locked()
 
@@ -174,7 +192,9 @@ class MoviePilotToolsManager:
     def _ensure_policy_runtime(
         self,
     ) -> tuple[AgentToolPolicyOrchestrator, ToolPolicyContext]:
-        """返回 direct 入口的策略对象，仅在真实工具调用前完成构造。"""
+        """
+        返回 direct 入口的策略对象，仅在真实工具调用前完成构造。
+        """
         policy_orchestrator = self.policy_orchestrator
         policy_context = self._policy_context
         if policy_orchestrator is not None and policy_context is not None:
@@ -207,10 +227,9 @@ class MoviePilotToolsManager:
 
     def list_tools(self) -> List[ToolDefinition]:
         """
-        列出所有可用的工具
+        列出当前身份允许访问的工具定义。
 
-        Returns:
-            工具定义列表
+        :return: 包含名称、说明和输入 schema 的工具列表；非管理员不包含管理员工具
         """
         self._ensure_tools_current()
         with self._tools_lock:
@@ -243,11 +262,15 @@ class MoviePilotToolsManager:
         return tools_list
 
     def get_tool(self, tool_name: str) -> Optional[Any]:
-        """按唯一身份获取工具；同名冲突时稳定失败。"""
+        """
+        按唯一身份获取工具；同名冲突时稳定失败。
+        """
         return self.get_strict_tool(tool_name)
 
     def get_strict_tool(self, tool_name: str) -> Optional[Any]:
-        """按当前目录唯一身份解析严格调用，重名时稳定失败。"""
+        """
+        按当前目录唯一身份解析严格调用，重名时稳定失败。
+        """
         self._ensure_tools_current()
         with self._tools_lock:
             catalog = self._get_strict_catalog_locked()
@@ -257,7 +280,9 @@ class MoviePilotToolsManager:
             return entry.tool if entry else None
 
     def _get_strict_catalog_locked(self) -> Optional[ToolCatalogSnapshot]:
-        """在 manager 锁内建立并校验唯一、可执行的当前工具目录。"""
+        """
+        在 manager 锁内建立并校验唯一、可执行的当前工具目录。
+        """
         if self.catalog is None or [id(tool) for tool in self.catalog.tools] != [id(tool) for tool in self.tools]:
             from app.agent.loader import get_tool_factory
             from app.agent.tools.catalog import ToolCatalogSnapshot
@@ -336,14 +361,11 @@ class MoviePilotToolsManager:
     @staticmethod
     def _normalize_arguments(tool_instance: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
-        根据工具的参数schema规范化参数类型
+        按工具参数 schema 转换标量和列表输入。
 
-        Args:
-            tool_instance: 工具实例
-            arguments: 原始参数
-
-        Returns:
-            规范化后的参数
+        :param tool_instance: 提供参数模型的工具实例
+        :param arguments: 原始调用参数，未声明的键保留原值
+        :return: 规范化后的新字典；无法取得 schema 时原样返回原参数
         """
         # 获取工具的参数schema
         args_schema = getattr(tool_instance, "args_schema", None)
@@ -381,7 +403,9 @@ class MoviePilotToolsManager:
         return normalized
 
     def _check_tool_permission(self, tool_instance: Any) -> Optional[str]:
-        """为 HTTP/MCP/CLI 入口补齐 require_admin 门禁。"""
+        """
+        为 HTTP/MCP/CLI 入口补齐 require_admin 门禁。
+        """
 
         if getattr(tool_instance, "_require_admin", False) and not self.is_admin:
             return "抱歉，您没有执行此工具的权限。只有系统管理员才能执行工具操作。"
@@ -389,14 +413,11 @@ class MoviePilotToolsManager:
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
         """
-        调用工具
+        在权限、策略和终端所有权约束下异步执行指定工具。
 
-        Args:
-            tool_name: 工具名称
-            arguments: 工具参数
-
-        Returns:
-            工具执行结果（字符串）
+        :param tool_name: 当前工具目录中的精确名称
+        :param arguments: 待规范化和验证的调用参数
+        :return: 格式化的执行结果；工具不存在或执行失败时包含可供修正调用的错误信息
         """
         tool_instance = self.get_strict_tool(tool_name)
 
@@ -490,19 +511,18 @@ class MoviePilotToolsManager:
         return str_result
 
     async def close(self) -> bool:
-        """封闭本内部调用方的终端作用域，真实进程未收敛时允许调用方重试。"""
+        """
+        封闭本内部调用方的终端作用域，真实进程未收敛时允许调用方重试。
+        """
         return await close_terminal_scope(self._terminal_scope)
 
     @staticmethod
     def _convert_to_json_schema(args_schema: Any) -> Dict[str, Any]:
         """
-        将Pydantic模型转换为JSON Schema
+        生成兼容历史 HTTP 工具接口的参数 JSON Schema。
 
-        Args:
-            args_schema: Pydantic模型类
-
-        Returns:
-            JSON Schema字典
+        :param args_schema: 定义工具输入字段的 Pydantic 模型类
+        :return: 保留字段说明、必填项及兼容类型信息的 JSON Schema 字典
         """
         # 获取Pydantic模型的字段信息
         schema = args_schema.model_json_schema()

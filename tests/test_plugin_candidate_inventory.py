@@ -1,4 +1,6 @@
-"""插件市场候选库存读取测试。"""
+"""
+插件市场候选库存读取测试。
+"""
 
 import asyncio
 
@@ -13,7 +15,9 @@ THIRD_PARTY_MARKET = "https://github.com/example/moviepilot-plugins"
 
 
 def test_load_reads_each_market_in_v3_v2_v1_order_and_keeps_all_facts() -> None:
-    """每个市场的三代索引都应有独立读取记录，且同 ID 候选不能被合并。"""
+    """
+    每个市场的三代索引都应有独立读取记录，且同 ID 候选不能被合并。
+    """
     calls: list[tuple[str, str | None, bool]] = []
 
     def loader(market: str, package_version: str | None, force: bool):
@@ -51,7 +55,9 @@ def test_load_reads_each_market_in_v3_v2_v1_order_and_keeps_all_facts() -> None:
 
 
 def test_only_v3_compatible_entries_are_candidates() -> None:
-    """V3 明确排除项以及 V1 未声明兼容项不能进入候选库存。"""
+    """
+    V3 明确排除项以及 V1 未声明兼容项不能进入候选库存。
+    """
     def loader(_market: str, package_version: str | None, _force: bool):
         if package_version == "v3":
             return {
@@ -83,7 +89,8 @@ def test_only_v3_compatible_entries_are_candidates() -> None:
 
 
 def test_free_threaded_runtime_keeps_explicit_v3t_false_candidates() -> None:
-    """V3t 下声明不支持的插件仍进入候选，由安装准入负责拒绝并说明原因。
+    """
+    V3t 下声明不支持的插件仍进入候选，由安装准入负责拒绝并说明原因。
 
     市场过滤会让插件在 v3t 上凭空消失，用户既看不到插件也看不到原因；
     条目保留后前端才能在卡片上显示不支持。
@@ -102,7 +109,9 @@ def test_free_threaded_runtime_keeps_explicit_v3t_false_candidates() -> None:
 
 
 def test_official_source_is_classified_and_public_candidate_uses_plugin_version() -> None:
-    """官方仓库使用官方来源类型，候选公共字段与 Plugin schema 对齐。"""
+    """
+    官方仓库使用官方来源类型，候选公共字段与 Plugin schema 对齐。
+    """
     reader = PluginCandidateInventoryReader(
         market_loader=lambda *_args: {"DemoPlugin": {"version": "3.1.0"}},
     )
@@ -123,7 +132,9 @@ def test_official_source_is_classified_and_public_candidate_uses_plugin_version(
 
 
 def test_partial_generation_failure_blocks_tofu_but_keeps_successful_candidates() -> None:
-    """某一代读取失败时保留其他代候选，但库存不能用于第三方 TOFU。"""
+    """
+    某一代读取失败时保留其他代候选，但库存不能用于第三方 TOFU。
+    """
     def loader(_market: str, package_version: str | None, _force: bool):
         if package_version == "v2":
             raise TimeoutError("timeout")
@@ -141,7 +152,9 @@ def test_partial_generation_failure_blocks_tofu_but_keeps_successful_candidates(
 
 
 def test_absent_generation_is_complete_without_creating_candidates() -> None:
-    """确定不存在的代际索引属于完整库存，不应被误判为网络失败。"""
+    """
+    确定不存在的代际索引属于完整库存，不应被误判为网络失败。
+    """
 
     def loader(_market: str, package_version: str | None, _force: bool):
         if package_version == "v2":
@@ -162,7 +175,9 @@ def test_absent_generation_is_complete_without_creating_candidates() -> None:
 
 
 def test_empty_index_is_present_and_complete() -> None:
-    """真实存在但为空的索引与 absent 保持可观察差异。"""
+    """
+    真实存在但为空的索引与 absent 保持可观察差异。
+    """
     inventory = PluginCandidateInventoryReader(
         market_loader=lambda *_args: {},
     ).load([THIRD_PARTY_MARKET])
@@ -176,7 +191,9 @@ def test_empty_index_is_present_and_complete() -> None:
 
 
 def test_loader_exception_blocks_tofu() -> None:
-    """Adapter 读取失败时必须阻止唯一第三方来源 TOFU。"""
+    """
+    Adapter 读取失败时必须阻止唯一第三方来源 TOFU。
+    """
 
     def loader(_market: str, package_version: str | None, _force: bool):
         if package_version == "v2":
@@ -193,7 +210,9 @@ def test_loader_exception_blocks_tofu() -> None:
 
 
 def test_local_scan_preserves_absent_present_and_failed_states() -> None:
-    """本地仓库扫描不能把未配置、空扫描和异常读取混为一谈。"""
+    """
+    本地仓库扫描不能把未配置、空扫描和异常读取混为一谈。
+    """
     def market_loader(*_args):
         return {}
 
@@ -221,7 +240,9 @@ def test_local_scan_preserves_absent_present_and_failed_states() -> None:
 
 
 def test_local_candidates_hide_path_in_inventory_projection() -> None:
-    """本地候选可参与库存，但库存公共投影不包含仓库路径。"""
+    """
+    本地候选可参与库存，但库存公共投影不包含仓库路径。
+    """
     reader = PluginCandidateInventoryReader(
         market_loader=lambda *_args: {},
         local_candidate_loader=lambda: {
@@ -250,7 +271,9 @@ def test_local_candidates_hide_path_in_inventory_projection() -> None:
 
 
 def test_invalid_local_candidate_does_not_abort_online_inventory() -> None:
-    """本地索引中的坏代际条目应被跳过，不能丢失在线库存。"""
+    """
+    本地索引中的坏代际条目应被跳过，不能丢失在线库存。
+    """
     reader = PluginCandidateInventoryReader(
         market_loader=lambda *_args: {
             "OnlinePlugin": {"version": "3.0.0"},
@@ -273,7 +296,9 @@ def test_invalid_local_candidate_does_not_abort_online_inventory() -> None:
 
 
 def test_invalid_market_is_recorded_for_each_generation_without_network_call() -> None:
-    """非法市场配置应形成三条失败事实，且不会调用市场读取端口。"""
+    """
+    非法市场配置应形成三条失败事实，且不会调用市场读取端口。
+    """
     calls: list[object] = []
 
     def read(*_args):
@@ -292,7 +317,9 @@ def test_invalid_market_is_recorded_for_each_generation_without_network_call() -
 
 @pytest.mark.asyncio
 async def test_async_loader_preserves_generation_facts() -> None:
-    """异步读取端口与同步端口拥有相同的市场代际快照合同。"""
+    """
+    异步读取端口与同步端口拥有相同的市场代际快照合同。
+    """
     calls: list[str | None] = []
 
     async def loader(_market: str, package_version: str | None, _force: bool):
@@ -314,7 +341,9 @@ async def test_async_loader_preserves_generation_facts() -> None:
 
 @pytest.mark.asyncio
 async def test_async_inventory_bounds_large_market_working_set() -> None:
-    """大市场库存允许 24 个并发读取，但不能无界放大出站连接。"""
+    """
+    大市场库存允许 24 个并发读取，但不能无界放大出站连接。
+    """
     active = 0
     max_active = 0
     first_batch_started = asyncio.Event()

@@ -1,4 +1,6 @@
-"""对两个 MoviePilot Git commit 执行可复现的 Docker 内存 A/B 测量。"""
+"""
+对两个 MoviePilot Git 提交执行可复现的 Docker 内存 A/B 测量。
+"""
 
 from __future__ import annotations
 
@@ -19,13 +21,15 @@ from typing import Any, Iterable, Optional
 
 try:
     import docker
-except ImportError:  # pragma: no cover - 仅用于让 --help 在缺依赖环境仍可使用
+# 仅用于让 --help 在缺依赖环境仍可使用。
+except ImportError:  # pragma: no cover
     docker = None
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[1]
 INSTRUMENT_DIR = SCRIPT_DIR / "instrument"
+# 以不可变摘要固定运行时基础镜像，使对照只替换源码。
 DEFAULT_SUBSTRATE = (
     "jxxghp/moviepilot-v3@"
     "sha256:925de1fdf1bb0312144bc818bc8ebaa999a9a159c6d14f1b48b0ff05edb7f720"
@@ -39,11 +43,13 @@ CAMPAIGN_LABEL = "org.moviepilot.perf.campaign"
 ROLE_LABEL = "org.moviepilot.perf.role"
 SOURCE_LABEL = "org.moviepilot.perf.source-commit"
 SUBSTRATE_LABEL = "org.moviepilot.perf.substrate"
+# 这些文件改变运行时依赖或镜像构造，不能继续声称仅比较源码差异。
 CRITICAL_SUBSTRATE_PATHS = (
     "pyproject.toml",
     "uv.lock",
     "docker/Dockerfile",
 )
+# 数据库迁移变动会影响已生成 SQLite 种子卷的可复用性。
 SEED_COMPATIBILITY_PATHS = ("database/versions",)
 AGENT_HEAVY_MODULE_PREFIXES = (
     "app.agent.orchestrator",
@@ -62,6 +68,7 @@ AGENT_HEAVY_MODULE_PREFIXES = (
     "boto3",
     "botocore",
 )
+# 基础 Schema 已允许加载的依赖不计入智能体业务能力延迟加载门禁。
 AGENT_SCHEMA_BASELINE_PREFIXES = ("langchain", "langchain_core")
 AGENT_NONMATERIALIZATION_PREFIXES = tuple(
     prefix
@@ -86,6 +93,7 @@ MODULE_PREFIXES = (
     "app.modules",
     *AGENT_HEAVY_MODULE_PREFIXES,
 )
+# 三轮前后版本交替顺序，用于减轻运行先后偏差。
 BALANCED_RUN_ORDER = (
     ("before", 1),
     ("after", 1),
@@ -94,6 +102,7 @@ BALANCED_RUN_ORDER = (
     ("before", 3),
     ("after", 3),
 )
+# 以下凭据仅用于隔离实验室容器，日志导出时仍会脱敏。
 LAB_API_TOKEN = "moviepilot-perf-lab-token-00000001"
 LAB_PASSWORD = "MoviePilot-Perf-Lab-Only-00000001!"
 LAB_SECRET_KEY = "moviepilot-perf-secret-key-lab-only-00000001"
@@ -137,7 +146,7 @@ LABEL org.moviepilot.perf.campaign="${MP_CAMPAIGN}" \
 """.lstrip()
 
 
-IMAGE_FINGERPRINT_SCRIPT = r"""
+IMAGE_FINGERPRINT_SCRIPT = r'''
 import hashlib
 import importlib.metadata
 import json
@@ -146,6 +155,13 @@ from pathlib import Path
 
 
 def tree_fingerprint(root, selected_names=None):
+    """
+    按稳定路径顺序读取选中文件，汇总文件数、字节数与内容摘要。
+
+    :param root: 待扫描目录，缺失时返回空统计
+    :param selected_names: 可选文件匹配模式；为空时包含全部文件
+    :return: 文件数量、总字节数和 SHA256 摘要
+    """
     root_path = Path(root)
     digest = hashlib.sha256()
     count = 0
@@ -184,7 +200,7 @@ print(json.dumps({
         ("sites.*.so", "user.sites.v3.bin"),
     ),
 }, sort_keys=True))
-"""
+'''
 
 
 VOLUME_FINGERPRINT_SCRIPT = r"""
@@ -211,16 +227,22 @@ print(json.dumps({"files": count, "bytes": total, "layout_sha256": digest.hexdig
 
 
 class HarnessError(RuntimeError):
-    """表示测量合同无法继续成立。"""
+    """
+    表示测量合同无法继续成立。
+    """
 
 
 def utc_now() -> str:
-    """返回适合写入 JSON 的 UTC 时间。"""
+    """
+    返回适合写入 JSON 的 UTC 时间。
+    """
     return datetime.now(timezone.utc).isoformat()
 
 
 def atomic_write_json(path: Path, payload: Any) -> None:
-    """原子写入 JSON，避免长时间测量中断后留下半个结果文件。"""
+    """
+    原子写入 JSON，避免长时间测量中断后留下半个结果文件。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_suffix(f"{path.suffix}.tmp")
     temporary_path.write_text(
@@ -231,7 +253,9 @@ def atomic_write_json(path: Path, payload: Any) -> None:
 
 
 def write_text(path: Path, content: str) -> None:
-    """创建父目录并写入 UTF-8 文本。"""
+    """
+    创建父目录并写入 UTF-8 文本。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
@@ -243,7 +267,9 @@ def run_command(
     log_path: Optional[Path] = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    """不经过 shell 执行命令，并在需要时保存完整输出。"""
+    """
+    不经过 shell 执行命令，并在需要时保存完整输出。
+    """
     result = subprocess.run(
         command,
         cwd=cwd,
@@ -263,7 +289,9 @@ def run_command(
 
 
 def require_docker_client():
-    """连接 Docker Engine，并在依赖或 daemon 不可用时给出明确错误。"""
+    """
+    连接 Docker Engine，并在依赖或后台服务不可用时给出明确错误。
+    """
     if docker is None:
         raise HarnessError(
             "缺少 docker Python SDK，请使用 MoviePilot 工作区运行环境执行"
@@ -293,7 +321,9 @@ def require_docker_client():
 
 
 def normalize_campaign(value: str) -> str:
-    """限制 campaign 名称，确保 Docker 资源名和标签可安全复用。"""
+    """
+    限制实验名称，确保 Docker 资源名和标签可安全复用。
+    """
     normalized = value.strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,39}", normalized):
         raise argparse.ArgumentTypeError(
@@ -303,7 +333,9 @@ def normalize_campaign(value: str) -> str:
 
 
 def parse_points(value: str) -> list[float]:
-    """解析以分钟为单位的升序采样点。"""
+    """
+    解析以分钟为单位的升序采样点。
+    """
     try:
         points = sorted({float(item.strip()) for item in value.split(",")})
     except ValueError as error:
@@ -314,27 +346,37 @@ def parse_points(value: str) -> list[float]:
 
 
 def campaign_directory(args: argparse.Namespace) -> Path:
-    """返回当前 campaign 的本地结果目录。"""
+    """
+    返回当前实验的本地结果目录。
+    """
     return args.output_dir.expanduser().resolve() / args.campaign
 
 
 def resource_prefix(args: argparse.Namespace) -> str:
-    """生成本工具拥有的 Docker 资源名前缀。"""
+    """
+    生成本工具拥有的 Docker 资源名前缀。
+    """
     return f"mpperf-{args.campaign}"
 
 
 def image_tag(args: argparse.Namespace, variant: str) -> str:
-    """返回 Before 或 After 派生镜像标签。"""
+    """
+    返回 Before 或 After 派生镜像标签。
+    """
     return f"moviepilot-perf:{args.campaign}-{variant}"
 
 
 def labels(args: argparse.Namespace, role: str) -> dict[str, str]:
-    """给 Docker 资源附加可审计的精确所有权标签。"""
+    """
+    给 Docker 资源附加可审计的精确所有权标签。
+    """
     return {CAMPAIGN_LABEL: args.campaign, ROLE_LABEL: role}
 
 
 def resolve_platform(client, requested: str) -> str:
-    """将 auto 解析为 Docker daemon 的原生 Linux 架构。"""
+    """
+    将 auto 解析为 Docker 服务的原生 Linux 架构。
+    """
     if requested != "auto":
         return requested
     architecture = str(client.info().get("Architecture") or "").lower()
@@ -350,18 +392,24 @@ def resolve_platform(client, requested: str) -> str:
 
 
 def git_output(repo: Path, *arguments: str) -> str:
-    """执行只读 Git 命令并返回去除尾部换行的输出。"""
+    """
+    执行只读 Git 命令并返回去除尾部换行的输出。
+    """
     result = run_command(["git", *arguments], cwd=repo)
     return result.stdout.strip()
 
 
 def resolve_git_ref(repo: Path, ref: str) -> str:
-    """把用户给出的 ref 固定为 commit SHA。"""
+    """
+    把用户给出的 Git 引用固定为提交 SHA。
+    """
     return git_output(repo, "rev-parse", "--verify", f"{ref}^{{commit}}")
 
 
 def git_path_changed(repo: Path, before: str, after: str, paths: Iterable[str]) -> bool:
-    """判断两个 commit 在指定运行时 substrate 输入上是否有差异。"""
+    """
+    判断两个提交在指定运行时基础镜像输入上是否有差异。
+    """
     result = run_command(
         ["git", "diff", "--quiet", f"{before}..{after}", "--", *paths],
         cwd=repo,
@@ -373,7 +421,9 @@ def git_path_changed(repo: Path, before: str, after: str, paths: Iterable[str]) 
 
 
 def assert_commit_order(repo: Path, before: str, after: str) -> None:
-    """要求 After 位于 Before 之后，避免比较两条无关历史。"""
+    """
+    要求 After 位于 Before 之后，避免比较两条无关历史。
+    """
     result = run_command(
         ["git", "merge-base", "--is-ancestor", before, after],
         cwd=repo,
@@ -384,7 +434,9 @@ def assert_commit_order(repo: Path, before: str, after: str) -> None:
 
 
 def ensure_substrate(client, args: argparse.Namespace, pull: bool):
-    """取得冻结 substrate，只有显式要求时才访问镜像仓库。"""
+    """
+    取得冻结基础镜像，只有显式要求时才访问镜像仓库。
+    """
     if pull:
         run_command(
             ["docker", "pull", "--platform", args.platform, args.substrate],
@@ -399,7 +451,9 @@ def ensure_substrate(client, args: argparse.Namespace, pull: bool):
 
 
 def image_fingerprint(client, image: str) -> dict[str, Any]:
-    """在不启动主程序和网络的临时容器中计算运行时资产指纹。"""
+    """
+    在不启动主程序和网络的临时容器中计算运行时资产指纹。
+    """
     try:
         output = client.containers.run(
             image,
@@ -420,7 +474,9 @@ def build_overlay_image(
     variant: str,
     commit: str,
 ) -> dict[str, Any]:
-    """从冻结 substrate 构建仅替换指定 Git commit 源码的派生镜像。"""
+    """
+    从冻结基础镜像构建仅替换指定 Git 提交源码的派生镜像。
+    """
     campaign_dir = campaign_directory(args)
     with tempfile.TemporaryDirectory(
         prefix=f"mpperf-{args.campaign}-{variant}-"
@@ -436,7 +492,8 @@ def build_overlay_image(
         with tarfile.open(archive_path, "r") as archive:
             try:
                 archive.extractall(source_dir, filter="data")
-            except TypeError:  # pragma: no cover - Python 3.11 早期补丁版本兼容
+            # Python 3.11 早期补丁版本兼容。
+            except TypeError:  # pragma: no cover
                 archive.extractall(source_dir)
         archive_path.unlink()
         write_text(context / "Dockerfile", OVERLAY_DOCKERFILE)
@@ -480,7 +537,9 @@ def build_overlay_image(
 
 
 def command_build(args: argparse.Namespace) -> dict[str, Any]:
-    """构建 Before/After 派生镜像并记录冻结输入。"""
+    """
+    构建 Before/After 派生镜像并记录冻结输入。
+    """
     client = require_docker_client()
     args.platform = resolve_platform(client, args.platform)
     args.repo = args.repo.expanduser().resolve()
@@ -562,7 +621,9 @@ def command_build(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def load_build_manifest(args: argparse.Namespace) -> dict[str, Any]:
-    """读取并校验当前 campaign 的构建结果。"""
+    """
+    读取并校验当前实验的构建结果。
+    """
     path = campaign_directory(args) / "build.json"
     if not path.exists():
         raise HarnessError("缺少 build.json，请先执行 build")
@@ -573,7 +634,9 @@ def load_build_manifest(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def fixed_environment(args: argparse.Namespace, instrument: bool) -> dict[str, str]:
-    """返回不依赖用户 app.env、外部服务或真实凭据的固定空载配置。"""
+    """
+    返回不依赖用户 app.env、外部服务或真实凭据的固定空载配置。
+    """
     environment = {
         "TZ": "Asia/Shanghai",
         "PUID": "0",
@@ -628,7 +691,9 @@ def fixed_environment(args: argparse.Namespace, instrument: bool) -> dict[str, s
 
 
 def get_volume(client, name: str):
-    """返回命名 volume；不存在时返回 None。"""
+    """
+    返回命名卷；不存在时返回 None。
+    """
     try:
         return client.volumes.get(name)
     except docker.errors.NotFound:
@@ -636,7 +701,9 @@ def get_volume(client, name: str):
 
 
 def assert_owned(resource, args: argparse.Namespace, kind: str) -> None:
-    """删除或复用资源前验证 campaign 标签，避免误伤用户资源。"""
+    """
+    删除或复用资源前验证实验标签，避免误伤用户资源。
+    """
     resource_labels = resource.attrs.get("Labels") or {}
     if resource_labels.get(CAMPAIGN_LABEL) != args.campaign:
         raise HarnessError(f"拒绝操作非本 campaign 的 {kind}：{resource.name}")
@@ -649,7 +716,9 @@ def prepare_volume(
     role: str,
     replace: bool,
 ):
-    """创建工具拥有的命名 volume，并按显式 replace 处理同名旧资源。"""
+    """
+    创建工具拥有的命名卷，并按显式 replace 处理同名旧资源。
+    """
     existing = get_volume(client, name)
     if existing:
         assert_owned(existing, args, "volume")
@@ -660,7 +729,9 @@ def prepare_volume(
 
 
 def clone_volume(client, image: str, source: str, target: str) -> None:
-    """在无网络、无主程序的短容器中复制命名 volume。"""
+    """
+    在无网络、无主程序的短容器中复制命名卷。
+    """
     try:
         client.containers.run(
             image,
@@ -678,7 +749,9 @@ def clone_volume(client, image: str, source: str, target: str) -> None:
 
 
 def volume_fingerprint(client, image: str, volume_name: str) -> dict[str, Any]:
-    """记录 volume 文件数量、总大小和路径布局哈希，不读取配置内容。"""
+    """
+    记录卷内文件数量、总大小和路径布局哈希，不读取配置内容。
+    """
     try:
         output = client.containers.run(
             image,
@@ -694,7 +767,9 @@ def volume_fingerprint(client, image: str, volume_name: str) -> dict[str, Any]:
 
 
 def ensure_internal_network(client, args: argparse.Namespace):
-    """创建或复用当前 campaign 的无外网 Docker network。"""
+    """
+    创建或复用当前实验的无外网 Docker 网络。
+    """
     name = f"{resource_prefix(args)}-internal"
     try:
         network = client.networks.get(name)
@@ -712,7 +787,9 @@ def ensure_internal_network(client, args: argparse.Namespace):
 
 
 def remove_owned_container(client, args: argparse.Namespace, name: str) -> None:
-    """移除同 campaign 遗留容器，绝不按模糊前缀删除。"""
+    """
+    移除同一实验遗留容器，绝不按模糊前缀删除。
+    """
     try:
         container = client.containers.get(name)
     except docker.errors.NotFound:
@@ -733,7 +810,9 @@ def create_app_container(
     network_name: str,
     output_dir: Optional[Path],
 ):
-    """按固定资源和挂载合同创建 MoviePilot 容器。"""
+    """
+    按固定资源和挂载合同创建 MoviePilot 容器。
+    """
     remove_owned_container(client, args, name)
     volume_mounts: dict[str, dict[str, str]] = {
         config_volume: {"bind": "/config", "mode": "rw"},
@@ -767,7 +846,9 @@ def create_app_container(
 
 
 def container_running(container) -> bool:
-    """刷新并返回容器是否仍在运行。"""
+    """
+    刷新并返回容器是否仍在运行。
+    """
     container.reload()
     return container.status == "running"
 
@@ -778,7 +859,9 @@ def wait_for_exec_success(
     timeout: float,
     description: str,
 ) -> float:
-    """轮询容器内的无副作用探针并返回耗时秒数。"""
+    """
+    轮询容器内的无副作用探针并返回耗时秒数。
+    """
     started = time.monotonic()
     deadline = started + timeout
     while time.monotonic() < deadline:
@@ -792,7 +875,9 @@ def wait_for_exec_success(
 
 
 def wait_for_ready(container, started_at: float, timeout: float) -> float:
-    """等待公开 health endpoint 完成完整同步启动阶段。"""
+    """
+    等待公开健康检查端点完成完整同步启动阶段。
+    """
     deadline = started_at + timeout
     command = [
         "curl",
@@ -812,17 +897,22 @@ def wait_for_ready(container, started_at: float, timeout: float) -> float:
 
 
 def assert_no_app_env(container) -> None:
-    """只检查 app.env 不存在；绝不读取文件内容。"""
+    """
+    只检查 app.env 不存在；绝不读取文件内容。
+    """
     result = container.exec_run(["/bin/sh", "-c", "test ! -e /config/app.env"])
     if result.exit_code != 0:
         raise HarnessError("测量 config volume 出现 app.env，已停止以避免读取用户配置")
 
 
 def capture_engine_stats(container) -> dict[str, Any]:
-    """从 Docker Engine API 读取原始 cgroup 和网络累计值。"""
+    """
+    从 Docker Engine API 读取原始 cgroup 和网络累计值。
+    """
     try:
         stats = container.stats(stream=False, one_shot=True)
-    except TypeError:  # pragma: no cover - 旧 Docker SDK 兼容
+    # 旧 Docker SDK 兼容。
+    except TypeError:  # pragma: no cover
         stats = container.stats(stream=False)
     memory_stats = stats.get("memory_stats") or {}
     memory_detail = memory_stats.get("stats") or {}
@@ -845,7 +935,9 @@ def capture_engine_stats(container) -> dict[str, Any]:
 
 
 def capture_processes(container) -> dict[str, Any]:
-    """读取采样开始时已有进程的 PSS/USS/RSS 与线程数。"""
+    """
+    读取采样开始时已有进程的 PSS/USS/RSS 与线程数。
+    """
     result = container.exec_run(
         ["/bin/bash", "/opt/moviepilot-perf/instrument/collect_proc.sh"]
     )
@@ -907,7 +999,9 @@ def capture_modules(
     output_dir: Path,
     main_python: Optional[dict[str, Any]],
 ) -> dict[str, Any]:
-    """通过已注入的 SIGUSR1 handler 获取目标进程自身的 sys.modules。"""
+    """
+    通过已注入的 SIGUSR1 处理器获取目标进程自身的 sys.modules。
+    """
     if not main_python:
         raise HarnessError("未找到主 Python 进程，无法采集 sys.modules")
     modules_dir = output_dir / "modules"
@@ -948,7 +1042,9 @@ def capture_measurement(
     minute: float,
     settled_at: float,
 ) -> dict[str, Any]:
-    """按低干扰顺序采集 Engine、进程和模块三层数据。"""
+    """
+    按低干扰顺序采集引擎、进程和模块三层数据。
+    """
     captured_at = time.monotonic()
     engine = capture_engine_stats(container)
     processes = capture_processes(container)
@@ -964,7 +1060,9 @@ def capture_measurement(
 
 
 def redact_logs(content: str) -> str:
-    """移除实验室凭据值和启动生成的本地实例标识。"""
+    """
+    移除实验室凭据值和启动生成的本地实例标识。
+    """
     redacted = content
     for secret_value in (
         LAB_API_TOKEN,
@@ -982,7 +1080,9 @@ def redact_logs(content: str) -> str:
 
 
 def save_container_logs(container, path: Path) -> None:
-    """保存脱敏后的完整容器日志。"""
+    """
+    保存脱敏后的完整容器日志。
+    """
     try:
         raw = container.logs(stdout=True, stderr=True, timestamps=True)
         write_text(path, redact_logs(raw.decode("utf-8", errors="replace")))
@@ -991,7 +1091,9 @@ def save_container_logs(container, path: Path) -> None:
 
 
 def stop_and_remove_container(container, timeout: int) -> dict[str, Any]:
-    """优雅停止工具拥有的容器，并在超时后限定到该容器强制清理。"""
+    """
+    优雅停止工具拥有的容器，并在超时后限定到该容器强制清理。
+    """
     outcome: dict[str, Any] = {"requested_at": utc_now()}
     try:
         if container_running(container):
@@ -1011,13 +1113,17 @@ def stop_and_remove_container(container, timeout: int) -> dict[str, Any]:
 
 
 def seed_volume_names(args: argparse.Namespace) -> tuple[str, str]:
-    """返回迁移后 SQLite 和预热浏览器两个 seed volume 名称。"""
+    """
+    返回迁移后 SQLite 和预热浏览器两个种子卷名称。
+    """
     prefix = resource_prefix(args)
     return f"{prefix}-config-seed", f"{prefix}-browser-seed"
 
 
 def command_seed(args: argparse.Namespace) -> dict[str, Any]:
-    """生成不含 app.env 的迁移后 SQLite 和预热浏览器 seed。"""
+    """
+    生成不含 app.env 的迁移后 SQLite 和预热浏览器种子卷。
+    """
     client = require_docker_client()
     build = load_build_manifest(args)
     before_image = build["images"]["before"]["tag"]
@@ -1116,7 +1222,9 @@ def command_seed(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def require_seed_volumes(client, args: argparse.Namespace) -> tuple[str, str]:
-    """确认 seed 已完成且两个命名 volume 仍然存在。"""
+    """
+    确认种子卷已完成且两个命名卷仍然存在。
+    """
     seed_path = campaign_directory(args) / "seed.json"
     if not seed_path.exists():
         raise HarnessError("缺少 seed.json，请先执行 seed")
@@ -1137,7 +1245,9 @@ def sample_volume_names(
     variant: str,
     index: int,
 ) -> tuple[str, str]:
-    """返回单个样本的隔离配置和浏览器卷名称。"""
+    """
+    返回单个样本的隔离配置和浏览器卷名称。
+    """
     scenario = getattr(args, "scenario", DEFAULT_SCENARIO)
     scenario_segment = "" if scenario == DEFAULT_SCENARIO else f"-{scenario}"
     prefix = f"{resource_prefix(args)}{scenario_segment}-{variant}-{index}"
@@ -1149,7 +1259,9 @@ def sample_result_directory(
     variant: str,
     index: int,
 ) -> Path:
-    """返回单个样本的原始结果目录。"""
+    """
+    返回单个样本的原始结果目录。
+    """
     scenario = getattr(args, "scenario", DEFAULT_SCENARIO)
     sample_root = campaign_directory(args) / "samples"
     if scenario == DEFAULT_SCENARIO:
@@ -1162,7 +1274,9 @@ def capture_activation_snapshot(
     output_dir: Path,
     phase: str,
 ) -> dict[str, Any]:
-    """采集场景动作边界的 Engine、进程和进程内 import 状态。"""
+    """
+    采集场景动作边界的引擎、进程和进程内导入状态。
+    """
     engine = capture_engine_stats(container)
     processes = capture_processes(container)
     modules = capture_modules(container, output_dir, processes["main_python"])
@@ -1182,7 +1296,9 @@ def evaluate_browser_activation(
     marker: dict[str, Any],
     expected_pid: Optional[int] = None,
 ) -> dict[str, Any]:
-    """按场景不变量判断浏览器与 display 的真实激活是否有效。"""
+    """
+    按场景不变量判断浏览器与显示资源的真实激活是否有效。
+    """
     pre_xvfb = pre["processes"]["xvfb"]
     post_xvfb = post["processes"]["xvfb"]
     browser = marker.get("browser") or {}
@@ -1278,7 +1394,9 @@ def evaluate_browser_activation(
 
 
 def _agent_prefix_counts(snapshot: dict[str, Any]) -> dict[str, int]:
-    """从模块快照提取 PERF-003 Agent 重模块哨兵。"""
+    """
+    从模块快照提取 PERF-003 Agent 重模块哨兵。
+    """
     counts = snapshot["modules"].get("prefix_counts") or {}
     return {
         prefix: int(counts.get(prefix) or 0) for prefix in AGENT_HEAVY_MODULE_PREFIXES
@@ -1292,7 +1410,9 @@ def evaluate_agent_activation(
     marker: dict[str, Any],
     expected_pid: Optional[int] = None,
 ) -> dict[str, Any]:
-    """验证禁用态路由与首次工具目录的惰性物化不变量。"""
+    """
+    验证禁用态路由与首次工具目录的惰性物化不变量。
+    """
     agent = marker.get("agent") or {}
     observations = agent.get("observations") or {}
     runtime_before = observations.get("before") or {}
@@ -1435,7 +1555,9 @@ def evaluate_scenario_activation(
     marker: dict[str, Any],
     expected_pid: Optional[int] = None,
 ) -> dict[str, Any]:
-    """按场景族分派外部采样验收。"""
+    """
+    按场景族分派外部采样验收。
+    """
     if scenario in BROWSER_SCENARIOS:
         return evaluate_browser_activation(
             scenario,
@@ -1461,7 +1583,9 @@ def activate_sample_scenario(
     scenario: str,
     timeout: float,
 ) -> dict[str, Any]:
-    """通过 SIGUSR2 让目标 MoviePilot 解释器执行动作并回收 marker。"""
+    """
+    通过 SIGUSR2 让目标 MoviePilot 解释器执行动作并读取完成标记。
+    """
     pre = capture_activation_snapshot(container, output_dir, "pre-activation")
     main_python = pre["processes"]["main_python"]
     if not main_python:
@@ -1508,7 +1632,9 @@ def activate_sample_scenario(
 
 
 def command_sample(args: argparse.Namespace) -> dict[str, Any]:
-    """执行一个隔离样本并在约定时间点采集完整指标。"""
+    """
+    执行一个隔离样本并在约定时间点采集完整指标。
+    """
     scenario = getattr(args, "scenario", DEFAULT_SCENARIO)
     if scenario != DEFAULT_SCENARIO and args.variant != "after":
         raise HarnessError("非默认场景只用于验证包含候选公共 API 的 After 版本")
@@ -1658,7 +1784,9 @@ def command_sample(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def load_sample_results(args: argparse.Namespace) -> list[dict[str, Any]]:
-    """读取当前 campaign 已完成或失败的所有样本结果。"""
+    """
+    读取当前实验已完成或失败的所有样本结果。
+    """
     sample_root = campaign_directory(args) / "samples"
     results = []
     if not sample_root.exists():
@@ -1669,13 +1797,17 @@ def load_sample_results(args: argparse.Namespace) -> list[dict[str, Any]]:
 
 
 def median(values: Iterable[float]) -> Optional[float]:
-    """空序列返回 None，否则返回浮点中位数。"""
+    """
+    空序列返回 None，否则返回浮点中位数。
+    """
     items = list(values)
     return statistics.median(items) if items else None
 
 
 def measurement_at(result: dict[str, Any], minute: float) -> Optional[dict[str, Any]]:
-    """按浮点容差返回目标采样点。"""
+    """
+    按浮点容差返回目标采样点。
+    """
     for measurement in result.get("measurements") or []:
         if abs(float(measurement["target_minute"]) - minute) < 1e-9:
             return measurement
@@ -1683,21 +1815,27 @@ def measurement_at(result: dict[str, Any], minute: float) -> Optional[dict[str, 
 
 
 def format_mib(value: Optional[float]) -> str:
-    """把字节数格式化为 MiB。"""
+    """
+    把字节数格式化为 MiB。
+    """
     if value is None:
         return "—"
     return f"{value / 1024 / 1024:.1f}"
 
 
 def format_kib_as_mib(value: Optional[float]) -> str:
-    """把 KiB 数格式化为 MiB。"""
+    """
+    把 KiB 数格式化为 MiB。
+    """
     if value is None:
         return "—"
     return f"{value / 1024:.1f}"
 
 
 def format_bytes_as_kib(value: Optional[float]) -> str:
-    """把字节数格式化为 KiB。"""
+    """
+    把字节数格式化为 KiB。
+    """
     if value is None:
         return "—"
     return f"{value / 1024:.1f}"
@@ -1708,7 +1846,9 @@ def build_markdown_report(
     seed: Optional[dict[str, Any]],
     samples: list[dict[str, Any]],
 ) -> str:
-    """生成不含本机路径和凭据的 Markdown 汇总。"""
+    """
+    生成不含本机路径和凭据的 Markdown 汇总。
+    """
     scenarios = sorted(
         {sample.get("scenario", DEFAULT_SCENARIO) for sample in samples}
     ) or [DEFAULT_SCENARIO]
@@ -1937,7 +2077,9 @@ def build_markdown_report(
         )
 
         def format_prefix_counts(counts: dict[str, int]) -> str:
-            """仅展开已加载前缀，全部未加载时输出明确零状态。"""
+            """
+            仅展开已加载前缀，全部未加载时输出明确零状态。
+            """
             loaded = [f"{prefix}={count}" for prefix, count in counts.items() if count]
             return ", ".join(loaded) if loaded else "全部 0"
 
@@ -2122,7 +2264,9 @@ def build_markdown_report(
 
 
 def update_aggregate_results(args: argparse.Namespace) -> None:
-    """汇总当前 campaign 的 build、seed 和所有样本。"""
+    """
+    汇总当前实验的构建、种子卷和全部样本。
+    """
     campaign_dir = campaign_directory(args)
     build_path = campaign_dir / "build.json"
     if not build_path.exists():
@@ -2150,7 +2294,9 @@ def update_aggregate_results(args: argparse.Namespace) -> None:
 
 
 def cleanup_runtime_resources(client, args: argparse.Namespace) -> dict[str, list[str]]:
-    """仅按 campaign 标签清理容器、volume 和 internal network。"""
+    """
+    仅按实验标签清理容器、卷和内部网络。
+    """
     removed: dict[str, list[str]] = {"containers": [], "volumes": [], "networks": []}
     label_filter = f"{CAMPAIGN_LABEL}={args.campaign}"
     for container in client.containers.list(all=True, filters={"label": label_filter}):
@@ -2172,7 +2318,9 @@ def cleanup_runtime_resources(client, args: argparse.Namespace) -> dict[str, lis
 
 
 def command_cleanup(args: argparse.Namespace) -> dict[str, Any]:
-    """清理当前 campaign 的 Docker 资源，保留本地结果文件。"""
+    """
+    清理当前实验的 Docker 资源，保留本地结果文件。
+    """
     client = require_docker_client()
     removed: dict[str, Any] = cleanup_runtime_resources(client, args)
     removed["images"] = []
@@ -2199,7 +2347,9 @@ def command_cleanup(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def command_run(args: argparse.Namespace) -> None:
-    """构建、生成 seed，并按平衡顺序串行执行三组 Before/After。"""
+    """
+    构建、生成种子卷，并按平衡顺序串行执行三组 Before/After。
+    """
     command_build(args)
     command_seed(args)
     completed = False
@@ -2222,7 +2372,9 @@ def command_run(args: argparse.Namespace) -> None:
 
 
 def add_common_build_arguments(parser: argparse.ArgumentParser) -> None:
-    """添加 build 与 run 共用的 ref 和 substrate 参数。"""
+    """
+    添加构建与完整运行共用的 Git 引用和基础镜像参数。
+    """
     parser.add_argument("--before-ref", default="upstream/v3", help="Before Git ref")
     parser.add_argument("--after-ref", default="HEAD", help="After Git ref")
     parser.add_argument(
@@ -2233,7 +2385,9 @@ def add_common_build_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def add_seed_arguments(parser: argparse.ArgumentParser) -> None:
-    """添加 seed 与 run 共用的浏览器缓存参数。"""
+    """
+    添加种子卷生成与完整运行共用的浏览器缓存参数。
+    """
     browser_group = parser.add_mutually_exclusive_group(required=False)
     browser_group.add_argument(
         "--browser-source-volume",
@@ -2255,7 +2409,9 @@ def add_seed_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """构建命令行解析器。"""
+    """
+    构建命令行解析器。
+    """
     parser = argparse.ArgumentParser(
         description="MoviePilot V3 reproducible Docker A/B measurement harness"
     )
@@ -2328,7 +2484,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    """解析参数并执行选定阶段。"""
+    """
+    解析参数并执行选定阶段。
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command in {"seed", "run"}:
@@ -2354,7 +2512,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             command_run(args)
         elif args.command == "cleanup":
             command_cleanup(args)
-        else:  # pragma: no cover - argparse 已保证不可达
+        # argparse 已保证不可达。
+        else:  # pragma: no cover
             parser.error(f"未知命令：{args.command}")
     except HarnessError as error:
         print(f"error: {error}", file=sys.stderr)

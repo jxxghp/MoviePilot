@@ -1,4 +1,6 @@
-"""极速之星解析器的数值属性与基类合同。"""
+"""
+极速之星解析器的数值属性与基类合同。
+"""
 
 from unittest.mock import Mock
 
@@ -8,7 +10,9 @@ from app.schemas.site import SiteUserData
 
 
 def test_numeric_properties_preserve_site_schema(monkeypatch):
-    """解析用户资料时保留基类数值类型并维持对外数据。"""
+    """
+    解析用户资料时保留基类数值类型并维持对外数据。
+    """
     parser = BitptSiteUserInfo(
         site_name="offline",
         url="https://bitpt.invalid/",

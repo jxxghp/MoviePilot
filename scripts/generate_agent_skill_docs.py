@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Generate English Agent Skill contracts from runtime metadata."""
+"""
+根据运行时元数据生成 Agent Skill 契约，保留英文操作指南和源契约的中文说明。
+"""
 
 from __future__ import annotations
 
@@ -210,7 +212,9 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
 
 
 def _load_json_schema() -> dict[str, Any]:
-    """Load the generated moviepilot_api MCP schema."""
+    """
+    读取已生成的 moviepilot_api MCP Schema。
+    """
     path = PROJECT_ROOT / "app/agent/policy/resources/api_mcp_schema.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -219,7 +223,9 @@ def _load_json_schema() -> dict[str, Any]:
 
 
 def _schema_type(schema: Mapping[str, Any], definitions: Mapping[str, Any]) -> str:
-    """Compress JSON Schema into a readable Skill type expression."""
+    """
+    把 JSON Schema 类型压缩为 Skill 文档中可读的类型表达式。
+    """
     reference = schema.get("$ref")
     if isinstance(reference, str):
         return reference.rsplit("/", 1)[-1]
@@ -253,7 +259,9 @@ def _schema_type(schema: Mapping[str, Any], definitions: Mapping[str, Any]) -> s
 
 
 def _field_suffix(schema: Mapping[str, Any]) -> str:
-    """Format defaults, ranges, and collection constraints."""
+    """
+    格式化字段默认值、取值范围和集合约束。
+    """
     suffix: list[str] = []
     if "default" in schema:
         suffix.append(f"default `{schema['default']}`")
@@ -268,8 +276,7 @@ def _field_suffix(schema: Mapping[str, Any]) -> str:
     return f"; {'; '.join(suffix)}" if suffix else ""
 
 
-# Only these endpoint fields normalize Agent keys; identically named enum or
-# database filters retain their own contracts.
+# 只有这些端点字段会规范化 Agent 身份键，同名枚举或数据库筛选字段保留各自契约。
 _MEDIA_TYPE_FIELD_VALUES: dict[tuple[str, str, str], str] = {
     ("filter.group.add", "body", "media_type"): "movie,tv,music",
     ("filter.group.update", "body", "media_type"): "movie,tv,music",
@@ -282,10 +289,8 @@ _MEDIA_TYPE_FIELD_VALUES: dict[tuple[str, str, str], str] = {
 }
 
 
-# Operation-level Agent guidance that the raw OpenAPI schema cannot express.
-# Each entry is appended (as extra lines) right after the operation's buckets
-# when the contract is regenerated, so the running Skill carries the guidance
-# without anyone hand-editing the generated `api/*.md` files.
+# OpenAPI 无法表达的操作级 Agent 指引，在生成时追加到操作参数组之后，
+# 保证运行中的 Skill 包含这些指引，无需手动修改生成的 api/*.md。
 _OPERATION_NOTES: dict[str, list[str]] = {
     "plugin.instance.purge": [
         "- **Historical invalid-ID recovery:** If the exact instance ID from a warning is "
@@ -337,7 +342,7 @@ _OPERATION_NOTES: dict[str, list[str]] = {
 }
 
 
-# Preserve maintained operation guidance alongside the generated schema fields.
+# 在生成的 Schema 字段旁保留经过维护的操作指引。
 _OPERATION_PURPOSE_NOTES: dict[str, str] = {
     "subscription.find": (
         "For movies and TV, if exact identity misses and mtype/title are supplied, match across "
@@ -388,7 +393,9 @@ def _schema_fields(
     operation_id: str = "",
     bucket: str = "",
 ) -> list[tuple[str, str, str, bool]]:
-    """Extract schema fields, adding Agent keys only for supported operation buckets."""
+    """
+    提取 Schema 字段，仅为允许的操作参数组补充 Agent 身份键约定。
+    """
     reference = schema.get("$ref")
     if isinstance(reference, str):
         schema = definitions.get(reference.rsplit("/", 1)[-1], {})
@@ -425,7 +432,9 @@ def _resolve_schema(
     schema: Mapping[str, Any],
     definitions: Mapping[str, Any],
 ) -> Mapping[str, Any]:
-    """Resolve a local JSON Schema reference into an enumerable object."""
+    """
+    解析本地 JSON Schema 引用，返回可枚举的模型定义。
+    """
     reference = schema.get("$ref")
     if isinstance(reference, str):
         resolved = definitions.get(reference.rsplit("/", 1)[-1])
@@ -435,7 +444,9 @@ def _resolve_schema(
 
 
 def _render_api_docs() -> str:
-    """Render the complete MoviePilot API operation and field contract."""
+    """
+    生成全部 API 操作、参数和请求模型的完整契约。
+    """
     schema = _load_json_schema()
     definitions = schema.get("$defs") if isinstance(schema.get("$defs"), Mapping) else {}
     from app.agent.policy.api import API_OPERATION_ROUTES, API_OPERATION_SPECS
@@ -459,7 +470,7 @@ def _render_api_docs() -> str:
             if item["properties"]["operation_id"].get("const") == operation_id
         )
         description = str(branch.get("description") or "")
-        purpose = description.split(" Method:", 1)[0].strip()
+        purpose = description.split("请求方法：", 1)[0].split(" Method:", 1)[0].strip()
         if operation_id in _OPERATION_PURPOSE_NOTES:
             purpose += " " + _OPERATION_PURPOSE_NOTES[operation_id]
         effect = specs[operation_id].effect.value
@@ -641,7 +652,9 @@ def _render_api_docs() -> str:
 
 
 def _split_api_docs(rendered: str) -> tuple[dict[str, str], str, str]:
-    """Split generated API contracts into namespace, model, and settings documents."""
+    """
+    按命名空间、请求模型和系统设置拆分生成的 API 契约。
+    """
     category_sections: dict[str, list[str]] = {}
     model_lines: list[str] = []
     settings_lines: list[str] = []
@@ -650,7 +663,9 @@ def _split_api_docs(rendered: str) -> tuple[dict[str, str], str, str]:
     operation_lines: list[str] = []
 
     def flush_operation() -> None:
-        """Store the current operation under its first namespace segment."""
+        """
+        把当前操作归入操作标识第一段对应的命名空间。
+        """
         nonlocal operation_id, operation_lines
         if operation_id is not None:
             category = operation_id.split(".", 1)[0]
@@ -704,7 +719,9 @@ def _sync_api_category_docs(
     settings_section: str,
     models_section: str,
 ) -> None:
-    """Write standalone API category contracts with their shared body models."""
+    """
+    写入各 API 分类契约，并附上该分类需要的共享请求模型。
+    """
     api_dir = PROJECT_ROOT / "skills/moviepilot-api/api"
     model_section = (
         "## Body Models\n\n"
@@ -741,7 +758,9 @@ def _sync_api_category_docs(
 
 
 def _render_service_docs(script_path: Path, title: str) -> str:
-    """Render one downloader or media-server action contract."""
+    """
+    读取运行时动作元数据，生成下载器或媒体服务器的操作契约。
+    """
     namespace = runpy.run_path(str(script_path))
     actions = namespace.get("ACTIONS")
     if not isinstance(actions, Mapping):
@@ -797,7 +816,9 @@ def _render_service_docs(script_path: Path, title: str) -> str:
 
 
 def _render_database_tables() -> str:
-    """Render all ORM tables, purposes, and access boundaries."""
+    """
+    生成 ORM 表结构、用途说明及读写权限边界。
+    """
     from app.db.base import Base
     from app.db.models import load_all_models
 
@@ -857,7 +878,9 @@ def _render_database_tables() -> str:
 
 
 def _render_system_settings_docs() -> str:
-    """Render dynamic system-setting discovery and update guidance."""
+    """
+    生成动态系统设置的发现与更新指南。
+    """
     return "\n".join([
         "## System Settings Contract",
         "",
@@ -894,7 +917,9 @@ def _render_system_settings_docs() -> str:
 
 
 def _sync_api_frontmatter(text: str) -> str:
-    """Synchronize the API Skill authorization list with the fixed operation registry."""
+    """
+    根据固定操作登记表同步 API Skill 的授权列表。
+    """
     from app.agent.policy.api import list_api_operation_ids
 
     operation_text = " ".join(list_api_operation_ids())
@@ -941,7 +966,9 @@ def _sync_api_frontmatter(text: str) -> str:
 
 
 def _replace_section(text: str, heading: str, replacement: str, next_heading: str | None = None) -> str:
-    """Replace one Markdown section from a heading to the next heading."""
+    """
+    替换 Markdown 指定标题到下个同级标题之间的内容。
+    """
     start = text.index(heading)
     if next_heading is None:
         return text[:start].rstrip() + "\n\n" + replacement
@@ -950,7 +977,9 @@ def _replace_section(text: str, heading: str, replacement: str, next_heading: st
 
 
 def main() -> int:
-    """Generate complete contracts for four built-in Skills."""
+    """
+    生成四个内置 Skill 的完整契约，并同步 API 分类文档。
+    """
     api_path = PROJECT_ROOT / "skills/moviepilot-api/SKILL.md"
     api_text = api_path.read_text(encoding="utf-8")
     api_text = _sync_api_frontmatter(api_text)

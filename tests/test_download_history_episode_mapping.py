@@ -1,4 +1,6 @@
-"""订阅集数偏移后的文件明细与目录监控关联回归。"""
+"""
+订阅集数偏移后的文件明细与目录监控关联回归。
+"""
 
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -17,7 +19,9 @@ from app.schemas.types import MediaType
 @pytest.mark.parametrize("offset", [0, 165])
 @pytest.mark.parametrize("durable", [False, True])
 def test_selected_episode_file_resolves_its_own_hash(db, offset, durable):
-    """映射后的文件须落库并精确关联 hash，即使同目录还有更新的下载历史。"""
+    """
+    映射后的文件须落库并精确关联 hash，即使同目录还有更新的下载历史。
+    """
     db.watermark(DownloadHistory, DownloadFiles)
     custom_words = (
         "A.Will.Eternal.S04 => 一念永恒{[tmdbid=107371;type=tv]}S01 "

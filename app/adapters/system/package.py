@@ -1,3 +1,7 @@
+"""
+构造 Python 包安装和主项目锁定环境恢复命令，不直接执行安装。
+"""
+
 from __future__ import annotations
 
 import os
@@ -13,7 +17,17 @@ from app.runtime.dependencies.profile import runtime_sync_arguments
 @dataclass(frozen=True)
 class PackageInstallRequest:
     """
-    Python 包安装请求，集中描述依赖清单、工具缓存、代理和本地 wheels 候选源。
+    一次 Python 包安装所需的依赖、解释器和下载配置。
+
+    :param dependency_files: 依赖清单路径；主项目恢复时必须仅包含一个 pyproject.toml
+    :param python_bin: 安装目标环境的 Python 解释器路径
+    :param find_links_dirs: 额外搜索 wheel 的本地目录，默认空列表
+    :param constraints_file: 安装时使用的约束文件；None 表示不额外限制版本
+    :param config_dir: 持久化配置目录，默认 /config，供计算默认缓存路径
+    :param package_cache_root: 包缓存根目录；None 时使用环境变量或配置目录下的 .cache
+    :param package_index_url: 首选包索引地址；空值表示仅使用安装器默认来源
+    :param proxy_url: 包下载代理地址；空值表示不覆盖继承的代理环境变量
+    :param purpose: 安装用途标识，默认 plugin，供调用方区分插件与主项目恢复
     """
 
     dependency_files: tuple[Path, ...]
@@ -30,7 +44,12 @@ class PackageInstallRequest:
 @dataclass(frozen=True)
 class PackageInstallStrategy:
     """
-    单次安装尝试的完整执行信息，命令和日志展示命令分离以避免泄露凭据。
+    一次安装尝试的命令和子进程环境，另存脱敏后的日志命令。
+
+    :param strategy_name: 安装器和网络路径组合的显示名称
+    :param command: 直接传给子进程的参数列表，可能含原始下载凭据
+    :param env: 安装子进程使用的完整环境变量映射
+    :param safe_log_command: 仅去除 URL 用户凭据后的展示命令；不是安全过滤后的可执行命令
     """
 
     strategy_name: str
@@ -181,7 +200,9 @@ def build_package_install_strategies(
 
 
 def build_project_sync_strategies(request: PackageInstallRequest) -> list[PackageInstallStrategy]:
-    """为主项目锁定依赖恢复构造 uv 网络降级策略。"""
+    """
+    为主项目锁定依赖恢复构造 uv 网络降级策略。
+    """
     uv_bin = find_uv(Path(request.python_bin))
     if not uv_bin:
         return []

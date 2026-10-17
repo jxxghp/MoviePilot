@@ -1,4 +1,6 @@
-"""插件默认调用目标裁决：未指定实例的调用选择实例，以及默认目标的置位与清除。"""
+"""
+插件默认调用目标裁决：未指定实例的调用选择实例，以及默认目标的置位与清除。
+"""
 
 from __future__ import annotations
 
@@ -18,10 +20,15 @@ ClearDefaultTarget = Callable[[str], None]
 
 @dataclass(frozen=True)
 class PluginCallCandidate:
-    """一个插件实例在默认调用目标裁决中的可见状态。
+    """
+    一个插件实例在默认调用目标裁决中的可见状态。
 
     ``is_default_target`` 是用户选定的默认调用目标，与该实例当前是否在运行
     无关；``is_running`` 是该实例当前是否在运行，与调用目标的选定无关。
+
+    :param instance_id: 参与默认调用目标选择的插件实例标识
+    :param is_running: 该实例当前是否在运行，与默认目标选择相互独立
+    :param is_default_target: 用户是否将该实例选为默认调用目标，不代表实例正在运行
     """
 
     instance_id: str
@@ -30,12 +37,15 @@ class PluginCallCandidate:
 
 
 def _ordered(candidates: list[PluginCallCandidate]) -> list[PluginCallCandidate]:
-    """把候选实例按实例 ID 升序排列，使报错文案稳定可预期。"""
+    """
+    把候选实例按实例 ID 升序排列，使报错文案稳定可预期。
+    """
     return sorted(candidates, key=lambda candidate: candidate.instance_id)
 
 
 def _describe(candidates: list[PluginCallCandidate]) -> str:
-    """列出可供显式指定的实例名及其运行状态。
+    """
+    列出可供显式指定的实例名及其运行状态。
 
     :param candidates: 候选实例集合
     :return: 形如 ``PluginA（已启用）、PluginAx2（已停用）`` 的描述，候选为空时为「无」
@@ -49,7 +59,8 @@ def _describe(candidates: list[PluginCallCandidate]) -> str:
 
 
 class PluginDefaultTargetControl:
-    """裁决插件未指定实例时的调用目标，并管理默认调用目标的置位与清除。
+    """
+    裁决插件未指定实例时的调用目标，并管理默认调用目标的置位与清除。
 
     一个插件按配置扇出多个实例后，「调用没指定实例」只允许两种结局：走用户
     选定且正在运行的默认调用目标，或者报错。绝不按登记顺序取第一个，也绝不
@@ -72,7 +83,9 @@ class PluginDefaultTargetControl:
         set_default_target: AtomicSetDefaultTarget,
         clear_default_target: ClearDefaultTarget,
     ) -> None:
-        """保存本体与分身的实例持久化端口、运行态端口和默认目标置位的原子写入端口。"""
+        """
+        保存本体与分身的实例持久化端口、运行态端口和默认目标置位的原子写入端口。
+        """
         self._plugin_exists = plugin_exists
         self._get_instance = get_instance
         self._instances_for_source = instances_for_source
@@ -84,18 +97,24 @@ class PluginDefaultTargetControl:
 
     @staticmethod
     def _default_host_instance(plugin_id: str) -> PluginInstance:
-        """本体从未被显式登记过任何设置时的默认视图。"""
+        """
+        本体从未被显式登记过任何设置时的默认视图。
+        """
         return PluginInstance(
             instance_id=plugin_id,
             source_plugin_id=plugin_id,
         )
 
     def _host_instance(self, plugin_id: str) -> PluginInstance:
-        """读取源插件本体的实例描述，从未登记过时给出默认视图。"""
+        """
+        读取源插件本体的实例描述，从未登记过时给出默认视图。
+        """
         return self._get_host_instance(plugin_id) or self._default_host_instance(plugin_id)
 
     def _candidates(self, plugin_id: str) -> list[PluginCallCandidate]:
-        """组装插件全部实例（含本体）在调用目标裁决中的可见状态。"""
+        """
+        组装插件全部实例（含本体）在调用目标裁决中的可见状态。
+        """
         running = self._running()
         instances = [self._host_instance(plugin_id), *self._instances_for_source(plugin_id)]
         return [
@@ -109,7 +128,8 @@ class PluginDefaultTargetControl:
 
     @staticmethod
     def _is_enabled(plugin: Any) -> bool:
-        """判断实例是否既已加载又处于启用状态。
+        """
+        判断实例是否既已加载又处于启用状态。
 
         已加载不等于已启用：用户在界面上关掉启用开关只会重新 ``init_plugin``，
         实例仍然留在运行表里。只看运行表会把停用实例当成可用的调用目标选中，
@@ -123,11 +143,13 @@ class PluginDefaultTargetControl:
             return True
         try:
             return bool(get_state())
-        except Exception:  # noqa: BLE001 - 单个实例取状态失败不能影响整体裁决
+        # 单个实例取状态失败不能影响整体裁决
+        except Exception:  # noqa: BLE001
             return False
 
     def resolve(self, plugin_id: str) -> str:
-        """确定按插件 ID 发起、未指定实例的调用应当落到哪个实例。
+        """
+        确定按插件 ID 发起、未指定实例的调用应当落到哪个实例。
 
         插件从未被创建过分身时直接返回插件 ID 本身（即本体），不查默认目标
         置位——这也覆盖了调用方直接传入某个分身自身实例 ID 的情形：分身的
@@ -159,7 +181,8 @@ class PluginDefaultTargetControl:
         )
 
     def set_target(self, plugin_id: str, instance_id: str) -> bool:
-        """把插件的默认调用目标改为指定实例，同一事务内清除同插件的旧置位。
+        """
+        把插件的默认调用目标改为指定实例，同一事务内清除同插件的旧置位。
 
         ``instance_id`` 等于插件 ID 时视为把本体设为默认目标；本体此前从未被
         登记过任何设置时，先落盘一条默认视图的本体记录，确保随后的数据库级
@@ -184,7 +207,8 @@ class PluginDefaultTargetControl:
         return self._set_default_target(plugin_id, instance_id)
 
     def clear_target(self, plugin_id: str, instance_id: str) -> None:
-        """清除插件的默认调用目标置位，仅当当前置位的正是指定实例时才动作。
+        """
+        清除插件的默认调用目标置位，仅当当前置位的正是指定实例时才动作。
 
         请求清除的实例并非当前置位（含插件当前没有任何置位）时按空操作处理，
         这是清除接口的幂等语义，不是「找不到就报错」。

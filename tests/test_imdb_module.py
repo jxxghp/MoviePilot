@@ -1,4 +1,6 @@
-"""IMDb 原生媒体数据源 Module 测试。"""
+"""
+IMDb 原生媒体数据源 Module 测试。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
@@ -26,7 +28,9 @@ from app.schemas.types import MediaRecognizeType, MediaSource, MediaType
 
 @pytest.fixture
 def imdb_title() -> ImdbTitle:
-    """构造一条包含完整基础字段的 IMDb 电视剧条目。"""
+    """
+    构造一条包含完整基础字段的 IMDb 电视剧条目。
+    """
     return ImdbTitle(
         id="tt0903747",
         type="tvSeries",
@@ -45,7 +49,9 @@ def imdb_title() -> ImdbTitle:
 
 @pytest.fixture
 def imdb_api(imdb_title: ImdbTitle) -> Mock:
-    """构造同步和异步方法行为一致的 IMDb API 替身。"""
+    """
+    构造同步和异步方法行为一致的 IMDb API 替身。
+    """
     api = Mock(spec=ImdbApi)
     api.search_titles.return_value = [imdb_title]
     api.get_title.return_value = imdb_title
@@ -93,7 +99,9 @@ def imdb_api(imdb_title: ImdbTitle) -> Mock:
 
 @pytest.fixture
 def imdb_module(imdb_api: Mock) -> ImdbModule:
-    """构造注入离线 API 替身的 IMDb Module。"""
+    """
+    构造注入离线 API 替身的 IMDb Module。
+    """
     module = ImdbModule()
     module.imdb_api = imdb_api
     module.scraper = Mock()
@@ -101,14 +109,18 @@ def imdb_module(imdb_api: Mock) -> ImdbModule:
 
 
 def test_imdb_module_declares_independent_media_recognizer() -> None:
-    """IMDb 应作为独立宿主媒体识别 Module 暴露稳定元数据。"""
+    """
+    IMDb 应作为独立宿主媒体识别 Module 暴露稳定元数据。
+    """
     assert ImdbModule.get_name() == "IMDb"
     assert ImdbModule.get_subtype() == MediaRecognizeType.IMDb
     assert ImdbModule.get_priority() == 4
 
 
 def test_imdb_api_search_uses_keyless_imdb_suggestion_endpoint() -> None:
-    """IMDb 标题搜索应直接调用 IMDb 免 Key 建议接口并缓存响应。"""
+    """
+    IMDb 标题搜索应直接调用 IMDb 免 Key 建议接口并缓存响应。
+    """
     api = ImdbApi()
     api.clear_cache()
     api._request = Mock()
@@ -140,7 +152,9 @@ def test_imdb_api_search_uses_keyless_imdb_suggestion_endpoint() -> None:
 
 
 def test_imdb_graphql_error_is_not_cached() -> None:
-    """GraphQL 错误响应不应污染缓存，后续成功详情仍应正常写入缓存。"""
+    """
+    GraphQL 错误响应不应污染缓存，后续成功详情仍应正常写入缓存。
+    """
     api = ImdbApi()
     api.clear_cache()
     api._request = Mock()
@@ -170,7 +184,9 @@ def test_imdb_graphql_error_is_not_cached() -> None:
 
 
 def test_imdb_title_parser_accepts_null_optional_objects() -> None:
-    """GraphQL 可选对象为 null 时应保留可用详情并归一为空值。"""
+    """
+    GraphQL 可选对象为 null 时应保留可用详情并归一为空值。
+    """
     detail = ImdbApi._parse_title(
         {
             "titles": [
@@ -203,7 +219,9 @@ def test_imdb_title_parser_accepts_null_optional_objects() -> None:
 
 
 def test_imdb_episode_parser_accepts_null_optional_objects() -> None:
-    """剧集 GraphQL 可选对象为 null 时应保留单集并归一为空值。"""
+    """
+    剧集 GraphQL 可选对象为 null 时应保留单集并归一为空值。
+    """
     episodes, next_cursor = ImdbApi._parse_episode_page(
         {
             "titles": [
@@ -243,7 +261,9 @@ def test_imdb_episode_parser_accepts_null_optional_objects() -> None:
 
 
 def test_imdb_season_parser_accepts_null_episodes() -> None:
-    """季列表 GraphQL 的 episodes 为 null 时应按空列表处理。"""
+    """
+    季列表 GraphQL 的 episodes 为 null 时应按空列表处理。
+    """
     seasons = ImdbApi._parse_seasons(
         {
             "titles": [
@@ -258,16 +278,22 @@ def test_imdb_season_parser_accepts_null_episodes() -> None:
 
 
 def test_imdb_clear_cache_registers_async_cleanup_in_running_loop() -> None:
-    """同步清缓存入口在异步宿主中应登记任务，并保留原同步调用约定。"""
+    """
+    同步清缓存入口在异步宿主中应登记任务，并保留原同步调用约定。
+    """
 
     async def scenario() -> None:
-        """验证异步缓存清理直到完成前都由宿主登记器持有。"""
+        """
+        验证异步缓存清理直到完成前都由宿主登记器持有。
+        """
         api = ImdbApi()
         registry = TaskRegistry()
         release = asyncio.Event()
 
         async def clear_async_cache() -> None:
-            """等待测试释放，确保可以观察登记中的任务。"""
+            """
+            等待测试释放，确保可以观察登记中的任务。
+            """
             await release.wait()
 
         with (
@@ -290,7 +316,9 @@ def test_imdb_clear_cache_registers_async_cleanup_in_running_loop() -> None:
 
 
 def test_async_imdb_api_merges_paginated_episodes() -> None:
-    """IMDb 异步剧集查询应使用 GraphQL 游标合并并缓存所有分页。"""
+    """
+    IMDb 异步剧集查询应使用 GraphQL 游标合并并缓存所有分页。
+    """
     api = ImdbApi()
     asyncio.run(api.async_clear_cache())
     api._async_request = Mock()
@@ -437,7 +465,9 @@ def test_async_imdb_api_merges_paginated_episodes() -> None:
 def test_imdb_proxy_snapshot_reloads_client_and_closes_old_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """代理变更应关闭旧 IMDb 客户端并按新代理快照重建。"""
+    """
+    代理变更应关闭旧 IMDb 客户端并按新代理快照重建。
+    """
     module = ImdbModule()
     old_client = Mock()
     new_client = Mock()
@@ -459,7 +489,9 @@ def test_imdb_proxy_snapshot_reloads_client_and_closes_old_session(
 def test_imdb_module_clear_cache_delegates_to_api(
     imdb_module: ImdbModule,
 ) -> None:
-    """系统统一清缓存动作应清理 IMDb HTTP 缓存区。"""
+    """
+    系统统一清缓存动作应清理 IMDb HTTP 缓存区。
+    """
     imdb_module.clear_cache()
 
     imdb_module.imdb_api.clear_cache.assert_called_once_with()
@@ -468,7 +500,9 @@ def test_imdb_module_clear_cache_delegates_to_api(
 def test_imdb_search_respects_source_and_returns_generic_identity(
     imdb_module: ImdbModule,
 ) -> None:
-    """IMDb 搜索只响应选中的来源，并返回来源与原生 ID 对。"""
+    """
+    IMDb 搜索只响应选中的来源，并返回来源与原生 ID 对。
+    """
     meta = MetaBase("Breaking Bad")
     meta.name = "Breaking Bad"
     meta.type = MediaType.TV
@@ -485,7 +519,9 @@ def test_imdb_search_respects_source_and_returns_generic_identity(
 
 
 def test_imdb_summary_keeps_unknown_adult_state_missing() -> None:
-    """IMDb 搜索摘要缺少成人标记时不能把未知值误写为否。"""
+    """
+    IMDb 搜索摘要缺少成人标记时不能把未知值误写为否。
+    """
     result = ImdbModule._to_media_info(
         ImdbTitle(
             id="tt0000001",
@@ -501,7 +537,9 @@ def test_imdb_summary_keeps_unknown_adult_state_missing() -> None:
 def test_imdb_explicit_identity_recognition_enriches_media_info(
     imdb_module: ImdbModule,
 ) -> None:
-    """显式 IMDb ID 识别应补齐别名、演职员、剧集和图片。"""
+    """
+    显式 IMDb ID 识别应补齐别名、演职员、剧集和图片。
+    """
     result = imdb_module.recognize_media(
         media_source=MediaSource.IMDb,
         media_id="TT0903747",
@@ -526,7 +564,9 @@ def test_imdb_explicit_identity_recognition_enriches_media_info(
 def test_imdb_name_recognition_requires_imdb_selection(
     imdb_module: ImdbModule, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """名称识别仅在请求级或全局来源选中 IMDb 时执行。"""
+    """
+    名称识别仅在请求级或全局来源选中 IMDb 时执行。
+    """
     meta = MetaBase("绝命毒师")
     meta.name = "绝命毒师"
     meta.cn_name = "绝命毒师"
@@ -547,7 +587,9 @@ def test_imdb_name_recognition_requires_imdb_selection(
 def test_imdb_recognition_rejects_invalid_or_music_identity(
     imdb_module: ImdbModule,
 ) -> None:
-    """IMDb Module 不应接管非法 ID 或音乐识别请求。"""
+    """
+    IMDb Module 不应接管非法 ID 或音乐识别请求。
+    """
     assert (
         imdb_module.recognize_media(
             media_source=MediaSource.IMDb,
@@ -568,7 +610,9 @@ def test_imdb_recognition_rejects_invalid_or_music_identity(
 def test_async_imdb_recognition_uses_async_detail_pipeline(
     imdb_module: ImdbModule,
 ) -> None:
-    """异步显式识别应使用异步详情管线并保持统一身份。"""
+    """
+    异步显式识别应使用异步详情管线并保持统一身份。
+    """
     result = asyncio.run(
         imdb_module.async_recognize_media(
             media_source=MediaSource.IMDb,
@@ -586,7 +630,9 @@ def test_async_imdb_recognition_uses_async_detail_pipeline(
 def test_imdb_scraping_only_handles_imdb_source(
     imdb_module: ImdbModule,
 ) -> None:
-    """IMDb NFO 和图片刮削只响应显式 IMDb 刮削来源。"""
+    """
+    IMDb NFO 和图片刮削只响应显式 IMDb 刮削来源。
+    """
     media_info = MediaInfo()
     media_info.scrape_source = MediaSource.Douban.value
     assert imdb_module.metadata_nfo(media_info) is None

@@ -1,3 +1,9 @@
+"""
+种子下载、缓存、内容解析与候选匹配应用服务。
+
+通过注入的 HTTP 端口访问站点，负责下载确认页面处理和种子失效判断。
+"""
+
 import datetime
 import json
 import re
@@ -29,12 +35,22 @@ _SIZE_UNIT = 1024 * 1024
 
 
 def _is_transient_torrent_status(status: int) -> bool:
-    """403 和服务端错误可能来自站点前置代理，不能据此认定种子已失效。"""
+    """
+    403 和服务端错误可能来自站点前置代理，不能据此认定种子已失效。
+    """
     return status == 403 or 500 <= status <= 599
 
 
 class TorrentResponsePort(Protocol):
-    """声明种子下载用例实际读取的 HTTP 响应字段。"""
+    """
+    声明种子下载用例实际读取的 HTTP 响应字段。
+
+    :ivar status_code: HTTP 响应状态码，用于重试与限流判断
+    :ivar headers: 响应头，用于提取下载文件名等信息
+    :ivar content: 响应原始字节，优先用于解析种子文件
+    :ivar text: 解码后的响应正文，用于解析下载确认页面和错误
+    :ivar reason: HTTP 状态的原因短语，用于失败诊断
+    """
 
     status_code: int
     headers: dict[str, str]
@@ -44,7 +60,9 @@ class TorrentResponsePort(Protocol):
 
 
 def _torrent_rate_limit_error(response: Optional[TorrentResponsePort]) -> Optional[str]:
-    """在种子解析前提取明确的 JSON 限流提示；HTTP 429 保留既有流控错误。"""
+    """
+    在种子解析前提取明确的 JSON 限流提示；HTTP 429 保留既有流控错误。
+    """
     if response is None:
         return None
     content = response.content
@@ -62,32 +80,52 @@ def _torrent_rate_limit_error(response: Optional[TorrentResponsePort]) -> Option
 
 
 class TorrentHttpPort(Protocol):
-    """声明种子下载所需的同步 GET/POST 能力。"""
+    """
+    声明种子下载所需的同步 GET/POST 能力。
+    """
 
     def request(self, *, method: str, url: str, cookie: Optional[str],
                 ua: Optional[str], referer: Optional[str], proxies: Optional[dict[str, Any]],
                 allow_redirects: bool = True,
                 data: Optional[dict[str, Any]] = None) -> Optional[TorrentResponsePort]:
-        """发送种子下载请求并返回窄响应。"""
+        """
+        发送种子下载请求并返回窄响应。
+
+        :param method: HTTP 请求方法，种子下载使用 GET 或 POST
+        :param url: 种子下载或首次下载确认页面的地址
+        :param cookie: 站点认证 Cookie；None 表示不附加 Cookie
+        :param ua: 请求使用的用户代理；None 使用传输端默认值
+        :param referer: 来源页面地址；None 表示不附加来源头
+        :param proxies: 本次请求的代理映射；None 不显式配置代理
+        :param allow_redirects: 是否跟随 HTTP 重定向，默认允许
+        :param data: POST 表单字段；None 表示无表单数据
+        :return: 供种子解析使用的响应；请求失败且没有响应时为 None
+        """
 
 
 _torrent_http_port: Optional[TorrentHttpPort] = None
 
 
 def configure_torrent_port(http: TorrentHttpPort) -> None:
-    """由组合根装配种子下载 HTTP 端口。"""
+    """
+    由组合根装配种子下载 HTTP 端口。
+    """
     global _torrent_http_port
     _torrent_http_port = http
 
 
 def reset_torrent_port() -> None:
-    """清除种子下载 HTTP 端口。"""
+    """
+    清除种子下载 HTTP 端口。
+    """
     global _torrent_http_port
     _torrent_http_port = None
 
 
 def _require_torrent_port() -> TorrentHttpPort:
-    """返回已装配端口，缺失时明确拒绝隐式构造 Adapter。"""
+    """
+    返回已装配端口，缺失时明确拒绝隐式构造 Adapter。
+    """
     if _torrent_http_port is None:
         raise RuntimeError("种子下载端口尚未由启动组合根装配")
     return _torrent_http_port
@@ -103,7 +141,8 @@ _TORRENT_CACHE_KEYS = (
 
 
 def clear_torrent_cache(cache_backend: Optional[Any] = None) -> None:
-    """清理站点首页、RSS 及音乐资源缓存，不依赖 Chain 运行上下文。
+    """
+    清理站点首页、RSS 及音乐资源缓存，不依赖 Chain 运行上下文。
 
     数据库迁移可能发生在生命周期组件装配之前，不能为了清理缓存构造
     ``TorrentsChain`` 并隐式拉起插件、模块和消息依赖，因此这里直接使用缓存端口。
@@ -152,7 +191,9 @@ def _cache_valid_torrent_content(
         cache_path: Path,
         content: bytes,
 ) -> Tuple[str, List[str]]:
-    """解析合法种子并缓存原始二进制内容。"""
+    """
+    解析合法种子并缓存原始二进制内容。
+    """
     folder_name, file_list = parser(content)
     if file_list:
         cache_backend.set(cache_path.as_posix(), content, region="torrents")
@@ -160,7 +201,9 @@ def _cache_valid_torrent_content(
 
 
 def _first_download_form(text: str, url: str) -> Optional[Tuple[str, dict[str, Any]]]:
-    """解析下载确认表单，仅向当前下载端点提交有效控件，避免泄露站点凭据。"""
+    """
+    解析下载确认表单，仅向当前下载端点提交有效控件，避免泄露站点凭据。
+    """
     try:
         forms = html.fromstring(text).forms
     except (ValueError, html.etree.ParserError):
@@ -186,7 +229,9 @@ def _first_download_form(text: str, url: str) -> Optional[Tuple[str, dict[str, A
 
 
 def _text_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content: str) -> Optional[Tuple[str, str]]:
-    """按原有顺序检查包含、排除、质量等正则，并返回业务原因和运行诊断。"""
+    """
+    按原有顺序检查包含、排除、质量等正则，并返回业务原因和运行诊断。
+    """
     for key, label, subject, expected in (
         ("include", "包含", content, True), ("exclude", "排除", content, False),
         ("quality", "质量", torrent.title, True), ("resolution", "分辨率", torrent.title, True),
@@ -200,7 +245,9 @@ def _text_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content: 
 
 
 def _audio_minimum_failure(specs: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Any]]:
-    """检查音乐最低技术参数，不把缺失的参数当作达到要求。"""
+    """
+    检查音乐最低技术参数，不把缺失的参数当作达到要求。
+    """
     for key, spec_key, label in (
         ("min_bitrate", "bitrate", "码率"), ("min_bit_depth", "bit_depth", "位深"),
         ("min_sample_rate", "sample_rate", "采样率"),
@@ -212,7 +259,9 @@ def _audio_minimum_failure(specs: Dict[str, Any], params: Dict[str, Any]) -> Opt
 
 
 def _audio_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content: str) -> Optional[Tuple[str, str]]:
-    """从标题、副标题和标签统一解析音质，再解释第一个未满足的音乐条件。"""
+    """
+    从标题、副标题和标签统一解析音质，再解释第一个未满足的音乐条件。
+    """
     filters = {key: params.get(key) for key in ("audio_quality", "audio_format", "min_bitrate", "min_bit_depth", "min_sample_rate")
                if params.get(key) not in (None, "")}
     if not filters:
@@ -235,7 +284,9 @@ def _audio_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content:
 
 
 def _size_filter_failure(torrent: TorrentInfo, size_range: Optional[str]) -> Optional[str]:
-    """解释大小范围判断，继续沿用原有 MB 单位和未知规则放行语义。"""
+    """
+    解释大小范围判断，继续沿用原有 MB 单位和未知规则放行语义。
+    """
     if not size_range:
         return None
     rule, minimum, maximum = _parse_filter_size_range(size_range)
@@ -245,7 +296,9 @@ def _size_filter_failure(torrent: TorrentInfo, size_range: Optional[str]) -> Opt
 
 
 def _title_fragments(value: str, separators: str) -> set[str]:
-    """先归一化再排除英文碎片，避免 Dream! 等片段绕过单词过滤。"""
+    """
+    先归一化再排除英文碎片，避免 Dream! 等片段绕过单词过滤。
+    """
     fragments = {text_tools.normalize_upper(part) for part in re.split(separators, value)} - {""}
     return {fragment for fragment in fragments if not text_tools.is_english_word(fragment)}
 
@@ -256,12 +309,16 @@ class TorrentHelper:
     """
 
     def __init__(self):
-        """初始化种子失败地址缓存"""
+        """
+        初始化种子失败地址缓存
+        """
         self._invalid_torrents = TTLCache(region="invalid_torrents", maxsize=128, ttl=3600 * 24)
 
     def _request_torrent_get(self, http_port: TorrentHttpPort, retry: bool,
                              **request_options: Any) -> Optional[TorrentResponsePort]:
-        """普通种子 GET 瞬时失败时退避 1、2 秒；签名换票和确认 POST 不在此重试。"""
+        """
+        普通种子 GET 瞬时失败时退避 1、2 秒；签名换票和确认 POST 不在此重试。
+        """
         for attempt in range(3 if retry else 1):
             response = http_port.request(method="GET", **request_options)
             if not retry or attempt == 2 or not self._should_retry_torrent_response(response):
@@ -271,7 +328,9 @@ class TorrentHelper:
         return None
 
     def _should_retry_torrent_response(self, response: Optional[TorrentResponsePort]) -> bool:
-        """保留重定向、磁力和首次确认页，明确限流不得消耗瞬时重试预算。"""
+        """
+        保留重定向、磁力和首次确认页，明确限流不得消耗瞬时重试预算。
+        """
         if response is None:
             return True
         if _torrent_rate_limit_error(response):
@@ -304,26 +363,20 @@ class TorrentHelper:
         """
         if url.startswith("magnet:"):
             return None, url, "", [], "磁力链接"
-        # 构建 torrent 种子文件的缓存路径
         cache_path = Path(HashUtils.md5(url)).with_suffix(".torrent")
         original_url = url
         # 种子二进制固定落 TEMP_PATH/torrents 不进 Redis，下载器与提交链须按同一路由读取
         cache_backend = FileCache(local_only=True)
-        # 读取缓存的种子文件
         torrent_content = cache_backend.get(cache_path.as_posix(), region="torrents")
         if torrent_content:
-            # 缓存已存在
             try:
-                # 获取种子目录和文件清单
                 folder_name, file_list = self.get_fileinfo_from_torrent_content(torrent_content)
                 # 无法获取信息，则认为缓存文件无效
                 if not folder_name and not file_list:
                     raise ValueError("无效的缓存种子文件")
-                # 成功拿到种子数据
                 return cache_path, torrent_content, folder_name, file_list, ""
             except Exception as err:
                 logger.error(f"处理缓存的种子文件 {cache_path} 时出错: {err}，将重新下载")
-        # 下载种子文件
         config = get_chain_runtime_config_snapshot()
         http_port = _require_torrent_port()
         retry = cache_invalid and not torrent_rules.is_expiring_download_url(url)
@@ -345,19 +398,15 @@ class TorrentHelper:
         if req is not None and req.status_code == 200:
             if not req.content:
                 return cache_path, None, "", [], "未下载到种子数据"
-            # 解析内容格式
             if req.content.startswith(b"magnet:"):
-                # 磁力链接
                 return cache_path, req.text, "", [], "获取到磁力链接"
             # 优先按原始二进制解析，避免合法 torrent 被误判为首次下载 HTML。
             folder_name, file_list = _cache_valid_torrent_content(
                 self.get_fileinfo_from_torrent_content, cache_backend, cache_path, req.content
             )
             if file_list:
-                # 成功拿到种子数据
                 return cache_path, req.content, folder_name, file_list, ""
             if "下载种子文件".encode("utf-8") in req.content:
-                # 首次下载提示页面
                 confirmation = _first_download_form(req.text, url)
                 if confirmation is None:
                     logger.warning("触发首次种子下载，但未找到可安全提交的确认表单")
@@ -385,7 +434,6 @@ class TorrentHelper:
                     self.get_fileinfo_from_torrent_content, cache_backend, cache_path, req.content
                 )
                 if file_list:
-                    # 成功拿到种子数据
                     return cache_path, req.content, folder_name, file_list, ""
             # 解析失败时终止，避免把 HTML 继续下沉到下载器或缓存。
             if cache_invalid:
@@ -409,7 +457,6 @@ class TorrentHelper:
             return "", []
         try:
             torrentinfo = Torrent.from_file(torrent_path)
-            # 获取文件清单
             return self.get_fileinfo_from_torrent(torrentinfo)
         except Exception as err:
             logger.error(f"种子文件解析失败：{str(err)}")
@@ -424,20 +471,16 @@ class TorrentHelper:
         """
         if not torrent or not torrent.files:
             return "", []
-        # 获取文件清单
         if len(torrent.files) == 1 and torrent.files[0].name == torrent.name:
             # 单文件种子目录名返回空
             folder_name = ""
-            # 单文件种子
             file_list = [torrent.name]
         else:
-            # 目录名
             folder_name = torrent.name
             # 文件清单，如果一级目录与种子名相同则去掉
             file_list = []
             for fileinfo in torrent.files:
                 file_path = Path(fileinfo.name)
-                # 根路径
                 root_path = file_path.parts[0]
                 if root_path == folder_name:
                     file_list.append(str(file_path.relative_to(root_path)))
@@ -456,14 +499,11 @@ class TorrentHelper:
         if not torrent_content:
             return "", []
 
-        # 检查是否为磁力链接
         if torrent_rules.is_magnet_link(torrent_content):
             return "", []
 
         try:
-            # 解析种子内容
             torrentinfo = Torrent.from_string(torrent_content)
-            # 获取文件清单
             return self.get_fileinfo_from_torrent(torrentinfo)
         except Exception as err:
             logger.error(f"种子内容解析失败：{str(err)}")
@@ -471,7 +511,9 @@ class TorrentHelper:
 
     @staticmethod
     def get_torrent_hash(content: Union[str, bytes]) -> Optional[str]:
-        """从实际种子内容或磁力链接读取任务身份，不信任搜索卡片中的可能缺失 hash。"""
+        """
+        从实际种子内容或磁力链接读取任务身份，不信任搜索卡片中的可能缺失 hash。
+        """
         try:
             if torrent_rules.is_magnet_link(content):
                 url = content.decode() if isinstance(content, bytes) else content
@@ -512,10 +554,8 @@ class TorrentHelper:
         if not torrent_list:
             return []
 
-        # 下载规则
         priority_rule: List[str] = get_configured_system_config().get(
             SystemConfigKey.TorrentsPriority) or ["torrent", "upload", "seeder"]
-        # 站点上传量
         site_uploads = {
             site.name: site.upload
             for site in get_configured_site_query_service().userdata_latest_sync()
@@ -528,17 +568,11 @@ class TorrentHelper:
             _meta = _context.meta_info
             _torrent = _context.torrent_info
             _media = _context.media_info
-            # 标题
             _title = str(_media.title if _media else _meta.name).ljust(200, ' ')
-            # 站点优先级
             _site_order = str(999 - (_torrent.site_order or 0)).rjust(3, '0')
-            # 站点上传量
             _site_upload = str(site_uploads.get(_torrent.site_name) or 0).rjust(30, '0')
-            # 资源优先级
             _torrent_order = str(_torrent.pri_order or 0).rjust(3, '0')
-            # 资源做种数
             _torrent_seeders = str(_torrent.seeders or 0).rjust(10, '0')
-            # 季集
             if not _meta.episode_list:
                 # 无集数的排最前面
                 _season_episode = "%s%s" % (str(len(_meta.season_list)).rjust(3, '0'), "9999")
@@ -546,7 +580,6 @@ class TorrentHelper:
                 # 集数越多的排越前面
                 _season_episode = "%s%s" % (str(len(_meta.season_list)).rjust(3, '0'),
                                             str(len(_meta.episode_list)).rjust(4, '0'))
-            # 根据下载规则的顺序拼装排序字符串
             _sort_str = _title
             for rule in priority_rule:
                 if rule == "torrent":
@@ -560,7 +593,6 @@ class TorrentHelper:
             _sort_str += _season_episode
             return _sort_str
 
-        # 排序
         return sorted(torrent_list, key=lambda x: get_sort_str(x), reverse=True)
 
     def sort_group_torrents(self, torrent_list: List[Context]) -> List[Context]:
@@ -570,10 +602,8 @@ class TorrentHelper:
         if not torrent_list:
             return []
 
-        # 排序
         torrent_list = self.sort_torrents(torrent_list)
 
-        # 控重
         result = []
         _added = []
         # 排序后重新加入数组，按真实名称控重，即只取每个名称的第一个
@@ -650,29 +680,23 @@ class TorrentHelper:
                 f'{torrent.site_name} - {torrent.title}'
             )
             return True
-        # 要匹配的媒体标题、原标题
         media_titles = {
             text_tools.normalize_upper(mediainfo.title),
             text_tools.normalize_upper(mediainfo.original_title)
         } - {""}
-        # 要匹配的媒体别名、译名
         media_names = {text_tools.normalize_upper(name) for name in mediainfo.names if name} - {""}
-        # 识别的种子中英文名
         meta_names = {
             text_tools.normalize_upper(torrent_meta.cn_name),
             text_tools.normalize_upper(torrent_meta.en_name)
         } - {""}
-        # 比对种子识别类型
         if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
             logger.debug(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'
                          f'不匹配 {mediainfo.type.value}')
             return False
-        # 比对种子在站点中的类型
         if torrent.category == MediaType.TV.value and mediainfo.type != MediaType.TV:
             logger.debug(f'{torrent.site_name} - {torrent.title} 种子在站点中归类为 {torrent.category}，'
                          f'不匹配 {mediainfo.type.value}')
             return False
-        # 比对年份
         if mediainfo.year:
             if mediainfo.type == MediaType.TV:
                 # 剧集年份，每季的年份可能不同，没年份时不比较年份（很多剧集种子不带年份）
@@ -694,16 +718,13 @@ class TorrentHelper:
                 torrent=torrent,
         ):
             return False
-        # 比对标题和原语种标题
         if meta_names.intersection(media_titles):
             logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
             return True
-        # 比对别名和译名
         if media_names:
             if meta_names.intersection(media_names):
                 logger.info(f'{mediainfo.title} 通过别名或译名匹配到资源：{torrent.site_name} - {torrent.title}')
                 return True
-        # 标题拆分
         if torrent_meta.org_string:
             # 完整英文名称已在上方比较，拆分后的英文单词不能单独证明作品身份。
             titles = _title_fragments(torrent_meta.org_string, r'[\s/【】.\[\]\-]+')
@@ -718,7 +739,6 @@ class TorrentHelper:
                 logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
                             f'副标题：{torrent.description}')
                 return True
-        # 未匹配
         logger.debug(f'{torrent.site_name} - {torrent.title} 标题不匹配，识别名称：{meta_names}')
         return False
 
@@ -728,7 +748,9 @@ class TorrentHelper:
             torrent_meta: MetaBase,
             torrent: TorrentInfo,
     ) -> bool:
-        """用目标剧已知的季集范围排除无年份同名候选。"""
+        """
+        用目标剧已知的季集范围排除无年份同名候选。
+        """
         begin_season = getattr(torrent_meta, "begin_season", None)
         end_season = getattr(torrent_meta, "end_season", None)
         if begin_season is None:
@@ -789,7 +811,9 @@ class TorrentHelper:
             mediainfo: MediaInfo,
             torrent_meta: MetaBase,
     ) -> bool:
-        """判断无年份标题是否只通过目标别名命中，需进一步核验媒体身份。"""
+        """
+        判断无年份标题是否只通过目标别名命中，需进一步核验媒体身份。
+        """
         if (
                 mediainfo.type != MediaType.TV
                 or getattr(torrent_meta, "year", None)
@@ -827,7 +851,9 @@ class TorrentHelper:
             candidate_mediainfo: MediaInfo,
             torrent_meta: MetaBase,
     ) -> Tuple[bool, str]:
-        """判断媒体 ID 冲突时是否存在足以覆盖候选识别的同作品证据。"""
+        """
+        判断媒体 ID 冲突时是否存在足以覆盖候选识别的同作品证据。
+        """
         target_identity = resolve_media_identity(media=target_mediainfo)
         candidate_identity = resolve_media_identity(media=candidate_mediainfo)
         if all(target_identity) and target_identity == candidate_identity:
@@ -887,7 +913,9 @@ class TorrentHelper:
     @staticmethod
     def filter_torrent(torrent_info: TorrentInfo,
                        filter_params: Dict[str, Any]) -> bool:
-        """检查种子是否匹配订阅条件，保留既有布尔 API 和运行日志行为。"""
+        """
+        检查种子是否匹配订阅条件，保留既有布尔 API 和运行日志行为。
+        """
         return TorrentHelper.filter_torrent_reason(torrent_info, filter_params, log_failure=True) is None
 
     @staticmethod
@@ -919,18 +947,14 @@ class TorrentHelper:
         :param meta: 种子元数据
         :param season_episodes: 季集数 {season:[episodes]}
         """
-        # 匹配季
         seasons = season_episodes.keys()
         seasons_set = set(seasons)
-        # 种子季
         torrent_seasons = meta.season_list
         if not torrent_seasons:
             # 按第一季处理
             torrent_seasons = [1]
-        # 种子集
         torrent_episodes = meta.episode_list
         if not set(torrent_seasons).issubset(seasons_set):
-            # 种子季不在过滤季中
             logger.debug(
                 f"种子 {torrent.site_name} - {torrent.title} 包含季 {torrent_seasons} 不是需要的季 {list(seasons)}")
             return False
@@ -941,7 +965,6 @@ class TorrentHelper:
             need_episodes = season_episodes.get(torrent_seasons[0])
             if need_episodes \
                     and not set(torrent_episodes).intersection(need_episodes):
-                # 单季集没有交集的不要
                 logger.debug(f"种子 {torrent.site_name} - {torrent.title} "
                              f"集 {torrent_episodes} 没有需要的集：{need_episodes}")
                 return False

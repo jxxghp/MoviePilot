@@ -1,3 +1,7 @@
+"""
+站点地址匹配、页面登录状态与用户资料提取的纯规则。
+"""
+
 from typing import Optional
 from urllib.parse import urljoin
 
@@ -15,7 +19,9 @@ _SPECIAL_SITE_DOMAINS = (
 
 
 def urls_match(first: str, second: str) -> bool:
-    """判断两个地址是否指向忽略 www 前缀后的同一站点。"""
+    """
+    判断两个地址是否指向忽略 www 前缀后的同一站点。
+    """
     if not first or not second:
         return False
     if first.startswith("http"):
@@ -26,7 +32,9 @@ def urls_match(first: str, second: str) -> bool:
 
 
 def extract_domain(url: str) -> str:
-    """按 MoviePilot 站点规则提取用于匹配的注册域名。"""
+    """
+    按 MoviePilot 站点规则提取用于匹配的注册域名。
+    """
     if not url:
         return ""
     for domain in _SPECIAL_SITE_DOMAINS:
@@ -46,7 +54,9 @@ def extract_domain(url: str) -> str:
 
 
 def resolve_page_url(site_url: str, page_path: Optional[str]) -> str:
-    """将站点资源声明的页面路径解析为绝对地址。"""
+    """
+    将站点资源声明的页面路径解析为绝对地址。
+    """
     page_path = str(page_path or "").strip()
     if not page_path:
         return site_url
@@ -56,14 +66,17 @@ def resolve_page_url(site_url: str, page_path: Optional[str]) -> str:
 
 
 class SiteUtils:
-    """提供站点域名、Cookie 和访问参数处理能力。"""
+    """
+    提供站点域名、Cookie 和访问参数处理能力。
+    """
 
     @classmethod
     def is_logged_in(cls, html_text: str) -> bool:
         """
-        判断站点是否已经登陆
-        :param html_text:
-        :return:
+        根据密码输入框和用户入口判断页面是否已登录。
+
+        :param html_text: 待判断的站点 HTML 页面内容
+        :return: 页面没有密码框且含登出或用户面板标记时返回 True，否则返回 False
         """
         html = etree.HTML(html_text)
         try:
@@ -72,7 +85,6 @@ class SiteUtils:
             # 存在明显的密码输入框，说明未登录
             if html.xpath("//input[@type='password']"):
                 return False
-            # 是否存在登出和用户面板等链接
             xpaths = [
                 '//a[contains(@href, "logout")'
                 ' or contains(@data-url, "logout")'
@@ -95,14 +107,14 @@ class SiteUtils:
     @classmethod
     def is_checkin(cls, html_text: str) -> bool:
         """
-        判断站点是否已经签到
+        判断站点是否已经签到。
+
         :return True已签到 False未签到
         """
         html = etree.HTML(html_text)
         try:
             if not DomUtils.has_child_elements(html):
                 return False
-            # 站点签到支持的识别XPATH
             xpaths = [
                 '//a[@id="signed"]',
                 '//a[contains(@href, "attendance")]',

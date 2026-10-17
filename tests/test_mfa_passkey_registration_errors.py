@@ -1,3 +1,7 @@
+"""
+验证通行密钥注册错误的业务归一与配置修正提示。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -19,7 +23,9 @@ from app.runtime.cache import TTLCache
 
 
 def setup_function():
-    """为注册错误路径显式装配隔离的 challenge 缓存。"""
+    """
+    为注册错误路径显式装配隔离的 challenge 缓存。
+    """
     configure_passkey_challenge_cache(TTLCache(
         region="passkey_challenge",
         maxsize=4096,
@@ -28,7 +34,9 @@ def setup_function():
 
 
 def _registration_request(user_id: int = 1) -> mfa_endpoint.PassKeyRegistrationFinish:
-    """构造只用于错误路径的注册完成请求。"""
+    """
+    构造只用于错误路径的注册完成请求。
+    """
     transaction_token = PasskeyChallengeStore.issue(
         challenge="challenge",
         purpose="registration",
@@ -42,12 +50,16 @@ def _registration_request(user_id: int = 1) -> mfa_endpoint.PassKeyRegistrationF
 
 
 def _current_user() -> SimpleNamespace:
-    """构造注册错误路径所需的当前用户契约。"""
+    """
+    构造注册错误路径所需的当前用户契约。
+    """
     return SimpleNamespace(id=1, name="admin")
 
 
 def test_passkey_helper_classifies_origin_mismatch():
-    """来源不一致应在 WebAuthn 边界转换为稳定的业务异常。"""
+    """
+    来源不一致应在 WebAuthn 边界转换为稳定的业务异常。
+    """
     library_error = InvalidRegistrationResponse(
         'Unexpected client data origin "http://localhost:5173", '
         'expected "http://localhost:3000"'
@@ -72,7 +84,9 @@ def test_passkey_helper_classifies_origin_mismatch():
 
 
 def test_passkey_helper_classifies_other_verification_failure():
-    """其他注册验证错误不应被误判为来源配置问题。"""
+    """
+    其他注册验证错误不应被误判为来源配置问题。
+    """
     library_error = InvalidRegistrationResponse(
         "Client data challenge was not expected challenge"
     )
@@ -96,7 +110,9 @@ def test_passkey_helper_classifies_other_verification_failure():
 
 
 def test_passkey_register_finish_returns_actionable_origin_message():
-    """来源配置不一致时应告诉管理员如何修正访问地址。"""
+    """
+    来源配置不一致时应告诉管理员如何修正访问地址。
+    """
     with patch.object(
         mfa_endpoint.PassKeyHelper,
         "verify_registration_response",
@@ -114,7 +130,9 @@ def test_passkey_register_finish_returns_actionable_origin_message():
 
 
 def test_passkey_register_finish_hides_other_verification_details():
-    """其他 WebAuthn 验证细节只记录在服务端，不返回给客户端。"""
+    """
+    其他 WebAuthn 验证细节只记录在服务端，不返回给客户端。
+    """
     with patch.object(
         mfa_endpoint.PassKeyHelper,
         "verify_registration_response",
@@ -133,7 +151,9 @@ def test_passkey_register_finish_hides_other_verification_details():
 
 
 def test_passkey_register_finish_hides_unexpected_error_details():
-    """未知内部异常应返回通用提示，避免泄露实现信息。"""
+    """
+    未知内部异常应返回通用提示，避免泄露实现信息。
+    """
     with patch.object(
         mfa_endpoint.PassKeyHelper,
         "verify_registration_response",

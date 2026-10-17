@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-封装豆瓣影视与音乐查询，保留同步和异步接口的响应及缓存约定。
+封装豆瓣影视与音乐查询、Frodo 接口签名及音乐官网页面解析。
+
+保留同步和异步接口的响应及缓存约定。
 """
 
 import base64
@@ -126,7 +128,7 @@ class DoubanApi(metaclass=WeakSingleton):
         "movie_hot_gaia": "/subject_collection/movie_hot_gaia/items",
         # 即将上映
         "movie_soon": "/subject_collection/movie_soon/items",
-        # TOP250
+        # 电影高分前 250 名。
         "movie_top250": "/subject_collection/movie_top250/items",
         # 高分经典科幻片榜
         "movie_scifi": "/subject_collection/movie_scifi/items",
@@ -143,7 +145,7 @@ class DoubanApi(metaclass=WeakSingleton):
         "tv_domestic": "/subject_collection/tv_domestic/items",
         # 美剧
         "tv_american": "/subject_collection/tv_american/items",
-        # 本剧
+        # 日剧。
         "tv_japanese": "/subject_collection/tv_japanese/items",
         # 韩剧
         "tv_korean": "/subject_collection/tv_korean/items",
@@ -156,7 +158,7 @@ class DoubanApi(metaclass=WeakSingleton):
         # 全球口碑周榜
         "tv_global_best_weekly": "/subject_collection/tv_global_best_weekly/items",
 
-        # 执门综艺
+        # 热门综艺。
         "show_hot": "/subject_collection/show_hot/items",
         # 国内综艺
         "show_domestic": "/subject_collection/show_domestic/items",
@@ -173,13 +175,13 @@ class DoubanApi(metaclass=WeakSingleton):
         # 音乐
         "music_single": "/subject_collection/music_single/items",
 
-        # 排行榜
+        # 分类排行榜。
         "movie_rank_list": "/movie/rank_list",
         "movie_year_ranks": "/movie/year_ranks",
         "book_rank_list": "/book/rank_list",
         "tv_rank_list": "/tv/rank_list",
 
-        # 电影信息
+        # 电影详情与辅助信息。
         "movie_detail": "/movie/",
         "movie_rating": "/movie/%s/rating",
         "movie_photos": "/movie/%s/photos",
@@ -189,7 +191,7 @@ class DoubanApi(metaclass=WeakSingleton):
         "movie_recommendations": "/movie/%s/recommendations",
         "movie_celebrities": "/movie/%s/celebrities",
 
-        # 剧集信息
+        # 电视剧详情与辅助信息。
         "tv_detail": "/tv/",
         "tv_rating": "/tv/%s/rating",
         "tv_photos": "/tv/%s/photos",
@@ -199,25 +201,25 @@ class DoubanApi(metaclass=WeakSingleton):
         "tv_recommendations": "/tv/%s/recommendations",
         "tv_celebrities": "/tv/%s/celebrities",
 
-        # 图书信息
+        # 图书详情与辅助信息。
         "book_detail": "/book/",
         "book_rating": "/book/%s/rating",
         "book_interests": "/book/%s/interests",
         "book_reviews": "/book/%s/reviews",
         "book_recommendations": "/book/%s/recommendations",
 
-        # 音乐信息
+        # 音乐详情与辅助信息。
         "music_detail": "/music/",
         "music_rating": "/music/%s/rating",
         "music_interests": "/music/%s/interests",
         "music_reviews": "/music/%s/reviews",
         "music_recommendations": "/music/%s/recommendations",
 
-        # 豆列信息
+        # 豆列详情及条目。
         "doulist": "/doulist/",
         "doulist_items": "/doulist/%s/items",
 
-        # 人物信息
+        # 人物详情及作品集合。
         "person_detail": "/elessar/subject/",
         "person_work": "/elessar/work_collections/%s/works",
     }
@@ -227,6 +229,7 @@ class DoubanApi(metaclass=WeakSingleton):
         "api-client/1 com.douban.frodo/7.18.0(230) Android/22 product/MI 9 vendor/Xiaomi model/MI 9 brand/Android  rom/miui6  network/wifi  platform/mobile nd/1",
         "api-client/1 com.douban.frodo/7.1.0(205) Android/29 product/perseus vendor/Xiaomi model/Mi MIX 3  rom/miui6  network/wifi  platform/mobile nd/1",
         "api-client/1 com.douban.frodo/7.3.0(207) Android/22 product/MI 9 vendor/Xiaomi model/MI 9 brand/Android  rom/miui6  network/wifi platform/mobile nd/1"]
+    # Frodo 客户端签名协议常量，与接口所需应用标识配套使用。
     _api_secret_key = "bf7dddc7c9cfe6f7"
     _api_key = "0dad551ec0f84ed02907ff5c42e8ec70"
     _api_key2 = "0ab215a8b1977939201640fa14c66bab"
@@ -236,14 +239,19 @@ class DoubanApi(metaclass=WeakSingleton):
 
     def __init__(self) -> None:
         """
-        建立复用连接的同步请求客户端，由 close 释放连接。
+        创建复用连接的同步 HTTP 客户端，由 close 释放连接。
         """
         self._request = RequestUtils(use_session=True)
 
     @classmethod
     def __sign(cls, url: str, ts: str, method: str = 'GET') -> str:
         """
-        签名
+        按 Frodo 接口规则对方法、路径和日期值生成 HMAC-SHA1 签名。
+
+        :param url: 待签名完整 URL，仅使用其路径部分
+        :param ts: 签名日期或时间值，需与请求 _ts 一致
+        :param method: HTTP 方法名，签名前转为大写
+        :return: Base64 编码的签名字符串
         """
         url_path = parse.urlparse(url).path
         raw_sign = '&'.join([method.upper(), parse.quote(url_path, safe=''), ts])
@@ -257,25 +265,25 @@ class DoubanApi(metaclass=WeakSingleton):
 
     def __invoke_recommend(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
-        推荐/发现类API
+        推荐/发现类API。
         """
         return self.__invoke(url, **kwargs)
 
     async def __async_invoke_recommend(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
-        推荐/发现类API（异步版本）
+        推荐/发现类API（异步版本）。
         """
         return await self.__async_invoke(url, **kwargs)
 
     def __invoke_search(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
-        搜索类API
+        搜索类API。
         """
         return self.__invoke(url, **kwargs)
 
     async def __async_invoke_search(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
-        搜索类API（异步版本）
+        搜索类API（异步版本）。
         """
         return await self.__async_invoke(url, **kwargs)
 
@@ -334,7 +342,7 @@ class DoubanApi(metaclass=WeakSingleton):
 
     def _prepare_get_request(self, url: str, **kwargs: _QueryValue) -> tuple[str, dict[str, _QueryValue]]:
         """
-        准备GET请求的URL和参数
+        准备GET请求的URL和参数。
         """
         req_url = self._base_url + url
 
@@ -360,7 +368,9 @@ class DoubanApi(metaclass=WeakSingleton):
         resp: Optional[_JsonResponse]
     ) -> Optional[dict[str, Any]]:
         """
-        处理HTTP响应
+        读取响应 JSON；未取得 HTTP 响应时返回 None。
+
+        不在本层校验业务状态；JSON 解码异常交由调用方处理。
         """
         if resp is None:
             return None
@@ -370,7 +380,7 @@ class DoubanApi(metaclass=WeakSingleton):
     @_cached_api_request(shared_key="get")
     def __invoke(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
-        GET请求
+        GET请求。
         """
         req_url, params = self._prepare_get_request(url, **kwargs)
         resp = self._request.get_res(
@@ -383,7 +393,7 @@ class DoubanApi(metaclass=WeakSingleton):
     @_cached_api_request(shared_key="get")
     async def __async_invoke(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
-        GET请求（异步版本）
+        GET请求（异步版本）。
         """
         req_url, params = self._prepare_get_request(url, **kwargs)
         resp = await AsyncRequestUtils(
@@ -393,7 +403,7 @@ class DoubanApi(metaclass=WeakSingleton):
 
     def _prepare_post_request(self, url: str, **kwargs: _QueryValue) -> tuple[str, dict[str, _QueryValue]]:
         """
-        准备POST请求的URL和参数
+        准备POST请求的URL和参数。
         """
         req_url = self._api_url + url
         params: dict[str, _QueryValue] = {'apikey': self._api_key2}
@@ -406,7 +416,7 @@ class DoubanApi(metaclass=WeakSingleton):
     @_cached_api_request(shared_key="post")
     def __post(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
-        POST请求
+        POST请求。
         使用 `_api_key2` 以表单字段 `apikey` 提交，参数由 `_prepare_post_request` 组装
         """
         req_url, params = self._prepare_post_request(url, **kwargs)
@@ -420,7 +430,7 @@ class DoubanApi(metaclass=WeakSingleton):
     @_cached_api_request(shared_key="post")
     async def __async_post(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
-        POST请求（异步版本）
+        POST请求（异步版本）。
         """
         req_url, params = self._prepare_post_request(url, **kwargs)
         resp = await AsyncRequestUtils(
@@ -431,21 +441,35 @@ class DoubanApi(metaclass=WeakSingleton):
     def imdbid(self, imdbid: str,
                ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        IMDBID搜索
+        IMDBID搜索。
+
+        :param imdbid: IMDb 条目标识，如 tt 开头的影视编号
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__post(self._urls["imdbid"] % imdbid, _ts=ts)
 
     async def async_imdbid(self, imdbid: str,
                            ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        IMDBID搜索（异步版本）
+        IMDBID搜索（异步版本）。
+
+        :param imdbid: IMDb 条目标识，如 tt 开头的影视编号
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_post(self._urls["imdbid"] % imdbid, _ts=ts)
 
     def search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        关键字搜索
+        关键字搜索。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["search"], q=keyword,
                                     start=start, count=count, _ts=ts)
@@ -453,7 +477,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                            ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        关键字搜索（异步版本）
+        关键字搜索（异步版本）。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["search"], q=keyword,
                                                 start=start, count=count, _ts=ts)
@@ -461,7 +491,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影搜索
+        电影搜索。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["movie_search"], q=keyword,
                                     start=start, count=count, _ts=ts)
@@ -469,7 +505,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影搜索（异步版本）
+        电影搜索（异步版本）。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["movie_search"], q=keyword,
                                                 start=start, count=count, _ts=ts)
@@ -477,7 +519,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视搜索
+        电视搜索。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["tv_search"], q=keyword,
                                     start=start, count=count, _ts=ts)
@@ -485,7 +533,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视搜索（异步版本）
+        电视搜索（异步版本）。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["tv_search"], q=keyword,
                                                 start=start, count=count, _ts=ts)
@@ -493,7 +547,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def book_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        书籍搜索
+        书籍搜索。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["book_search"], q=keyword,
                                     start=start, count=count, _ts=ts)
@@ -501,7 +561,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_book_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        书籍搜索（异步版本）
+        书籍搜索（异步版本）。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["book_search"], q=keyword,
                                                 start=start, count=count, _ts=ts)
@@ -510,6 +576,14 @@ class DoubanApi(metaclass=WeakSingleton):
                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         搜索豆瓣音乐条目。
+
+        消耗音乐识别预算；非空结果按配置缓存，正常空结果缓存 300 秒，服务错误不缓存。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 音乐响应字典；404 返回空字典，网络、业务或格式异常返回 None
         """
         return self._music_get(
             self._urls["search_subject"],
@@ -525,6 +599,14 @@ class DoubanApi(metaclass=WeakSingleton):
                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         异步搜索豆瓣音乐条目。
+
+        消耗音乐识别预算；非空结果按配置缓存，正常空结果缓存 300 秒，服务错误不缓存。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 音乐响应字典；404 返回空字典，网络、业务或格式异常返回 None
         """
         return await self._async_music_get(
             self._urls["search_subject"],
@@ -538,7 +620,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def group_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        小组搜索
+        小组搜索。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["group_search"], q=keyword,
                                     start=start, count=count, _ts=ts)
@@ -546,7 +634,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_group_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        小组搜索（异步版本）
+        小组搜索（异步版本）。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["group_search"], q=keyword,
                                                 start=start, count=count, _ts=ts)
@@ -554,7 +648,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def person_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                       ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        人物搜索
+        人物搜索。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["search_subject"], type="person", q=keyword,
                                     start=start, count=count, _ts=ts)
@@ -562,7 +662,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_person_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        人物搜索（异步版本）
+        人物搜索（异步版本）。
+
+        :param keyword: 待搜索关键词
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["search_subject"], type="person", q=keyword,
                                                 start=start, count=count, _ts=ts)
@@ -570,7 +676,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_showing(self, start: Optional[int] = 0, count: Optional[int] = 20,
                       ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        正在热映
+        正在热映。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["movie_showing"],
                                        start=start, count=count, _ts=ts)
@@ -578,7 +689,12 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_showing(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        正在热映（异步版本）
+        正在热映（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["movie_showing"],
                                                    start=start, count=count, _ts=ts)
@@ -586,7 +702,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_soon(self, start: Optional[int] = 0, count: Optional[int] = 20,
                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        即将上映
+        即将上映。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["movie_soon"],
                                        start=start, count=count, _ts=ts)
@@ -594,7 +715,12 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_soon(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        即将上映（异步版本）
+        即将上映（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["movie_soon"],
                                                    start=start, count=count, _ts=ts)
@@ -602,7 +728,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_hot_gaia(self, start: Optional[int] = 0, count: Optional[int] = 20,
                        ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        热门电影
+        热门电影。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["movie_hot_gaia"],
                                        start=start, count=count, _ts=ts)
@@ -610,7 +741,12 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_hot_gaia(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        热门电影（异步版本）
+        热门电影（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["movie_hot_gaia"],
                                                    start=start, count=count, _ts=ts)
@@ -618,7 +754,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
                ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        热门剧集
+        热门剧集。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["tv_hot"],
                                        start=start, count=count, _ts=ts)
@@ -626,7 +767,12 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
                            ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        热门剧集（异步版本）
+        热门剧集（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["tv_hot"],
                                                    start=start, count=count, _ts=ts)
@@ -634,7 +780,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_animation(self, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        动画
+        动画。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["tv_animation"],
                                        start=start, count=count, _ts=ts)
@@ -642,7 +793,12 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_animation(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        动画（异步版本）
+        动画（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["tv_animation"],
                                                    start=start, count=count, _ts=ts)
@@ -650,7 +806,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_variety_show(self, start: Optional[int] = 0, count: Optional[int] = 20,
                         ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        综艺
+        综艺。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["tv_variety_show"],
                                        start=start, count=count, _ts=ts)
@@ -658,7 +819,12 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_variety_show(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        综艺（异步版本）
+        综艺（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["tv_variety_show"],
                                                    start=start, count=count, _ts=ts)
@@ -666,7 +832,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_rank_list(self, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧排行榜
+        电视剧排行榜。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["tv_rank_list"],
                                        start=start, count=count, _ts=ts)
@@ -674,7 +845,12 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_rank_list(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧排行榜（异步版本）
+        电视剧排行榜（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["tv_rank_list"],
                                                    start=start, count=count, _ts=ts)
@@ -682,7 +858,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def show_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        综艺热门
+        综艺热门。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["show_hot"],
                                        start=start, count=count, _ts=ts)
@@ -690,86 +871,135 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_show_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
                              ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        综艺热门（异步版本）
+        综艺热门（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["show_hot"],
                                                    start=start, count=count, _ts=ts)
 
     def movie_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        电影详情
+        电影详情。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["movie_detail"] + subject_id)
 
     async def async_movie_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        电影详情（异步版本）
+        电影详情（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["movie_detail"] + subject_id)
 
     def movie_celebrities(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        电影演职员
+        电影演职员。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["movie_celebrities"] % subject_id)
 
     async def async_movie_celebrities(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        电影演职员（异步版本）
+        电影演职员（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["movie_celebrities"] % subject_id)
 
     def tv_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        电视剧详情
+        电视剧详情。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["tv_detail"] + subject_id)
 
     async def async_tv_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        电视剧详情（异步版本）
+        电视剧详情（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["tv_detail"] + subject_id)
 
     def tv_celebrities(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        电视剧演职员
+        电视剧演职员。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["tv_celebrities"] % subject_id)
 
     async def async_tv_celebrities(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        电视剧演职员（异步版本）
+        电视剧演职员（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["tv_celebrities"] % subject_id)
 
     def book_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        书籍详情
+        书籍详情。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["book_detail"] + subject_id)
 
     async def async_book_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        书籍详情（异步版本）
+        书籍详情（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["book_detail"] + subject_id)
 
     def music_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         获取豆瓣音乐详情。
+
+        消耗音乐识别预算；非空结果按配置缓存，正常空结果缓存 300 秒，服务错误不缓存。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 音乐响应字典；404 返回空字典，网络、业务或格式异常返回 None
         """
         return self._music_get(self._urls["music_detail"] + subject_id)
 
     async def async_music_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         异步获取豆瓣音乐详情。
+
+        消耗音乐识别预算；非空结果按配置缓存，正常空结果缓存 300 秒，服务错误不缓存。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 音乐响应字典；404 返回空字典，网络、业务或格式异常返回 None
         """
         return await self._async_music_get(self._urls["music_detail"] + subject_id)
 
     def music_single(self, start: int = 0, count: int = 20) -> Optional[dict[str, Any]]:
         """
         分页获取豆瓣音乐推荐合集。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(
             self._urls["music_single"], start=start, count=count
@@ -778,6 +1008,10 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_music_single(self, start: int = 0, count: int = 20) -> Optional[dict[str, Any]]:
         """
         异步分页获取豆瓣音乐推荐合集。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(
             self._urls["music_single"], start=start, count=count
@@ -793,6 +1027,14 @@ class DoubanApi(metaclass=WeakSingleton):
     ) -> dict[str, Any]:
         """
         从豆瓣音乐官方标签页读取专辑，并适配为统一的音乐条目列表。
+
+        官网每页 20 条，按所需偏移连续读取足够页；后续页失败时可能返回已收集的部分结果。
+
+        :param tag: 单个音乐标签名称
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param sort: 豆瓣排序代码，按接口支持值传递；默认值依各入口而定
+        :return: 含 items 列表的字典；无效标签或没有可解析条目时列表为空
         """
         normalized_tag = str(tag or "").strip()
         if not normalized_tag:
@@ -824,6 +1066,10 @@ class DoubanApi(metaclass=WeakSingleton):
     def music_chart(self) -> dict[str, Any]:
         """
         从豆瓣音乐官方榜单页读取新碟榜，并补充专辑详情供卡片展示。
+
+        逐个补充专辑详情；详情不可用时保留榜单摘要。
+
+        :return: 含新碟榜 items 的字典；无榜单条目时为空列表
         """
         response = RequestUtils(
             ua=get_runtime_setting('NORMAL_USER_AGENT'),
@@ -926,6 +1172,11 @@ class DoubanApi(metaclass=WeakSingleton):
     ) -> Optional[dict[str, Any]]:
         """
         获取豆瓣音乐条目的相关推荐。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(
             self._urls["music_recommendations"] % subject_id,
@@ -941,6 +1192,11 @@ class DoubanApi(metaclass=WeakSingleton):
     ) -> Optional[dict[str, Any]]:
         """
         异步获取豆瓣音乐条目的相关推荐。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(
             self._urls["music_recommendations"] % subject_id,
@@ -951,7 +1207,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_top250(self, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影TOP250
+        电影TOP250。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["movie_top250"],
                                        start=start, count=count, _ts=ts)
@@ -959,7 +1220,12 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_top250(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影TOP250（异步版本）
+        电影TOP250（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["movie_top250"],
                                                    start=start, count=count, _ts=ts)
@@ -967,7 +1233,14 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_recommend(self, tags: str = '', sort: str = 'R', start: Optional[int] = 0, count: Optional[int] = 20,
                         ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影探索
+        电影探索。
+
+        :param tags: 标签筛选字符串，分隔语义由对应豆瓣接口处理
+        :param sort: 豆瓣排序代码，按接口支持值传递；默认值依各入口而定
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["movie_recommend"], tags=tags, sort=sort,
                                        start=start, count=count, _ts=ts)
@@ -975,7 +1248,14 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_recommend(self, tags: str = '', sort: str = 'R', start: Optional[int] = 0, count: Optional[int] = 20,
                                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影探索（异步版本）
+        电影探索（异步版本）。
+
+        :param tags: 标签筛选字符串，分隔语义由对应豆瓣接口处理
+        :param sort: 豆瓣排序代码，按接口支持值传递；默认值依各入口而定
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["movie_recommend"], tags=tags, sort=sort,
                                                    start=start, count=count, _ts=ts)
@@ -983,7 +1263,14 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_recommend(self, tags: str = '', sort: str = 'R', start: Optional[int] = 0, count: Optional[int] = 20,
                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧探索
+        电视剧探索。
+
+        :param tags: 标签筛选字符串，分隔语义由对应豆瓣接口处理
+        :param sort: 豆瓣排序代码，按接口支持值传递；默认值依各入口而定
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["tv_recommend"], tags=tags, sort=sort,
                                        start=start, count=count, _ts=ts)
@@ -991,7 +1278,14 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_recommend(self, tags: str = '', sort: str = 'R', start: Optional[int] = 0, count: Optional[int] = 20,
                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧探索（异步版本）
+        电视剧探索（异步版本）。
+
+        :param tags: 标签筛选字符串，分隔语义由对应豆瓣接口处理
+        :param sort: 豆瓣排序代码，按接口支持值传递；默认值依各入口而定
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["tv_recommend"], tags=tags, sort=sort,
                                                    start=start, count=count, _ts=ts)
@@ -999,7 +1293,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_chinese_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        华语口碑周榜
+        华语口碑周榜。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["tv_chinese_best_weekly"],
                                        start=start, count=count, _ts=ts)
@@ -1007,7 +1306,12 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_chinese_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                            ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        华语口碑周榜（异步版本）
+        华语口碑周榜（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["tv_chinese_best_weekly"],
                                                    start=start, count=count, _ts=ts)
@@ -1015,7 +1319,12 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_global_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
                               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        全球口碑周榜
+        全球口碑周榜。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["tv_global_best_weekly"],
                                        start=start, count=count, _ts=ts)
@@ -1023,33 +1332,44 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_global_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
                                           ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        全球口碑周榜（异步版本）
+        全球口碑周榜（异步版本）。
+
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["tv_global_best_weekly"],
                                                    start=start, count=count, _ts=ts)
 
     def doulist_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        豆列详情
-        :param subject_id: 豆列id
+        豆列详情。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["doulist"] + subject_id)
 
     async def async_doulist_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
-        豆列详情（异步版本）
-        :param subject_id: 豆列id
+        豆列详情（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["doulist"] + subject_id)
 
     def doulist_items(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                       ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        豆列列表
-        :param subject_id: 豆列id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        豆列列表。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["doulist_items"] % subject_id,
                                     start=start, count=count, _ts=ts)
@@ -1057,11 +1377,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_doulist_items(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        豆列列表（异步版本）
-        :param subject_id: 豆列id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        豆列列表（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["doulist_items"] % subject_id,
                                                 start=start, count=count, _ts=ts)
@@ -1069,11 +1391,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影推荐
-        :param subject_id: 电影id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电影推荐。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["movie_recommendations"] % subject_id,
                                        start=start, count=count, _ts=ts)
@@ -1081,11 +1405,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                           ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影推荐（异步版本）
-        :param subject_id: 电影id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电影推荐（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["movie_recommendations"] % subject_id,
                                                    start=start, count=count, _ts=ts)
@@ -1093,11 +1419,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                            ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧推荐
-        :param subject_id: 电视剧id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电视剧推荐。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_recommend(self._urls["tv_recommendations"] % subject_id,
                                        start=start, count=count, _ts=ts)
@@ -1105,11 +1433,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                        ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧推荐（异步版本）
-        :param subject_id: 电视剧id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电视剧推荐（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_recommend(self._urls["tv_recommendations"] % subject_id,
                                                    start=start, count=count, _ts=ts)
@@ -1117,11 +1447,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影剧照
-        :param subject_id: 电影id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电影剧照。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["movie_photos"] % subject_id,
                                     start=start, count=count, _ts=ts)
@@ -1129,11 +1461,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影剧照（异步版本）
-        :param subject_id: 电影id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电影剧照（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["movie_photos"] % subject_id,
                                                 start=start, count=count, _ts=ts)
@@ -1141,11 +1475,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧剧照
-        :param subject_id: 电视剧id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电视剧剧照。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["tv_photos"] % subject_id,
                                     start=start, count=count, _ts=ts)
@@ -1153,11 +1489,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧剧照（异步版本）
-        :param subject_id: 电视剧id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电视剧剧照（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["tv_photos"] % subject_id,
                                                 start=start, count=count, _ts=ts)
@@ -1165,11 +1503,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                         ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影短评
-        :param subject_id: 电影id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电影短评。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["movie_interests"] % subject_id,
                                     start=start, count=count, _ts=ts)
@@ -1177,11 +1517,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影短评（异步版本）
-        :param subject_id: 电影id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电影短评（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["movie_interests"] % subject_id,
                                                 start=start, count=count, _ts=ts)
@@ -1189,11 +1531,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧短评
-        :param subject_id: 电视剧id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电视剧短评。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["tv_interests"] % subject_id,
                                     start=start, count=count, _ts=ts)
@@ -1201,11 +1545,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧短评（异步版本）
-        :param subject_id: 电视剧id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电视剧短评（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["tv_interests"] % subject_id,
                                                 start=start, count=count, _ts=ts)
@@ -1213,11 +1559,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def movie_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                       ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影影评
-        :param subject_id: 电影id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电影影评。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["movie_reviews"] % subject_id,
                                     start=start, count=count, _ts=ts)
@@ -1225,11 +1573,13 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_movie_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电影影评（异步版本）
-        :param subject_id: 电影id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电影影评（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["movie_reviews"] % subject_id,
                                                 start=start, count=count, _ts=ts)
@@ -1237,11 +1587,13 @@ class DoubanApi(metaclass=WeakSingleton):
     def tv_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧影评
-        :param subject_id: 电视剧id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电视剧影评。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["tv_reviews"] % subject_id,
                                     start=start, count=count, _ts=ts)
@@ -1249,28 +1601,32 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_tv_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
                                ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        电视剧影评（异步版本）
-        :param subject_id: 电视剧id
-        :param start: 开始
-        :param count: 数量
-        :param ts: 时间戳
+        电视剧影评（异步版本）。
+
+        :param subject_id: 豆瓣条目原生标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["tv_reviews"] % subject_id,
                                                 start=start, count=count, _ts=ts)
 
     def person_detail(self, subject_id: int) -> Optional[dict[str, Any]]:
         """
-        用户详情
-        :param subject_id: 人物 id
-        :return:
+        查询豆瓣人物详情。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["person_detail"] + str(subject_id))
 
     async def async_person_detail(self, subject_id: int) -> Optional[dict[str, Any]]:
         """
-        用户详情（异步版本）
-        :param subject_id: 人物 id
-        :return:
+        查询豆瓣人物详情。
+
+        :param subject_id: 豆瓣条目原生标识
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["person_detail"] + str(subject_id))
 
@@ -1279,14 +1635,15 @@ class DoubanApi(metaclass=WeakSingleton):
                     collection_title: Optional[str] = "影视",
                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        用户作品集
-        :param subject_id: work_collection id
-        :param start: 开始页
-        :param count: 数量
-        :param sort_by: collection or time or vote
-        :param collection_title: 影视 or 图书 or 音乐
-        :param ts: 时间戳
-        :return:
+        查询豆瓣人物作品集合。
+
+        :param subject_id: 人物详情中 work_collections 对应的作品集合标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param sort_by: 作品排序方式，collection、time 或 vote
+        :param collection_title: 作品集合类型，如影视、图书或音乐
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return self.__invoke_search(self._urls["person_work"] % subject_id, sortby=sort_by,
                                     collection_title=collection_title,
@@ -1297,14 +1654,15 @@ class DoubanApi(metaclass=WeakSingleton):
                                 collection_title: Optional[str] = "影视",
                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
-        用户作品集（异步版本）
-        :param subject_id: work_collection id
-        :param start: 开始页
-        :param count: 数量
-        :param sort_by: collection or time or vote
-        :param collection_title: 影视 or 图书 or 音乐
-        :param ts: 时间戳
-        :return:
+        查询豆瓣人物作品集合。
+
+        :param subject_id: 人物详情中 work_collections 对应的作品集合标识
+        :param start: 从 0 开始的条目偏移量，不是页码
+        :param count: 本次最多请求的条目数
+        :param sort_by: 作品排序方式，collection、time 或 vote
+        :param collection_title: 作品集合类型，如影视、图书或音乐
+        :param ts: YYYYMMDD 格式的签名与缓存区分值；默认值在模块加载时确定
+        :return: 接口原始 JSON 响应；未取得 HTTP 响应时返回 None
         """
         return await self.__async_invoke_search(self._urls["person_work"] % subject_id, sortby=sort_by,
                                                 collection_title=collection_title,
@@ -1312,7 +1670,7 @@ class DoubanApi(metaclass=WeakSingleton):
 
     def clear_cache(self) -> None:
         """
-        清空LRU缓存
+        清空LRU缓存。
         """
         getattr(self.__invoke, "cache_clear")()
         getattr(self._music_get, "cache_clear")()

@@ -1,4 +1,5 @@
-"""多文件补丁应用工具。
+"""
+多文件补丁应用工具。
 
 参考 Codex apply_patch 设计：一次调用可对多个文本文件执行新增、更新和删除，
 先整体校验全部文件操作，通过后才逐个原子写盘。
@@ -29,16 +30,25 @@ HUNK_SEPARATOR_PREFIX = "@@"
 
 
 class PatchParseError(ValueError):
-    """补丁文本无法解析为合法的文件操作序列。"""
+    """
+    补丁文本无法解析为合法的文件操作序列。
+    """
 
 
 class PatchMatchError(ValueError):
-    """补丁中的上下文或删除行与文件当前内容不一致。"""
+    """
+    补丁中的上下文或删除行与文件当前内容不一致。
+    """
 
 
 @dataclass
 class PatchHunk:
-    """更新操作的单个替换片段：按序定位旧行并替换为新行。"""
+    """
+    更新操作的单个替换片段：按序定位旧行并替换为新行。
+
+    :param old_lines: 用于精确定位的上下文和待删除行，默认独立空列表
+    :param new_lines: 替换后的上下文和新增行，默认独立空列表
+    """
 
     old_lines: list[str] = field(default_factory=list)
     new_lines: list[str] = field(default_factory=list)
@@ -46,16 +56,25 @@ class PatchHunk:
 
 @dataclass
 class FilePatch:
-    """补丁内针对单个文件的一次操作。"""
+    """
+    补丁内针对单个文件的一次操作。
 
-    operation: str  # "add" | "update" | "delete"
+    :param operation: 文件动作：add 新增、update 修改或 delete 删除
+    :param path: 补丁声明的目标文件路径
+    :param added_lines: add 动作使用的完整新文件行列表
+    :param hunks: update 动作按顺序应用的替换片段
+    """
+
+    operation: str
     path: str
     added_lines: list[str] = field(default_factory=list)
     hunks: list[PatchHunk] = field(default_factory=list)
 
 
 def parse_patch(patch: str) -> list[FilePatch]:
-    """解析以 Begin/End Patch 标记包裹的补丁文本为文件操作序列。"""
+    """
+    解析以 Begin/End Patch 标记包裹的补丁文本为文件操作序列。
+    """
     lines = patch.strip().splitlines()
     if not lines or lines[0].strip() != BEGIN_PATCH_MARKER:
         raise PatchParseError(f"补丁必须以 '{BEGIN_PATCH_MARKER}' 开头")
@@ -68,7 +87,9 @@ def parse_patch(patch: str) -> list[FilePatch]:
     current_hunk: Optional[PatchHunk] = None
 
     def close_hunk() -> None:
-        """提交当前 hunk，无锚点的纯新增片段无法定位应直接报错。"""
+        """
+        提交当前 hunk，无锚点的纯新增片段无法定位应直接报错。
+        """
         nonlocal current_hunk
         if current_hunk is None or current is None:
             return
@@ -81,7 +102,9 @@ def parse_patch(patch: str) -> list[FilePatch]:
         current_hunk = None
 
     def open_section(operation: str, path: str) -> None:
-        """开始新的文件段，同一文件在一次补丁中只允许出现一次。"""
+        """
+        开始新的文件段，同一文件在一次补丁中只允许出现一次。
+        """
         nonlocal current
         close_hunk()
         if not path:
@@ -141,7 +164,9 @@ def parse_patch(patch: str) -> list[FilePatch]:
 def apply_hunks_to_content(
     content: str, hunks: list[PatchHunk], file_label: str
 ) -> str:
-    """按顺序在文件内容中定位并替换每个 hunk，返回更新后的完整内容。"""
+    """
+    按顺序在文件内容中定位并替换每个 hunk，返回更新后的完整内容。
+    """
     ends_with_newline = content.endswith("\n")
     if ends_with_newline:
         content = content[:-1]
@@ -167,51 +192,63 @@ def apply_hunks_to_content(
 
 
 def _delete_file(path: Path) -> None:
-    """删除补丁中标记移除的已有文件。"""
+    """
+    删除补丁中标记移除的已有文件。
+    """
     path.unlink()
 
 
 class ApplyPatchInput(BaseModel):
-    """补丁应用工具的输入参数模型。"""
+    """
+    补丁应用工具的输入参数模型。
+    """
 
     patch: str = Field(
         ...,
         description=(
-            "A single patch wrapped in '*** Begin Patch' and '*** End Patch'. "
-            "Sections: '*** Add File: <path>' whose body lines all start with "
-            "'+'; '*** Update File: <path>' with hunks separated by '@@' lines, "
-            "where '+' adds, '-' removes, and context lines may carry one "
-            "leading space and must otherwise match the current file content "
-            "exactly; '*** Delete File: <path>' with no body. Use one patch for "
-            "all files touched by one logical change."
+            "由 *** Begin Patch 和 *** End Patch 包裹的单个补丁。"
+            "*** Add File: <path> 的正文每行以 + 开头；"
+            "*** Update File: <path> 使用 @@ 分隔片段，+ 新增、- 删除，上下文可带一个前导空格，其余内容必须精确匹配当前文件；"
+            "*** Delete File: <path> 不含正文。"
+            "同一逻辑变更涉及的文件应放在同一补丁中"
         ),
     )
 
 
 class ApplyPatchTool(MoviePilotTool):
-    """按补丁文本对多个本地文本文件执行新增、更新和删除。"""
+    """
+    按补丁文本对多个本地文本文件执行新增、更新和删除。
+    """
 
-    name: str = "apply_patch"
-    tags: list[str] = [
-        ToolTag.Write,
-        ToolTag.File,
-    ]
-    description: str = (
-        "Apply one unified patch to multiple local text files. Prefer it over "
-        "edit_file when a single logical change spans several files, adds new "
-        "files, or deletes files: submit one patch wrapped in '*** Begin Patch' "
-        "/ '*** End Patch' with '*** Add File:', '*** Update File:', and "
-        "'*** Delete File:' sections. Hunk context and removed lines must match "
-        "the current file content exactly; the whole patch is validated before "
-        "any file is written. For a single localized replacement in one "
-        "already-read file, edit_file is simpler; use write_file to create one "
-        "standalone new file. Non-admin users can only patch files inside the "
-        "MoviePilot Agent config directory."
+    name: str = Field(
+        default="apply_patch",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = ApplyPatchInput
+    tags: list[str] = Field(
+        default=[ToolTag.Write, ToolTag.File],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default=(
+            "将一个统一补丁应用到多个本地文本文件。"
+            "同一逻辑变更涉及多文件、新增或删除文件时优先使用本工具。"
+            "补丁必须由 '*** Begin Patch' / '*** End Patch' 包裹，使用 '*** Add File:'、'*** Update File:' 和 '"
+            "*** Delete File:' 段。"
+            "片段上下文和删除行必须精确匹配当前内容，写入任何文件前先验证整个补丁。"
+            "已读取单文件内的局部替换可用 edit_file，创建独立新文件可用 write_file。"
+            "非管理员只能修改 MoviePilot Agent 配置目录内的文件。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=ApplyPatchInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """根据参数生成友好的提示消息"""
+        """
+        根据参数生成友好的提示消息
+        """
         patch = kwargs.get("patch", "") or ""
         file_count = sum(
             patch.count(prefix)
@@ -222,7 +259,9 @@ class ApplyPatchTool(MoviePilotTool):
     async def _plan_operations(
         self, operations: list[FilePatch]
     ) -> tuple[Optional[list], Optional[str]]:
-        """校验每个文件操作并计算写入内容，全部通过才返回执行计划。"""
+        """
+        校验每个文件操作并计算写入内容，全部通过才返回执行计划。
+        """
         planned = []
         for file_patch in operations:
             resolved_path, access_error = await self._check_local_file_access(
@@ -279,7 +318,9 @@ class ApplyPatchTool(MoviePilotTool):
         return planned, None
 
     async def run(self, patch: str, **kwargs) -> str:
-        """解析并整体校验补丁后，逐文件原子应用新增、更新和删除。"""
+        """
+        解析并整体校验补丁后，逐文件原子应用新增、更新和删除。
+        """
         logger.info("执行工具: apply_patch")
 
         try:

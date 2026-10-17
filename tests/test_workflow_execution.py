@@ -1,3 +1,7 @@
+"""
+验证工作流执行状态、分支与任务生命周期。
+"""
+
 import base64
 import pickle
 import threading
@@ -15,7 +19,9 @@ from app.schemas.workflow import Action, ActionContext, ActionResult
 
 def _build_workflow(current_action=None, context=None, actions=None, flows=None,
                     execution_config=None, execution_state=None):
-    """构造最小工作流对象。"""
+    """
+    构造最小工作流对象。
+    """
     return SimpleNamespace(
         id=1,
         name="测试工作流",
@@ -37,19 +43,25 @@ _LEGACY_PAYLOAD_CALLS = []
 
 
 def _record_legacy_payload_call():
-    """记录旧版 pickle 载荷被反序列化时触发的调用。"""
+    """
+    记录旧版 pickle 载荷被反序列化时触发的调用。
+    """
     _LEGACY_PAYLOAD_CALLS.append("loaded")
 
 
 class _LegacyPayload:
-    """反序列化时会执行回调的旧版上下文载荷。"""
+    """
+    反序列化时会执行回调的旧版上下文载荷。
+    """
 
     def __reduce__(self):
         return _record_legacy_payload_call, ()
 
 
 class _FakeWorkflowManager:
-    """记录执行动作的工作流管理器。"""
+    """
+    记录执行动作的工作流管理器。
+    """
 
     def __init__(self, calls, results=None, contracts=None):
         self.calls = calls
@@ -58,7 +70,9 @@ class _FakeWorkflowManager:
         self.received_inputs = []
 
     def execute(self, workflow_id, action, context=None, inputs=None, runtime=None, cancel_token=None):
-        """执行伪动作并记录新版输入。"""
+        """
+        执行伪动作并记录新版输入。
+        """
         self.calls.append(action.id)
         self.received_inputs.append((action.id, inputs or {}, runtime or {}, cancel_token))
         result = self.results.get(action.id)
@@ -69,17 +83,23 @@ class _FakeWorkflowManager:
         return ActionResult(success=True, message=f"{action.name}完成", context=context or ActionContext())
 
     def excute(self, workflow_id, action, context=None):
-        """兼容历史执行方法。"""
+        """
+        兼容历史执行方法。
+        """
         result = self.execute(workflow_id, action, context)
         return result.success, result.message, result.context
 
     def get_action_contract(self, action_type):
-        """获取伪动作契约。"""
+        """
+        获取伪动作契约。
+        """
         return self.contracts.get(action_type) or {}
 
 
 class _FakeWorkflowOper:
-    """记录工作流持久化调用。"""
+    """
+    记录工作流持久化调用。
+    """
 
     def __init__(self, workflow):
         self.workflow = workflow
@@ -89,23 +109,31 @@ class _FakeWorkflowOper:
         self.succeeded = False
 
     def reset(self, wid):
-        """模拟重置工作流。"""
+        """
+        模拟重置工作流。
+        """
         _ = wid
         return True
 
     def get(self, wid):
-        """返回预置工作流。"""
+        """
+        返回预置工作流。
+        """
         _ = wid
         return self.workflow
 
     def start(self, wid):
-        """记录启动调用。"""
+        """
+        记录启动调用。
+        """
         _ = wid
         self.started = True
         return True
 
     def step(self, wid, action_id, context, execution_state=None):
-        """记录步骤持久化数据。"""
+        """
+        记录步骤持久化数据。
+        """
         self.steps.append(
             {
                 "wid": wid,
@@ -117,20 +145,26 @@ class _FakeWorkflowOper:
         return True
 
     def fail(self, wid, result):
-        """记录失败结果。"""
+        """
+        记录失败结果。
+        """
         _ = wid
         self.failed_result = result
         return True
 
     def success(self, wid, result=None):
-        """记录成功结果。"""
+        """
+        记录成功结果。
+        """
         _ = wid, result
         self.succeeded = True
         return True
 
 
 class _OpaqueValue:
-    """模拟无法直接 JSON 序列化的值。"""
+    """
+    模拟无法直接 JSON 序列化的值。
+    """
 
     __slots__ = ()
 
@@ -139,7 +173,9 @@ class _OpaqueValue:
 
 
 def test_workflow_executor_preserves_trigger_context(monkeypatch):
-    """工作流节点及其完成回调应保留触发链路的关联 ID。"""
+    """
+    工作流节点及其完成回调应保留触发链路的关联 ID。
+    """
     observed = []
     release = threading.Event()
 
@@ -191,7 +227,9 @@ def test_workflow_executor_preserves_trigger_context(monkeypatch):
 
 
 def test_workflow_executor_resumes_downstream_nodes(monkeypatch):
-    """恢复执行时应释放已完成节点的后继节点。"""
+    """
+    恢复执行时应释放已完成节点的后继节点。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(calls)
     workflow = _build_workflow(
@@ -212,7 +250,9 @@ def test_workflow_executor_resumes_downstream_nodes(monkeypatch):
 
 
 def test_workflow_executor_ignores_legacy_pickle_context(monkeypatch):
-    """旧版 Base64 Pickle 上下文不得被反序列化，应按空上下文继续执行。"""
+    """
+    旧版 Base64 Pickle 上下文不得被反序列化，应按空上下文继续执行。
+    """
     _LEGACY_PAYLOAD_CALLS.clear()
     calls = []
     fake_manager = _FakeWorkflowManager(calls)
@@ -233,7 +273,9 @@ def test_workflow_executor_ignores_legacy_pickle_context(monkeypatch):
 
 
 def test_workflow_executor_restores_structured_context(monkeypatch):
-    """恢复执行时应兼容新版结构化上下文存储格式。"""
+    """
+    恢复执行时应兼容新版结构化上下文存储格式。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(calls)
     workflow = _build_workflow(
@@ -258,7 +300,9 @@ def test_workflow_executor_restores_structured_context(monkeypatch):
 
 
 def test_workflow_executor_reports_incremental_progress(monkeypatch):
-    """顺序工作流的中间进度应按已完成比例计算。"""
+    """
+    顺序工作流的中间进度应按已完成比例计算。
+    """
     calls = []
     progresses = []
     fake_manager = _FakeWorkflowManager(calls)
@@ -278,7 +322,9 @@ def test_workflow_executor_reports_incremental_progress(monkeypatch):
 
 
 def test_workflow_executor_skips_false_condition_branch(monkeypatch):
-    """条件边不满足时应跳过对应分支，并继续执行满足条件的分支。"""
+    """
+    条件边不满足时应跳过对应分支，并继续执行满足条件的分支。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(
         calls,
@@ -317,12 +363,16 @@ def test_workflow_executor_skips_false_condition_branch(monkeypatch):
 
 
 def test_workflow_executor_all_success_join_waits_parallel_branches(monkeypatch):
-    """默认汇合策略应等待所有上游分支成功后再执行目标节点。"""
+    """
+    默认汇合策略应等待所有上游分支成功后再执行目标节点。
+    """
     calls = []
     joined_outputs = {}
 
     def run_join(action, context):
-        """记录汇合节点读取到的上游输出。"""
+        """
+        记录汇合节点读取到的上游输出。
+        """
         joined_outputs.update(context.node_outputs)
         return ActionResult(success=True, message=f"{action.name}完成", context=context)
 
@@ -370,7 +420,9 @@ def test_workflow_executor_all_success_join_waits_parallel_branches(monkeypatch)
 
 
 def test_workflow_executor_any_success_join_runs_after_available_branch(monkeypatch):
-    """any_success 汇合策略应允许任一满足条件的上游分支触发目标节点。"""
+    """
+    any_success 汇合策略应允许任一满足条件的上游分支触发目标节点。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(
         calls,
@@ -410,7 +462,9 @@ def test_workflow_executor_any_success_join_runs_after_available_branch(monkeypa
 
 
 def test_workflow_executor_all_done_join_can_continue_after_failure(monkeypatch):
-    """continue 失败策略配合 all_done 汇合时应继续执行收尾节点。"""
+    """
+    continue 失败策略配合 all_done 汇合时应继续执行收尾节点。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(
         calls,
@@ -444,7 +498,9 @@ def test_workflow_executor_all_done_join_can_continue_after_failure(monkeypatch)
 
 
 def test_workflow_executor_exclusive_branch_uses_first_matching_flow(monkeypatch):
-    """互斥分支应只执行第一条满足条件的出边。"""
+    """
+    互斥分支应只执行第一条满足条件的出边。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(
         calls,
@@ -481,7 +537,9 @@ def test_workflow_executor_exclusive_branch_uses_first_matching_flow(monkeypatch
 
 
 def test_workflow_executor_passes_declared_inputs(monkeypatch):
-    """动作输入声明应从 node_outputs 中读取指定路径。"""
+    """
+    动作输入声明应从 node_outputs 中读取指定路径。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(
         calls,
@@ -521,7 +579,9 @@ def test_workflow_executor_passes_declared_inputs(monkeypatch):
 
 
 def test_workflow_executor_uses_contract_inputs(monkeypatch):
-    """未手写输入声明时应按动作契约读取上下文字段。"""
+    """
+    未手写输入声明时应按动作契约读取上下文字段。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(
         calls,
@@ -559,7 +619,9 @@ def test_workflow_executor_uses_contract_inputs(monkeypatch):
 
 
 def test_workflow_executor_persists_structured_state(monkeypatch):
-    """步骤回调应收到可持久化的结构化执行状态。"""
+    """
+    步骤回调应收到可持久化的结构化执行状态。
+    """
     calls = []
     states = []
     fake_manager = _FakeWorkflowManager(
@@ -590,7 +652,9 @@ def test_workflow_executor_persists_structured_state(monkeypatch):
 
 
 def test_workflow_executor_restores_outputs_from_execution_state(monkeypatch):
-    """恢复执行时应从结构化状态读取节点输出并继续判断条件边。"""
+    """
+    恢复执行时应从结构化状态读取节点输出并继续判断条件边。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(calls)
     workflow = _build_workflow(
@@ -619,7 +683,9 @@ def test_workflow_executor_restores_outputs_from_execution_state(monkeypatch):
 
 
 def test_workflow_executor_keeps_execution_state_dict_for_non_json_leaf(monkeypatch):
-    """结构化状态遇到不可序列化叶子节点时仍应保持字典结构。"""
+    """
+    结构化状态遇到不可序列化叶子节点时仍应保持字典结构。
+    """
     calls = []
     states = []
     fake_manager = _FakeWorkflowManager(
@@ -649,11 +715,15 @@ def test_workflow_executor_keeps_execution_state_dict_for_non_json_leaf(monkeypa
 
 
 def test_workflow_chain_process_serializes_circular_context(monkeypatch):
-    """工作流步骤持久化应清洗循环引用和不可序列化上下文。"""
+    """
+    工作流步骤持久化应清洗循环引用和不可序列化上下文。
+    """
     calls = []
 
     def run_action(action, context):
-        """构造包含循环引用的上下文。"""
+        """
+        构造包含循环引用的上下文。
+        """
         context.workflow_context["self"] = context.workflow_context
         context.workflow_context["opaque"] = _OpaqueValue()
         return ActionResult(success=True, message=f"{action.name}完成", context=context)
@@ -667,7 +737,9 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
     port_calls = []
 
     def get_execution_port():
-        """记录单次执行获取事务端口的次数。"""
+        """
+        记录单次执行获取事务端口的次数。
+        """
         port_calls.append(True)
         return fake_oper
 
@@ -703,14 +775,18 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
 
 
 def test_workflow_executor_concurrency_key_serializes_parallel_nodes(monkeypatch):
-    """相同 concurrency_key 的并行节点不应同时运行。"""
+    """
+    相同 concurrency_key 的并行节点不应同时运行。
+    """
     calls = []
     active_count = 0
     max_active_count = 0
     lock = threading.Lock()
 
     def run_action(action, context):
-        """记录同一并发键下的同时运行数量。"""
+        """
+        记录同一并发键下的同时运行数量。
+        """
         nonlocal active_count, max_active_count
         with lock:
             active_count += 1
@@ -742,7 +818,9 @@ def test_workflow_executor_concurrency_key_serializes_parallel_nodes(monkeypatch
 
 
 def test_workflow_executor_filter_action_replaces_artifact_outputs(monkeypatch):
-    """过滤类动作默认应替换列表输出，避免把过滤前数据重新合并回来。"""
+    """
+    过滤类动作默认应替换列表输出，避免把过滤前数据重新合并回来。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(
         calls,
@@ -780,13 +858,17 @@ def test_workflow_executor_filter_action_replaces_artifact_outputs(monkeypatch):
 
 
 def test_workflow_executor_filter_action_replaces_with_empty_outputs(monkeypatch):
-    """过滤节点结果为空时也应清空上游资源，避免后续继续下载。"""
+    """
+    过滤节点结果为空时也应清空上游资源，避免后续继续下载。
+    """
     calls = []
     stale_torrents = ["old", "drop"]
     filtered_torrents = []
 
     def run_fetch(action, context):
-        """模拟上游搜索节点产出资源池。"""
+        """
+        模拟上游搜索节点产出资源池。
+        """
         context.torrents = stale_torrents.copy()
         return ActionResult(
             success=True,
@@ -796,7 +878,9 @@ def test_workflow_executor_filter_action_replaces_with_empty_outputs(monkeypatch
         )
 
     def run_filter(action, context):
-        """模拟过滤节点把资源全部过滤掉。"""
+        """
+        模拟过滤节点把资源全部过滤掉。
+        """
         context.torrents = filtered_torrents.copy()
         return ActionResult(
             success=True,
@@ -832,7 +916,9 @@ def test_workflow_executor_filter_action_replaces_with_empty_outputs(monkeypatch
 
 
 def test_workflow_executor_stop_is_not_success(monkeypatch):
-    """停止信号不应被执行器汇报为成功完成。"""
+    """
+    停止信号不应被执行器汇报为成功完成。
+    """
     calls = []
     fake_manager = _FakeWorkflowManager(calls)
 
@@ -850,21 +936,29 @@ def test_workflow_executor_stop_is_not_success(monkeypatch):
 
 
 def test_workflow_manager_shutdown_retains_blocked_execution_for_retry(monkeypatch):
-    """阻塞动作超时时保留 manager owner，释放后同一执行可重试收敛。"""
+    """
+    阻塞动作超时时保留 manager owner，释放后同一执行可重试收敛。
+    """
     entered = threading.Event()
     release = threading.Event()
 
     class BlockingAction:
-        """模拟不响应取消令牌的第三方同步工作流动作。"""
+        """
+        模拟不响应取消令牌的第三方同步工作流动作。
+        """
 
         def __init__(self, action_id):
-            """保存动作标识。"""
+            """
+            保存动作标识。
+            """
             self.action_id = action_id
             self.success = True
             self.message = ""
 
         def execute_with_inputs(self, workflow_id, params, inputs, runtime, context):
-            """阻塞到测试显式释放，并返回原工作流上下文。"""
+            """
+            阻塞到测试显式释放，并返回原工作流上下文。
+            """
             _ = workflow_id, params, inputs, runtime
             entered.set()
             release.wait()
@@ -922,13 +1016,19 @@ def test_workflow_manager_shutdown_retains_blocked_execution_for_retry(monkeypat
 
 
 def test_workflow_manager_shutdown_continues_across_owner_failures():
-    """单个执行 owner 抛错不得跳过其它活动工作流的停止和等待。"""
+    """
+    单个执行 owner 抛错不得跳过其它活动工作流的停止和等待。
+    """
 
     class ObservedOwner:
-        """记录 manager 对多个 owner 的关闭调用。"""
+        """
+        记录 manager 对多个 owner 的关闭调用。
+        """
 
         def __init__(self, manager, *, fail: bool = False):
-            """保存管理器、失败开关和调用计数。"""
+            """
+            保存管理器、失败开关和调用计数。
+            """
             self.manager = manager
             self.workflow_id = id(self)
             self.fail = fail
@@ -936,13 +1036,17 @@ def test_workflow_manager_shutdown_continues_across_owner_failures():
             self.wait_calls = 0
 
         def request_stop(self) -> None:
-            """记录停止请求，并按需模拟第三方 owner 异常。"""
+            """
+            记录停止请求，并按需模拟第三方 owner 异常。
+            """
             self.stop_calls += 1
             if self.fail:
                 raise RuntimeError("stop failed")
 
         def wait_stopped(self, timeout: float) -> bool:
-            """记录等待；正常 owner 从 manager 注册表释放自身。"""
+            """
+            记录等待；正常 owner 从 manager 注册表释放自身。
+            """
             _ = timeout
             self.wait_calls += 1
             if self.fail:
@@ -973,13 +1077,19 @@ def test_workflow_manager_shutdown_continues_across_owner_failures():
 
 
 def test_workflow_chain_rejects_execution_before_persisting_running_state(monkeypatch):
-    """停机封口后的新执行不得先把数据库状态写成运行中。"""
+    """
+    停机封口后的新执行不得先把数据库状态写成运行中。
+    """
 
     class RejectingWorkflowManager(_FakeWorkflowManager):
-        """模拟已经封口的 concrete 工作流运行时。"""
+        """
+        模拟已经封口的 concrete 工作流运行时。
+        """
 
         def register_execution(self, _owner) -> bool:
-            """拒绝停机后的新执行 owner。"""
+            """
+            拒绝停机后的新执行 owner。
+            """
             return False
 
     workflow = _build_workflow()
@@ -998,7 +1108,9 @@ def test_workflow_chain_rejects_execution_before_persisting_running_state(monkey
     )
 
     def unexpected_resume(_workflow_id: int) -> None:
-        """拒绝准入时若仍恢复停止标记则立即暴露回归。"""
+        """
+        拒绝准入时若仍恢复停止标记则立即暴露回归。
+        """
         raise AssertionError("拒绝准入时不得恢复工作流")
 
     monkeypatch.setattr(
@@ -1015,13 +1127,19 @@ def test_workflow_chain_rejects_execution_before_persisting_running_state(monkey
 
 
 def test_workflow_chain_releases_admitted_owner_when_start_fails(monkeypatch):
-    """数据库启动状态写入异常时不得遗留尚未执行的 manager owner。"""
+    """
+    数据库启动状态写入异常时不得遗留尚未执行的 manager owner。
+    """
 
     class FailingWorkflowOper(_FakeWorkflowOper):
-        """模拟执行状态 start 事务失败。"""
+        """
+        模拟执行状态 start 事务失败。
+        """
 
         def start(self, wid):
-            """在 owner 已准入后抛出持久化异常。"""
+            """
+            在 owner 已准入后抛出持久化异常。
+            """
             _ = wid
             raise RuntimeError("start failed")
 
@@ -1055,7 +1173,9 @@ def test_workflow_chain_releases_admitted_owner_when_start_fails(monkeypatch):
 
 
 def test_workflow_context_merge_preserves_runtime_objects():
-    """合并上下文时应保留运行时对象，而不是转成字典。"""
+    """
+    合并上下文时应保留运行时对象，而不是转成字典。
+    """
     executor = object.__new__(workflow_module.WorkflowExecutor)
     executor.context = ActionContext()
     runtime_torrent = SimpleNamespace(title="runtime torrent")
@@ -1068,21 +1188,31 @@ def test_workflow_context_merge_preserves_runtime_objects():
 
 
 class _FakeEventManager:
-    """记录事件监听器注册和移除次数。"""
+    """
+    记录事件监听器注册和移除次数。
+    """
 
     def __init__(self):
         self.added = []
         self.removed = []
 
     def add_event_listener(self, event_type, handler):
+        """
+        记录事件监听注册类型，供工作流运行器的生命周期断言。
+        """
         self.added.append(event_type)
 
     def remove_event_listener(self, event_type, handler):
+        """
+        记录事件监听注销类型，检查工作流收尾释放监听。
+        """
         self.removed.append(event_type)
 
 
 def test_workflow_event_listener_keeps_shared_handler_until_last_workflow(monkeypatch):
-    """同一事件下移除单个工作流时不应断开其他工作流监听。"""
+    """
+    同一事件下移除单个工作流时不应断开其他工作流监听。
+    """
     fake_eventmanager = _FakeEventManager()
     manager = object.__new__(workflow_package.WorkflowManager)
     manager._lock = threading.Lock()
@@ -1105,10 +1235,14 @@ def test_workflow_event_listener_keeps_shared_handler_until_last_workflow(monkey
 
 
 def test_workflow_manager_retries_action_until_success(monkeypatch):
-    """动作管理器应按 retry 配置重试失败动作。"""
+    """
+    动作管理器应按 retry 配置重试失败动作。
+    """
 
     class RetryAction:
-        """模拟第二次才成功的动作。"""
+        """
+        模拟第二次才成功的动作。
+        """
 
         call_count = 0
 
@@ -1116,7 +1250,9 @@ def test_workflow_manager_retries_action_until_success(monkeypatch):
             self.action_id = action_id
 
         def execute_with_inputs(self, workflow_id, params, inputs, runtime, context):
-            """执行动作并在第二次返回成功。"""
+            """
+            执行动作并在第二次返回成功。
+            """
             _ = workflow_id, params, inputs, runtime
             RetryAction.call_count += 1
             if RetryAction.call_count == 1:

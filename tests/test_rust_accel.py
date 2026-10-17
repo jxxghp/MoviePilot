@@ -1,3 +1,7 @@
+"""
+验证Rust 加速入口与 Python 结果一致性。
+"""
+
 import os
 import time
 from datetime import datetime, timezone
@@ -166,23 +170,33 @@ def test_rss_helper_parse_uses_rust_parser():
 
         @staticmethod
         def decode_xml(response, **kwargs):
-            """复用真实 XML 解码策略。"""
+            """
+            复用真实 XML 解码策略。
+            """
             return RequestUtils.get_decoded_xml_content(response, **kwargs)
 
     class FakeBrowserPort:
-        """占位浏览器 Port，本用例不会触达。"""
+        """
+        占位浏览器 Port，本用例不会触达。
+        """
 
         @staticmethod
         def render(**_kwargs):
-            """拒绝意外浏览器访问。"""
+            """
+            拒绝意外浏览器访问。
+            """
             raise AssertionError("不应访问浏览器")
 
     class RustParserPort:
-        """通过 Application Port 调用真实 Rust 解析入口。"""
+        """
+        通过 Application Port 调用真实 Rust 解析入口。
+        """
 
         @staticmethod
         def parse(content, max_items):
-            """返回 Rust RSS 解析结果。"""
+            """
+            返回 Rust RSS 解析结果。
+            """
             return rust_accel.parse_rss_items(content, max_items)
 
     configure_rss_ports(
@@ -239,7 +253,9 @@ def test_rust_metainfo_parser_handles_video_from_entry():
 
 
 def test_rust_metainfo_keeps_title_token_matching_subtitle_extension():
-    """Rust 标题和路径入口都应保留与字幕扩展名同名的片名词元。"""
+    """
+    Rust 标题和路径入口都应保留与字幕扩展名同名的片名词元。
+    """
     title = (
         "Kick-Ass.2010.PROPER.2160p.BluRay.REMUX.HEVC.DTS-HD.MA."
         "TrueHD.7.1.Atmos-FGT.mkv"
@@ -350,12 +366,16 @@ def test_metainfo_public_entry_uses_rust(monkeypatch):
 
 
 def test_rust_metamusic_wrapper_calls_extension(monkeypatch):
-    """MetaMusic wrapper 应把标题和已有证据透传给 Rust 扩展。"""
+    """
+    MetaMusic wrapper 应把标题和已有证据透传给 Rust 扩展。
+    """
     calls = []
     expected = {"title": "晴天", "artists": ["周杰伦"], "year": 2003}
 
     def parse_metamusic_fast(title, artists, year):
-        """记录 Rust 扩展入口参数并返回测试结果。"""
+        """
+        记录 Rust 扩展入口参数并返回测试结果。
+        """
         calls.append((title, artists, year))
         return expected
 
@@ -373,7 +393,9 @@ def test_rust_metamusic_wrapper_calls_extension(monkeypatch):
 
 
 def test_rust_metamusic_wrapper_respects_runtime_switch(monkeypatch):
-    """Rust 总开关关闭时 MetaMusic wrapper 不应调用扩展。"""
+    """
+    Rust 总开关关闭时 MetaMusic wrapper 不应调用扩展。
+    """
     fake_extension = SimpleNamespace(
         is_available=lambda: True,
         parse_metamusic_fast=lambda *_args: (_ for _ in ()).throw(
@@ -387,7 +409,9 @@ def test_rust_metamusic_wrapper_respects_runtime_switch(monkeypatch):
 
 
 def test_rust_metamusic_wrapper_supports_legacy_extension(monkeypatch):
-    """旧版 Rust 扩展缺少 MetaMusic 入口时应安静回退。"""
+    """
+    旧版 Rust 扩展缺少 MetaMusic 入口时应安静回退。
+    """
     fake_extension = SimpleNamespace(is_available=lambda: True)
     monkeypatch.setattr(settings, "RUST_ACCEL", True)
     monkeypatch.setattr(rust_accel, "_moviepilot_rust", fake_extension)
@@ -396,9 +420,13 @@ def test_rust_metamusic_wrapper_supports_legacy_extension(monkeypatch):
 
 
 def test_rust_metamusic_wrapper_falls_back_on_extension_error(monkeypatch):
-    """Rust MetaMusic 入口异常时 wrapper 应返回 None 触发 Python 兜底。"""
+    """
+    Rust MetaMusic 入口异常时 wrapper 应返回 None 触发 Python 兜底。
+    """
     def parse_metamusic_fast(*_args):
-        """模拟 Rust 扩展在音乐解析期间报错。"""
+        """
+        模拟 Rust 扩展在音乐解析期间报错。
+        """
         raise RuntimeError("parse failed")
 
     fake_extension = SimpleNamespace(

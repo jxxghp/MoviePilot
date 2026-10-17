@@ -7,6 +7,7 @@ import json
 from typing import Annotated, Any, Optional
 
 from fastapi import Body, Depends, HTTPException, Request, Response
+from pydantic import Field as _Field
 
 from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
 from app.api.dependencies.auth import (
@@ -51,9 +52,7 @@ from app.schemas.token import TokenPayload as _SchemaTokenPayload
 
 router = ResponseAPIRouter()
 
-# ==================== 辅助函数 ====================
-
-
+# 辅助函数
 def _build_credential_list(passkeys: list[Any]) -> list[dict[str, Any]]:
     """
     构建凭证列表
@@ -116,32 +115,34 @@ def _verify_passkey_and_update(
     return success, new_sign_count
 
 
-# ==================== 请求模型 ====================
-
-
+# 请求模型
 class OtpVerifyRequest(_SchemaBaseModel):
-    """OTP验证请求"""
+    """
+    OTP验证请求
+    """
 
-    uri: str
-    otpPassword: str
+    uri: str = _Field(description="待绑定的 OTP 密钥 URI，包含用于本次校验和保存的密钥")
+    otpPassword: str = _Field(description="用户输入的动态验证码")
 
 
 class OtpDisableRequest(_SchemaBaseModel):
-    """OTP禁用请求"""
+    """
+    OTP禁用请求
+    """
 
-    password: str
+    password: str = _Field(description="当前用户的登录密码，用于确认关闭 OTP")
 
 
 class PassKeyDeleteRequest(_SchemaBaseModel):
-    """PassKey删除请求"""
+    """
+    PassKey删除请求
+    """
 
-    passkey_id: int
-    password: str
+    passkey_id: int = _Field(description="要删除的通行密钥记录主键")
+    password: str = _Field(description="当前用户的登录密码，用于确认删除")
 
 
-# ==================== OTP 相关接口 ====================
-
-
+# OTP 相关接口
 @router.post(
     "/otp/generate",
     summary="生成 OTP 验证 URI",
@@ -150,7 +151,9 @@ class PassKeyDeleteRequest(_SchemaBaseModel):
 def otp_generate(
     current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
 ) -> Any:
-    """生成 OTP 密钥及对应的 URI"""
+    """
+    生成 OTP 密钥及对应的 URI
+    """
     secret, uri = OtpUtils.generate_secret_key(current_user.name)
     return _SchemaResponse(success=secret != "", data={"secret": secret, "uri": uri})
 
@@ -161,7 +164,9 @@ async def otp_verify(
     service: UserService = Depends(get_user_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """验证用户输入的 OTP 码，验证通过后正式开启 OTP 验证"""
+    """
+    验证用户输入的 OTP 码，验证通过后正式开启 OTP 验证
+    """
     if not OtpUtils.is_legal(data.uri, data.otpPassword):
         return _SchemaResponse(success=False, message="验证码错误")
     await service.update_otp(
@@ -182,7 +187,9 @@ async def otp_disable(
     service: UserService = Depends(get_user_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """关闭当前用户的 OTP 验证功能"""
+    """
+    关闭当前用户的 OTP 验证功能
+    """
     # 验证密码
     if not await service.verify_password(current_user.id, data.password):
         return _SchemaResponse(success=False, message="密码错误")
@@ -190,34 +197,40 @@ async def otp_disable(
     return _SchemaResponse(success=True)
 
 
-# ==================== PassKey 相关接口 ====================
-
-
+# PassKey 相关接口
 class PassKeyRegistrationStart(_SchemaBaseModel):
-    """PassKey注册开始请求"""
+    """
+    PassKey注册开始请求
+    """
 
-    name: str = "通行密钥"
+    name: str = _Field(default="通行密钥", description="待注册通行密钥的显示名称，默认通行密钥")
 
 
 class PassKeyRegistrationFinish(_SchemaBaseModel):
-    """PassKey注册完成请求"""
+    """
+    PassKey注册完成请求
+    """
 
-    credential: dict[str, _SchemaJsonData]
-    transaction_token: str
-    name: str = "通行密钥"
+    credential: dict[str, _SchemaJsonData] = _Field(description="浏览器返回的 WebAuthn 注册凭据对象")
+    transaction_token: str = _Field(description="注册开始时签发的挑战事务令牌")
+    name: str = _Field(default="通行密钥", description="注册成功后保存的通行密钥显示名称，默认通行密钥")
 
 
 class PassKeyAuthenticationStart(_SchemaBaseModel):
-    """PassKey认证开始请求"""
+    """
+    PassKey认证开始请求
+    """
 
-    username: Optional[str] = None
+    username: Optional[str] = _Field(default=None, description="要登录的账号名称；None 或空字符串表示使用可发现凭据进行无用户名认证")
 
 
 class PassKeyAuthenticationFinish(_SchemaBaseModel):
-    """PassKey认证完成请求"""
+    """
+    PassKey认证完成请求
+    """
 
-    credential: dict[str, _SchemaJsonData]
-    transaction_token: str
+    credential: dict[str, _SchemaJsonData] = _Field(description="浏览器返回的 WebAuthn 认证断言对象")
+    transaction_token: str = _Field(description="认证开始时签发的挑战事务令牌")
 
 
 @router.post(
@@ -229,7 +242,9 @@ def passkey_register_start(
     current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
     service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
-    """开始注册 PassKey - 生成注册选项"""
+    """
+    开始注册 PassKey - 生成注册选项
+    """
     try:
         # 获取用户已有的PassKey
         existing_passkeys = service.list_by_user_id(current_user.id)
@@ -274,7 +289,9 @@ def passkey_register_finish(
     current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
     service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
-    """完成注册 PassKey - 验证并保存凭证"""
+    """
+    完成注册 PassKey - 验证并保存凭证
+    """
     try:
         challenge_state = PasskeyChallengeStore.consume(
             transaction_token=passkey_req.transaction_token,
@@ -340,7 +357,9 @@ def passkey_authenticate_start(
     passkey_req: PassKeyAuthenticationStart = Body(...),
     service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
-    """开始 PassKey 认证 - 生成认证选项"""
+    """
+    开始 PassKey 认证 - 生成认证选项
+    """
     try:
         existing_credentials = None
         user_id = None
@@ -392,7 +411,9 @@ def passkey_authenticate_finish(
     passkey_req: PassKeyAuthenticationFinish,
     service: PasskeyService = Depends(get_passkey_service),
 ) -> Any:
-    """完成 PassKey 认证 - 验证凭证并返回 token"""
+    """
+    完成 PassKey 认证 - 验证凭证并返回 token
+    """
     try:
         challenge_state = PasskeyChallengeStore.consume(
             transaction_token=passkey_req.transaction_token,
@@ -465,7 +486,9 @@ def passkey_list(
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> Any:
-    """获取当前用户的所有 PassKey"""
+    """
+    获取当前用户的所有 PassKey
+    """
     try:
         page, count = resolve_compatible_pagination(page, count)
         passkeys = service.list_by_user_id(current_user.id, page=page, count=count)
@@ -509,7 +532,9 @@ async def passkey_delete(
     service: PasskeyService = Depends(get_passkey_service),
     user_service: UserService = Depends(get_user_service),
 ) -> Any:
-    """删除指定的 PassKey"""
+    """
+    删除指定的 PassKey
+    """
     try:
         # 验证密码
         if not await user_service.verify_password(current_user.id, data.password):

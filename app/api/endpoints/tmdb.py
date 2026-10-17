@@ -1,3 +1,7 @@
+"""
+提供 TMDB 搜索、发现、媒体详情和人物信息接口。
+"""
+
 from typing import Any, List, Optional, Sequence
 
 from fastapi import Depends
@@ -24,7 +28,9 @@ router = ResponseAPIRouter()
 
 
 def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
-    """按 browse 端点统一的页码协议切片媒体结果。"""
+    """
+    按 browse 端点统一的页码协议切片媒体结果。
+    """
     normalized_page = max(page, 1)
     normalized_count = max(count, 1)
     start = (normalized_page - 1) * normalized_count
@@ -39,7 +45,9 @@ def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
 async def tmdb_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
-    """查询可管理的 TheMovieDb 识别缓存。"""
+    """
+    查询可管理的 TheMovieDb 识别缓存。
+    """
     cache_items = TmdbChain().cache_items()
     recognized_count = sum(1 for item in cache_items if item["tmdb_id"])
     return _SchemaResponse(
@@ -66,7 +74,9 @@ async def delete_tmdb_recognition_cache(
     cache_key: str,
     _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
-    """按缓存键删除单条 TheMovieDb 识别缓存。"""
+    """
+    按缓存键删除单条 TheMovieDb 识别缓存。
+    """
     deleted_item = TmdbChain().delete_cache(cache_key)
     if not deleted_item:
         return _SchemaResponse(success=False, message="TheMovieDb 识别缓存不存在")
@@ -79,7 +89,9 @@ async def delete_tmdb_recognition_cache(
 async def clear_tmdb_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
-    """清空全部 TheMovieDb 识别缓存。"""
+    """
+    清空全部 TheMovieDb 识别缓存。
+    """
     TmdbChain().clear_cache()
     return _SchemaResponse(success=True, message="TheMovieDb 识别缓存清理完成")
 

@@ -1,3 +1,7 @@
+"""
+验证音乐下载的统一身份、历史上下文和音轨记录。
+"""
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,7 +27,9 @@ from app.schemas.types import MediaType
 
 
 def _music_info() -> MusicInfo:
-    """构造下载测试使用的标准音乐信息。"""
+    """
+    构造下载测试使用的标准音乐信息。
+    """
     return MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -37,7 +43,9 @@ def _music_info() -> MusicInfo:
 
 
 def _album_info(total_tracks: int | None = 3) -> MusicInfo:
-    """构造整张专辑下载校验使用的目标信息。"""
+    """
+    构造整张专辑下载校验使用的目标信息。
+    """
     return MusicInfo(
         media_source="musicbrainz",
         media_id="release-group-1",
@@ -50,7 +58,9 @@ def _album_info(total_tracks: int | None = 3) -> MusicInfo:
 
 
 def test_music_info_exposes_download_chain_unified_identity():
-    """音乐下载上下文仅使用统一身份，并保留无季集的领域约束。"""
+    """
+    音乐下载上下文仅使用统一身份，并保留无季集的领域约束。
+    """
     info = _music_info()
     meta = MetaMusic.from_music_info(info)
 
@@ -63,7 +73,9 @@ def test_music_info_exposes_download_chain_unified_identity():
 
 
 def test_download_note_keeps_versioned_music_context():
-    """音乐下载历史备注应保存可恢复且不含上游原始大对象的上下文。"""
+    """
+    音乐下载历史备注应保存可恢复且不含上游原始大对象的上下文。
+    """
     info = _music_info()
     meta = MetaMusic.from_music_info(info)
 
@@ -77,7 +89,9 @@ def test_download_note_keeps_versioned_music_context():
 
 
 def test_album_resource_records_independent_audio_track_keys():
-    """整专资源记录可识别的独立音轨键，不再因数量不足而拒绝下载。"""
+    """
+    整专资源记录可识别的独立音轨键，不再因数量不足而拒绝下载。
+    """
     context = Context(media_info=_album_info(total_tracks=3))
 
     DownloadChain._record_music_album_track_keys(
@@ -91,7 +105,9 @@ def test_album_resource_records_independent_audio_track_keys():
 
 
 def test_album_resource_accepts_partial_or_unverifiable_pack():
-    """曲目不足、未知总数或无文件清单都允许进入下载，完成交给订阅累计进度判断。"""
+    """
+    曲目不足、未知总数或无文件清单都允许进入下载，完成交给订阅累计进度判断。
+    """
     incomplete = Context(media_info=_album_info(total_tracks=3))
     unknown = Context(media_info=_album_info(total_tracks=None))
 
@@ -108,7 +124,9 @@ def test_album_resource_accepts_partial_or_unverifiable_pack():
 
 
 def test_album_resource_dedupes_same_track_in_different_formats():
-    """同一盘同一曲序的多种编码不能冒充多首独立曲目。"""
+    """
+    同一盘同一曲序的多种编码不能冒充多首独立曲目。
+    """
     context = Context(media_info=_album_info(total_tracks=2))
 
     DownloadChain._record_music_album_track_keys(
@@ -121,7 +139,9 @@ def test_album_resource_dedupes_same_track_in_different_formats():
 
 
 def test_download_single_prepares_partial_album_for_client_submission():
-    """下载入口允许不完整专辑进入下载器，并把本轮音轨事实附着到上下文。"""
+    """
+    下载入口允许不完整专辑进入下载器，并把本轮音轨事实附着到上下文。
+    """
     context = Context(
         media_info=_album_info(total_tracks=3),
         meta_info=MetaMusic.from_music_info(_album_info(total_tracks=3)),
@@ -166,7 +186,9 @@ def test_download_single_prepares_partial_album_for_client_submission():
 
 
 def test_download_endpoint_builds_music_context():
-    """现有添加下载接口应使用 MusicInfo 和 MetaMusic 构造音乐上下文。"""
+    """
+    现有添加下载接口应使用 MusicInfo 和 MetaMusic 构造音乐上下文。
+    """
     chain = Mock()
     chain.download_single.return_value = "hash-1"
     current_user = Mock(name="admin")
@@ -195,7 +217,9 @@ def test_download_endpoint_builds_music_context():
 
 
 def test_artist_collection_download_keeps_artist_identity_and_source_category():
-    """艺术家大合集不伪装成单张专辑，但为下载目录保存独立分类快照。"""
+    """
+    艺术家大合集不伪装成单张专辑，但为下载目录保存独立分类快照。
+    """
     chain = Mock()
     chain.download_single.return_value = "hash-collection"
 
@@ -226,7 +250,9 @@ def test_artist_collection_download_keeps_artist_identity_and_source_category():
 
 @pytest.mark.parametrize("music_type", ["recording", "album"])
 def test_download_history_restores_selected_music_album(music_type, monkeypatch):
-    """手动下载保留独立种子证据，历史恢复仍能为无标签音频补齐已选专辑。"""
+    """
+    手动下载保留独立种子证据，历史恢复仍能为无标签音频补齐已选专辑。
+    """
     selected = _music_info()
     selected.music_type = music_type
     selected.album_artist = "周杰伦"
@@ -291,7 +317,9 @@ def test_download_history_restores_selected_music_album(music_type, monkeypatch)
 
 
 def test_manual_album_without_id_uses_subtitle_evidence():
-    """没有 ID 的人工专辑下载保留实体意图，并使用副标题中的真实艺人识别。"""
+    """
+    没有 ID 的人工专辑下载保留实体意图，并使用副标题中的真实艺人识别。
+    """
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = _album_info()
     download_chain = Mock()
@@ -311,7 +339,9 @@ def test_manual_album_without_id_uses_subtitle_evidence():
 
 
 def test_download_add_forwards_album_namespace_to_media_chain():
-    """无完整媒体上下文的专辑下载必须在精确识别前保留 album 命名空间。"""
+    """
+    无完整媒体上下文的专辑下载必须在精确识别前保留 album 命名空间。
+    """
     media_chain = Mock()
     media_chain.recognize_media.return_value = _album_info(total_tracks=11)
     download_chain = Mock()
@@ -342,7 +372,9 @@ def test_download_add_forwards_album_namespace_to_media_chain():
 
 
 def test_music_library_exists_uses_atomic_album_lookup():
-    """整专存在性检查应按音乐条目判断，不能落入电视剧季集补全分支。"""
+    """
+    整专存在性检查应按音乐条目判断，不能落入电视剧季集补全分支。
+    """
     album = _album_info(total_tracks=11)
     chain = DownloadChain()
     chain.media_exists = Mock(

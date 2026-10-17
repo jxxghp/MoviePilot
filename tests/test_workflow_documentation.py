@@ -1,4 +1,6 @@
-"""公共协作规则的身份、证据和变更范围合同；不导入产品运行态。"""
+"""
+公共协作规则的身份、证据和变更范围合同；不导入产品运行态。
+"""
 
 import re
 import shlex
@@ -16,7 +18,9 @@ def _read(relative: str) -> str:
 
 
 def test_execution_discretion_keeps_shared_contracts_and_contributor_defaults():
-    """维护者可调整执行，但身份、质量和真实报告不可由贡献者自行豁免。"""
+    """
+    维护者可调整执行，但身份、质量和真实报告不可由贡献者自行豁免。
+    """
     agents = _read("AGENTS.md")
     authority = agents.split("## Shared Contract and Execution Authority\n", 1)[1]
     authority = authority.split("\n---", 1)[0]
@@ -45,7 +49,9 @@ def test_execution_discretion_keeps_shared_contracts_and_contributor_defaults():
 
 
 def test_ci_failure_decisions_can_be_reused_only_within_authorized_scope():
-    """同范围预授权避免重复批准，仍要求归属证据、merge 授权和平台放行。"""
+    """
+    同范围预授权避免重复批准，仍要求归属证据、merge 授权和平台放行。
+    """
     collaboration = _read("docs/rules/12-collaboration-and-distribution.md")
     for contract in (
         "Contributors must report CI failures",
@@ -62,7 +68,9 @@ def test_ci_failure_decisions_can_be_reused_only_within_authorized_scope():
 
 
 def test_shared_environment_mapping_keeps_runtime_and_tests_separate():
-    """公共 uv 命令可映射共享测试环境，并保留隔离与依赖一致性要求。"""
+    """
+    公共 uv 命令可映射共享测试环境，并保留隔离与依赖一致性要求。
+    """
     setup = _read("docs/development-setup.md")
     assert 'UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv"' in setup
     assert 'UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test"' in setup
@@ -75,7 +83,9 @@ def test_shared_environment_mapping_keeps_runtime_and_tests_separate():
 
 @pytest.fixture
 def git(tmp_path):
-    """在临时仓库执行 Git，隔离提交身份、签名与用户 hook。"""
+    """
+    在临时仓库执行 Git，隔离提交身份、签名与用户 hook。
+    """
     def run(*args):
         return subprocess.run(
             [
@@ -100,7 +110,9 @@ def _selected_python_paths(git):
 
 
 def test_documented_python_selection_covers_commits_and_uncommitted_union(tmp_path, git):
-    """执行文档选择命令，覆盖多提交、暂存、未暂存、新文件、改名与后续删除。"""
+    """
+    执行文档选择命令，覆盖多提交、暂存、未暂存、新文件、改名与后续删除。
+    """
     git("init", "-q")
     for name in ("committed.py", "staged.py", "unstaged.py", "deleted.py", "old.py"):
         (tmp_path / name).write_text("value = 1\n", encoding="utf-8")
@@ -133,7 +145,9 @@ def test_documented_python_selection_covers_commits_and_uncommitted_union(tmp_pa
 
 
 def test_staged_syntax_error_survives_head_cancellation_and_fails_index_lint(tmp_path, git):
-    """工作树恢复 HEAD 后仍检查坏索引，索引导出和 lint 不改写暂存内容。"""
+    """
+    工作树恢复 HEAD 后仍检查坏索引，索引导出和 lint 不改写暂存内容。
+    """
     git("init", "-q")
     target = tmp_path / "target.py"
     clean = "value = 1\n"
@@ -180,7 +194,9 @@ def test_staged_syntax_error_survives_head_cancellation_and_fails_index_lint(tmp
 
 
 def test_unstaged_pylint_config_cannot_hide_index_undefined_variable(tmp_path, git):
-    """源码一致但工作树配置屏蔽 E0602 时，快捷路径拒绝并以索引配置检查。"""
+    """
+    源码一致但工作树配置屏蔽 E0602 时，快捷路径拒绝并以索引配置检查。
+    """
     git("init", "-q")
     target = tmp_path / "target.py"
     config = tmp_path / ".pylintrc"

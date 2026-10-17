@@ -1,3 +1,9 @@
+"""
+读取版本说明，并根据本地 SQLite 数据库与已注册模型自动生成迁移脚本。
+
+本入口调用 Alembic 生成版本文件，不执行生成的升级或降级操作。
+"""
+
 import importlib
 from pathlib import Path
 

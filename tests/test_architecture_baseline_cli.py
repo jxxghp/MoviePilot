@@ -1,4 +1,6 @@
-"""架构与启动性能基线脚本的 CLI 行为测试。"""
+"""
+架构与启动性能基线脚本的 CLI 行为测试。
+"""
 
 import json
 from pathlib import Path
@@ -14,7 +16,9 @@ def _performance_sample(
     *,
     loaded_app_module_count: int = 5,
 ) -> dict:
-    """构造区分环境诊断值与稳定宿主导入契约的性能样本。"""
+    """
+    构造区分环境诊断值与稳定宿主导入契约的性能样本。
+    """
     return {
         "schema_version": 2,
         "generated_at": "2026-08-21T00:00:00+00:00",
@@ -52,7 +56,9 @@ def _performance_sample(
 
 
 def _transaction_sample(methods: list[dict[str, str]]) -> dict:
-    """构造最小事务债务 fixture，供单向 ratchet 行为测试。"""
+    """
+    构造最小事务债务 fixture，供单向 ratchet 行为测试。
+    """
     return {
         "schema_version": 2,
         "scope": "app/db/models and app/db/oper transaction ownership debt",
@@ -79,7 +85,9 @@ def _configuration_sample(
     foundational_entries: list[dict[str, str]] | None = None,
     composition_entries: list[dict[str, str]] | None = None,
 ) -> dict:
-    """构造最小配置债务 fixture，供单向 ratchet 行为测试。"""
+    """
+    构造最小配置债务 fixture，供单向 ratchet 行为测试。
+    """
     foundational_entries = foundational_entries or []
     composition_entries = composition_entries or []
     return {
@@ -108,7 +116,9 @@ def _configuration_sample(
 
 
 def test_architecture_legacy_action_requires_scope(capsys):
-    """旧操作未明确宿主或插件范围时必须拒绝执行。"""
+    """
+    旧操作未明确宿主或插件范围时必须拒绝执行。
+    """
     with pytest.raises(SystemExit) as error:
         architecture_baseline.parse_args(["--check"])
 
@@ -117,7 +127,9 @@ def test_architecture_legacy_action_requires_scope(capsys):
 
 
 def test_architecture_legacy_action_maps_to_scoped_operation(capsys):
-    """兼容期旧参数应提示弃用并映射到唯一范围。"""
+    """
+    兼容期旧参数应提示弃用并映射到唯一范围。
+    """
     args = architecture_baseline.parse_args(["--check", "--scope", "host"])
 
     assert args.check_host is True
@@ -125,7 +137,9 @@ def test_architecture_legacy_action_maps_to_scoped_operation(capsys):
 
 
 def test_architecture_plugin_action_requires_repository(capsys):
-    """插件基线操作缺少独立插件仓时必须在扫描前失败。"""
+    """
+    插件基线操作缺少独立插件仓时必须在扫描前失败。
+    """
     with pytest.raises(SystemExit) as error:
         architecture_baseline.parse_args(["--check-plugins"])
 
@@ -134,7 +148,9 @@ def test_architecture_plugin_action_requires_repository(capsys):
 
 
 def test_architecture_diagnostics_only_support_host_check(capsys):
-    """源码位置诊断不得与写操作或插件扫描混用。"""
+    """
+    源码位置诊断不得与写操作或插件扫描混用。
+    """
     with pytest.raises(SystemExit) as error:
         architecture_baseline.parse_args(["--write-host", "--diagnostics"])
 
@@ -143,7 +159,9 @@ def test_architecture_diagnostics_only_support_host_check(capsys):
 
 
 def test_architecture_report_only_supports_check_operations(capsys, tmp_path: Path):
-    """审查报告不能与 fixture 写操作混用。"""
+    """
+    审查报告不能与 fixture 写操作混用。
+    """
     with pytest.raises(SystemExit) as error:
         architecture_baseline.parse_args(
             ["--write-host", "--report", str(tmp_path / "report.json")]
@@ -154,7 +172,9 @@ def test_architecture_report_only_supports_check_operations(capsys, tmp_path: Pa
 
 
 def test_runtime_semantics_ignore_line_changes_but_keep_call_count(tmp_path: Path):
-    """v1 行号变化经链式迁移不影响语义，重复调用次数仍被保留。"""
+    """
+    v1 行号变化经链式迁移不影响语义，重复调用次数仍被保留。
+    """
     baseline_path = tmp_path / "runtime-contract-baseline.json"
     old_value = {
         "schema_version": 1,
@@ -210,7 +230,9 @@ def test_runtime_semantics_ignore_line_changes_but_keep_call_count(tmp_path: Pat
 def test_runtime_v2_fixture_migrates_to_explicit_v3_review_projection(
     tmp_path: Path,
 ) -> None:
-    """v2 聚合事件只能迁移为待审查投影，不能伪造逐调用事实身份。"""
+    """
+    v2 聚合事件只能迁移为待审查投影，不能伪造逐调用事实身份。
+    """
     baseline_path = tmp_path / "runtime-contract-baseline.json"
     value = {
         "schema_version": 2,
@@ -244,7 +266,9 @@ def test_runtime_v2_fixture_migrates_to_explicit_v3_review_projection(
 def test_runtime_v2_check_and_report_fail_cleanly_until_explicit_refresh(
     tmp_path: Path,
 ) -> None:
-    """旧 v2 fixture 面对逐调用 v3 事实时应正常报告差异而非崩溃。"""
+    """
+    旧 v2 fixture 面对逐调用 v3 事实时应正常报告差异而非崩溃。
+    """
     baseline_path = tmp_path / "runtime-contract-baseline.json"
     old_value = {
         "schema_version": 2,
@@ -291,7 +315,9 @@ def test_runtime_v2_check_and_report_fail_cleanly_until_explicit_refresh(
 
 
 def test_comparison_report_preserves_duplicate_fact_multiplicity(tmp_path: Path) -> None:
-    """相同 producer fingerprint 的调用次数变化也必须出现在审查报告。"""
+    """
+    相同 producer fingerprint 的调用次数变化也必须出现在审查报告。
+    """
     baseline_path = tmp_path / "other-baseline.json"
     baseline_path.write_text('{"facts": [{"id": "same"}]}', encoding="utf-8")
 
@@ -305,7 +331,9 @@ def test_comparison_report_preserves_duplicate_fact_multiplicity(tmp_path: Path)
 
 
 def test_plugin_provenance_does_not_participate_in_semantic_gate(tmp_path: Path):
-    """插件仓 revision 和源码摘要变化不应伪装成 ABI 变化。"""
+    """
+    插件仓 revision 和源码摘要变化不应伪装成 ABI 变化。
+    """
     baseline_path = tmp_path / "official-plugin-baseline.json"
     first = {
         "schema_version": 3,
@@ -336,7 +364,9 @@ def test_collect_sdk_exports_uses_explicit_all_and_resolves_aliases(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """SDK 快照只记录 __all__，并把顶层赋值恢复为真实导出目标。"""
+    """
+    SDK 快照只记录 __all__，并把顶层赋值恢复为真实导出目标。
+    """
     sdk_root = tmp_path / "app" / "sdk"
     sdk_root.mkdir(parents=True)
     (sdk_root / "demo.py").write_text(
@@ -374,7 +404,9 @@ def test_collect_sdk_exports_treats_missing_all_as_no_public_contract(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """未显式声明 __all__ 的 SDK 模块不得泄漏实现期导入。"""
+    """
+    未显式声明 __all__ 的 SDK 模块不得泄漏实现期导入。
+    """
     sdk_root = tmp_path / "app" / "sdk"
     sdk_root.mkdir(parents=True)
     (sdk_root / "internal.py").write_text(
@@ -391,7 +423,9 @@ def test_collect_sdk_exports_treats_missing_all_as_no_public_contract(
 def test_official_plugin_baseline_includes_effective_v3_default_fallback(
     tmp_path: Path,
 ) -> None:
-    """V3 插件快照应补入专用索引未接管的 package.json 兼容实现。"""
+    """
+    V3 插件快照应补入专用索引未接管的 package.json 兼容实现。
+    """
     plugin_repo = tmp_path / "MoviePilot-Plugins"
     sources = {
         "plugins.v3/current/__init__.py": (
@@ -480,7 +514,9 @@ def test_official_plugin_baseline_includes_effective_v3_default_fallback(
 
 
 def test_plugin_v2_fixture_migrates_before_semantic_comparison(tmp_path: Path):
-    """旧插件 fixture 应在内存中迁移，不能因 schema 排列变化误报 ABI。"""
+    """
+    旧插件 fixture 应在内存中迁移，不能因 schema 排列变化误报 ABI。
+    """
     baseline_path = tmp_path / "official-plugin-baseline.json"
     old_value = {
         "schema_version": 2,
@@ -522,7 +558,9 @@ def test_plugin_v2_fixture_migrates_before_semantic_comparison(tmp_path: Path):
 
 
 def test_transaction_ratchet_allows_removal_but_rejects_new_method() -> None:
-    """事务债务低水位允许下降，替换或新增 Model 自动事务仍必须失败。"""
+    """
+    事务债务低水位允许下降，替换或新增 Model 自动事务仍必须失败。
+    """
     first = {
         "decorator": "db_update",
         "file": "app/db/models/demo.py",
@@ -550,7 +588,9 @@ def test_transaction_ratchet_allows_removal_but_rejects_new_method() -> None:
 
 
 def test_configuration_ratchet_allows_removal_but_rejects_new_access() -> None:
-    """配置债务低水位允许下降，但新增或换位置的直接访问必须失败。"""
+    """
+    配置债务低水位允许下降，但新增或换位置的直接访问必须失败。
+    """
     existing_call = {"file": "app/startup/demo.py", "name": "SystemConfigOper"}
     new_call = {"file": "app/application/demo.py", "name": "SystemConfigOper"}
     expected = _configuration_sample(["app/application/old.py"], [existing_call])
@@ -573,7 +613,9 @@ def test_configuration_ratchet_allows_removal_but_rejects_new_access() -> None:
 
 
 def test_configuration_ratchet_rejects_new_approved_boundaries() -> None:
-    """批准边界同样只能减少，不能借新增理由把新债务改名为豁免。"""
+    """
+    批准边界同样只能减少，不能借新增理由把新债务改名为豁免。
+    """
     existing = {"file": "app/db/base.py", "reason": "model declaration"}
     added = {"file": "app/db/new.py", "reason": "new exemption"}
     expected = _configuration_sample([], [], [existing])
@@ -593,7 +635,9 @@ def test_architecture_write_host_only_updates_host_files(
     monkeypatch,
     capsys,
 ):
-    """宿主写操作不得连带覆盖官方插件 fixture。"""
+    """
+    宿主写操作不得连带覆盖官方插件 fixture。
+    """
     dependency_path = tmp_path / "dependency.json"
     runtime_path = tmp_path / "runtime.json"
     transaction_path = tmp_path / "transaction.json"
@@ -676,7 +720,9 @@ def test_architecture_write_plugins_only_updates_plugin_file(
     tmp_path: Path,
     monkeypatch,
 ):
-    """插件写操作不得修改宿主依赖和运行契约 fixture。"""
+    """
+    插件写操作不得修改宿主依赖和运行契约 fixture。
+    """
     plugin_repo = tmp_path / "MoviePilot-Plugins"
     (plugin_repo / "plugins.v2").mkdir(parents=True)
     (plugin_repo / "plugins.v3").mkdir()
@@ -715,7 +761,9 @@ def test_architecture_plugin_check_writes_review_report_only_when_requested(
     tmp_path: Path,
     monkeypatch,
 ):
-    """跨仓检查失败时应产出语义差异报告，并保持 fixture 不变。"""
+    """
+    跨仓检查失败时应产出语义差异报告，并保持 fixture 不变。
+    """
     plugin_repo = tmp_path / "MoviePilot-Plugins"
     plugin_repo.mkdir()
     baseline_path = tmp_path / "official-plugin-baseline.json"
@@ -776,7 +824,9 @@ def test_performance_default_print_does_not_write_fixture(
     monkeypatch,
     capsys,
 ):
-    """性能脚本无操作参数时只打印采样，不得创建输出文件。"""
+    """
+    性能脚本无操作参数时只打印采样，不得创建输出文件。
+    """
     output = tmp_path / "performance.json"
     sample = _performance_sample()
     monkeypatch.setattr(startup_performance, "DEFAULT_OUTPUT", output)
@@ -789,7 +839,9 @@ def test_performance_default_print_does_not_write_fixture(
 
 
 def test_performance_check_is_read_only(tmp_path: Path, monkeypatch, capsys):
-    """性能检查应使用现有 fixture 且保持文件内容不变。"""
+    """
+    性能检查应使用现有 fixture 且保持文件内容不变。
+    """
     output = tmp_path / "performance.json"
     sample = _performance_sample()
     output.write_text(json.dumps(sample), encoding="utf-8")
@@ -807,7 +859,9 @@ def test_performance_check_is_read_only(tmp_path: Path, monkeypatch, capsys):
 
 
 def test_performance_write_requires_explicit_action(tmp_path: Path, monkeypatch):
-    """只有显式 write 操作才允许写入性能 fixture。"""
+    """
+    只有显式 write 操作才允许写入性能 fixture。
+    """
     output = tmp_path / "performance.json"
     sample = _performance_sample()
     monkeypatch.setattr(startup_performance, "collect_baseline", lambda _repeat: sample)
@@ -820,7 +874,9 @@ def test_performance_write_requires_explicit_action(tmp_path: Path, monkeypatch)
 
 
 def test_performance_check_reports_loaded_app_module_drift():
-    """稳定的宿主冷导入模块数量变化必须产生可诊断失败。"""
+    """
+    稳定的宿主冷导入模块数量变化必须产生可诊断失败。
+    """
     expected = _performance_sample(loaded_app_module_count=5)
     actual = _performance_sample(loaded_app_module_count=6)
 
@@ -830,7 +886,9 @@ def test_performance_check_reports_loaded_app_module_drift():
 
 
 def test_performance_check_ignores_environment_provenance_drift():
-    """Python 与平台 provenance 差异不应改变宿主冷导入语义契约。"""
+    """
+    Python 与平台 provenance 差异不应改变宿主冷导入语义契约。
+    """
     expected = _performance_sample()
     actual = _performance_sample()
     actual["python"] = "3.14"
@@ -840,7 +898,9 @@ def test_performance_check_ignores_environment_provenance_drift():
 
 
 def test_performance_check_keeps_hosted_runner_jitter_margin():
-    """跨平台托管 runner 可使用 15% 抖动带，但超过最终预算仍必须失败。"""
+    """
+    跨平台托管 runner 可使用 15% 抖动带，但超过最终预算仍必须失败。
+    """
     expected = _performance_sample()
     within_margin = _performance_sample()
     within_margin["targets"]["app.factory"]["median_ms"] = 690.0
@@ -854,7 +914,9 @@ def test_performance_check_keeps_hosted_runner_jitter_margin():
 
 
 def test_performance_check_reports_lifecycle_component_replacement():
-    """组件数量未变时，生命周期成员或顺序变化仍必须失败。"""
+    """
+    组件数量未变时，生命周期成员或顺序变化仍必须失败。
+    """
     expected = _performance_sample()
     actual = _performance_sample()
     actual["lifecycle"]["modes"]["normal"]["enabled_components"] = [
@@ -869,7 +931,9 @@ def test_performance_check_reports_lifecycle_component_replacement():
 
 @pytest.mark.parametrize("safe_mode", (False, True))
 def test_performance_lifecycle_probe_preserves_task_registry(safe_mode: bool):
-    """隔离探针必须真实装配并释放 lifespan 依赖的 TaskRegistry。"""
+    """
+    隔离探针必须真实装配并释放 lifespan 依赖的 TaskRegistry。
+    """
     sample = startup_performance.measure_lifecycle(safe_mode)
 
     assert "后台任务登记器" in sample["enabled_components"]

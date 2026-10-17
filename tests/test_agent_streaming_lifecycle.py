@@ -1,4 +1,6 @@
-"""Agent 渠道流式输出的 start/stop owner 生命周期测试。"""
+"""
+Agent 渠道流式输出的 start/stop owner 生命周期测试。
+"""
 
 import asyncio
 from unittest.mock import patch
@@ -12,7 +14,9 @@ from app.schemas.types import NotificationChannel
 
 
 def test_thinking_status_is_replaced_by_first_answer_token() -> None:
-    """思考占位消息应在首个正文 token 到达时被移除，避免污染最终回复。"""
+    """
+    思考占位消息应在首个正文 token 到达时被移除，避免污染最终回复。
+    """
     handler = StreamingHandler()
     handler._can_stream = lambda: True
 
@@ -27,7 +31,9 @@ def test_thinking_status_is_replaced_by_first_answer_token() -> None:
 
 
 def test_thinking_status_stays_separate_from_message_channel_tool_summary() -> None:
-    """消息渠道的思考状态应与工具统计保持独立段落，并在正文到达时移除。"""
+    """
+    消息渠道的思考状态应与工具统计保持独立段落，并在正文到达时移除。
+    """
     handler = StreamingHandler()
     handler._can_stream = lambda: True
     handler._streaming_enabled = True
@@ -45,7 +51,9 @@ def test_thinking_status_stays_separate_from_message_channel_tool_summary() -> N
 
 
 def test_tool_message_does_not_end_message_channel_thinking_status() -> None:
-    """消息渠道的工具提示到达时，思考状态仍应继续计时展示。"""
+    """
+    消息渠道的工具提示到达时，思考状态仍应继续计时展示。
+    """
     handler = StreamingHandler()
     handler._can_stream = lambda: True
     handler._streaming_enabled = True
@@ -59,7 +67,9 @@ def test_tool_message_does_not_end_message_channel_thinking_status() -> None:
 
 
 def test_thinking_status_is_absent_for_a_non_thinking_model() -> None:
-    """未返回 reasoning 协议的模型不应被误报为思考中。"""
+    """
+    未返回 reasoning 协议的模型不应被误报为思考中。
+    """
     handler = StreamingHandler()
     handler._can_stream = lambda: True
     handler._streaming_enabled = True
@@ -72,7 +82,9 @@ def test_thinking_status_is_absent_for_a_non_thinking_model() -> None:
 
 
 def test_thinking_waits_for_a_new_reasoning_signal_after_tools() -> None:
-    """工具结束后只有模型再次发出 reasoning，思考状态才回到消息末尾。"""
+    """
+    工具结束后只有模型再次发出 reasoning，思考状态才回到消息末尾。
+    """
     handler = StreamingHandler()
     handler._can_stream = lambda: True
     handler._streaming_enabled = True
@@ -100,7 +112,9 @@ def test_thinking_waits_for_a_new_reasoning_signal_after_tools() -> None:
 
 
 def test_web_agent_thinking_status_is_only_a_structured_event() -> None:
-    """WebAgent 的思考状态不能进入正文，只能通过 SSE 结构化事件展示。"""
+    """
+    WebAgent 的思考状态不能进入正文，只能通过 SSE 结构化事件展示。
+    """
     events: list[dict[str, object]] = []
     handler = _get_web_agent_streaming_handler_type()(lambda _text: None, events.append)
 
@@ -114,7 +128,9 @@ def test_web_agent_thinking_status_is_only_a_structured_event() -> None:
 
 
 def test_web_agent_thinking_event_follows_tool_completion() -> None:
-    """WebAgent 应在工具完成事件之后重新发布 thinking，保持时间线末尾一致。"""
+    """
+    WebAgent 应在工具完成事件之后重新发布 thinking，保持时间线末尾一致。
+    """
     events: list[dict[str, object]] = []
     handler = _get_web_agent_streaming_handler_type()(lambda _text: None, events.append)
     handler._streaming_enabled = True
@@ -143,7 +159,9 @@ def test_web_agent_thinking_event_follows_tool_completion() -> None:
 
 
 def test_web_agent_does_not_duplicate_thinking_running_event() -> None:
-    """重复收到 thinking 开始信号时，Web 时间线只保留一个运行事件。"""
+    """
+    重复收到 thinking 开始信号时，Web 时间线只保留一个运行事件。
+    """
     events: list[dict[str, object]] = []
     handler = _get_web_agent_streaming_handler_type()(lambda _text: None, events.append)
     handler._streaming_enabled = True
@@ -159,7 +177,9 @@ def test_web_agent_does_not_duplicate_thinking_running_event() -> None:
 
 @pytest.mark.asyncio
 async def test_web_agent_stop_finishes_active_thinking() -> None:
-    """Web 流结束时必须收口尚未产生正文的 thinking 生命周期。"""
+    """
+    Web 流结束时必须收口尚未产生正文的 thinking 生命周期。
+    """
     events: list[dict[str, object]] = []
     handler = _get_web_agent_streaming_handler_type()(lambda _text: None, events.append)
     handler._streaming_enabled = True
@@ -173,7 +193,9 @@ async def test_web_agent_stop_finishes_active_thinking() -> None:
 
 @pytest.mark.asyncio
 async def test_repeated_streaming_start_retains_previous_flush_owner() -> None:
-    """重复启动必须先等待旧 flush owner 结束，再发布新一轮上下文。"""
+    """
+    重复启动必须先等待旧 flush owner 结束，再发布新一轮上下文。
+    """
     handler = StreamingHandler()
     handler._can_stream = lambda: True
     handler._source = "old-source"
@@ -183,7 +205,9 @@ async def test_repeated_streaming_start_retains_previous_flush_owner() -> None:
     observed_sources: list[str | None] = []
 
     async def old_flush_owner() -> None:
-        """在退出前读取 handler 上下文，暴露被新一轮提前覆盖的风险。"""
+        """
+        在退出前读取 handler 上下文，暴露被新一轮提前覆盖的风险。
+        """
         old_started.set()
         await release_old.wait()
         observed_sources.append(handler._source)
@@ -221,7 +245,9 @@ async def test_repeated_streaming_start_retains_previous_flush_owner() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_start_waits_for_concurrent_stop_final_flush() -> None:
-    """停止阶段的最终刷新未完成时，新启动不得改写消息上下文。"""
+    """
+    停止阶段的最终刷新未完成时，新启动不得改写消息上下文。
+    """
     handler = StreamingHandler()
     handler._can_stream = lambda: True
     handler._source = "stopping-source"
@@ -230,7 +256,9 @@ async def test_streaming_start_waits_for_concurrent_stop_final_flush() -> None:
     release_flush = asyncio.Event()
 
     async def blocking_flush() -> None:
-        """把最终刷新停留在生命周期锁内，验证新启动等待。"""
+        """
+        把最终刷新停留在生命周期锁内，验证新启动等待。
+        """
         flush_started.set()
         await release_flush.wait()
 
@@ -266,7 +294,9 @@ async def test_streaming_start_waits_for_concurrent_stop_final_flush() -> None:
 
 @pytest.fixture
 def channel_stream(monkeypatch):
-    """隔离渠道 I/O，保留真实缓冲、消息编辑和收口逻辑。"""
+    """
+    隔离渠道 I/O，保留真实缓冲、消息编辑和收口逻辑。
+    """
     handler = StreamingHandler()
     handler._channel = NotificationChannel.Telegram.value
     handler._source = "bot"
@@ -276,7 +306,9 @@ def channel_stream(monkeypatch):
     messages = {}
 
     async def dispatch(func, *args, **kwargs):
-        """记录渠道消息身份与最终正文，不连接真实消息服务。"""
+        """
+        记录渠道消息身份与最终正文，不连接真实消息服务。
+        """
         calls.append((func.__name__, args, kwargs))
         if func.__name__ == "send_direct_message":
             message_id = str(len(messages) + 1)
@@ -292,7 +324,9 @@ def channel_stream(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_applied_message_freezes_old_reply_and_opens_new_reply(channel_stream) -> None:
-    """应用边界前的尾部可补齐旧回复，边界后的正文只能发送、编辑新消息。"""
+    """
+    应用边界前的尾部可补齐旧回复，边界后的正文只能发送、编辑新消息。
+    """
     handler, calls, messages, _ = channel_stream
     handler.emit("前段")
     await handler._flush_messages()
@@ -316,13 +350,17 @@ async def test_applied_message_freezes_old_reply_and_opens_new_reply(channel_str
 
 @pytest.mark.asyncio
 async def test_message_boundary_waits_for_inflight_send_identity(channel_stream, monkeypatch) -> None:
-    """首条消息仍在发送时收到补充输入，迟到的响应不得覆盖新回复的身份。"""
+    """
+    首条消息仍在发送时收到补充输入，迟到的响应不得覆盖新回复的身份。
+    """
     handler, calls, messages, dispatch = channel_stream
     started = asyncio.Event()
     release = asyncio.Event()
 
     async def delayed_dispatch(func, *args, **kwargs):
-        """将首条发送保持在途，模拟真实渠道网络延迟。"""
+        """
+        将首条发送保持在途，模拟真实渠道网络延迟。
+        """
         if func.__name__ == "send_direct_message" and not started.is_set():
             started.set()
             await release.wait()
@@ -351,7 +389,9 @@ async def test_message_boundary_waits_for_inflight_send_identity(channel_stream,
 
 @pytest.mark.asyncio
 async def test_multiple_applied_messages_keep_tool_summaries_in_their_own_reply(channel_stream) -> None:
-    """连续补充输入不产生空消息，新工具摘要不能重写旧回复的统计。"""
+    """
+    连续补充输入不产生空消息，新工具摘要不能重写旧回复的统计。
+    """
     handler, calls, messages, _ = channel_stream
     handler.record_tool_call("read_file", tool_kwargs={"file_path": "first.txt"})
     await handler._flush_messages()
@@ -374,7 +414,9 @@ async def test_multiple_applied_messages_keep_tool_summaries_in_their_own_reply(
 
 @pytest.mark.asyncio
 async def test_empty_continuation_does_not_resend_finished_reply(channel_stream) -> None:
-    """应用后没有新增正文时，已收口的前段仍被视为交付完成。"""
+    """
+    应用后没有新增正文时，已收口的前段仍被视为交付完成。
+    """
     handler, calls, messages, _ = channel_stream
     handler.emit("已完成前段")
     await handler._flush_messages()
@@ -388,7 +430,9 @@ async def test_empty_continuation_does_not_resend_finished_reply(channel_stream)
 
 @pytest.mark.asyncio
 async def test_failed_continuation_falls_back_without_repeating_previous_reply(channel_stream, monkeypatch) -> None:
-    """新消息发送失败后，常规发送回退只包含未交付的新段。"""
+    """
+    新消息发送失败后，常规发送回退只包含未交付的新段。
+    """
     handler, _, messages, _ = channel_stream
     handler.emit("已交付")
     await handler._flush_messages()
@@ -396,7 +440,9 @@ async def test_failed_continuation_falls_back_without_repeating_previous_reply(c
     handler.emit("尚未交付")
 
     async def failed_dispatch(func, *_args, **_kwargs):
-        """旧消息可正常收口，但新消息发送失败。"""
+        """
+        旧消息可正常收口，但新消息发送失败。
+        """
         return None if func.__name__ == "send_direct_message" else True
 
     monkeypatch.setattr("app.agent.callback.run_in_threadpool", failed_dispatch)
@@ -409,7 +455,9 @@ async def test_failed_continuation_falls_back_without_repeating_previous_reply(c
 
 @pytest.mark.asyncio
 async def test_length_limit_rollover_does_not_cross_user_message_boundary(channel_stream) -> None:
-    """长度限制与补充输入同时切分时，每段正文仍只进入所属消息。"""
+    """
+    长度限制与补充输入同时切分时，每段正文仍只进入所属消息。
+    """
     handler, calls, messages, _ = channel_stream
     handler._max_message_length = 4
     handler.emit("abcd")

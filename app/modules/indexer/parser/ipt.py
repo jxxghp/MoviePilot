@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 IPTorrents 站点的用户资料、流量和做种信息。
+"""
+
 import re
 from typing import Optional
 
@@ -12,11 +16,15 @@ from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 
 
 class IptSiteUserInfo(SiteParserBase):
-    """解析 Ipt 站点的用户资料、流量与消息。"""
+    """
+    解析 Ipt 站点的用户资料、流量与消息。
+    """
     schema = SiteSchema.Ipt
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
-        """解析站点用户身份和页面提供的基础统计。"""
+        """
+        解析站点用户身份和页面提供的基础统计。
+        """
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
@@ -44,11 +52,15 @@ class IptSiteUserInfo(SiteParserBase):
                 del html
 
     def _parse_site_page(self, html_text: SitePage) -> None:
-        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
+        """
+        该站点在其他解析入口处理此数据，本入口不追加操作。
+        """
         pass
 
     def _parse_user_detail_info(self, html_text: str) -> None:
-        """解析用户等级、注册时间及其他资料。"""
+        """
+        解析用户等级、注册时间及其他资料。
+        """
         html = etree.HTML(html_text)
         try:
             if not DomUtils.has_child_elements(html):
@@ -67,12 +79,14 @@ class IptSiteUserInfo(SiteParserBase):
                 del html
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> None:
-        """读取做种页面数据并返回后续分页入口。"""
+        """
+        读取做种页面数据并返回后续分页入口。
+        """
         html = etree.HTML(html_text)
         try:
             if not DomUtils.has_child_elements(html):
                 return None
-            # seeding start
+            # 做种列表从表格内容中读取，保留每条种子的体积和做种人数。
             seeding_end_pos = 3
             if html.xpath('//tr/td[text() = "Leechers"]'):
                 seeding_end_pos = len(html.xpath('//tr/td[text() = "Leechers"]/../preceding-sibling::tr')) + 1
@@ -97,13 +111,19 @@ class IptSiteUserInfo(SiteParserBase):
                 del html
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
-        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
+        """
+        该站点在其他解析入口处理此数据，本入口不追加操作。
+        """
         pass
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
-        """收集未读消息链接，返回仍需读取的下一页。"""
+        """
+        收集未读消息链接，返回仍需读取的下一页。
+        """
         return None
 
     def _parse_message_content(self, html_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        """解析消息标题、日期和正文；无独立消息页时返回空结果。"""
+        """
+        解析消息标题、日期和正文；无独立消息页时返回空结果。
+        """
         return None, None, None

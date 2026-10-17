@@ -1,4 +1,6 @@
-"""维护 Ruff 诊断只降不增的全仓基线。"""
+"""
+维护 Ruff 诊断只降不增的全仓基线。
+"""
 
 from __future__ import annotations
 
@@ -12,11 +14,17 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/ruff-baseline.json"
+# Ruff 诊断基线同时覆盖宿主、测试和维护脚本。
 RUFF_TARGETS = ("app", "tests", "scripts")
 
 
 def run_ruff() -> list[dict[str, Any]]:
-    """运行 Ruff 并返回结构化诊断；发现存量问题时非零退出属于预期。"""
+    """
+    运行 Ruff 并返回结构化诊断；发现存量问题时非零退出属于预期。
+
+    :return: Ruff 返回的完整 JSON 诊断列表
+    :raises RuntimeError: 工具异常退出，或退出状态与输出结构不一致
+    """
     result = subprocess.run(
         [sys.executable, "-m", "ruff", "check", *RUFF_TARGETS, "--output-format", "json"],
         cwd=PROJECT_ROOT,
@@ -39,7 +47,9 @@ def run_ruff() -> list[dict[str, Any]]:
 def aggregate_diagnostics(
     diagnostics: list[dict[str, Any]],
 ) -> dict[str, dict[str, int]]:
-    """把 Ruff 诊断聚合为文件、规则和数量三级基线。"""
+    """
+    把 Ruff 诊断聚合为文件、规则和数量三级基线。
+    """
     report: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for diagnostic in diagnostics:
         path = Path(diagnostic["filename"]).resolve().relative_to(PROJECT_ROOT).as_posix()
@@ -51,7 +61,9 @@ def classify_counts(
     baseline: dict[str, dict[str, int]],
     current: dict[str, dict[str, int]],
 ) -> tuple[list[str], list[str]]:
-    """把计数差异分为不可写入的回退和可固化的低水位下降。"""
+    """
+    把计数差异分为不可写入的回退和可固化的低水位下降。
+    """
     regressions: list[str] = []
     stale: list[str] = []
     for path in sorted(baseline.keys() | current.keys()):
@@ -78,13 +90,17 @@ def compare_counts(
     baseline: dict[str, dict[str, int]],
     current: dict[str, dict[str, int]],
 ) -> list[str]:
-    """返回 Ruff 诊断增长和尚未固化的新低水位。"""
+    """
+    返回 Ruff 诊断增长和尚未固化的新低水位。
+    """
     regressions, stale = classify_counts(baseline, current)
     return [*regressions, *stale]
 
 
 def main() -> int:
-    """执行 Ruff baseline check 或显式 write。"""
+    """
+    执行 Ruff 基线检查或显式写入。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="写入当前 Ruff 基线")
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)

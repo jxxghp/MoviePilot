@@ -1,4 +1,6 @@
-"""领域规则、解析运行时与技术端口的宿主组合 owner。"""
+"""
+领域规则、解析运行时与技术端口的宿主组合 owner。
+"""
 
 from app.adapters.network.resolver import SocketDnsResolver
 from app.adapters.system import rust as rust_accelerator
@@ -18,7 +20,9 @@ from app.runtime.settings import get_runtime_setting
 
 
 def compose_domain_dependencies() -> None:
-    """构造并发布领域模型使用的规则、配置和技术 Adapter。"""
+    """
+    构造并发布领域模型使用的规则、配置和技术 Adapter。
+    """
     from app.domain.projection.tmdb import configure_image_url_builder
 
     rule_service = RecognitionRuleService()

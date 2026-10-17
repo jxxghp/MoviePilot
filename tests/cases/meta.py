@@ -1,3 +1,9 @@
+"""
+媒体文件名解析的输入与预期字段样本。
+
+title 和 subtitle 保留真实命名形式，target 列出解析后的类型、名称、年份及音视频属性。
+"""
+
 meta_cases = [{
     "title": "The Long Season 2017 2160p WEB-DL H265 120FPS AAC-XXX",
     "subtitle": "",

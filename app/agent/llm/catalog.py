@@ -1,4 +1,6 @@
-"""LLM Provider 目录、预设和模型元数据的唯一 owner。"""
+"""
+LLM Provider 目录、预设和模型元数据的唯一 owner。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,14 @@ from app.runtime.log import logger
 
 @dataclass(frozen=True)
 class ProviderAuthMethod:
-    """前端展示用的授权方式定义。"""
+    """
+    前端展示用的授权方式定义。
+
+    :param id: 提供商内部用于选择授权方式的标识
+    :param type: 授权流程类型，供前端选择对应交互方式
+    :param label: 授权方式的展示名称
+    :param description: 授权流程的补充说明；无说明时为空字符串
+    """
 
     id: str
     type: str
@@ -23,7 +32,17 @@ class ProviderAuthMethod:
 
 @dataclass(frozen=True)
 class ProviderUrlPreset:
-    """前端展示用的 Base URL 预设。"""
+    """
+    前端展示用的 Base URL 预设。
+
+    :param id: 接口地址预设标识
+    :param label: 预设地址的展示名称
+    :param value: 用于请求模型服务的基础地址
+    :param runtime: 该预设覆盖的客户端运行时类型；None 时沿用提供商默认值
+    :param model_list_strategy: 该预设采用的模型目录查询策略；None 时沿用默认值
+    :param model_list_base_url: 查询模型目录时使用的独立地址；None 时按提供商规则解析
+    :param models_dev_provider_id: models.dev 中对应的提供商标识；None 时沿用提供商映射
+    """
 
     id: str
     label: str
@@ -36,7 +55,26 @@ class ProviderUrlPreset:
 
 @dataclass(frozen=True)
 class ProviderSpec:
-    """描述一个可接入的 LLM provider。"""
+    """
+    描述一个可接入的 LLM provider。
+
+    :param id: 宿主识别的稳定提供商标识
+    :param name: 向用户展示的提供商名称
+    :param runtime: 创建模型客户端时使用的运行时适配类型
+    :param models_dev_provider_id: models.dev 目录中的提供商标识；无映射时为 None
+    :param default_base_url: 默认模型服务地址；无需或未指定时为 None
+    :param base_url_presets: 可选择的接口地址预设，按展示顺序保存
+    :param base_url_editable: 是否允许用户修改模型服务基础地址
+    :param requires_base_url: 是否必须明确提供模型服务基础地址
+    :param supports_api_key: 是否支持通过 API Key 认证，默认 True
+    :param api_key_label: 密钥输入项的展示名称
+    :param api_key_hint: 密钥输入提示；无提示时为空字符串
+    :param oauth_methods: 可用的 OAuth 授权方式；不支持时为空元组
+    :param supports_model_refresh: 是否支持刷新模型列表，默认 True
+    :param model_list_strategy: 模型目录查询策略，默认使用 OpenAI 兼容接口
+    :param sort_order: 提供商展示排序值，默认 100
+    :param description: 提供商能力或接入限制说明；无说明时为空字符串
+    """
 
     id: str
     name: str
@@ -57,13 +95,17 @@ class ProviderSpec:
 
 
 class _ProviderCatalog:
-    """LLM Provider 目录、预设和模型元数据的唯一 owner。"""
+    """
+    LLM Provider 目录、预设和模型元数据的唯一 owner。
+    """
 
     _models_dev_data: Optional[dict[str, Any]]
     _models_dev_cache_path: Path
 
     def __getattr__(self, name: str) -> Any:
-        """将跨 owner 调用交给最终 Facade 的 MRO 解析。"""
+        """
+        将跨 owner 调用交给最终 Facade 的 MRO 解析。
+        """
         raise AttributeError(name)
 
     _MODELS_DEV_DYNAMIC_SKIP_IDS = {
@@ -861,7 +903,9 @@ class _ProviderCatalog:
         return tuple(providers)
 
     def _cached_models_dev_payload(self) -> dict[str, Any]:
-        """获取缓存的 models.dev payload。"""
+        """
+        获取缓存的 models.dev payload。
+        """
         if isinstance(self._models_dev_data, dict):
             return self._models_dev_data
 
@@ -885,7 +929,9 @@ class _ProviderCatalog:
 
     @staticmethod
     def _models_dev_env_names(payload: dict[str, Any]) -> tuple[str, ...]:
-        """从 models.dev 数据中提取支持的环境变量名。"""
+        """
+        从 models.dev 数据中提取支持的环境变量名。
+        """
         raw_env_names = payload.get("env")
         if not isinstance(raw_env_names, list):
             return ()
@@ -898,7 +944,9 @@ class _ProviderCatalog:
 
     @classmethod
     def _models_dev_reserved_provider_ids(cls, specs: tuple[ProviderSpec, ...]) -> set[str]:
-        """获取所有已保留的 models_dev_provider_id 集合。"""
+        """
+        获取所有已保留的 models_dev_provider_id 集合。
+        """
         reserved_ids: set[str] = set()
         for spec in specs:
             if spec.models_dev_provider_id:
@@ -910,7 +958,9 @@ class _ProviderCatalog:
 
     @staticmethod
     def _dynamic_api_key_label(env_names: tuple[str, ...]) -> str:
-        """根据环境变量名动态推断 API Key 标签名称。"""
+        """
+        根据环境变量名动态推断 API Key 标签名称。
+        """
         first_env = env_names[0].upper() if env_names else ""
         if "TOKEN" in first_env and "KEY" not in first_env:
             return "API Token"
@@ -918,7 +968,9 @@ class _ProviderCatalog:
 
     @classmethod
     def _normalize_models_dev_base_url(cls, runtime: str, base_url: Optional[str]) -> Optional[str]:
-        """规范化从 models.dev 获取的 Base URL。"""
+        """
+        规范化从 models.dev 获取的 Base URL。
+        """
         normalized = cls._sanitize_base_url(base_url)
         if not normalized:
             return None
@@ -948,7 +1000,9 @@ class _ProviderCatalog:
         payload: dict[str, Any],
         sort_order: int,
     ) -> ProviderSpec | None:
-        """根据 models.dev 数据动态生成 ProviderSpec 实例。"""
+        """
+        根据 models.dev 数据动态生成 ProviderSpec 实例。
+        """
         normalized_id = str(provider_id or "").strip().lower()
         if not normalized_id or normalized_id in cls._MODELS_DEV_DYNAMIC_SKIP_IDS:
             return None
@@ -1003,7 +1057,9 @@ class _ProviderCatalog:
         )
 
     def _dynamic_provider_specs(self, builtin_specs: tuple[ProviderSpec, ...]) -> tuple[ProviderSpec, ...]:
-        """获取从 models.dev 动态加载的所有 ProviderSpec 实例。"""
+        """
+        获取从 models.dev 动态加载的所有 ProviderSpec 实例。
+        """
         payload = self._cached_models_dev_payload()
         if not payload:
             return ()
@@ -1044,7 +1100,9 @@ class _ProviderCatalog:
         return tuple(dynamic_specs)
 
     def _provider_specs(self) -> tuple[ProviderSpec, ...]:
-        """获取所有支持的 ProviderSpec，包括内置和动态加载的。"""
+        """
+        获取所有支持的 ProviderSpec，包括内置和动态加载的。
+        """
         builtin_specs = self._builtin_provider_specs()
         return builtin_specs + self._dynamic_provider_specs(builtin_specs)
 
@@ -1054,7 +1112,9 @@ class _ProviderCatalog:
         force_refresh: bool = False,
         use_proxy: Optional[bool] = None,
     ) -> ProviderSpec:
-        """异步获取指定 provider 的 ProviderSpec 实例。"""
+        """
+        异步获取指定 provider 的 ProviderSpec 实例。
+        """
         normalized_provider_id = self._normalize_provider_id(provider_id)
         try:
             return self.get_provider(normalized_provider_id)
@@ -1066,7 +1126,9 @@ class _ProviderCatalog:
             return self.get_provider(normalized_provider_id)
 
     def _serialize_provider(self, spec: ProviderSpec) -> dict[str, Any]:
-        """将 ProviderSpec 序列化为前端可用的字典。"""
+        """
+        将 ProviderSpec 序列化为前端可用的字典。
+        """
         return {
             "id": spec.id,
             "name": spec.name,
@@ -1106,7 +1168,9 @@ class _ProviderCatalog:
         force_refresh: bool = False,
         use_proxy: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
-        """返回前端可渲染的 provider 目录，并优先补齐 models.dev 动态平台。"""
+        """
+        返回前端可渲染的 provider 目录，并优先补齐 models.dev 动态平台。
+        """
         try:
             await self.get_models_dev_data(
                 force_refresh=force_refresh,
@@ -1117,13 +1181,17 @@ class _ProviderCatalog:
         return self.list_providers()
 
     def list_providers(self) -> list[dict[str, Any]]:
-        """返回前端可渲染的 provider 目录。"""
+        """
+        返回前端可渲染的 provider 目录。
+        """
         return [
             self._serialize_provider(spec) for spec in sorted(self._provider_specs(), key=lambda item: item.sort_order)
         ]
 
     def get_provider(self, provider_id: str) -> ProviderSpec:
-        """按 provider id 获取定义。"""
+        """
+        按 provider id 获取定义。
+        """
         normalized = self._normalize_provider_id(provider_id)
         for spec in self._provider_specs():
             if spec.id == normalized:
@@ -1132,7 +1200,9 @@ class _ProviderCatalog:
 
     @staticmethod
     def _sanitize_base_url(base_url: Optional[str]) -> Optional[str]:
-        """清理 Base URL 中多余的空格和结尾斜杠。"""
+        """
+        清理 Base URL 中多余的空格和结尾斜杠。
+        """
         if base_url is None:
             return None
         value = str(base_url).strip()
@@ -1159,7 +1229,9 @@ class _ProviderCatalog:
 
     @classmethod
     def _default_base_url_for_provider(cls, spec: ProviderSpec) -> Optional[str]:
-        """获取 provider 的默认 Base URL。"""
+        """
+        获取 provider 的默认 Base URL。
+        """
         default_base_url = cls._sanitize_base_url(spec.default_base_url)
         if default_base_url:
             return default_base_url
@@ -1169,7 +1241,9 @@ class _ProviderCatalog:
 
     @classmethod
     def _normalize_provider_id(cls, provider_id: str) -> str:
-        """规范化 provider_id 以兼容旧版配置。"""
+        """
+        规范化 provider_id 以兼容旧版配置。
+        """
         normalized = (provider_id or "").strip().lower()
         if normalized == "minimax-coding":
             return "minimax"
@@ -1179,7 +1253,9 @@ class _ProviderCatalog:
 
     @classmethod
     def _normalize_base_url_preset_id(cls, provider_id: str, base_url_preset_id: Optional[str]) -> Optional[str]:
-        """规范化 Base URL 预设 ID。"""
+        """
+        规范化 Base URL 预设 ID。
+        """
         normalized_provider_id = cls._normalize_provider_id(provider_id)
         normalized_preset_id = str(base_url_preset_id or "").strip().lower() or None
         if not normalized_preset_id:
@@ -1197,7 +1273,9 @@ class _ProviderCatalog:
         base_url: Optional[str],
         base_url_preset_id: Optional[str] = None,
     ) -> Optional[ProviderUrlPreset]:
-        """根据给定的参数解析出适用的 Base URL 预设。"""
+        """
+        根据给定的参数解析出适用的 Base URL 预设。
+        """
         normalized_preset_id = cls._normalize_base_url_preset_id(spec.id, base_url_preset_id)
         if normalized_preset_id:
             for preset in spec.base_url_presets:
@@ -1227,7 +1305,9 @@ class _ProviderCatalog:
         base_url: Optional[str],
         base_url_preset_id: Optional[str] = None,
     ) -> str:
-        """解析提供商最终适用的 runtime。"""
+        """
+        解析提供商最终适用的 runtime。
+        """
         preset = cls._resolve_provider_preset(spec, base_url, base_url_preset_id)
         return preset.runtime or spec.runtime if preset else spec.runtime
 
@@ -1238,7 +1318,9 @@ class _ProviderCatalog:
         base_url: Optional[str],
         base_url_preset_id: Optional[str] = None,
     ) -> str:
-        """解析获取模型列表的策略。"""
+        """
+        解析获取模型列表的策略。
+        """
         preset = cls._resolve_provider_preset(spec, base_url, base_url_preset_id)
         return preset.model_list_strategy or spec.model_list_strategy if preset else spec.model_list_strategy
 
@@ -1249,7 +1331,9 @@ class _ProviderCatalog:
         base_url: Optional[str],
         base_url_preset_id: Optional[str] = None,
     ) -> Optional[str]:
-        """解析用于获取模型列表的 Base URL。"""
+        """
+        解析用于获取模型列表的 Base URL。
+        """
         preset = cls._resolve_provider_preset(spec, base_url, base_url_preset_id)
         if preset:
             preset_value = cls._sanitize_base_url(preset.value)
@@ -1268,7 +1352,9 @@ class _ProviderCatalog:
         base_url: Optional[str],
         base_url_preset_id: Optional[str] = None,
     ) -> Optional[str]:
-        """解析对应的 models.dev provider id。"""
+        """
+        解析对应的 models.dev provider id。
+        """
         preset = cls._resolve_provider_preset(spec, base_url, base_url_preset_id)
         if preset:
             return preset.models_dev_provider_id or spec.models_dev_provider_id
@@ -1286,7 +1372,9 @@ class _ProviderCatalog:
         base_url: Optional[str],
         base_url_preset_id: Optional[str] = None,
     ) -> bool:
-        """判断模型目录上限是否与当前 provider 端点具有明确对应关系。"""
+        """
+        判断模型目录上限是否与当前 provider 端点具有明确对应关系。
+        """
         if spec.id == "openai":
             return False
 
@@ -1309,7 +1397,9 @@ class _ProviderCatalog:
         base_url: Optional[str],
         base_url_preset_id: Optional[str] = None,
     ) -> Optional[str]:
-        """解析对外暴露的用于获取模型列表的 Base URL。"""
+        """
+        解析对外暴露的用于获取模型列表的 Base URL。
+        """
         spec = self.get_provider(provider_id)
         return self._resolve_provider_model_list_base_url(
             spec,
@@ -1324,7 +1414,9 @@ class _ProviderCatalog:
         base_url_preset_id: Optional[str] = None,
         use_proxy: Optional[bool] = None,
     ) -> dict[str, Any]:
-        """获取指定 provider 在 models.dev 中的完整负载。"""
+        """
+        获取指定 provider 在 models.dev 中的完整负载。
+        """
         spec = await self._get_provider_async(
             provider_id,
             use_proxy=use_proxy,
@@ -1343,7 +1435,9 @@ class _ProviderCatalog:
         provider_id: str,
         model_id: str,
     ) -> tuple[str, ...]:
-        """生成模型目录查询候选，兼容 Provider 添加的透明模型前缀。"""
+        """
+        生成模型目录查询候选，兼容 Provider 添加的透明模型前缀。
+        """
         candidates = [model_id]
         if model_id.startswith("models/"):
             candidates.append(model_id.removeprefix("models/"))
@@ -1360,7 +1454,9 @@ class _ProviderCatalog:
         base_url_preset_id: Optional[str] = None,
         use_proxy: Optional[bool] = None,
     ) -> dict[str, Any] | None:
-        """获取指定模型的 models.dev 元数据。"""
+        """
+        获取指定模型的 models.dev 元数据。
+        """
         payload = await self._models_dev_provider_payload(
             provider_id,
             base_url=base_url,
@@ -1379,7 +1475,9 @@ class _ProviderCatalog:
 
     @staticmethod
     def _metadata_supports_prompt_cache(metadata: Any) -> bool:
-        """从统一模型元数据中判断是否声明了提示词缓存能力。"""
+        """
+        从统一模型元数据中判断是否声明了提示词缓存能力。
+        """
         if not isinstance(metadata, dict):
             return False
 
@@ -1403,7 +1501,9 @@ class _ProviderCatalog:
         base_url: Optional[str] = None,
         base_url_preset_id: Optional[str] = None,
     ) -> dict[str, Any] | None:
-        """从已缓存或内置的 models.dev 数据中同步读取模型元数据。"""
+        """
+        从已缓存或内置的 models.dev 数据中同步读取模型元数据。
+        """
         try:
             spec = self.get_provider(provider_id)
         except LLMProviderError:
@@ -1435,7 +1535,9 @@ class _ProviderCatalog:
         base_url: Optional[str] = None,
         base_url_preset_id: Optional[str] = None,
     ) -> dict[str, Any] | None:
-        """同步解析缓存中的模型元数据，不触发远端 models.dev 刷新。"""
+        """
+        同步解析缓存中的模型元数据，不触发远端 models.dev 刷新。
+        """
         if not model_id:
             return None
         metadata = self._cached_models_dev_model(
@@ -1463,7 +1565,9 @@ class _ProviderCatalog:
         base_url_preset_id: Optional[str] = None,
         transport: str = "openai",
     ) -> dict[str, Any] | None:
-        """从缓存中的模型元数据构造轻量模型记录，不触发远端模型列表刷新。"""
+        """
+        从缓存中的模型元数据构造轻量模型记录，不触发远端模型列表刷新。
+        """
         if not model_id:
             return None
         metadata = (
@@ -1560,7 +1664,9 @@ class _ProviderCatalog:
         base_url_preset_id: Optional[str] = None,
         use_proxy: Optional[bool] = None,
     ) -> dict[str, Any] | None:
-        """解析并返回指定模型在 models.dev 中的元数据。"""
+        """
+        解析并返回指定模型在 models.dev 中的元数据。
+        """
         if not model_id:
             return None
         metadata = await self._models_dev_model(

@@ -27,7 +27,18 @@ from typing import Callable, Required, TypedDict
 
 
 class _Request(TypedDict, total=False):
-    """父进程发送的操作名称与各操作参数，不改变坏请求的异常处理。"""
+    """
+    父进程发送的文件系统操作请求，除 op 外的键由具体操作决定是否必需。
+
+    :ivar op: 必需的操作名，例如 stat、copy 或 rename
+    :ivar path: 路径查询、删除或递归扫描的目标路径，这些操作必须提供
+    :ivar src: copy 或 rename 操作必须提供的源路径
+    :ivar dst: copy 或 rename 操作必须提供的目标路径
+    :ivar chunk_size: 可选的复制块大小，单位为字节；缺失或为 0 时使用 1 MiB
+    :ivar progress_interval: 可选的复制进度发送间隔，单位为秒；缺失或为 0 时使用 1 秒
+    :ivar max_check: 可选的递归扫描文件数阈值；缺失或为 0 时使用 10000，超过后停止扫描
+    :ivar extensions: 后缀查询必须提供的扩展名列表，按忽略大小写的规则匹配
+    """
 
     op: Required[str]
     path: str
@@ -40,7 +51,16 @@ class _Request(TypedDict, total=False):
 
 
 class _StatResult(TypedDict):
-    """路径属性及删除前核对的文件身份。"""
+    """
+    路径属性与删除前用于核对文件身份的信息，所有键均存在。
+
+    :ivar size: 文件大小，单位为字节
+    :ivar mtime: 文件修改时间的 Unix 秒级时间戳
+    :ivar dev: 文件所属设备号，与 ino 一起用于核对身份
+    :ivar ino: 文件系统索引节点号
+    :ivar is_dir: 查询时目标是否为目录
+    :ivar is_file: 查询时目标是否为普通文件
+    """
 
     size: int
     mtime: float
@@ -51,14 +71,24 @@ class _StatResult(TypedDict):
 
 
 class _CopyProgress(TypedDict):
-    """复制心跳和最终结果共享的字节进度。"""
+    """
+    复制期间的进度心跳或结束时的结果，所有键均存在。
+
+    :ivar copied: 已复制的字节数
+    :ivar total: 复制开始时读取的源文件总字节数
+    """
 
     copied: int
     total: int
 
 
 class _EntryCounts(TypedDict):
-    """递归扫描已经观察到的文件与目录数量。"""
+    """
+    递归扫描实际观察到的文件和目录数量，所有键均存在。
+
+    :ivar file_count: 已发现的文件数，达到扫描停止条件时可能不是完整目录总数
+    :ivar dir_count: 已发现的子目录数，不包含扫描根目录
+    """
 
     file_count: int
     dir_count: int
@@ -68,7 +98,15 @@ _Result = bool | str | list[str] | _StatResult | _CopyProgress | _EntryCounts
 
 
 class _Response(TypedDict, total=False):
-    """逐行输出的心跳、成功结果或失败信息。"""
+    """
+    逐行发送的复制进度、成功结果或失败信息。
+
+    :ivar ok: 必需的成功标志；进度心跳也为 True
+    :ivar progress: 复制期间才存在的字节进度，不表示操作已经结束
+    :ivar result: 成功结束时返回的操作结果，形状由请求操作决定
+    :ivar errno: 失败时携带的系统错误号；未知操作、无错误号或其他异常使用 0
+    :ivar error: 失败时携带的可读异常说明
+    """
 
     ok: Required[bool]
     progress: _CopyProgress
@@ -108,7 +146,9 @@ def _exists(payload: _Request, _emit: _Emit) -> bool:
 
 
 def _realpath(payload: _Request, _emit: _Emit) -> str:
-    """解析已有父目录的符号链接，目标末段可尚不存在；异常交由代理保守处理。"""
+    """
+    解析已有父目录的符号链接，目标末段可尚不存在；异常交由代理保守处理。
+    """
     return str(Path(payload["path"]).resolve())
 
 
@@ -178,11 +218,15 @@ def _count_entries(payload: _Request, _emit: _Emit) -> _EntryCounts:
 
 
 def _has_file_suffix(payload: _Request, _emit: _Emit) -> bool:
-    """遍历目录树；读取失败必须抛出，避免将未完成的扫描视为安全。"""
+    """
+    遍历目录树；读取失败必须抛出，避免将未完成的扫描视为安全。
+    """
     suffixes = {ext.casefold() for ext in payload["extensions"]}
 
     def raise_walk_error(error: OSError) -> None:
-        """向调用方传递目录扫描错误。"""
+        """
+        向调用方传递目录扫描错误。
+        """
         raise error
 
     for _, _, files in os.walk(payload["path"], onerror=raise_walk_error):
@@ -272,7 +316,8 @@ def main() -> None:
         except OSError as err:
             response = {"ok": False, "errno": err.errno or 0,
                         "error": err.strerror or str(err)}
-        except Exception as err:  # noqa: BLE001 - worker 不能因任何异常退出
+        # worker 不能因任何异常退出
+        except Exception as err:  # noqa: BLE001
             response = {"ok": False, "errno": 0, "error": str(err)}
         _write(response)
 

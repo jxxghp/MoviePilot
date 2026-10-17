@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Generate the complete OpenAPI-to-Agent surface audit."""
+"""
+生成全部 OpenAPI 操作与 Agent 接入范围的对应清单。
+"""
 
 from __future__ import annotations
 
@@ -15,7 +17,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# 独立脚本先加入项目根目录，再加载宿主模块。
 from app.agent.policy.api import API_OPERATION_ROUTES, API_OPERATION_SPECS  # noqa: E402
+
+# 独立脚本先加入项目根目录，再加载宿主模块。
 from app.api.apiv1 import api_router  # noqa: E402
 
 JSON_OUTPUT = PROJECT_ROOT / "docs/refactor/agent-api-surface-audit.json"
@@ -127,7 +132,9 @@ MUSIC_LIBRARY_STATUS_UI_PATH = "/api/v1/music/library/status"
 
 
 def _gateway_routes() -> dict[tuple[str, str], list[str]]:
-    """Return exact HTTP routes and every stable gateway operation using them."""
+    """
+    收集确切的 HTTP 路由及使用该路由的所有稳定网关操作。
+    """
     results: dict[tuple[str, str], list[str]] = defaultdict(list)
     for operation_id, route in API_OPERATION_ROUTES.items():
         results[(route.method.upper(), route.path)].append(operation_id)
@@ -141,7 +148,9 @@ def _classify(
     tags: list[str],
     gateway_routes: dict[tuple[str, str], list[str]],
 ) -> tuple[str, str, str, list[str]]:
-    """把 OpenAPI 操作归入经过审查的 Agent 或直接管理端契约。"""
+    """
+    把 OpenAPI 操作归入经过审查的 Agent 或直接管理端契约。
+    """
     operations = gateway_routes.get((method, path), [])
     if operations:
         return (
@@ -257,7 +266,9 @@ def _classify(
 
 
 def generate_audit() -> dict[str, Any]:
-    """Build a deterministic entry for every v1 OpenAPI HTTP operation."""
+    """
+    为每个 v1 OpenAPI HTTP 操作生成顺序稳定的清单条目。
+    """
     app = FastAPI()
     app.include_router(api_router, prefix="/api/v1")
     openapi = app.openapi()
@@ -329,7 +340,9 @@ def generate_audit() -> dict[str, Any]:
 
 
 def render_markdown(audit: dict[str, Any]) -> str:
-    """Render the complete audit as a reviewable architecture document."""
+    """
+    将完整清单渲染为可审阅的架构说明文档。
+    """
     lines = [
         "# MoviePilot Agent API Surface Audit",
         "",
@@ -425,7 +438,9 @@ def render_markdown(audit: dict[str, Any]) -> str:
 
 
 def main() -> int:
-    """Write deterministic JSON and Markdown audit artifacts."""
+    """
+    写入确定性排序的 JSON 与 Markdown 清单产物。
+    """
     audit = generate_audit()
     JSON_OUTPUT.write_text(
         json.dumps(audit, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

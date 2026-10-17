@@ -1,4 +1,6 @@
-"""工作流查询与执行状态事务适配器。"""
+"""
+工作流查询与执行状态事务适配器。
+"""
 
 from collections.abc import Callable, Iterable
 from contextlib import AbstractAsyncContextManager
@@ -17,7 +19,9 @@ _Result = TypeVar("_Result")
 
 
 def _copy_json_mapping(value: object, field_name: str) -> dict[str, JsonData]:
-    """复制 ORM JSON 对象，拒绝把损坏结构带出 Session。"""
+    """
+    复制 ORM JSON 对象，拒绝把损坏结构带出 Session。
+    """
     if value is None:
         return {}
     if not isinstance(value, dict):
@@ -29,7 +33,9 @@ def _copy_json_sequence(
     value: object,
     field_name: str,
 ) -> tuple[dict[str, JsonData], ...]:
-    """复制 ORM JSON 对象序列，确保快照不共享可变容器。"""
+    """
+    复制 ORM JSON 对象序列，确保快照不共享可变容器。
+    """
     if value is None:
         return ()
     if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
@@ -38,7 +44,9 @@ def _copy_json_sequence(
 
 
 def _project_workflow(record: object) -> WorkflowSnapshot:
-    """在持有数据库会话时把 ORM 记录投影为稳定快照。"""
+    """
+    在持有数据库会话时把 ORM 记录投影为稳定快照。
+    """
     workflow_id = getattr(record, "id", None)
     name = getattr(record, "name", None)
     state = getattr(record, "state", None)
@@ -76,19 +84,25 @@ def _project_workflow(record: object) -> WorkflowSnapshot:
 
 
 class TransactionalWorkflowQueryRepository:
-    """在自有短 Session 内查询并投影工作流快照。"""
+    """
+    在自有短 Session 内查询并投影工作流快照。
+    """
 
     def __init__(
         self,
         sync_session: Callable[[], Session],
         async_session: Callable[[], AbstractAsyncContextManager[AsyncSession]],
     ) -> None:
-        """保存同步 Session 工厂与异步 Session 作用域。"""
+        """
+        保存同步 Session 工厂与异步 Session 作用域。
+        """
         self._sync_session = sync_session
         self._async_session = async_session
 
     def get(self, workflow_id: int) -> Optional[WorkflowSnapshot]:
-        """在同步短 Session 内读取并投影单条工作流。"""
+        """
+        在同步短 Session 内读取并投影单条工作流。
+        """
         session = self._sync_session()
         try:
             record = WorkflowOper(session).get(workflow_id)
@@ -97,17 +111,23 @@ class TransactionalWorkflowQueryRepository:
             session.close()
 
     def list_enabled(self) -> list[WorkflowSnapshot]:
-        """在同步短 Session 内投影全部启用工作流。"""
+        """
+        在同步短 Session 内投影全部启用工作流。
+        """
         return self._list_sync(lambda repository: repository.list_enabled())
 
     def list_timer_enabled(self) -> list[WorkflowSnapshot]:
-        """在同步短 Session 内投影启用的定时工作流。"""
+        """
+        在同步短 Session 内投影启用的定时工作流。
+        """
         return self._list_sync(
             lambda repository: repository.get_timer_triggered_workflows()
         )
 
     def list_event_enabled(self) -> list[WorkflowSnapshot]:
-        """在同步短 Session 内投影启用的事件工作流。"""
+        """
+        在同步短 Session 内投影启用的事件工作流。
+        """
         return self._list_sync(
             lambda repository: repository.get_event_triggered_workflows()
         )
@@ -121,7 +141,9 @@ class TransactionalWorkflowQueryRepository:
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> list[WorkflowSnapshot]:
-        """在异步短 Session 内按筛选和分页窗口投影工作流。"""
+        """
+        在异步短 Session 内按筛选和分页窗口投影工作流。
+        """
         async with self._async_session() as session:
             records = await WorkflowOper(session).async_list(
                 state=state,
@@ -139,7 +161,9 @@ class TransactionalWorkflowQueryRepository:
         name: Optional[str] = None,
         trigger_type: Optional[str] = None,
     ) -> int:
-        """在异步短 Session 内按列表筛选统计工作流数量。"""
+        """
+        在异步短 Session 内按列表筛选统计工作流数量。
+        """
         async with self._async_session() as session:
             return int(
                 await WorkflowOper(session).async_count(
@@ -150,7 +174,9 @@ class TransactionalWorkflowQueryRepository:
             )
 
     async def async_get(self, workflow_id: int) -> Optional[WorkflowSnapshot]:
-        """在异步短 Session 内读取并投影单条工作流。"""
+        """
+        在异步短 Session 内读取并投影单条工作流。
+        """
         async with self._async_session() as session:
             record = await WorkflowOper(session).async_get(workflow_id)
             return _project_workflow(record) if record else None
@@ -159,7 +185,9 @@ class TransactionalWorkflowQueryRepository:
         self,
         operation: Callable[[WorkflowOper], Iterable[object]],
     ) -> list[WorkflowSnapshot]:
-        """在同步短 Session 内执行列表查询并完成投影。"""
+        """
+        在同步短 Session 内执行列表查询并完成投影。
+        """
         session = self._sync_session()
         try:
             return [
@@ -171,22 +199,32 @@ class TransactionalWorkflowQueryRepository:
 
 
 class TransactionalWorkflowExecutionService:
-    """为每次工作流执行状态写入创建独立短会话和 UnitOfWork。"""
+    """
+    为每次工作流执行状态写入创建独立短会话和 UnitOfWork。
+    """
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
-        """保存由启动组合根提供的同步 Session 工厂。"""
+        """
+        保存由启动组合根提供的同步 Session 工厂。
+        """
         self._session_factory = session_factory
 
     def start(self, workflow_id: int) -> bool:
-        """以独立事务提交运行中状态。"""
+        """
+        以独立事务提交运行中状态。
+        """
         return self._run(lambda command: command.start(workflow_id))
 
     def success(self, workflow_id: int, result: str | None = None) -> bool:
-        """以独立事务提交成功状态。"""
+        """
+        以独立事务提交成功状态。
+        """
         return self._run(lambda command: command.success(workflow_id, result))
 
     def fail(self, workflow_id: int, result: str) -> bool:
-        """以独立事务提交失败状态。"""
+        """
+        以独立事务提交失败状态。
+        """
         return self._run(lambda command: command.fail(workflow_id, result))
 
     def step(
@@ -196,7 +234,9 @@ class TransactionalWorkflowExecutionService:
             context: dict[str, Any],
             execution_state: dict[str, Any] | None = None,
     ) -> bool:
-        """以独立事务提交动作进度。"""
+        """
+        以独立事务提交动作进度。
+        """
         return self._run(
             lambda command: command.step(
                 workflow_id,
@@ -207,7 +247,9 @@ class TransactionalWorkflowExecutionService:
         )
 
     def reset(self, workflow_id: int, reset_count: bool = False) -> bool:
-        """以独立事务提交执行状态重置。"""
+        """
+        以独立事务提交执行状态重置。
+        """
         return self._run(
             lambda command: command.reset(workflow_id, reset_count)
         )
@@ -216,7 +258,9 @@ class TransactionalWorkflowExecutionService:
             self,
             operation: Callable[[WorkflowExecutionCommand], _Result],
     ) -> _Result:
-        """创建短会话并把提交/回滚交给 Application command。"""
+        """
+        创建短会话并把提交/回滚交给 Application command。
+        """
         session = self._session_factory()
         try:
             command = WorkflowExecutionCommand(

@@ -1,4 +1,6 @@
-"""订阅执行状态的业务投影与访问范围治理。"""
+"""
+订阅执行状态的业务投影与访问范围治理。
+"""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -9,7 +11,20 @@ from app.application.subscription.execution import SearchBatchSnapshot, SearchTa
 
 @dataclass(frozen=True, slots=True)
 class SubscriptionExecutionStatus:
-    """一个订阅最近搜索任务的用户可见状态。"""
+    """
+    一个订阅最近搜索任务的用户可见状态。
+
+    :param state: 当前任务或批次的业务状态
+    :param phase: 当前执行阶段，用于展示进度与恢复位置
+    :param updated_at: 最近状态更新时间文本
+    :param source: 触发本轮执行的入口，例如手工搜索或自动调度
+    :param batch_id: 持久搜索批次的稳定标识
+    :param task_id: 持久搜索任务的稳定标识；无队列任务时为 None
+    :param current_site_id: 正在处理的站点标识；尚未进入站点时为 None
+    :param next_run_at: 下一次允许执行的时间文本；没有计划时为 None
+    :param error: 可展示的错误摘要；无错误时为 None
+    :param can_cancel: 当前状态是否支持用户取消
+    """
 
     state: str
     phase: str
@@ -25,7 +40,26 @@ class SubscriptionExecutionStatus:
 
 @dataclass(frozen=True, slots=True)
 class SubscriptionBatchStatus:
-    """订阅搜索批次的进度、当前工作和操作能力。"""
+    """
+    订阅搜索批次的进度、当前工作和操作能力。
+
+    :param batch_id: 持久搜索批次的稳定标识
+    :param source: 触发本轮执行的入口，例如手工搜索或自动调度
+    :param state: 当前任务或批次的业务状态
+    :param phase: 当前执行阶段，用于展示进度与恢复位置
+    :param total_count: 批次包含的任务总数
+    :param processed_count: 批次已结束的任务数，含完成、失败、取消和跳过
+    :param finished_count: 成功完成的任务数量
+    :param failed_count: 失败终止的任务数量
+    :param cancelled_count: 已取消的任务数量
+    :param created_at: 记录创建时间文本
+    :param updated_at: 最近状态更新时间文本
+    :param current_subscription_id: 批次当前正在处理的订阅主键；未运行时为 None
+    :param current_site_id: 正在处理的站点标识；尚未进入站点时为 None
+    :param error: 可展示的错误摘要；无错误时为 None
+    :param can_cancel: 当前状态是否支持用户取消
+    :param skipped_count: 本轮无需执行而跳过的任务数量
+    """
 
     batch_id: str
     source: str
@@ -46,13 +80,20 @@ class SubscriptionBatchStatus:
 
 
 class SubscriptionExecutionReadRepository(Protocol):
-    """请求级读取搜索任务与批次事实的端口。"""
+    """
+    请求级读取搜索任务与批次事实的端口。
+    """
 
     async def latest_search_tasks(
         self,
         subscription_ids: tuple[int, ...],
     ) -> dict[int, SearchTaskSnapshot]:
-        """返回每条订阅最近更新的搜索任务。"""
+        """
+        返回每条订阅最近更新的搜索任务。
+
+        :param subscription_ids: 目标订阅主键，保持调用方指定的顺序
+        :return: 以订阅主键为键的最近任务快照；没有任务的订阅不写入映射
+        """
         ...
 
     async def list_batches(
@@ -60,20 +101,37 @@ class SubscriptionExecutionReadRepository(Protocol):
         *,
         limit: int,
     ) -> list[SearchBatchSnapshot]:
-        """返回最近更新的搜索批次。"""
+        """
+        返回最近更新的搜索批次。
+
+        :param limit: 最多返回的记录数量
+        :return: 按最近更新时间排列且不超过上限的批次快照
+        """
         ...
 
     async def get_batch(self, batch_id: str) -> Optional[SearchBatchSnapshot]:
-        """按稳定 ID 返回一个搜索批次。"""
+        """
+        按稳定 ID 返回一个搜索批次。
+
+        :param batch_id: 持久搜索批次的稳定标识
+        :return: 对应批次的最新快照；不存在时返回 None
+        """
         ...
 
     async def list_batch_tasks(self, batch_id: str) -> list[SearchTaskSnapshot]:
-        """按稳定位置返回批次任务。"""
+        """
+        按稳定位置返回批次任务。
+
+        :param batch_id: 持久搜索批次的稳定标识
+        :return: 按批次内稳定位置排列的任务快照列表
+        """
         ...
 
 
 class SubscriptionExecutionStatusService:
-    """把搜索队列投影为稳定业务状态。"""
+    """
+    把搜索队列投影为稳定业务状态。
+    """
 
     _ACTIVE_STATES = {
         "queued",
@@ -93,12 +151,16 @@ class SubscriptionExecutionStatusService:
         repository: SubscriptionExecutionReadRepository,
         request_cancel: Optional[Callable[[str], Awaitable[bool]]] = None,
     ) -> None:
-        """保存请求会话绑定的状态读取端口和可选取消用例。"""
+        """
+        保存请求会话绑定的状态读取端口和可选取消用例。
+        """
         self._repository = repository
         self._request_cancel = request_cancel
 
     async def request_cancel(self, batch_id: str) -> bool:
-        """通过组合根提供的执行边界请求取消搜索批次。"""
+        """
+        通过组合根提供的执行边界请求取消搜索批次。
+        """
         if self._request_cancel is None:
             raise RuntimeError("订阅搜索批次取消能力未注册")
         return bool(await self._request_cancel(batch_id))
@@ -107,7 +169,9 @@ class SubscriptionExecutionStatusService:
         self,
         subscription_ids: tuple[int, ...],
     ) -> dict[int, SubscriptionExecutionStatus]:
-        """批量投影订阅状态，避免列表接口逐条查询。"""
+        """
+        批量投影订阅状态，避免列表接口逐条查询。
+        """
         ids = tuple(dict.fromkeys(subscription_ids))
         if not ids:
             return {}
@@ -125,7 +189,9 @@ class SubscriptionExecutionStatusService:
         accessible_subscription_ids: Optional[set[int]],
         limit: int = 10,
     ) -> list[SubscriptionBatchStatus]:
-        """列出访问范围完整覆盖的最近批次。"""
+        """
+        列出访问范围完整覆盖的最近批次。
+        """
         batches = await self._repository.list_batches(limit=max(1, min(limit, 50)))
         result = []
         for batch in batches:
@@ -141,7 +207,9 @@ class SubscriptionExecutionStatusService:
         *,
         accessible_subscription_ids: Optional[set[int]],
     ) -> Optional[SubscriptionBatchStatus]:
-        """读取一个访问范围完整覆盖的批次。"""
+        """
+        读取一个访问范围完整覆盖的批次。
+        """
         batch = await self._repository.get_batch(batch_id)
         if batch is None:
             return None
@@ -152,7 +220,9 @@ class SubscriptionExecutionStatusService:
 
     @classmethod
     def _from_task(cls, task: SearchTaskSnapshot) -> SubscriptionExecutionStatus:
-        """把搜索任务状态归一为稳定业务词汇。"""
+        """
+        把搜索任务状态归一为稳定业务词汇。
+        """
         if task.cancel_requested and task.state == "running":
             state = phase = "cancelling"
         elif task.state == "running":
@@ -180,7 +250,9 @@ class SubscriptionExecutionStatusService:
         batch: SearchBatchSnapshot,
         tasks: list[SearchTaskSnapshot],
     ) -> SubscriptionBatchStatus:
-        """组合批次计数与当前运行任务。"""
+        """
+        组合批次计数与当前运行任务。
+        """
         current = next((task for task in tasks if task.state == "running"), None)
         if current is None:
             current = next((task for task in tasks if task.state == "queued"), None)
@@ -215,14 +287,18 @@ class SubscriptionExecutionStatusService:
         tasks: list[SearchTaskSnapshot],
         accessible_subscription_ids: Optional[set[int]],
     ) -> bool:
-        """超级用户不限制；普通用户必须拥有批次内全部订阅。"""
+        """
+        超级用户不限制；普通用户必须拥有批次内全部订阅。
+        """
         if accessible_subscription_ids is None:
             return True
         return bool(tasks) and all(task.subscription_id in accessible_subscription_ids for task in tasks)
 
     @staticmethod
     def _safe_error(error: Optional[str]) -> Optional[str]:
-        """压平并限制内部错误文本，避免把堆栈或超长响应暴露给界面。"""
+        """
+        压平并限制内部错误文本，避免把堆栈或超长响应暴露给界面。
+        """
         if not error:
             return None
         from app.runtime.errors import public_error_message

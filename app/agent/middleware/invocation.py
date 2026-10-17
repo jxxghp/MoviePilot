@@ -1,4 +1,6 @@
-"""在副作用之前持久认领工具调用，并对未知写入执行只读核验。"""
+"""
+在副作用之前持久认领工具调用，并对未知写入执行只读核验。
+"""
 
 import asyncio
 import hashlib
@@ -32,13 +34,19 @@ GET_TOOL_EXECUTION_NAME = "get_tool_execution"
 
 
 class InvocationState(TypedDict):
-    """在同一轮模型工具循环内提供稳定去重范围，用户新请求使用新范围。"""
+    """
+    在同一轮模型工具循环内提供稳定去重范围，用户新请求使用新范围。
+
+    :ivar invocation_turn_id: 本轮调用的私有身份标识，不向外部输入或父图公开
+    """
 
     invocation_turn_id: Annotated[str, PrivateStateAttr]
 
 
 def _canonical_arguments(request: ToolCallRequest) -> dict[str, Any]:
-    """利用实际工具 schema 规范默认值，保证同一写入的参数指纹稳定。"""
+    """
+    利用实际工具 schema 规范默认值，保证同一写入的参数指纹稳定。
+    """
     arguments = dict(request.tool_call.get("args") or {})
     if isinstance(request.tool, MoviePilotApiTool):
         return dict(request.tool.canonical_arguments(arguments))
@@ -49,19 +57,25 @@ def _canonical_arguments(request: ToolCallRequest) -> dict[str, Any]:
 
 
 def _fingerprint(value: Any) -> str:
-    """只存储规范 JSON 的单向摘要，不把写入参数或凭据写入回执。"""
+    """
+    只存储规范 JSON 的单向摘要，不把写入参数或凭据写入回执。
+    """
     serialized = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 # follow_imports=skip 下第三方中间件基类按 Any 处理，仅忽略 SDK 边界。
 class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
-    """维护真实工具写入的持久回执；未认领、未知或已完成调用不会盲目重放。"""
+    """
+    维护真实工具写入的持久回执；未认领、未知或已完成调用不会盲目重放。
+    """
 
     state_schema = InvocationState
 
     def __init__(self, context: ToolPolicyContext, repository: InvocationRepository, tools: list[Any]) -> None:
-        """绑定组合根注入的持久端口及宿主用户身份。"""
+        """
+        绑定组合根注入的持久端口及宿主用户身份。
+        """
         self.context = context
         self.repository = repository
         self._guarded_tools = tuple(tools)
@@ -79,15 +93,21 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
         object.__setattr__(self.tools[0], "_agent_tool_source", "middleware:invocation")
 
     async def abefore_agent(self, state: InvocationState, runtime: Any) -> dict[str, Any]:
-        """新用户请求创建独立意图范围，同一轮中的重复 API 参数合并执行。"""
+        """
+        新用户请求创建独立意图范围，同一轮中的重复 API 参数合并执行。
+        """
         return {"invocation_turn_id": uuid.uuid4().hex}
 
     def _identity(self, invocation_id: str) -> InvocationIdentity:
-        """身份只来自宿主上下文，工具参数不能切换用户或会话。"""
+        """
+        身份只来自宿主上下文，工具参数不能切换用户或会话。
+        """
         return InvocationIdentity(str(self.context.user_id or ""), self.context.session_id, invocation_id)
 
     def _is_write(self, request: ToolCallRequest) -> bool:
-        """API 按操作副作用分类，其余工具沿用明确只读标签与内部能力边界。"""
+        """
+        API 按操作副作用分类，其余工具沿用明确只读标签与内部能力边界。
+        """
         if request.tool is None or not any(request.tool is tool for tool in self._guarded_tools):
             return False
         if isinstance(request.tool, MoviePilotApiTool):
@@ -102,7 +122,9 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _message(request: ToolCallRequest, outcome: str, message: str, **extra: Any) -> ToolMessage:
-        """给模型明确结果状态和恢复动作，同时保留 LangChain 二态兼容字段。"""
+        """
+        给模型明确结果状态和恢复动作，同时保留 LangChain 二态兼容字段。
+        """
         recovery = extra.pop("recovery", None)
         if recovery is None and outcome == "failed":
             recovery = "根据错误信息修正输入或改用正确工具后重试；不要重复提交未确认的写入。"
@@ -122,7 +144,9 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
     async def _get_execution(
         self, invocation_id: Annotated[str, Field(min_length=1, max_length=128)],
     ) -> str:
-        """只查询当前用户和会话的固定回执，不开放任意状态覆盖入口。"""
+        """
+        只查询当前用户和会话的固定回执，不开放任意状态覆盖入口。
+        """
         record = await run_agent_blocking("db", self.repository.get, self._identity(invocation_id))
         if record is None:
             return json.dumps({"success": False, "error": "execution_not_found"})
@@ -133,7 +157,9 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
         }, ensure_ascii=False)
 
     async def _finish(self, record: InvocationSnapshot, status: InvocationFinalStatus) -> bool:
-        """短事务收口失败仍保留原认领，后续调用不能因记录失败重放副作用。"""
+        """
+        短事务收口失败仍保留原认领，后续调用不能因记录失败重放副作用。
+        """
         try:
             return bool(await run_agent_blocking(
                 "db", self.repository.finish, record.identity,
@@ -145,7 +171,9 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     async def _verify_setting(request: ToolCallRequest) -> bool:
-        """只对非敏感设置的完整替换核验当前值；不以猜测收口其他写操作。"""
+        """
+        只对非敏感设置的完整替换核验当前值；不以猜测收口其他写操作。
+        """
         arguments = request.tool_call.get("args") or {}
         body = arguments.get("body")
         if (
@@ -176,7 +204,9 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
             return False
 
     async def _existing(self, request: ToolCallRequest, record: InvocationSnapshot) -> ToolMessage:
-        """已完成直接返回回执，未知结果仅在宿主只读核验成功后收口。"""
+        """
+        已完成直接返回回执，未知结果仅在宿主只读核验成功后收口。
+        """
         if record.status == "unknown" and await self._verify_setting(request):
             if await self._finish(record, "succeeded"):
                 return self._message(request, "succeeded", "已只读核验目标设置生效，没有重复写入。",
@@ -190,7 +220,9 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _attach_receipt(result: ToolMessage, record: InvocationSnapshot, outcome: ExecutionOutcome) -> ToolMessage:
-        """保留业务字段并公开宿主回执编号，让模型能够调用状态查询工具。"""
+        """
+        保留业务字段并公开宿主回执编号，让模型能够调用状态查询工具。
+        """
         try:
             payload = json.loads(result.content) if isinstance(result.content, str) else None
         except (TypeError, ValueError):
@@ -208,7 +240,9 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
     async def awrap_tool_call(
         self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在外部副作用前提交认领，跨重试保留真实已知与未知状态。"""
+        """
+        在外部副作用前提交认领，跨重试保留真实已知与未知状态。
+        """
         if not self._is_write(request):
             return await handler(request)
         try:

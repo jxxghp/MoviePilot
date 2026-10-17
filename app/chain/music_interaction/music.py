@@ -1,4 +1,6 @@
-"""消息渠道音乐交互的解析、候选展示及类型转换。"""
+"""
+消息渠道音乐交互的解析、候选展示及类型转换。
+"""
 
 from __future__ import annotations
 
@@ -23,7 +25,9 @@ if TYPE_CHECKING:
 
 
 class MusicInteractionHost(Protocol):
-    """声明音乐候选展示复用的消息交互链能力。"""
+    """
+    声明音乐候选展示复用的消息交互链能力。
+    """
 
     def _page_items(
         self,
@@ -31,18 +35,35 @@ class MusicInteractionHost(Protocol):
         page: int,
         page_size: int,
     ) -> Tuple[List[Any], int, int]:
-        """返回交互候选的当前页、页码及总页数。"""
+        """
+        返回交互候选的当前页、页码及总页数。
+
+        :param items: 按展示顺序排列的全部候选项
+        :param page: 从零开始的请求页码，越界时收敛到有效范围
+        :param page_size: 每页候选项数，通常由渠道能力决定
+        :return: 当前页候选、收敛后的零基页码及至少为一的总页数
+        """
         ...
 
     def _page_size(self, channel: Optional[NotificationChannel]) -> int:
-        """按消息渠道能力返回候选列表的分页大小。"""
+        """
+        按消息渠道能力返回候选列表的分页大小。
+
+        :param channel: 接收消息的渠道，None 时按纯文本能力选择
+        :return: 该渠道每页展示的候选数量
+        """
         ...
 
     def _supports_interactive_buttons(
         self,
         channel: Optional[NotificationChannel],
     ) -> bool:
-        """判断消息渠道是否支持按钮与回调。"""
+        """
+        判断消息渠道是否支持按钮与回调。
+
+        :param channel: 待检查的通知渠道，None 表示未指定
+        :return: 渠道同时支持按钮展示和回调时为 True，未指定渠道时为 False
+        """
         ...
 
     def _create_media_buttons(
@@ -53,20 +74,40 @@ class MusicInteractionHost(Protocol):
         total: int,
         total_pages: int,
     ) -> List[List[Dict[str, str]]]:
-        """为候选生成可交互按钮。"""
+        """
+        为候选生成可交互按钮。
+
+        :param channel: 展示候选并接收回调的通知渠道
+        :param request: 当前媒体交互请求，包含操作、会话和页码信息
+        :param items: 本页展示的已识别影视或音乐候选
+        :param total: 所有页的候选总数
+        :param total_pages: 当前候选列表的总页数
+        :return: 按行分组的候选选择与翻页按钮字典
+        """
         ...
 
     def post_message(self, message: Message) -> None:
-        """将渠道通知交给宿主消息发送实现。"""
+        """
+        将渠道通知交给宿主消息发送实现。
+
+        :param message: 包含渠道、接收人及音乐候选展示内容的通知消息
+        """
         ...
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
-        """由宿主按既有影视资源卡片格式发送资源列表。"""
+        """
+        由宿主按既有影视资源卡片格式发送资源列表。
+
+        :param message: 包含通知渠道和接收人的资源列表消息上下文
+        :param torrents: 按展示顺序排列的资源与媒体上下文
+        """
         ...
 
 
 def resolve_music_action(text: str) -> Tuple[Optional[str], str]:
-    """解析音乐交互前缀，避免把普通聊天误判为音乐搜索。"""
+    """
+    解析音乐交互前缀，避免把普通聊天误判为音乐搜索。
+    """
     normalized = (text or "").strip()
     action_names = {
         "搜索": "MusicSearch",
@@ -99,7 +140,9 @@ def resolve_music_action(text: str) -> Tuple[Optional[str], str]:
 
 
 def resolve_media_action(text: str) -> Tuple[Optional[str], str]:
-    """归类影视或音乐搜索、订阅及普通聊天输入。"""
+    """
+    归类影视或音乐搜索、订阅及普通聊天输入。
+    """
     music_action, music_content = resolve_music_action(text)
     if music_action:
         return music_action, music_content
@@ -119,7 +162,9 @@ def resolve_media_action(text: str) -> Tuple[Optional[str], str]:
 def search_music_candidates(
     query: str,
 ) -> Tuple[MetaMusic, str, List[MusicInfo]]:
-    """用音乐目录搜索单曲与专辑候选，并返回交互展示标题。"""
+    """
+    用音乐目录搜索单曲与专辑候选，并返回交互展示标题。
+    """
     meta = MetaMusic.parse_query(query)
     candidates = MediaChain().search_music(
         query=query,
@@ -130,7 +175,9 @@ def search_music_candidates(
 
 
 def format_music_candidate(index: int, media: MusicInfo) -> str:
-    """格式化音乐单曲或专辑候选，明确展示实体类型和艺术家。"""
+    """
+    格式化音乐单曲或专辑候选，明确展示实体类型和艺术家。
+    """
     entity = "专辑" if media.music_type == MUSIC_ENTITY_ALBUM else "单曲"
     title = media.title_year or media.title or "未命名音乐"
     details = [f"{index}. [{entity}] {title}"]
@@ -149,7 +196,9 @@ def media_exists_retry_prompt(
     *,
     subscription: bool,
 ) -> Tuple[str, str]:
-    """返回媒体库已存在时适用于影视或音乐的重试提示。"""
+    """
+    返回媒体库已存在时适用于影视或音乐的重试提示。
+    """
     media_label = mediainfo.title_year
     if not isinstance(mediainfo, MusicInfo) and meta:
         media_label += meta.sea or ""
@@ -161,7 +210,9 @@ def media_exists_retry_prompt(
 
 
 def selected_music_type(mediainfo: MediaInfo | MusicInfo) -> Optional[str]:
-    """返回已选音乐实体类型，影视媒体不携带音乐类型。"""
+    """
+    返回已选音乐实体类型，影视媒体不携带音乐类型。
+    """
     return mediainfo.music_type if isinstance(mediainfo, MusicInfo) else None
 
 
@@ -174,7 +225,9 @@ def post_music_candidates(
     original_message_id: int | str | None = None,
     original_chat_id: Optional[str] = None,
 ) -> None:
-    """按渠道能力以文字和按钮展示音乐候选，支持纯文本回复编号。"""
+    """
+    按渠道能力以文字和按钮展示音乐候选，支持纯文本回复编号。
+    """
     page_items, page, total_pages = host._page_items(
         items=request.items,
         page=request.page,
@@ -226,7 +279,9 @@ def post_music_aware_torrents(
     message: Message,
     torrents: List[Context],
 ) -> None:
-    """音乐资源直接展示原始标题，影视资源沿用既有渠道卡片。"""
+    """
+    音乐资源直接展示原始标题，影视资源沿用既有渠道卡片。
+    """
     if not torrents or not isinstance(torrents[0].media_info, MusicInfo):
         host.post_torrents_message(message, torrents)
         return

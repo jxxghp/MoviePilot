@@ -1,14 +1,20 @@
+"""
+验证 Discord 命令事件过滤、删除和名称归一化。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from app.modules.discord import DiscordModule
 from app.modules.discord.discord import Discord
-from app.schemas import CommandRegisterEventData
+from app.schemas.event import CommandRegisterEventData
 
 
 def test_discord_module_register_commands_filters_event_subset():
-    """Discord 模块注册命令时应复用渠道级 CommandRegister 事件过滤结果。"""
+    """
+    Discord 模块注册命令时应复用渠道级 CommandRegister 事件过滤结果。
+    """
     module = DiscordModule()
     client = SimpleNamespace(register_commands=Mock(), delete_commands=Mock())
     original_commands = {
@@ -41,7 +47,9 @@ def test_discord_module_register_commands_filters_event_subset():
 
 
 def test_discord_module_register_commands_deletes_when_event_canceled():
-    """Discord 模块注册命令被事件取消时应清理应用命令。"""
+    """
+    Discord 模块注册命令被事件取消时应清理应用命令。
+    """
     module = DiscordModule()
     client = SimpleNamespace(register_commands=Mock(), delete_commands=Mock())
     event = SimpleNamespace(
@@ -69,7 +77,9 @@ def test_discord_module_register_commands_deletes_when_event_canceled():
 
 
 def test_discord_normalizes_slash_command_names():
-    """Discord 命令名称应符合平台只允许小写字母数字下划线连字符的约束。"""
+    """
+    Discord 命令名称应符合平台只允许小写字母数字下划线连字符的约束。
+    """
     assert Discord._normalize_slash_command_name("/sites") == "sites"
     assert Discord._normalize_slash_command_name("/clear_cache") == "clear_cache"
     assert Discord._normalize_slash_command_name("/INVALID") == "invalid"
@@ -78,7 +88,9 @@ def test_discord_normalizes_slash_command_names():
 
 
 def test_discord_handle_slash_command_forwards_to_message_chain():
-    """Discord 斜杠命令回调应转发为统一消息入口可识别的命令文本。"""
+    """
+    Discord 斜杠命令回调应转发为统一消息入口可识别的命令文本。
+    """
     client = Discord.__new__(Discord)
     client._update_user_chat_mapping = Mock()
     client._post_to_ds = AsyncMock()

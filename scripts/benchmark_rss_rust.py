@@ -1,3 +1,8 @@
+"""
+使用内存 RSS 文本比较生产解析入口的 Rust 与 Python 性能。
+
+请求层使用固定响应替身，保留相同的编码处理成本，不发起真实网络请求。
+"""
 import argparse
 import statistics
 import sys
@@ -70,6 +75,9 @@ def build_rss_xml(items: int) -> str:
 def patched_request_utils(xml_text: str):
     """
     临时替换 RSS 请求层，让基准覆盖 RssHelper.parse 的实际解析链路。
+
+    :param xml_text: 用于构造固定响应的 RSS 文本
+    :yields: 临时请求替身生效的执行区间；退出时恢复原始请求类
     """
     original_request_utils = rss_module.RequestUtils
     FakeRequestUtils.xml_text = xml_text
@@ -91,6 +99,8 @@ def disabled_rust_parse(_xml_text: str, _max_items: int = 1000):
 def selected_rss_parser(use_rust: bool):
     """
     在 Rust 快路径和 Python lxml 解析之间切换，保持请求与编码成本一致。
+
+    :yields: 指定解析器生效的执行区间；退出时恢复临时修改
     """
     original_parse = rss_module.rust_accel.parse_rss_items
     if not use_rust:

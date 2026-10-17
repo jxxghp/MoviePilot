@@ -1,3 +1,7 @@
+"""
+验证旧模块导入路径的精确路由和对象身份兼容。
+"""
+
 import builtins
 import importlib
 import subprocess
@@ -40,7 +44,9 @@ CANONICAL_MODULE = f"{CANONICAL_PACKAGE}.target"
 
 @pytest.fixture
 def compatibility_modules(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """创建可计数初始化次数的临时 canonical 模块和旧路径映射。"""
+    """
+    创建可计数初始化次数的临时 canonical 模块和旧路径映射。
+    """
     package_dir = tmp_path / CANONICAL_PACKAGE
     package_dir.mkdir()
     (package_dir / "__init__.py").write_text("", encoding="utf-8")
@@ -76,7 +82,9 @@ def compatibility_modules(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_legacy_import_reuses_canonical_module_identity(compatibility_modules):
-    """旧路径先导入时应复用 canonical 模块且只执行一次源码。"""
+    """
+    旧路径先导入时应复用 canonical 模块且只执行一次源码。
+    """
     legacy = importlib.import_module(LEGACY_MODULE)
     canonical = importlib.import_module(CANONICAL_MODULE)
 
@@ -88,7 +96,9 @@ def test_legacy_import_reuses_canonical_module_identity(compatibility_modules):
 
 
 def test_canonical_first_import_keeps_same_legacy_identity(compatibility_modules):
-    """canonical 路径先导入时，旧路径仍应绑定同一模块对象。"""
+    """
+    canonical 路径先导入时，旧路径仍应绑定同一模块对象。
+    """
     canonical = importlib.import_module(CANONICAL_MODULE)
     legacy = importlib.import_module(LEGACY_MODULE)
 
@@ -98,7 +108,9 @@ def test_canonical_first_import_keeps_same_legacy_identity(compatibility_modules
 
 
 def test_virtual_package_blocks_unregistered_descendants(compatibility_modules):
-    """合成旧父包不得向其他 Finder 泄漏未登记的子模块。"""
+    """
+    合成旧父包不得向其他 Finder 泄漏未登记的子模块。
+    """
     package = importlib.import_module(LEGACY_PACKAGE)
 
     assert package.__path__ == []
@@ -107,7 +119,9 @@ def test_virtual_package_blocks_unregistered_descendants(compatibility_modules):
 
 
 def test_debug_diagnostics_warn_once_for_runtime_alias(compatibility_modules):
-    """DEBUG 运行时兼容命中应输出一次包含迁移目标的警告。"""
+    """
+    DEBUG 运行时兼容命中应输出一次包含迁移目标的警告。
+    """
     messages = []
     configure_legacy_import_diagnostics(enabled=True, emitter=messages.append)
 
@@ -121,7 +135,9 @@ def test_debug_diagnostics_warn_once_for_runtime_alias(compatibility_modules):
 
 
 def test_production_diagnostics_stay_silent(compatibility_modules):
-    """DEBUG 关闭时兼容导入继续生效但不输出告警。"""
+    """
+    DEBUG 关闭时兼容导入继续生效但不输出告警。
+    """
     messages = []
     configure_legacy_import_diagnostics(enabled=False, emitter=messages.append)
 
@@ -132,7 +148,9 @@ def test_production_diagnostics_stay_silent(compatibility_modules):
 
 
 def test_plugin_scan_reports_cached_legacy_import(compatibility_modules, tmp_path: Path):
-    """模块已缓存时，插件 AST 扫描仍应报告其静态旧导入。"""
+    """
+    模块已缓存时，插件 AST 扫描仍应报告其静态旧导入。
+    """
     importlib.import_module(LEGACY_MODULE)
     reset_legacy_import_diagnostics()
     messages = []
@@ -155,7 +173,9 @@ def test_plugin_scan_reports_cached_legacy_import(compatibility_modules, tmp_pat
 
 
 def test_plugin_scan_accepts_utf8_bom(compatibility_modules, tmp_path: Path):
-    """插件源码带 UTF-8 BOM 时仍应识别旧导入并输出迁移警告。"""
+    """
+    插件源码带 UTF-8 BOM 时仍应识别旧导入并输出迁移警告。
+    """
     messages = []
     configure_legacy_import_diagnostics(enabled=True, emitter=messages.append)
     plugin_dir = tmp_path / "bomplugin"
@@ -171,7 +191,9 @@ def test_plugin_scan_accepts_utf8_bom(compatibility_modules, tmp_path: Path):
 
 
 def test_manifest_aliases_reuse_real_canonical_modules():
-    """正式映射表中的旧路径应在隔离进程中复用全部 canonical 模块。"""
+    """
+    正式映射表中的旧路径应在隔离进程中复用全部 canonical 模块。
+    """
     code = """
 import importlib
 from app.runtime.compat.manifest import MODULE_ALIASES
@@ -199,7 +221,9 @@ for legacy_name, alias in MODULE_ALIASES.items():
 
 
 def test_renamed_modules_use_exact_compat_routes() -> None:
-    """旧模块路径只经 manifest 复用新的 canonical 模块。"""
+    """
+    旧模块路径只经 manifest 复用新的 canonical 模块。
+    """
     expected = {
         "app.application.chain.durable_events": "app.application.chain.events",
         "app.application.transfer_execution": "app.application.transfer.execution",
@@ -215,7 +239,9 @@ def test_renamed_modules_use_exact_compat_routes() -> None:
 
 
 def test_transfer_package_exposes_plugin_symbols_only_through_overlay() -> None:
-    """整理包不重导出宿主实现，只按兼容清单惰性提供插件旧符号。"""
+    """
+    整理包不重导出宿主实现，只按兼容清单惰性提供插件旧符号。
+    """
     configure_legacy_import_diagnostics(enabled=False, emitter=lambda _: None)
     try:
         package = importlib.import_module("app.application.transfer")
@@ -230,7 +256,9 @@ def test_transfer_package_exposes_plugin_symbols_only_through_overlay() -> None:
 
 
 def test_transfer_legacy_symbols_support_all_explicit_imports() -> None:
-    """六个旧整理符号显式导入应在隔离进程中共享同一兼容类型。"""
+    """
+    六个旧整理符号显式导入应在隔离进程中共享同一兼容类型。
+    """
     code = """
 from app.application.transfer import TransferTask as ApplicationTask
 from app.application.transfer import TransferQueue as ApplicationQueue
@@ -282,7 +310,9 @@ for package in (application_package, schemas_package, transfer_schema):
 
 
 def test_virtual_package_exports_resolve_exact_manifest_symbols():
-    """合成旧包仅公开 manifest 声明的符号，并记录 DEBUG 兼容警告。"""
+    """
+    合成旧包仅公开 manifest 声明的符号，并记录 DEBUG 兼容警告。
+    """
     legacy_package = "app.core.meta"
     sys.modules.pop(legacy_package, None)
     messages = []
@@ -299,7 +329,9 @@ def test_virtual_package_exports_resolve_exact_manifest_symbols():
 
 
 def test_db_refactor_legacy_modules_are_all_registered():
-    """DB 分层迁移删除的旧模块必须全部有精确兼容入口。"""
+    """
+    DB 分层迁移删除的旧模块必须全部有精确兼容入口。
+    """
     expected = {
         "app.db.agentchat_oper",
         "app.db.agenttask_oper",
@@ -324,7 +356,9 @@ def test_db_refactor_legacy_modules_are_all_registered():
 
 
 def test_workflow_oper_compatibility_is_only_exposed_by_overlay():
-    """旧工作流写入口只由 Legacy facade 和精确符号映射提供。"""
+    """
+    旧工作流写入口只由 Legacy facade 和精确符号映射提供。
+    """
     legacy = importlib.import_module("app.db.workflow_oper")
     canonical = importlib.import_module("app.db.oper.workflow")
     oper_package = importlib.import_module("app.db.oper")
@@ -337,7 +371,9 @@ def test_workflow_oper_compatibility_is_only_exposed_by_overlay():
 
 
 def test_split_user_oper_facade_exports_data_and_auth_contracts():
-    """旧 user_oper 同时提供 UserOper 与八个认证依赖。"""
+    """
+    旧 user_oper 同时提供 UserOper 与八个认证依赖。
+    """
     legacy = importlib.import_module("app.db.user_oper")
     canonical_user = importlib.import_module("app.db.oper.user")
     canonical_deps = importlib.import_module("app.api.deps")
@@ -357,7 +393,9 @@ def test_split_user_oper_facade_exports_data_and_auth_contracts():
 
 
 def test_legacy_utils_media_facade_combines_strategy_and_identity_symbols():
-    """旧 utils.media 同时保留领域策略和迁至 schemas 的身份原语。"""
+    """
+    旧 utils.media 同时保留领域策略和迁至 schemas 的身份原语。
+    """
     legacy = importlib.import_module("app.utils.media")
     domain_media = importlib.import_module("app.domain.media")
     schema_media = importlib.import_module("app.schemas.media")
@@ -369,7 +407,9 @@ def test_legacy_utils_media_facade_combines_strategy_and_identity_symbols():
 
 
 def test_physical_modules_resolve_moved_symbols_without_reverse_imports():
-    """仍存在的旧物理模块应通过 Loader 叠加迁走的符号。"""
+    """
+    仍存在的旧物理模块应通过 Loader 叠加迁走的符号。
+    """
     domain_media = importlib.import_module("app.domain.media")
     schema_media = importlib.import_module("app.schemas.media")
     transfer_schema = importlib.import_module("app.schemas.transfer")
@@ -400,7 +440,9 @@ def test_physical_modules_resolve_moved_symbols_without_reverse_imports():
 
 
 def test_legacy_transfer_task_hides_internal_admission_identity():
-    """持久准入身份不得改变插件旧任务字典的公开字段集合。"""
+    """
+    持久准入身份不得改变插件旧任务字典的公开字段集合。
+    """
     legacy_transfer = importlib.import_module("app.sdk._legacy.transfer")
     task = legacy_transfer.TransferTask(fileitem={
         "storage": "local",
@@ -423,7 +465,9 @@ def test_legacy_transfer_task_hides_internal_admission_identity():
 
 
 def test_chain_media_legacy_scraping_symbols_resolve_to_scraping_chain():
-    """刮削拆分后，旧 app.chain.media 路径应能继续取用刮削公开符号。"""
+    """
+    刮削拆分后，旧 app.chain.media 路径应能继续取用刮削公开符号。
+    """
     legacy_media = importlib.import_module("app.chain.media")
     canonical_scraping = importlib.import_module("app.chain.scraping")
 
@@ -433,7 +477,9 @@ def test_chain_media_legacy_scraping_symbols_resolve_to_scraping_chain():
 
 
 def test_workflow_manager_legacy_name_resolves_only_through_symbol_overlay():
-    """旧 WorkFlowManager 仍可显式导入，但不进入 canonical 模块公开面。"""
+    """
+    旧 WorkFlowManager 仍可显式导入，但不进入 canonical 模块公开面。
+    """
     install_legacy_import_hook()
     workflow_module = importlib.import_module("app.workflow")
 
@@ -443,7 +489,9 @@ def test_workflow_manager_legacy_name_resolves_only_through_symbol_overlay():
 
 
 def test_rules_domain_legacy_modules_resolve_to_rules():
-    """规则域收敛后，filter/filter_rules 旧路径应复用 rules 模块。"""
+    """
+    规则域收敛后，filter/filter_rules 旧路径应复用 rules 模块。
+    """
     canonical = importlib.import_module("app.application.rules")
 
     for legacy_name in ("app.application.filter", "app.application.filter_rules"):
@@ -454,7 +502,9 @@ def test_rules_domain_legacy_modules_resolve_to_rules():
 
 
 def test_debug_diagnostics_reports_moved_symbol_path():
-    """DEBUG 模式应对物理模块中的旧符号路径给出一次迁移提示。"""
+    """
+    DEBUG 模式应对物理模块中的旧符号路径给出一次迁移提示。
+    """
     messages = []
     reset_legacy_import_diagnostics()
     configure_legacy_import_diagnostics(enabled=True, emitter=messages.append)
@@ -470,7 +520,9 @@ def test_debug_diagnostics_reports_moved_symbol_path():
 
 
 def test_plugin_scan_reports_moved_symbol_import(tmp_path: Path):
-    """插件静态扫描应识别仍存在模块中的旧符号导入。"""
+    """
+    插件静态扫描应识别仍存在模块中的旧符号导入。
+    """
     messages = []
     reset_legacy_import_diagnostics()
     configure_legacy_import_diagnostics(enabled=True, emitter=messages.append)
@@ -490,7 +542,9 @@ def test_plugin_scan_reports_moved_symbol_import(tmp_path: Path):
 
 
 def test_symbol_alias_manifest_covers_all_moved_public_symbols():
-    """符号级映射清单应覆盖媒体身份、整理工作项、刮削拆分与消息/通知命名统一的旧入口。"""
+    """
+    符号级映射清单应覆盖媒体身份、整理工作项、刮削拆分与消息/通知命名统一的旧入口。
+    """
     assert set(SYMBOL_ALIASES["app.chain"]) == {"ChainBase"}
     assert set(SYMBOL_ALIASES["app.plugins"]) == {"PluginChian", "_PluginBase"}
     assert set(SYMBOL_ALIASES["app.db.oper"]) == {
@@ -553,7 +607,9 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
 
 
 def test_chain_base_legacy_sdk_and_canonical_imports_share_identity(monkeypatch):
-    """旧包根与 SDK 必须解析到 canonical ChainBase，方法补丁对三条路径同时可见。"""
+    """
+    旧包根与 SDK 必须解析到 canonical ChainBase，方法补丁对三条路径同时可见。
+    """
     legacy_chain = importlib.import_module("app.chain")
     canonical = importlib.import_module("app.chain.base").ChainBase
     sdk = importlib.import_module("app.sdk.chain").ChainBase
@@ -568,7 +624,9 @@ def test_chain_base_legacy_sdk_and_canonical_imports_share_identity(monkeypatch)
 
 
 def test_plugin_base_legacy_and_sdk_imports_share_canonical_identity(monkeypatch):
-    """插件安装包根与 SDK 必须解析到同一个契约基类，属性补丁对两条路径同时可见。"""
+    """
+    插件安装包根与 SDK 必须解析到同一个契约基类，属性补丁对两条路径同时可见。
+    """
     legacy_plugins = importlib.import_module("app.plugins")
     canonical = importlib.import_module("app.sdk.plugin.base")._PluginBase
     sdk = importlib.import_module("app.sdk.plugin")._PluginBase
@@ -582,7 +640,9 @@ def test_plugin_base_legacy_and_sdk_imports_share_canonical_identity(monkeypatch
 
 
 def test_legacy_plugin_chain_spelling_resolves_to_renamed_sdk_class():
-    """历史拼写 PluginChian 只存在于兼容层，解析到 SDK 的正名 PluginChain。"""
+    """
+    历史拼写 PluginChian 只存在于兼容层，解析到 SDK 的正名 PluginChain。
+    """
     configure_legacy_import_diagnostics(enabled=False, emitter=lambda _: None)
     try:
         legacy_plugins = importlib.import_module("app.plugins")
@@ -596,7 +656,9 @@ def test_legacy_plugin_chain_spelling_resolves_to_renamed_sdk_class():
 
 
 def test_shadow_detection_flags_second_implementation():
-    """物理模块自带第二份实现时必须被判定为遮蔽兼容符号。"""
+    """
+    物理模块自带第二份实现时必须被判定为遮蔽兼容符号。
+    """
     module = ModuleType("app.plugins")
     module._PluginBase = type("_PluginBase", (), {})
 
@@ -606,7 +668,9 @@ def test_shadow_detection_flags_second_implementation():
 
 
 def test_shadow_detection_allows_reimported_canonical_symbol():
-    """物理模块重新导入同一个 canonical 对象不算遮蔽。"""
+    """
+    物理模块重新导入同一个 canonical 对象不算遮蔽。
+    """
     canonical = importlib.import_module("app.sdk.plugin.base")
     module = ModuleType("app.plugins")
     module._PluginBase = canonical._PluginBase
@@ -616,7 +680,9 @@ def test_shadow_detection_allows_reimported_canonical_symbol():
 
 
 def test_installed_symbol_overlay_modules_have_no_shadowed_exports():
-    """已装载的兼容叠加模块都不得用第二份实现遮蔽登记符号。"""
+    """
+    已装载的兼容叠加模块都不得用第二份实现遮蔽登记符号。
+    """
     configure_legacy_import_diagnostics(enabled=False, emitter=lambda _: None)
     try:
         violations: dict[str, list] = {}
@@ -634,7 +700,9 @@ def test_installed_symbol_overlay_modules_have_no_shadowed_exports():
 
 
 def test_sdk_plugins_module_alias_reuses_manager_module():
-    """旧 SDK 路径 app.sdk.plugins 只经精确别名复用插件管理器模块。"""
+    """
+    旧 SDK 路径 app.sdk.plugins 只经精确别名复用插件管理器模块。
+    """
     alias = MODULE_ALIASES["app.sdk.plugins"]
     configure_legacy_import_diagnostics(enabled=False, emitter=lambda _: None)
     try:
@@ -648,13 +716,17 @@ def test_sdk_plugins_module_alias_reuses_manager_module():
 
 
 def test_plugins_package_root_source_matches_shipped_file():
-    """自愈写回的包根源码必须与后端源码提供的包根完全一致。"""
+    """
+    自愈写回的包根源码必须与后端源码提供的包根完全一致。
+    """
     shipped = Path(__file__).resolve().parents[1] / "app" / "plugins" / "__init__.py"
     assert shipped.read_text(encoding="utf-8") == PLUGINS_PACKAGE_ROOT_SOURCE
 
 
 def test_plugins_package_root_shadowing_detects_legacy_host_implementation(tmp_path):
-    """旧版本自带宿主实现的包根必须被判定为遮蔽兼容符号。"""
+    """
+    旧版本自带宿主实现的包根必须被判定为遮蔽兼容符号。
+    """
     init_file = tmp_path / "__init__.py"
     init_file.write_text(
         "from abc import ABCMeta\n"
@@ -675,7 +747,9 @@ def test_plugins_package_root_shadowing_detects_legacy_host_implementation(tmp_p
 
 
 def test_plugins_package_root_shadowing_ignores_reimported_symbols(tmp_path):
-    """包根只重新导入 canonical 对象不算遮蔽，自愈必须放过它。"""
+    """
+    包根只重新导入 canonical 对象不算遮蔽，自愈必须放过它。
+    """
     init_file = tmp_path / "__init__.py"
     init_file.write_text(
         '"""说明。"""\n'
@@ -688,7 +762,9 @@ def test_plugins_package_root_shadowing_ignores_reimported_symbols(tmp_path):
 
 
 def test_plugins_package_root_shadowing_tolerates_unreadable_source(tmp_path):
-    """包根缺失或语法错误时返回空列表，把故障留给标准导入流程。"""
+    """
+    包根缺失或语法错误时返回空列表，把故障留给标准导入流程。
+    """
     missing_file = tmp_path / "__init__.py"
     assert detect_plugins_package_root_shadowing(missing_file) == []
     missing_file.write_text("class _PluginBase(\n", encoding="utf-8")
@@ -696,7 +772,9 @@ def test_plugins_package_root_shadowing_tolerates_unreadable_source(tmp_path):
 
 
 def test_restore_plugins_package_root_backs_up_and_rewrites(tmp_path):
-    """自愈必须先备份原文件再写回只含说明的命名空间入口。"""
+    """
+    自愈必须先备份原文件再写回只含说明的命名空间入口。
+    """
     init_file = tmp_path / "__init__.py"
     legacy_source = "class _PluginBase:\n    pass\n"
     init_file.write_text(legacy_source, encoding="utf-8")
@@ -708,7 +786,9 @@ def test_restore_plugins_package_root_backs_up_and_rewrites(tmp_path):
 
 
 def test_startup_repairs_plugin_package_root_before_loading_plugins(tmp_path, monkeypatch):
-    """启动装配必须在导入插件前把被遮蔽的包根恢复成命名空间入口。"""
+    """
+    启动装配必须在导入插件前把被遮蔽的包根恢复成命名空间入口。
+    """
     plugins_root = tmp_path / "app" / "plugins"
     plugins_root.mkdir(parents=True)
     init_file = plugins_root / "__init__.py"
@@ -727,7 +807,9 @@ def test_startup_repairs_plugin_package_root_before_loading_plugins(tmp_path, mo
 
 
 def test_startup_keeps_hard_failure_when_plugin_root_is_read_only(tmp_path, monkeypatch):
-    """运行目录不可写时自愈降级为报错并返回遮蔽符号，不静默跳过。"""
+    """
+    运行目录不可写时自愈降级为报错并返回遮蔽符号，不静默跳过。
+    """
     plugins_root = tmp_path / "app" / "plugins"
     plugins_root.mkdir(parents=True)
     (plugins_root / "__init__.py").write_text(

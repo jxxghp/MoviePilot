@@ -1,4 +1,6 @@
-"""钉钉自定义机器人 Webhook 客户端。"""
+"""
+钉钉自定义机器人 Webhook 客户端。
+"""
 
 from __future__ import annotations
 
@@ -14,7 +16,9 @@ from app.runtime.log import logger
 
 
 class DingTalk:
-    """通过钉钉自定义机器人 Webhook 发送 Markdown 通知。"""
+    """
+    通过钉钉自定义机器人 Webhook 发送 Markdown 通知。
+    """
 
     def __init__(
         self,
@@ -22,20 +26,29 @@ class DingTalk:
         DINGTALK_SECRET: Optional[str] = None,
         **kwargs: object,
     ) -> None:
-        """保存 Webhook 与可选加签密钥，网络请求延迟到实际发送时执行。"""
+        """
+        保存 Webhook 与可选加签密钥，网络请求延迟到实际发送时执行。
+        """
         self._webhook = (DINGTALK_WEBHOOK or "").strip()
         self._secret = (DINGTALK_SECRET or "").strip()
         self._req = RequestUtils(content_type="application/json", timeout=30)
 
     def get_state(self) -> bool:
-        """检查 Webhook 是否为可发送请求的 HTTP(S) 地址。"""
+        """
+        检查 Webhook 是否为可发送请求的 HTTP(S) 地址。
+        """
         if not self._webhook:
             return False
         parsed = urlsplit(self._webhook)
         return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
     def build_request_url(self, timestamp: Optional[int] = None) -> str:
-        """按钉钉加签协议向 Webhook 查询参数追加时间戳与签名。"""
+        """
+        按钉钉加签协议追加时间戳与签名。
+
+        :param timestamp: Unix 时间戳，单位毫秒；省略时使用当前时间
+        :return: 已加签请求地址；未配置密钥时返回原 Webhook
+        """
         if not self._secret:
             return self._webhook
         timestamp = timestamp if timestamp is not None else int(time.time() * 1000)
@@ -60,7 +73,15 @@ class DingTalk:
         image: Optional[str] = None,
         link: Optional[str] = None,
     ) -> tuple[str, str]:
-        """将 MoviePilot 通知字段转换为钉钉 Markdown 标题与正文。"""
+        """
+        将通知字段转换为钉钉 Markdown 标题和正文。
+
+        :param title: 原始标题；首行用作消息标题，空标题使用 MoviePilot 通知
+        :param text: 可选正文
+        :param image: 可选图片地址
+        :param link: 可选详情链接
+        :return: 消息标题与 Markdown 正文二元组
+        """
         raw_title = str(title or "").strip()
         title_lines = raw_title.splitlines()
         markdown_title = title_lines[0].strip() if title_lines else ""
@@ -87,7 +108,18 @@ class DingTalk:
         userid: Optional[str] = None,
         link: Optional[str] = None,
     ) -> bool:
-        """向机器人所在群发送一条 Markdown 消息并校验钉钉业务返回码。"""
+        """
+        向机器人所在群发送 Markdown 消息并校验业务返回码。
+
+        请求结束后关闭响应；该入口不执行接收人定向发送。
+
+        :param title: 消息标题，可与正文择一提供
+        :param text: 消息正文
+        :param image: 可选图片地址
+        :param userid: 兼容统一通知接口的接收人字段，群机器人当前忽略
+        :param link: 可选详情链接
+        :return: HTTP 和钉钉业务状态均成功时返回 True；配置、输入或响应失败时返回 False
+        """
         if not title and not text:
             logger.warning("钉钉通知标题和内容不能同时为空")
             return False

@@ -1,3 +1,7 @@
+"""
+验证媒体标题、路径和自定义识别词的元数据解析。
+"""
+
 # -*- coding: utf-8 -*-
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,7 +27,9 @@ from tests.cases.meta import meta_cases
 
 
 def test_metainfo():
-    """测试常见标题元数据识别结果。"""
+    """
+    测试常见标题元数据识别结果。
+    """
     for info in meta_cases:
         if info.get("path"):
             meta_info = MetaInfoPath(path=Path(info.get("path")))
@@ -59,7 +65,9 @@ def test_metainfo():
 
 
 def test_emby_format_ids():
-    """测试 Emby 格式 ID 识别。"""
+    """
+    测试 Emby 格式 ID 识别。
+    """
     test_paths = [
         (
             "/movies/The Vampire Diaries (2009) [tmdbid=18165]/The.Vampire.Diaries.S01E01.1080p.mkv",
@@ -86,7 +94,9 @@ def test_emby_format_ids():
 
 
 def test_metainfopath_with_custom_words():
-    """测试 MetaInfoPath 使用自定义识别词。"""
+    """
+    测试 MetaInfoPath 使用自定义识别词。
+    """
     custom_words = ["测试替换 => "]
     path = Path("/movies/电影测试替换名称 (2024)/movie.mkv")
     meta = MetaInfoPath(path, custom_words=custom_words)
@@ -95,21 +105,27 @@ def test_metainfopath_with_custom_words():
 
 
 def test_metainfopath_without_custom_words():
-    """测试 MetaInfoPath 不传入自定义识别词。"""
+    """
+    测试 MetaInfoPath 不传入自定义识别词。
+    """
     path = Path("/movies/Normal Movie (2024)/movie.mkv")
     meta = MetaInfoPath(path)
     assert meta is not None
 
 
 def test_metainfopath_with_empty_custom_words():
-    """测试 MetaInfoPath 传入空的自定义识别词。"""
+    """
+    测试 MetaInfoPath 传入空的自定义识别词。
+    """
     path = Path("/movies/Test Movie (2024)/movie.mkv")
     meta = MetaInfoPath(path, custom_words=[])
     assert meta is not None
 
 
 def test_metainfo_snapshot_exposes_complete_immutable_contract():
-    """稳定快照应包含路径合并字段，且不受原 MetaBase 后续修改影响。"""
+    """
+    稳定快照应包含路径合并字段，且不受原 MetaBase 后续修改影响。
+    """
     meta = MetaInfo("Show.S01E01.2026.2160p.WEB-DL.HDR.H265.10bit-GROUP.mkv")
     meta.web_source = "Amazon"
     snapshot = MetaInfoSnapshot.from_meta(meta)
@@ -125,7 +141,9 @@ def test_metainfo_snapshot_exposes_complete_immutable_contract():
 
 
 def test_metainfopath_merges_parent_streaming_platform():
-    """文件名缺少平台时应从父目录补充，避免路径识别丢失稳定资源字段。"""
+    """
+    文件名缺少平台时应从父目录补充，避免路径识别丢失稳定资源字段。
+    """
     media_extensions = get_media_extensions()
     audio_extensions = get_audio_extensions()
     accelerator = get_metainfo_accelerator()
@@ -149,7 +167,9 @@ def test_metainfopath_merges_parent_streaming_platform():
 
 
 def test_numeric_video_filename_sets_single_episode_total():
-    """纯数字视频文件名表示单集时，范围字段必须保持自洽。"""
+    """
+    纯数字视频文件名表示单集时，范围字段必须保持自洽。
+    """
     media_extensions = get_media_extensions()
     audio_extensions = get_audio_extensions()
     accelerator = get_metainfo_accelerator()
@@ -173,7 +193,9 @@ def test_numeric_video_filename_sets_single_episode_total():
 
 
 def test_empty_video_title_keeps_optional_original_name_none():
-    """无法提取标题时 original_name 保持空值，不使用含义不同的空字符串。"""
+    """
+    无法提取标题时 original_name 保持空值，不使用含义不同的空字符串。
+    """
     meta = MetaInfo("S02E1000.mkv")
 
     assert meta.name == ""
@@ -181,7 +203,9 @@ def test_empty_video_title_keeps_optional_original_name_none():
 
 
 def test_custom_words_apply_words_recording():
-    """测试 apply_words 记录功能。"""
+    """
+    测试 apply_words 记录功能。
+    """
     custom_words = ["替换词 => 新词"]
     title = "电影替换词.2024.mkv"
     meta = MetaInfo(title=title, custom_words=custom_words)
@@ -191,7 +215,9 @@ def test_custom_words_apply_words_recording():
 
 
 def test_metainfo_preserves_original_name_when_custom_words_applied():
-    """测试应用识别词后仍保留未应用识别词时识别出的名称。"""
+    """
+    测试应用识别词后仍保留未应用识别词时识别出的名称。
+    """
     custom_words = ["测试替换 => "]
     meta = MetaInfo(title="电影测试替换名称 (2024)", custom_words=custom_words)
     assert meta.name == "电影名称"
@@ -199,7 +225,9 @@ def test_metainfo_preserves_original_name_when_custom_words_applied():
 
 
 def test_torrent_title_match_ignores_question_mark_variants():
-    """问号差异不应导致番剧罗马字标题匹配失败。"""
+    """
+    问号差异不应导致番剧罗马字标题匹配失败。
+    """
     mediainfo = SimpleNamespace(
         title="哪里有温柔对待阿宅的辣妹！？",
         original_title="オタクに優しいギャルはいない!?",
@@ -242,7 +270,9 @@ def test_torrent_title_match_ignores_question_mark_variants():
 
 
 def test_torrent_title_match_rejects_season_absent_from_target_series():
-    """无年份同名剧的资源季超出目标剧季范围时应拒绝。"""
+    """
+    无年份同名剧的资源季超出目标剧季范围时应拒绝。
+    """
     mediainfo = MediaInfo(
         title="家族计划",
         original_title="가족계획",
@@ -265,7 +295,9 @@ def test_torrent_title_match_rejects_season_absent_from_target_series():
 
 
 def test_python_metainfo_fallback_preserves_xxx_movie_title():
-    """Python 兜底解析不应删除合法 xXx 片名。"""
+    """
+    Python 兜底解析不应删除合法 xXx 片名。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta = MetaInfo("xXx 2002 1080p AMZN WEB-DL H.264 DDP 5.1-FROGWeb")
 
@@ -280,7 +312,9 @@ def test_python_metainfo_fallback_preserves_xxx_movie_title():
 def test_python_metainfo_fallback_keeps_title_token_matching_subtitle_extension(
     use_path, monkeypatch
 ):
-    """Python 回退解析在标题和路径入口都应保留与字幕扩展名同名的词元。"""
+    """
+    Python 回退解析在标题和路径入口都应保留与字幕扩展名同名的词元。
+    """
     title = (
         "Kick-Ass.2010.PROPER.2160p.BluRay.REMUX.HEVC.DTS-HD.MA."
         "TrueHD.7.1.Atmos-FGT.mkv"
@@ -305,7 +339,9 @@ def test_python_metainfo_fallback_keeps_title_token_matching_subtitle_extension(
 
 
 def test_python_metainfo_fallback_recognizes_eac3_audio_codec():
-    """Python 兜底解析应识别 EAC3 及其声道信息。"""
+    """
+    Python 兜底解析应识别 EAC3 及其声道信息。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta = MetaInfo("Test.Movie.2026.1080p.BluRay.x264.EAC3.5.1-GROUP")
 
@@ -337,7 +373,9 @@ RESOURCE_TYPE_CASES = [
 
 @pytest.mark.parametrize(("title", "expected"), RESOURCE_TYPE_CASES)
 def test_metainfo_preserves_all_resource_types(title, expected):
-    """默认解析入口应按顺序保留并去重所有受支持的资源类型。"""
+    """
+    默认解析入口应按顺序保留并去重所有受支持的资源类型。
+    """
     meta = MetaInfo(title)
 
     assert meta.resource_type == expected
@@ -347,7 +385,9 @@ def test_metainfo_preserves_all_resource_types(title, expected):
 
 @pytest.mark.parametrize(("title", "expected"), RESOURCE_TYPE_CASES)
 def test_python_metainfo_preserves_all_resource_types(title, expected):
-    """Python 兜底解析应按顺序保留并去重所有受支持的资源类型。"""
+    """
+    Python 兜底解析应按顺序保留并去重所有受支持的资源类型。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta = MetaInfo(title)
 
@@ -357,7 +397,9 @@ def test_python_metainfo_preserves_all_resource_types(title, expected):
 
 
 def test_metainfo_routes_audio_filename_to_music():
-    """音频文件名应直接走音乐分支并完成艺术家/曲名拆分，不再进入影视季集解析。"""
+    """
+    音频文件名应直接走音乐分支并完成艺术家/曲名拆分，不再进入影视季集解析。
+    """
     meta = MetaInfo("周杰伦 - 晴天.flac")
 
     assert isinstance(meta, MetaMusic)
@@ -374,7 +416,9 @@ def test_metainfo_routes_audio_filename_to_music():
 
 
 def test_metainfo_routes_ape_filename_to_music():
-    """Monkey's Audio 文件应使用默认音频扩展配置进入音乐识别分支。"""
+    """
+    Monkey's Audio 文件应使用默认音频扩展配置进入音乐识别分支。
+    """
     meta = MetaInfo("陈奕迅 - 天下太平.ape")
 
     assert isinstance(meta, MetaMusic)
@@ -385,7 +429,9 @@ def test_metainfo_routes_ape_filename_to_music():
 
 
 def test_metainfo_routes_audio_path_to_music_without_parent_merge():
-    """音频路径应直接构造音乐元数据，不参与影视季集合并，并拆分歌手与曲名。"""
+    """
+    音频路径应直接构造音乐元数据，不参与影视季集合并，并拆分歌手与曲名。
+    """
     meta = MetaInfoPath(Path("/music/叶惠美/周杰伦 - 晴天.flac"))
 
     assert isinstance(meta, MetaMusic)
@@ -398,7 +444,9 @@ def test_metainfo_routes_audio_path_to_music_without_parent_merge():
 
 
 def test_metainfo_keeps_video_path_for_non_audio_files():
-    """非音频文件应继续走影视识别链，不受音频路由影响。"""
+    """
+    非音频文件应继续走影视识别链，不受音频路由影响。
+    """
     meta = MetaInfoPath(Path("/movies/Inception (2010)/Inception.2010.1080p.mkv"))
 
     assert not isinstance(meta, MetaMusic)
@@ -406,7 +454,9 @@ def test_metainfo_keeps_video_path_for_non_audio_files():
 
 
 def test_metainfo_music_round_trip_preserves_fields():
-    """音频解析结果字典往返后应保留音乐字段。"""
+    """
+    音频解析结果字典往返后应保留音乐字段。
+    """
     meta = MetaInfoPath(Path("/music/周杰伦 - 晴天.flac"))
     payload = meta.to_dict()
     restored = MetaMusic.from_dict(payload)
@@ -419,7 +469,9 @@ def test_metainfo_music_round_trip_preserves_fields():
 
 
 def test_python_subtitle_episode_range_fin_with_chinese_season():
-    """Python 兜底解析应识别副标题中 [01-26Fin] 格式的集数范围（#6103）。"""
+    """
+    Python 兜底解析应识别副标题中 [01-26Fin] 格式的集数范围（#6103）。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta = MetaInfo(
             title="JoJos Bizarre Adventure S01 2012 1080i BluRay x264 FLAC 2.0-AnimeF@ADE",
@@ -434,7 +486,9 @@ def test_python_subtitle_episode_range_fin_with_chinese_season():
 
 
 def test_subtitle_episode_range_fin_with_default_parser():
-    """默认解析路径应识别副标题中 [01-26Fin] 格式的集数范围（#6103）。"""
+    """
+    默认解析路径应识别副标题中 [01-26Fin] 格式的集数范围（#6103）。
+    """
     meta = MetaInfo(
         title="JoJos Bizarre Adventure S01 2012 1080i BluRay x264 FLAC 2.0-AnimeF@ADE",
         subtitle="JOJO的奇妙冒险 第一季 / JoJo's Bizarre Adventure [01-26Fin] [简繁字幕]",
@@ -448,7 +502,9 @@ def test_subtitle_episode_range_fin_with_default_parser():
 
 
 def test_python_subtitle_episode_range_fin_without_chinese_marker():
-    """副标题无中文季集标记时也应识别 [01-38Fin] 集数范围。"""
+    """
+    副标题无中文季集标记时也应识别 [01-38Fin] 集数范围。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta = MetaInfo(
             title="Some Show S01 2022 1080p WEB-DL H264-GRP",
@@ -461,7 +517,9 @@ def test_python_subtitle_episode_range_fin_without_chinese_marker():
 
 
 def test_python_subtitle_episode_range_end_variant():
-    """END/完结 等完结标记变体同样应识别为集数范围。"""
+    """
+    END/完结 等完结标记变体同样应识别为集数范围。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta_end = MetaInfo(
             title="Some Show S01 2022 1080p WEB-DL H264-GRP",
@@ -479,7 +537,9 @@ def test_python_subtitle_episode_range_end_variant():
 
 
 def test_python_subtitle_year_range_not_treated_as_episodes():
-    """年份范围（如 2019-2020）不得误识别为集数。"""
+    """
+    年份范围（如 2019-2020）不得误识别为集数。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta = MetaInfo(
             title="Some Collection 2020 1080p WEB-DL H264-GRP",
@@ -491,7 +551,9 @@ def test_python_subtitle_year_range_not_treated_as_episodes():
 
 
 def test_python_subtitle_episode_range_fin_rejects_numeric_suffix():
-    """Python 兜底解析不得把带数字后缀的完结范围截断识别为集数。"""
+    """
+    Python 兜底解析不得把带数字后缀的完结范围截断识别为集数。
+    """
     for subtitle in ("Some Show [01-26Fin]2", "Some Show 01-26Fin 2"):
         with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
             meta = MetaInfo(
@@ -504,7 +566,9 @@ def test_python_subtitle_episode_range_fin_rejects_numeric_suffix():
 
 
 def test_custom_words_replace_then_episode_offset():
-    """测试复杂识别词仍按先替换、后集数偏移的顺序处理。"""
+    """
+    测试复杂识别词仍按先替换、后集数偏移的顺序处理。
+    """
     custom_words = ["旧名 => 新名 && 第 <> 集 >> EP+1"]
     meta = MetaInfo(title="旧名 第03集", custom_words=custom_words)
     assert meta.name == "新名"
@@ -513,7 +577,9 @@ def test_custom_words_replace_then_episode_offset():
 
 
 def test_custom_words_episode_offset_applies_to_subtitle():
-    """标题无集数时，自定义偏移应只修改副标题中的集数而保留季数。"""
+    """
+    标题无集数时，自定义偏移应只修改副标题中的集数而保留季数。
+    """
     custom_words = [
         "BLEACH Thousand-Year Blood War S04 => BLEACH 2004 S02 && S02 <> 1080p >> EP+40"
     ]
@@ -532,7 +598,9 @@ def test_custom_words_episode_offset_applies_to_subtitle():
 
 
 def test_get_torrent_episodes_applies_custom_words():
-    """种子文件集数解析应使用订阅识别词完成跨季集数映射。"""
+    """
+    种子文件集数解析应使用订阅识别词完成跨季集数映射。
+    """
     custom_words = [
         "A.Will.Eternal.S04 => 一念永恒{[tmdbid=107371;type=tv]}S01 "
         "&& S01 <> 2160p >> EP+165"
@@ -547,7 +615,9 @@ def test_get_torrent_episodes_applies_custom_words():
 
 
 def test_custom_words_episode_offset_supports_multiplication_expression():
-    """测试集数偏移表达式支持乘法和连续运算。"""
+    """
+    测试集数偏移表达式支持乘法和连续运算。
+    """
     custom_words = [
         r"Ha.Ha.Ha.Ha.Ha.2026.S06E([0-1][0-9]).Part1 => 哈哈哈哈哈 (2020){[tmdbid=112732;type=tv]} S06E\1.Part1 && S06 <> .Part1 >> 2*EP-1"
     ]
@@ -567,7 +637,9 @@ def test_custom_words_episode_offset_supports_multiplication_expression():
 
 
 def test_custom_words_episode_offset_supports_repeated_ep_expression():
-    """测试集数偏移表达式支持重复使用 EP 占位符。"""
+    """
+    测试集数偏移表达式支持重复使用 EP 占位符。
+    """
     custom_words = ["旧名 => 新名 && 第 <> 集 >> EP+EP-1"]
 
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
@@ -579,7 +651,9 @@ def test_custom_words_episode_offset_supports_repeated_ep_expression():
 
 
 def test_custom_words_episode_offset_rejects_implicit_ep_expression():
-    """测试集数偏移表达式不把 2EP 当作隐式乘法或字符串拼接。"""
+    """
+    测试集数偏移表达式不把 2EP 当作隐式乘法或字符串拼接。
+    """
     custom_words = ["旧名 => 新名 && 第 <> 集 >> 2EP"]
 
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
@@ -591,7 +665,9 @@ def test_custom_words_episode_offset_rejects_implicit_ep_expression():
 
 
 def test_custom_words_support_episode_group_parameter():
-    """测试自定义识别词替换结果中的 g 参数会写入剧集组。"""
+    """
+    测试自定义识别词替换结果中的 g 参数会写入剧集组。
+    """
     group_id = "5ad0ec240e0a26303f00d84d"
     custom_words = [
         f"Bakemonogatari => 物语系列 {{[tmdbid=46195;type=tv;g={group_id};s=1]}}"
@@ -606,7 +682,9 @@ def test_custom_words_support_episode_group_parameter():
 
 
 def test_custom_words_support_special_season_zero_parameter():
-    """显式媒体标签中的 s=0 应作为特别季写入元数据。"""
+    """
+    显式媒体标签中的 s=0 应作为特别季写入元数据。
+    """
     custom_words = [
         "Test Show => 测试剧 {[tmdbid=12345;type=tv;s=0]}"
     ]
@@ -621,7 +699,9 @@ def test_custom_words_support_special_season_zero_parameter():
 
 
 def test_find_metainfo_supports_episode_group_parameter():
-    """测试显式媒体标签支持 g 剧集组参数。"""
+    """
+    测试显式媒体标签支持 g 剧集组参数。
+    """
     group_id = "5ad0ec240e0a26303f00d84d"
     title, metainfo = find_metainfo(f"物语系列 {{[tmdbid=46195;type=tv;g={group_id};s=1]}}")
     assert metainfo["episode_group"] == group_id
@@ -629,7 +709,9 @@ def test_find_metainfo_supports_episode_group_parameter():
 
 
 def test_find_metainfo_does_not_support_episode_group_alias():
-    """测试 e_group 不会被当作剧集组参数识别。"""
+    """
+    测试 e_group 不会被当作剧集组参数识别。
+    """
     group_id = "5ad0ec240e0a26303f00d84d"
     with patch("app.adapters.system.rust.find_metainfo", return_value=None):
         _, metainfo = find_metainfo(f"物语系列 {{[tmdbid=46195;type=tv;e_group={group_id};s=1]}}")
@@ -637,14 +719,18 @@ def test_find_metainfo_does_not_support_episode_group_alias():
 
 
 def test_video_bit_extracted_for_video_title():
-    """测试普通影视标题中的视频位深可单独识别。"""
+    """
+    测试普通影视标题中的视频位深可单独识别。
+    """
     meta = MetaInfo(title="The 355 2022 BluRay 1080p DTS-HD MA5.1 X265.10bit-BeiTai")
     assert meta.video_encode == "x265 10bit"
     assert meta.video_bit == "10bit"
 
 
 def test_special_season_zero_enables_whole_season_resource_parsing():
-    """只有 S00、没有集号的整季标题仍应识别后续编码信息。"""
+    """
+    只有 S00、没有集号的整季标题仍应识别后续编码信息。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta = MetaInfo(title="Demo Show S00 X265 AAC")
 
@@ -654,7 +740,9 @@ def test_special_season_zero_enables_whole_season_resource_parsing():
 
 
 def test_anime_parser_preserves_numeric_special_season_zero():
-    """第三方动漫解析器返回整数 0 时也应保留特别季。"""
+    """
+    第三方动漫解析器返回整数 0 时也应保留特别季。
+    """
     parsed = {
         "anime_title": "Demo Anime",
         "anime_season": 0,
@@ -676,7 +764,9 @@ def test_anime_parser_preserves_numeric_special_season_zero():
 
 
 def test_anime_parser_ignores_empty_and_invalid_season_values():
-    """第三方动漫季号的空值和非法列表项应按未指定处理且不得抛错。"""
+    """
+    第三方动漫季号的空值和非法列表项应按未指定处理且不得抛错。
+    """
     empty = {
         "anime_title": "Demo Anime",
         "anime_season": "",
@@ -698,7 +788,9 @@ def test_anime_parser_ignores_empty_and_invalid_season_values():
 
 
 def test_hdr_vivid_effect_extracted_for_video_title():
-    """测试合并写法 HDRVivid 可识别为资源效果。"""
+    """
+    测试合并写法 HDRVivid 可识别为资源效果。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta = MetaInfo(
             title="Never-Ending Summer 2026 S01E18-S01E19 2160p WEB-DL 50Fps "
@@ -711,7 +803,9 @@ def test_hdr_vivid_effect_extracted_for_video_title():
 
 
 def test_video_bit_extracted_for_anime_title():
-    """测试动漫标题中的视频位深可单独识别。"""
+    """
+    测试动漫标题中的视频位深可单独识别。
+    """
     meta = MetaInfo(
         title="[云歌字幕组][7月新番][欢迎来到实力至上主义的教室 第二季][01]"
               "[X264 10bit][1080p][简体中文].mp4"
@@ -721,7 +815,9 @@ def test_video_bit_extracted_for_anime_title():
 
 
 def test_streaming_platform_word_kept_in_movie_title():
-    """测试正式片名中的流媒体平台词不会被预置清理规则移除。"""
+    """
+    测试正式片名中的流媒体平台词不会被预置清理规则移除。
+    """
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
         meta = MetaInfo(title="Amazon Forever 2004 1080p WEB-DL")
     assert meta.name == "Amazon Forever"
@@ -729,7 +825,9 @@ def test_streaming_platform_word_kept_in_movie_title():
 
 
 def test_emby_tmdbid_overrides_braced_metainfo_tmdbid():
-    """测试 Emby [tmdbid] 标签保持历史优先级。"""
+    """
+    测试 Emby [tmdbid] 标签保持历史优先级。
+    """
     title, metainfo = find_metainfo("Movie {[tmdbid=111;type=movies]} [tmdbid=222]")
     assert metainfo["media_source"] == MediaSource.TMDB
     assert metainfo["media_id"] == "222"
@@ -738,7 +836,9 @@ def test_emby_tmdbid_overrides_braced_metainfo_tmdbid():
 
 
 def test_parenthesized_tmdb_id_is_extracted_from_title():
-    """测试圆括号 TMDB 标签可从标题中提取并移除。"""
+    """
+    测试圆括号 TMDB 标签可从标题中提取并移除。
+    """
     title, metainfo = find_metainfo("狩猎 (2022) (tmdb-727340)")
 
     assert title.strip() == "狩猎 (2022)"
@@ -747,7 +847,9 @@ def test_parenthesized_tmdb_id_is_extracted_from_title():
 
 
 def test_custom_identifier_uses_source_specific_id_and_returns_unified_identity():
-    """自定义识别词使用专用ID语法，解析结果仍转换为统一身份。"""
+    """
+    自定义识别词使用专用ID语法，解析结果仍转换为统一身份。
+    """
     title, metainfo = find_metainfo(
         "Movie {[tmdbid=550;type=movies]}"
     )
@@ -759,7 +861,9 @@ def test_custom_identifier_uses_source_specific_id_and_returns_unified_identity(
 
 
 def test_generic_media_identity_is_not_custom_identifier_syntax():
-    """通用身份字段不得因 Rust 扩展版本差异被自定义识别词解析器接收。"""
+    """
+    通用身份字段不得因 Rust 扩展版本差异被自定义识别词解析器接收。
+    """
     with patch(
         "app.adapters.system.rust.find_metainfo",
         side_effect=AssertionError("通用身份标签必须绕过 Rust 解析器"),
@@ -773,7 +877,9 @@ def test_generic_media_identity_is_not_custom_identifier_syntax():
 
 
 def test_metainfopath_auxiliary_chinese_stem_uses_parent_title():
-    """测试辅助文件名合并父目录标题与年份。"""
+    """
+    测试辅助文件名合并父目录标题与年份。
+    """
     path = Path(
         "/Marty Supreme 2025 2160p DoVi HDR Atmos TrueHD 7.1 x265-PbK/简英双语特效.mp4"
     )
@@ -784,7 +890,9 @@ def test_metainfopath_auxiliary_chinese_stem_uses_parent_title():
 
 
 def test_metainfopath_chinese_parent_not_replaced_by_auxiliary_rule():
-    """测试纯中文父目录不触发辅助文件名规则。"""
+    """
+    测试纯中文父目录不触发辅助文件名规则。
+    """
     path = Path("/movies/流浪地球 (2023)/简体中字.mkv")
     meta = MetaInfoPath(path)
     assert meta.cn_name
@@ -792,14 +900,18 @@ def test_metainfopath_chinese_parent_not_replaced_by_auxiliary_rule():
 
 
 def test_metainfopath_cn_title_containing_keyword_not_cleared():
-    """测试中文片名包含辅助关键词子串时不应被清空。"""
+    """
+    测试中文片名包含辅助关键词子串时不应被清空。
+    """
     path = Path("/Some Movie 2024/粤语残片.mkv")
     meta = MetaInfoPath(path)
     assert "粤语残片" in meta.cn_name
 
 
 def test_metainfopath_movie_collection_parent_does_not_override_file_title():
-    """电影合集父目录不应覆盖文件名中更具体的片名与年份。"""
+    """
+    电影合集父目录不应覆盖文件名中更具体的片名与年份。
+    """
     collection = (
         "/Unraid/Media/MoviePilot/电影/"
         "The.Hunger.Games.Complete.4-Film.Collection.2160p.UHD.Blu-ray."

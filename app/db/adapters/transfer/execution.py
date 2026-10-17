@@ -1,4 +1,6 @@
-"""整理步骤执行与终态结算端口的 SQLAlchemy 短事务适配器。"""
+"""
+整理步骤执行与终态结算端口的 SQLAlchemy 短事务适配器。
+"""
 
 from __future__ import annotations
 
@@ -64,17 +66,23 @@ _UNHANDLED_REVIEW_STEP_ORDINAL = 2_147_483_646
 
 
 def _local_now() -> datetime:
-    """返回业务审计字段使用的宿主本地时间。"""
+    """
+    返回业务审计字段使用的宿主本地时间。
+    """
     return datetime.now()
 
 
 def _utc_now() -> datetime:
-    """返回租约 fencing 使用的 UTC 时间。"""
+    """
+    返回租约 fencing 使用的 UTC 时间。
+    """
     return datetime.now(timezone.utc)
 
 
 class TransactionalTransferExecutionRepository:
-    """以操作级短 Session 实现整理执行持久化端口。"""
+    """
+    以操作级短 Session 实现整理执行持久化端口。
+    """
 
     def __init__(
             self,
@@ -86,7 +94,9 @@ class TransactionalTransferExecutionRepository:
             local_clock: Callable[[], datetime] = _local_now,
             lease_clock: Callable[[], datetime] = _utc_now,
     ) -> None:
-        """保存 Session 工厂及可测试时钟，不持有跨外部 I/O 事务。"""
+        """
+        保存 Session 工厂及可测试时钟，不持有跨外部 I/O 事务。
+        """
         self._session_factory = session_factory
         self._async_session = async_session
         self._local_clock = local_clock
@@ -94,25 +104,33 @@ class TransactionalTransferExecutionRepository:
 
     @staticmethod
     def _format_local(value: datetime) -> str:
-        """编码与既有业务审计列一致的本地时间。"""
+        """
+        编码与既有业务审计列一致的本地时间。
+        """
         return value.strftime("%Y-%m-%d %H:%M:%S")
 
     @staticmethod
     def _format_utc(value: datetime) -> str:
-        """编码可按字典序比较的固定宽度 UTC 租约时间。"""
+        """
+        编码可按字典序比较的固定宽度 UTC 租约时间。
+        """
         return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
     @staticmethod
     def _execution_steps(
             steps: list[TransferExecutionStepModel],
     ) -> list[TransferExecutionStepModel]:
-        """排除只用于人工审计、不得参与真实执行的 synthetic 步骤。"""
+        """
+        排除只用于人工审计、不得参与真实执行的 synthetic 步骤。
+        """
         return [step for step in steps if step.kind not in _REVIEW_STEP_KINDS]
 
     def isolate_unhandled_failure(
             self, *, task_id: str, lease_token: str, error: str,
     ) -> bool:
-        """原子隔离未记账异常并保存可发现的复核凭据，保留所有真实步骤证据。"""
+        """
+        原子隔离未记账异常并保存可发现的复核凭据，保留所有真实步骤证据。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -140,7 +158,9 @@ class TransactionalTransferExecutionRepository:
     def _stage_unhandled_review(
             session: Session, *, pending: TransferPending, error: str, updated_at: str,
     ) -> None:
-        """创建或更新独立复核凭据；同一任务再次异常时复用凭据并保留复核审计。"""
+        """
+        创建或更新独立复核凭据；同一任务再次异常时复用凭据并保留复核审计。
+        """
         oper = TransferExecutionStepOper(session)
         step = next((item for item in oper.list_by_task_id(task_id=pending.task_id)
                      if item.kind == _UNHANDLED_REVIEW_STEP_KIND), None)
@@ -164,7 +184,9 @@ class TransactionalTransferExecutionRepository:
 
     @staticmethod
     def _project_step(step: TransferExecutionStepModel) -> TransferExecutionStep:
-        """在 Session 有效期内冻结 ORM 步骤为 Application DTO。"""
+        """
+        在 Session 有效期内冻结 ORM 步骤为 Application DTO。
+        """
         if (step.result_version is None) != (step.result_payload is None):
             raise TransferExecutionConflictError("整理步骤记录不完整，请重新识别文件后再整理")
         result = (
@@ -209,7 +231,9 @@ class TransactionalTransferExecutionRepository:
             pending: TransferPending,
             steps: list[TransferExecutionStepModel],
     ) -> TransferExecutionSnapshot:
-        """在 Session 有效期内冻结 pending 与步骤聚合状态。"""
+        """
+        在 Session 有效期内冻结 pending 与步骤聚合状态。
+        """
         has_checkpoint_column = pending.execution_payload is not None
         has_checkpoint_identity = (
             pending.execution_version is not None
@@ -247,7 +271,9 @@ class TransactionalTransferExecutionRepository:
             pending: TransferPending,
             steps: list[TransferExecutionStepModel],
     ) -> TransferManualReviewTaskView:
-        """冻结人工复核详情，并只选择当前或最近一次复核步骤。"""
+        """
+        冻结人工复核详情，并只选择当前或最近一次复核步骤。
+        """
         state = TransferExecutionState(pending.execution_state)
         if state is TransferExecutionState.MANUAL_REVIEW:
             candidates = [
@@ -298,7 +324,9 @@ class TransactionalTransferExecutionRepository:
             task_id: str,
             intent: TransferStepIntent,
     ) -> bool:
-        """判断同 operation ID 的既有步骤是否为完全相同的冻结意图。"""
+        """
+        判断同 operation ID 的既有步骤是否为完全相同的冻结意图。
+        """
         return all((
             step.task_id == task_id,
             step.checkpoint_fingerprint == intent.checkpoint_fingerprint,
@@ -313,7 +341,9 @@ class TransactionalTransferExecutionRepository:
     def _plan_identity(
             pending: TransferPending,
     ) -> tuple[TransferPlanCheckpoint, str]:
-        """恢复完整冻结计划，并返回其规范 payload 的稳定指纹。"""
+        """
+        恢复完整冻结计划，并返回其规范 payload 的稳定指纹。
+        """
         if pending.state not in {
             TRANSFER_ADMISSION_PLANNED,
             TRANSFER_ADMISSION_PROVIDER_PENDING,
@@ -351,7 +381,9 @@ class TransactionalTransferExecutionRepository:
             checkpoint: TransferPlanCheckpoint,
             step: TransferExecutionStepModel,
     ) -> Optional[TransferPlanCheckpoint]:
-        """重建 provider 回退前的冻结计划，证明序号零步骤的历史归属。"""
+        """
+        重建 provider 回退前的冻结计划，证明序号零步骤的历史归属。
+        """
         if (
                 not checkpoint.pre_execution_cleanup_completed
                 or step.ordinal != 0
@@ -411,7 +443,9 @@ class TransactionalTransferExecutionRepository:
             checkpoint: TransferPlanCheckpoint,
             item: TransferPlanItem,
     ) -> tuple[tuple[str, str, dict[str, Any]], ...]:
-        """仅从冻结叶计划推导安全覆盖的完整步骤及确定路径。"""
+        """
+        仅从冻结叶计划推导安全覆盖的完整步骤及确定路径。
+        """
         stage, backup = build_transfer_overwrite_paths(
             source=item.source_fileitem, target_storage=item.target_storage,
             target_path=item.target_path, transfer_type=checkpoint.resolved_transfer_type,
@@ -447,7 +481,9 @@ class TransactionalTransferExecutionRepository:
             item: TransferPlanItem,
             previous_steps: list[TransferExecutionStepModel],
     ) -> bool:
-        """暂存只能在同一源和最终目标的覆盖裁决明确成功后开始。"""
+        """
+        暂存只能在同一源和最终目标的覆盖裁决明确成功后开始。
+        """
         return any(
             step.phase == "decision" and step.kind in {"resolve_overwrite", "resolve_leaf_overwrite"}
             and step.state == TransferStepState.SUCCEEDED.value
@@ -469,7 +505,9 @@ class TransactionalTransferExecutionRepository:
             payload: dict[str, Any],
             previous_steps: list[TransferExecutionStepModel],
     ) -> bool:
-        """安全覆盖步骤必须精确匹配冻结计划且其前驱已经持久成功。"""
+        """
+        安全覆盖步骤必须精确匹配冻结计划且其前驱已经持久成功。
+        """
         if phase == "decision" and kind == "resolve_leaf_overwrite":
             return checkpoint.planning_input.source_fileitem.get("type") == "dir" and any(
                 payload == {"source": item.source_fileitem, "target_storage": item.target_storage,
@@ -499,7 +537,9 @@ class TransactionalTransferExecutionRepository:
             payload: dict[str, Any],
             previous_steps: list[TransferExecutionStepModel],
     ) -> bool:
-        """版本删除仅消费已持久成功的发现清单，不能自由指定删除路径。"""
+        """
+        版本删除仅消费已持久成功的发现清单，不能自由指定删除路径。
+        """
         candidate = payload.get("item")
         if (set(payload) != {"storage", "item"}
                 or payload.get("storage") != checkpoint.target_storage
@@ -523,7 +563,9 @@ class TransactionalTransferExecutionRepository:
             payload: dict[str, Any],
             previous_steps: list[TransferExecutionStepModel],
     ) -> bool:
-        """校验步骤类型及稳定参数由冻结计划或其已提交发现证据导出。"""
+        """
+        校验步骤类型及稳定参数由冻结计划或其已提交发现证据导出。
+        """
         if kind in {
                 "stage_overwrite_target", "backup_overwrite_target", "promote_overwrite_target",
                 "delete_overwrite_source", "delete_overwrite_backup", "resolve_leaf_overwrite",
@@ -646,7 +688,9 @@ class TransactionalTransferExecutionRepository:
             checkpoint_fingerprint: str,
             steps: list[TransferExecutionStepModel],
     ) -> None:
-        """验证全部持久步骤属于冻结计划演进且身份与全局顺序未被篡改。"""
+        """
+        验证全部持久步骤属于冻结计划演进且身份与全局顺序未被篡改。
+        """
         if tuple(step.ordinal for step in steps) != tuple(range(len(steps))):
             raise TransferExecutionConflictError("整理任务正在被其他操作处理，请稍后再试")
         for index, step in enumerate(steps):
@@ -697,7 +741,9 @@ class TransactionalTransferExecutionRepository:
             steps: list[TransferExecutionStepModel],
             intent: TransferStepIntent,
     ) -> None:
-        """验证待准备意图属于当前冻结计划，并且只追加或幂等重放既有序号。"""
+        """
+        验证待准备意图属于当前冻结计划，并且只追加或幂等重放既有序号。
+        """
         cls._validate_plan_steps(
             task_id=task_id,
             checkpoint=checkpoint,
@@ -746,7 +792,9 @@ class TransactionalTransferExecutionRepository:
             lease_token: str,
             now_utc: str,
     ) -> TransferPending:
-        """返回仍由调用方持有的任务，并优先报告 lease fencing 失败。"""
+        """
+        返回仍由调用方持有的任务，并优先报告 lease fencing 失败。
+        """
         if (
                 pending is None
                 or pending.lease_token != lease_token
@@ -765,7 +813,9 @@ class TransactionalTransferExecutionRepository:
             now_utc: str,
             detail: str,
     ) -> None:
-        """区分租约丢失与同租约内的状态或 attempt 冲突。"""
+        """
+        区分租约丢失与同租约内的状态或 attempt 冲突。
+        """
         cls._require_active_lease(
             pending,
             lease_token=lease_token,
@@ -774,7 +824,9 @@ class TransactionalTransferExecutionRepository:
         raise TransferExecutionConflictError(detail)
 
     def _times(self) -> tuple[str, str]:
-        """生成一次事务内共享的 UTC fencing 与本地审计时间。"""
+        """
+        生成一次事务内共享的 UTC fencing 与本地审计时间。
+        """
         return (
             self._format_utc(self._lease_clock()),
             self._format_local(self._local_clock()),
@@ -782,11 +834,15 @@ class TransactionalTransferExecutionRepository:
 
     @staticmethod
     def _rollback(transaction: SqlAlchemyUnitOfWork) -> None:
-        """统一回滚失败的操作级事务。"""
+        """
+        统一回滚失败的操作级事务。
+        """
         transaction.rollback()
 
     def get_snapshot(self, *, task_id: str) -> Optional[TransferExecutionSnapshot]:
-        """使用一次只读短 Session 获取任务执行快照。"""
+        """
+        使用一次只读短 Session 获取任务执行快照。
+        """
         with self._session_factory() as session:
             pending = TransferPendingOper(session).get_by_task_id(task_id=task_id)
             if pending is None:
@@ -799,7 +855,9 @@ class TransactionalTransferExecutionRepository:
             *,
             task_id: str,
     ) -> Optional[TransferExecutionSnapshot]:
-        """使用异步只读短 Session 获取任务执行快照。"""
+        """
+        使用异步只读短 Session 获取任务执行快照。
+        """
         if self._async_session is None:
             raise RuntimeError("整理执行仓储未配置异步 Session 工厂")
         async with self._async_session() as session:
@@ -828,7 +886,9 @@ class TransactionalTransferExecutionRepository:
             page: int,
             page_size: int,
     ) -> TransferManualReviewPage:
-        """在数据库内过滤和分页人工复核任务，再冻结步骤证据。"""
+        """
+        在数据库内过滤和分页人工复核任务，再冻结步骤证据。
+        """
         if state not in {
             TransferExecutionState.MANUAL_REVIEW,
             TransferExecutionState.RETRY_WAIT,
@@ -871,7 +931,9 @@ class TransactionalTransferExecutionRepository:
             *,
             task_id: str,
     ) -> Optional[TransferManualReviewTaskView]:
-        """读取待人工复核或已判定等待恢复的单个任务。"""
+        """
+        读取待人工复核或已判定等待恢复的单个任务。
+        """
         with self._session_factory() as session:
             pending = session.scalar(
                 select(TransferPending).where(
@@ -901,7 +963,9 @@ class TransactionalTransferExecutionRepository:
             lease_token: str,
             intent: TransferStepIntent,
     ) -> TransferExecutionStep:
-        """在外部副作用前以有效 lease 幂等提交稳定步骤意图。"""
+        """
+        在外部副作用前以有效 lease 幂等提交稳定步骤意图。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -979,7 +1043,9 @@ class TransactionalTransferExecutionRepository:
             operation_id: str,
             attempt_token: str,
     ) -> TransferExecutionStep:
-        """以当前 lease 把 PREPARED 步骤推进为 STARTED。"""
+        """
+        以当前 lease 把 PREPARED 步骤推进为 STARTED。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1021,7 +1087,9 @@ class TransactionalTransferExecutionRepository:
             attempt_token: str,
             evidence: TransferStepResult,
     ) -> TransferExecutionStep:
-        """以严格 NOT_APPLIED 证据和旧 attempt CAS 重启遗留步骤。"""
+        """
+        以严格 NOT_APPLIED 证据和旧 attempt CAS 重启遗留步骤。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1064,7 +1132,9 @@ class TransactionalTransferExecutionRepository:
             operation_id: str,
             attempt_token: str,
     ) -> TransferExecutionStep:
-        """在 retry_wait 到期并重新 claim 后恢复同一 FAILED 操作。"""
+        """
+        在 retry_wait 到期并重新 claim 后恢复同一 FAILED 操作。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1142,7 +1212,9 @@ class TransactionalTransferExecutionRepository:
             attempt_token: str,
             result: TransferStepResult,
     ) -> TransferExecutionStep:
-        """以 lease 与 attempt 双 CAS 提交外部操作成功证据。"""
+        """
+        以 lease 与 attempt 双 CAS 提交外部操作成功证据。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1187,7 +1259,9 @@ class TransactionalTransferExecutionRepository:
             retry_due_at: str,
             evidence: Optional[TransferStepResult] = None,
     ) -> TransferExecutionSnapshot:
-        """原子提交已知失败证据、重试世代和到期时间并释放 lease。"""
+        """
+        原子提交已知失败证据、重试世代和到期时间并释放 lease。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1253,7 +1327,9 @@ class TransactionalTransferExecutionRepository:
             error: str,
             evidence: Optional[TransferStepResult] = None,
     ) -> TransferExecutionSnapshot:
-        """原子提交预算耗尽步骤失败，并保留 lease 建立失败结算检查点。"""
+        """
+        原子提交预算耗尽步骤失败，并保留 lease 建立失败结算检查点。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1335,7 +1411,9 @@ class TransactionalTransferExecutionRepository:
             reason: str,
             requested_by: str,
     ) -> TransferRetryRequestResult:
-        """以短事务登记用户重试意图，不 claim、执行或删除既有证据。"""
+        """
+        以短事务登记用户重试意图，不 claim、执行或删除既有证据。
+        """
         retry_due_at, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1421,7 +1499,9 @@ class TransactionalTransferExecutionRepository:
     def _replan_music_rejection(
             self, session: Session, *, pending: TransferPending, updated_at: str,
     ) -> Optional[TransferRetryRequestResult]:
-        """只替换已结算且没有外部步骤的音乐拒绝；保留旧历史，不碰任何文件操作记录。"""
+        """
+        只替换已结算且没有外部步骤的音乐拒绝；保留旧历史，不碰任何文件操作记录。
+        """
         if not pending.checkpoint_payload or not pending.terminal_history_id or pending.settlement_revision < 1:
             return None
         checkpoint, fingerprint = self._plan_identity(pending)
@@ -1467,7 +1547,9 @@ class TransactionalTransferExecutionRepository:
             lease_token: str,
             error: str,
     ) -> bool:
-        """在当前有效租约下清理损坏 pending、步骤及历史任务映射。"""
+        """
+        在当前有效租约下清理损坏 pending、步骤及历史任务映射。
+        """
         if not task_id or not lease_token or not error:
             return False
         now_utc, updated_at = self._times()
@@ -1499,7 +1581,9 @@ class TransactionalTransferExecutionRepository:
             task_id: str,
             history_id: int,
     ) -> TransferFailureDiscardResult:
-        """在无活动租约时删除损坏任务、步骤并解除历史绑定。"""
+        """
+        在无活动租约时删除损坏任务、步骤并解除历史绑定。
+        """
         now_utc, _updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1538,7 +1622,9 @@ class TransactionalTransferExecutionRepository:
             history_id: int,
             settlement_revision: int,
     ) -> TransferFailureDiscardResult:
-        """原子删除指定 FAILED pending、步骤证据并解除历史回执映射。"""
+        """
+        原子删除指定 FAILED pending、步骤证据并解除历史回执映射。
+        """
         now_utc, _updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1643,7 +1729,9 @@ class TransactionalTransferExecutionRepository:
             pending: TransferPending,
             now_utc: str,
     ) -> bool:
-        """以状态和期限 CAS 取得用户恢复权，持有行写锁直到重试或清理提交。"""
+        """
+        以状态和期限 CAS 取得用户恢复权，持有行写锁直到重试或清理提交。
+        """
         updated = session.query(TransferPending).filter(
             TransferPending.task_id == pending.task_id,
             TransferPending.execution_state == pending.execution_state,
@@ -1673,7 +1761,9 @@ class TransactionalTransferExecutionRepository:
             reason: str,
             result: Optional[TransferStepResult] = None,
     ) -> TransferManualReviewResult:
-        """在无 lease 短事务中原子提交步骤与 pending 的人工判定。"""
+        """
+        在无 lease 短事务中原子提交步骤与 pending 的人工判定。
+        """
         if decision is TransferManualReviewDecision.FAILED:
             raise TransferExecutionConflictError(
                 "该整理任务需要通过正常流程完成结算，请重新整理"
@@ -1757,7 +1847,9 @@ class TransactionalTransferExecutionRepository:
             evidence: Optional[TransferStepResult] = None,
             attempt_token: Optional[str] = None,
     ) -> TransferExecutionSnapshot:
-        """原子隔离外部结果未知的步骤与任务，并释放自动调度 lease。"""
+        """
+        原子隔离外部结果未知的步骤与任务，并释放自动调度 lease。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -1819,7 +1911,9 @@ class TransactionalTransferExecutionRepository:
             lease_token: str,
             checkpoint: TransferExecutionCheckpoint,
     ) -> TransferExecutionSnapshot:
-        """仅在完整步骤集合均成功时提交可重放终态执行检查点。"""
+        """
+        仅在完整步骤集合均成功时提交可重放终态执行检查点。
+        """
         now_utc, updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)

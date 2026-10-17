@@ -1,8 +1,14 @@
+"""
+验证搜索推荐的后台任务、分页边界及缓存重放参数。
+"""
+
 import asyncio
 import importlib.machinery
-import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+import pytest
+import pytest_asyncio
 
 from app.testing.bootstrap import ensure_optional_stub
 
@@ -11,26 +17,50 @@ ensure_optional_stub("qbittorrentapi", TorrentFilesList=list)
 ensure_optional_stub("transmission_rpc", File=object)
 ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil", loader=None))
 
+# 可选依赖必须先装配，以下导入才可安全加载搜索链与工具能力。
 from app.agent.contracts import ReplyMode  # noqa: E402
-from app.agent.orchestrator import agent_manager  # noqa: E402
+
+# 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
+from app.agent.manager import agent_manager  # noqa: E402
+
+# 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.agent.tools.factory import MoviePilotToolFactory  # noqa: E402
+
+# 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.chain.search import SearchChain  # noqa: E402
+
+# 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.chain.search.recommend import recommend_coordinator  # noqa: E402
+
+# 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.modules.indexer import IndexerModule  # noqa: E402
+
+# 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.runtime.config import settings  # noqa: E402
+
+# 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.runtime.tasks import TaskRegistry  # noqa: E402
+
+# 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.schemas.types import MediaType  # noqa: E402
 
 
 def _make_result(title: str, size: int, seeders: int):
+    """
+    构造带标题、体积和做种数的推荐候选结果。
+    """
     return SimpleNamespace(torrent_info=SimpleNamespace(title=title, size=size, seeders=seeders))
 
 
-class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
-        recommend_coordinator.cancel()
-
-    async def asyncTearDown(self):
+@pytest_asyncio.fixture
+async def _isolate_recommend_tasks():
+    """
+    取消上个推荐任务，并在本用例结束时等待仍在运行的任务取消完成。
+    """
+    recommend_coordinator.cancel()
+    try:
+        yield
+    finally:
         task = recommend_coordinator.cancel()
         if task and not task.done():
             task.cancel()
@@ -39,470 +69,523 @@ class SearchChainAIRecommendTest(unittest.IsolatedAsyncioTestCase):
             except asyncio.CancelledError:
                 pass
 
-    @staticmethod
-    def _make_chain() -> SearchChain:
-        chain = object.__new__(SearchChain)
-        chain.load_cache = lambda _filename: None
-        chain.save_cache = lambda _cache, _filename: None
-        chain.async_save_cache = AsyncMock()
-        chain.remove_cache = lambda _filename: None
-        chain.get_search_page_size = IndexerModule.get_search_page_size
-        chain.search_plugin_torrents = lambda **_kwargs: []
 
-        async def no_plugin_results(**_kwargs):
-            return []
+def _make_chain() -> SearchChain:
+    """
+    构造隔离缓存和插件查询的搜索链，避免访问真实服务。
+    """
+    chain = object.__new__(SearchChain)
+    chain.load_cache = lambda _filename: None
+    chain.save_cache = lambda _cache, _filename: None
+    chain.async_save_cache = AsyncMock()
+    chain.remove_cache = lambda _filename: None
+    chain.get_search_page_size = IndexerModule.get_search_page_size
+    chain.search_plugin_torrents = lambda **_kwargs: []
 
-        chain.async_search_plugin_torrents = no_plugin_results
-        return chain
+    async def no_plugin_results(**_kwargs):
+        """
+        异步返回空插件结果，隔离真实插件执行。
+        """
+        return []
 
-    async def test_start_recommend_task_restores_original_indices(self):
-        chain = self._make_chain()
-        saved = []
+    chain.async_search_plugin_torrents = no_plugin_results
+    return chain
 
-        async def save_cache(cache, filename):
-            """记录推荐结果的异步缓存写入。"""
-            saved.append((filename, cache))
 
-        chain.async_save_cache = save_cache
-        results = [_make_result(f"item-{index}", 1024 * (index + 1), index) for index in range(7)]
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+@pytest.mark.asyncio
+async def test_start_recommend_task_restores_original_indices() -> None:
+    """
+    推荐结果还原为原候选列表的索引并正确保存。
+    """
+    chain = _make_chain()
+    saved = []
 
-        with (
-            patch.object(settings, "AI_AGENT_ENABLE", True, create=True),
-            patch.object(settings, "AI_RECOMMEND_ENABLED", True, create=True),
-            patch.object(settings, "AI_RECOMMEND_MAX_ITEMS", 50, create=True),
-            patch.object(
-                settings,
-                "AI_RECOMMEND_USER_PREFERENCE",
-                "Prefer high seeders",
-                create=True,
-            ),
-            patch.object(
-                SearchChain,
-                "_invoke_recommend_llm",
-                new=AsyncMock(return_value='[1, 0, 1, "bad", 9]'),
-            ),
-        ):
-            chain.start_recommend_task(
-                filtered_indices=[2, 4, 6],
-                search_results_count=len(results),
-                results=results,
-            )
-            task = recommend_coordinator.snapshot().task
-            self.assertIsNotNone(task)
-            await task
+    async def save_cache(cache, filename):
+        """
+        记录推荐结果的异步缓存写入。
+        """
+        saved.append((filename, cache))
 
-        state = recommend_coordinator.snapshot()
-        self.assertEqual([4, 2], state.result)
-        self.assertEqual(
-            [
-                (
-                    "__ai_recommend_indices__",
-                    {
-                        "request_hash": state.request_hash,
-                        "results": [4, 2],
-                    },
-                )
-            ],
-            saved,
+    chain.async_save_cache = save_cache
+    results = [_make_result(f"item-{index}", 1024 * (index + 1), index) for index in range(7)]
+
+    with (
+        patch.object(settings, "AI_AGENT_ENABLE", True, create=True),
+        patch.object(settings, "AI_RECOMMEND_ENABLED", True, create=True),
+        patch.object(settings, "AI_RECOMMEND_MAX_ITEMS", 50, create=True),
+        patch.object(
+            settings,
+            "AI_RECOMMEND_USER_PREFERENCE",
+            "Prefer high seeders",
+            create=True,
+        ),
+        patch.object(
+            SearchChain,
+            "_invoke_recommend_llm",
+            new=AsyncMock(return_value='[1, 0, 1, "bad", 9]'),
+        ),
+    ):
+        chain.start_recommend_task(
+            filtered_indices=[2, 4, 6],
+            search_results_count=len(results),
+            results=results,
         )
-        self.assertFalse(state.running)
-        self.assertIsNone(state.task)
+        task = recommend_coordinator.snapshot().task
+        assert task is not None
+        await task
 
-    async def test_recommend_task_is_owned_by_runtime_registry(self):
-        """搜索推荐必须登记稳定 owner，并在宿主关停时取消阻塞中的 LLM 调用。"""
-        chain = self._make_chain()
-        registry = TaskRegistry()
-        started = asyncio.Event()
-        blocker = asyncio.Event()
+    state = recommend_coordinator.snapshot()
+    assert [4, 2] == state.result
+    assert [("__ai_recommend_indices__", {"request_hash": state.request_hash, "results": [4, 2]})] == saved
+    assert not state.running
+    assert state.task is None
 
-        async def blocked_recommend(_search_results_text: str) -> str:
-            """模拟已进入外部 Agent、等待宿主关停取消的推荐调用。"""
-            started.set()
-            await blocker.wait()
-            return "[0]"
 
-        with (
-            patch.object(settings, "AI_AGENT_ENABLE", True, create=True),
-            patch.object(settings, "AI_RECOMMEND_ENABLED", True, create=True),
-            patch.object(settings, "AI_RECOMMEND_MAX_ITEMS", 50, create=True),
-            patch.object(
-                SearchChain,
-                "_invoke_recommend_llm",
-                new=AsyncMock(side_effect=blocked_recommend),
-            ),
-            patch(
-                "app.chain.search.recommend.get_task_registry",
-                return_value=registry,
-            ),
-        ):
-            chain.start_recommend_task(
-                filtered_indices=None,
-                search_results_count=1,
-                results=[_make_result("item-0", 1024, 1)],
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+@pytest.mark.asyncio
+async def test_recommend_task_is_owned_by_runtime_registry() -> None:
+    """
+    搜索推荐必须登记稳定 owner，并在宿主关停时取消阻塞中的 LLM 调用。
+    """
+    chain = _make_chain()
+    registry = TaskRegistry()
+    started = asyncio.Event()
+    blocker = asyncio.Event()
+
+    async def blocked_recommend(_search_results_text: str) -> str:
+        """
+        模拟已进入外部 Agent、等待宿主关停取消的推荐调用。
+        """
+        started.set()
+        await blocker.wait()
+        return "[0]"
+
+    with (
+        patch.object(settings, "AI_AGENT_ENABLE", True, create=True),
+        patch.object(settings, "AI_RECOMMEND_ENABLED", True, create=True),
+        patch.object(settings, "AI_RECOMMEND_MAX_ITEMS", 50, create=True),
+        patch.object(
+            SearchChain,
+            "_invoke_recommend_llm",
+            new=AsyncMock(side_effect=blocked_recommend),
+        ),
+        patch(
+            "app.chain.search.recommend.get_task_registry",
+            return_value=registry,
+        ),
+    ):
+        chain.start_recommend_task(
+            filtered_indices=None,
+            search_results_count=1,
+            results=[_make_result("item-0", 1024, 1)],
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        task = recommend_coordinator.snapshot().task
+
+        assert [record.owner for record in registry.records] == ["chain.search.ai_recommend"]
+        assert await registry.shutdown(timeout_seconds=1)
+
+    assert task is not None
+    assert task.done()
+    state = recommend_coordinator.snapshot()
+    assert not state.running
+    assert state.task is None
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+@pytest.mark.asyncio
+async def test_invoke_recommend_llm_disables_output_message_persistence() -> None:
+    """
+    后台推荐调用关闭用户输出消息持久化。
+    """
+    chain = _make_chain()
+    from app.agent.prompt import prompt_manager
+
+    captured = {}
+
+    async def _fake_run_background_prompt(**kwargs):
+        captured.update(kwargs)
+        kwargs["output_callback"]("[0, 2]")
+
+    with (
+        patch.object(
+            prompt_manager,
+            "render_system_task_message",
+            return_value="PROMPT",
+        ),
+        patch(
+            "app.application.agent.get_prompt_manager",
+            return_value=prompt_manager,
+        ),
+        patch(
+            "app.application.agent.get_running_agent_manager",
+            return_value=agent_manager,
+        ),
+        patch.object(
+            agent_manager,
+            "run_background_prompt",
+            new=AsyncMock(side_effect=_fake_run_background_prompt),
+        ),
+    ):
+        result = await chain._invoke_recommend_llm("Candidates")
+
+    assert "[0, 2]" == result
+    assert ReplyMode.CAPTURE_ONLY == captured["reply_mode"]
+    assert not captured["allow_message_tools"]
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_search_by_title_clears_previous_recommend_state_when_caching() -> None:
+    """
+    按标题重新搜索并缓存时清除上次推荐状态。
+    """
+    chain = _make_chain()
+    removed = []
+    cached = []
+    chain.remove_cache = lambda filename: removed.append(filename)
+    chain.save_cache = lambda cache, filename: cached.append((filename, cache))
+    chain._SearchChain__search_all_sites = lambda keyword, sites, page: [
+        SimpleNamespace(title="Test Title", description="Test Desc")
+    ]
+
+    recommend_coordinator.restore("stale-hash", [3, 1])
+
+    results = chain.search_by_title("keyword", cache_local=True)
+
+    assert 1 == len(results)
+    assert ["__ai_recommend_indices__"] == removed
+    assert any((filename == "__search_result__" for filename, _ in cached))
+    assert any((filename == "__search_params__" for filename, _ in cached))
+    state = recommend_coordinator.snapshot()
+    assert state.request_hash is None
+    assert state.result is None
+    assert state.error is None
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_build_search_pages_uses_search_resource_pages_setting() -> None:
+    """
+    搜索页数优先采用资源搜索配置。
+    """
+    with patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True):
+        assert [2, 3, 4] == SearchChain._build_search_pages(page=2)
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_build_search_pages_falls_back_to_one_page_for_invalid_setting() -> None:
+    """
+    无效搜索页数配置回退为单页。
+    """
+    with patch.object(settings, "SEARCH_RESOURCE_PAGES", 0, create=True):
+        assert [0] == SearchChain._build_search_pages(page=0)
+    with patch.object(settings, "SEARCH_RESOURCE_PAGES", "bad", create=True):
+        assert [0] == SearchChain._build_search_pages(page="bad")
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_search_all_sites_stops_after_short_page() -> None:
+    """
+    验证普通站点默认按 100 条判断是否继续翻页。
+    """
+    chain = _make_chain()
+    requested_pages = []
+
+    def search_torrents(**kwargs):
+        """
+        模拟前两页满页、第三页不足 100 条，验证不会继续请求第四页。
+        """
+        page = kwargs["page"]
+        requested_pages.append(page)
+        count = 100 if page in (0, 1) else 1
+        return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
+
+    chain.search_site_torrents = search_torrents
+
+    with (
+        patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
+        patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+        patch("app.chain.search.provider.SitesHelper") as sites_helper,
+        patch("app.chain.search.provider.ProgressHelper") as progress_helper,
+    ):
+        system_config_oper.return_value.get.return_value = [1]
+        sites_helper.return_value.get_indexers.return_value = [{"id": 1, "name": "测试站点"}]
+        progress_helper.return_value = SimpleNamespace(
+            start=lambda: None,
+            update=lambda **_kwargs: None,
+            end=lambda: None,
+        )
+
+        results = chain._SearchChain__search_all_sites(
+            keyword="keyword",
+            sites=None,
+            page=0,
+        )
+
+    assert [0, 1, 2] == sorted(requested_pages)
+    assert 201 == len(results)
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_search_all_sites_uses_configured_result_num_for_common_site() -> None:
+    """
+    验证普通配置站点按 result_num 判断是否继续翻页。
+    """
+    chain = _make_chain()
+    requested_pages = []
+
+    def search_torrents(**kwargs):
+        """
+        模拟配置站点每页 50 条，第二页不足 50 条后停止。
+        """
+        page = kwargs["page"]
+        requested_pages.append(page)
+        count = 50 if page == 0 else 49
+        return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
+
+    chain.search_site_torrents = search_torrents
+
+    with (
+        patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
+        patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+        patch("app.chain.search.provider.SitesHelper") as sites_helper,
+        patch("app.chain.search.provider.ProgressHelper") as progress_helper,
+    ):
+        system_config_oper.return_value.get.return_value = [1]
+        sites_helper.return_value.get_indexers.return_value = [{"id": 1, "name": "测试站点", "result_num": 50}]
+        progress_helper.return_value = SimpleNamespace(
+            start=lambda: None,
+            update=lambda **_kwargs: None,
+            end=lambda: None,
+        )
+
+        results = chain._SearchChain__search_all_sites(
+            keyword="keyword",
+            sites=None,
+            page=0,
+        )
+
+    assert [0, 1] == requested_pages
+    assert 99 == len(results)
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_search_all_sites_uses_parser_page_size_for_yema() -> None:
+    """
+    验证专用解析器按自身页容量判断，避免 Yema 的 40 条分页被误停。
+    """
+    chain = _make_chain()
+    requested_pages = []
+
+    def search_torrents(**kwargs):
+        """
+        模拟 Yema 第一页满 40 条，第二页不足 40 条后停止。
+        """
+        page = kwargs["page"]
+        requested_pages.append(page)
+        count = 40 if page == 0 else 39
+        return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
+
+    chain.search_site_torrents = search_torrents
+
+    with (
+        patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
+        patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+        patch("app.chain.search.provider.SitesHelper") as sites_helper,
+        patch("app.chain.search.provider.ProgressHelper") as progress_helper,
+    ):
+        system_config_oper.return_value.get.return_value = [1]
+        sites_helper.return_value.get_indexers.return_value = [{"id": 1, "name": "测试站点", "parser": "Yema"}]
+        progress_helper.return_value = SimpleNamespace(
+            start=lambda: None,
+            update=lambda **_kwargs: None,
+            end=lambda: None,
+        )
+
+        results = chain._SearchChain__search_all_sites(
+            keyword="keyword",
+            sites=None,
+            page=0,
+        )
+
+    assert [0, 1] == requested_pages
+    assert 79 == len(results)
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_indexer_module_search_page_size_uses_spider_metadata() -> None:
+    """
+    验证站点单页容量由索引器模块统一读取，避免搜索链写死 parser 容量。
+    """
+    assert 40 == IndexerModule.get_search_page_size({"parser": "Yema"}, keyword="keyword")
+    assert 50 == IndexerModule.get_search_page_size({"result_num": 50}, keyword="keyword")
+    assert IndexerModule.get_search_page_size({"parser": "Haidan"}, keyword="keyword") is None
+    assert IndexerModule.get_search_page_size({"parser": "TorrentLeech"}, keyword="keyword") is None
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+@pytest.mark.asyncio
+async def test_async_search_all_sites_stops_after_empty_page() -> None:
+    """
+    验证异步搜索遇到空页后停止后续翻页。
+    """
+    chain = _make_chain()
+    requested_pages = []
+
+    async def async_search_torrents(**kwargs):
+        """
+        模拟第二页为空，验证异步搜索不会继续请求后续页。
+        """
+        page = kwargs["page"]
+        requested_pages.append(page)
+        count = 100 if page == 0 else 0
+        return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
+
+    chain.async_search_site_torrents = async_search_torrents
+
+    with (
+        patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
+        patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+        patch("app.chain.search.provider.SitesHelper") as sites_helper,
+        patch("app.chain.search.provider.ProgressHelper") as progress_helper,
+    ):
+        system_config_oper.return_value.get.return_value = [1]
+        sites_helper.return_value.async_get_indexers = AsyncMock(return_value=[{"id": 1, "name": "测试站点"}])
+        progress_helper.return_value = SimpleNamespace(
+            start=lambda: None,
+            update=lambda **_kwargs: None,
+            end=lambda: None,
+        )
+
+        results = await chain._SearchChain__async_search_all_sites(
+            keyword="keyword",
+            sites=None,
+            page=0,
+        )
+
+    assert [0, 1] == requested_pages
+    assert 100 == len(results)
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+@pytest.mark.asyncio
+async def test_async_search_all_sites_stream_stops_after_short_page() -> None:
+    """
+    验证渐进式搜索遇到非满页后停止后续翻页。
+    """
+    chain = _make_chain()
+    requested_pages = []
+
+    async def async_search_torrents(**kwargs):
+        """
+        模拟渐进式搜索第二页不足 100 条，验证不会继续请求第三页。
+        """
+        page = kwargs["page"]
+        requested_pages.append(page)
+        count = 100 if page == 0 else 99
+        return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
+
+    chain.async_search_site_torrents = async_search_torrents
+
+    with (
+        patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
+        patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
+        patch("app.chain.search.provider.SitesHelper") as sites_helper,
+        patch("app.chain.search.provider.ProgressHelper") as progress_helper,
+    ):
+        system_config_oper.return_value.get.return_value = [1]
+        sites_helper.return_value.async_get_indexers = AsyncMock(return_value=[{"id": 1, "name": "测试站点"}])
+        progress_helper.return_value = SimpleNamespace(
+            start=lambda: None,
+            update=lambda **_kwargs: None,
+            end=lambda: None,
+        )
+
+        events = [
+            event
+            async for event in chain._SearchChain__async_search_all_sites_stream(
+                keyword="keyword",
+                sites=None,
+                page=0,
             )
-            await asyncio.wait_for(started.wait(), timeout=1)
-            task = recommend_coordinator.snapshot().task
-
-            self.assertEqual(
-                [record.owner for record in registry.records],
-                ["chain.search.ai_recommend"],
-            )
-            self.assertTrue(await registry.shutdown(timeout_seconds=1))
-
-        self.assertIsNotNone(task)
-        self.assertTrue(task.done())
-        state = recommend_coordinator.snapshot()
-        self.assertFalse(state.running)
-        self.assertIsNone(state.task)
-
-    async def test_invoke_recommend_llm_disables_output_message_persistence(self):
-        chain = self._make_chain()
-        from app.agent.prompt import prompt_manager
-
-        captured = {}
-
-        async def _fake_run_background_prompt(**kwargs):
-            captured.update(kwargs)
-            kwargs["output_callback"]("[0, 2]")
-
-        with (
-            patch.object(
-                prompt_manager,
-                "render_system_task_message",
-                return_value="PROMPT",
-            ),
-            patch(
-                "app.application.agent.get_prompt_manager",
-                return_value=prompt_manager,
-            ),
-            patch(
-                "app.application.agent.get_running_agent_manager",
-                return_value=agent_manager,
-            ),
-            patch.object(
-                agent_manager,
-                "run_background_prompt",
-                new=AsyncMock(side_effect=_fake_run_background_prompt),
-            ),
-        ):
-            result = await chain._invoke_recommend_llm("Candidates")
-
-        self.assertEqual("[0, 2]", result)
-        self.assertEqual(ReplyMode.CAPTURE_ONLY, captured["reply_mode"])
-        self.assertFalse(captured["allow_message_tools"])
-
-    def test_search_by_title_clears_previous_recommend_state_when_caching(self):
-        chain = self._make_chain()
-        removed = []
-        cached = []
-        chain.remove_cache = lambda filename: removed.append(filename)
-        chain.save_cache = lambda cache, filename: cached.append((filename, cache))
-        chain._SearchChain__search_all_sites = lambda keyword, sites, page: [
-            SimpleNamespace(title="Test Title", description="Test Desc")
         ]
 
-        recommend_coordinator.restore("stale-hash", [3, 1])
+    append_events = [event for event in events if event.get("type") == "append"]
+    assert [0, 1] == requested_pages
+    assert [0, 1] == [event["page"] for event in append_events]
+    assert 199 == append_events[-1]["total_items"]
 
-        results = chain.search_by_title("keyword", cache_local=True)
 
-        self.assertEqual(1, len(results))
-        self.assertEqual(["__ai_recommend_indices__"], removed)
-        self.assertTrue(any(filename == "__search_result__" for filename, _ in cached))
-        self.assertTrue(any(filename == "__search_params__" for filename, _ in cached))
-        state = recommend_coordinator.snapshot()
-        self.assertIsNone(state.request_hash)
-        self.assertIsNone(state.result)
-        self.assertIsNone(state.error)
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_search_by_id_caches_replayable_search_params_when_caching() -> None:
+    """
+    按标识搜索时缓存可重放的查询参数。
+    """
+    chain = _make_chain()
+    cached = []
+    chain.save_cache = lambda cache, filename: cached.append((filename, cache))
+    chain.process = lambda **_kwargs: [SimpleNamespace(title="Result")]
 
-    def test_build_search_pages_uses_search_resource_pages_setting(self):
-        with patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True):
-            self.assertEqual([2, 3, 4], SearchChain._build_search_pages(page=2))
-
-    def test_build_search_pages_falls_back_to_one_page_for_invalid_setting(self):
-        with patch.object(settings, "SEARCH_RESOURCE_PAGES", 0, create=True):
-            self.assertEqual([0], SearchChain._build_search_pages(page=0))
-        with patch.object(settings, "SEARCH_RESOURCE_PAGES", "bad", create=True):
-            self.assertEqual([0], SearchChain._build_search_pages(page="bad"))
-
-    def test_search_all_sites_stops_after_short_page(self):
-        """
-        验证普通站点默认按 100 条判断是否继续翻页。
-        """
-        chain = self._make_chain()
-        requested_pages = []
-
-        def search_torrents(**kwargs):
-            """
-            模拟前两页满页、第三页不足 100 条，验证不会继续请求第四页。
-            """
-            page = kwargs["page"]
-            requested_pages.append(page)
-            count = 100 if page in (0, 1) else 1
-            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
-
-        chain.search_site_torrents = search_torrents
-
-        with (
-            patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
-            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.provider.SitesHelper") as sites_helper,
-            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
-        ):
-            system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.get_indexers.return_value = [{"id": 1, "name": "测试站点"}]
-            progress_helper.return_value = SimpleNamespace(
-                start=lambda: None,
-                update=lambda **_kwargs: None,
-                end=lambda: None,
-            )
-
-            results = chain._SearchChain__search_all_sites(
-                keyword="keyword",
-                sites=None,
-                page=0,
-            )
-
-        self.assertEqual([0, 1, 2], sorted(requested_pages))
-        self.assertEqual(201, len(results))
-
-    def test_search_all_sites_uses_configured_result_num_for_common_site(self):
-        """
-        验证普通配置站点按 result_num 判断是否继续翻页。
-        """
-        chain = self._make_chain()
-        requested_pages = []
-
-        def search_torrents(**kwargs):
-            """
-            模拟配置站点每页 50 条，第二页不足 50 条后停止。
-            """
-            page = kwargs["page"]
-            requested_pages.append(page)
-            count = 50 if page == 0 else 49
-            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
-
-        chain.search_site_torrents = search_torrents
-
-        with (
-            patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.provider.SitesHelper") as sites_helper,
-            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
-        ):
-            system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.get_indexers.return_value = [{"id": 1, "name": "测试站点", "result_num": 50}]
-            progress_helper.return_value = SimpleNamespace(
-                start=lambda: None,
-                update=lambda **_kwargs: None,
-                end=lambda: None,
-            )
-
-            results = chain._SearchChain__search_all_sites(
-                keyword="keyword",
-                sites=None,
-                page=0,
-            )
-
-        self.assertEqual([0, 1], requested_pages)
-        self.assertEqual(99, len(results))
-
-    def test_search_all_sites_uses_parser_page_size_for_yema(self):
-        """
-        验证专用解析器按自身页容量判断，避免 Yema 的 40 条分页被误停。
-        """
-        chain = self._make_chain()
-        requested_pages = []
-
-        def search_torrents(**kwargs):
-            """
-            模拟 Yema 第一页满 40 条，第二页不足 40 条后停止。
-            """
-            page = kwargs["page"]
-            requested_pages.append(page)
-            count = 40 if page == 0 else 39
-            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
-
-        chain.search_site_torrents = search_torrents
-
-        with (
-            patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.provider.SitesHelper") as sites_helper,
-            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
-        ):
-            system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.get_indexers.return_value = [{"id": 1, "name": "测试站点", "parser": "Yema"}]
-            progress_helper.return_value = SimpleNamespace(
-                start=lambda: None,
-                update=lambda **_kwargs: None,
-                end=lambda: None,
-            )
-
-            results = chain._SearchChain__search_all_sites(
-                keyword="keyword",
-                sites=None,
-                page=0,
-            )
-
-        self.assertEqual([0, 1], requested_pages)
-        self.assertEqual(79, len(results))
-
-    def test_indexer_module_search_page_size_uses_spider_metadata(self):
-        """
-        验证站点单页容量由索引器模块统一读取，避免搜索链写死 parser 容量。
-        """
-        self.assertEqual(40, IndexerModule.get_search_page_size({"parser": "Yema"}, keyword="keyword"))
-        self.assertEqual(50, IndexerModule.get_search_page_size({"result_num": 50}, keyword="keyword"))
-        self.assertIsNone(IndexerModule.get_search_page_size({"parser": "Haidan"}, keyword="keyword"))
-        self.assertIsNone(IndexerModule.get_search_page_size({"parser": "TorrentLeech"}, keyword="keyword"))
-
-    async def test_async_search_all_sites_stops_after_empty_page(self):
-        """
-        验证异步搜索遇到空页后停止后续翻页。
-        """
-        chain = self._make_chain()
-        requested_pages = []
-
-        async def async_search_torrents(**kwargs):
-            """
-            模拟第二页为空，验证异步搜索不会继续请求后续页。
-            """
-            page = kwargs["page"]
-            requested_pages.append(page)
-            count = 100 if page == 0 else 0
-            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
-
-        chain.async_search_site_torrents = async_search_torrents
-
-        with (
-            patch.object(settings, "SEARCH_RESOURCE_PAGES", 4, create=True),
-            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.provider.SitesHelper") as sites_helper,
-            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
-        ):
-            system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.async_get_indexers = AsyncMock(return_value=[{"id": 1, "name": "测试站点"}])
-            progress_helper.return_value = SimpleNamespace(
-                start=lambda: None,
-                update=lambda **_kwargs: None,
-                end=lambda: None,
-            )
-
-            results = await chain._SearchChain__async_search_all_sites(
-                keyword="keyword",
-                sites=None,
-                page=0,
-            )
-
-        self.assertEqual([0, 1], requested_pages)
-        self.assertEqual(100, len(results))
-
-    async def test_async_search_all_sites_stream_stops_after_short_page(self):
-        """
-        验证渐进式搜索遇到非满页后停止后续翻页。
-        """
-        chain = self._make_chain()
-        requested_pages = []
-
-        async def async_search_torrents(**kwargs):
-            """
-            模拟渐进式搜索第二页不足 100 条，验证不会继续请求第三页。
-            """
-            page = kwargs["page"]
-            requested_pages.append(page)
-            count = 100 if page == 0 else 99
-            return [SimpleNamespace(title=f"Result Page {page}-{index}", description="") for index in range(count)]
-
-        chain.async_search_site_torrents = async_search_torrents
-
-        with (
-            patch.object(settings, "SEARCH_RESOURCE_PAGES", 3, create=True),
-            patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
-            patch("app.chain.search.provider.SitesHelper") as sites_helper,
-            patch("app.chain.search.provider.ProgressHelper") as progress_helper,
-        ):
-            system_config_oper.return_value.get.return_value = [1]
-            sites_helper.return_value.async_get_indexers = AsyncMock(return_value=[{"id": 1, "name": "测试站点"}])
-            progress_helper.return_value = SimpleNamespace(
-                start=lambda: None,
-                update=lambda **_kwargs: None,
-                end=lambda: None,
-            )
-
-            events = [
-                event
-                async for event in chain._SearchChain__async_search_all_sites_stream(
-                    keyword="keyword",
-                    sites=None,
-                    page=0,
-                )
-            ]
-
-        append_events = [event for event in events if event.get("type") == "append"]
-        self.assertEqual([0, 1], requested_pages)
-        self.assertEqual([0, 1], [event["page"] for event in append_events])
-        self.assertEqual(199, append_events[-1]["total_items"])
-
-    def test_search_by_id_caches_replayable_search_params_when_caching(self):
-        chain = self._make_chain()
-        cached = []
-        chain.save_cache = lambda cache, filename: cached.append((filename, cache))
-        chain.process = lambda **_kwargs: [SimpleNamespace(title="Result")]
-
-        with patch(
-            "app.chain.search.media.MediaChain",
-            return_value=SimpleNamespace(recognize_media=lambda **_kwargs: SimpleNamespace(title="Test")),
-        ):
-            chain.search_by_id(
-                media_source="themoviedb",
-                media_id="123",
-                mtype=MediaType.MOVIE,
-                area="title",
-                season=2,
-                sites=[1, 3],
-                cache_local=True,
-            )
-
-        self.assertIn(
-            (
-                "__search_params__",
-                {
-                    "keyword": "",
-                    "media_source": "themoviedb",
-                    "media_id": "123",
-                    "type": "电影",
-                    "area": "title",
-                    "title": "",
-                    "year": "",
-                    "season": "2",
-                    "episode": "",
-                    "sites": "1,3",
-                    "result_type": "torrent",
-                },
-            ),
-            cached,
+    with patch(
+        "app.chain.search.media.MediaChain",
+        return_value=SimpleNamespace(recognize_media=lambda **_kwargs: SimpleNamespace(title="Test")),
+    ):
+        chain.search_by_id(
+            media_source="themoviedb",
+            media_id="123",
+            mtype=MediaType.MOVIE,
+            area="title",
+            season=2,
+            sites=[1, 3],
+            cache_local=True,
         )
-        self.assertTrue(any(filename == "__search_result__" for filename, _ in cached))
 
-    def test_search_params_preserve_special_season_zero(self):
-        """最近搜索参数必须把显式季 0 保存为字符串 0，供页面刷新后重放。"""
-        params = SearchChain._normalize_search_params({"keyword": "tmdb:123", "season": 0})
+    assert (
+        "__search_params__",
+        {
+            "keyword": "",
+            "media_source": "themoviedb",
+            "media_id": "123",
+            "type": "电影",
+            "area": "title",
+            "title": "",
+            "year": "",
+            "season": "2",
+            "episode": "",
+            "sites": "1,3",
+            "result_type": "torrent",
+        },
+    ) in cached
+    assert any((filename == "__search_result__" for filename, _ in cached))
 
-        self.assertEqual(params["season"], "0")
 
-    def test_tool_factory_excludes_message_tools_when_disabled(self):
-        with patch(
-            "app.agent.tools.factory._get_plugin_agent_tools",
-            return_value=[],
-        ):
-            tools = MoviePilotToolFactory.create_tools(
-                session_id="test-session",
-                user_id="test-user",
-                allow_message_tools=False,
-            )
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_search_params_preserve_special_season_zero() -> None:
+    """
+    最近搜索参数必须把显式季 0 保存为字符串 0，供页面刷新后重放。
+    """
+    params = SearchChain._normalize_search_params({"keyword": "tmdb:123", "season": 0})
 
-        tool_names = {tool.name for tool in tools}
-        self.assertNotIn("send_message", tool_names)
-        self.assertNotIn("ask_user_choice", tool_names)
-        self.assertNotIn("send_local_file", tool_names)
-        self.assertNotIn("send_voice_message", tool_names)
+    assert params["season"] == "0"
+
+
+@pytest.mark.usefixtures("_isolate_recommend_tasks")
+def test_tool_factory_excludes_message_tools_when_disabled() -> None:
+    """
+    禁用消息工具后工具工厂不再暴露发送能力。
+    """
+    with patch(
+        "app.agent.tools.factory._get_plugin_agent_tools",
+        return_value=[],
+    ):
+        tools = MoviePilotToolFactory.create_tools(
+            session_id="test-session",
+            user_id="test-user",
+            allow_message_tools=False,
+        )
+
+    tool_names = {tool.name for tool in tools}
+    assert "send_message" not in tool_names
+    assert "ask_user_choice" not in tool_names
+    assert "send_local_file" not in tool_names
+    assert "send_voice_message" not in tool_names

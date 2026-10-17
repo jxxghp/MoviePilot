@@ -1,4 +1,6 @@
-"""CORS 中间件在通配来源与显式来源下的凭据策略契约测试。"""
+"""
+CORS 中间件在通配来源与显式来源下的凭据策略契约测试。
+"""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +12,9 @@ LOGIN_PATH = "/api/v1/login/access-token"
 
 
 def _preflight(client: TestClient, origin: str):
-    """发送一次登录接口的 CORS 预检请求。"""
+    """
+    发送一次登录接口的 CORS 预检请求。
+    """
     return client.options(
         LOGIN_PATH,
         headers={
@@ -33,12 +37,16 @@ def _preflight(client: TestClient, origin: str):
     ],
 )
 def test_resolve_cors_policy_disables_credentials_for_wildcard(allowed_hosts, expected):
-    """通配来源一律关闭凭据，显式来源才允许携带凭据。"""
+    """
+    通配来源一律关闭凭据，显式来源才允许携带凭据。
+    """
     assert resolve_cors_policy(allowed_hosts) == expected
 
 
 def test_wildcard_origins_do_not_allow_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    """默认通配配置下预检返回 *，且不声明允许凭据。"""
+    """
+    默认通配配置下预检返回 *，且不声明允许凭据。
+    """
     monkeypatch.setattr(settings, "ALLOWED_HOSTS", ["*"])
     client = TestClient(create_app())
 
@@ -50,7 +58,9 @@ def test_wildcard_origins_do_not_allow_credentials(monkeypatch: pytest.MonkeyPat
 
 
 def test_explicit_origins_echo_origin_with_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    """显式来源命中时回显 Origin 并允许携带凭据，未列出的来源不返回 CORS 头。"""
+    """
+    显式来源命中时回显 Origin 并允许携带凭据，未列出的来源不返回 CORS 头。
+    """
     monkeypatch.setattr(settings, "ALLOWED_HOSTS", ["https://mp.example"])
     client = TestClient(create_app())
 

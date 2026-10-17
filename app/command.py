@@ -1,3 +1,7 @@
+"""
+处理用户命令并分发对应的业务操作。
+"""
+
 import copy
 import threading
 import traceback
@@ -28,7 +32,9 @@ from app.schemas.types import ChainEventType, EventType, NotificationChannel
 
 
 class CommandChain(ChainBase):
-    """命令分发专用 Chain，仅作为命令侧的消息投递网关。"""
+    """
+    命令分发专用 Chain，仅作为命令侧的消息投递网关。
+    """
 
 
 def _finish_command_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:

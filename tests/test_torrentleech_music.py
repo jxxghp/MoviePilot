@@ -1,16 +1,24 @@
+"""
+验证TorrentLeech 音乐分类检索与结果处理。
+"""
+
 import asyncio
 
 from app.modules.indexer.spider.torrentleech import TorrentLeech
-from app.schemas import MediaType
+from app.schemas.types import MediaType
 
 
 class _FakeResponse:
-    """构造 TorrentLeech 搜索测试使用的最小 JSON 响应。"""
+    """
+    构造 TorrentLeech 搜索测试使用的最小 JSON 响应。
+    """
 
     status_code = 200
 
     def json(self) -> dict:
-        """返回包含音乐分类种子的固定响应。"""
+        """
+        返回包含音乐分类种子的固定响应。
+        """
         return {
             "torrentList": [{
                 "fid": 100,
@@ -24,7 +32,9 @@ class _FakeResponse:
 
 
 def _build_indexer() -> dict:
-    """构造 TorrentLeech 音乐搜索所需的最小站点配置。"""
+    """
+    构造 TorrentLeech 音乐搜索所需的最小站点配置。
+    """
     return {
         "id": "torrentleech",
         "name": "TorrentLeech",
@@ -48,11 +58,15 @@ def _build_indexer() -> dict:
 
 
 def test_torrentleech_music_search_filters_categories_and_maps_result(monkeypatch):
-    """TorrentLeech 同步音乐搜索应提交 Audio/MV 分类并标记结果类型。"""
+    """
+    TorrentLeech 同步音乐搜索应提交 Audio/MV 分类并标记结果类型。
+    """
     captured = {}
 
     def fake_get_res(_request, url: str, **_kwargs):
-        """记录同步搜索地址并回放 JSON 响应。"""
+        """
+        记录同步搜索地址并回放 JSON 响应。
+        """
         captured["url"] = url
         return _FakeResponse()
 
@@ -75,11 +89,15 @@ def test_torrentleech_music_search_filters_categories_and_maps_result(monkeypatc
 
 
 def test_torrentleech_video_search_uses_requested_category_contract(monkeypatch):
-    """TorrentLeech 影视搜索应使用资源配置中的分类并标记请求类型。"""
+    """
+    TorrentLeech 影视搜索应使用资源配置中的分类并标记请求类型。
+    """
     captured = {}
 
     def fake_get_res(_request, url: str, **_kwargs):
-        """记录影视搜索地址并返回与电影分类匹配的固定响应。"""
+        """
+        记录影视搜索地址并返回与电影分类匹配的固定响应。
+        """
         captured["url"] = url
         response = _FakeResponse()
         response.json = lambda: {
@@ -110,11 +128,15 @@ def test_torrentleech_video_search_uses_requested_category_contract(monkeypatch)
 
 
 def test_torrentleech_async_music_search_uses_same_contract(monkeypatch):
-    """TorrentLeech 异步音乐搜索应复用同步搜索的分类契约。"""
+    """
+    TorrentLeech 异步音乐搜索应复用同步搜索的分类契约。
+    """
     captured = {}
 
     async def fake_get_res(_request, url: str, **_kwargs):
-        """记录异步搜索地址并回放 JSON 响应。"""
+        """
+        记录异步搜索地址并回放 JSON 响应。
+        """
         captured["url"] = url
         return _FakeResponse()
 

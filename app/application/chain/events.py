@@ -1,4 +1,6 @@
-"""Chain 持久事件的事务写端口与可重放 payload 转换。"""
+"""
+链层持久事件的事务写端口与可重放数据转换。
+"""
 
 from __future__ import annotations
 
@@ -29,7 +31,9 @@ from app.schemas.types import MediaType
 
 
 class ChainDurableEventWriter(Protocol):
-    """下载与整理 Chain 原子写业务记录和 outbox 的宿主端口。"""
+    """
+    下载与整理链原子写入业务记录和事件发件箱的宿主端口。
+    """
 
     def download_added(
         self,
@@ -41,7 +45,16 @@ class ChainDurableEventWriter(Protocol):
         processing_payload: dict[str, Any],
         publish: Callable[[dict[str, Any]], None],
     ) -> None:
-        """原子提交下载历史及事件、通知和后处理 intent。"""
+        """
+        原子提交下载历史及事件、通知和后处理投递意图。
+
+        :param history: 待新增的下载历史快照
+        :param files: 与下载历史同时提交的文件关联快照
+        :param event_payload: 下载已添加事件的可重放字段
+        :param notification_payload: 已渲染通知的持久快照；None 表示不生成通知意图
+        :param processing_payload: 恢复下载后处理所需的完整快照
+        :param publish: 业务提交后投递下载事件的回调
+        """
 
     def transfer_result(
         self,
@@ -55,12 +68,30 @@ class ChainDurableEventWriter(Protocol):
         publish: Callable[[dict[str, Any]], None] | None,
         settlement: "TransferResultSettlement | None" = None,
     ) -> TransferHistorySnapshot | TransferSettlementResult | None:
-        """提交历史、可选任务终态和结果 intent，再按 topic 广播事件。"""
+        """
+        提交历史、可选任务终态和结果投递意图，再按主题广播事件。
+
+        :param topic: 整理结果事件主题；None 表示只结算任务，不发布事件
+        :param stage_history: 在提供的事务内暂存历史的回调，不得自行提交
+        :param event_payload: 整理结果事件的可重放字段
+        :param publish: 提交后投递结果事件的回调；None 不立即发布
+        :param settlement: 受租约保护的持久任务终态；None 表示仅写历史和事件
+        :return: 普通写入返回历史快照，任务结算返回结算结果；接口允许未产生结果时为 None
+        :raises ValueError: 既未指定事件主题，也未指定持久任务结算
+        """
 
 
 @dataclass(frozen=True, slots=True)
 class TransferResultSettlement:
-    """描述一次受 lease fencing 保护的整理任务终态结算。"""
+    """
+    描述一次通过租约令牌隔离过期执行者的整理任务终态结算。
+
+    :param task_id: 待结算的持久整理任务标识，不允许为空
+    :param lease_token: 当前执行租约令牌，用于拒绝过期执行者的结算
+    :param execution_fingerprint: 本次整理执行检查点的稳定指纹
+    :param outcome: 任务终态，只允许 succeeded 或 failed
+    :param error: 失败终态必须提供的原因；成功时可为 None
+    """
 
     task_id: str
     lease_token: str
@@ -69,7 +100,9 @@ class TransferResultSettlement:
     error: str | None = None
 
     def __post_init__(self) -> None:
-        """拒绝缺少稳定身份、非法结果或不可诊断的失败终态。"""
+        """
+        拒绝缺少稳定身份、非法结果或不可诊断的失败终态。
+        """
         if not self.task_id or not self.lease_token or not self.execution_fingerprint:
             raise ValueError("整理终态结算缺少任务、租约或执行检查点身份")
         if self.outcome not in {"succeeded", "failed"}:
@@ -79,12 +112,16 @@ class TransferResultSettlement:
 
 
 def download_added_event_key(history_id: int) -> str:
-    """由下载历史 ID 与本次事实标识构造 DownloadAdded 幂等键。"""
+    """
+    由下载历史 ID 与本次事实标识构造 DownloadAdded 幂等键。
+    """
     return f"download.added:{history_id}:{uuid4().hex}:v1"
 
 
 def download_effect_event_key(event_key: str, topic: str) -> str:
-    """由同一次下载事实键派生具名效果键，保持跨 topic 关联稳定。"""
+    """
+    由同一次下载事实键派生具名效果键，保持跨 topic 关联稳定。
+    """
     prefix = "download.added:"
     if not event_key.startswith(prefix):
         raise ValueError("下载效果键必须由 DownloadAdded 事实键派生")
@@ -93,7 +130,15 @@ def download_effect_event_key(event_key: str, topic: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class DownloadProcessingSnapshot:
-    """从持久快照恢复的单次下载后处理输入。"""
+    """
+    从持久快照恢复的单次下载后处理输入。
+
+    :param context: 从快照恢复的媒体和种子上下文
+    :param download_dir: 下载后处理使用的目标目录
+    :param torrent_content: 种子原始字节或磁力链接文本
+    :param download_hash: 下载器任务哈希；尚未取得时为 None
+    :param downloader: 任务所属下载器的配置名称；未指定时为 None
+    """
 
     context: Context
     download_dir: Path
@@ -103,7 +148,9 @@ class DownloadProcessingSnapshot:
 
 
 def snapshot_download_notification(message: Message | None) -> dict[str, Any] | None:
-    """冻结已渲染下载通知，使恢复过程不依赖易变模板和领域对象。"""
+    """
+    冻结已渲染下载通知，使恢复过程不依赖易变模板和领域对象。
+    """
     if message is None:
         return None
     return {"message": message.model_dump(mode="json")}
@@ -117,7 +164,9 @@ def snapshot_download_processing(
     download_hash: str | None = None,
     downloader: str | None = None,
 ) -> dict[str, Any]:
-    """冻结下载后处理输入，并保留查询下载器实际内容路径所需的身份。"""
+    """
+    冻结下载后处理输入，并保留查询下载器实际内容路径所需的身份。
+    """
     if isinstance(torrent_content, bytes):
         content = {
             "kind": "bytes",
@@ -135,7 +184,9 @@ def snapshot_download_processing(
 
 
 def restore_download_processing(payload: dict[str, Any]) -> DownloadProcessingSnapshot:
-    """恢复下载后处理输入，并拒绝无法安全重放的持久快照。"""
+    """
+    恢复下载后处理输入，并拒绝无法安全重放的持久快照。
+    """
     context = payload.get("context")
     content = payload.get("torrent_content")
     download_dir = payload.get("download_dir")
@@ -181,7 +232,9 @@ def transfer_result_event_key(
     settlement: TransferResultSettlement | None = None,
     settlement_revision: int | None = None,
 ) -> str:
-    """为旧结果事实生成 occurrence key，为任务结算生成确定性幂等键。"""
+    """
+    为旧结果事实生成 occurrence key，为任务结算生成确定性幂等键。
+    """
     if settlement is not None:
         if settlement_revision is None or settlement_revision <= 0:
             raise ValueError("整理终态事件键缺少有效结算修订号")
@@ -195,7 +248,9 @@ def transfer_result_event_key(
 
 
 def snapshot_download_added(payload: dict[str, Any]) -> dict[str, Any]:
-    """把插件运行时 Context 转为 outbox 可 JSON 序列化的稳定快照。"""
+    """
+    把插件运行时 Context 转为 outbox 可 JSON 序列化的稳定快照。
+    """
     context = payload.get("context")
     return cast(dict[str, Any], _json_snapshot({
         "hash": payload.get("hash"),
@@ -213,7 +268,9 @@ def snapshot_download_added(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def restore_download_added(payload: dict[str, Any]) -> dict[str, Any]:
-    """从 outbox 快照恢复插件既有 DownloadAdded 运行时对象形状。"""
+    """
+    从 outbox 快照恢复插件既有 DownloadAdded 运行时对象形状。
+    """
     restored = dict(payload)
     context = payload.get("context")
     if isinstance(context, dict):
@@ -222,7 +279,9 @@ def restore_download_added(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def snapshot_transfer_result(payload: dict[str, Any]) -> dict[str, Any]:
-    """把整理事件中的领域对象转换为可恢复 JSON 快照。"""
+    """
+    把整理事件中的领域对象转换为可恢复 JSON 快照。
+    """
     return cast(dict[str, Any], _json_snapshot({
         "fileitem": _model_snapshot(payload.get("fileitem")),
         "meta": _object_snapshot(payload.get("meta")),
@@ -236,7 +295,9 @@ def snapshot_transfer_result(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def restore_transfer_result(payload: dict[str, Any]) -> dict[str, Any]:
-    """从 outbox 快照恢复 TransferComplete/Failed 的旧对象 payload。"""
+    """
+    从 outbox 快照恢复 TransferComplete/Failed 的旧对象 payload。
+    """
     restored = dict(payload)
     fileitem = payload.get("fileitem")
     meta = payload.get("meta")
@@ -258,21 +319,27 @@ def restore_transfer_result(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _model_snapshot(value: Any) -> Any:
-    """序列化 Pydantic 风格对象，空值和已有 JSON 值原样返回。"""
+    """
+    序列化 Pydantic 风格对象，空值和已有 JSON 值原样返回。
+    """
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")
     return value
 
 
 def _object_snapshot(value: Any) -> Any:
-    """序列化领域对象，避免把不可持久化实例写入 JSON 列。"""
+    """
+    序列化领域对象，避免把不可持久化实例写入 JSON 列。
+    """
     if hasattr(value, "to_dict"):
         return value.to_dict()
     return _model_snapshot(value)
 
 
 def _json_snapshot(value: Any) -> Any:
-    """递归归一化快照，确保 SQLAlchemy JSON 不接收运行时专用对象。"""
+    """
+    递归归一化快照，确保 SQLAlchemy JSON 不接收运行时专用对象。
+    """
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, Enum):
@@ -294,7 +361,9 @@ def _json_snapshot(value: Any) -> Any:
 
 
 def _restore_context(payload: dict[str, Any]) -> Context:
-    """恢复 DownloadAdded 插件依赖的 Context 聚合对象。"""
+    """
+    恢复 DownloadAdded 插件依赖的 Context 聚合对象。
+    """
     meta_payload = payload.get("meta_info")
     media_payload = payload.get("media_info")
     torrent_payload = payload.get("torrent_info")
@@ -331,7 +400,9 @@ def _restore_context(payload: dict[str, Any]) -> Context:
 
 
 def _restore_meta(payload: dict[str, Any]) -> MetaBase:
-    """恢复影视或音乐文件名解析对象，并保留快照中的解析字段。"""
+    """
+    恢复影视或音乐文件名解析对象，并保留快照中的解析字段。
+    """
     if payload.get("type") in {MediaType.MUSIC, MediaType.MUSIC.value, "music"}:
         return MetaMusic.from_dict(payload)
     title = str(
@@ -352,7 +423,9 @@ def _restore_meta(payload: dict[str, Any]) -> MetaBase:
 
 
 def _restore_media(payload: dict[str, Any]) -> MediaInfo | MusicInfo:
-    """恢复影视或音乐媒体对象，不触发任何远端识别。"""
+    """
+    恢复影视或音乐媒体对象，不触发任何远端识别。
+    """
     if payload.get("type") in {MediaType.MUSIC, MediaType.MUSIC.value, "music"}:
         return MusicInfo.from_dict(payload)
     media = MediaInfo()
@@ -361,6 +434,8 @@ def _restore_media(payload: dict[str, Any]) -> MediaInfo | MusicInfo:
 
 
 def _restore_torrent(payload: dict[str, Any]) -> TorrentInfo:
-    """按 dataclass 构造字段恢复种子对象，忽略快照中的计算属性。"""
+    """
+    按 dataclass 构造字段恢复种子对象，忽略快照中的计算属性。
+    """
     allowed = {item.name for item in fields(TorrentInfo) if item.init}
     return TorrentInfo(**{key: value for key, value in payload.items() if key in allowed})

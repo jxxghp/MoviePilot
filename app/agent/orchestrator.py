@@ -1,3 +1,7 @@
+"""
+编排会话内的模型、工具、流式回复和确认流程，并管理执行图与用量状态。
+"""
+
 import asyncio
 import hashlib
 import inspect
@@ -106,7 +110,9 @@ from app.schemas.types import ChainEventType, EventType, NotificationChannel
 
 
 def _get_plugin_tools_revision() -> int:
-    """读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。"""
+    """
+    读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。
+    """
     return get_plugin_manager().get_plugin_agent_tools_revision()
 
 
@@ -126,7 +132,9 @@ _KNOWN_AGENT_PROVIDER_TYPES = (
 
 
 def _agent_provider_metric_type(provider: object) -> str:
-    """把可配置 provider 名称收敛为有限指标类别，避免泄露自定义名称。"""
+    """
+    把可配置 provider 名称收敛为有限指标类别，避免泄露自定义名称。
+    """
     normalized = str(provider or "").strip().lower()
     if not normalized:
         return "unknown"
@@ -138,7 +146,50 @@ def _agent_provider_metric_type(provider: object) -> str:
 
 @dataclass
 class _SessionUsageSnapshot:
-    """保存当前会话的最近请求预算与累计模型用量。"""
+    """
+    保存当前会话的最近请求预算与累计模型用量。
+
+    :param model: 最近一次请求使用的模型标识；未记录时为 None
+    :param context_window_tokens: 模型上下文窗口的 token 容量；未知时为 None
+    :param last_input_usage_available: 最近响应是否提供可用输入用量
+    :param last_input_tokens: 最近请求的输入 token 数；不可用时为 None
+    :param last_output_tokens: 最近请求的输出 token 数；不可用时为 None
+    :param last_total_tokens: 最近请求的总 token 数；不可用时为 None
+    :param last_context_usage_ratio: 最近输入占上下文容量的比例；无法计算时为 None
+    :param last_request_sequence: 本会话最近一次模型请求的递增序号
+    :param last_request_estimate_available: 最近请求是否取得输入预算估算
+    :param last_estimated_input_tokens: 最近请求预估的总输入 token 数；未知时为 None
+    :param last_estimated_message_tokens: 最近请求中消息正文预估 token 数；未知时为 None
+    :param last_estimated_system_tokens: 最近请求中系统提示词预估 token 数；未知时为 None
+    :param last_estimated_tool_tokens: 最近请求中工具声明预估 token 数；未知时为 None
+    :param last_estimated_multimodal_tokens: 最近请求中多模态内容预估 token 数；未知时为 None
+    :param last_estimated_input_ratio: 预估输入占允许输入预算的比例；无法计算时为 None
+    :param last_estimated_remaining_input_tokens: 预估剩余可用输入 token 数；无法计算时为 None
+    :param last_estimated_over_input_limit: 预估输入是否超过可用预算；无法判断时为 None
+    :param last_message_count: 最近请求中的消息数量
+    :param last_tool_count: 最近请求携带的工具数量
+    :param last_image_count: 最近请求中的图片数量
+    :param last_unknown_multimodal_count: 最近请求中无法估算的多模态内容数量
+    :param model_max_output_tokens: 模型允许的最大输出 token 数；未知时为 None
+    :param configured_output_limit_tokens: 当前配置的输出 token 上限；未配置或未知时为 None
+    :param last_actual_input_tokens: 最近响应返回的实际输入 token 数；不可用时为 None
+    :param last_estimate_error_tokens: 最近实际输入与预估输入的 token 差值；无法比较时为 None
+    :param last_estimate_error_ratio: 最近输入估算误差的比例；无法计算时为 None
+    :param last_cache_usage_available: 最近响应是否提供可用的提示词缓存用量
+    :param last_cache_read_input_tokens: 最近请求从缓存读取的输入 token 数
+    :param last_cache_write_input_tokens: 最近请求写入缓存的输入 token 数
+    :param last_uncached_input_tokens: 最近请求未命中缓存的输入 token 数
+    :param last_cache_hit_ratio: 最近输入 token 的缓存命中比例；无法计算时为 None
+    :param total_input_tokens: 当前会话累计输入 token 数
+    :param total_output_tokens: 当前会话累计输出 token 数
+    :param total_tokens: 当前会话累计总 token 数
+    :param total_cache_read_input_tokens: 当前会话累计从缓存读取的输入 token 数
+    :param total_cache_write_input_tokens: 当前会话累计写入缓存的输入 token 数
+    :param total_uncached_input_tokens: 当前会话累计未命中缓存的输入 token 数
+    :param cache_usage_available: 当前会话是否曾取得可用缓存统计
+    :param model_call_count: 当前会话累计模型调用次数
+    :param last_updated_at: 最近更新用量快照的时间；尚未更新时为 None
+    """
     model: Optional[str] = None
     context_window_tokens: Optional[int] = None
     last_input_usage_available: bool = False
@@ -181,7 +232,9 @@ class _SessionUsageSnapshot:
     last_updated_at: Optional[datetime] = None
 
     def to_dict(self, session_id: str) -> dict[str, Any]:
-        """把用量快照投影为带会话 ID 的状态响应。"""
+        """
+        把用量快照投影为带会话 ID 的状态响应。
+        """
         return {
             "session_id": session_id,
             "model": self.model,
@@ -234,7 +287,20 @@ class _SessionUsageSnapshot:
 
 @dataclass
 class _CompiledAgentBundle:
-    """会话内可复用的 Agent 图及其构造签名。"""
+    """
+    会话内可复用的 Agent 图及其构造签名。
+
+    :param signature: 构造模型、工具和运行图时使用的配置签名，供复用判断
+    :param agent: 已编译且可复用的 Agent 执行图
+    :param streaming: 该执行图是否按流式模式构造
+    :param created_at: 本次执行图构造完成的时间
+    :param tool_catalog: 主智能体使用的工具目录快照；尚未提供时为 None
+    :param subagent_catalog: 子智能体使用的工具目录快照；尚未提供时为 None
+    :param plugin_revision: 构造时插件工具目录修订号；-1 表示尚未记录
+    :param mcp_config_signature: 构造时外部 MCP 配置签名；尚未记录时为空字符串
+    :param catalog_checked_at: 最近检查工具目录是否变化的时间；未检查时为 None
+    :param models: 本执行图持有的模型实例，用于统一释放客户端资源
+    """
 
     signature: tuple[Any, ...]
     agent: Any
@@ -261,18 +327,24 @@ class _ThinkTagStripper:
     _THINK_END_TAG = "</think>"
 
     def __init__(self):
-        """初始化思考标签解析缓冲与标签内状态。"""
+        """
+        初始化思考标签解析缓冲与标签内状态。
+        """
         self.buffer = ""
         self.in_think_tag = False
 
     def reset(self):
-        """重置状态"""
+        """
+        重置状态
+        """
         self.buffer = ""
         self.in_think_tag = False
 
     @staticmethod
     def _find_partial_tag_length(text: str, tag: str) -> int:
-        """返回文本末尾匹配的标签前缀长度，完整标签不计入。"""
+        """
+        返回文本末尾匹配的标签前缀长度，完整标签不计入。
+        """
         for length in range(len(tag) - 1, 0, -1):
             if text.endswith(tag[:length]):
                 return length
@@ -333,7 +405,9 @@ class _ThinkTagStripper:
         return emitted
 
     def flush(self, on_output: Callable[[str], None]):
-        """流式结束时，输出缓冲区中剩余的非思考内容"""
+        """
+        流式结束时，输出缓冲区中剩余的非思考内容
+        """
         if self.buffer and not self.in_think_tag:
             # 流结束时孤立的半截结束标签也属于协议标记，不应泄漏到回复正文。
             if self._find_partial_tag_length(self.buffer, self._THINK_END_TAG) >= 2:
@@ -344,7 +418,9 @@ class _ThinkTagStripper:
 
 
 def _is_thinking_content_block(block: Any) -> bool:
-    """判断内容块是否属于供应商返回的隐藏思考协议。"""
+    """
+    判断内容块是否属于供应商返回的隐藏思考协议。
+    """
     return bool(
         hasattr(block, "get")
         and (
@@ -362,7 +438,9 @@ def _start_thinking_if_protocol_signal(
     *,
     protocol_signal: bool = False,
 ) -> None:
-    """检测供应商思考协议后开启流式 thinking 生命周期。"""
+    """
+    检测供应商思考协议后开启流式 thinking 生命周期。
+    """
     start_thinking = getattr(stream_handler, "thinking_started", None)
     if not callable(start_thinking):
         return
@@ -405,7 +483,16 @@ SECRET_CANCEL_TEXT = "取消"
 
 @dataclass
 class _PendingSecretConfirmation:
-    """保存当前会话中一次待确认的敏感设置读取。"""
+    """
+    保存当前会话中一次待确认的敏感设置读取。
+
+    :param tool: 等待确认后执行敏感设置读取的网关工具实例
+    :param arguments: 已确定的敏感读取参数，确认时复用而不接受重新解释
+    :param created_at: 发起确认的时间，用于判定是否超过有效期
+    :param user_id: 发起敏感读取的可信用户标识
+    :param channel: 发起确认的消息渠道，用于限制确认来源
+    :param source: 渠道内的确认来源标识，用于限制确认上下文
+    """
 
     tool: MoviePilotApiTool
     arguments: Dict[str, Any]
@@ -439,7 +526,9 @@ class MoviePilotAgent:
         data: Optional[AgentDataContext] = None,
         memory: Optional[MemoryManager] = None,
     ):
-        """创建会话 Agent，并保存组合根注入的数据与记忆能力。"""
+        """
+        创建会话 Agent，并保存组合根注入的数据与记忆能力。
+        """
         self.session_id = session_id
         self.user_id = user_id
         self._terminal_scope = TerminalScope(
@@ -484,17 +573,23 @@ class MoviePilotAgent:
 
     @property
     def steering_inbox(self) -> SteeringInbox:
-        """返回当前会话运行中消息的唯一 inbox。"""
+        """
+        返回当前会话运行中消息的唯一 inbox。
+        """
         return self._steering_inbox
 
     def configure_steering_inbox(self, inbox: SteeringInbox) -> None:
-        """把会话 owner 装配的 inbox 绑定到持久 Agent 实例。"""
+        """
+        把会话 owner 装配的 inbox 绑定到持久 Agent 实例。
+        """
         if inbox.session_id != self.session_id or inbox.user_id != str(self.user_id or ""):
             raise ValueError("steering inbox 与 Agent 会话身份不匹配")
         self._steering_inbox = inbox
 
     def start_steering_reply(self, original_message_id: Optional[str] = None) -> None:
-        """为已加入上下文的渠道输入开启新回复，前一段工具主动回复不抑制后续答案。"""
+        """
+        为已加入上下文的渠道输入开启新回复，前一段工具主动回复不抑制后续答案。
+        """
         self.original_message_id = original_message_id
         self._tool_context["user_reply_sent"] = False
         self.stream_handler.start_new_message(original_message_id)
@@ -559,7 +654,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _sanitize_chat_title(value: str) -> str:
-        """清理模型返回的会话标题。"""
+        """
+        清理模型返回的会话标题。
+        """
         normalized_value = str(value or "").strip()
         title = normalized_value.splitlines()[0] if normalized_value else ""
         title = re.sub(r"^(标题|title)\s*[:：]\s*", "", title, flags=re.IGNORECASE)
@@ -570,7 +667,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _is_valid_chat_title(value: str) -> bool:
-        """判断模型返回内容是否符合会话标题格式。"""
+        """
+        判断模型返回内容是否符合会话标题格式。
+        """
         title = str(value or "").strip()
         if not title:
             return False
@@ -580,7 +679,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _parse_chat_title_response(value: str) -> str:
-        """从模型结构化响应中解析会话标题。"""
+        """
+        从模型结构化响应中解析会话标题。
+        """
         content = str(value or "").strip()
         if content.startswith("```"):
             content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.IGNORECASE)
@@ -595,7 +696,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _build_chat_title_message(message: str) -> str:
-        """构造标题生成模型调用的用户侧输入。"""
+        """
+        构造标题生成模型调用的用户侧输入。
+        """
         user_message = str(message or "").strip()[:1000]
         return (
             "请仅为下面 JSON 中的 user_message 生成会话标题。"
@@ -665,7 +768,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _coerce_int(value: Any) -> Optional[int]:
-        """把可转换的值归一化为整数，无效值返回空。"""
+        """
+        把可转换的值归一化为整数，无效值返回空。
+        """
         if value is None:
             return None
         try:
@@ -675,14 +780,18 @@ class MoviePilotAgent:
 
     @staticmethod
     def _coerce_positive_int(value: Any) -> Optional[int]:
-        """仅接受模型 profile 声明的非 bool 正整数。"""
+        """
+        仅接受模型 profile 声明的非 bool 正整数。
+        """
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             return None
         return value
 
     @staticmethod
     def _get_recursion_limit() -> int:
-        """读取 LangGraph 递归上限，防止模型持续循环调用工具。"""
+        """
+        读取 LangGraph 递归上限，防止模型持续循环调用工具。
+        """
         try:
             limit = int(get_runtime_setting("LLM_MAX_ITERATIONS") or 0)
         except (TypeError, ValueError):
@@ -691,12 +800,16 @@ class MoviePilotAgent:
 
     @classmethod
     def _get_model_name(cls, model: Any) -> Optional[str]:
-        """兼容不同模型实现的模型名称字段。"""
+        """
+        兼容不同模型实现的模型名称字段。
+        """
         return getattr(model, "model", None) or getattr(model, "model_name", None) or getattr(model, "model_id", None)
 
     @classmethod
     def _get_context_window_tokens(cls, model: Any) -> Optional[int]:
-        """从模型 profile 读取明确声明的正整数输入窗口。"""
+        """
+        从模型 profile 读取明确声明的正整数输入窗口。
+        """
         profile = getattr(model, "profile", None)
         if not profile:
             return None
@@ -717,7 +830,9 @@ class MoviePilotAgent:
         return None
 
     def _sync_model_profile(self, model: Any) -> None:
-        """把当前模型名称和输入窗口同步到会话用量快照。"""
+        """
+        把当前模型名称和输入窗口同步到会话用量快照。
+        """
         model_name = self._get_model_name(model)
         context_window_tokens = self._get_context_window_tokens(model)
         if model_name:
@@ -725,16 +840,22 @@ class MoviePilotAgent:
         self._session_usage.context_window_tokens = context_window_tokens
 
     def _next_request_sequence(self) -> int:
-        """为当前会话中的模型请求分配跨 Agent 图单调递增的序号。"""
+        """
+        为当前会话中的模型请求分配跨 Agent 图单调递增的序号。
+        """
         self._request_sequence += 1
         return self._request_sequence
 
     def _record_review_usage(self, usage: dict[str, Any]) -> None:
-        """累计后台模型花费，但不覆盖用户当前请求的上下文窗口与使用率快照。"""
+        """
+        累计后台模型花费，但不覆盖用户当前请求的上下文窗口与使用率快照。
+        """
         self._record_usage({**usage, 'request_sequence': -1})
 
     def _record_usage(self, usage: dict[str, Any]) -> None:
-        """累计会话模型用量，只有当前请求序号可以更新最近上下文预算。"""
+        """
+        累计会话模型用量，只有当前请求序号可以更新最近上下文预算。
+        """
         if not usage:
             return
 
@@ -847,7 +968,9 @@ class MoviePilotAgent:
             )
 
     def _record_request_budget(self, budget: dict[str, Any]) -> None:
-        """保存最终请求的脱敏估算，并清除不属于本轮的旧校准结果。"""
+        """
+        保存最终请求的脱敏估算，并清除不属于本轮的旧校准结果。
+        """
         if not budget:
             return
         request_sequence = self._coerce_int(budget.get("request_sequence"))
@@ -893,7 +1016,9 @@ class MoviePilotAgent:
         self._session_usage.last_estimate_error_ratio = None
 
     def get_session_status(self) -> dict[str, Any]:
-        """返回会话预算和用量，首轮请求前使用运行配置兜底。"""
+        """
+        返回会话预算和用量，首轮请求前使用运行配置兜底。
+        """
         if not self._session_usage.model and self._session_usage.last_request_sequence == 0:
             self._session_usage.model = get_runtime_setting("LLM_MODEL")
         if not self._session_usage.context_window_tokens and self._session_usage.last_request_sequence == 0:
@@ -1018,18 +1143,24 @@ class MoviePilotAgent:
         }
 
     async def _can_restore_cross_owner_history(self) -> bool:
-        """默认只恢复本人或无归属旧历史，工具管理员语义不授予跨用户会话读取权。"""
+        """
+        默认只恢复本人或无归属旧历史，工具管理员语义不授予跨用户会话读取权。
+        """
         return False
 
     def set_protected_output_callback(
         self,
         protected_output_callback: Optional[Callable[[str], Optional[bool]]],
     ) -> None:
-        """更新仅供当前请求接收的受保护文本输出回调。"""
+        """
+        更新仅供当前请求接收的受保护文本输出回调。
+        """
         self.protected_output_callback = protected_output_callback
 
     def has_pending_secret_confirmation(self) -> bool:
-        """判断当前会话是否存在仍在有效期内的敏感设置确认。"""
+        """
+        判断当前会话是否存在仍在有效期内的敏感设置确认。
+        """
         pending = self._pending_secret_confirmation
         if not pending:
             return False
@@ -1039,7 +1170,9 @@ class MoviePilotAgent:
         return False
 
     def _can_confirm_secret_read(self) -> bool:
-        """判断当前渠道能否把密钥结果直接交付给原用户。"""
+        """
+        判断当前渠道能否把密钥结果直接交付给原用户。
+        """
         if self.channel == NotificationChannel.WebAgent.value:
             return callable(self.protected_output_callback)
         return bool(self.user_id and self.source) and self.channel in {
@@ -1052,7 +1185,9 @@ class MoviePilotAgent:
         tool: MoviePilotApiTool,
         arguments: Dict[str, Any],
     ) -> str:
-        """校验并冻结一次待用户确认的敏感设置读取。"""
+        """
+        校验并冻结一次待用户确认的敏感设置读取。
+        """
         if self.has_pending_secret_confirmation():
             return "当前会话已有待确认的敏感设置读取，请先回复“确认”或“取消”。"
         if not self._can_confirm_secret_read():
@@ -1118,7 +1253,9 @@ class MoviePilotAgent:
         return confirmation_message
 
     async def _deliver_private_channel_message(self, content: str) -> bool:
-        """按渠道用户身份私聊投递，禁止回退群聊或广播。"""
+        """
+        按渠道用户身份私聊投递，禁止回退群聊或广播。
+        """
         if self.channel not in {
             NotificationChannel.Telegram.value,
             NotificationChannel.Feishu.value,
@@ -1145,7 +1282,9 @@ class MoviePilotAgent:
         return bool(response and response.success)
 
     async def _deliver_protected_output(self, content: str) -> bool:
-        """绕过模型与会话历史，把敏感结果直接交付给当前用户。"""
+        """
+        绕过模型与会话历史，把敏感结果直接交付给当前用户。
+        """
         if callable(self.protected_output_callback):
             try:
                 delivered = self.protected_output_callback(content)
@@ -1160,7 +1299,9 @@ class MoviePilotAgent:
         content: str,
         fallback_message: str,
     ) -> bool:
-        """受保护投递失败时，仅通过普通回复报告不含敏感值的状态。"""
+        """
+        受保护投递失败时，仅通过普通回复报告不含敏感值的状态。
+        """
         delivered = await self._deliver_protected_output(content)
         if delivered:
             return True
@@ -1176,7 +1317,9 @@ class MoviePilotAgent:
         files: Optional[List[dict]],
         has_audio_input: bool,
     ) -> Optional[str]:
-        """在进入模型前消费当前会话的确认或取消文本。"""
+        """
+        在进入模型前消费当前会话的确认或取消文本。
+        """
         command = str(message or "").strip()
         if command not in {SECRET_CONFIRM_TEXT, SECRET_CANCEL_TEXT}:
             return None
@@ -1207,7 +1350,9 @@ class MoviePilotAgent:
             return "当前入口不支持安全交付敏感设置，未执行读取。"
 
         async def _execute_confirmed() -> str:
-            """再次确认工具权限后执行已批准的敏感读取。"""
+            """
+            再次确认工具权限后执行已批准的敏感读取。
+            """
             permission_result = await pending.tool._check_permission()
             if permission_result:
                 return permission_result
@@ -1241,7 +1386,9 @@ class MoviePilotAgent:
         return "敏感设置确认已处理。"
 
     def _build_policy_context(self) -> ToolPolicyContext:
-        """根据宿主入口建立模型参数无法伪造的策略上下文。"""
+        """
+        根据宿主入口建立模型参数无法伪造的策略上下文。
+        """
         if not self.has_message_context:
             origin = ToolOrigin.BACKGROUND
             principal_type = PrincipalType.BACKGROUND
@@ -1420,7 +1567,9 @@ class MoviePilotAgent:
         )
 
     def _build_prompt_cache_key(self) -> str:
-        """生成不暴露用户标识、且在同一会话内稳定的提示词缓存键。"""
+        """
+        生成不暴露用户标识、且在同一会话内稳定的提示词缓存键。
+        """
         cache_identity = f"{self.user_id or ''}\x00{self.session_id}"
         digest = hashlib.sha256(cache_identity.encode("utf-8")).hexdigest()[:32]
         return f"moviepilot-agent-{digest}"
@@ -1445,12 +1594,16 @@ class MoviePilotAgent:
 
     @classmethod
     def _messages_have_image_input(cls, messages: List[BaseMessage]) -> bool:
-        """检查本轮提交给模型的消息列表中是否包含图片输入。"""
+        """
+        检查本轮提交给模型的消息列表中是否包含图片输入。
+        """
         return any(cls._has_image_input_content(getattr(message, "content", None)) for message in messages or [])
 
     @staticmethod
     def _is_unsupported_image_input_error(error: Exception) -> bool:
-        """用户附件与工具图片共享同一明确的模型图片拒绝判定。"""
+        """
+        用户附件与工具图片共享同一明确的模型图片拒绝判定。
+        """
         return LLMHelper.is_unsupported_image_input_error(error)
 
     @staticmethod
@@ -1582,7 +1735,9 @@ class MoviePilotAgent:
     def _initialize_local_tool_catalogs(
         self,
     ) -> tuple[ToolCatalogSnapshot, ToolCatalogSnapshot]:
-        """在同一插件 revision 窗口内建立主图和子图工具目录。"""
+        """
+        在同一插件 revision 窗口内建立主图和子图工具目录。
+        """
         from app.agent.loader import get_tool_factory
 
         tool_factory = get_tool_factory()
@@ -1609,12 +1764,16 @@ class MoviePilotAgent:
         raise RuntimeError("插件工具目录持续变化，无法建立当前快照")
 
     def _initialize_tool_catalog(self) -> ToolCatalogSnapshot:
-        """兼容只需要主 Agent 工具目录的内部调用与测试。"""
+        """
+        兼容只需要主 Agent 工具目录的内部调用与测试。
+        """
         return self._initialize_local_tool_catalogs()[0]
 
     @staticmethod
     def _filter_local_web_search_tools(tools: List, enabled: bool) -> List:
-        """按联网搜索策略保留或移除本地 search_web 工具。"""
+        """
+        按联网搜索策略保留或移除本地 search_web 工具。
+        """
         if enabled:
             return tools
         return [tool for tool in tools if getattr(tool, "name", None) != "search_web"]
@@ -1631,7 +1790,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _public_runtime_config_signature(runtime_config: Dict[str, Any]) -> tuple:
-        """生成不包含密钥明文的 LLM 运行时签名。"""
+        """
+        生成不包含密钥明文的 LLM 运行时签名。
+        """
         api_key = runtime_config.get("api_key") or ""
         api_key_digest = hashlib.sha256(str(api_key).encode("utf-8")).hexdigest()[:12] if api_key else ""
         return (
@@ -1648,7 +1809,9 @@ class MoviePilotAgent:
         )
 
     async def _recall_session(self, model: Any) -> RecallSession | None:
-        """交互会话沿用真实身份；用户定时执行独立归档为 cron，系统内部工作不公开。"""
+        """
+        交互会话沿用真实身份；用户定时执行独立归档为 cron，系统内部工作不公开。
+        """
         scope = current_terminal_scope()
         if scope is not None and scope.kind == "scheduled":
             return RecallSession(f"agent-run:{scope.task_id}", source="cron", model=self._get_model_name(model) or "")
@@ -1667,7 +1830,9 @@ class MoviePilotAgent:
         tool_catalog: Optional[ToolCatalogSnapshot] = None,
         subagent_catalog: Optional[ToolCatalogSnapshot] = None,
     ) -> tuple[Any, ...]:
-        """构造会话内 Agent 图缓存签名。"""
+        """
+        构造会话内 Agent 图缓存签名。
+        """
         runtime_config = await self._resolve_llm_runtime_config()
         scope = current_terminal_scope()
         return (
@@ -1702,13 +1867,17 @@ class MoviePilotAgent:
 
     @staticmethod
     def _tool_factory_revision() -> str:
-        """在目录签名确实需要时解析工具工厂版本。"""
+        """
+        在目录签名确实需要时解析工具工厂版本。
+        """
         from app.agent.loader import get_tool_factory
 
         return get_tool_factory().catalog_factory_revision()
 
     def _get_cached_agent(self, signature: tuple[Any, ...], streaming: bool) -> Optional[Any]:
-        """按签名读取当前会话已编译的 Agent 图。"""
+        """
+        按签名读取当前会话已编译的 Agent 图。
+        """
         bundle = self._compiled_agent_bundle
         if bundle and bundle.streaming == streaming and bundle.signature == signature:
             return bundle.agent
@@ -1718,7 +1887,9 @@ class MoviePilotAgent:
     def _seal_subagent_middleware_instances(
         middlewares: tuple[Any, ...],
     ) -> None:
-        """同步封住子代理控制器的新任务入口，不等待既有任务退出。"""
+        """
+        同步封住子代理控制器的新任务入口，不等待既有任务退出。
+        """
         for middleware in middlewares:
             seal = getattr(middleware, "seal", None)
             if not callable(seal):
@@ -1732,7 +1903,9 @@ class MoviePilotAgent:
     async def _close_subagent_middleware_instances(
         middlewares: tuple[Any, ...],
     ) -> tuple[Any, ...]:
-        """关闭子代理控制器，并返回仍持有未收敛任务的实例。"""
+        """
+        关闭子代理控制器，并返回仍持有未收敛任务的实例。
+        """
         pending_middlewares = []
         for middleware in middlewares:
             close = getattr(middleware, "close", None)
@@ -1753,7 +1926,9 @@ class MoviePilotAgent:
     def _merge_subagent_middleware_owners(
         *groups: tuple[Any, ...],
     ) -> tuple[Any, ...]:
-        """按对象身份合并当前图与延迟收敛控制器的 owner 集合。"""
+        """
+        按对象身份合并当前图与延迟收敛控制器的 owner 集合。
+        """
         merged = []
         for group in groups:
             for middleware in group:
@@ -1762,7 +1937,9 @@ class MoviePilotAgent:
         return tuple(merged)
 
     def begin_shutdown(self) -> None:
-        """在任何异步等待前封住当前 Agent 的子代理提交和终端作用域。"""
+        """
+        在任何异步等待前封住当前 Agent 的子代理提交和终端作用域。
+        """
         if self._learning:
             self._learning.seal()
         self._terminal_scope.seal()
@@ -1783,7 +1960,9 @@ class MoviePilotAgent:
         subagent_middlewares: tuple[Any, ...] = (),
         models: tuple[Any, ...] = (),
     ) -> Any:
-        """保存当前会话可复用的 Agent 图。"""
+        """
+        保存当前会话可复用的 Agent 图。
+        """
         previous_middlewares = tuple(
             middleware
             for middleware in self._subagent_middlewares
@@ -1814,7 +1993,9 @@ class MoviePilotAgent:
         return agent
 
     async def _release_llm_models(self, models: tuple[Any, ...]) -> bool:
-        """释放已无消费者的模型；关闭失败或清理被取消时保留模型供下一次清理。"""
+        """
+        释放已无消费者的模型；关闭失败或清理被取消时保留模型供下一次清理。
+        """
         for model in models:
             if not any(model is existing for existing in self._retired_llm_models):
                 self._retired_llm_models.append(model)
@@ -1824,7 +2005,9 @@ class MoviePilotAgent:
         return not self._retired_llm_models
 
     async def _release_retired_llm_models(self, *, consumers_closed: bool) -> bool:
-        """等子代理及共享模型的后台复盘退出后，再释放旧图连接。"""
+        """
+        等子代理及共享模型的后台复盘退出后，再释放旧图连接。
+        """
         learning_run = self._learning.run if self._learning else None
         learning_active = bool(learning_run and learning_run.task and not learning_run.task.done())
         if not consumers_closed or learning_active:
@@ -1832,7 +2015,9 @@ class MoviePilotAgent:
         return await self._release_llm_models(tuple(self._retired_llm_models))
 
     async def _invalidate_cached_agent(self) -> bool:
-        """使当前图失效，未收敛的消费者及其模型连接继续由 Agent 持有。"""
+        """
+        使当前图失效，未收敛的消费者及其模型连接继续由 Agent 持有。
+        """
         subagent_middlewares = self._subagent_middlewares
         if self._compiled_agent_bundle:
             self._retired_llm_models.extend(self._compiled_agent_bundle.models)
@@ -1844,7 +2029,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _latest_turn_messages(messages: List[BaseMessage]) -> List[BaseMessage]:
-        """从完整历史中提取本轮新增用户消息。"""
+        """
+        从完整历史中提取本轮新增用户消息。
+        """
         return [messages[-1]] if messages else []
 
     def _initialize_subagent_tools(self) -> List:
@@ -1910,7 +2097,9 @@ class MoviePilotAgent:
     def _initialize_tool_selector(
         tools: list[Any], internal_tools: list[Any], model: Any,
     ) -> Optional[ToolSelectorMiddleware]:
-        """首轮限制业务工具数量，同时保留计划、技能和按需发现入口。"""
+        """
+        首轮限制业务工具数量，同时保留计划、技能和按需发现入口。
+        """
         max_tools = get_runtime_setting("LLM_MAX_TOOLS")
         if max_tools <= 0:
             return None
@@ -2094,7 +2283,6 @@ class MoviePilotAgent:
                 *([SteeringMiddleware()] if self._steering_inbox.running else []),
                 output_middleware,
                 *invocation_middlewares,
-                # Skills
                 skills_middleware,
                 # Jobs 任务管理
                 JobsMiddleware(
@@ -2195,7 +2383,9 @@ class MoviePilotAgent:
         *,
         terminal_scope: Optional[TerminalScope] = None,
     ) -> str:
-        """绑定宿主任务身份覆盖本轮全部推理；正常轮次和图重建保留对话归属。"""
+        """
+        绑定宿主任务身份覆盖本轮全部推理；正常轮次和图重建保留对话归属。
+        """
         scope = terminal_scope or self._terminal_scope
         if scope.closed or self._shutdown_started or scope.user_id != (self.user_id or ""):
             raise TerminalAccessError()
@@ -2211,7 +2401,9 @@ class MoviePilotAgent:
             reset_steering_inbox(steering_token)
 
     async def release_terminal_scope(self, scope: TerminalScope) -> bool:
-        """收口宿主临时任务的终端；未真实收敛的作用域留给 Agent 清理重试。"""
+        """
+        收口宿主临时任务的终端；未真实收敛的作用域留给 Agent 清理重试。
+        """
         self._scheduled_terminal_scopes.add(scope)
         if not await close_terminal_scope(scope):
             return False
@@ -2225,7 +2417,9 @@ class MoviePilotAgent:
         files: Optional[List[dict[str, Any]]] = None,
         has_audio_input: bool = False,
     ) -> str:
-        """在已绑定的宿主任务上下文中流式推理并返回 Agent 回复。"""
+        """
+        在已绑定的宿主任务上下文中流式推理并返回 Agent 回复。
+        """
         user_display_saved = False
         try:
             logger.info(
@@ -2382,7 +2576,9 @@ class MoviePilotAgent:
         stripper = _ThinkTagStripper()
 
         def emit_visible_token(text: str) -> None:
-            """只在真正产生可见答案时结束思考状态，再转发正文。"""
+            """
+            只在真正产生可见答案时结束思考状态，再转发正文。
+            """
             finish_thinking = getattr(stream_handler, "thinking_finished", None)
             if callable(finish_thinking):
                 finish_thinking()
@@ -2440,7 +2636,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _guardrail_final_text(agent: Any, config: dict[str, Any]) -> str:
-        """受控停止由宿主生成，不产生模型 token；流式入口须显式交付最终说明。"""
+        """
+        受控停止由宿主生成，不产生模型 token；流式入口须显式交付最终说明。
+        """
         get_state = getattr(agent, 'get_state', None)
         if not callable(get_state):
             return ''
@@ -2452,7 +2650,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _sanitize_recovery_message(message: BaseMessage) -> BaseMessage:
-        """为中断恢复复制消息，只保留脱敏正文与工具协议需要的字段。"""
+        """
+        为中断恢复复制消息，只保留脱敏正文与工具协议需要的字段。
+        """
         message = sanitize_tool_image_message(message)
         if isinstance(message, HumanMessage) and isinstance(message.content, list):
             # 用户主动提供的附件须保持有效，日志去像素策略不能用于恢复请求的图片块。
@@ -2480,7 +2680,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _requires_portable_recovery(messages: list[BaseMessage]) -> bool:
-        """带思考、签名或内容块的响应不能在脱敏后作为原供应商协议回放。"""
+        """
+        带思考、签名或内容块的响应不能在脱敏后作为原供应商协议回放。
+        """
         protocol_fields = {"reasoning_content", "__gemini_function_call_thought_signatures__"}
         return any(
             isinstance(message, AIMessage) and (
@@ -2492,7 +2694,9 @@ class MoviePilotAgent:
 
     @staticmethod
     def _portable_recovery_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
-        """把供应商签名工具链转换为历史事实文本，保留用户消息和实际回执。"""
+        """
+        把供应商签名工具链转换为历史事实文本，保留用户消息和实际回执。
+        """
         recovered: list[BaseMessage] = []
         for message in messages:
             facts: dict[str, Any]
@@ -2525,7 +2729,9 @@ class MoviePilotAgent:
     async def _recover_interrupted_agent(
         self, agent: Any, config: dict[str, Any], *, cancelled: bool = False
     ) -> None:
-        """有界保存中断事实后释放旧图，再次取消或恢复失败仍执行清理。"""
+        """
+        有界保存中断事实后释放旧图，再次取消或恢复失败仍执行清理。
+        """
         try:
             if agent is None or not self._should_persist_agent_chat():
                 return
@@ -2557,12 +2763,16 @@ class MoviePilotAgent:
             await self._invalidate_cached_agent()
 
     def _learning_enabled(self) -> bool:
-        """仅已认证交互会话启用学习，定时任务和内部后台任务始终跳过。"""
+        """
+        仅已认证交互会话启用学习，定时任务和内部后台任务始终跳过。
+        """
         scope = current_terminal_scope()
         return bool(self._learning and not self.is_background and not (scope and scope.kind == 'scheduled'))
 
     async def _handle_learning_control(self, message: str) -> str | None:
-        """直接使用宿主收到的用户文本处理审批，不能从模型生成的 HumanMessage 中提取权限。"""
+        """
+        直接使用宿主收到的用户文本处理审批，不能从模型生成的 HumanMessage 中提取权限。
+        """
         if not self._learning_enabled() or self._learning is None:
             return None
         await self._learning.wait_cancelled()
@@ -2575,7 +2785,9 @@ class MoviePilotAgent:
         return reply
 
     async def _save_final_agent_state(self, agent: Any, agent_config: dict[str, Any]) -> str:
-        """在触发学习前保存已交付回复与可恢复快照；失败时不得启动成功复盘。"""
+        """
+        在触发学习前保存已交付回复与可恢复快照；失败时不得启动成功复盘。
+        """
         display_text = self._streamed_output
         if not display_text:
             final_messages = agent.get_state(agent_config).values.get("messages", [])

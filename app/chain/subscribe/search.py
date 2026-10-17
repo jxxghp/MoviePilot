@@ -1,4 +1,6 @@
-"""订阅主动搜索编排"""
+"""
+订阅主动搜索编排
+"""
 
 import asyncio
 import random
@@ -73,7 +75,9 @@ _NEW_SUBSCRIPTION_EDIT_SECONDS = 60
 
 def _finish_paged_subscription(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
                                target: SubscriptionSearchTarget) -> None:
-    """按当前订阅对账缺集，不回写搜索开始时的总集数；显式补搜暂停后仍正常结算。"""
+    """
+    按当前订阅对账缺集，不回写搜索开始时的总集数；显式补搜暂停后仍正常结算。
+    """
     current = owner.subscription_repository.get(subscribe.id)
     if current is None or owner._SubscribeChain__candidate_contract_changed(subscribe, current):
         return
@@ -84,7 +88,9 @@ def _finish_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscripti
 
 
 def _subscription_search_strategy(best_version: bool) -> str:
-    """洗版固定全量；普通订阅按补全搜索策略，未设置时为智能。"""
+    """
+    洗版固定全量；普通订阅按补全搜索策略，未设置时为智能。
+    """
     if best_version:
         return "full"
     strategy = get_configured_system_config().get(SystemConfigKey.SubscribeSearchStrategy)
@@ -92,7 +98,9 @@ def _subscription_search_strategy(best_version: bool) -> str:
 
 
 def _subscription_rule_groups(subscribe: SubscriptionSnapshot) -> tuple[list[str], list[str]]:
-    """返回订阅普通搜索和洗版升级各自使用的规则组。"""
+    """
+    返回订阅普通搜索和洗版升级各自使用的规则组。
+    """
     configuration = get_configured_system_config()
     if subscribe.filter_groups:
         groups = list(subscribe.filter_groups)
@@ -107,7 +115,9 @@ def _best_version_target_episodes(
     subscribe: SubscriptionSnapshot,
     target: SubscriptionSearchTarget,
 ) -> set[int]:
-    """返回本轮洗版搜索覆盖的目标集数，用于区分首次下载与升级候选。"""
+    """
+    返回本轮洗版搜索覆盖的目标集数，用于区分首次下载与升级候选。
+    """
     media_key = str(target.media_key) if target.media_key is not None else ""
     season_info = (
         (target.missing.get(media_key) or {}).get(subscribe.season)
@@ -126,7 +136,9 @@ def _build_subscription_candidate_filter(
     subscribe: SubscriptionSnapshot,
     target: SubscriptionSearchTarget,
 ) -> Callable[[list[Context]], list[Context]]:
-    """按资源覆盖范围选择普通规则或洗版规则，再执行订阅候选校验。"""
+    """
+    按资源覆盖范围选择普通规则或洗版规则，再执行订阅候选校验。
+    """
     normal_groups, best_groups = _subscription_rule_groups(subscribe)
     if not subscribe.best_version or target.media.type != MediaType.TV:
         return partial(cast(Any, owner)._filter_search_contexts, subscribe)
@@ -140,7 +152,9 @@ def _build_subscription_candidate_filter(
     )
 
     def filter_contexts(contexts: list[Context]) -> list[Context]:
-        """分别过滤首次下载候选和已有集数升级候选。"""
+        """
+        分别过滤首次下载候选和已有集数升级候选。
+        """
         initial_downloads: list[Context] = []
         upgrades: list[Context] = []
         for context in contexts:
@@ -182,7 +196,9 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
                                 searchchain: SearchChain, target: SubscriptionSearchTarget,
                                 rule_key: SystemConfigKey,
                                 execution_context: Optional[SubscriptionExecutionContext]) -> Optional[SubscriptionSnapshot]:
-    """影视订阅在每页处理后分批提交，保留当前任务的持久恢复身份。"""
+    """
+    影视订阅在每页处理后分批提交，保留当前任务的持久恢复身份。
+    """
     if not isinstance(target.media, MediaInfo):
         raise ValueError("增量搜索仅适用于影视订阅")
     dynamic_rule_groups = subscribe.best_version and target.media.type == MediaType.TV
@@ -219,7 +235,9 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
         execution_context.incremental_search = True
 
     def submit(contexts: list[Context], ready: set[str]) -> set[str]:
-        """仅下载已就绪目标，并记录本页候选和实际提交结果。"""
+        """
+        仅下载已就绪目标，并记录本页候选和实际提交结果。
+        """
         _ensure_execution_active(execution_context)
         if execution_context:
             execution_context.report_phase("preparing")
@@ -259,7 +277,9 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
 def _ensure_execution_active(
     execution_context: Optional[SubscriptionExecutionContext],
 ) -> None:
-    """在可安全停止的边界区分用户取消与执行超时。"""
+    """
+    在可安全停止的边界区分用户取消与执行超时。
+    """
     if execution_context is None:
         return
     if execution_context.is_cancel_requested():
@@ -275,7 +295,9 @@ def _search_source_and_priority(
     state: Optional[str],
     manual: Optional[bool],
 ) -> tuple[str, int]:
-    """把兼容入口归一为持久来源和公平队列优先级。"""
+    """
+    把兼容入口归一为持久来源和公平队列优先级。
+    """
     if manual:
         target_count = 1 if sid else len(sids or ())
         return "manual", 120 if target_count == 1 else 100
@@ -292,7 +314,9 @@ def _search_task_available_at(
     *,
     now: Optional[datetime] = None,
 ) -> dict[int, str]:
-    """整批仅抖动一次；请求节奏由站点限流控制，不随订阅数量累计空等。"""
+    """
+    整批仅抖动一次；请求节奏由站点限流控制，不随订阅数量累计空等。
+    """
     ordered_ids = tuple(dict.fromkeys(subscription_ids))
     if not ordered_ids:
         return {}
@@ -303,10 +327,14 @@ def _search_task_available_at(
 
 
 class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
-    """订阅主动搜索入口、队列提交与消费协调 owner。"""
+    """
+    订阅主动搜索入口、队列提交与消费协调组件。
+    """
 
     def _subscription_query(self) -> SubscriptionQueryService:
-        """构造绑定订阅 Oper 的查询应用服务。"""
+        """
+        构造绑定订阅 Oper 的查询应用服务。
+        """
         return SubscriptionQueryService(self.subscription_repository)
 
     @classmethod
@@ -330,7 +358,9 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         operation: str,
         progress_callback: Optional[Callable[..., None]],
     ) -> bool:
-        """获取 Search 或 Match 通道锁，保持各通道内部串行。"""
+        """
+        获取 Search 或 Match 通道锁，保持各通道内部串行。
+        """
         operation_label = {"search": "搜索", "match": "资源检查"}[operation]
         lock = self._match_lock if operation == "match" else self._search_queue_lock
         if lock.acquire(blocking=True, timeout=self._SUBSCRIPTION_EXECUTION_TTL):
@@ -383,6 +413,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
     ) -> Optional[str]:
         """
         订阅搜索
+
         :param sid: 订阅ID，有值时只处理该订阅
         :param state: 订阅状态 N:新建, R:订阅中, P:待定, S:暂停
         :param manual: 是否手动搜索
@@ -414,7 +445,9 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         return None
 
     def _reset_new_subscription(self, subscribe: SubscriptionSnapshot) -> SubscriptionSnapshot:
-        """搜索收尾前重读状态，避免旧的新建快照撤销用户暂停。"""
+        """
+        搜索收尾前重读状态，避免旧的新建快照撤销用户暂停。
+        """
         current = self.subscription_repository.get(subscribe.id)
         if current and current.state == "N":
             return cast(
@@ -432,7 +465,9 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         progress_callback: Optional[Callable[..., None]],
         scheduled_interval: Optional[int] = None,
     ) -> None:
-        """在独立 Search 通道内按订阅准入执行兼容搜索。"""
+        """
+        在独立 Search 通道内按订阅准入执行兼容搜索。
+        """
         lock_acquired = self._acquire_run_lock("search", progress_callback)
         if not lock_acquired:
             return
@@ -571,7 +606,9 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         progress_callback: Optional[Callable[..., None]],
         scheduled_interval: Optional[int] = None,
     ) -> Optional[str]:
-        """将搜索转为持久任务并在无 Match 长锁的短租约中串行消费。"""
+        """
+        将搜索转为持久任务并在无 Match 长锁的短租约中串行消费。
+        """
         subscribes = self._load_search_subscriptions(
             sid=sid, sids=sids, state=state,
             scheduled_interval=None if manual else scheduled_interval,
@@ -653,7 +690,9 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         progress_callback: Optional[Callable[..., None]],
         summary: SearchExecutionSummary,
     ) -> set[int]:
-        """有界消费可恢复任务；单任务失败不得阻止后续订阅。"""
+        """
+        有界消费可恢复任务；单任务失败不得阻止后续订阅。
+        """
         if not self._search_queue_lock.acquire(blocking=False):
             logger.debug("订阅搜索已经在后台进行，本次安排会接着处理")
             summary.consumer_conflicts += 1
@@ -687,7 +726,9 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
 
 
 class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
-    """持久搜索任务执行与批次控制 owner。"""
+    """
+    持久搜索任务执行与批次控制组件。
+    """
 
     def _execute_search_task(
         self,
@@ -701,7 +742,9 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
         progress_callback: Optional[Callable[..., None]],
         summary: SearchExecutionSummary,
     ) -> Optional[int]:
-        """执行一条已认领任务，返回实际进入搜索处理的订阅 ID。"""
+        """
+        执行一条已认领任务，返回实际进入搜索处理的订阅 ID。
+        """
         stop_state = getattr(self, "stop_state", runtime_stop_state)
         runner = SubscriptionSearchTaskRunner(
             queue=queue,
@@ -729,7 +772,9 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
         limit: int = 50,
         manual_sids: Optional[tuple[int, ...]] = None,
     ) -> None:
-        """托管恢复协程及手工反馈，等待同步消费者真实结束后才释放运行所有权。"""
+        """
+        托管恢复协程及手工反馈，等待同步消费者真实结束后才释放运行所有权。
+        """
         task = get_task_registry().create_sync(
             self.resume_search_queue,
             owner="subscription.search_queue",
@@ -750,7 +795,9 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
         limit: int = 50,
         manual_sids: Optional[tuple[int, ...]] = None,
     ) -> None:
-        """短周期恢复等待任务，并可优先反馈本次手工搜索结果。"""
+        """
+        短周期恢复等待任务，并可优先反馈本次手工搜索结果。
+        """
         queue: Optional[SubscriptionSearchRepository] = getattr(
             self, "subscription_search_repository", None
         )
@@ -794,14 +841,18 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
                 logger.info(summary.finish_log())
 
     def cancel_search_batch(self, batch_id: str) -> bool:
-        """请求取消持久搜索批次；未注入队列时返回失败。"""
+        """
+        请求取消持久搜索批次；未注入队列时返回失败。
+        """
         queue: Optional[SubscriptionSearchRepository] = getattr(
             self, "subscription_search_repository", None
         )
         return bool(queue and queue.request_cancel(batch_id))
 
     def get_search_batch(self, batch_id: str) -> Optional[SearchBatchSnapshot]:
-        """返回持久搜索批次状态；未注入队列时返回空。"""
+        """
+        返回持久搜索批次状态；未注入队列时返回空。
+        """
         queue: Optional[SubscriptionSearchRepository] = getattr(
             self, "subscription_search_repository", None
         )
@@ -809,7 +860,9 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
 
 
 class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
-    """订阅搜索加载、单项处理与结果通知 owner。"""
+    """
+    订阅搜索加载、单项处理与结果通知组件。
+    """
 
     def _load_search_subscriptions(
         self,
@@ -818,7 +871,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         state: Optional[str],
         scheduled_interval: Optional[int] = None,
     ) -> list[SubscriptionSnapshot]:
-        """指定目标允许暂停订阅补搜；常规调度只从请求的活动状态选取新任务。"""
+        """
+        指定目标允许暂停订阅补搜；常规调度只从请求的活动状态选取新任务。
+        """
         repository = self.subscription_repository
         if sid:
             subscribe = repository.get(sid)
@@ -836,7 +891,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         subscribe: SubscriptionSnapshot,
         source: str,
     ) -> Optional[str]:
-        """新订阅保留一分钟编辑时间，并返回自动开始搜索的时间。"""
+        """
+        新订阅保留一分钟编辑时间，并返回自动开始搜索的时间。
+        """
         if source != "new" or not subscribe.date:
             return None
         try:
@@ -857,7 +914,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         self,
         subscribe_id: int,
     ) -> Optional[str]:
-        """在订阅保存后安排自动搜索，定时扫描仍作为恢复保障。"""
+        """
+        在订阅保存后安排自动搜索，定时扫描仍作为恢复保障。
+        """
         queue: Optional[SubscriptionSearchRepository] = getattr(
             self, "subscription_search_repository", None
         )
@@ -883,7 +942,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         self,
         subscribe_id: int,
     ) -> Optional[str]:
-        """在异步订阅提交后安排自动搜索。"""
+        """
+        在异步订阅提交后安排自动搜索。
+        """
         queue: Optional[SubscriptionSearchRepository] = getattr(
             self, "subscription_search_repository", None
         )
@@ -913,7 +974,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         state: Optional[str],
         progress_callback: Optional[Callable[..., None]],
     ) -> None:
-        """未使用持久队列时为自动兜底搜索保留逐订阅随机间隔。"""
+        """
+        未使用持久队列时为自动兜底搜索保留逐订阅随机间隔。
+        """
         if sid or sids is not None or state not in {"R", "P"}:
             return
         sleep_time = random.randint(60, 300)
@@ -928,7 +991,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         searchchain: Optional[SearchChain],
         execution_context: Optional[SubscriptionExecutionContext] = None,
     ) -> Optional[SubscriptionSnapshot]:
-        """处理单个订阅，并返回下载后重新读取的状态快照。"""
+        """
+        处理单个订阅，并返回下载后重新读取的状态快照。
+        """
         with subscription_log_scope(subscribe.id, "inline"), subscription_activity_scope(
             getattr(self, "subscription_activity", None), subscribe, "search",
             getattr(execution_context, "source", None) or "automatic",
@@ -948,7 +1013,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         searchchain: Optional[SearchChain],
         execution_context: Optional[SubscriptionExecutionContext] = None,
     ) -> Optional[SubscriptionSnapshot]:
-        """在订阅日志作用域内执行既有搜索、下载和完成判定。"""
+        """
+        在订阅日志作用域内执行既有搜索、下载和完成判定。
+        """
         _ensure_execution_active(execution_context)
         # 站点补查属于同一轮搜索，不能反复推迟下一轮健康站点的完整检查。
         if execution_context is None or not execution_context.resuming_sites:
@@ -1047,7 +1114,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         *,
         apply_best_version: bool = True,
     ) -> list[Any]:
-        """过滤不满足订阅范围或洗版优先级的候选，并释放原结果列表。"""
+        """
+        过滤不满足订阅范围或洗版优先级的候选，并释放原结果列表。
+        """
         matched = []
         activity = current_activity_run()
         try:
@@ -1108,7 +1177,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         total: int,
         finished: bool = False,
     ) -> None:
-        """发布单订阅搜索开始或完成进度。"""
+        """
+        发布单订阅搜索开始或完成进度。
+        """
         if not progress_callback:
             return
         done = index if finished else index - 1
@@ -1133,7 +1204,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         subscribes: list[SubscriptionSnapshot],
         processed: list[SubscriptionSnapshot],
     ) -> None:
-        """用清晰文案反馈手动搜索的完成或等待状态。"""
+        """
+        用清晰文案反馈手动搜索的完成或等待状态。
+        """
         if not manual:
             return
         if not subscribes:

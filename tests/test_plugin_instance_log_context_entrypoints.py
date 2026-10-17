@@ -1,4 +1,5 @@
-"""插件实例日志上下文接入点契约测试。
+"""
+插件实例日志上下文接入点契约测试。
 
 覆盖四类宿主受控调用点：插件实例的构造与 `init_plugin`
 （`PluginLifecycle.start`/`initialize`）、事件处理器回调（`EventDispatcher`
@@ -31,7 +32,9 @@ from app.scheduler.reconcile import SchedulerReconcileOwner
 
 
 def _lifecycle(*, plugins, running=None, enabled_state_recorder=None):
-    """构造隔离外部事件和模块清理的生命周期实例。"""
+    """
+    构造隔离外部事件和模块清理的生命周期实例。
+    """
     classes: dict = {}
     running = running if running is not None else {}
     lifecycle = PluginLifecycle(
@@ -56,7 +59,9 @@ def _lifecycle(*, plugins, running=None, enabled_state_recorder=None):
 
 
 def test_lifecycle_start_binds_instance_during_construct_and_init_plugin():
-    """构造与 init_plugin 期间应能读到发起它的实例 ID，start 返回后上下文必须清空。"""
+    """
+    构造与 init_plugin 期间应能读到发起它的实例 ID，start 返回后上下文必须清空。
+    """
     seen: list[tuple[str, str | None]] = []
 
     class _Plugin:
@@ -67,10 +72,16 @@ def test_lifecycle_start_binds_instance_during_construct_and_init_plugin():
             seen.append(("construct", current_plugin_instance_id()))
 
         def init_plugin(self, _config: dict) -> None:
+            """
+            记录首次初始化时绑定的插件实例标识，供日志上下文断言。
+            """
             seen.append(("init", current_plugin_instance_id()))
 
         @staticmethod
         def get_state() -> bool:
+            """
+            声明测试插件已启用，使生命周期流程继续执行。
+            """
             return True
 
     _Plugin.__name__ = "DemoPluginWork"
@@ -86,15 +97,23 @@ def test_lifecycle_start_binds_instance_during_construct_and_init_plugin():
 
 
 def test_lifecycle_initialize_binds_instance_during_reinit():
-    """公开 init_plugin（配置页重新生效）同样要绑定发起它的实例。"""
+    """
+    公开 init_plugin（配置页重新生效）同样要绑定发起它的实例。
+    """
     seen: list[str | None] = []
 
     class _Plugin:
         def init_plugin(self, _config: dict) -> None:
+            """
+            记录重新初始化期间的插件实例标识，检查上下文是否正确绑定。
+            """
             seen.append(current_plugin_instance_id())
 
         @staticmethod
         def get_state() -> bool:
+            """
+            保持测试插件启用，避免状态过滤跳过重新初始化流程。
+            """
             return True
 
     lifecycle, _classes, _running = _lifecycle(
@@ -114,20 +133,26 @@ def test_lifecycle_initialize_binds_instance_during_reinit():
 
 
 class _FakeEventType:
-    """提供 dispatch 内部读取的 `.value` 属性。"""
+    """
+    提供 dispatch 内部读取的 `.value` 属性。
+    """
 
     value = "test.event"
 
 
 class _FakeEvent:
-    """携带 dispatch 内部读取的最小事件属性集。"""
+    """
+    携带 dispatch 内部读取的最小事件属性集。
+    """
 
     correlation_id = None
     event_type = _FakeEventType()
 
 
 def _dispatcher(resolvers: dict) -> EventDispatcher:
-    """构造只依赖真实 EventBindingResolver 的最小事件调度器。"""
+    """
+    构造只依赖真实 EventBindingResolver 的最小事件调度器。
+    """
     binding_resolver = EventBindingResolver(lock=threading.Lock(), resolvers=lambda: resolvers)
     return EventDispatcher(
         registry=MagicMock(),
@@ -140,23 +165,33 @@ def _dispatcher(resolvers: dict) -> EventDispatcher:
 
 
 class _PluginEventHandler:
-    """模拟虚拟实例克隆类：`__name__` 与运行实例 ID 相同。"""
+    """
+    模拟虚拟实例克隆类：`__name__` 与运行实例 ID 相同。
+    """
 
     def __init__(self) -> None:
-        """记录事件处理期间观察到的实例上下文。"""
+        """
+        记录事件处理期间观察到的实例上下文。
+        """
         self.seen: list[str | None] = []
 
     def on_event(self, _event: object) -> None:
-        """记录当前绑定的实例 ID。"""
+        """
+        记录当前绑定的实例 ID。
+        """
         self.seen.append(current_plugin_instance_id())
 
     async def on_event_async(self, _event: object) -> None:
-        """异步处理器同样记录当前绑定的实例 ID。"""
+        """
+        异步处理器同样记录当前绑定的实例 ID。
+        """
         self.seen.append(current_plugin_instance_id())
 
 
 def test_invoke_sync_binds_owning_instance():
-    """同步事件处理器执行期间应绑定声明它的插件实例。"""
+    """
+    同步事件处理器执行期间应绑定声明它的插件实例。
+    """
     instance = _PluginEventHandler()
     _PluginEventHandler.__name__ = "DemoPluginWork"
     resolvers = {
@@ -175,7 +210,9 @@ def test_invoke_sync_binds_owning_instance():
 
 
 def test_invoke_sync_strict_binds_owning_instance():
-    """strict 变体同样要绑定实例，且失败时仍需正确复位上下文。"""
+    """
+    strict 变体同样要绑定实例，且失败时仍需正确复位上下文。
+    """
     instance = _PluginEventHandler()
     _PluginEventHandler.__name__ = "DemoPluginWork"
     resolvers = {
@@ -195,7 +232,9 @@ def test_invoke_sync_strict_binds_owning_instance():
 
 @pytest.mark.asyncio
 async def test_invoke_async_binds_owning_instance_for_coroutine_handler():
-    """异步事件处理器（直接 await）执行期间应绑定声明它的插件实例。"""
+    """
+    异步事件处理器（直接 await）执行期间应绑定声明它的插件实例。
+    """
     instance = _PluginEventHandler()
     _PluginEventHandler.__name__ = "DemoPluginWork"
     resolvers = {
@@ -215,7 +254,9 @@ async def test_invoke_async_binds_owning_instance_for_coroutine_handler():
 
 @pytest.mark.asyncio
 async def test_invoke_async_binds_owning_instance_across_threadpool_hop():
-    """同步处理器经线程池执行时，绑定必须跨越 `run_in_threadpool` 的执行上下文切换。"""
+    """
+    同步处理器经线程池执行时，绑定必须跨越 `run_in_threadpool` 的执行上下文切换。
+    """
     instance = _PluginEventHandler()
     _PluginEventHandler.__name__ = "DemoPluginWork"
     resolvers = {
@@ -234,7 +275,9 @@ async def test_invoke_async_binds_owning_instance_across_threadpool_hop():
 
 
 def test_invoke_sync_does_not_bind_free_function_handler():
-    """自由函数处理器不属于任何插件实例，不应绑定任何上下文。"""
+    """
+    自由函数处理器不属于任何插件实例，不应绑定任何上下文。
+    """
     seen: list[str | None] = []
 
     def _free_handler(_event: object) -> None:
@@ -253,7 +296,9 @@ def test_invoke_sync_does_not_bind_free_function_handler():
 
 
 def test_update_plugin_job_binds_instance_around_service_callback(monkeypatch):
-    """插件定时服务被调度器实际调用时应绑定注册它的插件实例。"""
+    """
+    插件定时服务被调度器实际调用时应绑定注册它的插件实例。
+    """
     seen: list[str | None] = []
 
     def _service_callback() -> None:
@@ -297,34 +342,48 @@ def test_update_plugin_job_binds_instance_around_service_callback(monkeypatch):
 
 
 class _ApiEndpointPlugin:
-    """声明一条会读取实例上下文的 HTTP API 路由的最小插件桩。"""
+    """
+    声明一条会读取实例上下文的 HTTP API 路由的最小插件桩。
+    """
 
     plugin_name = "接口插件"
 
     def __init__(self) -> None:
-        """初始化调用记录。"""
+        """
+        初始化调用记录。
+        """
         self.seen: list[str | None] = []
 
     def get_state(self) -> bool:
-        """插件始终启用。"""
+        """
+        插件始终启用。
+        """
         return True
 
     def get_name(self) -> str:
-        """返回插件展示名称。"""
+        """
+        返回插件展示名称。
+        """
         return self.plugin_name
 
     def get_api(self) -> list[dict]:
-        """声明一条状态查询路由，endpoint 绑定到本实例的方法。"""
+        """
+        声明一条状态查询路由，endpoint 绑定到本实例的方法。
+        """
         return [{"path": "/status", "endpoint": self.status, "methods": ["GET"]}]
 
     def status(self) -> dict:
-        """处理状态查询请求期间记录当前绑定的实例 ID。"""
+        """
+        处理状态查询请求期间记录当前绑定的实例 ID。
+        """
         self.seen.append(current_plugin_instance_id())
         return {"ok": True}
 
 
 def test_projection_api_endpoint_binds_owning_instance_without_any_caller_context():
-    """路由被 FastAPI 直接调用（不经过任何宿主受控调用点）时仍应绑定实例。"""
+    """
+    路由被 FastAPI 直接调用（不经过任何宿主受控调用点）时仍应绑定实例。
+    """
     plugin = _ApiEndpointPlugin()
     projection = PluginProjection({"DemoPluginWork": plugin})
 
@@ -338,16 +397,24 @@ def test_projection_api_endpoint_binds_owning_instance_without_any_caller_contex
 
 
 def test_lifecycle_initialize_records_enabled_state_change():
-    """配置切换启用状态时通知注册表推进前端刷新代次，状态不变时不打扰读取方。"""
+    """
+    配置切换启用状态时通知注册表推进前端刷新代次，状态不变时不打扰读取方。
+    """
     recorded: list[str] = []
 
     class _Plugin:
         enabled = True
 
         def init_plugin(self, config: dict) -> None:
+            """
+            从新配置更新启用状态，模拟重新初始化改变插件开关。
+            """
             self.enabled = bool(config.get("enabled"))
 
         def get_state(self) -> bool:
+            """
+            返回当前插件开关，供生命周期服务记录启用状态变化。
+            """
             return self.enabled
 
     plugin = _Plugin()

@@ -1,3 +1,7 @@
+"""
+通过海胆接口搜索种子并转换为通用索引结果。
+"""
+
 import urllib.parse
 from typing import Any, List, Tuple
 
@@ -12,7 +16,7 @@ from app.schemas.types import MediaType
 
 class HaiDanSpider:
     """
-    haidan.video API
+    通过海胆 API 搜索种子，按媒体分类转换索引结果。
     """
     _indexerid = None
     _domain = None
@@ -32,7 +36,7 @@ class HaiDanSpider:
     # 音乐搜索同时覆盖高品质音频和音乐视频/演唱会分区。
     _music_category = ['406', '408']
 
-    # 足销状态 1-普通，2-免费，3-2X，4-2X免费，5-50%，6-2X50%，7-30%
+    # 促销状态：1 普通、2 免费、3 双倍上传、4 双倍上传且免费、5 半价、6 双倍上传且半价、7 三折。
     _dl_state = {
         "1": 1,
         "2": 0,
@@ -56,11 +60,16 @@ class HaiDanSpider:
     def get_search_page_size(cls, keyword: str = None) -> None:
         """
         海胆搜索入口当前没有接入页码参数，不参与自动翻页。
+
+        :param keyword: 保留统一入口参数，当前不使用关键词判断分页
+        :return: 始终返回 None
         """
         return None
 
     def __init__(self, indexer: dict):
-        """使用站点配置初始化 HaiDan API 请求上下文。"""
+        """
+        使用站点配置初始化 HaiDan API 请求上下文。
+        """
         self.systemconfig = get_configured_system_config()
         if indexer:
             self._indexerid = indexer.get('id')
@@ -76,12 +85,12 @@ class HaiDanSpider:
 
     def __get_params(self, keyword: str, mtype: MediaType = None) -> dict:
         """
-        获取请求参数
+        获取请求参数。
         """
 
         def __dict_to_query(_params: dict):
             """
-            将数组转换为逗号分隔的字符串
+            将数组转换为逗号分隔的字符串。
             """
             for key, value in _params.items():
                 if isinstance(value, list):
@@ -106,15 +115,17 @@ class HaiDanSpider:
         # urllib.urlencode 会把 None 编码成字面量 "None"，空关键词浏览时必须显式传空字符串。
         return __dict_to_query({
             "isapi": "1",
-            "search_area": search_area,  # 0-标题 1-简介（较慢）3-发种用户名 4-IMDb
+            # 0-标题 1-简介（较慢）3-发种用户名 4-IMDb
+            "search_area": search_area,
             "search": keyword or "",
-            "search_mode": "0",  # 0-与 1-或 2-精准
+            # 0-与 1-或 2-精准
+            "search_mode": "0",
             "cat": categories
         })
 
     def __parse_result(self, result: dict):
         """
-        解析结果
+        解析结果。
         """
         torrents = []
         data = result.get('data') or {}
@@ -149,7 +160,9 @@ class HaiDanSpider:
         return torrents
 
     def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
-        """统一判定搜索响应状态、业务代码并投影 HaiDan 结果。"""
+        """
+        统一判定搜索响应状态、业务代码并投影 HaiDan 结果。
+        """
         if res and res.status_code == 200:
             result = res.json()
             if result.get('code') != 0:
@@ -164,17 +177,18 @@ class HaiDanSpider:
 
     def search(self, keyword: str, mtype: MediaType = None) -> Tuple[bool, List[dict]]:
         """
-        搜索
+        同步搜索 海胆 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
 
-        # 检查cookie
         if not self._cookie:
             return True, []
 
-        # 获取参数
         params_str = self.__get_params(keyword, mtype)
 
-        # 发送请求
         res = RequestUtils(
             cookies=self._cookie,
             ua=self._ua,
@@ -185,16 +199,17 @@ class HaiDanSpider:
 
     async def async_search(self, keyword: str, mtype: MediaType = None) -> Tuple[bool, List[dict]]:
         """
-        异步搜索
+        异步搜索 海胆 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
-        # 检查cookie
         if not self._cookie:
             return True, []
 
-        # 获取参数
         params_str = self.__get_params(keyword, mtype)
 
-        # 发送请求
         res = await AsyncRequestUtils(
             cookies=self._cookie,
             ua=self._ua,
@@ -206,7 +221,7 @@ class HaiDanSpider:
 
     def __get_downloadvolumefactor(self, discount: str) -> float:
         """
-        获取下载系数
+        获取下载系数。
         """
         if discount:
             return self._dl_state.get(discount, 1)
@@ -214,7 +229,7 @@ class HaiDanSpider:
 
     def __get_uploadvolumefactor(self, discount: str) -> float:
         """
-        获取上传系数
+        获取上传系数。
         """
         if discount:
             return self._up_state.get(discount, 1)

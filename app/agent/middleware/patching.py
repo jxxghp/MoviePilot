@@ -1,3 +1,7 @@
+"""
+修复消息历史中缺少结果的工具调用，保留执行结果未知的事实。
+"""
+
 from typing import Any, Optional
 
 from langchain.agents.middleware import AgentMiddleware, AgentState
@@ -7,11 +11,15 @@ from langgraph.types import Overwrite
 
 
 class PatchToolCallsMiddleware(AgentMiddleware):
-    """修复消息历史中悬空工具调用的中间件。"""
+    """
+    修复消息历史中悬空工具调用的中间件。
+    """
 
     @staticmethod
     def _build_cancelled_tool_message(tool_call: dict[str, Any]) -> ToolMessage:
-        """缺少回执只表示结果未知，不能据此重放可能已生效的写操作。"""
+        """
+        缺少回执只表示结果未知，不能据此重放可能已生效的写操作。
+        """
         tool_name = tool_call.get("name") or "unknown_tool"
         tool_call_id = tool_call.get("id") or ""
         tool_msg = (
@@ -29,7 +37,9 @@ class PatchToolCallsMiddleware(AgentMiddleware):
 
     @classmethod
     def _normalize_messages(cls, messages: list[BaseMessage]) -> list[BaseMessage]:
-        """规范化工具调用消息顺序，满足 OpenAI tool_calls 协议要求。"""
+        """
+        规范化工具调用消息顺序，满足 OpenAI tool_calls 协议要求。
+        """
         if not messages or len(messages) == 0:
             return messages
 
@@ -58,7 +68,9 @@ class PatchToolCallsMiddleware(AgentMiddleware):
         return patched_messages
 
     def before_agent(self, state: AgentState, runtime: Runtime[Any]) -> Optional[dict[str, Any]]:  # noqa: ARG002
-        """在代理运行之前，处理任何 AIMessage 中悬空或乱序的工具调用。"""
+        """
+        在代理运行之前，处理任何 AIMessage 中悬空或乱序的工具调用。
+        """
         messages = state["messages"]
         patched_messages = self._normalize_messages(messages)
         if patched_messages == messages:
@@ -67,7 +79,9 @@ class PatchToolCallsMiddleware(AgentMiddleware):
         return {"messages": Overwrite(patched_messages)}
 
     async def abefore_agent(self, state: AgentState, runtime: Runtime[Any]) -> Optional[dict[str, Any]]:  # noqa: ARG002
-        """在代理异步运行之前，处理任何 AIMessage 中悬空或乱序的工具调用。"""
+        """
+        在代理异步运行之前，处理任何 AIMessage 中悬空或乱序的工具调用。
+        """
         messages = state["messages"]
         patched_messages = self._normalize_messages(messages)
         if patched_messages == messages:

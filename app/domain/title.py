@@ -1,4 +1,6 @@
-"""媒体标题候选判断和搜索关键字解析规则。"""
+"""
+媒体标题候选判断和搜索关键字解析规则。
+"""
 
 import re
 from typing import Optional, Tuple
@@ -22,7 +24,9 @@ _TITLE_CHARACTER_PATTERN = re.compile(r"[\u4e00-\u9fffA-Za-z]")
 
 
 def is_media_title_like(value: str) -> bool:
-    """判断短文本是否具备影视标题特征而不是对话或链接。"""
+    """
+    判断短文本是否具备影视标题特征而不是对话或链接。
+    """
     if not value:
         return False
     normalized = re.sub(r"\s+", " ", value).strip()
@@ -48,7 +52,9 @@ def is_media_title_like(value: str) -> bool:
 def parse_search_keyword(
     content: str,
 ) -> Tuple[Optional[MediaType], Optional[str], Optional[int], Optional[int], Optional[str], Optional[str]]:
-    """从搜索文本中提取媒体类型、标题、季、集和年份。"""
+    """
+    从搜索文本中提取媒体类型、标题、季、集和年份。
+    """
     if not content:
         return None, None, None, None, None, None
 

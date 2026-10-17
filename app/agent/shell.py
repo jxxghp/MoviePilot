@@ -1,4 +1,6 @@
-"""Agent 命令解释器选择与子进程编码策略。"""
+"""
+Agent 命令解释器选择与子进程编码策略。
+"""
 
 from __future__ import annotations
 
@@ -32,7 +34,16 @@ CommandFinder = Callable[[str], Optional[str]]
 
 @dataclass(frozen=True)
 class AgentShell:
-    """描述 Agent 实际使用的解释器、登录模式及与其一致的命令参数。"""
+    """
+    描述 Agent 实际使用的解释器、登录模式及与其一致的命令参数。
+
+    :param kind: 解释器类别，用于选择正确语法和平台提示
+    :param executable: 实际启动的解释器可执行文件路径
+    :param arguments: 传入命令文本之前的固定解释器参数
+    :param command_prefix: 执行用户命令前附加的环境初始化文本；没有前缀时为空
+    :param git_available: 当前解释器环境是否可使用 Git
+    :param login: 是否使用解释器登录模式
+    """
 
     kind: str
     executable: str
@@ -42,12 +53,16 @@ class AgentShell:
     login: bool = False
 
     def build_argv(self, command: str) -> list[str]:
-        """生成无需再次经过系统默认 shell 的命令参数。"""
+        """
+        生成无需再次经过系统默认 shell 的命令参数。
+        """
         command_text = f"{self.command_prefix}\n{command}" if self.command_prefix else command
         return [self.executable, *self.arguments, command_text]
 
     def prompt_guidance(self) -> str:
-        """指导模型使用实际解释器语法，不泄露可执行文件的安装路径。"""
+        """
+        指导模型使用实际解释器语法，不泄露可执行文件的安装路径。
+        """
         selection_guidance = "可通过 `shell` 和 `login` 显式选择解释器及登录模式，命令语法须匹配本次选择。"
         if self.kind in _POSIX_SHELL_NAMES:
             name = _POSIX_SHELL_NAMES[self.kind]
@@ -80,7 +95,9 @@ _POSIX_SHELL_NAMES = {
 
 
 def _shell_kind(executable: str, *, windows: bool) -> str:
-    """按启动名称识别语法，未知别名只有解析到已知解释器的符号链接才可使用。"""
+    """
+    按启动名称识别语法，未知别名只有解析到已知解释器的符号链接才可使用。
+    """
     name = PureWindowsPath(executable).name.lower().removesuffix(".exe") if windows else Path(executable).name
     if name in _POSIX_SHELL_NAMES or (windows and name in {"pwsh", "powershell", "cmd"}):
         return name
@@ -92,7 +109,9 @@ def _shell_kind(executable: str, *, windows: bool) -> str:
 
 
 def _find_executable(executable: str, finder: CommandFinder, *, windows: bool) -> str:
-    """解析单个可执行文件，拒绝空值、命令行参数和不可执行路径后再启动进程。"""
+    """
+    解析单个可执行文件，拒绝空值、命令行参数和不可执行路径后再启动进程。
+    """
     if not isinstance(executable, str) or not executable.strip() or "\x00" in executable:
         raise ValueError("shell 必须是单个已安装解释器的名称或路径")
     located = finder(str(Path(executable).expanduser()) if not windows else executable)
@@ -109,7 +128,9 @@ def _posix_policy(
     git_available: bool = False,
     command_prefix: str = "",
 ) -> AgentShell:
-    """POSIX 类解释器使用统一 exec 参数；C shell 不支持登录与命令执行组合。"""
+    """
+    POSIX 类解释器使用统一 exec 参数；C shell 不支持登录与命令执行组合。
+    """
     if login and kind in {"csh", "tcsh"}:
         raise ValueError(f"{kind} 不支持 login=True 与命令执行组合")
     arguments = ("-lc",) if login else ("-c",)
@@ -120,7 +141,9 @@ def _posix_policy(
 
 
 def _project_python_alias_prefix(environment: Mapping[str, str], *, windows: bool) -> str:
-    """让 POSIX Agent 命令中的裸 Python 使用已选定的项目运行时入口。"""
+    """
+    让 POSIX Agent 命令中的裸 Python 使用已选定的项目运行时入口。
+    """
     if windows or not environment.get("MOVIEPILOT_PYTHON"):
         return ""
     # shell 函数只存在于本次子进程，避免改写虚拟环境中的解释器或用户文件。
@@ -133,7 +156,9 @@ def _project_python_alias_prefix(environment: Mapping[str, str], *, windows: boo
 
 def _windows_policy(kind: str, executable: str, *, login: Optional[bool], git_available: bool,
                     legacy_git_bash: bool = False) -> AgentShell:
-    """保留 Windows 默认调用合同，显式登录只在支持登录 shell 的解释器上启用。"""
+    """
+    保留 Windows 默认调用合同，显式登录只在支持登录 shell 的解释器上启用。
+    """
     if kind in _POSIX_SHELL_NAMES or kind == "git-bash":
         if legacy_git_bash and login is None:
             return AgentShell("git-bash", executable, ("--noprofile", "--norc", "-lc"), git_available=True, login=True)
@@ -149,7 +174,9 @@ def _windows_policy(kind: str, executable: str, *, login: Optional[bool], git_av
 
 
 def _find_git_bash(git_path: str, command_finder: CommandFinder) -> Optional[str]:
-    """从 Git for Windows 常见布局中定位同一安装目录下的 bash.exe。"""
+    """
+    从 Git for Windows 常见布局中定位同一安装目录下的 bash.exe。
+    """
     git_executable = Path(git_path)
     git_root = git_executable.parent.parent
     candidates = (
@@ -173,7 +200,9 @@ def _find_git_bash(git_path: str, command_finder: CommandFinder) -> Optional[str
 
 
 def _launch_path(value: str, cwd: str, *, windows: bool) -> str:
-    """相对路径以即将启动的目录为基准，Windows 跨盘符相对路径必须显式补全。"""
+    """
+    相对路径以即将启动的目录为基准，Windows 跨盘符相对路径必须显式补全。
+    """
     if windows:
         target, base = PureWindowsPath(value), PureWindowsPath(cwd)
         if target.drive and not target.root and target.drive.casefold() != base.drive.casefold():
@@ -184,14 +213,18 @@ def _launch_path(value: str, cwd: str, *, windows: bool) -> str:
 
 def _shell_finder(environment: Mapping[str, str], supplied: Optional[CommandFinder], *,
                   cwd: str, windows: bool) -> CommandFinder:
-    """查找全部以 launch cwd 定位，Windows 裸命令也不借用父进程的隐式当前目录。"""
+    """
+    查找全部以 launch cwd 定位，Windows 裸命令也不借用父进程的隐式当前目录。
+    """
     paths = ntpath if windows else posixpath
     entries = [_launch_path(entry, cwd, windows=windows)
                for entry in environment.get("PATH", paths.defpath).split(paths.pathsep)]
     search_path = paths.pathsep.join(entries)
 
     def find(command: str) -> Optional[str]:
-        """注入 finder 的一参数接口保持不变，明确的相对路径先转换成实际绝对目标。"""
+        """
+        注入 finder 的一参数接口保持不变，明确的相对路径先转换成实际绝对目标。
+        """
         selected = _launch_path(command, cwd, windows=windows) if paths.dirname(command) else command
         if supplied is not None:
             located = supplied(selected)
@@ -263,7 +296,9 @@ def resolve_agent_shell(
 
 
 def resolve_agent_cwd(cwd: Optional[str], *, root_path: Path) -> str:
-    """统一默认根目录、相对目录和用户目录展开，并在启动前验证实际目录存在。"""
+    """
+    统一默认根目录、相对目录和用户目录展开，并在启动前验证实际目录存在。
+    """
     if cwd is not None and not isinstance(cwd, str):
         raise ValueError("cwd 必须是目录路径字符串")
     path = Path(cwd).expanduser() if cwd else root_path.expanduser()
@@ -353,7 +388,9 @@ def bind_agent_project_environment(
 def agent_text_subprocess_kwargs(
     *, platform_name: Optional[str] = None
 ) -> dict[str, Any]:
-    """为 Windows Agent 文本子进程补充 UTF-8 解码参数，POSIX 返回空参数。"""
+    """
+    为 Windows Agent 文本子进程补充 UTF-8 解码参数，POSIX 返回空参数。
+    """
     if (platform_name or os.name) != "nt":
         return {}
     return {

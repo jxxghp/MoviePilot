@@ -1,3 +1,7 @@
+"""
+管理标题识别中的自定义占位符及其匹配规则。
+"""
+
 from collections.abc import Callable, Iterable
 
 import regex as re
@@ -6,7 +10,9 @@ from app.foundation.singleton import Singleton
 
 
 def _empty_customization() -> tuple[str, ...]:
-    """启动装配前不提供自定义占位符。"""
+    """
+    启动装配前不提供自定义占位符。
+    """
     return ()
 
 
@@ -14,18 +20,24 @@ _customization_provider: Callable[[], Iterable[str] | None] = _empty_customizati
 
 
 def configure_customization_provider(provider: Callable[[], Iterable[str] | None]) -> None:
-    """注入当前自定义占位符来源，避免领域匹配器读取持久化配置。"""
+    """
+    注入当前自定义占位符来源，避免领域匹配器读取持久化配置。
+    """
     global _customization_provider
     _customization_provider = provider
 
 
 def get_customization() -> Iterable[str] | None:
-    """返回当前自定义占位符原始配置。"""
+    """
+    返回当前自定义占位符原始配置。
+    """
     return _customization_provider()
 
 
 def set_custom_separator(separator: str | None) -> None:
-    """设置自定义占位符输出分隔符；传入空值恢复宿主默认行为。"""
+    """
+    设置自定义占位符输出分隔符；传入空值恢复宿主默认行为。
+    """
     if separator == "":
         separator = None
     if separator is not None and not isinstance(separator, str):
@@ -35,11 +47,13 @@ def set_custom_separator(separator: str | None) -> None:
 
 class CustomizationMatcher(metaclass=Singleton):
     """
-    识别自定义占位符
+    识别自定义占位符。
     """
 
     def __init__(self) -> None:
-        """初始化自定义占位符正则缓存。"""
+        """
+        初始化自定义占位符正则缓存。
+        """
         self.customization: str | None = None
         self.custom_separator: str | None = None
         self._customization_re_cache: dict[str, re.Pattern[str]] = {}
@@ -64,8 +78,10 @@ class CustomizationMatcher(metaclass=Singleton):
 
     def match(self, title: str | None = None) -> str:
         """
-        :param title: 资源标题或文件名
-        :return: 匹配结果
+        按当前配置匹配标题中的自定义占位符。
+
+        :param title: 资源标题或文件名；为空时返回空字符串
+        :return: 按配置顺序去重后拼接的占位符文本
         """
         if not title:
             return ""

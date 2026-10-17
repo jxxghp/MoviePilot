@@ -1,3 +1,7 @@
+"""
+插件配置、运行状态、来源身份及前端扩展的数据结构。
+"""
+
 from datetime import datetime as _datetime
 from enum import Enum as _Enum
 from typing import Annotated as _Annotated
@@ -14,29 +18,46 @@ from app.schemas.common import JsonData
 
 
 class PluginRuntimeStatus(str, _Enum):
-    """插件从来源同步、依赖准备到运行激活的状态。"""
+    """
+    插件从来源同步、依赖准备到运行激活的状态。
+    """
 
+    # 插件来源同步失败
     SYNC_FAILED = "sync_failed"
+    # 未找到插件源码
     SOURCE_MISSING = "source_missing"
+    # 正在等待依赖准备完成
     DEPENDENCY_PENDING = "dependency_pending"
+    # 已具备加载条件
     READY = "ready"
+    # 插件已加载并运行
     ACTIVE = "active"
+    # 被运行策略阻止加载
     BLOCKED_BY_POLICY = "blocked_by_policy"
+    # 插件加载失败
     LOAD_FAILED = "load_failed"
     # 插件自身声明与当前解释器运行时不兼容（当前只有 free-threaded 一个维度）
     INCOMPATIBLE_RUNTIME = "incompatible_runtime"
 
 
 class PluginSourceBindingStatus(str, _Enum):
-    """已安装插件的在线更新仓库绑定状态。"""
+    """
+    已安装插件的在线更新仓库绑定状态。
+    """
 
+    # 已绑定在线更新来源
     BOUND = "bound"
+    # 需要选择并绑定更新来源
     BINDING_REQUIRED = "binding_required"
+    # 仅使用本地源码，不绑定在线来源
     LOCAL_ONLY = "local_only"
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginUpdateCandidate(BaseModel):  # type: ignore[misc]
-    """插件市场为已安装插件选择的当前更新候选。"""
+    """
+    插件市场为已安装插件选择的当前更新候选。
+    """
 
     source_type: Literal["official", "third_party"] = Field(description="候选仓库是官方来源还是第三方来源")
     source_key: str = Field(description="候选仓库的规范来源键")
@@ -46,7 +67,8 @@ class PluginUpdateCandidate(BaseModel):  # type: ignore[misc]
 
 
 def validate_plugin_id(value: str) -> str:
-    """限制插件实例标识为可安全用作 Python 类名和路由段的格式。
+    """
+    限制插件实例标识为可安全用作 Python 类名和路由段的格式。
 
     公开可调用：凡是把实例 ID 拼进文件系统路径、模块名或路由段的入口都应当先过这道
     校验，而不是各自另写一套字符白名单——多套规则之间迟早出现缝隙。
@@ -67,7 +89,9 @@ _PluginId = _Annotated[str, _AfterValidator(validate_plugin_id)]
 
 
 class PluginInstance(BaseModel):
-    """持久化一个共享源码插件的独立运行实例。"""
+    """
+    持久化一个共享源码插件的独立运行实例。
+    """
 
     instance_id: _PluginId = Field(description="运行实例 ID，也是配置、数据和路由命名空间")
     source_plugin_id: _PluginId = Field(description="提供代码与前端资源的源插件 ID")
@@ -87,28 +111,38 @@ class PluginInstance(BaseModel):
 
     @property
     def is_host(self) -> bool:
-        """该实例是否为源插件本体自身，而非共享其源码的分身。"""
+        """
+        该实例是否为源插件本体自身，而非共享其源码的分身。
+        """
         return self.instance_id == self.source_plugin_id
 
+    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
     @_computed_field(  # type: ignore[prop-decorator, misc]
         description="实例实现模式：virtual 为共享源码的分身，host 为源插件本体自身",
     )
     @property
     def mode(self) -> Literal["virtual", "host"]:
-        """由一对身份 ID 派生实例角色，而非另存一份可能失步的副本。"""
+        """
+        由一对身份 ID 派生实例角色，而非另存一份可能失步的副本。
+        """
         return "host" if self.is_host else "virtual"
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginInstanceEnabledRequest(BaseModel):  # type: ignore[misc]
-    """启用或停用一个插件实例的请求参数。"""
+    """
+    启用或停用一个插件实例的请求参数。
+    """
 
     enabled: bool = Field(
         description="目标启用状态；置假即停用，业务参数与展示信息原样留存等待再次启用"
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginInstancePurgeRequest(BaseModel):  # type: ignore[misc]
-    """彻底清理一个插件实例时选定的删除范围。
+    """
+    彻底清理一个插件实例时选定的删除范围。
 
     各项默认为假：清理不可逆，漏选一项只是少删了东西，多选一项则可能毁掉用户特意
     保留的数据，因而由调用方逐项明确给出，服务端不替它补默认值。
@@ -123,8 +157,11 @@ class PluginInstancePurgeRequest(BaseModel):  # type: ignore[misc]
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginInstancePurgeOutcome(BaseModel):  # type: ignore[misc]
-    """彻底清理的执行结果。"""
+    """
+    彻底清理的执行结果。
+    """
 
     purged: List[str] = Field(default_factory=list, description="实际清掉的范围标识")
     instance_removed: bool = Field(
@@ -133,8 +170,11 @@ class PluginInstancePurgeOutcome(BaseModel):  # type: ignore[misc]
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginInstanceLogLevel(BaseModel):  # type: ignore[misc]
-    """单个实例的日志等级设置与生效结果。"""
+    """
+    单个实例的日志等级设置与生效结果。
+    """
 
     instance_id: str = Field(description="实例 ID")
     configured_level: Optional[str] = Field(default=None, description="该实例设置的日志等级覆盖，None 表示未设置或已过期")
@@ -142,8 +182,11 @@ class PluginInstanceLogLevel(BaseModel):  # type: ignore[misc]
     effective_level: str = Field(description="按过期回落判定后实际生效的日志等级")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginInstanceLogLevelOverview(BaseModel):  # type: ignore[misc]
-    """插件全部实例（含本体）的日志等级设置总览。"""
+    """
+    插件全部实例（含本体）的日志等级设置总览。
+    """
 
     plugin_id: str = Field(description="插件 ID")
     instances: List[PluginInstanceLogLevel] = Field(
@@ -151,8 +194,11 @@ class PluginInstanceLogLevelOverview(BaseModel):  # type: ignore[misc]
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginInstanceLogLevelUpdateRequest(BaseModel):  # type: ignore[misc]
-    """设置实例日志等级覆盖的请求参数。"""
+    """
+    设置实例日志等级覆盖的请求参数。
+    """
 
     level: str = Field(description="目标日志等级，如 DEBUG、INFO、WARNING、ERROR、CRITICAL")
     expires_at: Optional[_datetime] = Field(
@@ -163,96 +209,75 @@ class PluginInstanceLogLevelUpdateRequest(BaseModel):  # type: ignore[misc]
 
 class Plugin(BaseModel):
     """
-    插件信息
+    插件信息。
+
+    :ivar _package_version: 本地安装包版本的缓存值
     """
 
     _package_version: Optional[str] = _PrivateAttr(default=None)
 
-    id: str = None
-    # 插件名称
-    plugin_name: Optional[str] = None
-    # 插件描述
-    plugin_desc: Optional[str] = None
-    # 插件图标
-    plugin_icon: Optional[str] = None
-    # 插件版本
-    plugin_version: Optional[str] = None
-    # 插件标签
-    plugin_label: Optional[str] = None
-    # 插件作者
-    plugin_author: Optional[str] = None
-    # 作者主页
-    author_url: Optional[str] = None
-    # 插件配置项ID前缀
-    plugin_config_prefix: Optional[str] = None
-    # 加载顺序
-    plugin_order: Optional[int] = 0
-    # 可使用的用户级别
-    auth_level: Optional[int] = 0
-    # 是否已安装
-    installed: Optional[bool] = False
-    # 运行状态
-    state: Optional[bool] = False
-    # 插件源码、依赖和运行时加载状态
-    runtime_status: Optional[PluginRuntimeStatus] = None
-    # 是否有详情页面
-    has_page: Optional[bool] = False
-    # 是否有新版本
-    has_update: Optional[bool] = False
-    # 当前市场选择的更新候选；绑定仓库可更新时优先返回该仓库
-    update_candidate: Optional[PluginUpdateCandidate] = None
-    # 插件仓库绑定状态；仅已安装物理插件由后端投影真实身份
-    source_binding_status: PluginSourceBindingStatus = PluginSourceBindingStatus.BOUND
-    # 主系统版本是否兼容
-    system_version_compatible: Optional[bool] = True
-    # 主系统版本兼容提示
-    system_version_message: Optional[str] = None
-    # 主系统版本限定范围
-    system_version: Optional[str] = None
-    # 插件声明与当前解释器运行时是否兼容；free-threaded（v3t）下显式声明不支持时为 False
-    runtime_compatible: Optional[bool] = True
-    # 运行时不兼容的用户可读原因
-    runtime_message: Optional[str] = None
-    # 是否声明支持通过 GitHub Release 资产安装
-    release: Optional[bool] = False
-    # 是否本地
-    is_local: Optional[bool] = False
-    # 仓库地址
-    repo_url: Optional[str] = None
-    # 安装次数
-    install_count: Optional[int] = 0
-    # 更新记录
-    history: Optional[dict[str, str]] = Field(default_factory=dict)
-    # 添加时间，值越小表示越靠后发布
-    add_time: Optional[int] = 0
-    # 插件公钥
-    plugin_public_key: Optional[str] = None
-    # 共享代码与前端资源的源插件 ID；普通插件为空
-    source_plugin_id: Optional[str] = None
-    # 是否为共享源码的虚拟实例
-    is_instance: Optional[bool] = False
-    # 实例实现模式；存量物理分身为空
-    instance_mode: Optional[str] = None
-    # 该实例是否为所属源插件的默认调用目标
-    is_default_target: Optional[bool] = False
-    # 该实例是否应当被实例化并启动；与 state 不同，后者说的是此刻在不在跑
-    is_enabled: Optional[bool] = True
-    # 该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空
-    log_level_effective: Optional[str] = None
+    id: str = Field(default=None, description="记录标识")
+    plugin_name: Optional[str] = Field(default=None, description="插件名称")
+    plugin_desc: Optional[str] = Field(default=None, description="插件描述")
+    plugin_icon: Optional[str] = Field(default=None, description="插件图标")
+    plugin_version: Optional[str] = Field(default=None, description="插件版本")
+    plugin_label: Optional[str] = Field(default=None, description="插件标签")
+    plugin_author: Optional[str] = Field(default=None, description="插件作者")
+    author_url: Optional[str] = Field(default=None, description="作者主页")
+    plugin_config_prefix: Optional[str] = Field(default=None, description="插件配置项ID前缀")
+    plugin_order: Optional[int] = Field(default=0, description="加载顺序")
+    auth_level: Optional[int] = Field(default=0, description="可使用的用户级别")
+    installed: Optional[bool] = Field(default=False, description="是否已安装")
+    state: Optional[bool] = Field(default=False, description="运行状态")
+    runtime_status: Optional[PluginRuntimeStatus] = Field(default=None, description="插件源码、依赖和运行时加载状态")
+    has_page: Optional[bool] = Field(default=False, description="是否有详情页面")
+    has_update: Optional[bool] = Field(default=False, description="是否有新版本")
+    update_candidate: Optional[PluginUpdateCandidate] = Field(default=None, description="当前市场选择的更新候选；绑定仓库可更新时优先返回该仓库")
+    source_binding_status: PluginSourceBindingStatus = Field(
+        default=PluginSourceBindingStatus.BOUND,
+        description="插件仓库绑定状态；仅已安装物理插件由后端投影真实身份",
+    )
+    system_version_compatible: Optional[bool] = Field(default=True, description="主系统版本是否兼容")
+    system_version_message: Optional[str] = Field(default=None, description="主系统版本兼容提示")
+    system_version: Optional[str] = Field(default=None, description="主系统版本限定范围")
+    runtime_compatible: Optional[bool] = Field(
+        default=True,
+        description="插件声明与当前解释器运行时是否兼容；free-threaded（v3t）下显式声明不支持时为 False",
+    )
+    runtime_message: Optional[str] = Field(default=None, description="运行时不兼容的用户可读原因")
+    release: Optional[bool] = Field(default=False, description="是否声明支持通过 GitHub Release 资产安装")
+    is_local: Optional[bool] = Field(default=False, description="是否本地")
+    repo_url: Optional[str] = Field(default=None, description="仓库地址")
+    install_count: Optional[int] = Field(default=0, description="安装次数")
+    history: Optional[dict[str, str]] = Field(default_factory=dict, description="更新记录")
+    add_time: Optional[int] = Field(default=0, description="添加时间，值越小表示越靠后发布")
+    plugin_public_key: Optional[str] = Field(default=None, description="插件公钥")
+    source_plugin_id: Optional[str] = Field(default=None, description="共享代码与前端资源的源插件 ID；普通插件为空")
+    is_instance: Optional[bool] = Field(default=False, description="是否为共享源码的虚拟实例")
+    instance_mode: Optional[str] = Field(default=None, description="实例实现模式；存量物理分身为空")
+    is_default_target: Optional[bool] = Field(default=False, description="该实例是否为所属源插件的默认调用目标")
+    is_enabled: Optional[bool] = Field(default=True, description="该实例是否应当被实例化并启动；与 state 不同，后者说的是此刻在不在跑")
+    log_level_effective: Optional[str] = Field(default=None, description="该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空")
 
     @property
     def package_version(self) -> Optional[str]:
-        """读取仅供宿主内部候选选择使用的插件包代际。"""
+        """
+        读取仅供宿主内部候选选择使用的插件包代际。
+        """
         return self._package_version
 
     @package_version.setter
     def package_version(self, value: Optional[str]) -> None:
-        """保存插件包代际，但不把它暴露到 API 响应模型。"""
+        """
+        保存插件包代际，但不把它暴露到 API 响应模型。
+        """
         self._package_version = value
 
 
 class PluginRuntimeSummary(BaseModel):
-    """插件后台收敛状态和前端刷新代次。"""
+    """
+    插件后台收敛状态和前端刷新代次。
+    """
 
     ready: bool = Field(description="本轮插件源码、依赖和加载是否已收敛")
     generation: int = Field(description="插件运行状态变化代次")
@@ -268,47 +293,65 @@ class PluginRuntimeSummary(BaseModel):
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginRuntimeCommandCapability(BaseModel):  # type: ignore[misc]
-    """插件运行时注册命令的安全只读投影。"""
+    """
+    插件运行时注册命令的安全只读投影。
+    """
 
     cmd: str = Field(description="命令标识")
     desc: Optional[str] = Field(default=None, description="命令说明")
     plugin_id: Optional[str] = Field(default=None, description="注册命令的插件 ID")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginRuntimeActionCapability(BaseModel):  # type: ignore[misc]
-    """插件运行时注册动作的安全只读投影。"""
+    """
+    插件运行时注册动作的安全只读投影。
+    """
 
     id: str = Field(description="动作标识")
     name: Optional[str] = Field(default=None, description="动作名称")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginRuntimeActionGroup(BaseModel):  # type: ignore[misc]
-    """按插件归组的运行时动作投影。"""
+    """
+    按插件归组的运行时动作投影。
+    """
 
     plugin_id: Optional[str] = Field(default=None, description="注册动作的插件 ID")
     plugin_name: Optional[str] = Field(default=None, description="插件名称")
-    actions: List[PluginRuntimeActionCapability] = Field(default_factory=list)
+    actions: List[PluginRuntimeActionCapability] = Field(default_factory=list, description="可用动作列表")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginRuntimeServiceCapability(BaseModel):  # type: ignore[misc]
-    """插件定时服务的安全只读投影。"""
+    """
+    插件定时服务的安全只读投影。
+    """
 
     id: str = Field(description="服务标识")
     name: Optional[str] = Field(default=None, description="服务名称")
     trigger: Optional[str] = Field(default=None, description="定时触发器说明")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginRuntimeCapabilities(BaseModel):  # type: ignore[misc]
-    """插件命令、动作和定时服务的公共安全能力快照。"""
+    """
+    插件命令、动作和定时服务的公共安全能力快照。
+    """
 
-    commands: List[PluginRuntimeCommandCapability] = Field(default_factory=list)
-    actions: List[PluginRuntimeActionGroup] = Field(default_factory=list)
-    services: List[PluginRuntimeServiceCapability] = Field(default_factory=list)
+    commands: List[PluginRuntimeCommandCapability] = Field(default_factory=list, description="菜单命令")
+    actions: List[PluginRuntimeActionGroup] = Field(default_factory=list, description="可用动作列表")
+    services: List[PluginRuntimeServiceCapability] = Field(default_factory=list, description="插件声明的服务能力")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginDataKeySummary(BaseModel):  # type: ignore[misc]
-    """单个插件持久化键的不含值诊断摘要。"""
+    """
+    单个插件持久化键的不含值诊断摘要。
+    """
 
     key: str = Field(description="持久化数据键")
     value_type: Literal["null", "boolean", "number", "string", "array", "object", "unknown"] = Field(
@@ -322,8 +365,11 @@ class PluginDataKeySummary(BaseModel):  # type: ignore[misc]
     sensitive: bool = Field(description="键名是否符合凭据字段规则")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginDataSummary(BaseModel):  # type: ignore[misc]
-    """插件持久化数据的不含原值诊断摘要。"""
+    """
+    插件持久化数据的不含原值诊断摘要。
+    """
 
     plugin_id: str = Field(description="插件 ID")
     plugin_name: Optional[str] = Field(default=None, description="插件名称")
@@ -336,13 +382,16 @@ class PluginDataSummary(BaseModel):  # type: ignore[misc]
 
 
 class PluginInstallOutcome(BaseModel):
-    """插件载荷写入成功后的前端反馈依据。"""
+    """
+    插件载荷写入成功后的前端反馈依据。
+    """
 
     restart_required: bool = Field(description="本次依赖更新是否需要重启 MoviePilot 才能完成")
 
 
 def _blank_clone_suffix_to_none(value: object) -> object:
-    """把「没填后缀」的三种写法归一成同一个值。
+    """
+    把「没填后缀」的三种写法归一成同一个值。
 
     前端的后缀输入框留空时可能整个字段不带、带 null，也可能带一个空串或只有空白；
     三者表达的都是「由服务端挑一个」。不归一的话空串会撞上格式校验，用户看到的是
@@ -358,7 +407,9 @@ _CloneSuffix = _Annotated[Optional[str], _BeforeValidator(_blank_clone_suffix_to
 
 
 class PluginCloneRequest(BaseModel):
-    """创建虚拟插件分身的请求参数。"""
+    """
+    创建虚拟插件分身的请求参数。
+    """
 
     # 格式与长度在这一层判定：非法后缀拼出的实例 ID 用不了 Python 类名与路由段，
     # 等落库之后再报错意味着已经写进一行、还要靠回滚把它擦掉
@@ -381,8 +432,10 @@ class PluginCloneRequest(BaseModel):
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginCloneOutcome(BaseModel):  # type: ignore[misc]
-    """一次分身创建或恢复的结果。
+    """
+    一次分身创建或恢复的结果。
 
     实例 ID 必须回传：后缀可以由服务端自动分配，调用方因此再也算不出它，而后续要
     拿它去打开配置、刷新列表或跳转。
@@ -391,8 +444,10 @@ class PluginCloneOutcome(BaseModel):  # type: ignore[misc]
     instance_id: str = Field(description="新建或恢复出来的分身实例 ID")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginRestorableInstance(BaseModel):  # type: ignore[misc]
-    """一个已停用、其设置仍留存可被恢复的分身实例。
+    """
+    一个已停用、其设置仍留存可被恢复的分身实例。
 
     在册启用的分身不在此列：它们的配置正在被使用，拿来「恢复」没有意义，摆进选择器
     只会让用户误以为能把一个活着的实例再创建一遍。
@@ -405,8 +460,11 @@ class PluginRestorableInstance(BaseModel):  # type: ignore[misc]
     has_config: bool = Field(default=False, description="是否留有业务参数")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
-    """显式换源确认所需的插件来源身份投影。"""
+    """
+    显式换源确认所需的插件来源身份投影。
+    """
 
     plugin_id: str = Field(description="物理插件 ID")
     trusted_source_type: str = Field(description="当前可信在线来源类型")
@@ -423,8 +481,11 @@ class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
     revision: int = Field(ge=1, description="显式换源使用的身份 CAS revision")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginSourceCandidate(BaseModel):  # type: ignore[misc]
-    """一个可供管理员识别的脱敏插件来源候选。"""
+    """
+    一个可供管理员识别的脱敏插件来源候选。
+    """
 
     source_type: Literal["official", "third_party", "local"] = Field(description="来源类型")
     source_key: Optional[str] = Field(
@@ -442,8 +503,11 @@ class PluginSourceCandidate(BaseModel):  # type: ignore[misc]
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginSourceOptions(BaseModel):  # type: ignore[misc]
-    """来源选择界面所需的当前身份、候选和准入状态。"""
+    """
+    来源选择界面所需的当前身份、候选和准入状态。
+    """
 
     plugin_id: str = Field(description="物理插件 ID")
     inventory_complete: bool = Field(description="本轮配置市场是否全部得到确定读取结果")
@@ -461,8 +525,11 @@ class PluginSourceOptions(BaseModel):  # type: ignore[misc]
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginSourceInstallRequest(BaseModel):  # type: ignore[misc]
-    """管理员为未绑定插件明确选择初始在线来源的请求参数。"""
+    """
+    管理员为未绑定插件明确选择初始在线来源的请求参数。
+    """
 
     repo_url: str = Field(min_length=1, description="明确选择的目标插件仓库地址")
     release_version: Optional[str] = Field(
@@ -474,10 +541,13 @@ class PluginSourceInstallRequest(BaseModel):  # type: ignore[misc]
         description="是否强制重新下载并安装所选来源载荷",
     )
 
+    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
     @field_validator("repo_url")  # type: ignore[misc]
     @classmethod
     def normalize_repo_url(cls, value: str) -> str:
-        """拒绝只含空白或本地路径标识的来源选择。"""
+        """
+        拒绝只含空白或本地路径标识的来源选择。
+        """
         normalized = value.strip()
         if not normalized:
             raise ValueError("显式安装必须指定目标在线来源")
@@ -486,8 +556,11 @@ class PluginSourceInstallRequest(BaseModel):  # type: ignore[misc]
         return normalized
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginSourceChangeRequest(BaseModel):  # type: ignore[misc]
-    """管理员显式切换插件在线来源的请求参数。"""
+    """
+    管理员显式切换插件在线来源的请求参数。
+    """
 
     repo_url: str = Field(min_length=1, description="明确选择的目标插件仓库地址")
     expected_revision: int = Field(
@@ -499,10 +572,13 @@ class PluginSourceChangeRequest(BaseModel):  # type: ignore[misc]
         description="指定安装的 Release 资产版本；为空时使用当前索引版本",
     )
 
+    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
     @field_validator("repo_url")  # type: ignore[misc]
     @classmethod
     def normalize_repo_url(cls, value: str) -> str:
-        """拒绝只含空白或本地路径标识的换源目标。"""
+        """
+        拒绝只含空白或本地路径标识的换源目标。
+        """
         normalized = value.strip()
         if not normalized:
             raise ValueError("显式换源必须指定目标在线来源")
@@ -513,27 +589,21 @@ class PluginSourceChangeRequest(BaseModel):  # type: ignore[misc]
 
 class PluginDashboard(Plugin):
     """
-    插件仪表盘
+    插件仪表盘。
     """
 
-    id: Optional[str] = None
-    # 名称
-    name: Optional[str] = None
-    # 仪表板key
-    key: Optional[str] = None
-    # 演染模式
-    render_mode: Optional[str] = Field(default="vuetify")
-    # 全局配置
-    attrs: Optional[dict[str, JsonData]] = Field(default_factory=dict)
-    # col列数
-    cols: Optional[dict[str, JsonData]] = Field(default_factory=dict)
-    # 页面元素
-    elements: Optional[List[dict[str, JsonData]]] = Field(default_factory=list)
+    id: Optional[str] = Field(default=None, description="记录标识")
+    name: Optional[str] = Field(default=None, description="名称")
+    key: Optional[str] = Field(default=None, description="仪表板key")
+    render_mode: Optional[str] = Field(default="vuetify", description="演染模式")
+    attrs: Optional[dict[str, JsonData]] = Field(default_factory=dict, description="全局配置")
+    cols: Optional[dict[str, JsonData]] = Field(default_factory=dict, description="col列数")
+    elements: Optional[List[dict[str, JsonData]]] = Field(default_factory=list, description="页面元素")
 
 
 class PluginSidebarNavItem(BaseModel):
     """
-    插件侧栏导航项（前端全页路由）
+    插件侧栏导航项（前端全页路由）。
     """
 
     plugin_id: str = Field(description="插件 ID")
@@ -550,9 +620,10 @@ class PluginSidebarNavItem(BaseModel):
     order: int = Field(default=0, description="同组内排序，越小越靠前")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginAgentPet(BaseModel):  # type: ignore[misc]
     """
-    插件声明的 Agent 助手形象（前端按 plugin_id + key 选择并挂载联邦组件）
+    插件声明的 Agent 助手形象（前端按 plugin_id + key 选择并挂载联邦组件）。
     """
 
     plugin_id: str = Field(description="插件实例 ID，分身为分身自身 ID")
@@ -592,7 +663,9 @@ class PluginAgentPet(BaseModel):  # type: ignore[misc]
 
 
 class PluginRatingRequest(BaseModel):
-    """插件评分请求"""
+    """
+    插件评分请求。
+    """
 
     rating: float = Field(
         ge=0.1,
@@ -603,7 +676,9 @@ class PluginRatingRequest(BaseModel):
 
 
 class PluginRating(BaseModel):
-    """插件评分结果"""
+    """
+    插件评分结果。
+    """
 
     plugin_id: str = Field(description="插件 ID")
     average_rating: float = Field(default=0.0, description="平均评分")
@@ -612,11 +687,15 @@ class PluginRating(BaseModel):
 
 
 class PluginRatingMap(RootModel[Dict[str, PluginRating]]):
-    """插件 ID 与评分结果的映射。"""
+    """
+    插件 ID 与评分结果的映射。
+    """
 
 
 class PluginMemoryInfo(BaseModel):
-    """插件内存信息"""
+    """
+    插件内存信息。
+    """
 
     plugin_id: str = Field(description="插件ID")
     plugin_name: str = Field(description="插件名称")
@@ -631,68 +710,81 @@ class PluginMemoryInfo(BaseModel):
 
 
 class PluginRemoteInfo(BaseModel):
-    """插件模块联邦远程入口。"""
+    """
+    插件模块联邦远程入口。
+    """
 
-    id: str
-    url: str
-    name: str
-    source_plugin_id: Optional[str] = None
+    id: str = Field(description="记录标识")
+    url: str = Field(description="访问地址")
+    name: str = Field(description="显示名称")
+    source_plugin_id: Optional[str] = Field(default=None, description="静默丢弃，投影层写进去也到不了前端")
 
 
 class PluginReleaseItem(BaseModel):
-    """可安装的插件 Release 版本。"""
+    """
+    可安装的插件 Release 版本。
+    """
 
-    version: str
-    tag_name: str
-    name: str
-    published_at: Optional[str] = None
-    body: str = ""
-    asset_name: str
-    is_latest: bool = False
-    is_current: bool = False
+    version: str = Field(description="版本号")
+    tag_name: str = Field(description="版本发布标签")
+    name: str = Field(description="显示名称")
+    published_at: Optional[str] = Field(default=None, description="版本发布时间")
+    body: str = Field(default="", description="正文内容")
+    asset_name: str = Field(description="发布版本的安装包文件名")
+    is_latest: bool = Field(default=False, description="是否为最新发布版本")
+    is_current: bool = Field(default=False, description="是否为当前安装的版本")
 
 
 class PluginReleaseData(BaseModel):
-    """插件 Release 能力与版本列表。"""
+    """
+    插件 Release 能力与版本列表。
+    """
 
-    release_supported: bool = False
-    latest_version: Optional[str] = None
-    current_version: Optional[str] = None
-    items: List[PluginReleaseItem] = Field(default_factory=list)
+    release_supported: bool = Field(default=False, description="插件是否支持按发布版本安装")
+    latest_version: Optional[str] = Field(default=None, description="最新可用版本")
+    current_version: Optional[str] = Field(default=None, description="当前已安装版本")
+    items: List[PluginReleaseItem] = Field(default_factory=list, description="可供安装的插件发布版本列表")
 
 
 class PluginFolderConfigData(BaseModel):
-    """新版插件文件夹配置（对象格式，含展示配置与插件列表）。"""
+    """
+    新版插件文件夹配置（对象格式，含展示配置与插件列表）。
+    """
 
     # 文件夹内插件 ID 列表
     plugins: List[str] = Field(
         default_factory=list,
-        description="Ordered installed plugin IDs assigned to this folder.",
+        description="按顺序分配到此文件夹的已安装插件标识",
     )
     # 文件夹排序值
-    order: Optional[int] = Field(default=None, description="Folder display-order value.")
+    order: Optional[int] = Field(default=None, description="文件夹显示顺序")
     # 文件夹图标
-    icon: Optional[str] = Field(default=None, description="Optional folder icon name.")
+    icon: Optional[str] = Field(default=None, description="文件夹图标名称")
     # 文件夹颜色
-    color: Optional[str] = Field(default=None, description="Optional folder foreground color.")
+    color: Optional[str] = Field(default=None, description="文件夹的显示颜色")
     # 文件夹渐变
-    gradient: Optional[str] = Field(default=None, description="Optional folder gradient definition.")
+    gradient: Optional[str] = Field(default=None, description="文件夹的渐变背景配置")
     # 文件夹背景
-    background: Optional[str] = Field(default=None, description="Optional folder background color or style.")
+    background: Optional[str] = Field(default=None, description="文件夹的背景样式")
     # 是否显示图标（前端字段为驼峰命名）
     show_icon: Optional[bool] = Field(
         default=None,
         alias="showIcon",
-        description="Whether the frontend should display the folder icon.",
+        description="是否显示文件夹图标",
     )
 
 
 class PluginFoldersData(RootModel[Dict[str, Union[List[str], PluginFolderConfigData]]]):
-    """插件文件夹与插件配置映射，兼容旧版数组格式与新版对象格式。"""
+    """
+    插件文件夹与插件配置映射，兼容旧版数组格式与新版对象格式。
+    """
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginFolderUpdateRequest(BaseModel):  # type: ignore[misc]
-    """插件文件夹名称和展示字段的增量更新请求。"""
+    """
+    插件文件夹名称和展示字段的增量更新请求。
+    """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -700,41 +792,46 @@ class PluginFolderUpdateRequest(BaseModel):  # type: ignore[misc]
         default=None,
         min_length=1,
         max_length=128,
-        description="Optional replacement folder name.",
+        description="修改后的名称",
     )
-    icon: Optional[str] = Field(default=None, description="Optional folder icon name.")
+    icon: Optional[str] = Field(default=None, description="文件夹图标名称")
     color: Optional[str] = Field(
         default=None,
-        description="Optional folder foreground color.",
+        description="文件夹的显示颜色",
     )
     gradient: Optional[str] = Field(
         default=None,
-        description="Optional folder gradient definition.",
+        description="文件夹的渐变背景配置",
     )
     background: Optional[str] = Field(
         default=None,
-        description="Optional folder background color or style.",
+        description="文件夹的背景样式",
     )
     show_icon: Optional[bool] = Field(
         default=None,
         alias="showIcon",
-        description="Whether the frontend should display the folder icon.",
+        description="是否显示文件夹图标",
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class PluginFolderPluginsUpdateRequest(BaseModel):  # type: ignore[misc]
-    """插件文件夹成员顺序的条件替换请求。"""
+    """
+    插件文件夹成员顺序的条件替换请求。
+    """
 
-    plugins: List[str] = Field(description="Ordered installed plugin IDs assigned to this folder.")
+    plugins: List[str] = Field(description="按顺序分配到此文件夹的已安装插件标识")
     expected_plugins: Optional[List[str]] = Field(
         default=None,
-        description="Last observed ordered plugin IDs used to reject stale replacements.",
+        description="最近读取的插件标识顺序，用于拒绝过期替换",
     )
 
 
 class PluginDashboardMetaItem(BaseModel):
-    """插件仪表板入口摘要。"""
+    """
+    插件仪表板入口摘要。
+    """
 
-    id: str
-    name: Optional[str] = None
-    key: Optional[str] = None
+    id: str = Field(description="记录标识")
+    name: Optional[str] = Field(default=None, description="显示名称")
+    key: Optional[str] = Field(default=None, description="缓存条目的键")

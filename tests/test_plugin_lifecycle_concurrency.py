@@ -1,4 +1,6 @@
-"""插件生命周期入口并发交错时的运行实例归属测试。"""
+"""
+插件生命周期入口并发交错时的运行实例归属测试。
+"""
 
 import threading
 from unittest.mock import MagicMock
@@ -14,7 +16,9 @@ _HANDSHAKE_BUDGET = 5.0
 
 
 class _SeedInstance:
-    """代表上一轮加载留下的运行实例，并在停机 hook 中把执行权让给加载线程。"""
+    """
+    代表上一轮加载留下的运行实例，并在停机 hook 中把执行权让给加载线程。
+    """
 
     def __init__(
         self,
@@ -23,41 +27,55 @@ class _SeedInstance:
         quiesce_entered: threading.Event,
         start_finished: threading.Event,
     ) -> None:
-        """记录停机事实，并保存与加载线程握手用的两个事件。"""
+        """
+        记录停机事实，并保存与加载线程握手用的两个事件。
+        """
         self._stopped = stopped
         self._quiesce_entered = quiesce_entered
         self._start_finished = start_finished
 
     def stop_service(self) -> None:
-        """登记自身已被停止，并在停止事务中途给加载线程留出执行窗口。"""
+        """
+        登记自身已被停止，并在停止事务中途给加载线程留出执行窗口。
+        """
         self._stopped.append(self)
         self._quiesce_entered.set()
         self._start_finished.wait(_INTERLEAVE_BUDGET)
 
 
 def _plugin_class(constructed: list) -> type:
-    """构造满足最小生命周期合同、并登记自身实例化事实的插件类。"""
+    """
+    构造满足最小生命周期合同、并登记自身实例化事实的插件类。
+    """
 
     class DemoPlugin:
-        """提供并发交错用例需要的最小插件行为。"""
+        """
+        提供并发交错用例需要的最小插件行为。
+        """
 
         plugin_name = "演示插件"
         plugin_version = "1.0.0"
 
         def init_plugin(self, _config) -> None:
-            """登记本实例已完成初始化，等价于其后台服务已经拉起。"""
+            """
+            登记本实例已完成初始化，等价于其后台服务已经拉起。
+            """
             constructed.append(self)
 
         @staticmethod
         def get_state() -> bool:
-            """并发用例只关心启用态插件，恒定返回启用。"""
+            """
+            并发用例只关心启用态插件，恒定返回启用。
+            """
             return True
 
     return DemoPlugin
 
 
 def _lifecycle(*, plugin_class: type, running: dict) -> PluginLifecycle:
-    """构造隔离事件、模块清理和数据库的生命周期实例。"""
+    """
+    构造隔离事件、模块清理和数据库的生命周期实例。
+    """
     return PluginLifecycle(
         classes={"DemoPlugin": plugin_class},
         running=running,
@@ -78,7 +96,8 @@ def _lifecycle(*, plugin_class: type, running: dict) -> PluginLifecycle:
 
 
 def test_concurrent_start_does_not_orphan_the_instance_it_loads() -> None:
-    """加载与停止交错时，被加载出来的实例不能既不在运行表也没被停止。
+    """
+    加载与停止交错时，被加载出来的实例不能既不在运行表也没被停止。
 
     停止取的是进入时的运行表快照，卸载却按插件 ID 清运行表。start 不与 stop 互斥
     时，交错窗口里加载出来的实例会被这次卸载一并抹掉，而它的 stop_service 从未被
@@ -97,7 +116,9 @@ def test_concurrent_start_does_not_orphan_the_instance_it_loads() -> None:
     lifecycle = _lifecycle(plugin_class=_plugin_class(constructed), running=running)
 
     def load() -> None:
-        """等停止进入停机 hook 之后再发起加载，制造确定的交错顺序。"""
+        """
+        等停止进入停机 hook 之后再发起加载，制造确定的交错顺序。
+        """
         assert quiesce_entered.wait(_HANDSHAKE_BUDGET)
         lifecycle.start("DemoPlugin")
         start_finished.set()

@@ -1,3 +1,7 @@
+"""
+ListenBrainz 全站榜单与新发行专辑查询及统一音乐模型转换。
+"""
+
 from typing import Any, Optional, Tuple, Union
 
 from app.adapters.network.http import RequestUtils
@@ -19,7 +23,9 @@ from app.schemas.types import (
 
 
 class ListenBrainzModule(_ModuleBase):
-    """通过 ListenBrainz 全站统计与新发行数据提供音乐探索能力。"""
+    """
+    通过 ListenBrainz 全站统计与新发行数据提供音乐探索能力。
+    """
 
     _base_url = "https://api.listenbrainz.org/1"
     _detail_url = "https://musicbrainz.org/recording"
@@ -34,38 +40,54 @@ class ListenBrainzModule(_ModuleBase):
     }
 
     def init_module(self) -> None:
-        """初始化无状态的 ListenBrainz 探索模块。"""
+        """
+        初始化无状态的 ListenBrainz 探索模块。
+        """
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
-        """ListenBrainz 公共数据无需独立密钥或启用开关。"""
+        """
+        ListenBrainz 公共数据无需独立密钥或启用开关。
+        """
         return None
 
     def stop(self) -> None:
-        """停止模块；当前实现没有需要释放的持久资源。"""
+        """
+        停止模块；当前实现没有需要释放的持久资源。
+        """
 
     def test(self) -> Tuple[bool, str]:
-        """测试 ListenBrainz 全站榜单接口连通性。"""
+        """
+        测试 ListenBrainz 全站榜单接口连通性。
+        """
         result = self._request_chart(entity="recordings", range_name="this_week", offset=0, count=1)
         return (True, "") if result is not None else (False, "ListenBrainz 网络连接失败")
 
     @staticmethod
     def get_name() -> str:
-        """返回模块展示名称。"""
+        """
+        返回模块展示名称。
+        """
         return "ListenBrainz"
 
     @staticmethod
     def get_type() -> ModuleType:
-        """返回模块所属的其它能力类型。"""
+        """
+        返回模块所属的其它能力类型。
+        """
         return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:
-        """返回 ListenBrainz 模块子类型。"""
+        """
+        返回 ListenBrainz 模块子类型。
+        """
         return OtherModulesType.ListenBrainz
 
     @staticmethod
     def get_priority() -> int:
-        """返回音乐榜单模块执行优先级。"""
+        """
+        返回音乐榜单模块执行优先级。
+        """
         return 5
 
     def music_chart(
@@ -75,7 +97,15 @@ class ListenBrainzModule(_ModuleBase):
             count: int = 30,
             entity: str = MUSIC_ENTITY_RECORDING,
     ) -> list[MusicInfo]:
-        """读取指定周期的全站热门单曲或热门专辑榜单。"""
+        """
+        读取全站热门单曲或热门专辑榜单。
+
+        :param range_name: 统计周期，未知值回退 this_month
+        :param offset: 零基偏移，负值按 0 处理
+        :param count: 请求数量，限制在 1 至 100
+        :param entity: 榜单实体，album 查询专辑，其他值使用单曲榜
+        :return: 可转换的音乐条目列表；请求失败或无数据时为空列表
+        """
         path, field = self._chart_entities.get(
             entity, self._chart_entities[MUSIC_ENTITY_RECORDING]
         )
@@ -102,7 +132,19 @@ class ListenBrainzModule(_ModuleBase):
             offset: int = 0,
             count: int = 30,
     ) -> list[MusicInfo]:
-        """读取 ListenBrainz 官方新发行专辑，并按官方排序方式分页返回。"""
+        """
+        按官方排序查询新发行专辑，并在本地对时间窗口分页。
+
+        服务端一次返回完整时间窗口；缓存原始结果，避免翻页反复拉取。
+
+        :param days: 发行时间窗口天数，限制为 1 至 LISTENBRAINZ_FRESH_MAX_DAYS
+        :param sort: 官方排序方式，未知值回退 release_date
+        :param past: 是否包含已发行专辑
+        :param future: 是否包含尚未发行的专辑
+        :param offset: 零基偏移，负值按 0 处理
+        :param count: 分页数量，限制在 1 至 100
+        :return: 可转换的专辑列表；请求失败或当前页无数据时为空列表
+        """
         releases = self._fresh_releases(
             days=max(1, min(days, LISTENBRAINZ_FRESH_MAX_DAYS)),
             sort=sort if sort in LISTENBRAINZ_FRESH_SORTS else "release_date",
@@ -122,7 +164,9 @@ class ListenBrainzModule(_ModuleBase):
             past: bool,
             future: bool,
     ) -> list[dict[str, Any]]:
-        """缓存官方新发行原始结果，避免翻页时重复拉取整个时间窗口。"""
+        """
+        缓存官方新发行原始结果，避免翻页时重复拉取整个时间窗口。
+        """
         payload = self._request_json(
             "/explore/fresh-releases/",
             params={
@@ -142,7 +186,9 @@ class ListenBrainzModule(_ModuleBase):
             offset: int,
             count: int,
     ) -> Optional[dict[str, Any]]:
-        """请求 ListenBrainz 全站统计接口。"""
+        """
+        请求 ListenBrainz 全站统计接口。
+        """
         return cls._request_json(
             f"/stats/sitewide/{entity}",
             params={
@@ -159,7 +205,9 @@ class ListenBrainzModule(_ModuleBase):
             path: str,
             params: Optional[dict[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
-        """请求 ListenBrainz JSON 接口并统一处理网络和响应错误。"""
+        """
+        请求 ListenBrainz JSON 接口并统一处理网络和响应错误。
+        """
         response = RequestUtils(
             headers={
                 "User-Agent": f"{get_runtime_setting('USER_AGENT')} (https://github.com/jxxghp/MoviePilot)",
@@ -189,7 +237,9 @@ class ListenBrainzModule(_ModuleBase):
 
     @classmethod
     def _recording_to_info(cls, recording: dict[str, Any]) -> Optional[MusicInfo]:
-        """将 ListenBrainz 热门单曲统计转换为标准音乐信息。"""
+        """
+        将 ListenBrainz 热门单曲统计转换为标准音乐信息。
+        """
         media_id = recording.get("recording_mbid")
         title = recording.get("track_name")
         if not media_id or not title:
@@ -214,7 +264,9 @@ class ListenBrainzModule(_ModuleBase):
 
     @classmethod
     def _release_group_to_info(cls, release_group: dict[str, Any]) -> Optional[MusicInfo]:
-        """将 ListenBrainz 热门专辑统计转换为标准音乐信息。"""
+        """
+        将 ListenBrainz 热门专辑统计转换为标准音乐信息。
+        """
         media_id = release_group.get("release_group_mbid")
         title = release_group.get("release_group_name")
         if not media_id or not title:
@@ -240,7 +292,9 @@ class ListenBrainzModule(_ModuleBase):
 
     @classmethod
     def _fresh_release_to_info(cls, release: dict[str, Any]) -> Optional[MusicInfo]:
-        """将 ListenBrainz 新发行条目转换为标准专辑信息。"""
+        """
+        将 ListenBrainz 新发行条目转换为标准专辑信息。
+        """
         media_id = release.get("release_group_mbid")
         title = release.get("release_name")
         if not media_id or not title:
@@ -276,7 +330,9 @@ class ListenBrainzModule(_ModuleBase):
 
     @classmethod
     def _release_cover(cls, release_mbid: Any) -> Optional[str]:
-        """根据发行版本 ID 构造 Cover Art Archive 封面地址。"""
+        """
+        根据发行版本 ID 构造 Cover Art Archive 封面地址。
+        """
         if not release_mbid:
             return None
         # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
@@ -285,7 +341,9 @@ class ListenBrainzModule(_ModuleBase):
 
     @classmethod
     def _release_group_cover(cls, release_group_id: Any) -> Optional[str]:
-        """根据 Release Group ID 构造 Cover Art Archive 封面地址。"""
+        """
+        根据 Release Group ID 构造 Cover Art Archive 封面地址。
+        """
         if not release_group_id:
             return None
         # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
@@ -294,7 +352,8 @@ class ListenBrainzModule(_ModuleBase):
 
     @staticmethod
     def _primary_artist_ids(artist_mbids: Any) -> list[str]:
-        """返回可跳转的主艺术家 ID。
+        """
+        返回可跳转的主艺术家 ID。
 
         ListenBrainz 的艺术家名称是合并署名文本，无法与多个 ID 一一对应，
         因此只保留首个 ID 作为卡片上的主艺术家入口。
@@ -305,19 +364,25 @@ class ListenBrainzModule(_ModuleBase):
 
     @staticmethod
     def _stripped(value: Any) -> Optional[str]:
-        """去除 ListenBrainz 响应字段两端的空白，空值返回 None。"""
+        """
+        去除 ListenBrainz 响应字段两端的空白，空值返回 None。
+        """
         text = str(value).strip() if value is not None else ""
         return text or None
 
     @staticmethod
     def _year(release_date: Any) -> Optional[int]:
-        """从 ListenBrainz 发行日期提取年份。"""
+        """
+        从 ListenBrainz 发行日期提取年份。
+        """
         text = str(release_date or "")[:4]
         return int(text) if text.isdigit() else None
 
     @staticmethod
     def _optional_int(value: Any) -> Optional[int]:
-        """把 ListenBrainz 统计值转换为可选整数。"""
+        """
+        把 ListenBrainz 统计值转换为可选整数。
+        """
         try:
             return int(value) if value is not None else None
         except (TypeError, ValueError):

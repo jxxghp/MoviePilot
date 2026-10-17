@@ -1,4 +1,6 @@
-"""音乐刮削结果中 album_type 等字段不应包含两端空白（Issue #6327）。"""
+"""
+音乐刮削结果中 album_type 等字段不应包含两端空白（Issue #6327）。
+"""
 
 from app.modules.listenbrainz import ListenBrainzModule
 from app.modules.musicbrainz import MusicBrainzModule
@@ -7,10 +9,14 @@ from app.schemas.music import MusicInfo as SchemaMusicInfo
 
 
 class TestMusicBrainzAlbumTypeStripped:
-    """MusicBrainz 模块应将 album_type 和 secondary_types 两端空白去除。"""
+    """
+    MusicBrainz 模块应将 album_type 和 secondary_types 两端空白去除。
+    """
 
     def test_release_to_album_album_type_stripped(self):
-        """专辑详情中 primary-type 带尾部空格时应被清理。"""
+        """
+        专辑详情中 primary-type 带尾部空格时应被清理。
+        """
         detail = {
             "id": "release-1",
             "title": "Test Album",
@@ -31,7 +37,9 @@ class TestMusicBrainzAlbumTypeStripped:
         assert album.secondary_types == ["Compilation", "Soundtrack"]
 
     def test_recording_to_info_album_type_stripped(self):
-        """歌曲识别结果中 album_type 和 category 不应包含空白。"""
+        """
+        歌曲识别结果中 album_type 和 category 不应包含空白。
+        """
         recording = {
             "id": "rec-1",
             "title": "Test Song",
@@ -61,7 +69,9 @@ class TestMusicBrainzAlbumTypeStripped:
         assert info.category == ""
 
     def test_release_group_to_album_strips_types(self):
-        """Release Group 浏览结果中 album_type 和 secondary_types 应被清理。"""
+        """
+        Release Group 浏览结果中 album_type 和 secondary_types 应被清理。
+        """
         release_group = {
             "id": "rg-1",
             "title": "Test EP",
@@ -80,10 +90,14 @@ class TestMusicBrainzAlbumTypeStripped:
 
 
 class TestListenBrainzAlbumTypeStripped:
-    """ListenBrainz 模块应将 album_type 和 category 两端空白去除。"""
+    """
+    ListenBrainz 模块应将 album_type 和 category 两端空白去除。
+    """
 
     def test_fresh_release_to_info_strips_album_type(self):
-        """新发行条目中 release_group_primary_type 带空格时应被清理。"""
+        """
+        新发行条目中 release_group_primary_type 带空格时应被清理。
+        """
         release = {
             "release_group_mbid": "rg-1",
             "release_name": "Test Album",
@@ -101,7 +115,9 @@ class TestListenBrainzAlbumTypeStripped:
         assert info.category == ""
 
     def test_fresh_release_to_info_handles_none_type(self):
-        """空白的 release_group_primary_type 应返回 None。"""
+        """
+        空白的 release_group_primary_type 应返回 None。
+        """
         release = {
             "release_group_mbid": "rg-1",
             "release_name": "Test Album",
@@ -117,10 +133,14 @@ class TestListenBrainzAlbumTypeStripped:
 
 
 class TestSchemaAlbumTypeValidator:
-    """Pydantic schema 应作为兜底清理 album_type 两端空白。"""
+    """
+    Pydantic schema 应作为兜底清理 album_type 两端空白。
+    """
 
     def test_music_info_schema_strips_album_type(self):
-        """MusicInfo schema 构造时 album_type 尾部空格应被去除。"""
+        """
+        MusicInfo schema 构造时 album_type 尾部空格应被去除。
+        """
         info = SchemaMusicInfo(
             album_type="Broadcast ",
             title="Test",
@@ -128,7 +148,9 @@ class TestSchemaAlbumTypeValidator:
         assert info.album_type == "Broadcast"
 
     def test_music_album_info_schema_strips_album_type(self):
-        """MusicAlbumInfo schema 构造时 album_type 尾部空格应被去除。"""
+        """
+        MusicAlbumInfo schema 构造时 album_type 尾部空格应被去除。
+        """
         album = SchemaMusicAlbumInfo(
             album_type="EP ",
             title="Test EP",
@@ -136,7 +158,9 @@ class TestSchemaAlbumTypeValidator:
         assert album.album_type == "EP"
 
     def test_schema_blank_album_type_becomes_none(self):
-        """纯空白的 album_type 应被归一为 None。"""
+        """
+        纯空白的 album_type 应被归一为 None。
+        """
         info = SchemaMusicInfo(
             album_type="  ",
             title="Test",
@@ -144,7 +168,9 @@ class TestSchemaAlbumTypeValidator:
         assert info.album_type is None
 
     def test_schema_none_album_type_stays_none(self):
-        """None 值的 album_type 应保持不变。"""
+        """
+        None 值的 album_type 应保持不变。
+        """
         info = SchemaMusicInfo(
             album_type=None,
             title="Test",

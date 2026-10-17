@@ -1,4 +1,6 @@
-"""音乐来源、目录搜索与详情路由 owner。"""
+"""
+音乐来源、目录搜索与详情路由 owner。
+"""
 
 from copy import deepcopy
 from typing import Any, Iterable, Optional, Union, cast
@@ -28,11 +30,15 @@ from app.schemas.types import (
 
 
 class MediaCatalogOwner(_MediaOwnerBase):
-    """音乐来源、目录搜索与详情路由 owner。"""
+    """
+    音乐来源、目录搜索与详情路由 owner。
+    """
 
     @staticmethod
     def _contains_han(value: str) -> bool:
-        """判断名称中是否包含可用于中文展示的汉字。"""
+        """
+        判断名称中是否包含可用于中文展示的汉字。
+        """
         return any("\u3400" <= char <= "\u9fff" for char in value)
 
     @classmethod
@@ -41,7 +47,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         info: Union[MusicInfo, MusicAlbumInfo],
         artist_index: int,
     ) -> list[str]:
-        """按艺术家身份提取别名，避免多位艺术家的别名相互串用。"""
+        """
+        按艺术家身份提取别名，避免多位艺术家的别名相互串用。
+        """
         artists = list(info.artists or [])
         current_name = str(artists[artist_index] or "") if artist_index < len(artists) else ""
         artist_ids = list(info.artist_ids or [])
@@ -82,7 +90,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         name: str,
         aliases: Iterable[str],
     ) -> str:
-        """将艺术家名称转为简体，并在可信别名中优先选择汉字名称。"""
+        """
+        将艺术家名称转为简体，并在可信别名中优先选择汉字名称。
+        """
         candidates = [name, *aliases]
         seen: set[str] = set()
         for candidate in candidates:
@@ -97,7 +107,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
 
     @classmethod
     def _simplify_music_artist_names(cls, info: Union[MusicInfo, MusicAlbumInfo]) -> list[str]:
-        """逐位转换艺术家名称，保留多艺术家结果的身份边界。"""
+        """
+        逐位转换艺术家名称，保留多艺术家结果的身份边界。
+        """
         return [
             cls._simplify_music_artist_name(
                 str(name),
@@ -110,7 +122,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
     def _music_source_chain(
         media_source: MediaSource,
     ) -> Optional[MusicMetadataSourceChain | DoubanChain]:
-        """返回内置来源专用链，或绑定插件扩展来源的通用音乐端口。"""
+        """
+        返回内置来源专用链，或绑定插件扩展来源的通用音乐端口。
+        """
         source = normalize_media_source(media_source)
         if not source:
             return None
@@ -134,7 +148,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         cls,
         media_source: Optional[MediaSourceSelection],
     ) -> list[MediaSource]:
-        """解析有序音乐搜索来源集合，保留合法插件扩展来源并去重。"""
+        """
+        解析有序音乐搜索来源集合，保留合法插件扩展来源并去重。
+        """
         return MusicCatalogService(
             source_resolver=cls._music_source_chain,
             warning=logger.warning,
@@ -148,7 +164,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         meta: MetaMusic,
         limit: int,
     ) -> list[MusicInfo]:
-        """异步搜索单个音乐来源，来源失败时保留其它来源的候选。"""
+        """
+        异步搜索单个音乐来源，来源失败时保留其它来源的候选。
+        """
         try:
             return await chain.async_search_music(meta, limit=limit)
         except Exception as err:
@@ -161,11 +179,15 @@ class MediaCatalogOwner(_MediaOwnerBase):
         candidates: Optional[Iterable[MusicInfo | dict[str, Any]]],
         limit: Optional[int] = None,
     ) -> list[MusicInfo]:
-        """标准化并按来源身份或元数据去重音乐候选。"""
+        """
+        标准化并按来源身份或元数据去重音乐候选。
+        """
         return MusicCatalogService.normalize_candidates(candidates, limit)
 
     def _music_catalog(self) -> MusicCatalogService:
-        """构造绑定当前来源解析规则的音乐目录服务。"""
+        """
+        构造绑定当前来源解析规则的音乐目录服务。
+        """
         return MusicCatalogService(
             source_resolver=self._music_source_chain,
             warning=logger.warning,
@@ -179,7 +201,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_source: Optional[MediaSourceSelection] = None,
         music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
-        """按一个或多个音乐来源搜索候选，未指定时使用 MusicBrainz。"""
+        """
+        按一个或多个音乐来源搜索候选，未指定时使用 MusicBrainz。
+        """
         if music_types is not None:
             return self._music_catalog().search(
                 MetaMusic.parse_query(query),
@@ -202,7 +226,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_source: Optional[MediaSourceSelection] = None,
         music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
-        """并行搜索一个或多个音乐来源，单一来源失败不影响其它结果。"""
+        """
+        并行搜索一个或多个音乐来源，单一来源失败不影响其它结果。
+        """
         if music_types is not None:
             return await self._music_catalog().async_search(
                 MetaMusic.parse_query(query),
@@ -226,7 +252,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_id: Optional[str],
         music_type: Optional[str],
     ) -> Optional[MusicInfo]:
-        """校验来源链返回的音乐身份和实体类型。"""
+        """
+        校验来源链返回的音乐身份和实体类型。
+        """
         if not isinstance(result, MusicInfo):
             return None
         if result.media_source and result.media_source != media_source:
@@ -239,7 +267,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
 
     @classmethod
     def _simplify_recognized_music_info(cls, info: _MusicMetadataT) -> _MusicMetadataT:
-        """按开关转换音乐及专辑曲目文本，保留来源缓存、原文别名和身份。"""
+        """
+        按开关转换音乐及专辑曲目文本，保留来源缓存、原文别名和身份。
+        """
         if not get_chain_runtime_config_snapshot().music_metadata_to_simplified:
             return info
         updates: dict[str, Any] = {}
@@ -297,7 +327,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         cls,
         matched: dict[str, MusicInfo],
     ) -> dict[str, MusicInfo]:
-        """转换目录识别结果，同时让缓存始终保留来源返回的原始文本。"""
+        """
+        转换目录识别结果，同时让缓存始终保留来源返回的原始文本。
+        """
         simplified = {path: cls._simplify_recognized_music_info(info) for path, info in matched.items()}
         if all(simplified[path] is info for path, info in matched.items()):
             return matched
@@ -311,7 +343,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         cache: bool = True,
         music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
-        """通过固定来源链同步识别音乐实体。"""
+        """
+        通过固定来源链同步识别音乐实体。
+        """
         source = normalize_media_source(media_source)
         normalized_id = str(media_id).strip() if media_id is not None else None
         if not source or normalized_id == "0":
@@ -344,7 +378,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         cache: bool = True,
         music_type: Optional[str] = None,
     ) -> Optional[MusicInfo]:
-        """通过固定来源链异步识别音乐实体。"""
+        """
+        通过固定来源链异步识别音乐实体。
+        """
         source = normalize_media_source(media_source)
         normalized_id = str(media_id).strip() if media_id is not None else None
         if not source or normalized_id == "0":
@@ -377,7 +413,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         music_release_scripts: Optional[list[str]] = None,
         musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
-        """按音乐来源和原生 ID 同步获取专辑详情，按开关转换专辑及曲目文本。"""
+        """
+        按音乐来源和原生 ID 同步获取专辑详情，按开关转换专辑及曲目文本。
+        """
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
@@ -407,7 +445,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         music_release_scripts: Optional[list[str]] = None,
         musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
-        """按音乐来源和原生 ID 异步获取专辑详情，按开关转换专辑及曲目文本。"""
+        """
+        按音乐来源和原生 ID 异步获取专辑详情，按开关转换专辑及曲目文本。
+        """
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
@@ -435,7 +475,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_id: str,
         count: int = 24,
     ) -> list[MusicInfo]:
-        """按音乐来源读取指定专辑的关联条目。"""
+        """
+        按音乐来源读取指定专辑的关联条目。
+        """
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return []
@@ -452,7 +494,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_source: MediaSource,
         media_id: str,
     ) -> Optional[MusicArtistInfo]:
-        """按音乐来源读取艺术家详情。"""
+        """
+        按音乐来源读取艺术家详情。
+        """
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
@@ -473,7 +517,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         count: int = 30,
         album_type: Optional[str] = None,
     ) -> list[MusicInfo]:
-        """按音乐来源分页读取艺术家的专辑目录。"""
+        """
+        按音乐来源分页读取艺术家的专辑目录。
+        """
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return []
@@ -491,7 +537,9 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_id: str,
         count: int = 24,
     ) -> list[MusicArtistInfo]:
-        """按音乐来源读取关联艺术家。"""
+        """
+        按音乐来源读取关联艺术家。
+        """
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return []

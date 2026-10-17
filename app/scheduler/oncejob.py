@@ -1,4 +1,6 @@
-"""插件一次性任务：在宿主调度器上追加、取消与回收插件的延迟单次执行。"""
+"""
+插件一次性任务：在宿主调度器上追加、取消与回收插件的延迟单次执行。
+"""
 
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
@@ -16,11 +18,15 @@ PLUGIN_ONCE_JOB_SEGMENT = "once"
 
 
 class SchedulerPluginOnceJobOwner(_SchedulerOwnerBase):
-    """插件一次性任务的注册、取消和随插件实例的清理。"""
+    """
+    插件一次性任务的注册、取消和随插件实例的清理。
+    """
 
     @staticmethod
     def _get_plugin_once_job_id(pid: str, job_id: str) -> str:
-        """生成插件一次性任务的运行时 job ID。"""
+        """
+        生成插件一次性任务的运行时 job ID。
+        """
         return f"{pid}_{PLUGIN_ONCE_JOB_SEGMENT}_{job_id}"
 
     def add_plugin_once_job(
@@ -97,18 +103,24 @@ class SchedulerPluginOnceJobOwner(_SchedulerOwnerBase):
         return True
 
     def remove_plugin_once_job(self, pid: str, job_id: str) -> None:
-        """取消插件尚未执行的一次性任务；已在运行的任务不会被中断。"""
+        """
+        取消插件尚未执行的一次性任务；已在运行的任务不会被中断。
+        """
         self.remove_plugin_job(pid, self._get_plugin_once_job_id(pid, job_id))
 
     def _remove_scheduled_job(self, runtime_id: str) -> None:
-        """从 APScheduler 移除指定 job，不存在时忽略。"""
+        """
+        从 APScheduler 移除指定 job，不存在时忽略。
+        """
         try:
             self._scheduler.remove_job(runtime_id)
         except JobLookupError:
             pass
 
     def _is_plugin_once_job_pending(self, runtime_id: str, job: dict[str, Any]) -> bool:
-        """判断一次性任务是否待派发、待执行或正在执行；已完成的状态可以回收。"""
+        """
+        判断一次性任务是否待派发、待执行或正在执行；已完成的状态可以回收。
+        """
         return (
             bool(job.get("_once_pending"))
             or self._scheduler.get_job(runtime_id) is not None
@@ -117,7 +129,9 @@ class SchedulerPluginOnceJobOwner(_SchedulerOwnerBase):
         )
 
     def _prune_plugin_once_jobs(self, pid: str) -> None:
-        """回收插件已执行完的一次性任务状态，避免 _jobs 随不同任务 ID 累积。"""
+        """
+        回收插件已执行完的一次性任务状态，避免 _jobs 随不同任务 ID 累积。
+        """
         for runtime_id, job in list(self._jobs.items()):
             if job.get("once") and job.get("pid") == pid and not self._is_plugin_once_job_pending(runtime_id, job):
                 self._jobs.pop(runtime_id, None)

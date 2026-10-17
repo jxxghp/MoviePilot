@@ -1,3 +1,7 @@
+"""
+按整理策略处理工作流中的文件。
+"""
+
 import copy
 from pathlib import Path
 from typing import Optional
@@ -36,7 +40,9 @@ class TransferFileAction(BaseAction):
     }
 
     def __init__(self, action_id: str) -> None:
-        """初始化当前动作的结果集合与失败状态。"""
+        """
+        初始化当前动作的结果集合与失败状态。
+        """
         super().__init__(action_id)
         self._fileitems: list[FileItem] = []
         self._has_error = False
@@ -47,7 +53,9 @@ class TransferFileAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        """返回动作是否未遇到终止性的处理失败。"""
+        """
+        返回动作是否未遇到终止性的处理失败。
+        """
         return not self._has_error
 
     def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
@@ -141,7 +149,9 @@ class TransferFileAction(BaseAction):
         return self._complete_transfer(context, _failed_count)
 
     def _complete_transfer(self, context: ActionContext, failed_count: int) -> ActionContext:
-        """写回成功文件并结算动作，延续部分成功时允许后续节点执行的规则。"""
+        """
+        写回成功文件并结算动作，延续部分成功时允许后续节点执行的规则。
+        """
         if self._fileitems:
             if context.fileitems is None:
                 context.fileitems = []

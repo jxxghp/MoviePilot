@@ -1,4 +1,6 @@
-"""统一插件安装 Gateway。"""
+"""
+统一插件安装安装网关。
+"""
 
 from __future__ import annotations
 
@@ -36,7 +38,16 @@ SourcePluginIdResolver = Callable[[str], str]
 
 @dataclass(frozen=True, slots=True)
 class PluginSourceInspection:
-    """前端与 Agent 选择来源所需的只读候选和当前身份快照。"""
+    """
+    前端与 Agent 选择来源所需的只读候选和当前身份快照。
+
+    :param plugin_id: 物理插件标识，不使用分身实例标识
+    :param inventory_complete: 所需市场与代际是否均已得到可靠读取结果
+    :param identity: 当前已持久化的来源身份；首次安装前可为 None
+    :param selection: 按来源信任策略生成的候选选择结果
+    :param online_candidates: 当前可供用户选择的在线候选
+    :param local_candidate: 当前有效本地候选；没有可用候选时为 None
+    """
 
     plugin_id: str
     inventory_complete: bool
@@ -47,7 +58,9 @@ class PluginSourceInspection:
 
 
 class PluginInstallExecutor(Protocol):
-    """统一 Gateway 调用的可恢复安装执行端口。"""
+    """
+    统一安装网关调用的可恢复安装执行端口。
+    """
 
     async def execute(
         self,
@@ -57,11 +70,21 @@ class PluginInstallExecutor(Protocol):
         force: bool,
         local_sync: bool = False,
     ) -> PluginInstallResult:
-        """执行已通过来源准入的插件载荷事务。"""
+        """
+        执行已通过来源准入的插件载荷事务。
+
+        :param admission: 已确认的唯一载荷候选与目标来源身份决策
+        :param release_version: 指定的发布版本；None 使用候选默认版本
+        :param force: 是否跳过已安装版本相同等短路检查
+        :param local_sync: 是否只把本地载荷同步到运行目录，默认 False
+        :return: 安装结果、数据库和运行态提交状态，以及失败补偿详情
+        """
 
 
 class PluginInstallGateway:
-    """让全部插件载荷写入共享同一来源策略和事务执行器。"""
+    """
+    让全部插件载荷写入共享同一来源策略和事务执行器。
+    """
 
     def __init__(
         self,
@@ -73,7 +96,9 @@ class PluginInstallGateway:
         clock: Callable[[], datetime],
         source_plugin_id: SourcePluginIdResolver,
     ) -> None:
-        """保存候选事实、身份读取、兼容校验、事务执行、时间和源身份归一端口。"""
+        """
+        保存候选事实、身份读取、兼容校验、事务执行、时间和源身份归一端口。
+        """
         self.__source_plugin_id = source_plugin_id
         self.__inventory = inventory
         self.__identity = identity
@@ -95,7 +120,8 @@ class PluginInstallGateway:
         startup_token: PluginStartupLease | None = None,
         local_sync: bool = False,
     ) -> PluginInstallResult:
-        """读取冻结库存并执行一次不能绕过来源身份的插件写入。
+        """
+        读取冻结库存并执行一次不能绕过来源身份的插件写入。
 
         先把分身归一到源插件，理由与来源勘察相同：安装包只登记在源插件名下，拿
         分身自身 ID 去查候选必然落空。界面上分身卡片的「版本历史」与「关于」两条
@@ -155,7 +181,8 @@ class PluginInstallGateway:
         package_version: str | None = None,
         force: bool = False,
     ) -> PluginSourceInspection:
-        """读取与真实安装相同的库存和身份，返回脱敏来源选择快照。
+        """
+        读取与真实安装相同的库存和身份，返回脱敏来源选择快照。
 
         先把分身归一到源插件：分身只是共享同一份源码的运行实例，安装包与来源身份
         都只登记在源插件名下，拿分身自身 ID（源插件 ID 加后缀）去查库存必然落空，
@@ -193,26 +220,34 @@ _plugin_install_gateway: PluginInstallGateway | None = None
 
 
 def configure_plugin_install_service(gateway: PluginInstallGateway) -> None:
-    """由启动组合根发布当前 lifespan 的唯一插件安装 Gateway。"""
+    """
+    由启动组合根发布当前 lifespan 的唯一插件安装安装网关。
+    """
     global _plugin_install_gateway
     _plugin_install_gateway = gateway
 
 
 def get_plugin_install_service() -> PluginInstallGateway:
-    """返回已装配 Gateway；启动未完成时拒绝任何载荷写入。"""
+    """
+    返回已装配安装网关；启动未完成时拒绝任何载荷写入。
+    """
     if _plugin_install_gateway is None:
         raise RuntimeError("插件安装服务尚未完成初始化")
     return _plugin_install_gateway
 
 
 def reset_plugin_install_service() -> None:
-    """清除当前 lifespan 的 Gateway，供停机和隔离测试使用。"""
+    """
+    清除当前 lifespan 的安装网关，供停机和隔离测试使用。
+    """
     global _plugin_install_gateway
     _plugin_install_gateway = None
 
 
 def _generation_order(package_version: str | None) -> tuple[str, ...]:
-    """把兼容入口的首选代际转换为来源选择优先序。"""
+    """
+    把兼容入口的首选代际转换为来源选择优先序。
+    """
     normalized = (package_version or "v3").strip().lower()
     if normalized in {"", "v1"}:
         return ("v1",)

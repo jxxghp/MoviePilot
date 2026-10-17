@@ -1,4 +1,6 @@
-"""字节容量的解析与显示基础能力。"""
+"""
+字节容量的解析与显示基础能力。
+"""
 
 import bisect
 import re
@@ -6,7 +8,12 @@ from typing import Union
 
 
 def parse_size(text: Union[str, int, float]) -> int:
-    """将带二进制容量单位的文本转换为字节数。"""
+    """
+    将带二进制容量单位的文本转换为字节数。
+
+    :param text: 数字或容量文本，支持千位分隔符和 KB 至 PB 等单位
+    :return: 四舍五入后的字节数；空值或无法解析的数值文本返回 0
+    """
     if not text:
         return 0
     if not isinstance(text, str):
@@ -33,7 +40,13 @@ def parse_size(text: Union[str, int, float]) -> int:
 
 
 def format_compact_size(size: Union[str, float, int], precision: int = 2) -> str:
-    """将字节数格式化为不带尾部 B 的紧凑容量描述。"""
+    """
+    将字节数格式化为紧凑容量文本。
+
+    :param size: 字节数或已有单位的文本；None 返回空字符串
+    :param precision: 容量换算后保留的小数位数
+    :return: 小容量保留 B，大容量使用 K、M、G、T 等简写
+    """
     if size is None:
         return ""
     # 历史实现把 re.IGNORECASE 作为 count 位置参数传入；这里保留其最多替换两次、
@@ -63,7 +76,9 @@ def format_compact_size(size: Union[str, float, int], precision: int = 2) -> str
 
 
 def format_size(size_bytes: int) -> str:
-    """将字节数转换为带空格和完整单位的人类可读格式。"""
+    """
+    将字节数转换为带空格和完整单位的人类可读格式。
+    """
     if not size_bytes:
         return "0 B"
 

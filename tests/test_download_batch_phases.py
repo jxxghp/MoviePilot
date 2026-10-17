@@ -1,4 +1,6 @@
-"""保护批量下载各阶段之间的状态传递与副作用顺序。"""
+"""
+保护批量下载各阶段之间的状态传递与副作用顺序。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -47,7 +49,9 @@ def _missing(
 
 @pytest.fixture
 def batch(monkeypatch):
-    """只替换事件、排序、持久化及下载边界，保留真实阶段选择和失败指纹。"""
+    """
+    只替换事件、排序、持久化及下载边界，保留真实阶段选择和失败指纹。
+    """
     chain = object.__new__(DownloadChain)
     chain.eventmanager = SimpleNamespace(send_event=MagicMock(return_value=None))
     chain._active_download_failure_fingerprints = MagicMock(return_value={})
@@ -75,6 +79,9 @@ def _submitted(chain) -> list[Context]:
 
 
 def test_batch_preserves_phase_order_and_submission_options(batch):
+    """
+    批量下载保持各媒体阶段顺序，并完整传递提交选项。
+    """
     partial = _context("partial", media_id="3")
     labelled = _context("labelled", media_id="2", episodes=(2,))
     whole = _context("whole")
@@ -120,6 +127,9 @@ def test_batch_preserves_phase_order_and_submission_options(batch):
 
 
 def test_incomplete_season_becomes_labelled_candidate_after_file_inspection(batch):
+    """
+    整季候选内容不足时按解析出的剧集转入带集数候选阶段。
+    """
     candidate = _context("incomplete")
     missing = {"tmdb:1": {1: _missing()}}
     batch.chain.download_torrent.return_value = (b"torrent", None, [1, 2])
@@ -137,6 +147,9 @@ def test_incomplete_season_becomes_labelled_candidate_after_file_inspection(batc
 
 
 def test_failed_season_submission_stays_in_cooldown_after_metadata_changes(batch):
+    """
+    整季下载失败后，即使剧集元数据变化也继续受到失败冷却约束。
+    """
     whole = _context("whole")
     fallback = _context("fallback", episodes=(1,))
     missing = {"tmdb:1": {1: _missing(total=3)}}
@@ -154,6 +167,9 @@ def test_failed_season_submission_stays_in_cooldown_after_metadata_changes(batch
 
 
 def test_empty_torrent_is_recorded_once_and_not_retried_in_later_phases(batch):
+    """
+    空种子失败只记录一次，后续阶段不重复尝试。
+    """
     whole = _context("empty")
     fallback = _context("fallback", episodes=(1,))
     missing = {"tmdb:1": {1: _missing(total=3)}}
@@ -172,6 +188,9 @@ def test_empty_torrent_is_recorded_once_and_not_retried_in_later_phases(batch):
 
 
 def test_uninspectable_magnet_is_not_cooled_down_as_a_download_failure(batch):
+    """
+    无法检查文件的磁力链接不被误判为下载失败冷却。
+    """
     whole = _context("magnet")
     fallback = _context("fallback", episodes=(1,))
     missing = {"tmdb:1": {1: _missing(total=3)}}
@@ -188,6 +207,9 @@ def test_uninspectable_magnet_is_not_cooled_down_as_a_download_failure(batch):
 
 
 def test_partial_packs_only_settle_successful_allowed_episode_selections(batch):
+    """
+    分集包仅结算成功提交且在允许范围内的剧集。
+    """
     failed = _context("failed", episodes=(1, 4))
     first = _context("first")
     first.allowed_episodes = {1, 3}
@@ -221,6 +243,9 @@ def test_partial_packs_only_settle_successful_allowed_episode_selections(batch):
 
 @pytest.mark.parametrize("missing", [None, {}])
 def test_batch_preserves_optional_missing_result_and_resets_per_call_state(batch, missing):
+    """
+    批量调用保留可选缺集结果的对象语义，并重置每次调用状态。
+    """
     candidate = _context("movie", media_type=MediaType.MOVIE)
     batch.chain.download_single.side_effect = [None, "retry-id"]
 
@@ -235,7 +260,9 @@ def test_batch_preserves_optional_missing_result_and_resets_per_call_state(batch
 
 
 def test_reentrant_batch_call_keeps_outer_candidates_and_accounting(batch):
-    """下载回调触发另一批次时，两次调用不能共用候选、结果或缺集状态。"""
+    """
+    下载回调触发另一批次时，两次调用不能共用候选、结果或缺集状态。
+    """
     movie = _context("outer-movie", media_type=MediaType.MOVIE)
     nested = _context("nested-movie", media_type=MediaType.MOVIE)
     whole = _context("whole")
@@ -259,6 +286,9 @@ def test_reentrant_batch_call_keeps_outer_candidates_and_accounting(batch):
 
 
 def test_stop_during_movie_submission_prevents_later_phase_side_effects(batch):
+    """
+    电影提交期间收到停止信号后，不再执行后续阶段的副作用。
+    """
     movie = _context("movie", media_type=MediaType.MOVIE)
     whole = _context("whole")
     missing = {"tmdb:1": {1: _missing()}}
@@ -277,6 +307,9 @@ def test_stop_during_movie_submission_prevents_later_phase_side_effects(batch):
 
 
 def test_multiseason_pack_submits_without_reading_torrent_files(batch):
+    """
+    多季合集直接提交，不额外读取种子文件确认覆盖范围。
+    """
     candidate = _context("multiseason", season=0)
     candidate.meta_info.end_season = 1
     missing = {"tmdb:1": {0: _missing(season=0), 1: _missing()}}
@@ -292,6 +325,9 @@ def test_multiseason_pack_submits_without_reading_torrent_files(batch):
 
 
 def test_partial_failure_does_not_rewrite_candidate_episode_range(batch):
+    """
+    分集提交失败不得改写候选的原始剧集范围。
+    """
     candidate = _context("partial")
     missing = {"tmdb:1": {1: _missing((2,))}}
     batch.chain.download_single.return_value = None
@@ -306,6 +342,9 @@ def test_partial_failure_does_not_rewrite_candidate_episode_range(batch):
 
 
 def test_failed_complete_coverage_submission_does_not_confirm_or_settle(batch):
+    """
+    要求完整覆盖的提交失败时，不确认覆盖完成或结算缺集。
+    """
     candidate = _context("complete")
     missing = {"tmdb:1": {1: _missing(complete=True)}}
     batch.chain.download_single.return_value = None
@@ -320,7 +359,9 @@ def test_failed_complete_coverage_submission_does_not_confirm_or_settle(batch):
 
 
 def test_higher_priority_labelled_full_pack_wins_whole_season_phase(batch):
-    """标注完整集数的高优先级包与无集数整季包同轮竞争，不被后者抢先清空缺季。"""
+    """
+    标注完整集数的高优先级包与无集数整季包同轮竞争，不被后者抢先清空缺季。
+    """
     labelled = _context("labelled", episodes=(1, 2, 3, 4))
     whole = _context("whole")
     missing = {"tmdb:1": {1: _missing(complete=True)}}
@@ -340,6 +381,9 @@ def test_higher_priority_labelled_full_pack_wins_whole_season_phase(batch):
     ids=["partial-range", "unknown-total"],
 )
 def test_labelled_pack_without_full_coverage_stays_out_of_whole_season_phase(batch, episodes, total):
+    """
+    未覆盖整季的带集数候选不得进入整季优先阶段。
+    """
     labelled = _context("labelled", episodes=episodes)
     whole = _context("whole")
     missing = {"tmdb:1": {1: _missing(total=total)}}
@@ -352,6 +396,9 @@ def test_labelled_pack_without_full_coverage_stays_out_of_whole_season_phase(bat
 
 
 def test_labelled_full_pack_respects_candidate_allowed_episodes(batch):
+    """
+    带集数完整合集仍必须遵守候选允许下载的剧集范围。
+    """
     labelled = _context("labelled", episodes=(1, 2, 3, 4))
     labelled.allowed_episodes = {1, 2}
     missing = {"tmdb:1": {1: _missing()}}
@@ -365,6 +412,9 @@ def test_labelled_full_pack_respects_candidate_allowed_episodes(batch):
 
 
 def test_labelled_full_pack_magnet_falls_back_to_episode_pack_phase(batch):
+    """
+    无法检查内容的完整合集磁力链接回退到分集包阶段提交。
+    """
     labelled = _context("labelled", episodes=(1, 2, 3, 4))
     missing = {"tmdb:1": {1: _missing(complete=True)}}
     batch.chain.download_torrent.return_value = ("magnet:?xt=test", None, [])

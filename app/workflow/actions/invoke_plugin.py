@@ -1,3 +1,7 @@
+"""
+调用插件公开的工作流动作。
+"""
+
 from pydantic import Field
 
 from app.application.plugin.runtime import get_plugin_manager
@@ -33,6 +37,11 @@ class InvokePluginAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """
+返回插件动作是否报告执行成功。
+
+        :return: 插件动作完成且成功时为 True
+        """
         return self._success
 
     def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:

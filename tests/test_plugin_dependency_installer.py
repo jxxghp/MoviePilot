@@ -1,3 +1,7 @@
+"""
+验证插件依赖安装参数、结果反馈与失败隔离。
+"""
+
 import asyncio
 import threading
 from pathlib import Path
@@ -14,14 +18,18 @@ from app.adapters.system.plugin.manifest import load_dependency_file
 
 
 def _write_requirements(root: Path, plugin_id: str, content: str) -> None:
-    """写入一个测试插件的 requirements 文件。"""
+    """
+    写入一个测试插件的 requirements 文件。
+    """
     plugin_dir = root / plugin_id.lower()
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "requirements.txt").write_text(content, encoding="utf-8")
 
 
 def _write_pyproject(root: Path, plugin_id: str, content: str) -> Path:
-    """写入一个测试插件的 pyproject 依赖清单。"""
+    """
+    写入一个测试插件的 pyproject 依赖清单。
+    """
     plugin_dir = root / plugin_id.lower()
     plugin_dir.mkdir(parents=True, exist_ok=True)
     pyproject_file = plugin_dir / "pyproject.toml"
@@ -33,7 +41,9 @@ def test_classify_plugins_preserves_ids_and_separates_startup_paths(
     tmp_path,
     monkeypatch,
 ):
-    """启动分类保留规范插件 ID，并区分可加载、缺依赖和缺源码。"""
+    """
+    启动分类保留规范插件 ID，并区分可加载、缺依赖和缺源码。
+    """
     plugin_root = tmp_path / "plugins"
     (plugin_root / "readyplugin").mkdir(parents=True)
     _write_requirements(plugin_root, "DependencyPending", "demo>=2\n")
@@ -60,7 +70,9 @@ def test_classify_plugins_preserves_ids_and_separates_startup_paths(
 
 
 def test_find_missing_merges_only_installed_plugin_constraints(tmp_path, monkeypatch):
-    """依赖扫描只覆盖安装清单，并合并同名包的多插件约束。"""
+    """
+    依赖扫描只覆盖安装清单，并合并同名包的多插件约束。
+    """
     plugin_root = tmp_path / "plugins"
     _write_requirements(plugin_root, "Alpha", "Demo-Pkg>=2\n")
     _write_requirements(plugin_root, "Beta", "demo.pkg<4\n")
@@ -86,7 +98,9 @@ def test_find_missing_merges_only_installed_plugin_constraints(tmp_path, monkeyp
 
 
 def test_find_missing_skips_satisfied_constraints(tmp_path, monkeypatch):
-    """已安装版本满足合并约束时不得重复调用 pip。"""
+    """
+    已安装版本满足合并约束时不得重复调用 pip。
+    """
     plugin_root = tmp_path / "plugins"
     _write_requirements(plugin_root, "Alpha", "demo>=1,<3\n")
     installer = PluginDependencyInstaller(
@@ -104,7 +118,9 @@ def test_find_missing_skips_satisfied_constraints(tmp_path, monkeypatch):
 
 
 def test_find_missing_preserves_merged_extras(tmp_path, monkeypatch):
-    """同一包的多插件约束合并后必须保留全部 extras。"""
+    """
+    同一包的多插件约束合并后必须保留全部 extras。
+    """
     plugin_root = tmp_path / "plugins"
     _write_requirements(plugin_root, "Alpha", "Demo-Pkg[alpha]>=2\n")
     _write_requirements(plugin_root, "Beta", "demo.pkg[beta]<4\n")
@@ -126,7 +142,9 @@ def test_find_missing_preserves_merged_extras(tmp_path, monkeypatch):
 
 
 def test_find_missing_preserves_direct_url(tmp_path, monkeypatch):
-    """缺失的 direct URL 依赖必须按原安装来源返回。"""
+    """
+    缺失的 direct URL 依赖必须按原安装来源返回。
+    """
     plugin_root = tmp_path / "plugins"
     direct_url = "https://example.com/packages/demo_pkg-2.0.0-py3-none-any.whl"
     _write_requirements(
@@ -153,7 +171,9 @@ def test_find_missing_preserves_direct_url(tmp_path, monkeypatch):
 def test_find_missing_does_not_accept_base_package_for_extra(
     tmp_path, monkeypatch
 ):
-    """已安装基础包但未安装其 extra 依赖时必须继续恢复。"""
+    """
+    已安装基础包但未安装其 extra 依赖时必须继续恢复。
+    """
     plugin_root = tmp_path / "plugins"
     _write_requirements(plugin_root, "Alpha", "Demo[feature]>=1\n")
     installer = PluginDependencyInstaller(
@@ -181,7 +201,9 @@ def test_find_missing_does_not_accept_base_package_for_extra(
 
 
 def test_find_missing_accepts_satisfied_extra_dependencies(tmp_path, monkeypatch):
-    """已安装 extra 及其依赖时不得重复恢复。"""
+    """
+    已安装 extra 及其依赖时不得重复恢复。
+    """
     plugin_root = tmp_path / "plugins"
     _write_requirements(plugin_root, "Alpha", "Demo[feature]>=1\n")
     installer = PluginDependencyInstaller(
@@ -213,7 +235,9 @@ def test_find_missing_accepts_satisfied_extra_dependencies(tmp_path, monkeypatch
 def test_find_missing_rejects_missing_transitive_extra_dependency(
     tmp_path, monkeypatch
 ):
-    """extra 的传递依赖缺失时不能只因根包已安装就跳过恢复。"""
+    """
+    extra 的传递依赖缺失时不能只因根包已安装就跳过恢复。
+    """
     plugin_root = tmp_path / "plugins"
     _write_requirements(plugin_root, "Alpha", "Demo[feature]>=1\n")
     installer = PluginDependencyInstaller(
@@ -255,7 +279,9 @@ def test_find_missing_rejects_missing_transitive_extra_dependency(
 def test_find_missing_rejects_same_name_package_from_wrong_direct_url(
     tmp_path, monkeypatch
 ):
-    """存在不同 PEP 610 来源时，同名包不能满足 direct URL 依赖。"""
+    """
+    存在不同 PEP 610 来源时，同名包不能满足 direct URL 依赖。
+    """
     plugin_root = tmp_path / "plugins"
     required_url = "https://example.com/packages/demo-2.0.0-py3-none-any.whl"
     installed_url = "https://mirror.example.com/packages/demo-2.0.0-py3-none-any.whl"
@@ -282,7 +308,9 @@ def test_find_missing_rejects_same_name_package_from_wrong_direct_url(
 
 
 def test_find_missing_accepts_matching_direct_url(tmp_path, monkeypatch):
-    """同名包且 PEP 610 来源一致时应视为已满足。"""
+    """
+    同名包且 PEP 610 来源一致时应视为已满足。
+    """
     plugin_root = tmp_path / "plugins"
     direct_url = "https://example.com/packages/demo-2.0.0-py3-none-any.whl"
     _write_requirements(plugin_root, "Alpha", f"Demo @ {direct_url}\n")
@@ -311,7 +339,9 @@ def test_find_missing_prefers_pyproject_project_dependencies(
     tmp_path,
     monkeypatch,
 ):
-    """现代清单优先，且只消费 project.dependencies。"""
+    """
+    现代清单优先，且只消费 project.dependencies。
+    """
     plugin_root = tmp_path / "plugins"
     plugin_dir = _write_pyproject(
         plugin_root,
@@ -360,7 +390,9 @@ def test_find_missing_fails_closed_for_invalid_pyproject(
     monkeypatch,
     pyproject,
 ):
-    """现代清单无效时不得回退并消费旧 requirements。"""
+    """
+    现代清单无效时不得回退并消费旧 requirements。
+    """
     plugin_root = tmp_path / "plugins"
     plugin_dir = _write_pyproject(plugin_root, "Alpha", pyproject)
     (plugin_dir / "requirements.txt").write_text(
@@ -394,7 +426,9 @@ def test_find_missing_fails_closed_without_required_project_identity(
     monkeypatch,
     pyproject,
 ):
-    """现代清单缺少 uv 消费所需的 name 或 version 时必须拒绝安装。"""
+    """
+    现代清单缺少 uv 消费所需的 name 或 version 时必须拒绝安装。
+    """
     plugin_root = tmp_path / "plugins"
     _write_pyproject(plugin_root, "Alpha", pyproject)
     installer = PluginDependencyInstaller(
@@ -409,7 +443,9 @@ def test_find_missing_fails_closed_without_required_project_identity(
 
 
 def test_find_missing_accepts_dynamic_project_version(tmp_path, monkeypatch):
-    """version 由构建后端动态提供时仍可消费静态 dependencies。"""
+    """
+    version 由构建后端动态提供时仍可消费静态 dependencies。
+    """
     plugin_root = tmp_path / "plugins"
     _write_pyproject(
         plugin_root,
@@ -428,7 +464,9 @@ def test_find_missing_accepts_dynamic_project_version(tmp_path, monkeypatch):
 
 
 def test_load_dependency_file_accepts_custom_legacy_filename(tmp_path):
-    """临时或自定义命名的旧格式依赖文件复用统一解析器。"""
+    """
+    临时或自定义命名的旧格式依赖文件复用统一解析器。
+    """
     dependency_file = tmp_path / "plugin-dependencies.txt"
     dependency_file.write_text("Demo-Pkg>=2\n", encoding="utf-8")
 
@@ -441,7 +479,9 @@ def test_load_dependency_file_accepts_custom_legacy_filename(tmp_path):
 
 
 def test_install_passes_all_active_manifests_to_one_install(tmp_path):
-    """缺失依赖恢复必须保留 modern 与 legacy 清单的原始内容。"""
+    """
+    缺失依赖恢复必须保留 modern 与 legacy 清单的原始内容。
+    """
     plugin_root = tmp_path / "plugins"
     modern_dir = _write_pyproject(
         plugin_root,
@@ -492,7 +532,9 @@ demo = { index = "private" }
 def test_disabled_plugins_do_not_contribute_dependencies_or_wheels(
     tmp_path, monkeypatch
 ):
-    """停用插件的版本钉子、无效清单和 wheels 都不得进入恢复输入。"""
+    """
+    停用插件的版本钉子、无效清单和 wheels 都不得进入恢复输入。
+    """
     _write_requirements(tmp_path, "Enabled", "demo==2\n")
     _write_requirements(tmp_path, "Disabled", "demo==1\n")
     _write_pyproject(tmp_path, "Invalid", "[project\n")
@@ -527,7 +569,9 @@ def test_disabled_plugins_do_not_contribute_dependencies_or_wheels(
 async def test_conflicting_plugin_does_not_block_others_or_replace_ready_pin(
     tmp_path, monkeypatch, use_async, already_ready
 ):
-    """冲突降级时保护已就绪和刚恢复的插件，并继续恢复无关插件。"""
+    """
+    冲突降级时保护已就绪和刚恢复的插件，并继续恢复无关插件。
+    """
     _write_requirements(tmp_path, "Alpha", "demo==1\n")
     _write_requirements(tmp_path, "Beta", "demo==2\n")
     _write_requirements(tmp_path, "Other", "unrelated>=1\n")
@@ -535,7 +579,9 @@ async def test_conflicting_plugin_does_not_block_others_or_replace_ready_pin(
     calls = []
 
     def install(paths, _wheels):
-        """模拟解析器拒绝互斥约束，不访问真实 Python 环境或网络。"""
+        """
+        模拟解析器拒绝互斥约束，不访问真实 Python 环境或网络。
+        """
         calls.append([path.parent.name for path in paths])
         requirements = [
             requirement
@@ -589,7 +635,9 @@ async def test_conflicting_plugin_does_not_block_others_or_replace_ready_pin(
 async def test_group_failure_or_exception_keeps_other_manifests_recoverable(
     tmp_path, monkeypatch, use_async
 ):
-    """单组异常也不阻断后续组，原始 modern/legacy 来源声明保持完整。"""
+    """
+    单组异常也不阻断后续组，原始 modern/legacy 来源声明保持完整。
+    """
     _write_requirements(tmp_path, "Broken", "broken>=1\n")
     _write_requirements(
         tmp_path, "Legacy", "--extra-index-url https://example.com\nlegacy\n"
@@ -602,7 +650,9 @@ async def test_group_failure_or_exception_keeps_other_manifests_recoverable(
     calls = []
 
     def install(paths, _wheels):
-        """拒绝包含坏插件的请求，记录后续原始清单输入。"""
+        """
+        拒绝包含坏插件的请求，记录后续原始清单输入。
+        """
         calls.append(paths)
         if len(calls) == 1:
             return False, "batch failed"
@@ -640,7 +690,9 @@ async def test_group_failure_or_exception_keeps_other_manifests_recoverable(
 async def test_fallback_reports_success_when_every_group_recovers(
     tmp_path, monkeypatch, use_async
 ):
-    """批量失败但所有分组均恢复后，同步和异步结果都报告成功。"""
+    """
+    批量失败但所有分组均恢复后，同步和异步结果都报告成功。
+    """
     for plugin_id in ("Alpha", "Beta"):
         _write_requirements(tmp_path, plugin_id, f"{plugin_id.lower()}>=1\n")
     results = [(False, "batch failed"), (True, "alpha"), (True, "beta")]
@@ -663,7 +715,9 @@ async def test_fallback_reports_success_when_every_group_recovers(
 
 @pytest.mark.asyncio
 async def test_async_fallback_cancellation_stops_remaining_groups(tmp_path, monkeypatch):
-    """取消分组安装必须传播到启动调用方，后续插件不得继续写环境。"""
+    """
+    取消分组安装必须传播到启动调用方，后续插件不得继续写环境。
+    """
     for plugin_id in ("Alpha", "Beta"):
         _write_requirements(tmp_path, plugin_id, f"{plugin_id.lower()}>=1\n")
     packages = SimpleNamespace(
@@ -686,7 +740,9 @@ async def test_async_fallback_cancellation_stops_remaining_groups(tmp_path, monk
 
 @pytest.mark.asyncio
 async def test_async_install_inspection_runs_outside_event_loop(tmp_path, monkeypatch):
-    """请求准备和失败分组扫描都由托管 worker 执行，不阻塞宿主事件循环。"""
+    """
+    请求准备和失败分组扫描都由托管 worker 执行，不阻塞宿主事件循环。
+    """
     for plugin_id in ("Alpha", "Beta"):
         _write_requirements(tmp_path, plugin_id, f"{plugin_id.lower()}>=1\n")
     packages = SimpleNamespace(async_install_packages_with_fallback=AsyncMock(
@@ -701,9 +757,13 @@ async def test_async_install_inspection_runs_outside_event_loop(tmp_path, monkey
     inspections = []
 
     def record(operation):
-        """保留真实扫描行为并记录执行线程。"""
+        """
+        保留真实扫描行为并记录执行线程。
+        """
         def inspect(*args):
-            """记录当前检查操作的线程身份。"""
+            """
+            记录当前检查操作的线程身份。
+            """
             inspections.append((operation.__name__, threading.get_ident()))
             return operation(*args)
         return inspect
@@ -723,7 +783,9 @@ async def test_async_install_inspection_runs_outside_event_loop(tmp_path, monkey
 async def test_async_install_waits_for_inspection_before_propagating_cancel(
     tmp_path, monkeypatch
 ):
-    """取消请求等待在途扫描收敛，再向上抛出，且不启动任何包写入。"""
+    """
+    取消请求等待在途扫描收敛，再向上抛出，且不启动任何包写入。
+    """
     started = asyncio.Event()
     release = threading.Event()
     loop = asyncio.get_running_loop()
@@ -731,7 +793,9 @@ async def test_async_install_waits_for_inspection_before_propagating_cancel(
     installer = PluginDependencyInstaller(packages, plugin_dir=tmp_path)
 
     def prepare(_dependencies):
-        """用受控只读扫描模拟取消发生时仍在途的 worker。"""
+        """
+        用受控只读扫描模拟取消发生时仍在途的 worker。
+        """
         loop.call_soon_threadsafe(started.set)
         assert release.wait(timeout=5)
         return None, (False, "no manifest")

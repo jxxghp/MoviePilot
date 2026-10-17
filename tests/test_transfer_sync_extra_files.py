@@ -1,8 +1,12 @@
+"""
+验证整理时附属文件的同步与路径处理。
+"""
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.domain.meta.metabase import MetaBase
 from app.schemas.file import FileItem
 from app.schemas.transfer import EpisodeFormat
@@ -55,7 +59,9 @@ def make_transfer_chain() -> TransferChain:
 
 
 def bind_empty_history_repositories(chain: TransferChain) -> None:
-    """为整理链绑定不命中任何记录的测试历史仓储。"""
+    """
+    为整理链绑定不命中任何记录的测试历史仓储。
+    """
     chain.transfer_history_repository = SimpleNamespace(
         get_by_src=lambda src, storage=None: None
     )

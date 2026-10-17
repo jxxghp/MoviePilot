@@ -1,3 +1,7 @@
+"""
+提供 Agent 会话、消息和执行控制接口，按当前用户隔离会话访问。
+"""
+
 import json
 import mimetypes
 import uuid
@@ -63,13 +67,17 @@ router = ResponseAPIRouter()
 
 
 def _ensure_superuser(user: ApiPrincipal) -> None:
-    """校验当前用户是否为超级管理员。"""
+    """
+    校验当前用户是否为超级管理员。
+    """
     if not getattr(user, "is_superuser", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 
 def _parse_agent_channel_header(value: Optional[str]) -> Optional[NotificationChannel]:
-    """解析 Agent API 的 ASCII 渠道名，并兼容旧版本直接传递的枚举值。"""
+    """
+    解析 Agent API 的 ASCII 渠道名，并兼容旧版本直接传递的枚举值。
+    """
     if not value:
         return None
     try:
@@ -349,7 +357,9 @@ async def run_agent_command(
     agent_channel: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Channel"),
     agent_source: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Source"),
 ) -> _SchemaResponse[Any]:
-    """以当前认证用户和宿主透传渠道触发已注册命令。"""
+    """
+    以当前认证用户和宿主透传渠道触发已注册命令。
+    """
     _ensure_superuser(current_user)
     channel = _parse_agent_channel_header(agent_channel)
     agent_source = unquote(agent_source) if agent_source else None
@@ -572,14 +582,18 @@ async def _web_agent_stream_impl(
     service: Optional[AgentChatService] = None,
     persistence: Optional[AgentChatPersistenceService] = None,
 ) -> StreamingResponse:
-    """把 FastAPI 对话请求映射为 Application 事件流并完成 SSE framing。"""
+    """
+    把 FastAPI 对话请求映射为 Application 事件流并完成 SSE framing。
+    """
     if not isinstance(service, AgentChatService):
         service = get_configured_agent_chat_service()
     if not isinstance(persistence, AgentChatPersistenceService):
         persistence = get_configured_agent_chat_persistence()
 
     async def is_disconnected() -> bool:
-        """读取当前 HTTP 连接状态；直接函数调用时按未断线处理。"""
+        """
+        读取当前 HTTP 连接状态；直接函数调用时按未断线处理。
+        """
         callback = getattr(request, "is_disconnected", None)
         return bool(await callback()) if callable(callback) else False
 
@@ -605,7 +619,9 @@ async def _web_agent_stream_impl(
     locale = LocaleHelper.get_locale_from_request(request)
 
     async def sse_events() -> AsyncIterator[str]:
-        """把 Application 事件编码为浏览器可消费的 SSE 帧。"""
+        """
+        把 Application 事件编码为浏览器可消费的 SSE 帧。
+        """
         async for event in result.events:
             event_payload = dict(event)
             event_type = str(event_payload.pop("type", ""))
@@ -642,7 +658,9 @@ async def web_agent_stream(
     current_user: ApiPrincipal = Depends(get_current_active_user),
     persistence: AgentChatPersistenceService = Depends(get_agent_chat_persistence),
 ) -> StreamingResponse:
-    """Web 智能助手流式对话的稳定公开路由入口。"""
+    """
+    Web 智能助手流式对话的稳定公开路由入口。
+    """
     return await _web_agent_stream_impl(
         payload,
         request,

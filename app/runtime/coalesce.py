@@ -31,15 +31,16 @@ class CoalesceDecision(Enum):
 class CoalesceSummary:
     """
     窗口结束时回调给 `on_flush` 的聚合摘要，描述该窗口内被合并的事件。
+
+    :param key: 与 record 调用一致的聚合键
+    :param count: 窗口内命中总次数，包含首条立即输出的事件
+    :param first_payload: 首次命中的事件载荷，供摘要保留一个原始样例
+    :param window_seconds: 本次聚合窗口时长，单位为秒
     """
 
-    # 聚合键，与 `record` 调用方传入的 key 一致
     key: Hashable
-    # 窗口内同 key 命中总次数，包含首条 EMIT 的事件
     count: int
-    # 首条事件的 payload，便于摘要里附"样例"以减少信息丢失
     first_payload: Any
-    # 该窗口的时长（秒），与 coalescer 构造时一致
     window_seconds: float
 
 
@@ -51,13 +52,14 @@ OnFlushCallback = Callable[[CoalesceSummary], Union[Awaitable[None], None]]
 class _BucketState:
     """
     单个 key 的窗口内状态；仅供 `EventCoalescer` 内部使用。
+
+    :param first_payload: 首次事件载荷，保留到窗口汇总时使用
+    :param count: 窗口内累计命中次数，包含首次事件
+    :param flush_handle: 窗口定时回调句柄；为 None 时无待取消的定时回调
     """
 
-    # 首条事件 payload，原样保留用于 flush 摘要
     first_payload: Any
-    # 窗口内累计命中次数（含首条）
     count: int
-    # `loop.call_later` 返回的 handle，用于 close() 时取消
     flush_handle: Optional[asyncio.TimerHandle]
 
 
@@ -85,6 +87,8 @@ class EventCoalescer:
         source: str = "",
     ) -> None:
         """
+        创建固定时间窗口的事件合并器。
+
         :param window_seconds: 合并窗口时长（秒），必须 > 0
         :param on_flush: 窗口到期且 count>1 时回调；同步或 async 函数均可
         :param source: 业务来源标识，仅用于内部 debug 日志的前缀，便于区分多
@@ -203,10 +207,12 @@ class EventCoalescer:
         )
         try:
             if self._is_flush_async:
+                # 已通过协程函数检查确认回调可等待，联合回调类型无法静态表达该收窄。
                 await self._on_flush(summary)  # type: ignore[misc]
             else:
                 self._on_flush(summary)
-        except Exception as exc:  # noqa: BLE001 - 基础设施不能因消费者异常崩溃
+        # 基础设施不能因消费者异常崩溃
+        except Exception as exc:  # noqa: BLE001
             self._log_debug(f"on_flush 回调异常已吞: key={key!r}, error={exc}")
 
     def _log_debug(self, message: str) -> None:

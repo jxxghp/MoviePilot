@@ -1,4 +1,6 @@
-"""用户名唯一性 Alembic 迁移测试。"""
+"""
+用户名唯一性 Alembic 迁移测试。
+"""
 
 import importlib
 
@@ -19,7 +21,9 @@ MIGRATION_MODULE = "database.versions.a9d4f2c7e6b1_3_0_18"
 
 
 def _bind_migration(monkeypatch, connection):
-    """把用户名迁移绑定到隔离数据库连接。"""
+    """
+    把用户名迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(MIGRATION_MODULE)
     monkeypatch.setattr(
         migration,
@@ -30,7 +34,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def _legacy_metadata() -> tuple[sa.MetaData, sa.Table, sa.Table]:
-    """构造允许重名且带用户外键的旧版最小表结构。"""
+    """
+    构造允许重名且带用户外键的旧版最小表结构。
+    """
     metadata = sa.MetaData()
     users = sa.Table(
         "user",
@@ -55,17 +61,23 @@ def _legacy_metadata() -> tuple[sa.MetaData, sa.Table, sa.Table]:
 
 
 def _user_rows(connection, users: sa.Table) -> list[dict]:
-    """按稳定身份返回用户快照。"""
+    """
+    按稳定身份返回用户快照。
+    """
     return list(connection.execute(sa.select(users).order_by(users.c.id)).mappings())
 
 
 def _indexes(connection) -> dict[str, dict]:
-    """返回用户表的命名索引。"""
+    """
+    返回用户表的命名索引。
+    """
     return {index["name"]: index for index in sa.inspect(connection).get_indexes("user")}
 
 
 def test_user_model_declares_exact_unique_name_index() -> None:
-    """当前用户聚合模型必须声明唯一身份和精确级联约束。"""
+    """
+    当前用户聚合模型必须声明唯一身份和精确级联约束。
+    """
     indexes = {index.name: index for index in User.__table__.indexes}
 
     assert "ix_user_name" not in indexes
@@ -85,7 +97,9 @@ def test_user_model_declares_exact_unique_name_index() -> None:
 
 
 def test_sqlite_connection_registration_enables_foreign_keys() -> None:
-    """每条宿主 SQLite 连接都必须实际启用外键检查。"""
+    """
+    每条宿主 SQLite 连接都必须实际启用外键检查。
+    """
     engine = sa.create_engine("sqlite://")
     _register_sqlite_foreign_keys(engine)
     with engine.connect() as connection:
@@ -94,7 +108,9 @@ def test_sqlite_connection_registration_enables_foreign_keys() -> None:
 
 
 def test_user_child_constraints_compile_for_postgresql() -> None:
-    """用户从属约束必须生成 PostgreSQL 可执行的级联 DDL。"""
+    """
+    用户从属约束必须生成 PostgreSQL 可执行的级联 DDL。
+    """
     user_config_ddl = str(
         CreateTable(UserConfig.__table__).compile(
             dialect=postgresql.dialect(),
@@ -111,7 +127,9 @@ def test_user_child_constraints_compile_for_postgresql() -> None:
 
 
 def test_user_child_migration_repairs_data_and_cascades(monkeypatch) -> None:
-    """迁移清债后配置和 PassKey 不得脱离用户主体，并保持可逆。"""
+    """
+    迁移清债后配置和 PassKey 不得脱离用户主体，并保持可逆。
+    """
     metadata = sa.MetaData()
     users = sa.Table(
         "user",
@@ -236,7 +254,9 @@ def test_user_child_migration_repairs_data_and_cascades(monkeypatch) -> None:
 def test_migration_preserves_rows_and_foreign_keys_across_replay(
     monkeypatch,
 ) -> None:
-    """升级应确定性修复重名并在降级、再升级时保留用户身份。"""
+    """
+    升级应确定性修复重名并在降级、再升级时保留用户身份。
+    """
     engine = sa.create_engine("sqlite://")
     metadata, users, passkeys = _legacy_metadata()
     with engine.begin() as connection:
@@ -327,7 +347,9 @@ def test_migration_preserves_rows_and_foreign_keys_across_replay(
 
 
 def test_migration_repairs_malformed_canonical_index(monkeypatch) -> None:
-    """升级必须替换同名但列或唯一语义错误的部分迁移索引。"""
+    """
+    升级必须替换同名但列或唯一语义错误的部分迁移索引。
+    """
     engine = sa.create_engine("sqlite://")
     metadata, users, _passkeys = _legacy_metadata()
     with engine.begin() as connection:
@@ -347,7 +369,9 @@ def test_migration_repairs_malformed_canonical_index(monkeypatch) -> None:
 
 
 def test_migration_accepts_fresh_current_schema(monkeypatch) -> None:
-    """当前模型已建表时，重复升级不得创建冲突索引。"""
+    """
+    当前模型已建表时，重复升级不得创建冲突索引。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         User.__table__.create(connection)

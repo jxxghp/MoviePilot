@@ -1,3 +1,7 @@
+"""
+WebAgent 附件处理、展示快照与流式对话的应用编排。
+"""
+
 import asyncio
 import copy
 import hashlib
@@ -22,6 +26,7 @@ from typing import (
     cast,
 )
 
+# aiofiles 未提供此项目可用的类型声明，保留异步文件访问接口。
 import aiofiles  # type: ignore[import-untyped]
 
 from app.application import agent as agent_application
@@ -54,7 +59,9 @@ _WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task[object]] = set()
 def create_web_agent_background_task(
     coroutine: Coroutine[Any, Any, object],
 ) -> asyncio.Task[object]:
-    """登记 Web Agent 后台任务，使应用关闭时可以统一收口。"""
+    """
+    登记 Web Agent 后台任务，使应用关闭时可以统一收口。
+    """
     task = cast(
         asyncio.Task[object],
         get_task_registry().create(
@@ -68,7 +75,9 @@ def create_web_agent_background_task(
 
 
 async def shutdown_web_agent_background_tasks() -> None:
-    """取消并等待 Web Agent 后台任务，避免关闭数据库后仍提交快照。"""
+    """
+    取消并等待 Web Agent 后台任务，避免关闭数据库后仍提交快照。
+    """
     tasks = tuple(_WEB_AGENT_BACKGROUND_TASKS)
     for task in tasks:
         task.cancel()
@@ -79,7 +88,9 @@ async def shutdown_web_agent_background_tasks() -> None:
 
 
 async def wait_web_agent_background_tasks() -> None:
-    """等待已登记的 Web Agent 任务完成最终收尾。"""
+    """
+    等待已登记的 Web Agent 任务完成最终收尾。
+    """
     tasks = tuple(_WEB_AGENT_BACKGROUND_TASKS)
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -109,52 +120,84 @@ def configure_web_agent_message_runtime(
     message_handler: Callable[..., object],
     session_binder: Callable[[str, str], None],
 ) -> None:
-    """由启动组合根装配传统消息执行与会话绑定端口。"""
+    """
+    由启动组合根装配传统消息执行与会话绑定端口。
+    """
     global _web_agent_message_handler, _web_agent_session_binder
     _web_agent_message_handler = message_handler
     _web_agent_session_binder = session_binder
 
 
 def reset_web_agent_message_runtime() -> None:
-    """清除 WebAgent 消息运行端口，避免 lifespan 重启复用旧对象。"""
+    """
+    清除 WebAgent 消息运行端口，避免 lifespan 重启复用旧对象。
+    """
     global _web_agent_message_handler, _web_agent_session_binder
     _web_agent_message_handler = None
     _web_agent_session_binder = None
 
 
 def _handle_web_agent_message(**kwargs: Any) -> object:
-    """调用已装配的传统消息入口。"""
+    """
+    调用已装配的传统消息入口。
+    """
     if _web_agent_message_handler is None:
         raise RuntimeError("WebAgent 传统消息入口尚未配置")
     return _web_agent_message_handler(**kwargs)
 
 
 def bind_web_agent_user_session(user_id: str, session_id: str) -> None:
-    """把 Web 用户绑定到服务端 Agent 会话。"""
+    """
+    把 Web 用户绑定到服务端 Agent 会话。
+    """
     if _web_agent_session_binder is None:
         raise RuntimeError("WebAgent 会话绑定端口尚未配置")
     _web_agent_session_binder(user_id, session_id)
 
 
 class WebAgentUpload(Protocol):
-    """WebAgent 上传源所需的最小异步读取合同。"""
+    """
+    WebAgent 上传源所需的最小异步读取合同。
+    """
 
     async def read(self, size: int = -1) -> bytes:
-        """读取下一段上传内容。"""
+        """
+        读取下一段上传内容。
+
+        :param size: 最多读取的字节数，-1 表示读取剩余全部内容
+        :return: 读取的下一段字节，到达文件末尾时返回空字节串
+        """
         ...
 
     async def close(self) -> None:
-        """关闭上传源。"""
+        """
+        关闭上传源。
+        """
         ...
 
 
 class WebAgentUploadTooLargeError(ValueError):
-    """上传附件超过 WebAgent 单文件容量限制。"""
+    """
+    上传附件超过 WebAgent 单文件容量限制。
+    """
 
 
 @dataclass(frozen=True, slots=True)
 class WebAgentStreamCommand:
-    """WebAgent 流式对话用例所需的传输无关输入。"""
+    """
+    WebAgent 流式对话用例所需的传输无关输入。
+
+    :param text: 提交给 Agent 的用户输入正文
+    :param display_text: 用户界面展示的正文，None 或空字符串时使用输入正文
+    :param session_id: 客户端指定的会话标识，None 时由用例解析新会话
+    :param images: 提供给模型的图片引用列表
+    :param audio_refs: 上传音频的附件引用列表
+    :param files: 其他上传附件的描述字典列表
+    :param choice_selection: 用户对待处理选择请求的提交数据，None 表示普通消息
+    :param original_message_id: 来源消息标识，供渠道回执或回复关联使用
+    :param original_chat_id: 来源聊天标识，无外部渠道上下文时为 None
+    :param echo_user: 是否把用户消息写入展示流，默认开启
+    """
 
     text: str = ""
     display_text: Optional[str] = None
@@ -170,7 +213,12 @@ class WebAgentStreamCommand:
 
 @dataclass(frozen=True, slots=True)
 class WebAgentStreamResult:
-    """WebAgent 流式用例返回的事件迭代器与传输控制标记。"""
+    """
+    WebAgent 流式用例返回的事件迭代器与传输控制标记。
+
+    :param events: 按序产生 WebAgent 展示事件的异步迭代器
+    :param control: 需要传输层识别的特殊控制标记，None 表示普通事件流
+    """
 
     events: AsyncIterator[dict[str, Any]]
     control: Optional[str] = None
@@ -182,7 +230,9 @@ def build_web_agent_display_message(
     attachments: Optional[list[dict[str, Any]]] = None,
     status: str = "done",
 ) -> dict[str, Any]:
-    """构造 WebAgent 前后端共享的展示消息。"""
+    """
+    构造 WebAgent 前后端共享的展示消息。
+    """
     normalized_content = content or ""
     return {
         "id": f"{role}-{uuid.uuid4().hex}",
@@ -201,10 +251,14 @@ def build_web_agent_display_message(
 
 
 class WebAgentEventPublisher:
-    """合并 WebAgent 文本增量，并通过有界队列向 SSE 消费者提供事件。"""
+    """
+    合并 WebAgent 文本增量，并通过有界队列向 SSE 消费者提供事件。
+    """
 
     def __init__(self) -> None:
-        """初始化有界事件队列、增量缓冲和单一异步推送任务。"""
+        """
+        初始化有界事件队列、增量缓冲和单一异步推送任务。
+        """
         self._queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=WEB_AGENT_STREAM_QUEUE_MAX_SIZE)
         self._pending_events: deque[dict[str, Any]] = deque()
         self._pending_signal = asyncio.Event()
@@ -217,11 +271,15 @@ class WebAgentEventPublisher:
 
     @property
     def max_depth(self) -> int:
-        """返回本轮发布器观测到的最大积压深度。"""
+        """
+        返回本轮发布器观测到的最大积压深度。
+        """
         return self._max_depth
 
     def publish(self, event: dict[str, Any]) -> bool:
-        """发布事件；返回关闭状态以便受保护投递能准确报告失败。"""
+        """
+        发布事件；返回关闭状态以便受保护投递能准确报告失败。
+        """
         if self._disposed:
             return False
         if event.get("type") == "delta":
@@ -241,11 +299,15 @@ class WebAgentEventPublisher:
         return True
 
     async def get(self) -> dict[str, Any]:
-        """等待并返回下一条已排序事件。"""
+        """
+        等待并返回下一条已排序事件。
+        """
         return await self._queue.get()
 
     async def aclose(self) -> None:
-        """停止发布器并释放等待中的泵任务。"""
+        """
+        停止发布器并释放等待中的泵任务。
+        """
         if self._disposed:
             return
         self._disposed = True
@@ -259,14 +321,18 @@ class WebAgentEventPublisher:
             pass
 
     def _cancel_delta_timer(self) -> None:
-        """取消尚未触发的文本合并计时器。"""
+        """
+        取消尚未触发的文本合并计时器。
+        """
         if self._delta_timer is None:
             return
         self._delta_timer.cancel()
         self._delta_timer = None
 
     def _flush_delta(self) -> None:
-        """把当前文本缓冲转换成一条增量事件。"""
+        """
+        把当前文本缓冲转换成一条增量事件。
+        """
         self._cancel_delta_timer()
         if not self._pending_delta or self._disposed:
             return
@@ -275,7 +341,9 @@ class WebAgentEventPublisher:
         self._append_event({"type": "delta", "content": content})
 
     def _append_event(self, event: dict[str, Any]) -> None:
-        """追加待发布事件，相邻文本在出口阻塞时继续合并。"""
+        """
+        追加待发布事件，相邻文本在出口阻塞时继续合并。
+        """
         if event.get("type") == "delta" and self._pending_events and self._pending_events[-1].get("type") == "delta":
             self._pending_events[-1]["content"] += str(event.get("content") or "")
         else:
@@ -288,7 +356,9 @@ class WebAgentEventPublisher:
             logger.debug(f"WebAgent SSE事件积压深度: {depth}")
 
     async def _pump(self) -> None:
-        """按发布顺序把本地合并结果写入有界出口队列。"""
+        """
+        按发布顺序把本地合并结果写入有界出口队列。
+        """
         while True:
             await self._pending_signal.wait()
             while self._pending_events:
@@ -315,7 +385,9 @@ def build_web_agent_session_id(user: AgentChatPrincipal, session_id: Optional[st
 
 
 def _new_web_agent_session_id(user: AgentChatPrincipal, seed: str) -> str:
-    """未落库的会话也按用户 ID 分区，上传后可复用同一 ID 而不能占用他人队列。"""
+    """
+    未落库的会话也按用户 ID 分区，上传后可复用同一 ID 而不能占用他人队列。
+    """
     namespace = f"{WEB_AGENT_SESSION_PREFIX}{user.id}:"
     if seed.startswith(WEB_AGENT_SESSION_PREFIX):
         suffix = seed.removeprefix(namespace)
@@ -331,7 +403,9 @@ async def build_web_agent_session_id_async(
     session_id: Optional[str],
     service: Optional[AgentChatService] = None,
 ) -> str:
-    """异步解析会话并验证已有记录归属，Web 前缀不提供访问授权。"""
+    """
+    异步解析会话并验证已有记录归属，Web 前缀不提供访问授权。
+    """
     seed = str(session_id or "").strip() or uuid.uuid4().hex
     if service is None:
         service = get_configured_agent_chat_service()
@@ -397,7 +471,9 @@ def build_legacy_web_agent_segments(content: str, tools: list[dict[str, Any]]) -
 
 
 def _apply_web_agent_tool_event(event: dict[str, Any], assistant_message: dict[str, Any]) -> None:
-    """将工具生命周期事件写入 WebAgent 展示消息及其有序片段。"""
+    """
+    将工具生命周期事件写入 WebAgent 展示消息及其有序片段。
+    """
     tool_id = str(event.get("tool_id") or event.get("tool_call_id") or "")
     tool_status = str(event.get("status") or "running")
     if tool_id and tool_status in {"running", "done", "error"}:
@@ -438,7 +514,9 @@ def _apply_web_agent_tool_event(event: dict[str, Any], assistant_message: dict[s
 
 
 def _apply_web_agent_thinking_event(event: dict[str, Any], assistant_message: dict[str, Any]) -> None:
-    """将模型思考状态写入 WebAgent 展示消息，供前端显示耗时。"""
+    """
+    将模型思考状态写入 WebAgent 展示消息，供前端显示耗时。
+    """
     is_thinking = str(event.get("status") or "") == "running"
     assistant_message["thinking"] = is_thinking
     if is_thinking:
@@ -602,7 +680,9 @@ async def save_web_agent_upload(upload_file: WebAgentUpload, target_path: Path) 
 
 
 def cleanup_web_agent_file_registry() -> None:
-    """清理过期或过量的 Web Agent 临时附件引用。"""
+    """
+    清理过期或过量的 Web Agent 临时附件引用。
+    """
     now = time.time()
     expired_ids = [
         file_id
@@ -774,7 +854,9 @@ def get_web_agent_audio_mime_type(audio_path: Path) -> Optional[str]:
 
 
 def resolve_web_agent_audio_source_path(voice_path: str) -> Path:
-    """解析语音源文件；文件暂时不可用时保留原始路径以维持回退语义。"""
+    """
+    解析语音源文件；文件暂时不可用时保留原始路径以维持回退语义。
+    """
     try:
         return Path(voice_path).expanduser().resolve(strict=True)
     except OSError:
@@ -782,7 +864,9 @@ def resolve_web_agent_audio_source_path(voice_path: str) -> Path:
 
 
 def remove_web_agent_audio_output(path: Path) -> None:
-    """清理未完成的转码产物。"""
+    """
+    清理未完成的转码产物。
+    """
     try:
         path.unlink()
     except FileNotFoundError:
@@ -794,7 +878,9 @@ def remove_web_agent_audio_output(path: Path) -> None:
 async def terminate_web_agent_audio_process(
     process: Optional[asyncio.subprocess.Process],
 ) -> None:
-    """终止并回收转码进程，避免取消或超时留下孤儿 ffmpeg。"""
+    """
+    终止并回收转码进程，避免取消或超时留下孤儿 ffmpeg。
+    """
     if process is None or process.returncode is not None:
         return
     try:
@@ -808,7 +894,9 @@ async def terminate_web_agent_audio_process(
 
 
 async def prepare_web_agent_audio_attachment_path_async(voice_path: str) -> Path:
-    """异步准备 WebAgent 语音附件，转码等待可取消且有超时。"""
+    """
+    异步准备 WebAgent 语音附件，转码等待可取消且有超时。
+    """
     source_path = Path(
         await run_in_threadpool(
             resolve_web_agent_audio_source_path,
@@ -834,7 +922,9 @@ async def prepare_web_agent_audio_attachment_path_async(voice_path: str) -> Path
     process: Optional[asyncio.subprocess.Process] = None
 
     async def cleanup_conversion_output() -> None:
-        """清理失败或取消的转码进程及临时产物。"""
+        """
+        清理失败或取消的转码进程及临时产物。
+        """
         await terminate_web_agent_audio_process(process)
         await run_in_threadpool(remove_web_agent_audio_output, output_path)
 
@@ -913,7 +1003,9 @@ def get_web_agent_registered_file(ref: str) -> Optional[dict[str, Any]]:
 def resolve_web_agent_audio_refs(
     audio_refs: list[str],
 ) -> list[tuple[str, Path, str]]:
-    """在调用协程中解析音频引用，返回不依赖登记表的文件快照。"""
+    """
+    在调用协程中解析音频引用，返回不依赖登记表的文件快照。
+    """
     audio_files = []
     for audio_ref in audio_refs:
         file_info = get_web_agent_registered_file(audio_ref)
@@ -960,7 +1052,9 @@ def transcribe_web_agent_audio_files(
 
 
 async def transcribe_web_agent_audio_input(audio_refs: list[str]) -> Optional[str]:
-    """解析并在线程池中转写 WebAgent 音频引用。"""
+    """
+    解析并在线程池中转写 WebAgent 音频引用。
+    """
     audio_files = resolve_web_agent_audio_refs(audio_refs)
     if not audio_files:
         return None
@@ -968,7 +1062,9 @@ async def transcribe_web_agent_audio_input(audio_refs: list[str]) -> Optional[st
 
 
 def merge_web_agent_prompt_with_transcript(prompt: str, transcript: Optional[str]) -> str:
-    """合并用户输入文本和语音转写文本，避免重复发送相同内容。"""
+    """
+    合并用户输入文本和语音转写文本，避免重复发送相同内容。
+    """
     merged_parts = []
     seen_parts = set()
     for item in (prompt, transcript or ""):
@@ -1119,7 +1215,9 @@ def build_web_agent_message_events(
 async def build_web_agent_message_events_async(
     message: Message,
 ) -> list[dict[str, Any]]:
-    """异步构造 WebAgent 通知，确保语音转码不占用事件循环。"""
+    """
+    异步构造 WebAgent 通知，确保语音转码不占用事件循环。
+    """
     prepared_audio_path = None
     if message.voice_path:
         prepared_audio_path = await prepare_web_agent_audio_attachment_path_async(message.voice_path)
@@ -1161,7 +1259,9 @@ def split_web_agent_output(text: str) -> list[dict[str, Any]]:
     events = []
 
     def append_text(content: str) -> None:
-        """将工具汇总行从普通文本中拆出，保留与消息渠道一致的展示文案。"""
+        """
+        将工具汇总行从普通文本中拆出，保留与消息渠道一致的展示文案。
+        """
         if not content:
             return
         lines = content.splitlines(keepends=True)
@@ -1388,7 +1488,9 @@ def build_web_agent_traditional_callback_payload(
 
 
 async def _single_web_agent_event(event: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
-    """把前置校验结果包装成单事件异步流。"""
+    """
+    把前置校验结果包装成单事件异步流。
+    """
     yield event
 
 
@@ -1403,7 +1505,9 @@ def _build_traditional_web_agent_stream(
     persistence: AgentChatPersistenceService,
     is_disconnected: Callable[[], Awaitable[bool]],
 ) -> AsyncIterator[dict[str, Any]]:
-    """构造传统消息链路的 WebAgent 事件流。"""
+    """
+    构造传统消息链路的 WebAgent 事件流。
+    """
     user_attachments = build_web_agent_input_attachments(
         images=command.images,
         files=command.files,
@@ -1420,7 +1524,9 @@ def _build_traditional_web_agent_stream(
         )
 
     async def event_generator() -> AsyncIterator[dict[str, Any]]:
-        """等待传统消息结果并投影为传输无关事件。"""
+        """
+        等待传统消息结果并投影为传输无关事件。
+        """
         yield {"type": "start", "session_id": session_id}
         collection_task = asyncio.create_task(
             collect_web_agent_traditional_events(
@@ -1453,7 +1559,9 @@ def _build_traditional_web_agent_stream(
         display_messages.append(build_web_agent_display_message_from_events(events))
 
         async def save_display_snapshot() -> None:
-            """后台保存传统消息展示快照，不阻塞事件流终态。"""
+            """
+            后台保存传统消息展示快照，不阻塞事件流终态。
+            """
             try:
                 await save_web_agent_display_snapshot(
                     session_id=session_id,
@@ -1486,7 +1594,9 @@ async def build_web_agent_stream(
     service: Optional[AgentChatService] = None,
     persistence: Optional[AgentChatPersistenceService] = None,
 ) -> WebAgentStreamResult:
-    """编排 WebAgent 会话、传统消息、音频输入、事件投影与展示持久化。"""
+    """
+    编排 WebAgent 会话、传统消息、音频输入、事件投影与展示持久化。
+    """
     prompt = command.text.strip()
     display_prompt = (command.display_text or command.text).strip()
     service = service or get_configured_agent_chat_service()

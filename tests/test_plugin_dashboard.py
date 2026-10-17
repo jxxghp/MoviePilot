@@ -1,3 +1,7 @@
+"""
+验证插件仪表盘数据读取与响应结构。
+"""
+
 from types import SimpleNamespace
 from typing import Any, Iterator
 
@@ -10,7 +14,9 @@ from app.runtime.extensions.plugin.manager import PluginManager
 
 @pytest.fixture
 def plugin_manager() -> Iterator[PluginManager]:
-    """构造隔离的插件管理器实例，避免单例状态污染其它用例。"""
+    """
+    构造隔离的插件管理器实例，避免单例状态污染其它用例。
+    """
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
     manager = PluginManager()
     yield manager
@@ -18,7 +24,9 @@ def plugin_manager() -> Iterator[PluginManager]:
 
 
 def _plugin_with_dashboard(dashboard: Any) -> SimpleNamespace:
-    """构造仅包含仪表板接口的插件实例。"""
+    """
+    构造仅包含仪表板接口的插件实例。
+    """
     return SimpleNamespace(
         plugin_name="演示插件",
         get_render_mode=lambda: ("vue", "dist/assets"),
@@ -27,7 +35,9 @@ def _plugin_with_dashboard(dashboard: Any) -> SimpleNamespace:
 
 
 def test_plugin_dashboard_keeps_vue_elements_none(plugin_manager: PluginManager) -> None:
-    """Vue 仪表板的 elements=None 应原样返回给前端渲染远程组件。"""
+    """
+    Vue 仪表板的 elements=None 应原样返回给前端渲染远程组件。
+    """
     plugin_manager.running_plugins["DemoPlugin"] = _plugin_with_dashboard(
         (
             {"cols": 12},
@@ -46,14 +56,18 @@ def test_plugin_dashboard_keeps_vue_elements_none(plugin_manager: PluginManager)
 
 
 def test_plugin_dashboard_returns_none_when_plugin_has_no_dashboard(plugin_manager: PluginManager) -> None:
-    """插件声明当前无仪表板时应返回 None，而不是触发解包异常。"""
+    """
+    插件声明当前无仪表板时应返回 None，而不是触发解包异常。
+    """
     plugin_manager.running_plugins["DemoPlugin"] = _plugin_with_dashboard(None)
 
     assert plugin_manager.get_plugin_dashboard("DemoPlugin", "missing") is None
 
 
 def test_plugin_dashboard_rejects_invalid_dashboard_shape(plugin_manager: PluginManager) -> None:
-    """非空但不符合三元组契约的仪表板数据应返回服务端错误。"""
+    """
+    非空但不符合三元组契约的仪表板数据应返回服务端错误。
+    """
     plugin_manager.running_plugins["DemoPlugin"] = _plugin_with_dashboard(
         {"cols": {}, "attrs": {}, "elements": []}
     )

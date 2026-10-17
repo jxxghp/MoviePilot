@@ -1,4 +1,6 @@
-"""搜索页快照 Alembic 在旧库和基础建表路径上的可逆性。"""
+"""
+搜索页快照 Alembic 在旧库和基础建表路径上的可逆性。
+"""
 
 import importlib
 
@@ -8,6 +10,9 @@ from alembic.operations import Operations
 
 
 def test_search_session_migration_is_idempotent_and_reversible(monkeypatch):
+    """
+    搜索检查点迁移可重复执行，并支持保留预期结构的回退。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         migration = importlib.import_module("database.versions.d9e2a6b4c803_3_1_2")

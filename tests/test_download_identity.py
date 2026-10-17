@@ -1,4 +1,6 @@
-"""真实种子与磁力的 v1/v2 下载身份回归。"""
+"""
+真实种子与磁力的 v1/v2 下载身份回归。
+"""
 
 import base64
 import hashlib
@@ -11,7 +13,9 @@ from app.domain.torrent import download_hashes
 
 @pytest.mark.parametrize("version", ["v1", "v2", "hybrid"])
 def test_download_hashes_preserves_binary_info_identity(version):
-    """v2 二进制 pieces root 不能因字符串解码替换而改变真实哈希。"""
+    """
+    v2 二进制 pieces root 不能因字符串解码替换而改变真实哈希。
+    """
     info = {"name": "Show", "piece length": 16384}
     if version in {"v1", "hybrid"}:
         info.update({"length": 1, "pieces": b"\xff" * 20})
@@ -32,7 +36,9 @@ def test_download_hashes_preserves_binary_info_identity(version):
 
 
 def test_download_hashes_reads_hex_base32_and_v2_magnets():
-    """磁力中的 v1 十六进制/base32 与 v2 multihash 均保持精确身份。"""
+    """
+    磁力中的 v1 十六进制/base32 与 v2 multihash 均保持精确身份。
+    """
     v1 = "ab" * 20
     v2 = "cd" * 32
     base32 = base64.b32encode(bytes.fromhex(v1)).decode()
@@ -49,5 +55,7 @@ def test_download_hashes_reads_hex_base32_and_v2_magnets():
     "magnet:?xt=urn:btih:invalid", "magnet:?xt=urn:btmh:1220abcd", "https://tracker.invalid/file",
 ])
 def test_download_hashes_rejects_unconfirmed_identity(content):
-    """格式无效或缺少身份时不得生成名称/大小兜底身份。"""
+    """
+    格式无效或缺少身份时不得生成名称/大小兜底身份。
+    """
     assert not download_hashes(content)

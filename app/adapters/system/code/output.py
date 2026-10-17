@@ -1,4 +1,6 @@
-"""按字节预算保存 Python 输出，超长结果保留可继续读取的文件。"""
+"""
+按字节预算保存 Python 输出，超长结果保留可继续读取的文件。
+"""
 
 import hashlib
 import os
@@ -6,26 +8,37 @@ import stat
 from pathlib import Path
 from typing import Any
 
+# 标准输出内联预览最多保留的字节数。
 STDOUT_BYTES = 50_000
+# 标准错误内存缓冲最多保留的字节数。
 STDERR_BYTES = 10_000
+# 标准输出落盘内容的最大字节数，避免大输出无限占用磁盘。
 SPILL_BYTES = 5_000_000
 
 
 class OutputBuffer:
-    """持续排空进程管道，同时把宿主内存限制在固定字节预算内。"""
+    """
+    持续排空进程管道，同时把宿主内存限制在固定字节预算内。
+    """
 
     def __init__(self, limit: int) -> None:
-        """容量独立于子进程总输出量，保留总字节数以报告缺失。"""
+        """
+        容量独立于子进程总输出量，保留总字节数以报告缺失。
+        """
         self.limit, self.total = limit, 0
         self.data = bytearray()
 
     def append(self, data: bytes) -> None:
-        """持续消费超限分片，避免管道堵塞导致正常 cell 无法结束。"""
+        """
+        持续消费超限分片，避免管道堵塞导致正常 cell 无法结束。
+        """
         self.total += len(data)
         self.data.extend(data[:max(0, self.limit - len(self.data))])
 
     def drain(self) -> tuple[str, int]:
-        """归还本次捕获和总量，跨 cell 的输出不得累加为当前结果。"""
+        """
+        归还本次捕获和总量，跨 cell 的输出不得累加为当前结果。
+        """
         text, total = self.data.decode('utf-8', errors='replace'), self.total
         self.data.clear()
         self.total = 0
@@ -33,7 +46,9 @@ class OutputBuffer:
 
 
 def read_cell_stdout(payload: dict[str, Any], directory: Path) -> str:
-    """只续读宿主确定名称的当前 cell spill，拒绝跟随子进程返回的任意路径或链接。"""
+    """
+    只续读宿主确定名称的当前 cell spill，拒绝跟随子进程返回的任意路径或链接。
+    """
     text = str(payload.get('stdout') or '')
     if not payload.get('stdout_clipped') or not payload.get('stdout_spill_path'):
         return text
@@ -46,7 +61,9 @@ def read_cell_stdout(payload: dict[str, Any], directory: Path) -> str:
 
 
 def save_stdout(raw: bytes, directory: Path) -> Path:
-    """摘要文件仅复用内容一致的普通文件，既有链接或碰撞不能伪造当前回执。"""
+    """
+    摘要文件仅复用内容一致的普通文件，既有链接或碰撞不能伪造当前回执。
+    """
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
     os.chmod(directory, 0o700)
     path = directory / f'stdout-{hashlib.sha256(raw).hexdigest()}.txt'
@@ -64,7 +81,9 @@ def save_stdout(raw: bytes, directory: Path) -> Path:
 
 
 def project_stdout(text: str, directory: Path) -> tuple[str, dict[str, object]]:
-    """50KB 内联按40%头/60%尾截取，最多5MB正文以摘要名称去重保存。"""
+    """
+    50KB 内联按40%头/60%尾截取，最多5MB正文以摘要名称去重保存。
+    """
     raw = text.encode('utf-8', errors='replace')
     captured = min(len(raw), STDOUT_BYTES)
     metadata: dict[str, object] = {

@@ -6,246 +6,246 @@ Subscription creation, search, refresh, sharing, following, history, files, and 
 
 ### `subscription.add`
 `POST /api/v1/subscribe/`; policy effect: `reversible_write`.
-Purpose: Create one movie, TV, or music subscription.
+Purpose: 创建一个电影、电视剧或音乐订阅。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
-- `body`: `audio_format` (string|null): Requested or recorded audio container or codec, such as FLAC or MP3.; `audio_quality` (string|null): Subscription audio-quality rule, such as hires, lossless, or lossy.; `backdrop` (string|null): Backdrop image URL stored with the media or subscription.; `best_version` (integer|null): Enable normal best-version upgrading when set to 1.; `best_version_full` (integer|null): Enable full best-version upgrading when set to 1.; `classification_policy_revision` (integer|null): Policy revision that produced the persisted classification snapshot.; `classification_rule_id` (string|null): Stable rule ID that selected the persisted classification category.; `classification_source` (string|null): Selection source recorded with the persisted classification snapshot.; `completed_episode` (integer|null): Highest episode number already completed for the subscription.; `completed_tracks` (integer|null): Number of distinct album tracks accepted for the subscription so far.; `current_audio_format` (string|null): Audio format of the best version currently held.; `current_bit_depth` (integer|null): Bit depth of the best version currently held.; `current_bitrate` (integer|null): Bitrate of the best version currently held.; `current_priority` (integer|null): Calculated priority of the best version currently held.; `current_sample_rate` (integer|null): Sample rate of the best version currently held.; `custom_words` (string|null): Custom recognition or rename words applied to this media workflow.; `date` (string|null): Record creation or completion timestamp used by the history item.; `description` (string|null): Human-readable media, torrent, or subscription description.; `downloader` (string|null): Configured downloader instance name.; `effect` (string|null): Video or release-effect filter expression used by the subscription.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episode_priority` (object|null): Per-episode best-version priority state.; `exclude` (string|null): Regular expression or filter expression that rejects matching releases.; `execution_status` (SubscriptionExecutionStatus|null): Current subscription execution status returned with the subscription snapshot.; `filter` (string|null): Named filter rule or rule expression applied to this site or subscription.; `filter_groups` (array<string>|null): Ordered filter-rule group names applied to the subscription.; `id` (integer|null): Persistent database identifier of the supplied record.; `include` (string|null): Regular expression or filter expression that a release must match.; `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `lack_episode` (integer|null; default `0`): Number of episodes still missing from the subscription.; `last_search` (string|null): Read-only UTC timestamp of the most recent subscription search attempt.; `last_update` (string|null): Timestamp of the subscription's most recent update.; `media_category` (string|null): MoviePilot library category assigned to the media.; `media_category_id` (string|null): Stable classification category ID; preserve it separately from the current category path snapshot.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_bit_depth` (integer|null): Minimum acceptable audio bit depth in bits.; `min_bitrate` (integer|null): Minimum acceptable audio bitrate in bits per second.; `min_sample_rate` (integer|null): Minimum acceptable audio sample rate in hertz.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `note` (array<integer>|null): Structured auxiliary metadata stored with the record.; `poster` (string|null): Poster image URL stored with the media or subscription.; `quality` (string|null): Video or release quality filter expression.; `resolution` (string|null): Video resolution filter expression, such as 1080p or 2160p.; `save_path` (string|null): Configured downloader-side save path, or the exact name (alias) of a configured download directory, for the download or subscription.; `search_imdbid` (integer|null; default `0`): Use IMDb identity during subscription search when set to 1.; `search_interval` (integer|null): Scheduled search interval in whole hours (1-8760); null uses the system interval.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `sites` (array<integer>|null): Exact site IDs included in the search or subscription scope.; `start_episode` (integer|null; default `0`): First episode number requested by the subscription.; `state` (string|null): Current site, subscription, marketplace, or transfer state filter.; `total_episode` (integer|null; default `0`): Expected total episode count for the subscription.; `total_tracks` (integer|null): Expected or recorded track count for a music item.; `type` (string|null): MoviePilot media or storage item type required by the selected operation.; `username` (string|null): MoviePilot or site username required by the selected operation.; `vote` (number|null; default `0.0`): Media vote average stored with the subscription.; `year` (string|null): Release or premiere year used to disambiguate the media title.
+- `body`: `audio_format` (string|null): 音频格式正则，如 FLAC|ALAC; `audio_quality` (string|null): 音乐音质等级，可用 | 组合 hires/lossless/lossy; `backdrop` (string|null): 背景图; `best_version` (integer|null): 是否洗版; `best_version_full` (integer|null): 是否只洗全集整包; `classification_policy_revision` (integer|null): 历史执行时分类策略版本，活动订阅中为空; `classification_rule_id` (string|null): 历史命中的分类规则标识，活动订阅中为空; `classification_source` (string|null): 历史最终分类来源，活动订阅中为空; `completed_episode` (integer|null): 已完成集数; `completed_tracks` (integer|null): 已累计下载曲目数，仅由后端根据专辑音轨事实派生; `current_audio_format` (string|null): 当前音乐版本格式; `current_bit_depth` (integer|null): 当前音乐版本位深（bit）; `current_bitrate` (integer|null): 当前音乐版本码率（bps）; `current_priority` (integer|null): 当前优先级; `current_sample_rate` (integer|null): 当前音乐版本采样率（Hz）; `custom_words` (string|null): 自定义识别词; `date` (string|null): 时间; `description` (string|null): 描述; `downloader` (string|null): 下载器; `effect` (string|null): 特效; `episode_group` (string|null): 剧集组; `episode_priority` (object|null): 洗版时已下载剧集的优先级状态; `exclude` (string|null): 排除; `execution_status` (SubscriptionExecutionStatus|null): 当前搜索或下载执行状态，只用于响应投影; `filter` (string|null): 过滤规则; `filter_groups` (array<string>|null): 过滤规则组; `id` (integer|null): 记录标识; `include` (string|null): 包含; `keyword` (string|null): 搜索关键字; `lack_episode` (integer|null; default `0`): 缺失集数; `last_search` (string|null): 最近一次主动搜索开始时间，仅供读取; `last_update` (string|null): 最后更新时间; `media_category` (string|null): 自定义媒体类别兼容路径快照; `media_category_id` (string|null): 自定义媒体类别稳定标识; `media_id` (string|null): 数据源原生 ID; `media_source` (MediaSource|null): 媒体数据源; `min_bit_depth` (integer|null): 最低位深（bit）; `min_bitrate` (integer|null): 最低码率（bps）; `min_sample_rate` (integer|null): 最低采样率（Hz）; `music_type` (string|null): 音乐实体类型：recording 单曲、album 专辑; `name` (string|null): 订阅名称; `note` (array<integer>|null): 附加信息; `poster` (string|null): 海报; `quality` (string|null): 质量; `resolution` (string|null): 分辨率; `save_path` (string|null): 保存路径; `search_imdbid` (integer|null; default `0`): 是否使用 imdbid 搜索; `search_interval` (integer|null): 定时搜索间隔（小时）；空值跟随系统设置; `season` (integer|null): 季号; `sites` (array<integer>|null): 订阅站点; `start_episode` (integer|null; default `0`): 开始集数; `state` (string|null): 状态：N-新建， R-订阅中; `total_episode` (integer|null; default `0`): 总集数; `total_tracks` (integer|null): 专辑预期总曲目数; `type` (string|null): 订阅类型 电影/电视剧; `username` (string|null): 订阅用户; `vote` (number|null; default `0.0`): 评分; `year` (string|null): 媒体发行年份
 
 ### `subscription.delete`
 `DELETE /api/v1/subscribe/{subscribe_id}`; policy effect: `destructive_write`.
-Purpose: Delete one active subscription.
+Purpose: 删除一个当前订阅。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `subscribe_id*` (integer): Persistent subscription ID returned by subscription.list.
+- `path_params`: `subscribe_id*` (integer): subscription.list 返回的持久化订阅标识。
 - `query`: none
 - `body`: none
 
 ### `subscription.delete_by_media`
 `DELETE /api/v1/subscribe/media/{media_id}`; policy effect: `destructive_write`.
-Purpose: Delete accessible subscriptions matching one canonical media identity.
+Purpose: 删除当前用户可访问且匹配规范媒体身份的订阅。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `query`: `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.
+- `path_params`: `media_id*` (string): 来源原生媒体标识，始终与搜索返回的精确 media_source 配对。
+- `query`: `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `music_type` (string|null): 音乐身份层级：按操作支持范围选择 recording、album 或 artist。; `season` (integer|null): 媒体、搜索、订阅或整理操作使用的季号。
 - `body`: none
 
 ### `subscription.execution.cancel`
 `PUT /api/v1/subscribe/execution/batches/{batch_id}/cancel`; policy effect: `external_side_effect`.
-Purpose: Request cancellation of one durable subscription-search batch before its download side-effect boundary.
+Purpose: 请求取消一个尚未越过下载副作用边界的持久化订阅搜索批次。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `batch_id*` (string): Stable subscription search batch identifier.
+- `path_params`: `batch_id*` (string): 稳定的订阅搜索批次标识。
 - `query`: none
 - `body`: none
 
 ### `subscription.execution.get`
 `GET /api/v1/subscribe/execution/batches/{batch_id}`; policy effect: `safe_read`.
-Purpose: Read one durable subscription-search batch visible to the current user.
+Purpose: 读取当前用户可见的一个持久化订阅搜索批次。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `batch_id*` (string): Stable subscription search batch identifier.
+- `path_params`: `batch_id*` (string): 稳定的订阅搜索批次标识。
 - `query`: none
 - `body`: none
 
 ### `subscription.execution.list`
 `GET /api/v1/subscribe/execution/batches`; policy effect: `safe_read`.
-Purpose: List recent durable subscription-search batches visible to the current user.
+Purpose: 列出当前用户可见的近期持久化订阅搜索批次。
 Identity scope: `bound_user`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
-- `query`: `limit` (integer; default `10`): Maximum number of recent subscription-search batches to return.
+- `query`: `limit` (integer; default `10`): 最多返回的近期订阅搜索批次数。
 - `body`: none
 
 ### `subscription.files`
 `GET /api/v1/subscribe/files/{subscribe_id}`; policy effect: `safe_read`.
-Purpose: Read local library and transfer-file coverage for one accessible subscription.
+Purpose: 读取可访问订阅的本地媒体库及整理文件覆盖情况。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `subscribe_id*` (integer): Persistent subscription ID returned by subscription.list.
+- `path_params`: `subscribe_id*` (integer): subscription.list 返回的持久化订阅标识。
 - `query`: none
 - `body`: none
 
 ### `subscription.find`
 `GET /api/v1/subscribe/media/{media_id}`; policy effect: `safe_read`.
-Purpose: Find one accessible subscription by canonical media identity and optional season. For movies and TV, if exact identity misses and mtype/title are supplied, match across sources by type, normalized title, optional season, and year. An exact year ranks first; a subscription with no year may match when the card has a year, while a card with no year only matches a subscription with no year. Music uses exact identity only.
+Purpose: 按规范媒体身份和可选季查找一个可访问订阅。 For movies and TV, if exact identity misses and mtype/title are supplied, match across sources by type, normalized title, optional season, and year. An exact year ranks first; a subscription with no year may match when the card has a year, while a card with no year only matches a subscription with no year. Music uses exact identity only.
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `query`: `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `mtype` (MediaType|null): MoviePilot media type or subscription-history category required by the operation.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `year` (string|null): Release or premiere year used to disambiguate the media title.
+- `path_params`: `media_id*` (string): 来源原生媒体标识，始终与搜索返回的精确 media_source 配对。
+- `query`: `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `mtype` (MediaType|null): 操作要求的媒体类型或订阅历史分类。; `music_type` (string|null): 音乐身份层级：按操作支持范围选择 recording、album 或 artist。; `season` (integer|null): 媒体、搜索、订阅或整理操作使用的季号。; `title` (string|null): 操作使用的媒体、种子、订阅或历史标题。; `year` (string|null): 用于区分同名媒体的发行或首映年份。
 - `body`: none
 
 ### `subscription.follow.add`
 `POST /api/v1/subscribe/follow`; policy effect: `reversible_write`.
-Purpose: Follow one subscription-sharing user by exact share user ID.
+Purpose: 按精确分享用户标识关注一个订阅分享用户。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
-- `query`: `share_uid` (string|null): Exact MoviePilot Server sharing-user ID to follow or unfollow.
+- `query`: `share_uid` (string|null): 需要关注或取消关注的精确 MoviePilot Server 分享用户标识。
 - `body`: none
 
 ### `subscription.follow.delete`
 `DELETE /api/v1/subscribe/follow`; policy effect: `reversible_write`.
-Purpose: Stop following one subscription-sharing user by exact share user ID.
+Purpose: 按精确分享用户标识取消关注一个订阅分享用户。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
-- `query`: `share_uid` (string|null): Exact MoviePilot Server sharing-user ID to follow or unfollow.
+- `query`: `share_uid` (string|null): 需要关注或取消关注的精确 MoviePilot Server 分享用户标识。
 - `body`: none
 
 ### `subscription.follow.list`
 `GET /api/v1/subscribe/follow`; policy effect: `safe_read`.
-Purpose: List subscription-sharing user IDs followed by the current user.
+Purpose: 列出当前用户关注的订阅分享用户标识。
 Identity scope: `bound_user`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
-- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。
 - `body`: none
 
 ### `subscription.fork`
 `POST /api/v1/subscribe/fork`; policy effect: `external_side_effect`.
-Purpose: Create a local subscription from one shared subscription definition.
+Purpose: 根据共享订阅定义创建一个本地订阅。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
-- `body`: `audio_format` (string|null): Requested or recorded audio container or codec, such as FLAC or MP3.; `audio_quality` (string|null): Subscription audio-quality rule, such as hires, lossless, or lossy.; `backdrop` (string|null): Backdrop image URL stored with the media or subscription.; `count` (integer|null; default `0`): Maximum number of records to return on the requested page.; `custom_words` (string|null): Custom recognition or rename words applied to this media workflow.; `date` (string|null): Record creation or completion timestamp used by the history item.; `description` (string|null): Human-readable media, torrent, or subscription description.; `effect` (string|null): Video or release-effect filter expression used by the subscription.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `exclude` (string|null): Regular expression or filter expression that rejects matching releases.; `id` (integer|null): Persistent database identifier of the supplied record.; `include` (string|null): Regular expression or filter expression that a release must match.; `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `media_category` (string|null): MoviePilot library category assigned to the media.; `media_category_id` (string|null): Stable classification category ID; preserve it separately from the current category path snapshot.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_bit_depth` (integer|null): Minimum acceptable audio bit depth in bits.; `min_bitrate` (integer|null): Minimum acceptable audio bitrate in bits per second.; `min_sample_rate` (integer|null): Minimum acceptable audio sample rate in hertz.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `poster` (string|null): Poster image URL stored with the media or subscription.; `quality` (string|null): Video or release quality filter expression.; `resolution` (string|null): Video resolution filter expression, such as 1080p or 2160p.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `share_comment` (string|null): Optional explanatory comment published with a shared item.; `share_title` (string|null): Public title used when publishing a subscription or workflow.; `share_uid` (string|null): Exact MoviePilot Server sharing-user ID to follow or unfollow.; `share_user` (string|null): Public contributor name used when publishing a subscription or workflow.; `subscribe_id` (integer|null): Persistent subscription ID returned by subscription.list.; `total_episode` (integer|null; default `0`): Expected total episode count for the subscription.; `total_tracks` (integer|null): Expected or recorded track count for a music item.; `type` (string|null): MoviePilot media or storage item type required by the selected operation.; `vote` (number|null; default `0.0`): Media vote average stored with the subscription.; `year` (string|null): Release or premiere year used to disambiguate the media title.
+- `body`: `audio_format` (string|null): 音频格式; `audio_quality` (string|null): 音乐音质等级; `backdrop` (string|null): 背景图; `count` (integer|null; default `0`): 复用人次; `custom_words` (string|null): 自定义识别词; `date` (string|null): 时间; `description` (string|null): 描述; `effect` (string|null): 特效; `episode_group` (string|null): 自定义剧集组; `exclude` (string|null): 排除; `id` (integer|null): 分享ID; `include` (string|null): 包含; `keyword` (string|null): 搜索关键字; `media_category` (string|null): 自定义媒体类别兼容路径快照; `media_category_id` (string|null): 自定义媒体类别稳定标识; `media_id` (string|null): 数据源原生 ID; `media_source` (MediaSource|null): 媒体数据源; `min_bit_depth` (integer|null): 最低位深（bit）; `min_bitrate` (integer|null): 最低码率（bps）; `min_sample_rate` (integer|null): 最低采样率（Hz）; `music_type` (string|null): 音乐实体类型：recording 单曲、album 专辑; `name` (string|null): 订阅名称; `poster` (string|null): 海报; `quality` (string|null): 质量; `resolution` (string|null): 分辨率; `season` (integer|null): 季号; `share_comment` (string|null): 分享说明; `share_title` (string|null): 分享标题; `share_uid` (string|null): 分享人唯一ID; `share_user` (string|null): 分享人; `subscribe_id` (integer|null): 订阅ID; `total_episode` (integer|null; default `0`): 总集数; `total_tracks` (integer|null): 专辑预期总曲目数; `type` (string|null): 订阅类型 电影/电视剧; `vote` (number|null; default `0.0`): 评分; `year` (string|null): 媒体发行年份
 
 ### `subscription.get`
 `GET /api/v1/subscribe/{subscribe_id}`; policy effect: `safe_read`.
-Purpose: Read one accessible subscription by persistent subscription ID.
+Purpose: 按持久化订阅标识读取一个可访问订阅。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `subscribe_id*` (integer): Persistent subscription ID returned by subscription.list.
+- `path_params`: `subscribe_id*` (integer): subscription.list 返回的持久化订阅标识。
 - `query`: none
 - `body`: none
 
 ### `subscription.history`
 `GET /api/v1/subscribe/history/{mtype}`; policy effect: `safe_read`.
-Purpose: List completed or archived subscription records.
+Purpose: 列出已完成或已归档的订阅记录。
 Identity scope: `bound_user`; required role: `user`.
 - `response`: `data` remains a list and the endpoint's documented pagination or limit defaults remain in effect. `collection.result_count` reports the returned items and `collection.total_count` reports the exact total. For a count-only request, use the smallest valid page and read that metadata instead of querying the database after item truncation.
-- `path_params`: `mtype*` (string): MoviePilot media type or subscription-history category required by the operation.
-- `query`: `count` (integer|null; default `30`): Maximum number of records to return on the requested page.; `page` (integer|null; default `1`): One-based result page number.
+- `path_params`: `mtype*` (string): 操作要求的媒体类型或订阅历史分类。
+- `query`: `count` (integer|null; default `30`): 当前页最多返回的记录数。; `page` (integer|null; default `1`): 从 1 开始的结果页码。
 - `body`: none
 
 ### `subscription.history.delete`
 `DELETE /api/v1/subscribe/history/{history_id}`; policy effect: `destructive_write`.
-Purpose: Delete one accessible subscription-history record.
+Purpose: 删除一条可访问的订阅历史记录。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `history_id*` (integer): Persistent transfer- or subscription-history ID returned by a history operation.
+- `path_params`: `history_id*` (integer): 历史查询操作返回的持久化整理或订阅历史标识。
 - `query`: none
 - `body`: none
 
 ### `subscription.list`
 `GET /api/v1/subscribe/`; policy effect: `safe_read`.
-Purpose: List active subscriptions.
+Purpose: 列出当前订阅。
 Identity scope: `bound_user`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
-- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。
 - `body`: none
 
 ### `subscription.metadata.refresh`
 `POST /api/v1/subscribe/check`; policy effect: `external_side_effect`.
-Purpose: Start a system-wide refresh of subscription TMDB metadata.
+Purpose: 启动全系统订阅 TMDB 元数据刷新。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
-- `query`: `type` (MediaType|null): MoviePilot media or storage item type required by the selected operation.
+- `query`: `type` (MediaType|null): 仅处理指定媒体类型的订阅；省略时处理全部类型
 - `body`: none
 
 ### `subscription.popular`
 `GET /api/v1/subscribe/popular`; policy effect: `safe_read`.
-Purpose: List globally popular subscriptions with filters and pagination.
+Purpose: 按条件和分页读取全站热门订阅。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
-- `query`: `count` (integer|null; default `30`): Maximum number of records to return on the requested page.; `genre_id` (integer|null): Genre identifier used to filter shared or popular subscriptions.; `max_rating` (number|null): Maximum rating used to filter shared or popular subscriptions.; `min_rating` (number|null): Minimum rating used to filter shared or popular subscriptions.; `min_sub` (integer|null): Minimum subscriber count used to filter popular subscriptions.; `page` (integer|null; default `1`): One-based result page number.; `sort_type` (string|null): Ascending or descending order used by shared or popular subscriptions.; `stype*` (string): Popular-subscription category requested by the endpoint.
+- `query`: `count` (integer|null; default `30`): 当前页最多返回的记录数。; `genre_id` (integer|null): 筛选共享或热门订阅的题材标识。; `max_rating` (number|null): 筛选共享或热门订阅的最高评分。; `min_rating` (number|null): 筛选共享或热门订阅的最低评分。; `min_sub` (integer|null): 筛选热门订阅的最低订阅人数。; `page` (integer|null; default `1`): 从 1 开始的结果页码。; `sort_type` (string|null): 共享或热门订阅使用的升序或降序方式。; `stype*` (string): 接口请求的热门订阅分类。
 - `body`: none
 
 ### `subscription.refresh`
 `POST /api/v1/subscribe/refresh`; policy effect: `external_side_effect`.
-Purpose: Start the configured system-wide subscription refresh job.
+Purpose: 启动已配置的全系统订阅刷新任务。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
-- `query`: `type` (MediaType|null): MoviePilot media or storage item type required by the selected operation.
+- `query`: `type` (MediaType|null): 仅处理指定媒体类型的订阅；省略时处理全部类型
 - `body`: none
 
 ### `subscription.reset`
 `POST /api/v1/subscribe/reset/{subid}`; policy effect: `reversible_write`.
-Purpose: Reset one accessible subscription so it can be processed again.
+Purpose: 重置一个可访问订阅，使其可以再次处理。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `subid*` (integer): Persistent subscription ID whose status or processing state will change.
+- `path_params`: `subid*` (integer): 需要改变状态或处理进度的持久化订阅标识。
 - `query`: none
 - `body`: none
 
 ### `subscription.search`
 `POST /api/v1/subscribe/search/{subscribe_id}`; policy effect: `external_side_effect`.
-Purpose: Run an immediate search for one existing subscription.
+Purpose: 立即搜索一个已有订阅。
 Identity scope: `bound_user`; required role: `user`.
 An explicit search can search and download once for a paused subscription without enabling it.
 State `S` stops automatic searches, including tasks already queued or waiting for site recovery;
 cancel the execution batch to stop an explicit search. Already submitted downloads remain active.
-- `path_params`: `subscribe_id*` (integer): Persistent subscription ID returned by subscription.list.
-- `query`: `type` (MediaType|null): MoviePilot media or storage item type required by the selected operation.
+- `path_params`: `subscribe_id*` (integer): subscription.list 返回的持久化订阅标识。
+- `query`: `type` (MediaType|null): 仅处理指定媒体类型的订阅；省略时处理全部类型
 - `body`: none
 
 ### `subscription.search_all`
 `POST /api/v1/subscribe/search`; policy effect: `external_side_effect`.
-Purpose: Start immediate searches for all subscriptions accessible to the current user.
+Purpose: 立即搜索当前用户可访问的全部订阅。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
-- `query`: `type` (MediaType|null): MoviePilot media or storage item type required by the selected operation.
+- `query`: `type` (MediaType|null): 仅处理指定媒体类型的订阅；省略时处理全部类型
 - `body`: none
 
 ### `subscription.share`
 `POST /api/v1/subscribe/share`; policy effect: `external_side_effect`.
-Purpose: Publish one accessible subscription to the MoviePilot sharing service.
+Purpose: 把一个可访问订阅发布到 MoviePilot 分享服务。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
-- `body`: `audio_format` (string|null): Requested or recorded audio container or codec, such as FLAC or MP3.; `audio_quality` (string|null): Subscription audio-quality rule, such as hires, lossless, or lossy.; `backdrop` (string|null): Backdrop image URL stored with the media or subscription.; `count` (integer|null; default `0`): Maximum number of records to return on the requested page.; `custom_words` (string|null): Custom recognition or rename words applied to this media workflow.; `date` (string|null): Record creation or completion timestamp used by the history item.; `description` (string|null): Human-readable media, torrent, or subscription description.; `effect` (string|null): Video or release-effect filter expression used by the subscription.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `exclude` (string|null): Regular expression or filter expression that rejects matching releases.; `id` (integer|null): Persistent database identifier of the supplied record.; `include` (string|null): Regular expression or filter expression that a release must match.; `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `media_category` (string|null): MoviePilot library category assigned to the media.; `media_category_id` (string|null): Stable classification category ID; preserve it separately from the current category path snapshot.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_bit_depth` (integer|null): Minimum acceptable audio bit depth in bits.; `min_bitrate` (integer|null): Minimum acceptable audio bitrate in bits per second.; `min_sample_rate` (integer|null): Minimum acceptable audio sample rate in hertz.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `poster` (string|null): Poster image URL stored with the media or subscription.; `quality` (string|null): Video or release quality filter expression.; `resolution` (string|null): Video resolution filter expression, such as 1080p or 2160p.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `share_comment` (string|null): Optional explanatory comment published with a shared item.; `share_title` (string|null): Public title used when publishing a subscription or workflow.; `share_uid` (string|null): Exact MoviePilot Server sharing-user ID to follow or unfollow.; `share_user` (string|null): Public contributor name used when publishing a subscription or workflow.; `subscribe_id` (integer|null): Persistent subscription ID returned by subscription.list.; `total_episode` (integer|null; default `0`): Expected total episode count for the subscription.; `total_tracks` (integer|null): Expected or recorded track count for a music item.; `type` (string|null): MoviePilot media or storage item type required by the selected operation.; `vote` (number|null; default `0.0`): Media vote average stored with the subscription.; `year` (string|null): Release or premiere year used to disambiguate the media title.
+- `body`: `audio_format` (string|null): 音频格式; `audio_quality` (string|null): 音乐音质等级; `backdrop` (string|null): 背景图; `count` (integer|null; default `0`): 复用人次; `custom_words` (string|null): 自定义识别词; `date` (string|null): 时间; `description` (string|null): 描述; `effect` (string|null): 特效; `episode_group` (string|null): 自定义剧集组; `exclude` (string|null): 排除; `id` (integer|null): 分享ID; `include` (string|null): 包含; `keyword` (string|null): 搜索关键字; `media_category` (string|null): 自定义媒体类别兼容路径快照; `media_category_id` (string|null): 自定义媒体类别稳定标识; `media_id` (string|null): 数据源原生 ID; `media_source` (MediaSource|null): 媒体数据源; `min_bit_depth` (integer|null): 最低位深（bit）; `min_bitrate` (integer|null): 最低码率（bps）; `min_sample_rate` (integer|null): 最低采样率（Hz）; `music_type` (string|null): 音乐实体类型：recording 单曲、album 专辑; `name` (string|null): 订阅名称; `poster` (string|null): 海报; `quality` (string|null): 质量; `resolution` (string|null): 分辨率; `season` (integer|null): 季号; `share_comment` (string|null): 分享说明; `share_title` (string|null): 分享标题; `share_uid` (string|null): 分享人唯一ID; `share_user` (string|null): 分享人; `subscribe_id` (integer|null): 订阅ID; `total_episode` (integer|null; default `0`): 总集数; `total_tracks` (integer|null): 专辑预期总曲目数; `type` (string|null): 订阅类型 电影/电视剧; `vote` (number|null; default `0.0`): 评分; `year` (string|null): 媒体发行年份
 
 ### `subscription.share.delete`
 `DELETE /api/v1/subscribe/share/{share_id}`; policy effect: `external_side_effect`.
-Purpose: Delete one shared-subscription publication by share ID.
+Purpose: 按分享标识删除一条共享订阅发布记录。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `share_id*` (integer): Persistent MoviePilot Server share ID returned by a share-list operation.
+- `path_params`: `share_id*` (integer): 分享列表操作返回的持久化 MoviePilot Server 分享标识。
 - `query`: none
 - `body`: none
 
 ### `subscription.share.statistics`
 `GET /api/v1/subscribe/share/statistics`; policy effect: `safe_read`.
-Purpose: Read aggregate contribution and reuse counts for subscription sharers.
+Purpose: 读取订阅分享者的贡献与复用次数汇总。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
-- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。
 - `body`: none
 
 ### `subscription.shares`
 `GET /api/v1/subscribe/shares`; policy effect: `safe_read`.
-Purpose: List shared subscriptions with filters and pagination.
+Purpose: 按条件和分页读取共享订阅。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
-- `query`: `count` (integer|null; default `30`): Maximum number of records to return on the requested page.; `genre_id` (integer|null): Genre identifier used to filter shared or popular subscriptions.; `max_rating` (number|null): Maximum rating used to filter shared or popular subscriptions.; `min_rating` (number|null): Minimum rating used to filter shared or popular subscriptions.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `page` (integer|null; default `1`): One-based result page number.; `sort_type` (string|null): Ascending or descending order used by shared or popular subscriptions.
+- `query`: `count` (integer|null; default `30`): 当前页最多返回的记录数。; `genre_id` (integer|null): 筛选共享或热门订阅的题材标识。; `max_rating` (number|null): 筛选共享或热门订阅的最高评分。; `min_rating` (number|null): 筛选共享或热门订阅的最低评分。; `name` (string|null): 站点、存储项目、订阅或规则组的可读名称。; `page` (integer|null; default `1`): 从 1 开始的结果页码。; `sort_type` (string|null): 共享或热门订阅使用的升序或降序方式。
 - `body`: none
 
 ### `subscription.status.update`
 `PUT /api/v1/subscribe/status/{subid}`; policy effect: `reversible_write`.
-Purpose: Set one accessible subscription to running, paused, or stopped state.
+Purpose: 把一个可访问订阅设为运行、暂停或停止。
 Identity scope: `bound_user`; required role: `user`.
-- `path_params`: `subid*` (integer): Persistent subscription ID whose status or processing state will change.
-- `query`: `state*` (string): Current site, subscription, marketplace, or transfer state filter.
+- `path_params`: `subid*` (integer): 需要改变状态或处理进度的持久化订阅标识。
+- `query`: `state*` (string): 站点、订阅、市场或整理的当前状态筛选条件。
 - `body`: none
 
 ### `subscription.update`
 `PUT /api/v1/subscribe/`; policy effect: `reversible_write`.
-Purpose: Update one existing movie, TV, or music subscription.
+Purpose: 更新一个已有电影、电视剧或音乐订阅。
 Identity scope: `bound_user`; required role: `user`.
 - Omitted fields keep their stored values. Send JSON `null` to clear `custom_words`, `keyword`, `save_path`, `episode_group`, `downloader`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, or `audio_format`. Form submissions using `""` for these fields are also accepted as explicit clearing. Nonempty strings are preserved without trimming, and numeric `0` remains a value. Name, type, season, and episode counts retain their existing normalization; submit `media_source` and `media_id` together when changing or clearing media identity.
 - `path_params`: none
 - `query`: none
-- `body`: `audio_format` (string|null): Requested or recorded audio container or codec, such as FLAC or MP3.; `audio_quality` (string|null): Subscription audio-quality rule, such as hires, lossless, or lossy.; `backdrop` (string|null): Backdrop image URL stored with the media or subscription.; `best_version` (integer|null): Enable normal best-version upgrading when set to 1.; `best_version_full` (integer|null): Enable full best-version upgrading when set to 1.; `classification_policy_revision` (integer|null): Policy revision that produced the persisted classification snapshot.; `classification_rule_id` (string|null): Stable rule ID that selected the persisted classification category.; `classification_source` (string|null): Selection source recorded with the persisted classification snapshot.; `completed_episode` (integer|null): Highest episode number already completed for the subscription.; `completed_tracks` (integer|null): Number of distinct album tracks accepted for the subscription so far.; `current_audio_format` (string|null): Audio format of the best version currently held.; `current_bit_depth` (integer|null): Bit depth of the best version currently held.; `current_bitrate` (integer|null): Bitrate of the best version currently held.; `current_priority` (integer|null): Calculated priority of the best version currently held.; `current_sample_rate` (integer|null): Sample rate of the best version currently held.; `custom_words` (string|null): Custom recognition or rename words applied to this media workflow.; `date` (string|null): Record creation or completion timestamp used by the history item.; `description` (string|null): Human-readable media, torrent, or subscription description.; `downloader` (string|null): Configured downloader instance name.; `effect` (string|null): Video or release-effect filter expression used by the subscription.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episode_priority` (object|null): Per-episode best-version priority state.; `exclude` (string|null): Regular expression or filter expression that rejects matching releases.; `execution_status` (SubscriptionExecutionStatus|null): Current subscription execution status returned with the subscription snapshot.; `filter` (string|null): Named filter rule or rule expression applied to this site or subscription.; `filter_groups` (array<string>|null): Ordered filter-rule group names applied to the subscription.; `id` (integer|null): Persistent database identifier of the supplied record.; `include` (string|null): Regular expression or filter expression that a release must match.; `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `lack_episode` (integer|null; default `0`): Number of episodes still missing from the subscription.; `last_search` (string|null): Read-only UTC timestamp of the most recent subscription search attempt.; `last_update` (string|null): Timestamp of the subscription's most recent update.; `media_category` (string|null): MoviePilot library category assigned to the media.; `media_category_id` (string|null): Stable classification category ID; preserve it separately from the current category path snapshot.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_bit_depth` (integer|null): Minimum acceptable audio bit depth in bits.; `min_bitrate` (integer|null): Minimum acceptable audio bitrate in bits per second.; `min_sample_rate` (integer|null): Minimum acceptable audio sample rate in hertz.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `note` (array<integer>|null): Structured auxiliary metadata stored with the record.; `poster` (string|null): Poster image URL stored with the media or subscription.; `quality` (string|null): Video or release quality filter expression.; `resolution` (string|null): Video resolution filter expression, such as 1080p or 2160p.; `save_path` (string|null): Configured downloader-side save path, or the exact name (alias) of a configured download directory, for the download or subscription.; `search_imdbid` (integer|null; default `0`): Use IMDb identity during subscription search when set to 1.; `search_interval` (integer|null): Scheduled search interval in whole hours (1-8760); null uses the system interval.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `sites` (array<integer>|null): Exact site IDs included in the search or subscription scope.; `start_episode` (integer|null; default `0`): First episode number requested by the subscription.; `state` (string|null): Current site, subscription, marketplace, or transfer state filter.; `total_episode` (integer|null; default `0`): Expected total episode count for the subscription.; `total_tracks` (integer|null): Expected or recorded track count for a music item.; `type` (string|null): MoviePilot media or storage item type required by the selected operation.; `username` (string|null): MoviePilot or site username required by the selected operation.; `vote` (number|null; default `0.0`): Media vote average stored with the subscription.; `year` (string|null): Release or premiere year used to disambiguate the media title.
+- `body`: `audio_format` (string|null): 音频格式正则，如 FLAC|ALAC; `audio_quality` (string|null): 音乐音质等级，可用 | 组合 hires/lossless/lossy; `backdrop` (string|null): 背景图; `best_version` (integer|null): 是否洗版; `best_version_full` (integer|null): 是否只洗全集整包; `classification_policy_revision` (integer|null): 历史执行时分类策略版本，活动订阅中为空; `classification_rule_id` (string|null): 历史命中的分类规则标识，活动订阅中为空; `classification_source` (string|null): 历史最终分类来源，活动订阅中为空; `completed_episode` (integer|null): 已完成集数; `completed_tracks` (integer|null): 已累计下载曲目数，仅由后端根据专辑音轨事实派生; `current_audio_format` (string|null): 当前音乐版本格式; `current_bit_depth` (integer|null): 当前音乐版本位深（bit）; `current_bitrate` (integer|null): 当前音乐版本码率（bps）; `current_priority` (integer|null): 当前优先级; `current_sample_rate` (integer|null): 当前音乐版本采样率（Hz）; `custom_words` (string|null): 自定义识别词; `date` (string|null): 时间; `description` (string|null): 描述; `downloader` (string|null): 下载器; `effect` (string|null): 特效; `episode_group` (string|null): 剧集组; `episode_priority` (object|null): 洗版时已下载剧集的优先级状态; `exclude` (string|null): 排除; `execution_status` (SubscriptionExecutionStatus|null): 当前搜索或下载执行状态，只用于响应投影; `filter` (string|null): 过滤规则; `filter_groups` (array<string>|null): 过滤规则组; `id` (integer|null): 记录标识; `include` (string|null): 包含; `keyword` (string|null): 搜索关键字; `lack_episode` (integer|null; default `0`): 缺失集数; `last_search` (string|null): 最近一次主动搜索开始时间，仅供读取; `last_update` (string|null): 最后更新时间; `media_category` (string|null): 自定义媒体类别兼容路径快照; `media_category_id` (string|null): 自定义媒体类别稳定标识; `media_id` (string|null): 数据源原生 ID; `media_source` (MediaSource|null): 媒体数据源; `min_bit_depth` (integer|null): 最低位深（bit）; `min_bitrate` (integer|null): 最低码率（bps）; `min_sample_rate` (integer|null): 最低采样率（Hz）; `music_type` (string|null): 音乐实体类型：recording 单曲、album 专辑; `name` (string|null): 订阅名称; `note` (array<integer>|null): 附加信息; `poster` (string|null): 海报; `quality` (string|null): 质量; `resolution` (string|null): 分辨率; `save_path` (string|null): 保存路径; `search_imdbid` (integer|null; default `0`): 是否使用 imdbid 搜索; `search_interval` (integer|null): 定时搜索间隔（小时）；空值跟随系统设置; `season` (integer|null): 季号; `sites` (array<integer>|null): 订阅站点; `start_episode` (integer|null; default `0`): 开始集数; `state` (string|null): 状态：N-新建， R-订阅中; `total_episode` (integer|null; default `0`): 总集数; `total_tracks` (integer|null): 专辑预期总曲目数; `type` (string|null): 订阅类型 电影/电视剧; `username` (string|null): 订阅用户; `vote` (number|null; default `0.0`): 评分; `year` (string|null): 媒体发行年份
 
 ### `subscription.user.list`
 `GET /api/v1/subscribe/user/{username}`; policy effect: `safe_read`.
-Purpose: List public subscriptions owned by one accessible MoviePilot username.
+Purpose: 列出指定可访问 MoviePilot 用户名下的公开订阅。
 Identity scope: `bound_user`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
-- `path_params`: `username*` (string): MoviePilot or site username required by the selected operation.
-- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
+- `path_params`: `username*` (string): 所选操作要求的 MoviePilot 或站点用户名。
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。
 - `body`: none
 
 ## Body Models
@@ -253,157 +253,157 @@ Identity scope: `bound_user`; required role: `user`.
 This category document is self-contained: the shared models below are included so the Agent does not need a second Skill document before calling the API.
 
 ### `ClassificationFacts`
-Normalized media facts evaluated by the automatic classification policy.
-- `extensions` (object): Additional normalized classification facts supplied by extensions.
-- `field_sources` (object): Source provenance for normalized classification facts.
-- `identity*` (ClassificationIdentityFacts): Stable source-native media identity used by classification facts.
-- `media*` (ClassificationMediaFacts): Media metadata input used for a classification preview.
-- `music` (ClassificationMusicFacts|null): Music-specific normalized facts used by classification rules.
+自动分类策略求值的规范化媒体事实。
+- `extensions` (object): 按数据源命名空间隔离的插件扩展事实
+- `field_sources` (object): 跨来源补充事实到实际 provider 的映射
+- `identity*` (ClassificationIdentityFacts): 分类事实使用的稳定来源原生媒体身份。
+- `media*` (ClassificationMediaFacts): 分类预览使用的媒体元数据输入。
+- `music` (ClassificationMusicFacts|null): 音乐专用事实
 
 ### `ClassificationFactsPreviewInput`
-Normalized facts supplied directly for a classification preview.
-- `facts*` (ClassificationFacts): Normalized media facts to evaluate during a classification preview.
-- `kind` (string=facts; default `facts`): Classification rule or preview-input kind selected by the request.
+直接提供给分类预览的规范化事实。
+- `facts*` (ClassificationFacts): 分类预览时求值的规范化媒体事实。
+- `kind` (string=facts; default `facts`): 预览输入类型
 
 ### `ClassificationIdentityFacts`
-Stable source-native identity used by classification evaluation.
-- `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `media_source*` (string): Metadata source identifier. Preserve the exact value returned with media_id.
+分类求值使用的稳定来源原生身份。
+- `media_id*` (string): 当前数据源原生媒体 ID
+- `media_source*` (string): 当前主身份数据源
 
 ### `ClassificationMediaFacts`
-Normalized movie, TV, or shared media facts used by classification rules.
-- `adult` (boolean|null): Whether the media is marked as adult content.
-- `companies` (array<string>|null): Production companies or studios associated with the media.
-- `content_rating` (string|null): Content rating assigned to the media.
-- `countries` (array<string>|null): Normalized country or region codes used by classification rules.
-- `genre_keys` (array<string>|null): Normalized MoviePilot genre keys used by classification rules.
-- `genre_names` (array<string>|null): Source-provided genre names used as classification facts.
-- `language` (string|null): Normalized media language code used by classification rules.
-- `networks` (array<string>|null): Television networks or streaming platforms associated with the media.
-- `runtime` (integer|null): Persisted workflow runtime metadata used for safe resume.
-- `title` (string|null): Media, torrent, subscription, or history title used by the operation.
-- `type*` (string): MoviePilot media or storage item type required by the selected operation.
-- `year` (integer|null): Release or premiere year used to disambiguate the media title.
+分类规则使用的规范化电影、电视剧或共用媒体事实。
+- `adult` (boolean|null): 是否为成人内容
+- `companies` (array<string>|null): 出品公司或工作室名称
+- `content_rating` (string|null): 内容分级
+- `countries` (array<string>|null): 标准国家或地区代码
+- `genre_keys` (array<string>|null): MoviePilot 规范化类型键
+- `genre_names` (array<string>|null): 数据源提供的类型名称
+- `language` (string|null): 标准语言代码
+- `networks` (array<string>|null): 电视台或播出平台名称
+- `runtime` (integer|null): 影视时长，单位为分钟
+- `title` (string|null): 标准媒体标题
+- `type*` (string): 标准媒体类型
+- `year` (integer|null): 标准发行或首播年份
 
 ### `ClassificationMediaPreviewInput`
-A selected media search result supplied for classification preview.
-- `kind` (string=media; default `media`): Classification rule or preview-input kind selected by the request.
-- `media*` (object): Media metadata input used for a classification preview.
+提供给分类预览的选定媒体搜索结果。
+- `kind` (string=media; default `media`): 预览输入类型
+- `media*` (object): 从媒体搜索结果选择的媒体信息
 
 ### `ClassificationMusicFacts`
-Music-specific facts used by automatic classification rules.
-- `album_type` (string|null): Music album or release-group type used by classification rules.
-- `artist_country` (string|null): Country or region associated with the music artist.
-- `artists` (array<string>|null): Music artist names associated with the classified entity.
-- `entity_type` (string|null): Music entity type used by classification rules.
-- `genres` (array<string>|null): Normalized music genre values used by classification rules.
-- `release_status` (string|null): Music release status used by classification rules.
-- `secondary_types` (array<string>|null): Secondary music release-group types used by classification rules.
-- `tags` (array<string>|null): Comma-separated Douban Music category tags; use only with a Douban Music exploration source.
+自动分类规则使用的音乐专用事实。
+- `album_type` (string|null): 专辑主类型
+- `artist_country` (string|null): 艺术家国家或地区
+- `artists` (array<string>|null): 艺术家名称
+- `entity_type` (string|null): 音乐实体类型
+- `genres` (array<string>|null): 标准化音乐流派
+- `release_status` (string|null): 发行状态
+- `secondary_types` (array<string>|null): 专辑副类型
+- `tags` (array<string>|null): 数据源音乐标签
 
 ### `ClassificationPolicy-Input`
-Complete versioned automatic media-classification policy.
-- `categories` (array<ClassificationCategory>): Complete ordered media-category definitions in the classification policy.
-- `enrichment_mode` (string(primary_only,enrich_missing); default `primary_only`): Metadata enrichment mode used to populate classification facts.
-- `fallbacks` (object): Fallback category or label actions used when no classification rule matches.
-- `field_aliases` (object): Optional aliases mapping source-specific fields to normalized classification fields.
-- `mode` (string=first_match; default `first_match`): Operation mode; music.explore accepts chart or fresh, while transfer history records move, copy, link, or softlink.
-- `revision` (integer; default `0`; minimum `0.0`): Published classification policy revision or expected revision number.
-- `rules` (array<ClassificationRule-Input>): Ordered classification rules evaluated from highest priority to lowest.
-- `schema_version` (integer=2; default `2`): Classification policy schema version expected by the server.
-- `updated_at` (string|null): Timestamp when the persisted object or execution state was last updated.
+完整且带版本的自动媒体分类策略。
+- `categories` (array<ClassificationCategory>): 稳定分类定义列表
+- `enrichment_mode` (string(primary_only,enrich_missing); default `primary_only`): 缺失标准事实的跨来源补充模式
+- `fallbacks` (object): 各媒体类型的兜底分类 ID
+- `field_aliases` (object): 字段值别名到规范值的映射
+- `mode` (string=first_match; default `first_match`): 主分类规则求值模式
+- `revision` (integer; default `0`; minimum `0.0`): 已发布策略修订号
+- `rules` (array<ClassificationRule-Input>): 全局有序规则列表
+- `schema_version` (integer=2; default `2`): 分类策略结构版本
+- `updated_at` (string|null): 策略最后发布时间
 
 ### `FileItem-Input`
-One file or directory returned by a configured storage provider.
-- `basename` (string|null): Base filename without its parent path.
-- `children` (array<FileItem-Input>|null): Child storage items nested below this item.
-- `drive_id` (string|null): Provider-native storage drive identifier.
-- `extension` (string|null): Filename extension, including or excluding the leading dot as returned by storage.
-- `fileid` (string|null): Provider-native storage item identifier.
-- `modify_time` (number|null): Storage item modification timestamp.
-- `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.
-- `parent_fileid` (string|null): Provider-native identifier of the parent storage directory.
-- `path` (string|null; default `/`): Storage or history path represented by this record.
-- `pickcode` (string|null): 115 storage pickcode associated with the item.
-- `size` (integer|null): File or torrent size in bytes.
-- `storage` (string|null; default `local`): Configured storage name or storage type used by the operation.
-- `thumbnail` (string|null): Thumbnail URL returned by the storage provider.
-- `type` (string|null): MoviePilot media or storage item type required by the selected operation.
-- `url` (string|null): Site, storage, or torrent URL represented by this field.
+已配置存储提供方返回的一个文件或目录。
+- `basename` (string|null): 不含扩展名的文件基本名称
+- `children` (array<FileItem-Input>|null): 子节点
+- `drive_id` (string|null): 云盘驱动器标识
+- `extension` (string|null): 文件后缀
+- `fileid` (string|null): 存储服务分配的文件标识
+- `modify_time` (number|null): 文件修改时间的 Unix 时间戳
+- `name` (string|null): 文件名
+- `parent_fileid` (string|null): 父ID
+- `path` (string|null; default `/`): 文件路径
+- `pickcode` (string|null): 115 文件下载提取码
+- `size` (integer|null): 文件大小
+- `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储
+- `thumbnail` (string|null): 缩略图
+- `type` (string|null): 条目类型，dir 表示目录，file 表示文件
+- `url` (string|null): 访问地址
 
 ### `JsonData-Input`
-Arbitrary JSON-compatible auxiliary data.
+兼容 JSON 的任意辅助数据。
 This runtime model has no directly writable fields.
 
 ### `MediaSource`
-Canonical metadata source identifier paired with a source-native media ID.
+与来源原生媒体标识配对的规范元数据来源标识。
 This runtime model has no directly writable fields.
 
 ### `MediaType`
-MoviePilot media type.
+MoviePilot 媒体类型。
 This runtime model has no directly writable fields.
 
 ### `SubscriptionExecutionStatus`
-Subscription refresh execution status and progress summary.
-- `batch_id` (string|null): Stable subscription search batch identifier.
-- `can_cancel` (boolean; default `False`): Whether the current subscription execution can be cancelled.
-- `current_site_id` (integer|null): Configured site ID currently handling the subscription execution.
-- `error` (string|null): Human-readable workflow, provider, or execution error message.
-- `next_run_at` (string|null): Next scheduled subscription search time. Null when no future execution is planned.
-- `phase*` (string): Current phase of a subscription execution.
-- `source` (string|null): Exact metadata or recommendation source selected by the operation.
-- `state*` (string): Current site, subscription, marketplace, or transfer state filter.
-- `task_id` (string|null): Stable durable transfer task ID returned by transfer.manual_reviews.
-- `updated_at*` (string): Timestamp when the persisted object or execution state was last updated.
+订阅刷新执行状态和进度摘要。
+- `batch_id` (string|null): 所属批次标识
+- `can_cancel` (boolean; default `False`): 当前任务是否允许取消
+- `current_site_id` (integer|null): 正在处理的站点标识
+- `error` (string|null): 错误摘要
+- `next_run_at` (string|null): 下次计划执行时间
+- `phase*` (string): 当前执行阶段
+- `source` (string|null): 触发本轮订阅执行的入口或来源
+- `state*` (string): 当前业务状态
+- `task_id` (string|null): 任务标识
+- `updated_at*` (string): 更新时间
 
 ### `TorrentInfo`
-One torrent candidate returned by MoviePilot search.
-- `category` (string|null): MoviePilot media category or filter-group category, depending on the operation.
-- `date_elapsed` (string|null): Human-readable age of the torrent publication date.
-- `description` (string|null): Human-readable media, torrent, or subscription description.
-- `downloadvolumefactor` (number|null): Torrent download-volume multiplier reported by the site.
-- `enclosure` (string|null): Torrent download URL or enclosure supplied by the indexer result.
-- `freedate` (string|null): Torrent freeleech expiration timestamp reported by the site.
-- `freedate_diff` (string|null): Seconds remaining until the torrent freeleech period ends.
-- `grabs` (integer|null; default `0`): Number of completed downloads reported for the torrent.
-- `hit_and_run` (boolean|null; default `False`): Whether the torrent is subject to hit-and-run requirements.
-- `labels` (array<string>|null): Labels attached to the media, classification result, or torrent result.
-- `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.
-- `page_url` (string|null): Public details page for the torrent result.
-- `peers` (integer|null; default `0`): Number of downloading peers reported for the torrent.
-- `pri_order` (integer|null; default `0`): Indexer priority order assigned to the torrent result.
-- `pubdate` (string|null): Torrent publication timestamp.
-- `seeders` (integer|null; default `0`): Minimum seeder expression for a filter rule, or the torrent's seeder count.
-- `site` (integer|null): Source site identifier associated with the torrent result.
-- `site_cookie` (string|null): Site cookie bundled with the torrent result. Treat this value as a secret.
-- `site_downloader` (string|null): Downloader instance selected by the source site.
-- `site_name` (string|null): Human-readable source site name.
-- `site_order` (integer|null; default `0`): Source site's configured search order.
-- `site_proxy` (boolean|null; default `False`): Whether the torrent's source site uses the configured proxy.
-- `site_ua` (string|null): User-Agent associated with the source site.
-- `size` (number|null; default `0.0`): File or torrent size in bytes.
-- `title` (string|null): Media, torrent, subscription, or history title used by the operation.
-- `uploadvolumefactor` (number|null): Torrent upload-volume multiplier reported by the site.
-- `volume_factor` (string|null): Combined upload/download volume-factor label shown for the torrent.
+搜索返回的一个候选种子。
+- `category` (string|null): 种子分类 电影/电视剧/音乐
+- `date_elapsed` (string|null): 已过时间
+- `description` (string|null): 种子副标题
+- `downloadvolumefactor` (number|null): 下载因子
+- `enclosure` (string|null): 种子链接
+- `freedate` (string|null): 免费截止时间
+- `freedate_diff` (string|null): 剩余免费时间
+- `grabs` (integer|null; default `0`): 完成者
+- `hit_and_run` (boolean|null; default `False`): 种子是否存在下载后做种义务
+- `labels` (array<string>|null): 种子标签
+- `media_id` (string|null): 数据源原生 ID
+- `media_source` (MediaSource|null): 种子页面声明的媒体身份
+- `page_url` (string|null): 详情页面
+- `peers` (integer|null; default `0`): 下载者
+- `pri_order` (integer|null; default `0`): 种子优先级
+- `pubdate` (string|null): 发布时间
+- `seeders` (integer|null; default `0`): 做种者
+- `site` (integer|null): 站点ID
+- `site_cookie` (string|null): 站点Cookie
+- `site_downloader` (string|null): 站点下载器
+- `site_name` (string|null): 站点名称
+- `site_order` (integer|null; default `0`): 站点优先级
+- `site_proxy` (boolean|null; default `False`): 站点是否使用代理
+- `site_ua` (string|null): 站点UA
+- `size` (number|null; default `0.0`): 种子大小
+- `title` (string|null): 种子名称
+- `uploadvolumefactor` (number|null): 上传因子
+- `volume_factor` (string|null): 促销
 
 ### `WorkflowExecutionConfig`
-Workflow concurrency, join, branch, and failure policies.
-- `max_workers` (integer|null): Maximum concurrent workflow actions allowed by the execution configuration.
+工作流并发、汇合、分支和失败策略。
+- `max_workers` (integer|null): 最大并发动作数
 
 ### `WorkflowExecutionState-Input`
-Persisted resumable workflow execution state.
-- `errors` (object): Workflow execution errors keyed or ordered by action identity.
-- `nodes` (object): Persisted workflow node runtime states keyed by action identity.
-- `outputs` (object): Named output mappings produced by this workflow action.
-- `runtime` (WorkflowRuntimeState): Persisted workflow runtime metadata used for safe resume.
-- `version` (integer; default `1`): Plugin release or schema version selected by the operation.
+可恢复的持久化工作流执行状态。
+- `errors` (object): 按动作标识保存的执行错误
+- `nodes` (object): 按动作标识组织的持久化执行快照
+- `outputs` (object): 按动作标识保存的输出数据
+- `runtime` (WorkflowRuntimeState): 用于安全恢复的持久化工作流运行时元数据。
+- `version` (integer; default `1`): 执行快照的数据结构版本
 
 ### `WorkflowRuntimeState`
-Complete persisted workflow runtime and progress state.
-- `attempts` (object): Attempt counters keyed by workflow node or operation identity.
-- `errors` (object): Workflow execution errors keyed or ordered by action identity.
-- `finished_actions` (integer; default `0`): Workflow action IDs already completed in the persisted execution state.
-- `node_states` (object): Persisted runtime states keyed by workflow node identity.
-- `progress` (integer; default `0`): Current numeric or structured workflow execution progress.
-- `running_tasks` (integer; default `0`): Workflow task IDs currently executing.
+完整的持久化工作流运行和进度状态。
+- `attempts` (object): 按动作标识记录的执行尝试次数
+- `errors` (object): 按动作标识组织的执行错误
+- `finished_actions` (integer; default `0`): 已完成的工作流动作数量
+- `node_states` (object): 按动作标识组织的运行状态
+- `progress` (integer; default `0`): 当前完成百分比
+- `running_tasks` (integer; default `0`): 当前运行中的工作流任务数量

@@ -1,4 +1,6 @@
-"""GitHub OAuth Device Flow 与社区勋章名单的网络适配器。"""
+"""
+GitHub OAuth Device Flow 与社区勋章名单的网络适配器。
+"""
 
 from __future__ import annotations
 
@@ -31,22 +33,32 @@ _MEDAL_DATE = re.compile(r"\d{4}(-\d{2}-\d{2})?")
 
 
 class _RuntimeGithubSettings:
-    """把 runtime 设置读取端口适配为 GitHub 客户端所需的 get 接口。"""
+    """
+    把 runtime 设置读取端口适配为 GitHub 客户端所需的 get 接口。
+    """
 
     def get(self, key: str, default: Any = None) -> Any:
-        """读取一个运行时设置，并在启动早期保留默认值语义。"""
+        """
+        读取一个运行时设置，并在启动早期保留默认值语义。
+        """
         return get_runtime_setting(key, default)
 
 
 class GithubAuthClient(GithubAuthPort):
-    """通过 MoviePilot 统一异步 HTTP 适配器访问 GitHub OAuth API。"""
+    """
+    通过 MoviePilot 统一异步 HTTP 适配器访问 GitHub OAuth API。
+    """
 
     _DEVICE_CODE_URL = "https://github.com/login/device/code"
     _ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token"
     _USER_URL = "https://api.github.com/user"
 
     def __init__(self, settings: GithubSettingsReader | None = None) -> None:
-        """保存代理、User-Agent 等部署设置提供器。"""
+        """
+        保存代理、User-Agent 等部署设置提供器。
+
+        :param settings: 代理和请求头配置读取器；省略时读取运行时设置
+        """
         self._settings = settings or _RuntimeGithubSettings()
 
     async def request_device_code(
@@ -54,14 +66,22 @@ class GithubAuthClient(GithubAuthPort):
         client_id: str,
         scope: str = "read:user",
     ) -> GithubDeviceCode:
-        """按调用方 scope 请求设备码，默认保留 Copilot 登录的只读用户权限。"""
+        """
+        按调用方 scope 请求设备码，默认保留 Copilot 登录的只读用户权限。
+
+        :param client_id: GitHub OAuth 应用的公开客户端标识
+        :param scope: 请求的 OAuth 权限范围，默认为只读用户信息
+        :return: 设备码、用户授权地址与有效期、轮询间隔
+        :raises GithubAuthTransportError: 请求失败、服务端拒绝或设备授权响应无效
+        """
         try:
             response = await self._request().post_res(
                 self._DEVICE_CODE_URL,
                 json={"client_id": client_id, "scope": scope},
                 raise_exception=True,
             )
-        except Exception as error:  # noqa: BLE001 - 网络异常统一转换为领域传输错误
+        # 网络异常统一转换为领域传输错误
+        except Exception as error:  # noqa: BLE001
             raise GithubAuthTransportError("无法连接 GitHub，请稍后重试。") from error
         payload = self._json_payload(response)
         self._raise_payload_error(payload, "申请 GitHub 设备码失败")
@@ -81,7 +101,14 @@ class GithubAuthClient(GithubAuthPort):
         client_id: str,
         device_code: str,
     ) -> GithubTokenExchange:
-        """轮询 GitHub 设备码，并保留协议层授权状态。"""
+        """
+        轮询 GitHub 设备码，并保留协议层授权状态。
+
+        :param client_id: 申请设备码的 OAuth 应用标识
+        :param device_code: GitHub 返回的设备授权码
+        :return: 本次轮询的令牌或 OAuth 错误状态；等待授权等状态不作为传输异常
+        :raises GithubAuthTransportError: 网络失败或响应不是有效 JSON 对象
+        """
         try:
             response = await self._request().post_res(
                 self._ACCESS_TOKEN_URL,
@@ -92,7 +119,8 @@ class GithubAuthClient(GithubAuthPort):
                 },
                 raise_exception=True,
             )
-        except Exception as error:  # noqa: BLE001 - 网络异常统一转换为领域传输错误
+        # 网络异常统一转换为领域传输错误
+        except Exception as error:  # noqa: BLE001
             raise GithubAuthTransportError("无法连接 GitHub，请稍后重试。") from error
         return self._exchange_payload(self._json_payload(response))
 
@@ -101,7 +129,14 @@ class GithubAuthClient(GithubAuthPort):
         client_id: str,
         refresh_token: str,
     ) -> GithubTokenExchange:
-        """使用 GitHub 返回的 refresh_token 申请新的访问 Token。"""
+        """
+        使用 GitHub 返回的 refresh_token 申请新的访问 Token。
+
+        :param client_id: 原授权所属的 OAuth 应用标识
+        :param refresh_token: GitHub 颁发的刷新令牌
+        :return: 更新后的令牌或服务端返回的 OAuth 错误状态
+        :raises GithubAuthTransportError: 网络失败或响应不是有效 JSON 对象
+        """
         try:
             response = await self._request().post_res(
                 self._ACCESS_TOKEN_URL,
@@ -112,18 +147,26 @@ class GithubAuthClient(GithubAuthPort):
                 },
                 raise_exception=True,
             )
-        except Exception as error:  # noqa: BLE001 - 网络异常统一转换为领域传输错误
+        # 网络异常统一转换为领域传输错误
+        except Exception as error:  # noqa: BLE001
             raise GithubAuthTransportError("无法连接 GitHub，请稍后重试。") from error
         return self._exchange_payload(self._json_payload(response))
 
     async def get_user(self, access_token: str) -> GithubUser:
-        """调用 GitHub 用户接口验证 Token 并读取登录名。"""
+        """
+        调用 GitHub 用户接口验证 Token 并读取登录名。
+
+        :param access_token: 用于查询当前用户的 GitHub 访问令牌
+        :return: 经响应校验的数字用户 ID 与登录名
+        :raises GithubAuthTransportError: 请求失败、令牌失效或用户信息无效；401 响应会标记 unauthorized
+        """
         try:
             response = await self._request(headers={"Authorization": f"Bearer {access_token}"}).get_res(
                 self._USER_URL,
                 raise_exception=True,
             )
-        except Exception as error:  # noqa: BLE001 - 网络异常统一转换为领域传输错误
+        # 网络异常统一转换为领域传输错误
+        except Exception as error:  # noqa: BLE001
             raise GithubAuthTransportError("无法连接 GitHub，请稍后重试。") from error
         if response is None:
             raise GithubAuthTransportError("GitHub 未返回用户校验结果")
@@ -141,11 +184,16 @@ class GithubAuthClient(GithubAuthPort):
         return GithubUser(login=login, user_id=user_id)
 
     async def get_medal_snapshot(self, user_id: int) -> GithubMedalSnapshot:
-        """拉取 Wiki 勋章名单并只返回该数字 ID 的记录。
+        """
+        拉取 Wiki 勋章名单并只返回该数字 ID 的记录。
 
         名单是公开文件，请求不携带实例 Token，避免凭据泄露给 GitHub 镜像站。
         配置 ``GITHUB_PROXY`` 时先走镜像站，失败再经 ``PROXY``（未配置时直连）访问原地址，
         与插件市场读取 Wiki 的出口顺序一致。
+
+        :param user_id: 已验证的 GitHub 数字用户 ID
+        :return: 名单生成时间与该用户的有效勋章记录；没有记录时列表为空
+        :raises GithubAuthTransportError: 所有出口均未取得有效名单
         """
         cause: Exception | None = None
         for url, direct in self._medal_routes():
@@ -154,12 +202,17 @@ class GithubAuthClient(GithubAuthPort):
                 if response is None or response.status_code >= 400:
                     raise GithubAuthTransportError("社区勋章名单请求失败")
                 return self._medal_snapshot(self._json_payload(response), user_id)
-            except Exception as error:  # noqa: BLE001 - 镜像站可能以 200 返回错误页，继续尝试下一出口
+            # 镜像站可能以 200 返回错误页，继续尝试下一出口
+            except Exception as error:  # noqa: BLE001
                 cause = error
         raise GithubAuthTransportError("暂时无法获取社区勋章名单") from cause
 
     def _medal_routes(self) -> list[tuple[str, bool]]:
-        """返回勋章名单的请求地址及是否绕过部署代理；镜像站优先且不叠加代理。"""
+        """
+        返回勋章名单的请求地址及是否绕过部署代理；镜像站优先且不叠加代理。
+
+        :return: 按尝试顺序排列的地址与直连标志；镜像优先，原始地址兜底
+        """
         routes: list[tuple[str, bool]] = []
         mirror = str(self._settings.get("GITHUB_PROXY") or "").strip()
         if mirror:
@@ -169,10 +222,16 @@ class GithubAuthClient(GithubAuthPort):
 
     @classmethod
     def _medal_snapshot(cls, payload: dict[str, Any], user_id: int) -> GithubMedalSnapshot:
-        """校验名单顶层协议并取出目标 ID 的记录；其他持有人的记录不在此处展开校验。
+        """
+        校验名单顶层协议并取出目标 ID 的记录；其他持有人的记录不在此处展开校验。
 
         名单形如 ``holders["<数字 ID>"] = {"login": ..., "medals": [...]}``；持有人对象中的
         ``login`` 等其他字段与顶层 ``unlinked``（无 GitHub 账号的共建者）都不参与实例查表。
+
+        :param payload: 勋章名单 JSON 对象
+        :param user_id: 要提取勋章的 GitHub 数字用户 ID
+        :return: 过滤无效条目后的勋章快照；用户不存在时勋章为空
+        :raises GithubAuthTransportError: 名单版本或目标持有人结构无效
         """
         schema = payload.get("schema")
         generated_at = payload.get("generated_at")
@@ -195,10 +254,14 @@ class GithubAuthClient(GithubAuthPort):
 
     @staticmethod
     def _valid_medal(record: Any) -> bool:
-        """判断单条勋章记录可否发布。
+        """
+        判断单条勋章记录可否发布。
 
         记录必须是带非空字符串 ``key`` 的对象；未认识的勋章键和字段为向前兼容原样透传，
         已知字段类型不符时整条丢弃，避免前端渲染出半残勋章，也不让一条坏记录拖垮整份名单。
+
+        :param record: 待检查的单条勋章数据
+        :return: 满足键名和已知字段约束时返回 True，否则返回 False
         """
         if not isinstance(record, dict) or not isinstance(record.get("key"), str) or not record["key"]:
             return False
@@ -215,7 +278,13 @@ class GithubAuthClient(GithubAuthPort):
         return all(checks)
 
     def _request(self, *, headers: dict[str, str] | None = None, direct: bool = False) -> AsyncRequestUtils:
-        """构造 GitHub 请求客户端，不复用当前业务 Token 请求头；访问镜像站时不叠加部署代理。"""
+        """
+        构造 GitHub 请求客户端，不复用当前业务 Token 请求头；访问镜像站时不叠加部署代理。
+
+        :param headers: 合并到默认 JSON 请求头的附加字段，可显式提供授权信息
+        :param direct: 是否绕过部署代理；访问镜像站时为 True
+        :return: 超时 20 秒、验证证书且不读取环境代理的异步请求适配器
+        """
         request_headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -232,10 +301,17 @@ class GithubAuthClient(GithubAuthPort):
 
     @staticmethod
     def _json_payload(response: Any) -> dict[str, Any]:
-        """读取 GitHub JSON 响应，避免把原始响应文本写入业务错误。"""
+        """
+        读取 GitHub JSON 响应，避免把原始响应文本写入业务错误。
+
+        :param response: 提供 json 方法的 HTTP 响应
+        :return: 解析后的 JSON 对象
+        :raises GithubAuthTransportError: 解析失败或响应顶层不是对象
+        """
         try:
             payload = response.json()
-        except Exception as error:  # noqa: BLE001 - 外部 JSON 异常统一收敛
+        # 外部 JSON 异常统一收敛
+        except Exception as error:  # noqa: BLE001
             raise GithubAuthTransportError("GitHub 返回了无效响应") from error
         if not isinstance(payload, dict):
             raise GithubAuthTransportError("GitHub 返回了无效响应")
@@ -243,13 +319,24 @@ class GithubAuthClient(GithubAuthPort):
 
     @staticmethod
     def _raise_payload_error(payload: dict[str, Any], message: str) -> None:
-        """将 GitHub OAuth 错误字段转换为不泄露响应原文的业务异常。"""
+        """
+        将 GitHub OAuth 错误字段转换为不泄露响应原文的业务异常。
+
+        :param payload: 已解析的 OAuth 响应对象
+        :param message: 发现错误时使用的安全错误说明
+        :raises GithubAuthTransportError: 响应带有非空 error 字段
+        """
         if payload.get("error"):
             raise GithubAuthTransportError(message)
 
     @classmethod
     def _exchange_payload(cls, payload: dict[str, Any]) -> GithubTokenExchange:
-        """把设备码或刷新响应转换为统一 Token 交换结果。"""
+        """
+        把设备码或刷新响应转换为统一 Token 交换结果。
+
+        :param payload: 设备授权或刷新令牌的响应对象
+        :return: 规范化后的令牌和错误状态；缺失或无法转换的可选值为 None
+        """
         return GithubTokenExchange(
             access_token=cls._optional_text(payload.get("access_token")),
             refresh_token=cls._optional_text(payload.get("refresh_token")),
@@ -261,13 +348,23 @@ class GithubAuthClient(GithubAuthPort):
 
     @staticmethod
     def _optional_text(value: Any) -> str | None:
-        """规范化 GitHub 响应中的可选文本字段。"""
+        """
+        规范化 GitHub 响应中的可选文本字段。
+
+        :param value: 服务端返回的可选文本值
+        :return: 转为文本并去除首尾空白后的值；空值或假值返回 None
+        """
         text = str(value or "").strip()
         return text or None
 
     @staticmethod
     def _optional_int(value: Any) -> int | None:
-        """规范化 GitHub 响应中的可选整数时间字段。"""
+        """
+        规范化 GitHub 响应中的可选整数时间字段。
+
+        :param value: 服务端返回的秒数或其他可转整数值
+        :return: 转换后的整数；缺失或不可转换时返回 None
+        """
         try:
             return int(value) if value is not None else None
         except (TypeError, ValueError):

@@ -1,3 +1,7 @@
+"""
+验证技能脚本的路径、凭据与外部调用安全边界。
+"""
+
 import importlib.util
 import json
 from pathlib import Path
@@ -9,7 +13,9 @@ MP_DB_SCRIPT = PROJECT_ROOT / "skills" / "database-operation" / "scripts" / "mp-
 
 
 def _load_script(path: Path, module_name: str) -> ModuleType:
-    """按文件路径加载 skill 脚本模块。"""
+    """
+    按文件路径加载 skill 脚本模块。
+    """
     spec = importlib.util.spec_from_file_location(module_name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
@@ -18,7 +24,9 @@ def _load_script(path: Path, module_name: str) -> ModuleType:
 
 
 def test_mp_db_rejects_write_statement_without_write_flag() -> None:
-    """数据库脚本默认必须拒绝写操作。"""
+    """
+    数据库脚本默认必须拒绝写操作。
+    """
     module = _load_script(MP_DB_SCRIPT, "mp_db_script")
 
     assert module._is_supported_statement("SELECT COUNT(*) FROM downloadhistory", False)
@@ -30,46 +38,68 @@ def test_mp_db_rejects_write_statement_without_write_flag() -> None:
 
 
 def test_mp_db_returns_sensitive_columns_without_masking(monkeypatch, capsys) -> None:
-    """数据库脚本应原样返回敏感字段供 Agent 内部使用。"""
+    """
+    数据库脚本应原样返回敏感字段供 Agent 内部使用。
+    """
     module = _load_script(MP_DB_SCRIPT, "mp_db_script_unmasked")
 
     class FakeRow:
-        """模拟 SQLAlchemy 查询行。"""
+        """
+        模拟 SQLAlchemy 查询行。
+        """
 
         _mapping = {"token": "raw-token", "password": "raw-password"}
 
     class FakeResult:
-        """模拟返回查询结果的 SQLAlchemy Result。"""
+        """
+        模拟返回查询结果的 SQLAlchemy Result。
+        """
 
         returns_rows = True
 
         def fetchall(self) -> list[FakeRow]:
-            """返回测试查询行。"""
+            """
+            返回测试查询行。
+            """
             return [FakeRow()]
 
     class FakeConnection:
-        """模拟数据库连接。"""
+        """
+        模拟数据库连接。
+        """
 
         def execute(self, statement: Any) -> FakeResult:
-            """返回测试结果。"""
+            """
+            返回测试结果。
+            """
             return FakeResult()
 
     class FakeTransaction:
-        """模拟 engine.begin() 上下文。"""
+        """
+        模拟 engine.begin() 上下文。
+        """
 
         def __enter__(self) -> FakeConnection:
-            """进入上下文时返回连接。"""
+            """
+            进入上下文时返回连接。
+            """
             return FakeConnection()
 
         def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> bool:
-            """退出上下文。"""
+            """
+            退出上下文。
+            """
             return False
 
     class FakeEngine:
-        """模拟数据库引擎。"""
+        """
+        模拟数据库引擎。
+        """
 
         def begin(self) -> FakeTransaction:
-            """返回事务上下文。"""
+            """
+            返回事务上下文。
+            """
             return FakeTransaction()
 
     monkeypatch.setattr(module, "_build_engine", lambda: FakeEngine())
@@ -81,12 +111,16 @@ def test_mp_db_returns_sensitive_columns_without_masking(monkeypatch, capsys) ->
 
 
 def test_mp_db_write_command_allows_write_statement(monkeypatch) -> None:
-    """数据库脚本 write 子命令应直接允许写操作。"""
+    """
+    数据库脚本 write 子命令应直接允许写操作。
+    """
     module = _load_script(MP_DB_SCRIPT, "mp_db_script_write")
     calls = []
 
     def fake_run_query(sql: str, *, limit: int = 100, allow_write: bool = False) -> int:
-        """记录 write 子命令传入的执行参数。"""
+        """
+        记录 write 子命令传入的执行参数。
+        """
         calls.append({"sql": sql, "limit": limit, "allow_write": allow_write})
         return 0
 

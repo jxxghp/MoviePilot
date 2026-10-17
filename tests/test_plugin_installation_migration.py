@@ -1,4 +1,6 @@
-"""插件安装事务表 Alembic 迁移测试。"""
+"""
+插件安装事务表 Alembic 迁移测试。
+"""
 
 import importlib
 import os
@@ -26,7 +28,9 @@ MIGRATION = "database.versions.e4f7a1b2c3d5_3_0_10"
 
 
 def _bind_migration(monkeypatch, connection):
-    """把迁移绑定到隔离数据库连接。"""
+    """
+    把迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(MIGRATION)
     monkeypatch.setattr(
         migration,
@@ -39,7 +43,9 @@ def _bind_migration(monkeypatch, connection):
 def test_plugin_installation_migration_upgrade_downgrade_reupgrade(
     monkeypatch,
 ) -> None:
-    """SQLite 应支持重复升级、回滚和再次升级，字段与 ORM 保持一致。"""
+    """
+    SQLite 应支持重复升级、回滚和再次升级，字段与 ORM 保持一致。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         migration = _bind_migration(monkeypatch, connection)
@@ -67,7 +73,9 @@ def test_plugin_installation_migration_upgrade_downgrade_reupgrade(
 
 
 def test_plugin_installation_migration_runs_on_postgresql(monkeypatch) -> None:
-    """隔离 PostgreSQL 应真实执行安装事务表的升级、约束和回滚。"""
+    """
+    隔离 PostgreSQL 应真实执行安装事务表的升级、约束和回滚。
+    """
     prefix = "MOVIEPILOT_TEST_POSTGRESQL_"
     host = os.getenv(f"{prefix}HOST")
     database = os.getenv(f"{prefix}DATABASE")

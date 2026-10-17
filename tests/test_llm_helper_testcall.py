@@ -1,3 +1,7 @@
+"""
+验证模型辅助入口的配置快照、能力归一、思考参数与测试调用结果。
+"""
+
 import asyncio
 import importlib.util
 import sys
@@ -22,6 +26,9 @@ class _FakeModel:
         self._content = content
 
     async def ainvoke(self, _prompt):
+        """
+        返回预设内容的异步模型响应，不访问外部服务。
+        """
         return SimpleNamespace(content=self._content)
 
 
@@ -41,6 +48,9 @@ class _FakeOpenAIInput:
         self._messages = messages
 
     def to_messages(self):
+        """
+        返回保存的消息序列，供请求序列化逻辑使用。
+        """
         return self._messages
 
 
@@ -76,7 +86,9 @@ class _FakeChatOpenAIForPatch:
 
 
 def _build_fake_openai_modules(chat_openai_cls=_FakeChatOpenAIForPatch):
-    """构造最小 langchain_openai stub，避免单测触发真实依赖链。"""
+    """
+    构造最小 langchain_openai stub，避免单测触发真实依赖链。
+    """
     from langchain_core.messages import AIMessageChunk
 
     for attr in (
@@ -102,7 +114,9 @@ def _build_fake_openai_modules(chat_openai_cls=_FakeChatOpenAIForPatch):
         return AIMessageChunk(content=delta.get("content") or "")
 
     def _construct_lc_result_from_responses_api(response, *args, **kwargs):
-        """模拟旧版 langchain-openai 直接遍历 response.output 的行为。"""
+        """
+        模拟旧版 langchain-openai 直接遍历 response.output 的行为。
+        """
         for _item in response.output:
             pass
         return SimpleNamespace(args=args, kwargs=kwargs, response=response)
@@ -153,7 +167,8 @@ llm_module.get_runtime_setting = lambda key, default=None: getattr(
 
 
 class _OfflineProviderManager:
-    """离线 provider 解析替身，杜绝单测访问 models.dev。
+    """
+    离线 provider 解析替身，杜绝单测访问 models.dev。
 
     真实 ``LLMProviderManager.resolve_runtime`` 会请求 models.dev 目录、并按
     base_url 列模型，单测中走它会产生不可接受的网络 IO，且结果随外部可达性漂移。
@@ -182,7 +197,8 @@ class _OfflineProviderManager:
             use_proxy=None,
             **kwargs,
     ):
-        """按 provider 返回离线运行时结构，全程不触发网络请求。
+        """
+        按 provider 返回离线运行时结构，全程不触发网络请求。
 
         **kwargs 吸收未来真实 resolve_runtime 可能新增的关键字参数，避免签名扩展时替身抛 TypeError。
         """
@@ -202,7 +218,9 @@ class _OfflineProviderManager:
 
 @contextmanager
 def _use_provider_runtime(manager_cls):
-    """在当前测试块内通过正式端口注入 provider 运行时替身。"""
+    """
+    在当前测试块内通过正式端口注入 provider 运行时替身。
+    """
     from app.agent.llm.gateway import register_llm_provider_runtime
 
     previous = register_llm_provider_runtime(lambda: manager_cls())
@@ -214,7 +232,9 @@ def _use_provider_runtime(manager_cls):
 
 @pytest.fixture(autouse=True)
 def _offline_provider_runtime():
-    """默认使用离线 provider，用例结束后恢复进程原有的组合配置。"""
+    """
+    默认使用离线 provider，用例结束后恢复进程原有的组合配置。
+    """
     from app.agent.llm.gateway import register_llm_provider_runtime
 
     previous = register_llm_provider_runtime(lambda: _OfflineProviderManager())
@@ -225,6 +245,9 @@ def _offline_provider_runtime():
 
 
 def test_normalize_model_profile_fills_partial_profile_from_provider_record() -> None:
+    """
+    模型档案字段不完整时，使用提供方记录补齐输入输出额度和能力。
+    """
     profile = llm_module.LLMHelper._normalize_model_profile(
         model_profile={
             "tool_calling": True,
@@ -247,6 +270,9 @@ def test_normalize_model_profile_fills_partial_profile_from_provider_record() ->
 
 
 def test_normalize_model_profile_prefers_known_provider_context_limit() -> None:
+    """
+    已知提供方上下文限制优先于通用模型档案，同时保留其他能力。
+    """
     profile = llm_module.LLMHelper._normalize_model_profile(
         model_profile={"max_input_tokens": 128000, "image_inputs": True},
         runtime={
@@ -265,6 +291,9 @@ def test_normalize_model_profile_prefers_known_provider_context_limit() -> None:
 
 
 def test_normalize_model_profile_caps_unmatched_known_provider_endpoint() -> None:
+    """
+    已知提供方的未匹配端点仍受配置的上下文上限约束。
+    """
     with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 16):
         profile = llm_module.LLMHelper._normalize_model_profile(
             model_profile={"max_input_tokens": 128000},
@@ -280,7 +309,9 @@ def test_normalize_model_profile_caps_unmatched_known_provider_endpoint() -> Non
 
 
 def test_normalize_model_profile_allows_configured_limit_for_unmatched_known_endpoint() -> None:
-    """未匹配的已知 provider 端点应尊重用户显式配置的上限。"""
+    """
+    未匹配的已知 provider 端点应尊重用户显式配置的上限。
+    """
     with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 512):
         profile = llm_module.LLMHelper._normalize_model_profile(
             model_profile={"max_input_tokens": 1000000},
@@ -296,6 +327,9 @@ def test_normalize_model_profile_allows_configured_limit_for_unmatched_known_end
 
 
 def test_normalize_model_profile_caps_generic_openai_endpoint() -> None:
+    """
+    通用 OpenAI 兼容端点按配置限制上下文窗口。
+    """
     with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 32):
         profile = llm_module.LLMHelper._normalize_model_profile(
             model_profile={"max_input_tokens": 128000},
@@ -313,7 +347,9 @@ def test_normalize_model_profile_caps_generic_openai_endpoint() -> None:
 
 
 def test_normalize_model_profile_allows_configured_limit_for_generic_endpoint() -> None:
-    """通用兼容端点应允许用户显式抬高默认上下文上限。"""
+    """
+    通用兼容端点应允许用户显式抬高默认上下文上限。
+    """
     with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 512):
         profile = llm_module.LLMHelper._normalize_model_profile(
             model_profile={"max_input_tokens": 1000000},
@@ -328,6 +364,9 @@ def test_normalize_model_profile_allows_configured_limit_for_generic_endpoint() 
 
 
 def test_normalize_model_profile_keeps_smaller_generic_profile_limit() -> None:
+    """
+    通用模型档案中的更小输入上限应保留，不被配置放大。
+    """
     with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 256):
         profile = llm_module.LLMHelper._normalize_model_profile(
             model_profile={
@@ -349,6 +388,9 @@ def test_normalize_model_profile_keeps_smaller_generic_profile_limit() -> None:
 
 
 def test_normalize_model_profile_uses_builtin_cap_when_config_is_invalid() -> None:
+    """
+    上下文配置无效时使用内置安全上限。
+    """
     with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", -1):
         profile = llm_module.LLMHelper._normalize_model_profile(
             model_profile={"max_input_tokens": 1000000},
@@ -363,6 +405,9 @@ def test_normalize_model_profile_uses_builtin_cap_when_config_is_invalid() -> No
 
 
 def test_normalize_model_profile_rejects_invalid_limits_and_uses_default() -> None:
+    """
+    无效输入输出额度被清理，输入额度回退默认值并保留其他能力。
+    """
     with patch.object(llm_module.settings, "LLM_MAX_CONTEXT_TOKENS", 0):
         profile = llm_module.LLMHelper._normalize_model_profile(
             model_profile={
@@ -394,6 +439,9 @@ def test_normalize_model_profile_rejects_invalid_limits_and_uses_default() -> No
 
 
 def test_get_llm_partial_profile_supports_fraction_summarization() -> None:
+    """
+    补齐后的部分模型档案支持按上下文比例触发摘要。
+    """
     from langchain.agents.middleware import SummarizationMiddleware
 
     class _FakeChatOpenAI:
@@ -402,7 +450,9 @@ def test_get_llm_partial_profile_supports_fraction_summarization() -> None:
             self.profile = {"tool_calling": True}
 
         def with_retry(self):
-            """满足 LangChain 摘要模型的 Runnable 合同。"""
+            """
+            满足 LangChain 摘要模型的 Runnable 合同。
+            """
             return self
 
     with patch.dict(
@@ -430,6 +480,9 @@ def test_get_llm_partial_profile_supports_fraction_summarization() -> None:
 
 
 def test_extract_text_content_ignores_non_text_blocks() -> None:
+    """
+    文本提取只拼接文本块，不将其他内容块转换为文字。
+    """
     content = [
         {"type": "reasoning", "text": "internal"},
         {"type": "tool_use", "name": "search"},
@@ -442,6 +495,9 @@ def test_extract_text_content_ignores_non_text_blocks() -> None:
 
 
 def test_test_current_settings_uses_explicit_snapshot() -> None:
+    """
+    模型连接测试使用显式配置快照，并返回真实文本预览。
+    """
     fake_model = _FakeModel("OK")
     get_llm_mock = AsyncMock(return_value=fake_model)
 
@@ -475,6 +531,9 @@ def test_test_current_settings_uses_explicit_snapshot() -> None:
 
 
 def test_test_current_settings_does_not_promote_non_text_blocks() -> None:
+    """
+    模型测试结果仅有非文本块时不生成回复文本预览。
+    """
     fake_model = _FakeModel(
         [
             {"type": "tool_use", "name": "lookup"},
@@ -498,6 +557,9 @@ def test_test_current_settings_does_not_promote_non_text_blocks() -> None:
 
 
 def test_get_llm_uses_kimi_extra_body_to_disable_thinking() -> None:
+    """
+    Kimi 通过请求附加参数关闭思考功能。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -524,6 +586,9 @@ def test_get_llm_uses_kimi_extra_body_to_disable_thinking() -> None:
 
 
 def test_openai_compatible_patch_preserves_stream_reasoning_content() -> None:
+    """
+    OpenAI 兼容转换保留流式响应中的思考内容。
+    """
     from langchain_core.messages import AIMessageChunk
 
     fake_modules, openai_base = _build_fake_openai_modules()
@@ -539,17 +604,25 @@ def test_openai_compatible_patch_preserves_stream_reasoning_content() -> None:
 
 
 def test_openai_responses_patch_handles_completed_chunk_without_output() -> None:
-    """校验 Responses API 流式完成事件 output 为空时不再崩溃。"""
+    """
+    校验 Responses API 流式完成事件 output 为空时不再崩溃。
+    """
 
     class _FakeResponse:
-        """模拟 OpenAI Responses API 完成事件里的 Response 对象。"""
+        """
+        模拟 OpenAI Responses API 完成事件里的 Response 对象。
+        """
 
         def __init__(self, output):
-            """保存 output 字段用于复现空输出场景。"""
+            """
+            保存 output 字段用于复现空输出场景。
+            """
             self.output = output
 
         def model_copy(self, update=None):
-            """模拟 Pydantic v2 model_copy(update=...) 行为。"""
+            """
+            模拟 Pydantic v2 model_copy(update=...) 行为。
+            """
             copied = _FakeResponse(self.output)
             for key, value in (update or {}).items():
                 setattr(copied, key, value)
@@ -573,6 +646,9 @@ def test_openai_responses_patch_handles_completed_chunk_without_output() -> None
 
 
 def test_openai_compatible_patch_injects_xiaomi_reasoning_content() -> None:
+    """
+    小米模型请求中的历史助手消息保留思考内容。
+    """
     fake_modules, _ = _build_fake_openai_modules()
     with patch.dict(sys.modules, fake_modules):
         llm_module._patch_openai_interleaved_reasoning_content_support()
@@ -597,6 +673,9 @@ def test_openai_compatible_patch_injects_xiaomi_reasoning_content() -> None:
 
 
 def test_openai_compatible_patch_injects_any_model_with_reasoning_content() -> None:
+    """
+    只要历史消息包含思考内容，就将其传入兼容模型请求。
+    """
     fake_modules, _ = _build_fake_openai_modules()
     with patch.dict(sys.modules, fake_modules):
         llm_module._patch_openai_interleaved_reasoning_content_support()
@@ -621,6 +700,9 @@ def test_openai_compatible_patch_injects_any_model_with_reasoning_content() -> N
 
 
 def test_openai_compatible_patch_skips_when_reasoning_content_missing() -> None:
+    """
+    历史消息没有思考内容时不添加对应请求字段。
+    """
     fake_modules, _ = _build_fake_openai_modules()
     with patch.dict(sys.modules, fake_modules):
         llm_module._patch_openai_interleaved_reasoning_content_support()
@@ -644,10 +726,14 @@ def test_openai_compatible_patch_skips_when_reasoning_content_missing() -> None:
 
 
 def test_interleaved_reasoning_patch_skips_model_without_payload_method() -> None:
-    """模型没有请求负载方法时应记录并跳过补丁，而不是构造临时兼容实现。"""
+    """
+    模型没有请求负载方法时应记录并跳过补丁，而不是构造临时兼容实现。
+    """
 
     class _ModelWithoutPayload:
-        """没有请求负载方法的最小模型替身。"""
+        """
+        没有请求负载方法的最小模型替身。
+        """
 
     llm_module._patch_interleaved_reasoning_request_support(
         _ModelWithoutPayload,
@@ -658,6 +744,9 @@ def test_interleaved_reasoning_patch_skips_model_without_payload_method() -> Non
 
 
 def test_get_llm_uses_deepseek_thinking_level_controls() -> None:
+    """
+    DeepSeek 按思考等级启用推理参数，并安装消息兼容转换。
+    """
     calls = []
     patch_calls = []
 
@@ -694,6 +783,9 @@ def test_get_llm_uses_deepseek_thinking_level_controls() -> None:
 
 
 def test_get_llm_disables_deepseek_thinking_via_thinking_level() -> None:
+    """
+    DeepSeek 关闭思考时禁用推理参数，同时保留自定义服务地址。
+    """
     calls = []
     patch_calls = []
 
@@ -730,7 +822,9 @@ def test_get_llm_disables_deepseek_thinking_via_thinking_level() -> None:
 
 
 def test_get_llm_uses_common_responses_adapter_for_deepseek_web_search() -> None:
-    """DeepSeek 服务端搜索应走通用 ChatOpenAI Responses 适配器。"""
+    """
+    DeepSeek 服务端搜索应走通用 ChatOpenAI Responses 适配器。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -767,7 +861,9 @@ def test_get_llm_uses_common_responses_adapter_for_deepseek_web_search() -> None
 
 
 def test_get_llm_rejects_unsupported_builtin_web_search() -> None:
-    """强制服务端搜索不可用时应在构造模型前显式失败。"""
+    """
+    强制服务端搜索不可用时应在构造模型前显式失败。
+    """
     with pytest.raises(ValueError, match="不支持服务端联网搜索"):
         asyncio.run(
             llm_module.LLMHelper.get_llm(
@@ -783,6 +879,9 @@ def test_get_llm_rejects_unsupported_builtin_web_search() -> None:
 
 
 def test_get_llm_uses_openai_reasoning_effort_none_for_off() -> None:
+    """
+    OpenAI 关闭思考时使用 none 推理强度。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -810,11 +909,17 @@ def test_get_llm_uses_openai_reasoning_effort_none_for_off() -> None:
 
 
 def test_get_llm_reads_latest_settings_when_runtime_args_omitted() -> None:
+    """
+    未显式传入运行参数时读取最新设置，并保留解析得到的请求头。
+    """
     resolve_calls = []
     llm_calls = []
 
     class _FakeProviderManager:
         async def resolve_runtime(self, **kwargs):
+            """
+            记录运行配置解析参数，并返回附带固定请求头的 OpenAI 兼容配置。
+            """
             resolve_calls.append(kwargs)
             return {
                 "provider_id": kwargs["provider_id"],
@@ -873,10 +978,15 @@ def test_get_llm_reads_latest_settings_when_runtime_args_omitted() -> None:
 
 
 def test_get_llm_attaches_runtime_metadata() -> None:
-    """LLM 实例应带上内部 runtime 元数据，供 Agent 中间件判断兼容分支。"""
+    """
+    LLM 实例应带上内部 runtime 元数据，供 Agent 中间件判断兼容分支。
+    """
 
     class _FakeProviderManager:
         async def resolve_runtime(self, **kwargs):
+            """
+            按传入参数构造 Anthropic 兼容运行配置，不查远程目录。
+            """
             return {
                 "provider_id": kwargs["provider_id"],
                 "runtime": "anthropic_compatible",
@@ -918,7 +1028,9 @@ def test_get_llm_attaches_runtime_metadata() -> None:
 
 
 def test_get_llm_applies_proxy_only_when_enabled() -> None:
-    """LLM 构造时应按独立开关决定是否传入系统代理。"""
+    """
+    LLM 构造时应按独立开关决定是否传入系统代理。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -959,6 +1071,9 @@ def test_get_llm_applies_proxy_only_when_enabled() -> None:
 
 
 def test_get_llm_passes_user_agent_as_openai_default_header() -> None:
+    """
+    显式 User-Agent 配置进入 OpenAI 客户端默认请求头。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -986,8 +1101,14 @@ def test_get_llm_passes_user_agent_as_openai_default_header() -> None:
 
 
 def test_get_llm_keeps_openai_patch_global_without_model_marker() -> None:
+    """
+    OpenAI 思考兼容修补在类级生效，不依赖单个模型实例标记。
+    """
     class _FakeProviderManager:
         async def resolve_runtime(self, **kwargs):
+            """
+            构造带空元数据的 OpenAI 兼容配置，验证修补不依赖模型标记。
+            """
             return {
                 "provider_id": kwargs["provider_id"],
                 "runtime": "openai_compatible",
@@ -1028,6 +1149,9 @@ def test_get_llm_keeps_openai_patch_global_without_model_marker() -> None:
 
 
 def test_get_llm_preserves_openai_max() -> None:
+    """
+    OpenAI 最高思考强度保持 max 原值。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -1055,7 +1179,9 @@ def test_get_llm_preserves_openai_max() -> None:
 
 
 def test_get_llm_uses_responses_api_for_chatgpt_reasoning_models() -> None:
-    """校验 ChatGPT 官方推理模型会切换到 Responses API。"""
+    """
+    校验 ChatGPT 官方推理模型会切换到 Responses API。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -1084,6 +1210,9 @@ def test_get_llm_uses_responses_api_for_chatgpt_reasoning_models() -> None:
 
 
 def test_get_llm_uses_gemini_builtin_thinking_controls() -> None:
+    """
+    Gemini 关闭思考时使用原生思考预算参数，并隐藏思考内容。
+    """
     calls = []
 
     class _FakeChatGoogleGenerativeAI:
@@ -1116,6 +1245,9 @@ def test_get_llm_uses_gemini_builtin_thinking_controls() -> None:
 
 
 def test_get_llm_uses_gemini_3_thinking_level_controls() -> None:
+    """
+    Gemini 3 使用原生思考等级参数，并保持思考内容隐藏。
+    """
     calls = []
 
     class _FakeChatGoogleGenerativeAI:
@@ -1148,7 +1280,9 @@ def test_get_llm_uses_gemini_3_thinking_level_controls() -> None:
 
 
 def test_get_llm_keeps_google_native_transport_for_compatibility_url() -> None:
-    """即使配置残留 Google OpenAI 兼容地址，Google provider 仍必须使用原生 SDK。"""
+    """
+    即使配置残留 Google OpenAI 兼容地址，Google provider 仍必须使用原生 SDK。
+    """
     calls = []
 
     class _FakeChatGoogleGenerativeAI:
@@ -1181,7 +1315,9 @@ def test_get_llm_keeps_google_native_transport_for_compatibility_url() -> None:
 
 
 def test_get_llm_responses_protocol_forces_responses_api() -> None:
-    """显式 responses 协议应让通用 OpenAI 兼容入口走 Responses API。"""
+    """
+    显式 responses 协议应让通用 OpenAI 兼容入口走 Responses API。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -1209,7 +1345,9 @@ def test_get_llm_responses_protocol_forces_responses_api() -> None:
 
 
 def test_get_llm_chat_completions_protocol_overrides_chatgpt_auto() -> None:
-    """显式 chat_completions 应覆盖 ChatGPT 官方推理模型的自动 Responses 切换。"""
+    """
+    显式 chat_completions 应覆盖 ChatGPT 官方推理模型的自动 Responses 切换。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -1237,7 +1375,9 @@ def test_get_llm_chat_completions_protocol_overrides_chatgpt_auto() -> None:
 
 
 def test_get_llm_auto_protocol_keeps_chat_completions_for_compatible() -> None:
-    """auto 协议下通用 OpenAI 兼容入口应保持默认 Chat Completions（None）。"""
+    """
+    auto 协议下通用 OpenAI 兼容入口应保持默认 Chat Completions（None）。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -1265,11 +1405,16 @@ def test_get_llm_auto_protocol_keeps_chat_completions_for_compatible() -> None:
 
 
 def test_get_llm_runtime_override_beats_chat_completions_protocol() -> None:
-    """运行时强制 Responses（OAuth/Codex）应优先于用户 chat_completions 设置。"""
+    """
+    运行时强制 Responses（OAuth/Codex）应优先于用户 chat_completions 设置。
+    """
     calls = []
 
     class _FakeProviderManager:
         async def resolve_runtime(self, **kwargs):
+            """
+            构造启用 Responses API 的 OpenAI 兼容配置，不查远程目录。
+            """
             return {
                 "provider_id": kwargs["provider_id"],
                 "runtime": "openai_compatible",
@@ -1309,7 +1454,9 @@ def test_get_llm_runtime_override_beats_chat_completions_protocol() -> None:
 
 
 def test_get_llm_reads_api_protocol_from_settings_when_omitted() -> None:
-    """未显式传入协议时应读取 LLM_API_PROTOCOL 配置。"""
+    """
+    未显式传入协议时应读取 LLM_API_PROTOCOL 配置。
+    """
     calls = []
 
     class _FakeChatOpenAI:
@@ -1338,7 +1485,9 @@ def test_get_llm_reads_api_protocol_from_settings_when_omitted() -> None:
 
 
 def test_normalize_api_protocol_accepts_known_and_falls_back() -> None:
-    """_normalize_api_protocol 应大小写不敏感识别已知值，未知值回退 auto。"""
+    """
+    _normalize_api_protocol 应大小写不敏感识别已知值，未知值回退 auto。
+    """
     assert llm_module.LLMHelper._normalize_api_protocol("Responses") == "responses"
     assert llm_module.LLMHelper._normalize_api_protocol("CHAT_COMPLETIONS") == "chat_completions"
     assert llm_module.LLMHelper._normalize_api_protocol("auto") == "auto"

@@ -1,3 +1,7 @@
+"""
+验证音乐整理中的实体身份、命名字段和曲目元数据保留。
+"""
+
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -15,6 +19,8 @@ from app.application.transfer.execution import (
 )
 from app.application.transfer.workflow import JobManager, TransferTask
 from app.chain.media import MediaChain
+
+# 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
@@ -26,7 +32,9 @@ from app.schemas.types import EventType, MediaType
 
 
 def _music_context() -> tuple[MetaMusic, MusicInfo]:
-    """构造整理测试使用的音乐元数据和媒体信息。"""
+    """
+    构造整理测试使用的音乐元数据和媒体信息。
+    """
     info = MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -43,7 +51,9 @@ def _music_context() -> tuple[MetaMusic, MusicInfo]:
 
 
 def _music_task(path: str, info: MusicInfo) -> TransferTask:
-    """构造带完整音乐上下文的整理作业任务。"""
+    """
+    构造带完整音乐上下文的整理作业任务。
+    """
     file_path = Path(path)
     return TransferTask(
         fileitem=FileItem(
@@ -61,7 +71,9 @@ def _music_task(path: str, info: MusicInfo) -> TransferTask:
 
 
 def test_music_retry_restores_history_entity_namespace(tmp_path, monkeypatch):
-    """重新整理按历史身份恢复音乐时必须保留单曲或专辑实体类型。"""
+    """
+    重新整理按历史身份恢复音乐时必须保留单曲或专辑实体类型。
+    """
     history = SimpleNamespace(
         type=MediaType.MUSIC.value,
         media_source="musicbrainz",
@@ -88,7 +100,9 @@ def test_music_retry_restores_history_entity_namespace(tmp_path, monkeypatch):
 
 
 def test_music_rename_context_contains_audio_fields():
-    """重命名模板上下文应提供艺术家、专辑、盘号和曲序字段。"""
+    """
+    重命名模板上下文应提供艺术家、专辑、盘号和曲序字段。
+    """
     meta, info = _music_context()
 
     context = TemplateHelper().builder.build(
@@ -105,7 +119,9 @@ def test_music_rename_context_contains_audio_fields():
 
 
 def test_music_rename_uses_album_identity_and_track_meta():
-    """专辑整理应采用所选专辑身份，同时保留每个文件的曲名和曲序。"""
+    """
+    专辑整理应采用所选专辑身份，同时保留每个文件的曲名和曲序。
+    """
     meta = MetaMusic(
         org_string="10. 明天晴天.m4a",
         title="明天晴天",
@@ -145,13 +161,17 @@ def test_music_rename_uses_album_identity_and_track_meta():
 
 
 def test_music_rename_format_is_independent_from_movie_format():
-    """音乐应使用独立重命名模板且保持影视模板不变。"""
+    """
+    音乐应使用独立重命名模板且保持影视模板不变。
+    """
     assert settings.RENAME_FORMAT(MediaType.MUSIC) == settings.MUSIC_RENAME_FORMAT
     assert settings.RENAME_FORMAT(MediaType.MOVIE) == settings.MOVIE_RENAME_FORMAT
 
 
 def test_audio_is_primary_only_in_music_context():
-    """音频文件只在音乐上下文中作为主要媒体文件。"""
+    """
+    音频文件只在音乐上下文中作为主要媒体文件。
+    """
     chain = TransferChain()
     audio = FileItem(
         storage="local",
@@ -167,7 +187,9 @@ def test_audio_is_primary_only_in_music_context():
 
 
 def test_music_scrape_batch_event_preserves_each_track_context():
-    """同一专辑目录的批次刮削事件应保留每个目标音轨自己的识别身份。"""
+    """
+    同一专辑目录的批次刮削事件应保留每个目标音轨自己的识别身份。
+    """
     chain = object.__new__(TransferChain)
     chain._audio_exts = settings.RMT_AUDIOEXT
     chain._media_exts = settings.RMT_MEDIAEXT
@@ -229,7 +251,9 @@ def test_music_scrape_batch_event_preserves_each_track_context():
 
 
 def test_restore_music_context_from_download_history():
-    """自动整理应从下载历史备注恢复标准音乐身份。"""
+    """
+    自动整理应从下载历史备注恢复标准音乐身份。
+    """
     meta, info = _music_context()
     history = SimpleNamespace(
         note={
@@ -256,7 +280,9 @@ def test_restore_music_context_from_download_history():
 
 @pytest.mark.parametrize("file_album", ["Local Album", None])
 def test_restore_music_context_discards_shared_recording_identity(tmp_path, monkeypatch, file_album):
-    """多音轨批次不得把下载记录中的单曲身份恢复到每个音频文件。"""
+    """
+    多音轨批次不得把下载记录中的单曲身份恢复到每个音频文件。
+    """
     meta, info = _music_context()
     history = DownloadHistorySnapshot(
         id=1,
@@ -300,7 +326,9 @@ def test_restore_music_context_discards_shared_recording_identity(tmp_path, monk
 
 
 def test_download_history_music_type_falls_back_to_versioned_note():
-    """旧下载记录缺少独立字段时应从版本化备注恢复实体类型。"""
+    """
+    旧下载记录缺少独立字段时应从版本化备注恢复实体类型。
+    """
     history = SimpleNamespace(
         music_type=None,
         note={
@@ -318,7 +346,9 @@ def test_download_history_music_type_falls_back_to_versioned_note():
 def test_restore_album_context_keeps_album_identity_and_track_specific_tags(
         tmp_path, monkeypatch, resource_meta_only,
 ):
-    """整专整理应保留选中的专辑身份，同时使用每个文件自己的曲名、艺术家和曲序。"""
+    """
+    整专整理应保留选中的专辑身份，同时使用每个文件自己的曲名、艺术家和曲序。
+    """
     album = MusicInfo(
         media_source="musicbrainz",
         media_id="release-group-1",
@@ -376,7 +406,9 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(
 
 
 def test_manual_batch_can_discard_saved_album_identity(tmp_path, monkeypatch):
-    """手动批次关闭历史复用时应丢弃旧专辑身份，仅保留当前文件标签。"""
+    """
+    手动批次关闭历史复用时应丢弃旧专辑身份，仅保留当前文件标签。
+    """
     album = MusicInfo(
         media_source="musicbrainz",
         media_id="stale-release-group",
@@ -424,7 +456,9 @@ def test_manual_batch_can_discard_saved_album_identity(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("field_source", ["selected", "resource", "file"])
 def test_restore_music_context_only_fills_missing_selected_fields(monkeypatch, field_source):
-    """已选语义字段仅补缺，不覆盖种子证据、文件标签或注入目标音质。"""
+    """
+    已选语义字段仅补缺，不覆盖种子证据、文件标签或注入目标音质。
+    """
     saved_meta, info = _music_context()
     info.disc_number = 1
     info.version = "Studio"
@@ -479,7 +513,9 @@ def test_restore_music_context_only_fills_missing_selected_fields(monkeypatch, f
 
 
 def test_restore_music_context_uses_file_title_over_subscription_title(tmp_path, monkeypatch):
-    """曲目标题应优先取当前文件自身的标签/文件名，而非沿用订阅时的单曲标题。"""
+    """
+    曲目标题应优先取当前文件自身的标签/文件名，而非沿用订阅时的单曲标题。
+    """
     meta, info = _music_context()
     history = SimpleNamespace(
         note={
@@ -509,7 +545,9 @@ def test_restore_music_context_uses_file_title_over_subscription_title(tmp_path,
 
 
 def test_restore_music_context_uses_filename_when_source_is_not_locally_accessible():
-    """远端音频无法直接读取标签时也应按文件名区分曲目，避免整张专辑重名。"""
+    """
+    远端音频无法直接读取标签时也应按文件名区分曲目，避免整张专辑重名。
+    """
     meta, info = _music_context()
     meta.artists = ["孙燕姿"]
     meta.title = "完美的一天"
@@ -558,7 +596,9 @@ def test_restore_music_context_uses_filename_when_source_is_not_locally_accessib
 
 
 def test_job_manager_serializes_music_queue_models():
-    """整理队列应使用音乐专属 Schema 序列化任务。"""
+    """
+    整理队列应使用音乐专属 Schema 序列化任务。
+    """
     meta, info = _music_context()
     task = TransferTask(
         fileitem=FileItem(
@@ -584,7 +624,9 @@ def test_job_manager_serializes_music_queue_models():
 
 
 def test_job_manager_separates_unidentified_music_recordings():
-    """缺少远端 ID 的不同曲目必须进入不同作业，避免通知和完成状态串组。"""
+    """
+    缺少远端 ID 的不同曲目必须进入不同作业，避免通知和完成状态串组。
+    """
     manager = JobManager()
     first = MusicInfo(title="Intro", artists=["Artist"], album="Album", track_number=1)
     second = MusicInfo(title="Finale", artists=["Artist"], album="Album", track_number=2)
@@ -596,7 +638,9 @@ def test_job_manager_separates_unidentified_music_recordings():
 
 
 def test_job_manager_groups_unidentified_album_tracks_by_album_identity():
-    """无远端 ID 的整专曲目应按专辑身份聚合成一个作业。"""
+    """
+    无远端 ID 的整专曲目应按专辑身份聚合成一个作业。
+    """
     manager = JobManager()
     first = MusicInfo(
         music_type="album",
@@ -626,7 +670,9 @@ def test_job_manager_groups_unidentified_album_tracks_by_album_identity():
 
 
 def test_job_manager_separates_music_entity_namespaces_for_same_provider_id():
-    """数据源 ID 相同但实体类型不同的单曲和专辑不能共享作业。"""
+    """
+    数据源 ID 相同但实体类型不同的单曲和专辑不能共享作业。
+    """
     manager = JobManager()
     recording = MusicInfo(
         media_source="musicbrainz",
@@ -651,7 +697,9 @@ def test_job_manager_separates_music_entity_namespaces_for_same_provider_id():
 
 
 def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directory(monkeypatch):
-    """全局关闭聚合时，同目录交错完成的整专与单曲作业仍保留旧文件清单。"""
+    """
+    全局关闭聚合时，同目录交错完成的整专与单曲作业仍保留旧文件清单。
+    """
     chain = object.__new__(TransferChain)
     chain.runtime_config = replace(chain.runtime_config, transfer_success_notification_aggregation=False)
     chain.jobview = JobManager()
@@ -664,7 +712,9 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
     chain.send_transfer_message = Mock()
 
     def transfer_result(**kwargs):
-        """执行测试历史暂存并返回 task-aware 原子结算回执。"""
+        """
+        执行测试历史暂存并返回 task-aware 原子结算回执。
+        """
         history = kwargs["stage_history"](SimpleNamespace())
         return TransferSettlementResult(
             history_id=history.id,
@@ -702,7 +752,9 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
     target_dir = FileItem(storage="local", path="/library/Artist/Album", type="dir")
 
     def transfer_info(task: TransferTask) -> TransferInfo:
-        """为指定任务构造同目录下的成功整理结果。"""
+        """
+        为指定任务构造同目录下的成功整理结果。
+        """
         target = f"/library/Artist/Album/{task.fileitem.name}"
         return TransferInfo(
             success=True,
@@ -751,7 +803,9 @@ def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directo
 
 
 def test_automatic_audio_transfer_runs_music_recognition(tmp_path, monkeypatch):
-    """无下载身份的音频应先走音乐识别，远端失败后再使用本地标签兜底。"""
+    """
+    无下载身份的音频应先走音乐识别，远端失败后再使用本地标签兜底。
+    """
     audio_path = tmp_path / "周杰伦 - 晴天.flac"
     audio_path.write_bytes(b"fake-flac")
     source_item = FileItem(
@@ -838,7 +892,9 @@ def test_automatic_audio_transfer_runs_music_recognition(tmp_path, monkeypatch):
 
 
 def test_automatic_multi_track_recording_context_rematches_album(tmp_path, monkeypatch):
-    """自动整专不得复用下载时误选的单曲身份，应按目录恢复各音轨身份。"""
+    """
+    自动整专不得复用下载时误选的单曲身份，应按目录恢复各音轨身份。
+    """
     source_dir = tmp_path / "徐良 情话"
     source_dir.mkdir()
     audio_paths = [
@@ -987,7 +1043,9 @@ def test_automatic_multi_track_recording_context_rematches_album(tmp_path, monke
 
 
 def test_manual_history_batch_rematches_album_and_groups_preview(tmp_path, monkeypatch):
-    """手动多选历史不复用身份时应重识别整专，并以专辑标题汇总预览。"""
+    """
+    手动多选历史不复用身份时应重识别整专，并以专辑标题汇总预览。
+    """
     source_dir = tmp_path / "未分类" / "周杰伦 - 七里香 (2004) [FLAC]"
     source_dir.mkdir(parents=True)
     audio_paths = [
@@ -1119,7 +1177,9 @@ def test_manual_history_batch_rematches_album_and_groups_preview(tmp_path, monke
 
 
 def test_explicit_music_batch_excludes_video_from_mixed_directory(tmp_path, monkeypatch):
-    """明确音乐上下文时只规划音频主文件，混合目录中的视频不得套用音乐身份。"""
+    """
+    明确音乐上下文时只规划音频主文件，混合目录中的视频不得套用音乐身份。
+    """
     audio_path = tmp_path / "08 - Get Lucky.flac"
     video_path = tmp_path / "Get Lucky.mkv"
     audio_path.write_bytes(b"fake-flac")
@@ -1201,7 +1261,9 @@ def test_explicit_music_batch_excludes_video_from_mixed_directory(tmp_path, monk
 
 
 def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
-    """下载器自动整理应把下载历史中的音乐类型传入文件规划，且不调用影视补图模块。"""
+    """
+    下载器自动整理应把下载历史中的音乐类型传入文件规划，且不调用影视补图模块。
+    """
     audio_path = tmp_path / "晴天.flac"
     audio_path.write_bytes(b"fake-flac")
     recognized = MusicInfo(

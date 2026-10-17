@@ -1,3 +1,7 @@
+"""
+验证站点索引同步与异步入口共享请求计划、投影和失败语义。
+"""
+
 import asyncio
 
 import pytest
@@ -8,7 +12,9 @@ from app.schemas.types import MediaType
 
 
 def _install_search_observers(monkeypatch, events: list[tuple]) -> None:
-    """安装只记录业务顺序且不访问外部资源的搜索边界替身"""
+    """
+    安装只记录业务顺序且不访问外部资源的搜索边界替身
+    """
 
     def search_check(site, keyword=None):
         events.append(("check", site["name"], keyword))
@@ -117,23 +123,33 @@ def test_torrent_search_uses_identical_parser_selection_and_arguments(
     parser_name,
     expected_arguments,
 ):
-    """各专用解析器的同步、异步入口必须消费同一参数投影"""
+    """
+    各专用解析器的同步、异步入口必须消费同一参数投影
+    """
     events = []
     calls = []
     _install_search_observers(monkeypatch, events)
 
     class FakeSpider:
-        """记录专用解析器收到的同步与异步调用"""
+        """
+        记录专用解析器收到的同步与异步调用
+        """
 
         def __init__(self, site):
             self.site = site
 
         def search(self, **kwargs):
+            """
+            记录同步搜索的站点、请求参数与执行顺序，并返回固定命中结果。
+            """
             calls.append(("sync", self.site, kwargs))
             events.append(("io", kwargs))
             return False, [{"title": "hit"}]
 
         async def async_search(self, **kwargs):
+            """
+            记录异步搜索的站点、请求参数与执行顺序，并返回固定命中结果。
+            """
             calls.append(("async", self.site, kwargs))
             events.append(("io", kwargs))
             return False, [{"title": "hit"}]
@@ -187,21 +203,31 @@ def test_torrent_search_preserves_result_and_status_parity(
     error_flag,
     raw_result,
 ):
-    """成功、解析失败和空结果都必须以相同顺序完成统计与结果整理"""
+    """
+    成功、解析失败和空结果都必须以相同顺序完成统计与结果整理
+    """
     events = []
     _install_search_observers(monkeypatch, events)
 
     class FakeSpider:
-        """返回参数化状态的专用解析器替身"""
+        """
+        返回参数化状态的专用解析器替身
+        """
 
         def __init__(self, _site):
             pass
 
         def search(self, **_kwargs):
+            """
+            记录同步请求阶段，并返回当前用例配置的错误标志与结果副本。
+            """
             events.append(("io",))
             return error_flag, list(raw_result)
 
         async def async_search(self, **_kwargs):
+            """
+            记录异步请求阶段，并返回当前用例配置的错误标志与结果副本。
+            """
             events.append(("io",))
             return error_flag, list(raw_result)
 
@@ -221,21 +247,31 @@ def test_torrent_search_preserves_result_and_status_parity(
 
 
 def test_torrent_search_preserves_exception_fallback_parity(monkeypatch):
-    """解析器抛错后两种入口都沿用空结果与非解析错误统计语义"""
+    """
+    解析器抛错后两种入口都沿用空结果与非解析错误统计语义
+    """
     events = []
     _install_search_observers(monkeypatch, events)
 
     class FailingSpider:
-        """同步与异步均抛出相同操作错误的解析器替身"""
+        """
+        同步与异步均抛出相同操作错误的解析器替身
+        """
 
         def __init__(self, _site):
             pass
 
         def search(self, **_kwargs):
+            """
+            记录同步请求阶段后抛出固定异常，验证错误归一语义。
+            """
             events.append(("io",))
             raise RuntimeError("broken")
 
         async def async_search(self, **_kwargs):
+            """
+            记录异步请求阶段后抛出固定异常，验证错误归一语义。
+            """
             events.append(("io",))
             raise RuntimeError("broken")
 
@@ -255,7 +291,9 @@ def test_torrent_search_preserves_exception_fallback_parity(monkeypatch):
 
 
 def test_generic_torrent_search_uses_identical_request_projection(monkeypatch):
-    """普通页面 Spider 的同步、异步入口必须收到同一完整请求"""
+    """
+    普通页面 Spider 的同步、异步入口必须收到同一完整请求
+    """
     events = []
     calls = []
     _install_search_observers(monkeypatch, events)
@@ -313,7 +351,9 @@ def test_generic_torrent_search_uses_identical_request_projection(monkeypatch):
 
 
 def test_rejected_torrent_search_skips_normalization_io_and_statistics(monkeypatch):
-    """搜索许可拒绝后同步、异步入口都必须立即停止后续工作"""
+    """
+    搜索许可拒绝后同步、异步入口都必须立即停止后续工作
+    """
     events = []
 
     def search_check(_site, _keyword=None):
@@ -334,7 +374,9 @@ def test_rejected_torrent_search_skips_normalization_io_and_statistics(monkeypat
 
 
 def test_subtitle_search_uses_one_request_and_preserves_order(monkeypatch):
-    """字幕同步、异步入口必须共享许可、参数和状态整理顺序"""
+    """
+    字幕同步、异步入口必须共享许可、参数和状态整理顺序
+    """
     events = []
     calls = []
     _install_search_observers(monkeypatch, events)
@@ -391,28 +433,38 @@ def test_subtitle_search_uses_one_request_and_preserves_order(monkeypatch):
 
 
 def test_mtorrent_subtitle_search_uses_specialized_parser(monkeypatch):
-    """mTorrent 字幕搜索应走专用 API 解析器，而不是旧网页解析器。"""
+    """
+    mTorrent 字幕搜索应走专用 API 解析器，而不是旧网页解析器。
+    """
     events = []
     calls = []
     _install_search_observers(monkeypatch, events)
 
     class FakeSpider:
-        """记录字幕专用解析器收到的参数。"""
+        """
+        记录字幕专用解析器收到的参数。
+        """
 
         error_detail = None
 
         def __init__(self, site):
-            """保存站点配置。"""
+            """
+            保存站点配置。
+            """
             self.site = site
 
         def search(self, **kwargs):
-            """记录同步字幕搜索调用。"""
+            """
+            记录同步字幕搜索调用。
+            """
             calls.append(("sync", kwargs))
             events.append(("io", kwargs))
             return False, [{"title": "subtitle"}]
 
         async def async_search(self, **kwargs):
-            """记录异步字幕搜索调用。"""
+            """
+            记录异步字幕搜索调用。
+            """
             calls.append(("async", kwargs))
             events.append(("io", kwargs))
             return False, [{"title": "subtitle"}]
@@ -439,7 +491,9 @@ def test_mtorrent_subtitle_search_uses_specialized_parser(monkeypatch):
 
 
 def test_disabled_subtitle_search_skips_all_follow_up_work(monkeypatch):
-    """未启用字幕能力时两种入口都不得触发许可检查、I/O 或统计"""
+    """
+    未启用字幕能力时两种入口都不得触发许可检查、I/O 或统计
+    """
     events = []
     _install_search_observers(monkeypatch, events)
     site = {"id": 1, "name": "Subtitle", "subtitles": None}

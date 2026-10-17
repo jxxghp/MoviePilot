@@ -20,7 +20,9 @@ from app.db import decorators as decorators_module
 
 
 class _BusinessError(Exception):
-    """被包装函数抛出的业务异常，用于验证它能原样抵达调用方。"""
+    """
+    被包装函数抛出的业务异常，用于验证它能原样抵达调用方。
+    """
 
 
 class _FakeScope:
@@ -124,7 +126,9 @@ def test_db_update_rolls_back_and_skips_commit_on_error():
 
     @decorators_module.db_update
     def _write(db=None):
-        """必定失败的更新。"""
+        """
+        必定失败的更新。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -146,7 +150,9 @@ def test_db_update_reraises_the_original_exception_object():
 
     @decorators_module.db_update
     def _write(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -167,7 +173,9 @@ def test_db_update_closes_self_created_session_on_error(monkeypatch):
 
     @decorators_module.db_update
     def _write(db=None):
-        """必定失败的更新。"""
+        """
+        必定失败的更新。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -187,7 +195,9 @@ def test_db_update_does_not_close_caller_session_on_error():
 
     @decorators_module.db_update
     def _write(db=None):
-        """必定失败的更新。"""
+        """
+        必定失败的更新。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -207,7 +217,9 @@ async def test_async_db_update_rolls_back_and_skips_commit_on_error():
 
     @decorators_module.async_db_update
     async def _write(db=None):
-        """必定失败的异步更新。"""
+        """
+        必定失败的异步更新。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -227,7 +239,9 @@ async def test_async_db_update_reraises_the_original_exception_object():
 
     @decorators_module.async_db_update
     async def _write(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -251,7 +265,9 @@ async def test_async_db_update_exits_scope_on_error(monkeypatch):
 
     @decorators_module.async_db_update
     async def _write(db=None):
-        """必定失败的异步更新。"""
+        """
+        必定失败的异步更新。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -268,14 +284,18 @@ async def test_async_db_update_does_not_release_caller_session_on_error(monkeypa
     db = _async_session()
 
     def _boom():
-        """任何建作用域的行为都是失败信号。"""
+        """
+        任何建作用域的行为都是失败信号。
+        """
         raise AssertionError("调用方已传入会话，装饰器不应再建作用域")
 
     monkeypatch.setattr(decorators_module, "async_session_scope", _boom)
 
     @decorators_module.async_db_update
     async def _write(db=None):
-        """必定失败的异步更新。"""
+        """
+        必定失败的异步更新。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -297,7 +317,9 @@ def test_db_query_does_not_touch_transaction_on_error():
 
     @decorators_module.db_query
     def _read(db=None):
-        """必定失败的查询。"""
+        """
+        必定失败的查询。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -316,7 +338,9 @@ def test_db_query_reraises_the_original_exception_object():
 
     @decorators_module.db_query
     def _read(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -334,7 +358,9 @@ def test_db_query_closes_self_created_session_on_error(monkeypatch):
 
     @decorators_module.db_query
     def _read(db=None):
-        """必定失败的查询。"""
+        """
+        必定失败的查询。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -354,7 +380,9 @@ async def test_async_db_query_does_not_touch_transaction_on_error():
 
     @decorators_module.async_db_query
     async def _read(db=None):
-        """必定失败的异步查询。"""
+        """
+        必定失败的异步查询。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -374,7 +402,9 @@ async def test_async_db_query_reraises_the_original_exception_object():
 
     @decorators_module.async_db_query
     async def _read(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -393,7 +423,9 @@ async def test_async_db_query_exits_scope_on_error(monkeypatch):
 
     @decorators_module.async_db_query
     async def _read(db=None):
-        """必定失败的异步查询。"""
+        """
+        必定失败的异步查询。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -419,7 +451,9 @@ def test_db_update_rollback_failure_does_not_replace_original_error():
 
     @decorators_module.db_update
     def _write(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -441,7 +475,9 @@ def test_db_update_logs_rollback_failure(monkeypatch):
 
     @decorators_module.db_update
     def _write(db=None):
-        """必定失败的更新。"""
+        """
+        必定失败的更新。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -462,7 +498,9 @@ async def test_async_db_update_rollback_failure_does_not_replace_original_error(
 
     @decorators_module.async_db_update
     async def _write(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -498,7 +536,9 @@ def test_db_update_close_failure_does_not_replace_original_error(monkeypatch):
 
     @decorators_module.db_update
     def _write(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -520,7 +560,9 @@ def test_db_update_logs_close_failure(monkeypatch):
 
     @decorators_module.db_update
     def _write(db=None):
-        """必定失败的更新。"""
+        """
+        必定失败的更新。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -544,7 +586,9 @@ def test_db_update_close_failure_does_not_break_success_path(monkeypatch):
 
     @decorators_module.db_update
     def _write(db=None):
-        """成功的更新。"""
+        """
+        成功的更新。
+        """
         return "written"
 
     assert _write(db=None) == "written", "释放失败把成功的写入变成了异常"
@@ -564,7 +608,9 @@ async def test_async_db_update_scope_exit_failure_does_not_replace_original_erro
 
     @decorators_module.async_db_update
     async def _write(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -584,7 +630,9 @@ async def test_async_db_update_logs_scope_exit_failure(monkeypatch):
 
     @decorators_module.async_db_update
     async def _write(db=None):
-        """必定失败的异步更新。"""
+        """
+        必定失败的异步更新。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -605,7 +653,9 @@ async def test_async_db_update_scope_exit_failure_does_not_break_success_path(mo
 
     @decorators_module.async_db_update
     async def _write(db=None):
-        """成功的异步更新。"""
+        """
+        成功的异步更新。
+        """
         return "written"
 
     assert await _write(db=None) == "written", "释放失败把成功的写入变成了异常"
@@ -625,7 +675,9 @@ def test_db_query_close_failure_does_not_replace_original_error(monkeypatch):
 
     @decorators_module.db_query
     def _read(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -645,7 +697,9 @@ def test_db_query_logs_close_failure(monkeypatch):
 
     @decorators_module.db_query
     def _read(db=None):
-        """必定失败的查询。"""
+        """
+        必定失败的查询。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -668,7 +722,9 @@ def test_db_query_close_failure_does_not_break_success_path(monkeypatch):
 
     @decorators_module.db_query
     def _read(db=None):
-        """成功的查询。"""
+        """
+        成功的查询。
+        """
         return ["row"]
 
     assert _read(db=None) == ["row"], "释放失败把成功的查询变成了异常"
@@ -687,7 +743,9 @@ async def test_async_db_query_scope_exit_failure_does_not_replace_original_error
 
     @decorators_module.async_db_query
     async def _read(db=None):
-        """抛出一个可辨认的异常实例。"""
+        """
+        抛出一个可辨认的异常实例。
+        """
         raise boom
 
     with pytest.raises(_BusinessError) as excinfo:
@@ -707,7 +765,9 @@ async def test_async_db_query_logs_scope_exit_failure(monkeypatch):
 
     @decorators_module.async_db_query
     async def _read(db=None):
-        """必定失败的异步查询。"""
+        """
+        必定失败的异步查询。
+        """
         raise _BusinessError("boom")
 
     with pytest.raises(_BusinessError):
@@ -728,7 +788,9 @@ async def test_async_db_query_scope_exit_failure_does_not_break_success_path(mon
 
     @decorators_module.async_db_query
     async def _read(db=None):
-        """成功的异步查询。"""
+        """
+        成功的异步查询。
+        """
         return ["row"]
 
     assert await _read(db=None) == ["row"], "释放失败把成功的查询变成了异常"

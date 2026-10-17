@@ -46,7 +46,12 @@ MEDIA_SOURCE_PREFIXES = {
 def normalize_media_source(
         source: Optional[Union[MediaSource, str]],
 ) -> Optional[MediaSource]:
-    """将内置别名或插件扩展标识规范化为 MediaSource。"""
+    """
+    将内置别名或插件扩展标识规范化为 MediaSource。
+
+    :param source: 内置来源、兼容别名或插件扩展标识
+    :return: 规范来源；输入为空或格式无效时返回 None
+    """
     if not source:
         return None
     if isinstance(source, MediaSource):
@@ -64,7 +69,12 @@ def normalize_media_source(
 def parse_media_key(
         media_key: Optional[str],
 ) -> Tuple[Optional[MediaSource], Optional[str]]:
-    """解析带来源前缀的媒体键，返回规范化数据源与原生 ID。"""
+    """
+    解析带来源前缀的媒体键，返回规范化数据源与原生 ID。
+
+    :param media_key: 来源前缀与原生标识组成的媒体键，例如 tmdb:123
+    :return: 规范来源和原生标识；缺少分隔符或身份无效时返回两个 None
+    """
     if not media_key or ":" not in str(media_key):
         return None, None
     prefix, media_id = str(media_key).split(":", 1)
@@ -79,7 +89,13 @@ def build_media_key(
         media_source: Optional[Union[MediaSource, str]],
         media_id: Optional[Any],
 ) -> str:
-    """构造 API 使用的带来源前缀媒体键。"""
+    """
+    构造 API 使用的带来源前缀媒体键。
+
+    :param media_source: 内置来源、兼容别名或插件扩展标识
+    :param media_id: 来源中的原生标识，输出前转为字符串并去除首尾空白
+    :return: 规范化媒体键；来源或标识无效时返回空字符串
+    """
     normalized_source = normalize_media_source(media_source)
     normalized_id = str(media_id).strip() if media_id is not None else ""
     if not normalized_source or not normalized_id or normalized_id == "0":
@@ -153,12 +169,15 @@ def normalize_media_identity_payload(
 
 
 class OptionalMediaIdentityMixin:
-    """为可选媒体身份模型统一校验内置或插件来源与原生 ID 的成对约束。"""
+    """
+    为可选媒体身份模型统一校验内置或插件来源与原生 ID 的成对约束。
+    """
 
     @model_validator(mode="before")
     @classmethod
     def _normalize_legacy_media_source(cls, value: object) -> object:
-        """兼容媒体身份重构前的旧缓存/插件数据：将旧 ``source`` 键迁移为 ``media_source``。
+        """
+        兼容媒体身份重构前的旧缓存/插件数据：将旧 ``source`` 键迁移为 ``media_source``。
 
         旧版本推荐等缓存以 ``source`` 键序列化媒体来源，与 ``media_id`` 成对出现；
         仅当缺失新键、旧值可解析为规范枚举时才迁移，避免误判其他模型同名字段。
@@ -181,7 +200,9 @@ class OptionalMediaIdentityMixin:
 
     @model_validator(mode="after")
     def _validate_optional_media_identity(self):
-        """规范化 ID，并拒绝显式半对、空白或零值身份。"""
+        """
+        规范化 ID，并拒绝显式半对、空白或零值身份。
+        """
         source_provided = "media_source" in self.model_fields_set
         id_provided = "media_id" in self.model_fields_set
         if source_provided != id_provided:
@@ -201,11 +222,15 @@ class OptionalMediaIdentityMixin:
 
 
 class RequiredMediaIdentityMixin:
-    """为必填媒体身份模型统一校验内置或插件来源与原生 ID。"""
+    """
+    为必填媒体身份模型统一校验内置或插件来源与原生 ID。
+    """
 
     @model_validator(mode="after")
     def _validate_required_media_identity(self):
-        """去除 ID 两端空白，并拒绝空白或零值身份。"""
+        """
+        去除 ID 两端空白，并拒绝空白或零值身份。
+        """
         normalized_id = str(self.media_id).strip()
         if not normalized_id or normalized_id == "0":
             raise ValueError("media_id 必须是非零的来源原生 ID")

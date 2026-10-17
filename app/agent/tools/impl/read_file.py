@@ -1,4 +1,6 @@
-"""文件读取工具"""
+"""
+文件读取工具
+"""
 
 import hashlib
 import json
@@ -21,37 +23,54 @@ READ_FILE_TRUNCATION_MESSAGE = (
 
 
 class ReadFileInput(BaseModel):
-    """文件读取工具的输入参数模型。"""
+    """
+    文件读取工具的输入参数模型。
+    """
 
-    file_path: str = Field(..., description="The absolute path of the file to read")
-    start_line: Optional[int] = Field(None, description="The starting line number (1-based, inclusive). If not provided, reading starts from the beginning of the file.")
-    end_line: Optional[int] = Field(None, description="The ending line number (1-based, inclusive). If not provided, reading goes until the end of the file.")
+    file_path: str = Field(
+        ...,
+        description="待读取文本文件的绝对路径",
+    )
+    start_line: Optional[int] = Field(
+        None,
+        description="起始行号，从 1 开始且包含该行；省略时从文件开头读取",
+    )
+    end_line: Optional[int] = Field(
+        None,
+        description="结束行号，从 1 开始且包含该行；省略时读取到文件末尾",
+    )
     include_metadata: bool = Field(
         False,
-        description=(
-            "Return structured JSON containing content, size, truncation state, "
-            "and SHA-256. Use before a guarded full-file overwrite."
-        ),
+        description="是否返回包含正文、大小、截断状态及 SHA-256 的结构化 JSON；进行受保护的完整覆盖前使用",
     )
 
 
 class ReadFileTool(MoviePilotTool):
-    """按行范围读取本地文本文件，并可返回文件版本元数据。"""
+    """
+    按行范围读取本地文本文件，并可返回文件版本元数据。
+    """
 
-    name: str = "read_file"
-    tags: list[str] = [
-        ToolTag.Read,
-        ToolTag.File,
-    ]
-    description: str = (
-        "Read the content of a text file. Supports reading by line range. Each "
-        "read is limited to 50KB; when content is truncated, continue with "
-        "smaller start_line and end_line ranges."
+    name: str = Field(
+        default="read_file",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = ReadFileInput
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.File],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default="读取文本文件内容，支持指定行范围。每次最多读取 50KB；发生截断时，缩小 start_line 和 end_line 范围后继续读取。",
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=ReadFileInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """根据参数生成友好的提示消息"""
+        """
+        根据参数生成友好的提示消息
+        """
         file_path = kwargs.get("file_path", "")
         file_name = Path(file_path).name if file_path else "未知文件"
         return f"读取文件: {file_name}"
@@ -64,7 +83,9 @@ class ReadFileTool(MoviePilotTool):
         include_metadata: bool = False,
         **kwargs,
     ) -> str:
-        """读取指定文本范围，必要时附带完整文件的 SHA-256 元数据。"""
+        """
+        读取指定文本范围，必要时附带完整文件的 SHA-256 元数据。
+        """
         logger.info(f"执行工具: {self.name}, 参数: file_path={file_path}, start_line={start_line}, end_line={end_line}")
 
         try:

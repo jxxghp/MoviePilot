@@ -1,4 +1,6 @@
-"""旧 Oper 写入口的 SQLAlchemy 事务执行适配器。"""
+"""
+旧 Oper 写入口的 SQLAlchemy 事务执行适配器。
+"""
 
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
@@ -13,7 +15,9 @@ T = TypeVar("T")
 
 
 class TransactionalWriteRunner:
-    """为兼容写入口创建独占会话，并用 UoW 明确提交或回滚。"""
+    """
+    为兼容写入口创建独占会话，并用 UoW 明确提交或回滚。
+    """
 
     def __init__(
         self,
@@ -21,12 +25,16 @@ class TransactionalWriteRunner:
         sync_session: Callable[[], Session],
         async_session: Callable[[], AbstractAsyncContextManager[AsyncSession]],
     ) -> None:
-        """保存同步会话工厂和异步会话上下文工厂。"""
+        """
+        保存同步会话工厂和异步会话上下文工厂。
+        """
         self._sync_session = sync_session
         self._async_session = async_session
 
     def sync(self, operation: Callable[[Session], T]) -> T:
-        """在独占同步 Session 中执行操作并统一收口事务。"""
+        """
+        在独占同步 Session 中执行操作并统一收口事务。
+        """
         session = self._sync_session()
         # 兼容 Oper 历史上会返回刚写入的 ORM 对象；提交后若过期，Session 关闭后连主键
         # 都无法读取。独占短会话没有后续一致性读取需求，因此保留已 flush 的字段快照。
@@ -46,7 +54,9 @@ class TransactionalWriteRunner:
         self,
         operation: Callable[[AsyncSession], Awaitable[T]],
     ) -> T:
-        """在独占 AsyncSession 中执行操作并统一收口事务。"""
+        """
+        在独占 AsyncSession 中执行操作并统一收口事务。
+        """
         async with self._async_session() as session:
             # 与同步兼容入口保持相同的返回对象生命周期。
             session.sync_session.expire_on_commit = False

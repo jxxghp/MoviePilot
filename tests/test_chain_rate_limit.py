@@ -1,6 +1,9 @@
-"""Chain 本地限流行为测试。"""
+"""
+Chain 本地限流行为测试。
+"""
 
-# ruff: noqa: E402 - 可选下载器模块必须在导入 Chain 前完成隔离。
+# 可选下载器模块必须在导入 Chain 前完成隔离。
+# ruff: noqa: E402
 
 from unittest.mock import Mock
 
@@ -19,7 +22,9 @@ from app.schemas.exception import RateLimitExceededException
 
 
 class _LimitedModule:
-    """模拟始终触发本地限流的宿主模块。"""
+    """
+    模拟始终触发本地限流的宿主模块。
+    """
 
     def get_name(self):
         """
@@ -48,7 +53,9 @@ class _LimitedModule:
 
 @pytest.fixture
 def chain() -> ChainBase:
-    """构造隔离的 ChainBase，避免依赖真实模块和插件运行状态。"""
+    """
+    构造隔离的 ChainBase，避免依赖真实模块和插件运行状态。
+    """
     limited_module = _LimitedModule()
     plugin_manager = Mock()
     plugin_manager.get_plugin_modules.return_value = {}
@@ -88,7 +95,9 @@ def chain() -> ChainBase:
 
 
 def test_rate_limit_is_not_reported_as_system_error(chain: ChainBase) -> None:
-    """本地限流跳过不应写入系统错误通知或事件。"""
+    """
+    本地限流跳过不应写入系统错误通知或事件。
+    """
     result = chain.run_module("limited_method")
 
     assert result is None
@@ -97,7 +106,9 @@ def test_rate_limit_is_not_reported_as_system_error(chain: ChainBase) -> None:
 
 
 def test_rate_limit_can_still_be_raised_explicitly(chain: ChainBase) -> None:
-    """调用方显式要求抛出异常时，限流异常应继续向上抛出。"""
+    """
+    调用方显式要求抛出异常时，限流异常应继续向上抛出。
+    """
     with pytest.raises(RateLimitExceededException):
         chain.run_module("limited_method", raise_exception=True)
 
@@ -107,7 +118,9 @@ def test_rate_limit_can_still_be_raised_explicitly(chain: ChainBase) -> None:
 
 @pytest.mark.asyncio
 async def test_async_rate_limit_is_not_reported_as_system_error(chain: ChainBase) -> None:
-    """异步模块的本地限流跳过也不应触发系统错误路径。"""
+    """
+    异步模块的本地限流跳过也不应触发系统错误路径。
+    """
     result = await chain.async_run_module("async_limited_method")
 
     assert result is None

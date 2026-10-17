@@ -1,3 +1,7 @@
+"""
+验证Nexus Audience 站点页面的种子信息解析。
+"""
+
 # -*- coding: utf-8 -*-
 import pytest
 
@@ -6,6 +10,9 @@ from app.modules.indexer.parser.nexus_audiences import NexusAudiencesSiteUserInf
 
 
 def test_audiences_userbar_metrics_override_generic_nexus_regex():
+    """
+    Audiences 专用用户栏指标优先于通用 Nexus 正则结果。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -59,6 +66,9 @@ def test_audiences_userbar_metrics_override_generic_nexus_regex():
     ("  ", "Power User"),
 ])
 def test_audiences_user_level_omits_site_group(parse_method, badge, expected):
+    """
+    解析用户等级时去除站点分组前缀，保留实际等级名称。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -80,6 +90,9 @@ def test_audiences_user_level_omits_site_group(parse_method, badge, expected):
 
 
 def test_audiences_inbox_total_unread_badge_uses_unread_part():
+    """
+    收件箱同时展示总数与未读数时，只提取未读部分。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -117,6 +130,9 @@ def test_audiences_inbox_total_unread_badge_uses_unread_part():
 
 
 def test_audiences_inbox_total_only_is_not_unread_count():
+    """
+    只有收件箱总数且没有未读标记时，不将总数误报为未读数。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -146,6 +162,9 @@ def test_audiences_inbox_total_only_is_not_unread_count():
 
 
 def test_audiences_unread_badge_plain_count_is_unread_count():
+    """
+    明确带未读标记的纯数字徽章可直接作为未读数量。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -175,6 +194,9 @@ def test_audiences_unread_badge_plain_count_is_unread_count():
 
 
 def test_audiences_unread_marker_without_count_uses_unknown_count():
+    """
+    只有未读标记而没有数量时保留数量未知的状态。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -203,6 +225,9 @@ def test_audiences_unread_marker_without_count_uses_unknown_count():
 
 
 def test_audiences_table_unread_links_ignore_content_rows():
+    """
+    从消息表格提取未读链接时排除消息正文行，避免重复计数。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",
@@ -272,6 +297,9 @@ def test_audiences_table_unread_links_ignore_content_rows():
 
 
 def test_audiences_readpm_row_is_not_unread_message():
+    """
+    带已读图标的表格行不能计入未读消息。
+    """
     parser = NexusAudiencesSiteUserInfo(
         site_name="Audiences",
         url="https://audiences.me/",

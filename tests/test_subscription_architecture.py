@@ -1,4 +1,6 @@
-"""订阅类型化边界、canonical 依赖与文件布局门禁。"""
+"""
+订阅类型化边界、canonical 依赖与文件布局门禁。
+"""
 
 import ast
 import importlib
@@ -20,19 +22,25 @@ CANONICAL_CONSUMER_PATHS = (
 
 
 def _python_paths(root: Path) -> list[Path]:
-    """返回 canonical 消费边界内的 Python 源文件。"""
+    """
+    返回 canonical 消费边界内的 Python 源文件。
+    """
     return sorted(root.rglob("*.py"))
 
 
 def _annotation_contains_any(annotation: ast.expr | None) -> bool:
-    """判断跨层类型注解是否仍以 Any 隐藏数据合同。"""
+    """
+    判断跨层类型注解是否仍以 Any 隐藏数据合同。
+    """
     return annotation is not None and any(
         isinstance(node, ast.Name) and node.id == "Any" for node in ast.walk(annotation)
     )
 
 
 def _is_frozen_slotted_dataclass(node: ast.ClassDef) -> bool:
-    """判断 DTO 是否声明为不可变且使用 slots 的数据类。"""
+    """
+    判断 DTO 是否声明为不可变且使用 slots 的数据类。
+    """
     for decorator in node.decorator_list:
         if not isinstance(decorator, ast.Call):
             continue
@@ -47,7 +55,9 @@ def _is_frozen_slotted_dataclass(node: ast.ClassDef) -> bool:
 
 
 def test_subscription_contract_uses_frozen_dtos_and_typed_ports() -> None:
-    """订阅快照、写 DTO 与 Query/Write/Repository 必须完整类型化。"""
+    """
+    订阅快照、写 DTO 与 Query/Write/Repository 必须完整类型化。
+    """
     tree = ast.parse(
         CONTRACT_PATH.read_text(encoding="utf-8-sig"),
         filename=str(CONTRACT_PATH),
@@ -101,7 +111,9 @@ def test_subscription_contract_uses_frozen_dtos_and_typed_ports() -> None:
 
 
 def test_subscription_canonical_consumers_do_not_import_raw_persistence() -> None:
-    """宿主消费者不得导入订阅 Oper 或两张订阅 ORM 表。"""
+    """
+    宿主消费者不得导入订阅 Oper 或两张订阅 ORM 表。
+    """
     forbidden_modules = {
         "app.db.subscribe_oper",
         "app.db.subscribehistory_oper",
@@ -143,7 +155,9 @@ def test_subscription_canonical_consumers_do_not_import_raw_persistence() -> Non
 
 
 def test_subscription_application_has_one_contract_owner() -> None:
-    """Subscription 子包不得保留与 central CRUD 重复的持久化协议。"""
+    """
+    Subscription 子包不得保留与 central CRUD 重复的持久化协议。
+    """
     retired_classes = {
         "SubscribeSnapshot",
         "SubscriptionQueryRepository",
@@ -173,7 +187,9 @@ def test_subscription_application_has_one_contract_owner() -> None:
 
 
 def test_subscription_use_case_ports_do_not_return_any() -> None:
-    """合法的用例专属 Repository 也必须返回 DTO，不能返回 Any 或 ORM。"""
+    """
+    合法的用例专属 Repository 也必须返回 DTO，不能返回 Any 或 ORM。
+    """
     violations: list[str] = []
 
     for path in sorted(SUBSCRIPTION_PACKAGE.glob("*.py")):
@@ -195,7 +211,9 @@ def test_subscription_use_case_ports_do_not_return_any() -> None:
 
 
 def test_subscription_callers_do_not_alias_snapshot_to_any() -> None:
-    """订阅 Chain 不得以 Any 别名继续消费未声明的数据形状。"""
+    """
+    订阅 Chain 不得以 Any 别名继续消费未声明的数据形状。
+    """
     paths = [
         APP_ROOT / "chain" / "_music.py",
         APP_ROOT / "workflow" / "actions" / "add_subscribe.py",
@@ -222,7 +240,9 @@ def test_subscription_callers_do_not_alias_snapshot_to_any() -> None:
 
 
 def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
-    """SubscribeChain Facade 只保留稳定入口，各职责必须由唯一 owner 实现。"""
+    """
+    SubscribeChain Facade 只保留稳定入口，各职责必须由唯一 owner 实现。
+    """
     assert not (APP_ROOT / "chain" / "subscribe.py").exists()
     expected_files = {
         "__init__.py",
@@ -329,7 +349,9 @@ def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
 
 
 def test_chain_runtime_context_owns_typed_subscription_repository() -> None:
-    """Chain 订阅仓储必须由显式运行上下文注入，旧数据 locator 不得存在。"""
+    """
+    Chain 订阅仓储必须由显式运行上下文注入，旧数据 locator 不得存在。
+    """
     context_path = APP_ROOT / "application" / "chain" / "context.py"
     tree = ast.parse(
         context_path.read_text(encoding="utf-8-sig"),
@@ -356,7 +378,9 @@ def test_chain_runtime_context_owns_typed_subscription_repository() -> None:
 
 
 def test_subscription_adapters_implement_typed_public_surface() -> None:
-    """短事务与请求级订阅 adapter 的公开方法不得泄漏 Any。"""
+    """
+    短事务与请求级订阅 adapter 的公开方法不得泄漏 Any。
+    """
     path = APP_ROOT / "db" / "adapters" / "subscription.py"
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     adapter_names = {
@@ -398,7 +422,9 @@ def test_subscription_adapters_implement_typed_public_surface() -> None:
 
 
 def test_subscription_files_have_single_word_owners_without_reexports() -> None:
-    """Subscription 能力留在同名包，文件使用单词且包根不重复导出。"""
+    """
+    Subscription 能力留在同名包，文件使用单词且包根不重复导出。
+    """
     assert CONTRACT_PATH.is_file()
     assert (APP_ROOT / "db" / "adapters" / "subscription.py").is_file()
     assert all(path.stem == "__init__" or path.stem.isalpha() for path in SUBSCRIPTION_PACKAGE.glob("*.py"))

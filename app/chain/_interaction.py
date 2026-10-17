@@ -1,3 +1,7 @@
+"""
+业务处理链到消息交互处理器的统一委托。
+"""
+
 from typing import Optional, Tuple, Union
 
 from app.chain._contracts import InteractionMixinHost
@@ -5,19 +9,20 @@ from app.schemas.types import NotificationChannel
 
 
 class InteractionChainMixin:
-    __mixin_host_protocol__ = InteractionMixinHost
     """
-    斜杠命令交互四件套委托：remote_list / parse_callback /
+    统一委托斜杠命令的列表、回调解析、按钮处理和文本交互：remote_list / parse_callback /
     handle_callback_interaction / handle_text_interaction。
 
     subscribe、site 等业务链的交互入口完全同构，唯一差异是各自的
-    交互处理器构造参数。本 mixin 将四件套委托提取为公共实现，
+    交互处理器构造参数。本混入类将这些委托提取为公共实现，
     子类只需注入处理器类并实现 _interaction_handler 构造器。
 
     子类注入约定：
     - `_interaction_handler_type`：交互处理器类，提供静态 parse_callback；
     - `_interaction_handler()`：按各链业务动作构造处理器实例。
     """
+
+    __mixin_host_protocol__ = InteractionMixinHost
 
     # 交互处理器类，子类注入（如 SubscribeInteractionHandler / SiteInteractionHandler）
     _interaction_handler_type: type = None
@@ -59,7 +64,9 @@ class InteractionChainMixin:
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
     ) -> bool:
-        """委托交互处理器处理按钮回调。"""
+        """
+        委托交互处理器处理按钮回调。
+        """
         return self._interaction_handler().handle_callback_interaction(
             callback_data=callback_data,
             channel=channel,
@@ -78,7 +85,9 @@ class InteractionChainMixin:
             username: str,
             text: str,
     ) -> bool:
-        """委托交互处理器处理文本输入。"""
+        """
+        委托交互处理器处理文本输入。
+        """
         return self._interaction_handler().handle_text_interaction(
             channel=channel,
             source=source,

@@ -1,4 +1,6 @@
-"""仪表板统计中未知数量、零数量和月度增量的契约。"""
+"""
+仪表板统计中未知数量、零数量和月度增量的契约。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -15,7 +17,9 @@ from app.schemas.dashboard import Statistic
     [(None, 0), ([], 0), ([None], None), ([None, None], None), ([None, 0], 0), ([None, 3, 5], 8)],
 )
 def test_statistics_distinguishes_unknown_episodes_from_zero(episode_counts, expected_episodes):
-    """缺少媒体服务、未知集数和已知零集数应保持不同返回语义。"""
+    """
+    缺少媒体服务、未知集数和已知零集数应保持不同返回语义。
+    """
     rows = None if episode_counts is None else [
         Statistic(movie_count=2, tv_count=None, music_count=1, user_count=None, episode_count=count)
         for count in episode_counts

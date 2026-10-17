@@ -1,3 +1,7 @@
+"""
+验证依赖包安装器的命令构造、结果解析与失败处理。
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,6 +17,9 @@ from app.adapters.system.package import (
 
 
 def test_build_env_maps_proxy_and_cache(tmp_path, monkeypatch):
+    """
+    安装环境使用本次请求的代理与缓存设置，覆盖残留的代理变量。
+    """
     monkeypatch.delenv("PIP_CACHE_DIR", raising=False)
     monkeypatch.delenv("UV_CACHE_DIR", raising=False)
     monkeypatch.delenv("PACKAGE_CACHE_ROOT", raising=False)
@@ -36,6 +43,9 @@ def test_build_env_maps_proxy_and_cache(tmp_path, monkeypatch):
 
 
 def test_build_env_uses_package_cache_root_and_preserves_tool_cache_overrides(tmp_path, monkeypatch):
+    """
+    缓存根目录支持配置覆盖，并保留安装工具显式设置的缓存路径。
+    """
     monkeypatch.setenv("PACKAGE_CACHE_ROOT", str(tmp_path / "custom-package-cache"))
     monkeypatch.delenv("UV_CACHE_DIR", raising=False)
     request = PackageInstallRequest(
@@ -51,6 +61,9 @@ def test_build_env_uses_package_cache_root_and_preserves_tool_cache_overrides(tm
 
 
 def test_build_strategies_prefers_uv_network_matrix_and_preserves_find_links(tmp_path):
+    """
+    安装策略优先使用 uv 的代理与镜像组合，同时保留本地安装包目录。
+    """
     req = tmp_path / "requirements.txt"
     req.write_text("demo\n", encoding="utf-8")
     wheels = tmp_path / "wheels"
@@ -90,6 +103,9 @@ def test_build_strategies_prefers_uv_network_matrix_and_preserves_find_links(tmp
 
 
 def test_build_strategies_fail_closed_when_uv_missing(tmp_path):
+    """
+    缺少 uv 时返回空策略，避免静默切换未经约定的安装器。
+    """
     req = tmp_path / "requirements.txt"
     req.write_text("demo\n", encoding="utf-8")
     request = PackageInstallRequest(
@@ -105,7 +121,9 @@ def test_build_strategies_fail_closed_when_uv_missing(tmp_path):
 
 
 def test_build_strategies_passes_all_manifests_to_one_uv_process(tmp_path):
-    """多个插件清单必须进入同一个 uv 命令并保持输入顺序。"""
+    """
+    多个插件清单必须进入同一个 uv 命令并保持输入顺序。
+    """
     modern = tmp_path / "modern" / "pyproject.toml"
     modern.parent.mkdir()
     modern.write_text("[project]\nname='modern'\nversion='1'\n", encoding="utf-8")
@@ -131,7 +149,9 @@ def test_build_strategies_passes_all_manifests_to_one_uv_process(tmp_path):
 
 
 def test_project_sync_selects_current_runtime_group(tmp_path, monkeypatch):
-    """主项目恢复必须显式选择当前解释器对应的互斥运行依赖组。"""
+    """
+    主项目恢复必须显式选择当前解释器对应的互斥运行依赖组。
+    """
     project = tmp_path / "project"
     project.mkdir()
     pyproject = project / "pyproject.toml"
@@ -156,10 +176,16 @@ def test_project_sync_selects_current_runtime_group(tmp_path, monkeypatch):
 
 
 def test_redact_url_removes_userinfo():
+    """
+    日志中的安装源地址去除用户名和密码，保留主机与路径。
+    """
     assert redact_url("https://user:pass@mirror.example/simple") == "https://mirror.example/simple"
 
 
 def test_redact_url_removes_userinfo_with_invalid_port():
+    """
+    地址端口格式非法时仍移除认证信息，避免脱敏过程泄露凭据。
+    """
     assert (
         redact_url("https://user:pass@example.com:notaport/simple")
         == "https://example.com:notaport/simple"

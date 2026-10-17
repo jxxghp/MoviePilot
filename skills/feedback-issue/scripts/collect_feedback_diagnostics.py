@@ -1,4 +1,6 @@
-"""收集 feedback-issue 提交流程需要的本地诊断日志。"""
+"""
+收集 feedback-issue 提交流程需要的本地诊断日志。
+"""
 
 from __future__ import annotations
 
@@ -104,7 +106,9 @@ _FEEDBACK_REGEX_PATTERNS: tuple[re.Pattern, ...] = (
 
 
 def read_tail(path: Path) -> str:
-    """读取日志文件尾部，避免大日志一次性进入内存。"""
+    """
+    读取日志文件尾部，避免大日志一次性进入内存。
+    """
     try:
         size = path.stat().st_size
         with path.open("rb") as file_obj:
@@ -116,7 +120,9 @@ def read_tail(path: Path) -> str:
 
 
 def candidate_log_files() -> list[Path]:
-    """返回反馈诊断可读取的主日志和插件日志文件。"""
+    """
+    返回反馈诊断可读取的主日志和插件日志文件。
+    """
     files = [settings.LOG_PATH / "moviepilot.log"]
     plugin_log_dir = settings.LOG_PATH / "plugins"
     if plugin_log_dir.exists():
@@ -125,7 +131,9 @@ def candidate_log_files() -> list[Path]:
 
 
 def collect_doctor_report() -> dict:
-    """调用离线 doctor 命令收集结构化诊断报告。"""
+    """
+    调用离线 doctor 命令收集结构化诊断报告。
+    """
     commands = []
     moviepilot_bin = shutil.which("moviepilot")
     if moviepilot_bin:
@@ -173,7 +181,9 @@ def collect_doctor_report() -> dict:
 
 
 def json_loads_from_output(output: str) -> dict:
-    """从命令输出中解析 doctor JSON 对象。"""
+    """
+    从命令输出中解析 doctor JSON 对象。
+    """
     import json
 
     start = output.find("{")
@@ -187,7 +197,9 @@ def json_loads_from_output(output: str) -> dict:
 
 
 def normalize_keywords(keywords: Optional[list[str]]) -> list[str]:
-    """过滤掉过短或过于宽泛的日志关键词。"""
+    """
+    过滤掉过短或过于宽泛的日志关键词。
+    """
     normalized: list[str] = []
     for item in keywords or []:
         item = str(item or "").strip()
@@ -201,7 +213,9 @@ def normalize_keywords(keywords: Optional[list[str]]) -> list[str]:
 
 
 def has_explicit_feedback_intent(original_user_request: str) -> bool:
-    """判断用户原话里是否出现明确要求提 Issue 的意图。"""
+    """
+    判断用户原话里是否出现明确要求提 Issue 的意图。
+    """
     if not original_user_request:
         return False
     normalized = original_user_request.lower().strip()
@@ -215,7 +229,9 @@ def has_explicit_feedback_intent(original_user_request: str) -> bool:
 
 
 def normalize_window(time_window_minutes: int) -> int:
-    """把传入的时间窗限制到 5 到 1440 分钟之间。"""
+    """
+    把传入的时间窗限制到 5 到 1440 分钟之间。
+    """
     try:
         window = int(time_window_minutes or _DEFAULT_TIME_WINDOW_MINUTES)
     except (TypeError, ValueError):
@@ -224,7 +240,9 @@ def normalize_window(time_window_minutes: int) -> int:
 
 
 def parse_line_timestamp(line: str) -> Optional[datetime]:
-    """从一行日志开头提取时间戳；提取不到返回 None。"""
+    """
+    从一行日志开头提取时间戳；提取不到返回 None。
+    """
     match = _LOG_TIMESTAMP_RE.search(line[:64])
     if not match:
         return None
@@ -235,7 +253,9 @@ def parse_line_timestamp(line: str) -> Optional[datetime]:
 
 
 def is_meta_noise(line: str) -> bool:
-    """判断日志行是否来自 Agent 自身的工具调度或消息框架噪音。"""
+    """
+    判断日志行是否来自 Agent 自身的工具调度或消息框架噪音。
+    """
     match = _LOG_MODULE_RE.match(line)
     if not match:
         return False
@@ -243,7 +263,9 @@ def is_meta_noise(line: str) -> bool:
 
 
 def _repetition_fingerprint(line: str) -> str:
-    """生成用于识别连续重复日志模板的指纹。"""
+    """
+    生成用于识别连续重复日志模板的指纹。
+    """
     if parse_line_timestamp(line) is None:
         return line
     normalized = _LOG_TIMESTAMP_RE.sub("<time>", line)
@@ -252,7 +274,9 @@ def _repetition_fingerprint(line: str) -> str:
 
 
 def _compact_repeated_lines(lines: list[str]) -> list[str]:
-    """压缩连续重复日志模板，同时保留首条、末条和重复次数。"""
+    """
+    压缩连续重复日志模板，同时保留首条、末条和重复次数。
+    """
     compacted: list[str] = []
     group: list[str] = []
     fingerprint: Optional[str] = None
@@ -285,7 +309,9 @@ def filter_lines(
     max_lines: int,
     window_start: datetime,
 ) -> tuple[list[str], list[str]]:
-    """按时间窗、模块噪音和关键词筛选日志行。"""
+    """
+    按时间窗、模块噪音和关键词筛选日志行。
+    """
     candidates: list[str] = []
     last_seen_in_window: Optional[bool] = None
     last_seen_was_meta = False
@@ -338,7 +364,9 @@ def collect_diagnostics(
     max_lines: int,
     time_window_minutes: int,
 ) -> dict:
-    """读取日志、筛选、脱敏并写入运行时诊断文件。"""
+    """
+    读取日志、筛选、脱敏并写入运行时诊断文件。
+    """
     if not has_explicit_feedback_intent(original_user_request):
         return {
             "success": False,
@@ -422,7 +450,9 @@ def collect_diagnostics(
 
 
 def parse_args() -> argparse.Namespace:
-    """解析命令行参数。"""
+    """
+    解析命令行参数。
+    """
     parser = argparse.ArgumentParser(description="收集 MoviePilot 反馈 Issue 诊断日志")
     parser.add_argument("--original-user-request", required=True, help="触发反馈的用户原话")
     parser.add_argument("--keyword", action="append", default=[], help="用于过滤日志的具体关键词，可重复")
@@ -437,7 +467,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    """脚本入口：输出 JSON 结果给 Agent 解析。"""
+    """
+    脚本入口：输出 JSON 结果给 Agent 解析。
+    """
     args = parse_args()
     result = collect_diagnostics(
         original_user_request=args.original_user_request,

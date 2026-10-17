@@ -1,3 +1,7 @@
+"""
+验证本地插件同步的源目录与更新行为。
+"""
+
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,13 +26,17 @@ from app.schemas.types import EventType, SystemConfigKey
 
 @pytest.fixture
 def plugin_manager(monkeypatch) -> Iterator[PluginManager]:
-    """构造隔离的插件管理器实例，避免单例状态污染其它用例。"""
+    """
+    构造隔离的插件管理器实例，避免单例状态污染其它用例。
+    """
     system = get_plugin_system()
     from app.adapters.external.plugin import client as plugin_client_module
     original_runtime_setting = plugin_client_module.get_runtime_setting
 
     class _SettingsStub(SimpleNamespace):
-        """允许存量用例覆盖尚未显式声明的配置键。"""
+        """
+        允许存量用例覆盖尚未显式声明的配置键。
+        """
 
         def __getattr__(self, _key):
             return None
@@ -49,7 +57,9 @@ def plugin_manager(monkeypatch) -> Iterator[PluginManager]:
     )
 
     def install_local(**kwargs) -> tuple[bool, str]:
-        """用测试包适配器模拟已通过来源准入的本地 Gateway。"""
+        """
+        用测试包适配器模拟已通过来源准入的本地 Gateway。
+        """
         repo_url = kwargs["repo_url"]
         candidate = system.local_candidate(
             kwargs["plugin_id"],
@@ -75,7 +85,9 @@ def plugin_manager(monkeypatch) -> Iterator[PluginManager]:
 
 
 def _build_local_plugin_repo(tmp_path: Path) -> tuple[Path, Path]:
-    """构造带运行资产、构建依赖和系统版本要求的本地 v2 插件仓库。"""
+    """
+    构造带运行资产、构建依赖和系统版本要求的本地 v2 插件仓库。
+    """
     repo_path = tmp_path / "local-plugins"
     source_dir = repo_path / "plugins.v2" / "demoplugin"
     source_file = source_dir / "__init__.py"
@@ -100,7 +112,9 @@ def _build_local_plugin_repo(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _patch_plugin_runtime_settings(monkeypatch, settings) -> None:
-    """以只读键值端口注入插件运行配置。"""
+    """
+    以只读键值端口注入插件运行配置。
+    """
     for target in (
         "app.runtime.extensions.plugin.manager.get_runtime_setting",
         "app.adapters.external.plugin.client.get_runtime_setting",
@@ -116,7 +130,9 @@ def _patch_plugin_runtime_settings(monkeypatch, settings) -> None:
 
 
 def _patch_package_runtime_settings(monkeypatch, settings) -> None:
-    """为插件包文件适配器注入隔离路径配置。"""
+    """
+    为插件包文件适配器注入隔离路径配置。
+    """
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.get_runtime_setting",
         lambda key: getattr(settings, key),
@@ -131,7 +147,9 @@ def _configure_local_watcher(
     *,
     dev: bool = True,
 ) -> None:
-    """为单批次本地插件文件监测提供完整运行配置。"""
+    """
+    为单批次本地插件文件监测提供完整运行配置。
+    """
     settings_stub = SimpleNamespace(
         DEV=dev,
         PLUGIN_AUTO_RELOAD=True,
@@ -151,14 +169,18 @@ def _set_running_render_mode(
     render_mode: str,
     dist_path: str,
 ) -> None:
-    """注册测试所需的运行态插件联邦渲染声明。"""
+    """
+    注册测试所需的运行态插件联邦渲染声明。
+    """
     plugin_manager.running_plugins["DemoPlugin"] = SimpleNamespace(
         get_render_mode=lambda: (render_mode, dist_path),
     )
 
 
 def _set_installed_plugins(monkeypatch, plugin_ids: list[str]) -> None:
-    """注入本地同步测试所需的已安装插件读取端口。"""
+    """
+    注入本地同步测试所需的已安装插件读取端口。
+    """
     storage = SimpleNamespace(
         read=lambda key: plugin_ids
         if key == SystemConfigKey.UserInstalledPlugins
@@ -172,26 +194,36 @@ def _set_installed_plugins(monkeypatch, plugin_ids: list[str]) -> None:
 
 
 class _FakeSchedulerBackend:
-    """提供插件服务增删所需的最小 APScheduler 契约。"""
+    """
+    提供插件服务增删所需的最小 APScheduler 契约。
+    """
 
     def __init__(self, job_ids: list[str]):
         self.jobs = {job_id: {"id": job_id} for job_id in job_ids}
 
     def get_jobs(self):
-        """返回当前注册的 APScheduler job。"""
+        """
+        返回当前注册的 APScheduler job。
+        """
         return [SimpleNamespace(id=job_id) for job_id in self.jobs]
 
     def remove_job(self, job_id: str) -> None:
-        """移除指定 APScheduler job。"""
+        """
+        移除指定 APScheduler job。
+        """
         self.jobs.pop(job_id)
 
     def add_job(self, func, trigger, **kwargs) -> None:
-        """记录并替换指定 APScheduler job。"""
+        """
+        记录并替换指定 APScheduler job。
+        """
         self.jobs[kwargs["id"]] = {"func": func, "trigger": trigger, **kwargs}
 
 
 def _build_scheduler_for_plugin_reload(jobs: dict, backend) -> Scheduler:
-    """构造不启动后台线程的插件服务 Scheduler。"""
+    """
+    构造不启动后台线程的插件服务 Scheduler。
+    """
     scheduler = object.__new__(Scheduler)
     scheduler._lock = threading.RLock()
     scheduler._jobs = jobs
@@ -206,7 +238,9 @@ def test_dev_local_plugin_candidate_keeps_hot_sync_allowed_when_system_version_l
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """DEV 本地源码候选保留热同步资格，系统版本差异只作为兼容性提示。"""
+    """
+    DEV 本地源码候选保留热同步资格，系统版本差异只作为兼容性提示。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     runtime_dir = tmp_path / "app" / "plugins" / "demoplugin"
 
@@ -237,7 +271,9 @@ def test_local_plugin_candidate_keeps_system_version_gate_outside_dev(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """非 DEV 本地候选继续受主系统版本门禁保护，避免自动热加载绕过安装约束。"""
+    """
+    非 DEV 本地候选继续受主系统版本门禁保护，避免自动热加载绕过安装约束。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
 
     _patch_plugin_runtime_settings(
@@ -262,7 +298,8 @@ def test_local_plugin_candidate_marks_runtime_incompatible_as_unusable(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """free-threaded 运行时下声明不支持的本地候选必须投影为不可安装。
+    """
+    free-threaded 运行时下声明不支持的本地候选必须投影为不可安装。
 
     本地热同步只认 compatible 位；漏掉运行时这一位，每次源码变更都会发起一次
     必然被安装准入拒绝的安装，只留下一条无意义的失败日志。
@@ -297,7 +334,9 @@ def test_local_plugin_sync_without_candidate_respects_system_version_gate(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """未传候选时的本地同步兜底查询也必须遵守系统版本门禁。"""
+    """
+    未传候选时的本地同步兜底查询也必须遵守系统版本门禁。
+    """
     repo_path, _source_file = _build_local_plugin_repo(tmp_path)
     runtime_dir = tmp_path / "app" / "plugins" / "demoplugin"
     settings_stub = SimpleNamespace(
@@ -320,7 +359,9 @@ def test_local_federated_asset_batch_syncs_once_without_python_reload(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """同批联邦资产变化只同步一次运行副本，不触发 Python 热重载。"""
+    """
+    同批联邦资产变化只同步一次运行副本，不触发 Python 热重载。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     source_dir = source_file.parent
     chunk_file = source_dir / "dist" / "assets" / "chunk.js"
@@ -367,7 +408,9 @@ def test_local_federated_asset_ignores_non_vue_or_unsafe_render_paths(
     render_mode: str,
     dist_path: str,
 ) -> None:
-    """非 Vue 模式和越出插件目录的声明路径不参与本地同步。"""
+    """
+    非 Vue 模式和越出插件目录的声明路径不参与本地同步。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     remote_entry = source_file.parent / "dist" / "assets" / "remoteEntry.js"
     _configure_local_watcher(
@@ -393,7 +436,9 @@ def test_local_federated_asset_ignores_change_outside_declared_directory(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """声明目录外的普通文件变化不复制联邦构建产物。"""
+    """
+    声明目录外的普通文件变化不复制联邦构建产物。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     _configure_local_watcher(
         monkeypatch,
@@ -418,7 +463,9 @@ def test_local_federated_asset_requires_remote_entry(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """联邦入口文件不存在时不复制声明目录中的其它构建产物。"""
+    """
+    联邦入口文件不存在时不复制声明目录中的其它构建产物。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     source_dir = source_file.parent
     remote_entry = source_dir / "dist" / "assets" / "remoteEntry.js"
@@ -448,7 +495,9 @@ def test_local_federated_asset_reads_running_render_mode_for_each_batch(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """每批变化都从运行实例读取当前联邦目录，不缓存旧声明。"""
+    """
+    每批变化都从运行实例读取当前联邦目录，不缓存旧声明。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     source_dir = source_file.parent
     next_entry = source_dir / "next" / "assets" / "remoteEntry.js"
@@ -488,7 +537,9 @@ def test_local_federated_asset_respects_non_dev_compatibility_gate(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """非 DEV 自动监测不绕过本地插件的系统版本兼容性门禁。"""
+    """
+    非 DEV 自动监测不绕过本地插件的系统版本兼容性门禁。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     remote_entry = source_file.parent / "dist" / "assets" / "remoteEntry.js"
     _configure_local_watcher(
@@ -516,7 +567,9 @@ def test_runtime_federated_asset_change_does_not_copy_or_reload(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """运行目录中的联邦资产由构建方直接写入，不执行本地仓库复制或 Python 重载。"""
+    """
+    运行目录中的联邦资产由构建方直接写入，不执行本地仓库复制或 Python 重载。
+    """
     repo_path, _source_file = _build_local_plugin_repo(tmp_path)
     runtime_dir = tmp_path / "app" / "plugins" / "demoplugin"
     runtime_entry = runtime_dir / "dist" / "assets" / "remoteEntry.js"
@@ -553,7 +606,9 @@ def test_local_requirements_change_still_does_not_sync_or_reload(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """依赖文件变化继续只提示重新安装，不触发自动同步或热重载。"""
+    """
+    依赖文件变化继续只提示重新安装，不触发自动同步或热重载。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     requirements_file = source_file.parent / "requirements.txt"
     requirements_file.write_text("example==1.0.0\n", encoding="utf-8")
@@ -583,7 +638,9 @@ def test_local_pyproject_change_prompts_reinstall_without_sync_or_reload(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """生效的现代依赖清单变化只提示重新安装。"""
+    """
+    生效的现代依赖清单变化只提示重新安装。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     pyproject_file = source_file.parent / "pyproject.toml"
     pyproject_file.write_text(
@@ -616,7 +673,9 @@ def test_local_inactive_requirements_change_is_debug_only(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """现代清单生效时，旧 requirements 变化不提示重新安装。"""
+    """
+    现代清单生效时，旧 requirements 变化不提示重新安装。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     (source_file.parent / "pyproject.toml").write_text(
         '[project]\ndependencies = ["example==1.0.0"]\n',
@@ -651,7 +710,9 @@ def test_deleting_active_pyproject_prompts_for_requirements_takeover(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """删除现代清单后旧清单接管时必须提示重新安装。"""
+    """
+    删除现代清单后旧清单接管时必须提示重新安装。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     requirements_file = source_file.parent / "requirements.txt"
     requirements_file.write_text("legacy==1.0.0\n", encoding="utf-8")
@@ -683,7 +744,9 @@ def test_deleting_only_active_requirements_prompts_reinstall(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """删除唯一生效的旧清单时必须提示依赖集合已变化。"""
+    """
+    删除唯一生效的旧清单时必须提示依赖集合已变化。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     requirements_file = source_file.parent / "requirements.txt"
     requirements_file.write_text("legacy==1.0.0\n", encoding="utf-8")
@@ -709,7 +772,9 @@ def test_deleting_inactive_requirements_is_debug_only(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """现代清单仍生效时，删除旧清单不得提示重新安装。"""
+    """
+    现代清单仍生效时，删除旧清单不得提示重新安装。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     (source_file.parent / "pyproject.toml").write_text(
         '[project]\nname = "demo"\nversion = "1.0.0"\n'
@@ -740,7 +805,9 @@ def test_local_python_change_still_syncs_and_reloads_plugin(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """本地 Python 源码变化继续沿用同步后热重载语义。"""
+    """
+    本地 Python 源码变化继续沿用同步后热重载语义。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     _configure_local_watcher(
         monkeypatch,
@@ -768,7 +835,9 @@ def test_local_python_change_rejects_root_federated_path_and_still_reloads(
     plugin_manager: PluginManager,
     dist_path: str,
 ) -> None:
-    """插件根目录不能作为联邦输出目录，Python 变化仍需同步并热重载。"""
+    """
+    插件根目录不能作为联邦输出目录，Python 变化仍需同步并热重载。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     _configure_local_watcher(
         monkeypatch,
@@ -797,7 +866,9 @@ def test_local_python_and_federated_changes_share_one_batch_sync(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """同批 Python 与联邦资产变化共用一次复制，并保留 Python 热重载。"""
+    """
+    同批 Python 与联邦资产变化共用一次复制，并保留 Python 热重载。
+    """
     repo_path, source_file = _build_local_plugin_repo(tmp_path)
     remote_entry = source_file.parent / "dist" / "assets" / "remoteEntry.js"
     _configure_local_watcher(
@@ -828,7 +899,9 @@ def test_runtime_python_change_reloads_without_local_repository_sync(
     monkeypatch,
     plugin_manager: PluginManager,
 ) -> None:
-    """直接修改运行目录中的 Python 文件只重载当前载荷。"""
+    """
+    直接修改运行目录中的 Python 文件只重载当前载荷。
+    """
     runtime_dir = tmp_path / "app" / "plugins" / "demoplugin"
     runtime_file = runtime_dir / "__init__.py"
     runtime_dir.mkdir(parents=True)
@@ -863,7 +936,9 @@ def test_runtime_python_change_reloads_without_local_repository_sync(
 
 
 def test_plugin_reload_refreshes_scheduler_services_idempotently(monkeypatch):
-    """插件重载事件必须按当前服务拓扑幂等刷新 Scheduler。"""
+    """
+    插件重载事件必须按当前服务拓扑幂等刷新 Scheduler。
+    """
     current_func = Mock()
     plugin_manager = Mock()
     plugin_manager.get_plugin_services.return_value = [

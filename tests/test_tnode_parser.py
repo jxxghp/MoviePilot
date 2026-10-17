@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""TNode 用户信息刷新顺序与失败保护回归测试。"""
+"""
+TNode 用户信息刷新顺序与失败保护回归测试。
+"""
 
 import json
 from unittest.mock import Mock
@@ -19,7 +21,9 @@ HOME_HTML = '<html><head><meta name="x-csrf-token" content="test-csrf"></head></
 
 @pytest.fixture
 def user_info() -> dict:
-    """构造不含真实账号信息的 TNode 用户资料。"""
+    """
+    构造不含真实账号信息的 TNode 用户资料。
+    """
     return {
         "id": 42,
         "username": "test-user",
@@ -36,7 +40,9 @@ def user_info() -> dict:
 
 @pytest.fixture
 def pages(user_info: dict) -> dict[str, str]:
-    """提供完整解析流程所需的离线首页、资料和做种响应。"""
+    """
+    提供完整解析流程所需的离线首页、资料和做种响应。
+    """
     return {
         SITE_URL: HOME_HTML,
         PROFILE_URL: json.dumps({"status": 200, "data": user_info}),
@@ -50,11 +56,15 @@ def pages(user_info: dict) -> dict[str, str]:
 
 @pytest.fixture
 def parser(monkeypatch: pytest.MonkeyPatch, pages: dict[str, str]) -> TNodeSiteUserInfo:
-    """只替换 HTTP 边界，保留真实解析、请求头合并和会话关闭行为。"""
+    """
+    只替换 HTTP 边界，保留真实解析、请求头合并和会话关闭行为。
+    """
     client = Mock(spec=RequestUtils)
 
     def get_response(url: str, **_kwargs) -> Response:
-        """拒绝未声明的请求，并返回离线 HTTP 响应。"""
+        """
+        拒绝未声明的请求，并返回离线 HTTP 响应。
+        """
         response = Response()
         response.status_code = 200
         response.encoding = "utf-8"
@@ -74,7 +84,9 @@ def parser(monkeypatch: pytest.MonkeyPatch, pages: dict[str, str]) -> TNodeSiteU
 
 
 def test_tnode_fetches_current_user_before_seeding(parser: TNodeSiteUserInfo) -> None:
-    """空用户 ID 时仍应获取当前会话资料，之后继续刷新做种数据。"""
+    """
+    空用户 ID 时仍应获取当前会话资料，之后继续刷新做种数据。
+    """
     assert parser.userid is None
 
     parser.parse()
@@ -107,7 +119,9 @@ def test_tnode_fetches_current_user_before_seeding(parser: TNodeSiteUserInfo) ->
 def test_tnode_failed_profile_skips_seeding(
     parser: TNodeSiteUserInfo, pages: dict[str, str], payload: str,
 ) -> None:
-    """资料为空、非 JSON 或业务失败时，不应继续请求做种接口。"""
+    """
+    资料为空、非 JSON 或业务失败时，不应继续请求做种接口。
+    """
     pages[PROFILE_URL] = payload
 
     parser.parse()
@@ -125,7 +139,9 @@ def test_tnode_failed_profile_skips_seeding(
 def test_tnode_invalid_userid_skips_seeding(
     parser: TNodeSiteUserInfo, pages: dict[str, str], user_info: dict, userid,
 ) -> None:
-    """即使资料接口成功，缺失或无效的用户 ID 仍应阻止做种请求。"""
+    """
+    即使资料接口成功，缺失或无效的用户 ID 仍应阻止做种请求。
+    """
     user_info["id"] = userid
     pages[PROFILE_URL] = json.dumps({"status": 200, "data": user_info})
 
@@ -140,7 +156,9 @@ def test_tnode_invalid_userid_skips_seeding(
 
 
 def test_tnode_missing_csrf_skips_user_requests(parser: TNodeSiteUserInfo, pages: dict[str, str]) -> None:
-    """首页缺少 CSRF 时，不应请求未经配置的资料或做种地址。"""
+    """
+    首页缺少 CSRF 时，不应请求未经配置的资料或做种地址。
+    """
     pages[SITE_URL] = "<html>Login</html>"
 
     parser.parse()

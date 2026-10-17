@@ -1,3 +1,7 @@
+"""
+验证站点爬虫构造搜索地址时的查询参数与路径。
+"""
+
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
@@ -226,7 +230,9 @@ def test_typed_search_path_falls_back_to_all_path():
 
 
 def test_video_search_uses_dedicated_path_without_synthesized_category_params():
-    """专属影视路径已携带分类时，不应再追加站点不支持的默认 cat 参数。"""
+    """
+    专属影视路径已携带分类时，不应再追加站点不支持的默认 cat 参数。
+    """
     indexer = _build_indexer(
         domain="https://iptorrents.com/",
         search={

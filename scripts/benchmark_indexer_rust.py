@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Benchmark SiteSpider indexer parsing with real MoviePilot-Build site configs.
+使用 MoviePilot-Build 的真实站点配置比较 Rust 与 Python 索引解析耗时。
+
+输入为本地构造的 HTML，不向站点发起请求；结果取多轮运行的耗时中位数。
 """
 
 import argparse
@@ -106,7 +108,7 @@ def _build_ipt_html(rows: int) -> str:
 
 def _prepare_cases(sites_dir: Path, rows: int) -> List[Dict[str, object]]:
     """
-    构造使用真实站点配置的 benchmark 用例。
+    构造使用真实站点配置的 基准测试 用例。
     """
     cases = []
     for site_id in ["agsvpt", "pttime", "chdbits"]:
@@ -126,14 +128,14 @@ def _prepare_cases(sites_dir: Path, rows: int) -> List[Dict[str, object]]:
 
 def _parse_with_rust(indexer: dict, html: str) -> List[dict]:
     """
-    使用 SiteSpider 默认入口解析，Rust 扩展可用时会命中 Rust fast path。
+    使用 SiteSpider 默认入口解析，Rust 扩展可用时会命中 Rust 加速路径。
     """
     return SiteSpider(copy.deepcopy(indexer)).parse(html)
 
 
 def _parse_with_python(indexer: dict, html: str) -> List[dict]:
     """
-    临时禁用 Rust fast path，复用同一个 SiteSpider.parse 入口测 PyQuery 路径。
+    临时禁用 Rust 加速路径，复用同一个 SiteSpider.parse 入口测 PyQuery 路径。
     """
     original = spider_module.rust_accel.parse_indexer_torrents
     spider_module.rust_accel.parse_indexer_torrents = lambda *args, **kwargs: None
@@ -165,7 +167,7 @@ def _median_time(parser: Callable[[dict, str], List[dict]], indexer: dict, html:
 
 def run_benchmark(sites_dir: Path, rows: int, loops: int, repeats: int) -> None:
     """
-    执行真实 SiteSpider.parse 链路 benchmark 并打印 Rust/PyQuery 对比。
+    执行真实 SiteSpider.parse 链路 基准测试 并打印 Rust/PyQuery 对比。
     """
     cases = _prepare_cases(sites_dir, rows)
     print(f"sites_dir={sites_dir}")
@@ -207,7 +209,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """
-    入口函数。
+    解析采样参数并输出真实站点配置的索引解析性能对照。
     """
     args = parse_args()
     run_benchmark(args.sites_dir, args.rows, args.loops, args.repeats)

@@ -1,3 +1,7 @@
+"""
+验证站点重置任务的调度注册和执行。
+"""
+
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -8,21 +12,29 @@ from app.runtime.tasks import TaskRegistry
 
 
 class _TaskRegistry(TaskRegistry):
-    """记录站点重置提交的同步后台任务。"""
+    """
+    记录站点重置提交的同步后台任务。
+    """
 
     def __init__(self) -> None:
-        """初始化任务记录。"""
+        """
+        初始化任务记录。
+        """
         super().__init__()
         self.calls: list[tuple] = []
 
     def create_sync(self, function, *args, owner: str, **kwargs) -> None:
-        """保存函数、参数和 owner，避免端点测试启动真实任务。"""
+        """
+        保存函数、参数和 owner，避免端点测试启动真实任务。
+        """
         self.calls.append((function, args, kwargs, owner))
 
 
 @pytest.mark.asyncio
 async def test_reset_submits_cookiecloud_after_site_transaction(monkeypatch):
-    """站点重置提交 CookieCloud 后台任务，不在请求事件循环内直接执行。"""
+    """
+    站点重置提交 CookieCloud 后台任务，不在请求事件循环内直接执行。
+    """
     command = Mock()
     command.reset = AsyncMock(return_value=SiteMutationResult(success=True))
     task_registry = _TaskRegistry()

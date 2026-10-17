@@ -1,4 +1,6 @@
-"""媒体文件删除的共享目录边界回归。"""
+"""
+媒体文件删除的共享目录边界回归。
+"""
 
 import shutil
 from pathlib import Path
@@ -17,7 +19,9 @@ from app.schemas.system import TransferDirectoryConf
 
 @pytest.fixture
 def cleanup(monkeypatch):
-    """用临时文件系统执行真实删除，仅替换存储和配置端口。"""
+    """
+    用临时文件系统执行真实删除，仅替换存储和配置端口。
+    """
     policy = ClassificationPolicy(categories=[
         ClassificationCategory(id="movie.chinese", media_type="电影", name="华语电影", path=["华语电影"]),
         ClassificationCategory(id="movie.asia", media_type="电影", name="华语", path=["亚洲", "华语"]),
@@ -32,7 +36,9 @@ def cleanup(monkeypatch):
     deleted = []
 
     def delete(fileitem):
-        """记录并删除临时目录中的目标，缺失目录视作已完成。"""
+        """
+        记录并删除临时目录中的目标，缺失目录视作已完成。
+        """
         path = Path(fileitem.path)
         deleted.append(path)
         if path.is_dir():
@@ -42,11 +48,15 @@ def cleanup(monkeypatch):
         return True
 
     def parent(fileitem):
-        """构造相同存储中的上级目录项。"""
+        """
+        构造相同存储中的上级目录项。
+        """
         return FileItem(storage=fileitem.storage, path=str(Path(fileitem.path).parent), type="dir")
 
     def any_media(fileitem, extensions):
-        """扫描临时目录，保留仍有媒体文件的目录。"""
+        """
+        扫描临时目录，保留仍有媒体文件的目录。
+        """
         return any(path.suffix in extensions for path in Path(fileitem.path).rglob("*"))
 
     monkeypatch.setattr(chain, "delete_file", delete)
@@ -58,7 +68,9 @@ def cleanup(monkeypatch):
 
 
 def _media_file(root, relative_path, storage="local"):
-    """创建媒体及刮削附件，验证影片目录仍按原行为一起清理。"""
+    """
+    创建媒体及刮削附件，验证影片目录仍按原行为一起清理。
+    """
     path = root / relative_path / "电影.mkv"
     path.parent.mkdir(parents=True)
     path.write_bytes(b"media")
@@ -78,7 +90,9 @@ def _media_file(root, relative_path, storage="local"):
     ({}, "某片 (2026)", ""),
 ])
 def test_library_cleanup_preserves_shared_directories(tmp_path, cleanup, options, relative_path, boundary):
-    """删除最后一个媒体和影片目录后，保留根目录及多级类型、分类结构。"""
+    """
+    删除最后一个媒体和影片目录后，保留根目录及多级类型、分类结构。
+    """
     chain, _helper, directories, deleted = cleanup
     directories.append(TransferDirectoryConf(library_path=str(tmp_path), library_storage="local", transfer_type="link", **options))
     fileitem = _media_file(tmp_path, relative_path)
@@ -99,7 +113,9 @@ def test_library_cleanup_preserves_shared_directories(tmp_path, cleanup, options
     ({"media_type": "电影", "download_type_folder": True}, "资源包", ""),
 ])
 def test_source_cleanup_uses_download_folder_rules(tmp_path, cleanup, options, relative_path, boundary):
-    """源文件删除和移动后清理遵守下载目录自身的子目录开关。"""
+    """
+    源文件删除和移动后清理遵守下载目录自身的子目录开关。
+    """
     chain, _helper, directories, deleted = cleanup
     directories.append(TransferDirectoryConf(download_path=str(tmp_path), storage="local", **options))
     fileitem = _media_file(tmp_path, relative_path)
@@ -113,7 +129,9 @@ def test_source_cleanup_uses_download_folder_rules(tmp_path, cleanup, options, r
 
 
 def test_cleanup_chooses_deepest_root_in_same_storage(tmp_path, cleanup):
-    """嵌套配置取最深边界；其他存储同名路径不赋予附件递归删除权限。"""
+    """
+    嵌套配置取最深边界；其他存储同名路径不赋予附件递归删除权限。
+    """
     chain, helper, directories, deleted = cleanup
     root = tmp_path / "nested"
     directories.extend([
@@ -130,7 +148,9 @@ def test_cleanup_chooses_deepest_root_in_same_storage(tmp_path, cleanup):
 
 @pytest.mark.parametrize("storage", ["local", "u115"])
 def test_cleanup_without_matching_storage_preserves_nonempty_parent(tmp_path, cleanup, storage):
-    """无匹配配置时只删除真正空目录，不能连带删除刮削附件。"""
+    """
+    无匹配配置时只删除真正空目录，不能连带删除刮削附件。
+    """
     chain, helper, directories, _deleted = cleanup
     directories.append(TransferDirectoryConf(library_path=str(tmp_path), library_storage="u115" if storage == "local" else "local"))
     fileitem = _media_file(tmp_path, "影片", storage=storage)
@@ -141,7 +161,9 @@ def test_cleanup_without_matching_storage_preserves_nonempty_parent(tmp_path, cl
 
 @pytest.mark.parametrize("query_result", [True, None])
 def test_cleanup_preserves_other_media_or_unknown_query(tmp_path, cleanup, monkeypatch, query_result):
-    """仍有媒体或无法确认媒体查询结果时，停止向上清理。"""
+    """
+    仍有媒体或无法确认媒体查询结果时，停止向上清理。
+    """
     chain, _helper, directories, deleted = cleanup
     directories.append(TransferDirectoryConf(library_path=str(tmp_path), library_storage="local"))
     fileitem = _media_file(tmp_path, "影片")
@@ -152,7 +174,9 @@ def test_cleanup_preserves_other_media_or_unknown_query(tmp_path, cleanup, monke
 
 
 def test_cleanup_propagates_directory_delete_failure(tmp_path, cleanup, monkeypatch):
-    """影片目录删除失败时返回失败并停止，不继续触碰共享分类目录。"""
+    """
+    影片目录删除失败时返回失败并停止，不继续触碰共享分类目录。
+    """
     chain, _helper, directories, _deleted = cleanup
     directories.append(TransferDirectoryConf(library_path=str(tmp_path), library_category_folder=True))
     fileitem = _media_file(tmp_path, "华语电影/影片")
@@ -165,7 +189,9 @@ def test_cleanup_propagates_directory_delete_failure(tmp_path, cleanup, monkeypa
 
 
 def test_cleanup_preserves_sibling_media(tmp_path, cleanup):
-    """删除一部影片后，同分类下的其他影片及共享分类目录保持完整。"""
+    """
+    删除一部影片后，同分类下的其他影片及共享分类目录保持完整。
+    """
     chain, _helper, directories, _deleted = cleanup
     directories.append(TransferDirectoryConf(library_path=str(tmp_path), library_category_folder=True))
     fileitem = _media_file(tmp_path, "华语电影/影片甲")
@@ -176,7 +202,9 @@ def test_cleanup_preserves_sibling_media(tmp_path, cleanup):
 
 
 def test_bluray_cleanup_preserves_category(tmp_path, cleanup, monkeypatch):
-    """蓝光原盘目录整体删除后，也必须在共享分类边界停止。"""
+    """
+    蓝光原盘目录整体删除后，也必须在共享分类边界停止。
+    """
     chain, _helper, directories, deleted = cleanup
     directories.append(TransferDirectoryConf(library_path=str(tmp_path), library_category_folder=True))
     fileitem = _media_file(tmp_path, "华语电影/原盘/BDMV")

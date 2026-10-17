@@ -1,4 +1,6 @@
-"""整理 Chain 的冻结检查点构建与任务恢复。"""
+"""
+整理 Chain 的冻结检查点构建与任务恢复。
+"""
 
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, cast
@@ -30,7 +32,9 @@ def _apply_classification_snapshot(
     media: Union[MediaInfo, MusicInfo],
     snapshot: EffectiveClassificationSnapshot,
 ) -> Union[MediaInfo, MusicInfo]:
-    """把持久分类标量恢复到媒体副本，不重新执行活动策略。"""
+    """
+    把持久分类标量恢复到媒体副本，不重新执行活动策略。
+    """
     return cast(
         Union[MediaInfo, MusicInfo],
         apply_persisted_classification_snapshot(media, snapshot),
@@ -44,7 +48,9 @@ def build_planning_rejection_checkpoint(
     planning_input: TransferPlanningInput,
     classification_snapshot: EffectiveClassificationSnapshot,
 ) -> TransferPlanCheckpoint:
-    """把确定性的宿主规划错误冻结为可重放的零步骤失败计划。"""
+    """
+    把确定性的宿主规划错误冻结为可重放的零步骤失败计划。
+    """
     meta_kind = planning_input.options.get("_meta_kind")
     mediainfo_kind = planning_input.options.get("_mediainfo_kind")
     source_path = task.fileitem.path
@@ -80,7 +86,9 @@ def restore_planned_task(
     restore_meta: MetaSnapshotRestorer,
     restore_media: MediaSnapshotRestorer,
 ) -> None:
-    """用冻结检查点覆盖易受配置和在线识别变化影响的任务字段。"""
+    """
+    用冻结检查点覆盖易受配置和在线识别变化影响的任务字段。
+    """
     checkpoint = task.plan_checkpoint
     if checkpoint is None:
         raise TransferPlanningStateError("planned 任务缺少整理计划检查点")

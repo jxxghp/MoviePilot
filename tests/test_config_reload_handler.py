@@ -1,4 +1,5 @@
-"""ConfigReloadMixin 配置变更事件处理器解析的回归测试（Issue #6329）。
+"""
+ConfigReloadMixin 配置变更事件处理器解析的回归测试（Issue #6329）。
 
 ConfigReloadMixin 动态生成的事件处理器，必须能被事件总线解析回实例方法，
 不能因 __name__ 与类上方法名不一致而被静默跳过。
@@ -30,41 +31,57 @@ from app.startup.initializers.modules import (
 
 
 class _ReloadRecorder(ConfigReloadMixin):
-    """测试用同步重载子类，记录重载调用次数。"""
+    """
+    测试用同步重载子类，记录重载调用次数。
+    """
 
     CONFIG_WATCH = {"TEST_RELOAD_KEY"}
 
     def __init__(self):
-        """初始化同步重载调用计数。"""
+        """
+        初始化同步重载调用计数。
+        """
         self.reload_count = 0
 
     def on_config_changed(self):
-        """记录同步重载调用，供键筛选断言使用。"""
+        """
+        记录同步重载调用，供键筛选断言使用。
+        """
         self.reload_count += 1
 
 
 class _AsyncReloadRecorder(ConfigReloadMixin):
-    """测试用异步重载子类，记录重载调用次数。"""
+    """
+    测试用异步重载子类，记录重载调用次数。
+    """
 
     CONFIG_WATCH = {"TEST_RELOAD_KEY"}
 
     def __init__(self):
-        """初始化异步重载调用计数。"""
+        """
+        初始化异步重载调用计数。
+        """
         self.reload_count = 0
 
     async def on_config_changed(self):
-        """记录异步重载调用，供等待执行的断言使用。"""
+        """
+        记录异步重载调用，供等待执行的断言使用。
+        """
         self.reload_count += 1
 
 
 @pytest.fixture(params=[_ReloadRecorder, _AsyncReloadRecorder])
 def recorder(request, monkeypatch):
-    """将生成的处理器绑定到测试实例，并在测试后移除全局监听。"""
+    """
+    将生成的处理器绑定到测试实例，并在测试后移除全局监听。
+    """
     recorder_cls = request.param
     instance = recorder_cls()
 
     def resolver(owner_class):
-        """只解析当前参数化用例的处理器实例。"""
+        """
+        只解析当前参数化用例的处理器实例。
+        """
         if owner_class is recorder_cls:
             return EventHandlerBinding(instance=instance, owner_name=owner_class.__name__)
         return None
@@ -83,18 +100,24 @@ def recorder(request, monkeypatch):
 
 
 def _build_event(keys):
-    """构造携带指定配置键的 ConfigChanged 事件。"""
+    """
+    构造携带指定配置键的 ConfigChanged 事件。
+    """
     return Event(EventType.ConfigChanged, ConfigChangeEventData(key=set(keys)))
 
 
 def _configure_lifespan_resolvers() -> None:
-    """按启动组合顺序登记宿主和配置 owner resolver。"""
+    """
+    按启动组合顺序登记宿主和配置 owner resolver。
+    """
     configure_host_event_handler_resolver()
     configure_config_reload_event_handler_resolver()
 
 
 async def _dispatch(instance, event):
-    """按处理器类型走事件总线的同步或异步调用路径。"""
+    """
+    按处理器类型走事件总线的同步或异步调用路径。
+    """
     handler = instance.__class__.handle_config_changed
     if inspect.iscoroutinefunction(handler):
         await eventmanager._EventManager__invoke_handler_by_type_async(handler, event)
@@ -103,7 +126,9 @@ async def _dispatch(instance, event):
 
 
 def test_generated_handler_exposes_method_name(recorder):
-    """生成的处理器 __name__ 必须与类上的方法名一致，保证事件总线能解析到实例方法。"""
+    """
+    生成的处理器 __name__ 必须与类上的方法名一致，保证事件总线能解析到实例方法。
+    """
     handler = recorder.__class__.handle_config_changed
     assert handler.__name__ == "handle_config_changed"
     assert handler.__qualname__ == f"{recorder.__class__.__name__}.handle_config_changed"
@@ -111,32 +136,43 @@ def test_generated_handler_exposes_method_name(recorder):
 
 @pytest.mark.asyncio
 async def test_config_changed_event_triggers_reload(recorder):
-    """命中 CONFIG_WATCH 的配置变更事件必须触发子类重载逻辑。"""
+    """
+    命中 CONFIG_WATCH 的配置变更事件必须触发子类重载逻辑。
+    """
     await _dispatch(recorder, _build_event({"TEST_RELOAD_KEY"}))
     assert recorder.reload_count == 1
 
 
 @pytest.mark.asyncio
 async def test_unrelated_config_key_skips_reload(recorder):
-    """未监听的配置键变更不得触发重载。"""
+    """
+    未监听的配置键变更不得触发重载。
+    """
     await _dispatch(recorder, _build_event({"OTHER_KEY"}))
     assert recorder.reload_count == 0
 
 
 @pytest.mark.asyncio
 async def test_resolve_falls_back_to_qualname_when_name_mismatched(monkeypatch):
-    """处理器 __name__ 与类上方法名不一致时，事件总线应回退 __qualname__ 末段解析。"""
+    """
+    处理器 __name__ 与类上方法名不一致时，事件总线应回退 __qualname__ 末段解析。
+    """
     instance = _ReloadRecorder()
 
+    # 包装器必须保留事件处理签名，当前用例只验证方法解析而不读取事件。
     def wrapper(event):  # pylint: disable=unused-argument
-        """模拟只同步了 __qualname__ 的动态处理器。"""
+        """
+        模拟只同步了 __qualname__ 的动态处理器。
+        """
         instance.on_config_changed()
 
     wrapper.__module__ = _ReloadRecorder.__module__
     wrapper.__qualname__ = f"{_ReloadRecorder.__name__}.handle_config_changed"
 
     def resolver(owner_class):
-        """把测试包装器解析到指定同步重载实例。"""
+        """
+        把测试包装器解析到指定同步重载实例。
+        """
         if owner_class is _ReloadRecorder:
             return EventHandlerBinding(instance=instance, owner_name=owner_class.__name__)
         return None
@@ -156,7 +192,9 @@ async def test_resolve_falls_back_to_qualname_when_name_mismatched(monkeypatch):
 
 
 def test_externally_managed_reload_class_does_not_register_listener(monkeypatch):
-    """外部统一管理配置生命周期时，Mixin 保留重载能力但不重复绑定事件。"""
+    """
+    外部统一管理配置生命周期时，Mixin 保留重载能力但不重复绑定事件。
+    """
     registrations = []
     monkeypatch.setattr(
         eventmanager,
@@ -165,12 +203,16 @@ def test_externally_managed_reload_class_does_not_register_listener(monkeypatch)
     )
 
     class _ExternallyManagedReloadRecorder(ConfigReloadMixin):
-        """模拟由外部生命周期唯一绑定事件的组件。"""
+        """
+        模拟由外部生命周期唯一绑定事件的组件。
+        """
         CONFIG_RELOAD_MANAGED_EXTERNALLY = True
         CONFIG_WATCH = {"TEST_RELOAD_KEY"}
 
         def on_config_changed(self):
-            """保持空重载实现，验证类定义阶段不会注册监听。"""
+            """
+            保持空重载实现，验证类定义阶段不会注册监听。
+            """
             pass
 
     assert registrations == []
@@ -178,7 +220,9 @@ def test_externally_managed_reload_class_does_not_register_listener(monkeypatch)
 
 
 def test_config_reload_owner_is_skipped_without_lifecycle_resolver(monkeypatch):
-    """非模块配置 owner 缺少 resolver 时不得被事件总线临时构造。"""
+    """
+    非模块配置 owner 缺少 resolver 时不得被事件总线临时构造。
+    """
     helper = object.__new__(DohHelper)
     reload_config = Mock()
     helper.on_config_changed = reload_config
@@ -201,7 +245,9 @@ def test_config_reload_owner_is_skipped_without_lifecycle_resolver(monkeypatch):
 
 
 def test_host_config_reload_resolver_binds_current_doh_owner(monkeypatch):
-    """DoH 配置事件必须绑定到已由组合根物化的当前 Adapter。"""
+    """
+    DoH 配置事件必须绑定到已由组合根物化的当前 Adapter。
+    """
     helper = object.__new__(DohHelper)
     reload_config = Mock()
     helper.on_config_changed = reload_config
@@ -230,7 +276,9 @@ def test_host_config_reload_resolver_binds_current_doh_owner(monkeypatch):
 
 
 def test_host_resolver_binds_current_scraping_owner(monkeypatch):
-    """宿主 resolver 必须把同步重载处理器绑定到当前 Chain 单例。"""
+    """
+    宿主 resolver 必须把同步重载处理器绑定到当前 Chain 单例。
+    """
     chain = object.__new__(ScrapingChain)
     reload_config = Mock()
     chain.on_config_changed = reload_config
@@ -253,7 +301,9 @@ def test_host_resolver_binds_current_scraping_owner(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_host_resolver_binds_current_scheduler_owner(monkeypatch):
-    """宿主 resolver 必须把异步重载处理器绑定到当前 Scheduler 单例。"""
+    """
+    宿主 resolver 必须把异步重载处理器绑定到当前 Scheduler 单例。
+    """
     scheduler = object.__new__(Scheduler)
     reload_config = AsyncMock()
     scheduler.on_config_changed = reload_config
@@ -274,7 +324,9 @@ async def test_host_resolver_binds_current_scheduler_owner(monkeypatch):
 
 
 def test_config_reload_resolver_reads_latest_singleton_owner(monkeypatch, compose_cache_backend):
-    """resolver 每次读取当前单例，不能保留已经换代的 Redis 实例。"""
+    """
+    resolver 每次读取当前单例，不能保留已经换代的 Redis 实例。
+    """
     compose_cache_backend("redis")
     first = object.__new__(RedisHelper)
     first_reload = Mock()
@@ -307,7 +359,9 @@ def test_config_reload_resolver_reads_latest_singleton_owner(monkeypatch, compos
 
 @pytest.mark.asyncio
 async def test_config_reload_resolver_invokes_current_async_redis_owner(monkeypatch, compose_cache_backend):
-    """异步配置处理器必须绑定当前 Redis owner，并保留键筛选。"""
+    """
+    异步配置处理器必须绑定当前 Redis owner，并保留键筛选。
+    """
     compose_cache_backend("redis")
     helper = object.__new__(AsyncRedisHelper)
     reload_config = AsyncMock()
@@ -336,7 +390,9 @@ async def test_config_reload_resolver_invokes_current_async_redis_owner(monkeypa
 def test_config_reload_resolver_does_not_materialize_lazy_transfer_owner(
     monkeypatch,
 ):
-    """尚未创建的整理链只声明跳过，配置事件不得启动线程资源。"""
+    """
+    尚未创建的整理链只声明跳过，配置事件不得启动线程资源。
+    """
     singleton_key = (TransferChain, (), frozenset())
     monkeypatch.delitem(Singleton._instances, singleton_key, raising=False)
     monkeypatch.setattr(
@@ -357,7 +413,9 @@ def test_config_reload_resolver_does_not_materialize_lazy_transfer_owner(
 def test_plugin_manager_falls_through_plugin_resolver_to_current_owner(
     monkeypatch,
 ):
-    """resolver 先注册时也应在插件 Runtime 创建后接管当前管理器。"""
+    """
+    resolver 先注册时也应在插件 Runtime 创建后接管当前管理器。
+    """
     singleton_key = (PluginManager, (), frozenset())
     monkeypatch.delitem(Singleton._instances, singleton_key, raising=False)
     monkeypatch.setattr(
@@ -387,7 +445,9 @@ def test_plugin_manager_falls_through_plugin_resolver_to_current_owner(
 
 
 def test_config_reload_resolver_registration_replaces_same_name(monkeypatch):
-    """重复装配只替换当前 lifespan resolver，不累积并行绑定。"""
+    """
+    重复装配只替换当前 lifespan resolver，不累积并行绑定。
+    """
     monkeypatch.setattr(
         eventmanager,
         "_EventManager__handler_instance_resolvers",
@@ -428,7 +488,9 @@ def test_config_reload_provider_returns_lifecycle_owned_instance(
     registry,
     singleton_key,
 ):
-    """管理器和监控器必须从各自生命周期注册表读取当前实例。"""
+    """
+    管理器和监控器必须从各自生命周期注册表读取当前实例。
+    """
     instance = object.__new__(owner_class)
     monkeypatch.setitem(registry, singleton_key, instance)
 
@@ -438,7 +500,9 @@ def test_config_reload_provider_returns_lifecycle_owned_instance(
 
 
 def test_system_reload_provider_keeps_one_lifespan_instance() -> None:
-    """无资源的系统配置处理器也由 resolver 闭包保持稳定 owner 身份。"""
+    """
+    无资源的系统配置处理器也由 resolver 闭包保持稳定 owner 身份。
+    """
     provider = get_config_reload_handler_providers()[SystemHelper]
 
     assert provider() is provider()

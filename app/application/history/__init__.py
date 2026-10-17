@@ -1,3 +1,9 @@
+"""
+下载和整理历史的稳定数据、仓储端口与查询服务。
+
+跨层传递历史快照；数据库会话与事务实现由持久化适配器负责。
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -93,7 +99,39 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class DownloadHistorySnapshot:
-    """脱离数据库会话后供宿主下载、订阅和整理用例读取的历史快照。"""
+    """
+    脱离数据库会话后供宿主下载、订阅和整理用例读取的历史快照。
+
+    :param id: 下载历史记录的数据库主键
+    :param path: 下载任务的保存路径
+    :param type: 媒体类型，区分电影、电视剧和音乐
+    :param title: 识别出的标准媒体标题
+    :param year: 媒体发行年份；未知时为 None
+    :param media_source: 标准媒体来源，与 media_id 配对使用
+    :param media_id: 当前来源中的原生媒体标识
+    :param music_type: 音乐实体类型，区分单曲录音与专辑
+    :param seasons: 已识别的季号或季范围文本
+    :param episodes: 识别出的集号或集范围文本
+    :param image: 通知和历史展示使用的图片地址
+    :param poster: 媒体海报地址
+    :param downloader: 下载器配置名称
+    :param download_hash: 下载器中的任务哈希标识
+    :param torrent_name: 种子原始标题
+    :param torrent_description: 种子副标题或简介
+    :param torrent_site: 种子所属站点名称
+    :param userid: 触发下载的消息渠道用户标识
+    :param username: 触发下载的本地用户名
+    :param channel: 触发下载的消息渠道名称
+    :param date: 历史记录的时间文本
+    :param note: 冻结的附加 JSON 信息，包含恢复音乐上下文所需的扩展数据
+    :param media_category_id: 媒体类别的稳定标识
+    :param media_category: 下载时保存的媒体类别路径快照
+    :param classification_rule_id: 当次分类命中的规则标识
+    :param classification_policy_revision: 当次执行使用的分类策略版本
+    :param classification_source: 当次最终分类的依据来源
+    :param episode_group: 当前媒体使用的剧集组标识
+    :param custom_words: 该任务专用的自定义识别词
+    """
 
     id: int
     path: str
@@ -126,13 +164,26 @@ class DownloadHistorySnapshot:
     custom_words: Optional[str] = None
 
     def __post_init__(self) -> None:
-        """递归冻结可变 JSON 字段，使 DTO 在所有层级都不可修改。"""
+        """
+        递归冻结可变 JSON 字段，使 DTO 在所有层级都不可修改。
+        """
         object.__setattr__(self, "note", _freeze_json(self.note))
 
 
 @dataclass(frozen=True, slots=True)
 class DownloadFileSnapshot:
-    """脱离数据库会话的下载文件关联快照。"""
+    """
+    脱离数据库会话的下载文件关联快照。
+
+    :param id: 下载文件关联记录的数据库主键
+    :param downloader: 下载器配置名称
+    :param download_hash: 下载器中的任务哈希标识
+    :param fullpath: 文件的完整下载路径
+    :param savepath: 下载任务的根保存目录
+    :param filepath: 下载任务中的文件相对路径
+    :param torrentname: 关联种子的原始名称
+    :param state: 文件有效状态，1 表示正常，0 表示已删除
+    """
 
     id: int
     downloader: Optional[str]
@@ -146,7 +197,38 @@ class DownloadFileSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class DownloadHistoryWrite:
-    """一次下载成功后写入历史所需的完整稳定数据。"""
+    """
+    一次下载成功后写入历史所需的完整稳定数据。
+
+    :param path: 下载任务的保存路径
+    :param type: 媒体类型，区分电影、电视剧和音乐
+    :param title: 识别出的标准媒体标题
+    :param year: 媒体发行年份；未知时为 None
+    :param media_source: 标准媒体来源，与 media_id 配对使用
+    :param media_id: 当前来源中的原生媒体标识
+    :param music_type: 音乐实体类型，区分单曲录音与专辑
+    :param seasons: 已识别的季号或季范围文本
+    :param episodes: 识别出的集号或集范围文本
+    :param image: 通知和历史展示使用的图片地址
+    :param poster: 媒体海报地址
+    :param downloader: 下载器配置名称
+    :param download_hash: 下载器中的任务哈希标识
+    :param torrent_name: 种子原始标题
+    :param torrent_description: 种子副标题或简介
+    :param torrent_site: 种子所属站点名称
+    :param userid: 触发下载的消息渠道用户标识
+    :param username: 触发下载的本地用户名
+    :param channel: 触发下载的消息渠道名称
+    :param date: 历史记录的时间文本
+    :param note: 冻结的附加 JSON 信息，包含恢复音乐上下文所需的扩展数据
+    :param media_category_id: 媒体类别的稳定标识
+    :param media_category: 下载时保存的媒体类别路径快照
+    :param classification_rule_id: 当次分类命中的规则标识
+    :param classification_policy_revision: 当次执行使用的分类策略版本
+    :param classification_source: 当次最终分类的依据来源
+    :param episode_group: 当前媒体使用的剧集组标识
+    :param custom_words: 该任务专用的自定义识别词
+    """
 
     path: str
     type: str
@@ -178,7 +260,9 @@ class DownloadHistoryWrite:
     custom_words: Optional[str] = None
 
     def to_payload(self) -> dict[str, Any]:
-        """返回可交给持久化适配器的独立字段副本。"""
+        """
+        返回可交给持久化适配器的独立字段副本。
+        """
         payload = asdict(self)
         if self.media_source is not None:
             payload["media_source"] = str(self.media_source)
@@ -189,7 +273,17 @@ class DownloadHistoryWrite:
 
 @dataclass(frozen=True, slots=True)
 class DownloadFileWrite:
-    """下载任务关联文件的一次稳定写入。"""
+    """
+    下载任务关联文件的一次稳定写入。
+
+    :param downloader: 下载器配置名称
+    :param download_hash: 下载器中的任务哈希标识
+    :param fullpath: 文件的完整下载路径
+    :param savepath: 下载任务的根保存目录
+    :param filepath: 下载任务中的文件相对路径
+    :param torrentname: 关联种子的原始名称
+    :param state: 文件有效状态，1 表示正常，0 表示已删除
+    """
 
     downloader: Optional[str] = None
     download_hash: Optional[str] = None
@@ -200,29 +294,48 @@ class DownloadFileWrite:
     state: int = 1
 
     def to_payload(self) -> dict[str, Any]:
-        """返回可交给持久化适配器的独立字段副本。"""
+        """
+        返回可交给持久化适配器的独立字段副本。
+        """
         return asdict(self)
 
 
 class DownloadHistoryQueryPort(Protocol):
-    """宿主下载、订阅、Agent 和整理用例所需的类型化查询端口。"""
+    """
+    宿主下载、订阅、Agent 和整理用例所需的类型化查询端口。
+    """
 
     def get_by_hash(
         self,
         download_hash: str,
     ) -> Optional[DownloadHistorySnapshot]:
-        """按下载任务 Hash 返回最新历史快照。"""
+        """
+        按下载任务 Hash 返回最新历史快照。
+
+        :param download_hash: 下载器中的任务哈希标识
+        :return: 该任务最新的下载历史；不存在时返回 None
+        """
         ...
 
     def get_by_hashes(
         self,
         download_hashes: list[str],
     ) -> dict[str, DownloadHistorySnapshot]:
-        """批量返回以下载任务 Hash 为键的最新历史快照。"""
+        """
+        批量返回以下载任务 Hash 为键的最新历史快照。
+
+        :param download_hashes: 待批量查询的下载任务哈希标识
+        :return: 以任务哈希为键的最新历史映射；未找到的哈希不写入映射
+        """
         ...
 
     def get_by_path(self, path: str) -> Optional[DownloadHistorySnapshot]:
-        """按下载保存路径返回历史快照。"""
+        """
+        按下载保存路径返回历史快照。
+
+        :param path: 下载任务的保存路径
+        :return: 匹配保存路径的历史快照；不存在时返回 None
+        """
         ...
 
     def get_by_media_identity(
@@ -231,14 +344,26 @@ class DownloadHistoryQueryPort(Protocol):
         media_id: str,
         music_type: Optional[str] = None,
     ) -> list[DownloadHistorySnapshot]:
-        """按规范媒体身份返回历史快照。"""
+        """
+        按规范媒体身份返回历史快照。
+
+        :param media_source: 标准媒体来源，与 media_id 配对使用
+        :param media_id: 当前来源中的原生媒体标识
+        :param music_type: 音乐实体类型筛选；None 不附加该条件
+        :return: 匹配媒体身份的全部下载历史快照
+        """
         ...
 
     def get_file_by_fullpath(
         self,
         fullpath: str,
     ) -> Optional[DownloadFileSnapshot]:
-        """按完整路径返回一条有效下载文件快照。"""
+        """
+        按完整路径返回一条有效下载文件快照。
+
+        :param fullpath: 下载文件的完整路径
+        :return: 该路径的有效下载文件快照；不存在时返回 None
+        """
         ...
 
     def get_files_by_hash(
@@ -246,11 +371,22 @@ class DownloadHistoryQueryPort(Protocol):
         download_hash: str,
         state: Optional[int] = None,
     ) -> list[DownloadFileSnapshot]:
-        """按下载任务 Hash 返回文件快照。"""
+        """
+        按下载任务 Hash 返回文件快照。
+
+        :param download_hash: 下载器中的任务哈希标识
+        :param state: 文件有效状态筛选；None 表示不限状态
+        :return: 满足任务哈希及状态筛选的文件快照列表
+        """
         ...
 
     def get_files_by_savepath(self, savepath: str) -> list[DownloadFileSnapshot]:
-        """按保存目录返回下载文件快照。"""
+        """
+        按保存目录返回下载文件快照。
+
+        :param savepath: 下载任务的根保存目录
+        :return: 该保存目录下的下载文件快照列表
+        """
         ...
 
     async def async_list_by_page(
@@ -258,45 +394,94 @@ class DownloadHistoryQueryPort(Protocol):
         page: int = 1,
         count: int = 30,
     ) -> list[DownloadHistorySnapshot]:
-        """异步按下载时间倒序分页返回历史快照。"""
+        """
+        异步按下载时间倒序分页返回历史快照。
+
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的记录数
+        :return: 按下载时间倒序排列的当前页历史快照
+        """
         ...
 
 
 class DownloadHistoryWritePort(Protocol):
-    """下载历史新增和删除所需的类型化事务端口。"""
+    """
+    下载历史新增和删除所需的类型化事务端口。
+    """
 
     def add(
         self,
         history: DownloadHistoryWrite,
         files: tuple[DownloadFileWrite, ...] = (),
     ) -> int:
-        """在单一事务中新增历史与关联文件并返回历史 ID。"""
+        """
+        在单一事务中新增历史与关联文件并返回历史 ID。
+
+        :param history: 待持久化的完整历史字段快照
+        :param files: 与下载任务一起保存的关联文件快照，默认不新增文件
+        :return: 已提交的新下载历史主键
+        """
         ...
 
     async def async_delete(self, history_id: int) -> None:
-        """在独立异步事务中删除指定历史。"""
+        """
+        在独立异步事务中删除指定历史。
+
+        :param history_id: 目标历史记录的数据库主键
+        """
         ...
 
 
 class DownloadHistoryRepository(DownloadHistoryQueryPort, DownloadHistoryWritePort, Protocol):
-    """组合宿主所需全部下载历史查询和变更能力。"""
+    """
+    组合宿主所需全部下载历史查询和变更能力。
+    """
 
 
 class AsyncDownloadHistoryQueryRepository(Protocol):
-    """下载历史只读用例需要的最小异步持久化端口。"""
+    """
+    下载历史只读用例需要的最小异步持久化端口。
+    """
 
     async def async_list_by_page(self, page: int = 1, count: int = 30) -> list[DownloadHistorySnapshot]:
-        """按下载时间倒序分页读取历史记录。"""
+        """
+        按下载时间倒序分页读取历史记录。
+
+        :param page: 页码，从 1 开始
+        :param count: 每页最多返回的记录数
+        :return: 按下载时间倒序排列的当前页历史快照
+        """
         ...
 
     async def async_count(self) -> int:
-        """返回下载历史记录总数。"""
+        """
+        返回下载历史记录总数。
+
+        :return: 下载历史记录总数
+        """
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class ManualTransferHistory:
-    """手动整理准备阶段需要的稳定历史投影。"""
+    """
+    手动整理准备阶段需要的稳定历史投影。
+
+    :param id: 整理历史记录的数据库主键
+    :param status: 本次整理是否成功
+    :param mode: 整理方式，例如移动、复制或链接
+    :param src_fileitem: 源文件项的JSON 快照
+    :param dest_fileitem: 目标文件项的JSON 快照
+    :param downloader: 下载器配置名称
+    :param download_hash: 下载器中的任务哈希标识
+    :param type: 媒体类型，区分电影、电视剧和音乐
+    :param media_source: 标准媒体来源，与 media_id 配对使用
+    :param media_id: 当前来源中的原生媒体标识
+    :param music_type: 音乐实体类型，区分单曲录音与专辑
+    :param seasons: 已识别的季号或季范围文本
+    :param episodes: 识别出的集号或集范围文本
+    :param episode_group: 当前媒体使用的剧集组标识
+    """
 
     id: int
     status: bool
@@ -315,22 +500,35 @@ class ManualTransferHistory:
 
 
 class TransferHistoryLookupRepository(Protocol):
-    """手动整理历史投影所需的同步查询端口。"""
+    """
+    手动整理历史投影所需的同步查询端口。
+    """
 
     def get(self, history_id: int) -> Optional[TransferHistorySnapshot]:
-        """按主键读取整理历史。"""
+        """
+        按主键读取整理历史。
+
+        :param history_id: 目标历史记录的数据库主键
+        :return: 匹配的整理历史快照；不存在时返回 None
+        """
         ...
 
 
 class TransferHistoryLookupService:
-    """向同步整理用例提供脱离 ORM 会话的历史投影。"""
+    """
+    向同步整理用例提供脱离 ORM 会话的历史投影。
+    """
 
     def __init__(self, repository: TransferHistoryLookupRepository) -> None:
-        """保存整理历史只读端口。"""
+        """
+        保存整理历史只读端口。
+        """
         self._repository = repository
 
     def get(self, history_id: int) -> Optional[ManualTransferHistory]:
-        """按主键读取手动整理所需字段。"""
+        """
+        按主键读取手动整理所需字段。
+        """
         record = self._repository.get(history_id)
         if record is None:
             return None
@@ -359,7 +557,9 @@ class TransferHistoryLookupService:
 
 
 class HistoryQueryService:
-    """提供历史列表和详情 DTO，隔离 API 与数据库模型。"""
+    """
+    提供历史列表和详情 DTO，隔离 API 与数据库模型。
+    """
 
     def __init__(
         self,
@@ -367,7 +567,9 @@ class HistoryQueryService:
         download_repository: AsyncDownloadHistoryQueryRepository,
         transfer_repository: TransferHistoryQueryPort,
     ) -> None:
-        """保存下载历史和整理历史的只读端口。"""
+        """
+        保存下载历史和整理历史的只读端口。
+        """
         self._download_repository = download_repository
         self._transfer_repository = transfer_repository
 
@@ -377,12 +579,16 @@ class HistoryQueryService:
         page: int = 1,
         count: int = 30,
     ) -> list[DownloadHistory]:
-        """分页读取下载历史并转换为稳定的接口 DTO。"""
+        """
+        分页读取下载历史并转换为稳定的接口 DTO。
+        """
         records = await self._download_repository.async_list_by_page(page, count)
         return [DownloadHistory.model_validate(record) for record in records]
 
     async def count_download(self) -> int:
-        """返回下载历史精确总数，供分页 API 通过附加元数据报告。"""
+        """
+        返回下载历史精确总数，供分页 API 通过附加元数据报告。
+        """
         return await self._download_repository.async_count()
 
     async def list_transfer(
@@ -393,7 +599,9 @@ class HistoryQueryService:
         count: int = 30,
         status: Optional[bool] = None,
     ) -> TransferHistoryPage:
-        """应用历史筛选规则并返回整理历史分页 DTO。"""
+        """
+        应用历史筛选规则并返回整理历史分页 DTO。
+        """
         if title:
             wildcard = "*" in title or "?" in title
             if wildcard:
@@ -426,7 +634,9 @@ class HistoryQueryService:
         )
 
     async def get_transfer(self, history_id: int) -> Optional[TransferHistory]:
-        """读取单条整理历史 DTO，不向调用方泄漏 ORM 实例。"""
+        """
+        读取单条整理历史 DTO，不向调用方泄漏 ORM 实例。
+        """
         record = await self._transfer_repository.async_get(history_id)
         if record is None:
             return None
@@ -437,7 +647,9 @@ class HistoryQueryService:
         self,
         history_ids: list[int],
     ) -> tuple[list[TransferHistory], list[int]]:
-        """按输入顺序读取多条整理历史，并同时返回缺失 ID。"""
+        """
+        按输入顺序读取多条整理历史，并同时返回缺失 ID。
+        """
         records: list[TransferHistory] = []
         missing_ids: list[int] = []
         for history_id in history_ids:
@@ -450,7 +662,9 @@ class HistoryQueryService:
 
     @staticmethod
     def _glob_to_like(pattern: str) -> str:
-        """将 glob 通配符转换为使用反斜杠转义的 SQL LIKE 模式。"""
+        """
+        将 glob 通配符转换为使用反斜杠转义的 SQL LIKE 模式。
+        """
         result = pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         return result.replace("*", "%").replace("?", "_")
 

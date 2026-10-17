@@ -1,4 +1,6 @@
-"""Unified Event producer and consumer AST collector tests."""
+"""
+验证统一事件生产者和消费者的 AST 采集规则。
+"""
 
 from collections import defaultdict
 from pathlib import Path
@@ -21,7 +23,9 @@ def _collect_facts(
     *,
     module_name: str = "app.sample",
 ) -> dict[str, list[dict]]:
-    """从单个临时宿主模块收集统一 Event 事实。"""
+    """
+    从单个临时宿主模块收集统一 Event 事实。
+    """
     path = tmp_path / f"{module_name.replace('.', '_')}.py"
     path.write_text(source, encoding="utf-8")
     return collect_event_facts({module_name: path}, EVENT_MEMBERS)
@@ -33,7 +37,9 @@ def _collect(
     *,
     module_name: str = "app.sample",
 ) -> tuple[dict[str, list[dict]], list[dict]]:
-    """从单个临时宿主模块收集 Event consumer。"""
+    """
+    从单个临时宿主模块收集 Event consumer。
+    """
     path = tmp_path / f"{module_name.replace('.', '_')}.py"
     path.write_text(source, encoding="utf-8")
     facts = collect_event_facts({module_name: path}, EVENT_MEMBERS)
@@ -62,14 +68,18 @@ def _collect(
 
 
 def _stable_locations(locations: list[dict]) -> list[dict]:
-    """移除仅用于诊断的行号，比较稳定 consumer identity。"""
+    """
+    移除仅用于诊断的行号，比较稳定 consumer identity。
+    """
     return [{key: value for key, value in item.items() if key != "line"} for item in locations]
 
 
 def test_collect_event_consumers_resolves_canonical_instances_and_aliases(
     tmp_path: Path,
 ) -> None:
-    """Canonical singleton、构造器、模块和简单赋值别名都应可证明。"""
+    """
+    Canonical singleton、构造器、模块和简单赋值别名都应可证明。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -133,7 +143,9 @@ existing.add_event_listener(Events.Gamma, listener, 11)
 def test_collect_event_consumers_only_counts_applied_register_decorators(
     tmp_path: Path,
 ) -> None:
-    """register 只有装饰声明或立即应用到 handler 时才形成 consumer。"""
+    """
+    register 只有装饰声明或立即应用到 handler 时才形成 consumer。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -165,7 +177,9 @@ eventmanager.register(EventType.Gamma, priority=8)(immediate)
 def test_collect_event_consumers_expands_enum_and_partial_dynamic_lists(
     tmp_path: Path,
 ) -> None:
-    """register 的 enum/list 静态成员和未知成员必须分别保留。"""
+    """
+    register 的 enum/list 静态成员和未知成员必须分别保留。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -209,7 +223,9 @@ def selected_events(event):
 def test_collect_event_consumers_ignores_unknown_receivers_and_internal_delegation(
     tmp_path: Path,
 ) -> None:
-    """同名 API 和 EventManager 实现内部转调都不是独立 consumer 声明。"""
+    """
+    同名 API 和 EventManager 实现内部转调都不是独立 consumer 声明。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -232,7 +248,9 @@ class EventManager:
 def test_collect_event_consumers_respects_shadowing_and_rebinding(
     tmp_path: Path,
 ) -> None:
-    """参数遮蔽、局部重绑和模块最终重绑不得伪造 manager provenance。"""
+    """
+    参数遮蔽、局部重绑和模块最终重绑不得伪造 manager provenance。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -272,7 +290,9 @@ bus = object()
 def test_collect_event_consumers_handles_type_checking_runtime_else(
     tmp_path: Path,
 ) -> None:
-    """TYPE_CHECKING body 只用于类型，else 才是运行期 provenance。"""
+    """
+    TYPE_CHECKING body 只用于类型，else 才是运行期 provenance。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -299,7 +319,9 @@ runtime_bus.add_event_listener(EventType.Beta, listener)
 def test_collect_event_consumers_requires_canonical_type_checking_provenance(
     tmp_path: Path,
 ) -> None:
-    """只有未遮蔽的 typing.TYPE_CHECKING 才能裁剪运行期分支。"""
+    """
+    只有未遮蔽的 typing.TYPE_CHECKING 才能裁剪运行期分支。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -348,7 +370,9 @@ if TYPE_CHECKING:
 def test_collect_event_consumers_respects_compound_scope_targets(
     tmp_path: Path,
 ) -> None:
-    """循环、异常和推导式目标必须遮蔽同名 EventManager alias。"""
+    """
+    循环、异常和推导式目标必须遮蔽同名 EventManager alias。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -382,7 +406,9 @@ bus.add_event_listener(EventType.Gamma, listener)
 def test_collect_event_consumers_merges_try_exception_entry_states(
     tmp_path: Path,
 ) -> None:
-    """异常 handler 必须从 try 内所有可能抛出点的合并状态开始。"""
+    """
+    异常 handler 必须从 try 内所有可能抛出点的合并状态开始。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -418,7 +444,9 @@ except RuntimeError:
 def test_collect_event_consumers_models_while_with_match_and_delete_bindings(
     tmp_path: Path,
 ) -> None:
-    """复合语句目标和 del 必须遵循 Python 的绑定及路径语义。"""
+    """
+    复合语句目标和 del 必须遵循 Python 的绑定及路径语义。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -478,7 +506,9 @@ def deleted_name_is_local():
 def test_collect_event_consumers_writes_walrus_to_containing_scope(
     tmp_path: Path,
 ) -> None:
-    """推导式海象绑定属于包含函数，普通外层 alias 仍可读取。"""
+    """
+    推导式海象绑定属于包含函数，普通外层 alias 仍可读取。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -511,7 +541,9 @@ def eager_iterable():
 def test_collect_event_consumers_uses_late_bound_function_closures(
     tmp_path: Path,
 ) -> None:
-    """嵌套函数和 lambda 必须读取包含函数的最终 cell provenance。"""
+    """
+    嵌套函数和 lambda 必须读取包含函数的最终 cell provenance。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -545,7 +577,9 @@ def retained():
 def test_collect_event_consumers_validates_decorator_factory_application(
     tmp_path: Path,
 ) -> None:
-    """保存后的 factory 仅在合法单参数应用时形成 consumer。"""
+    """
+    保存后的 factory 仅在合法单参数应用时形成 consumer。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -579,7 +613,9 @@ unused(positional, f=keyword)
 def test_collect_event_consumers_validates_real_event_manager_signatures(
     tmp_path: Path,
 ) -> None:
-    """两种注册 API 只接受各自真实且完整的参数绑定。"""
+    """
+    两种注册 API 只接受各自真实且完整的参数绑定。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -627,7 +663,9 @@ def missing_event(event):
 def test_collect_event_consumers_keeps_only_proven_dynamic_registrations(
     tmp_path: Path,
 ) -> None:
-    """只有 receiver 已证明而事件值未知时才进入 dynamic facts。"""
+    """
+    只有 receiver 已证明而事件值未知时才进入 dynamic facts。
+    """
     static, dynamic = _collect(
         tmp_path,
         """
@@ -650,7 +688,9 @@ def register_runtime(name, handler):
 
 
 def test_collect_event_consumers_excludes_plugin_modules(tmp_path: Path) -> None:
-    """即使调用方误传插件模块，collector 也不得读取其注册事实。"""
+    """
+    即使调用方误传插件模块，collector 也不得读取其注册事实。
+    """
     host_path = tmp_path / "host.py"
     plugin_path = tmp_path / "plugin.py"
     source = """
@@ -686,7 +726,9 @@ def handler(event):
 def test_collect_event_facts_resolves_producer_receivers_and_bound_aliases(
     tmp_path: Path,
 ) -> None:
-    """Producer 仅接受 canonical receiver，并保留方法与 qualname。"""
+    """
+    Producer 仅接受 canonical receiver，并保留方法与 qualname。
+    """
     facts = _collect_facts(
         tmp_path,
         """
@@ -750,7 +792,9 @@ async def publish():
 def test_collect_event_facts_scopes_injected_ports_to_owning_classes(
     tmp_path: Path,
 ) -> None:
-    """构造注入端口可沿继承使用，但不得证明无关类的同名字段。"""
+    """
+    构造注入端口可沿继承使用，但不得证明无关类的同名字段。
+    """
     facts = _collect_facts(
         tmp_path,
         """
@@ -815,7 +859,9 @@ class FakeManagerOwner:
 def test_collect_event_facts_separates_static_dynamic_and_invalid_producers(
     tmp_path: Path,
 ) -> None:
-    """有限 IfExp 展开，运行期值与伪 enum 成员分别标记。"""
+    """
+    有限 IfExp 展开，运行期值与伪 enum 成员分别标记。
+    """
     facts = _collect_facts(
         tmp_path,
         """
@@ -847,7 +893,9 @@ eventmanager.send_event(EventType.Alpha, unknown=True)
 def test_collect_event_facts_accepts_only_event_manager_internal_producers(
     tmp_path: Path,
 ) -> None:
-    """EventManager 内部 self 可生产事件，但注册委托不重复计 consumer。"""
+    """
+    EventManager 内部 self 可生产事件，但注册委托不重复计 consumer。
+    """
     facts = _collect_facts(
         tmp_path,
         """
@@ -871,7 +919,9 @@ class EventManager:
 def test_collect_event_facts_tracks_chain_base_context_event_manager(
     tmp_path: Path,
 ) -> None:
-    """ChainBase 迁入 canonical base 模块后仍应识别上下文注入的事件管理器。"""
+    """
+    ChainBase 迁入 canonical base 模块后仍应识别上下文注入的事件管理器。
+    """
     facts = _collect_facts(
         tmp_path,
         """
@@ -896,7 +946,9 @@ class ChainBase:
 def test_collect_event_facts_tracks_relative_imported_chain_owner(
     tmp_path: Path,
 ) -> None:
-    """相对导入的 Chain owner 也应继承 facade 组合得到的事件端口。"""
+    """
+    相对导入的 Chain owner 也应继承 facade 组合得到的事件端口。
+    """
     base_path = tmp_path / "base.py"
     owner_path = tmp_path / "owner.py"
     facade_path = tmp_path / "facade.py"
@@ -949,7 +1001,9 @@ class TransferChain(SettlementOwner, ChainBase):
 def test_collect_event_facts_tracks_runtime_type_checking_base_alias(
     tmp_path: Path,
 ) -> None:
-    """Owner 经 TYPE_CHECKING 的运行期基类别名仍应继承事件端口。"""
+    """
+    Owner 经 TYPE_CHECKING 的运行期基类别名仍应继承事件端口。
+    """
     base_path = tmp_path / "base.py"
     contract_path = tmp_path / "contract.py"
     owner_path = tmp_path / "owner.py"
@@ -1008,7 +1062,9 @@ class SettlementOwner(_OwnerBase):
 def test_collect_event_facts_rejects_shadowed_type_checking_base_alias(
     tmp_path: Path,
 ) -> None:
-    """被重绑定的 TYPE_CHECKING 分支不能作为静态继承证据。"""
+    """
+    被重绑定的 TYPE_CHECKING 分支不能作为静态继承证据。
+    """
     base_path = tmp_path / "base.py"
     contract_path = tmp_path / "contract.py"
     owner_path = tmp_path / "owner.py"
@@ -1060,7 +1116,9 @@ class SettlementOwner(_OwnerBase):
 def test_collect_event_facts_consumer_schema_and_fingerprint_are_stable(
     tmp_path: Path,
 ) -> None:
-    """Consumer 使用完整字段名，摘要排除 line 且覆盖全部治理字段。"""
+    """
+    Consumer 使用完整字段名，摘要排除 line 且覆盖全部治理字段。
+    """
     source = """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
@@ -1104,7 +1162,9 @@ def handler(event):
 
 
 def test_collect_event_facts_excludes_all_plugin_facts(tmp_path: Path) -> None:
-    """误传插件路径时 producer 与 consumer 都不得进入宿主事实。"""
+    """
+    误传插件路径时 producer 与 consumer 都不得进入宿主事实。
+    """
     host_path = tmp_path / "host_facts.py"
     plugin_path = tmp_path / "plugin_facts.py"
     source = """
@@ -1135,7 +1195,9 @@ def handler(event):
 
 
 def test_collect_event_facts_matches_current_host_inventory() -> None:
-    """统一事实覆盖当前 86 个 producer 调用与 17 个 consumer 调用。"""
+    """
+    统一事实覆盖当前 86 个 producer 调用与 17 个 consumer 调用。
+    """
     facts = current_event_facts()
     producers = facts["producers"]
     consumers = facts["consumers"]

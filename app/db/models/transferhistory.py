@@ -1,3 +1,9 @@
+"""
+文件整理历史与任务关联的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 import re
 import time
 from collections.abc import Sequence
@@ -28,7 +34,9 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaS
 
 
 def _text_like(column: InstrumentedAttribute[Optional[str]], pattern: str, wildcard: bool = False) -> ColumnElement[bool]:
-    """构造跨数据库大小写不敏感的文本匹配条件。"""
+    """
+    构造跨数据库大小写不敏感的文本匹配条件。
+    """
     if wildcard:
         return column.ilike(pattern, escape='\\')
     return column.ilike(pattern)
@@ -90,9 +98,9 @@ class TransferHistory(Base):
     sample_rate: Mapped[Optional[int]] = mapped_column(Integer)
     # 实际码率（bps）
     bitrate: Mapped[Optional[int]] = mapped_column(Integer)
-    # Sxx
+    # 已整理媒体的季范围文本，使用 Sxx 格式。
     seasons: Mapped[Optional[str]] = mapped_column(String)
-    # Exx
+    # 已整理媒体的集范围文本，使用 Exx 格式。
     episodes: Mapped[Optional[str]] = mapped_column(String)
     # 海报
     image: Mapped[Optional[str]] = mapped_column(String)
@@ -135,7 +143,9 @@ class TransferHistory(Base):
     @classmethod
     def list_by_title(cls, db: Session, title: str, page: int = 1, count: int = 30,
                       status: Optional[bool] = None, wildcard: bool = False) -> list[Self]:
-        """按标题或路径分页查询整理历史。"""
+        """
+        按标题或路径分页查询整理历史。
+        """
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -162,7 +172,9 @@ class TransferHistory(Base):
     @classmethod
     async def async_list_by_title(cls, db: AsyncSession, title: str, page: int = 1, count: int = 30,
                                   status: Optional[bool] = None, wildcard: bool = False) -> list[Self]:
-        """异步按标题或路径分页查询整理历史。"""
+        """
+        异步按标题或路径分页查询整理历史。
+        """
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -189,7 +201,9 @@ class TransferHistory(Base):
 
     @classmethod
     def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: Optional[bool] = None) -> list[Self]:
-        """按时间倒序分页读取整理历史。"""
+        """
+        按时间倒序分页读取整理历史。
+        """
         statement = select(cls)
         if status is not None:
             statement = statement.where(cls.status == status)
@@ -204,7 +218,9 @@ class TransferHistory(Base):
     @classmethod
     async def async_list_by_page(cls, db: AsyncSession, page: int = 1, count: int = 30,
                                  status: Optional[bool] = None) -> list[Self]:
-        """异步按时间倒序分页读取整理历史。"""
+        """
+        异步按时间倒序分页读取整理历史。
+        """
         if status is not None:
             query = select(cls).filter(
                 cls.status == status
@@ -229,7 +245,9 @@ class TransferHistory(Base):
         db: Session,
         download_hash: str,
     ) -> Optional[Self]:
-        """在调用方 Session 中按下载哈希查询最新记录。"""
+        """
+        在调用方 Session 中按下载哈希查询最新记录。
+        """
         history: Optional[Self] = db.execute(
             select(cls).where(cls.download_hash == download_hash)
         ).scalars().first()
@@ -261,7 +279,9 @@ class TransferHistory(Base):
             *,
             task_id: str,
     ) -> Optional["TransferHistory"]:
-        """按稳定整理任务标识读取终态结算历史。"""
+        """
+        按稳定整理任务标识读取终态结算历史。
+        """
         if not task_id:
             return None
         return cast(
@@ -278,7 +298,9 @@ class TransferHistory(Base):
             *,
             task_id: str,
     ) -> Optional["TransferHistory"]:
-        """异步按稳定整理任务标识读取终态结算历史。"""
+        """
+        异步按稳定整理任务标识读取终态结算历史。
+        """
         if not task_id:
             return None
         return cast(
@@ -300,7 +322,9 @@ class TransferHistory(Base):
             retain_task_mapping: bool,
             payload: dict[str, Any],
     ) -> "TransferHistory":
-        """按任务幂等写历史，并维持同源存储仅保留一条的既有约束。"""
+        """
+        按任务幂等写历史，并维持同源存储仅保留一条的既有约束。
+        """
         if not task_id or settlement_revision <= 0:
             raise ValueError("整理历史结算缺少稳定任务或正向版本")
         column_names = {column.name for column in cls.__table__.columns}
@@ -359,6 +383,7 @@ class TransferHistory(Base):
 
         与 list_success_by_src 不同，这里不对源路径做归一化，蓝光原盘目录记录
         带尾斜杠，归一化后反而匹配不到。
+
         :param db: 数据库会话
         :param src: 源路径
         :param storage: 源存储类型
@@ -472,7 +497,9 @@ class TransferHistory(Base):
 
     @classmethod
     def list_by_hash(cls, db: Session, download_hash: str) -> list[Self]:
-        """查询同一下载任务的全部整理历史。"""
+        """
+        查询同一下载任务的全部整理历史。
+        """
         return list(db.execute(
             select(cls).where(cls.download_hash == download_hash)
         ).scalars().all())
@@ -534,7 +561,9 @@ class TransferHistory(Base):
 
     @staticmethod
     def _music_history_identity(history: "TransferHistory") -> tuple[str | int, ...]:
-        """构造曲目级历史身份，避免整专内全部曲目被同一专辑 ID 合并。"""
+        """
+        构造曲目级历史身份，避免整专内全部曲目被同一专辑 ID 合并。
+        """
         source = str(history.media_source or "").strip().casefold()
         media_id = str(history.media_id or "").strip()
         music_type = str(history.music_type or MUSIC_ENTITY_RECORDING).strip().casefold()
@@ -547,7 +576,9 @@ class TransferHistory(Base):
 
     @staticmethod
     def _history_episode_count(history: "TransferHistory") -> int:
-        """从单条整理历史中估算成功入库的剧集数量。"""
+        """
+        从单条整理历史中估算成功入库的剧集数量。
+        """
         episode_numbers = [int(value) for value in re.findall(r"\d+", history.episodes or "")]
         if len(episode_numbers) >= 2 and "-" in (history.episodes or ""):
             return max(1, episode_numbers[-1] - episode_numbers[0] + 1)
@@ -575,7 +606,9 @@ class TransferHistory(Base):
 
     @classmethod
     def count(cls, db: Session, status: Optional[bool] = None) -> int:
-        """统计指定状态的整理历史数量。"""
+        """
+        统计指定状态的整理历史数量。
+        """
         statement = select(func.count(cls.id))
         if status is not None:
             statement = statement.where(cls.status == status)
@@ -584,7 +617,9 @@ class TransferHistory(Base):
 
     @classmethod
     async def async_count(cls, db: AsyncSession, status: Optional[bool] = None) -> int:
-        """异步统计指定状态的整理历史数量。"""
+        """
+        异步统计指定状态的整理历史数量。
+        """
         if status is not None:
             result = await db.execute(
                 select(func.count(cls.id)).filter(cls.status == status)
@@ -598,7 +633,9 @@ class TransferHistory(Base):
 
     @classmethod
     def count_by_title(cls, db: Session, title: str, status: Optional[bool] = None, wildcard: bool = False) -> int:
-        """统计与标题或路径匹配的整理历史数量。"""
+        """
+        统计与标题或路径匹配的整理历史数量。
+        """
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -619,7 +656,9 @@ class TransferHistory(Base):
 
     @classmethod
     async def async_count_by_title(cls, db: AsyncSession, title: str, status: Optional[bool] = None, wildcard: bool = False) -> int:
-        """异步统计与标题或路径匹配的整理历史数量。"""
+        """
+        异步统计与标题或路径匹配的整理历史数量。
+        """
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -687,7 +726,9 @@ class TransferHistory(Base):
             cls, db: Session, media_source: MediaSource, media_id: str,
             mtype: Optional[str] = None,
     ) -> Optional[Self]:
-        """按规范媒体身份和类型查询整理记录。"""
+        """
+        按规范媒体身份和类型查询整理记录。
+        """
         history: Optional[Self] = db.execute(select(cls).where(
             cls.media_source == str(media_source),
             cls.media_id == str(media_id),
@@ -697,7 +738,9 @@ class TransferHistory(Base):
 
     @classmethod
     def update_download_hash(cls, db: Session, historyid: Optional[int] = None, download_hash: Optional[str] = None) -> None:
-        """在调用方事务中暂存下载任务哈希更新。"""
+        """
+        在调用方事务中暂存下载任务哈希更新。
+        """
         db.execute(
             update(cls).where(cls.id == historyid).values(download_hash=download_hash)
         )
@@ -709,7 +752,9 @@ class TransferHistory(Base):
             historyid: int,
             values: dict[str, Optional[str]],
     ) -> None:
-        """暂存调用方已经投影完成的清理状态字段。"""
+        """
+        暂存调用方已经投影完成的清理状态字段。
+        """
         db.execute(
             update(cls)
             .where(cls.id == historyid)
@@ -758,6 +803,7 @@ class TransferHistory(Base):
 
         同一源路径在一个存储中只能对应一条最新整理记录。先在同一事务内清理旧行再
         插入，避免旧的“查询一条再删除一条”在遗留重复数据下留下脏记录。
+
         :param db: 数据库会话
         :param kwargs: 整理历史字段
         :return: 新创建的整理历史

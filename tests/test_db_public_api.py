@@ -1,4 +1,5 @@
-"""``app.db`` 对外契约的边界。
+"""
+``app.db`` 对外契约的边界。
 
 ``__all__`` 是这个包唯一一份机器可读的对外承诺，而当前的写法**看起来像个疏漏**：
 ``SessionFactory`` / ``AsyncSessionFactory`` / ``ScopedSession`` 三个名字在

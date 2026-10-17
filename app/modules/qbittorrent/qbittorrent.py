@@ -1,3 +1,7 @@
+"""
+Qbittorrent 客户端连接与下载任务操作封装。
+"""
+
 import time
 import traceback
 from http.cookies import SimpleCookie
@@ -14,15 +18,19 @@ from app.domain import torrent as torrent_rules
 from app.foundation import url as url_tools
 from app.runtime.log import logger
 
+# 临时标签清理最多确认 10 次，等待新任务进入查询索引。
 _TORRENT_TAG_CLEANUP_RETRY_TIMES = 10
+# 标签清理确认之间的等待秒数。
 _TORRENT_TAG_CLEANUP_RETRY_INTERVAL = 1
+# 建连最多等待 3 秒，避免不可达实例长时间阻塞调用。
 _DOWNLOADER_CONNECT_TIMEOUT_SECONDS = 3
+# 响应读取最多等待 60 秒，兼顾大批量任务查询。
 _DOWNLOADER_READ_TIMEOUT_SECONDS = 60
 
 
 class Qbittorrent:
     """
-    qbittorrent下载器
+    Qbittorrent 下载器客户端，封装连接、任务查询和管理操作。
     """
 
     def __init__(self, host: Optional[str] = None, port: Optional[int] = None,
@@ -33,7 +41,19 @@ class Qbittorrent:
                  incomplete_files_ext: Optional[bool] = True,
                  **kwargs: object) -> None:
         """
-        若不设置参数，则创建配置文件设置的下载器
+        根据显式配置连接 qBittorrent，并同步未完成文件后缀开关。
+
+        :param host: 服务地址；省略端口参数时从地址解析端口，缺少地址时保留未连接状态
+        :param port: 服务端口，可随 host 一并提供
+        :param username: Web API 登录用户名
+        :param password: Web API 登录密码
+        :param apikey: API 密钥；非空时使用 Bearer 认证代替用户名密码登录
+        :param category: 是否启用自动种子管理
+        :param sequentail: 是否启用顺序下载，参数名保留既有拼写
+        :param force_resume: 是否允许强制启动下载和做种
+        :param first_last_piece: 是否优先下载首尾分块
+        :param incomplete_files_ext: 是否给未完成文件追加 .!qB 后缀，会同步至下载器全局设置
+        :param kwargs: 为通用服务配置保留的额外参数，当前不读取
         """
         self.qbc: Optional[Client] = None
         self._host: Optional[str] = None
@@ -57,7 +77,9 @@ class Qbittorrent:
 
     @staticmethod
     def __get_mapping_value(data: Any, key: str) -> Any:
-        """兼容字典、SDK 映射对象与属性对象的字段读取。"""
+        """
+        兼容字典、SDK 映射对象与属性对象的字段读取。
+        """
         if data is None:
             return None
         if isinstance(data, dict):
@@ -71,7 +93,9 @@ class Qbittorrent:
         return getattr(data, key, None)
 
     def __normalize_cookie(self, cookie: Any) -> dict[str, object]:
-        """投影 Cookie API 支持的非空字段，统一不同 SDK 返回形状。"""
+        """
+        投影 Cookie API 支持的非空字段，统一不同 SDK 返回形状。
+        """
         result = {}
         for key in ("domain", "path", "name", "value", "expirationDate"):
             value = self.__get_mapping_value(cookie, key)
@@ -81,7 +105,9 @@ class Qbittorrent:
 
     @staticmethod
     def __cookie_key(cookie: dict[str, object]) -> Optional[tuple[object, object, object]]:
-        """以域、路径和名称标识 Cookie；缺少必要身份时返回空。"""
+        """
+        以域、路径和名称标识 Cookie；缺少必要身份时返回空。
+        """
         name = cookie.get("name")
         domain = cookie.get("domain")
         path = cookie.get("path") or "/"
@@ -91,7 +117,9 @@ class Qbittorrent:
 
     @staticmethod
     def __build_site_cookies(url: str, cookie_header: str) -> List[dict[str, object]]:
-        """把站点 Cookie 请求头转换为绑定目标主机的 Cookie API 条目。"""
+        """
+        把站点 Cookie 请求头转换为绑定目标主机的 Cookie API 条目。
+        """
         domain = urlparse(url).hostname
         if not domain:
             return []
@@ -109,7 +137,9 @@ class Qbittorrent:
         ]
 
     def __parse_add_torrent_response(self, response: Any) -> Tuple[bool, List[str]]:
-        """兼容旧版 Ok 文本和新版含成功、待处理计数及任务 ID 的添加响应。"""
+        """
+        兼容旧版 Ok 文本和新版含成功、待处理计数及任务 ID 的添加响应。
+        """
         if not response:
             return False, []
         if isinstance(response, str):
@@ -128,11 +158,15 @@ class Qbittorrent:
         return "Ok" in str(response), []
 
     def __use_api_key_auth(self) -> bool:
-        """判断当前实例是否配置 API Key 认证。"""
+        """
+        判断当前实例是否配置 API Key 认证。
+        """
         return bool(self._apikey)
 
     def __supports_cookie_api(self) -> bool:
-        """检查 Web API 版本是否支持 Cookie 管理，查询失败按不支持处理。"""
+        """
+        检查 Web API 版本是否支持 Cookie 管理，查询失败按不支持处理。
+        """
         if not self.qbc:
             return False
         try:
@@ -146,7 +180,9 @@ class Qbittorrent:
             return False
 
     def __sync_download_cookies(self, url: str, cookie_header: str) -> bool:
-        """保留已有 Cookie 并按域、路径和名称合并当前下载站点的凭据。"""
+        """
+        保留已有 Cookie 并按域、路径和名称合并当前下载站点的凭据。
+        """
         if not self.qbc or not url or not cookie_header or not self.__supports_cookie_api():
             return False
 
@@ -190,7 +226,9 @@ class Qbittorrent:
 
     def is_inactive(self) -> bool:
         """
-        判断是否需要重连
+        判断已配置的下载器是否需要重新连接。
+
+        :return: 连接配置存在但客户端未建立时返回 True；缺少配置时返回 False
         """
         if not self._host or not self._port:
             return False
@@ -198,19 +236,21 @@ class Qbittorrent:
 
     def reconnect(self) -> None:
         """
-        重连
+        按当前连接配置重建客户端；失败时保留未连接状态。
         """
         self.qbc = self.__login_qbittorrent()
 
     def __login_qbittorrent(self) -> Optional[Client]:
         """
-        连接 qbittorrent；缩短建连等待，关闭 HTTP 重试，并采用地址中显式指定的协议。
-        :return: qbittorrent对象
+        连接 qBittorrent，使用短连接超时并关闭 HTTP 自动重试。
+
+        采用地址中显式指定的协议，成功后同步未完成文件后缀配置。
+
+        :return: 登录成功的客户端；配置不完整、认证失败或连接异常时返回 None
         """
         if not self._host or not self._port:
             return None
         try:
-            # 登录
             logger.info(f"正在连接 qbittorrent：{self._host}:{self._port}")
             qbt = qbittorrentapi.Client(host=self._host,
                                         port=self._port,
@@ -250,8 +290,12 @@ class Qbittorrent:
                      status: Optional[str] = None,
                      tags: Optional[Union[str, list[str]]] = None) -> Tuple[List[TorrentDictionary], bool]:
         """
-        获取种子列表
-        return: 种子列表, 是否发生异常
+        查询种子任务并按标识和标签筛选。
+
+        :param ids: 种子哈希或哈希列表，省略时查询全部任务
+        :param status: 下载器原生状态筛选条件，省略时不限状态
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :return: 任务列表和错误标志；未连接或查询失败时返回空列表及 True，查询无匹配项时错误标志为 False
         """
         if not self.qbc:
             return [], True
@@ -279,8 +323,13 @@ class Qbittorrent:
     def get_completed_torrents(self, ids: Optional[Union[str, list[str]]] = None,
                                tags: Optional[Union[str, list[str]]] = None) -> Optional[List[TorrentDictionary]]:
         """
-        获取已完成的种子
-        return: 种子列表, 如发生异常则返回None
+        获取已完成的种子任务。
+
+        仅保留进度完整、剩余字节为零且不处于校验、移动或错误等不可整理状态的任务。
+
+        :param ids: 种子哈希或哈希列表，省略时不限任务
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :return: 匹配的任务列表；未连接或查询失败时返回 None，无匹配项时返回空列表
         """
         if not self.qbc:
             return None
@@ -316,8 +365,11 @@ class Qbittorrent:
     def get_downloading_torrents(self, ids: Optional[Union[str, list[str]]] = None,
                                  tags: Optional[Union[str, list[str]]] = None) -> Optional[List[TorrentDictionary]]:
         """
-        获取正在下载的种子
-        return: 种子列表, 如发生异常则返回None
+        获取下载中或等待下载的种子任务。
+
+        :param ids: 种子哈希或哈希列表，省略时不限任务
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :return: 匹配的任务列表；未连接或查询失败时返回 None，无匹配项时返回空列表
         """
         if not self.qbc:
             return None
@@ -328,7 +380,7 @@ class Qbittorrent:
 
     def delete_torrents_tag(self, ids: Optional[Union[str, list[str]]], tag: Union[str, list[str]]) -> bool:
         """
-        从指定种子移除标签，并删除全局标签定义
+        从指定种子移除标签，并删除全局标签定义。
 
         qBittorrent 5.x 添加任务后可能暂时无法按响应中的种子 ID 查询任务，
         移除接口此时会静默成功，因此需读取任务标签确认清理结果。
@@ -384,9 +436,11 @@ class Qbittorrent:
 
     def remove_torrents_tag(self, ids: Union[str, list[str]], tag: Union[str, list[str]]) -> bool:
         """
-        移除种子Tag
-        :param ids: 种子Hash列表
-        :param tag: 标签内容
+        从指定任务移除标签，保留全局标签定义。
+
+        :param ids: 种子哈希或哈希列表
+        :param tag: 待移除的标签或标签列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc:
             return False
@@ -399,25 +453,34 @@ class Qbittorrent:
 
     def set_torrents_tag(self, ids: Union[str, list[str]], tags: list[str]) -> None:
         """
-        设置种子状态为已整理，以及是否强制做种
+        向指定种子追加标签，保留原有标签。
+
+        未连接时直接返回，请求失败只记录日志；本方法不返回写入确认。
+
+        :param ids: 种子哈希或哈希列表
+        :param tags: 待追加的标签列表
         """
         if not self.qbc:
             return
         try:
-            # 打标签
             self.qbc.torrents_add_tags(tags=tags, torrent_hashes=ids)
         except Exception as err:
             logger.error(f"设置种子Tag出错：{str(err)}")
 
     def is_force_resume(self) -> Optional[bool]:
         """
-        是否支持强制作种
+        读取当前实例的强制启动配置。
+
+        :return: 构造时传入的开关值；传入 None 时保留 None
         """
         return self._force_resume
 
     def torrents_set_force_start(self, ids: Union[str, list[str]]) -> bool:
         """
-        设置强制作种，并返回下载器是否确认请求。
+        请求强制启动指定种子。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 已启用强制启动且请求完成时返回 True；开关关闭、未连接或请求失败时返回 False
         """
         if not self.qbc:
             return False
@@ -433,8 +496,11 @@ class Qbittorrent:
     def __get_last_add_torrentid_by_tag(self, tags: Union[str, list[str]],
                                         status: Optional[str] = None) -> Optional[str]:
         """
-        根据种子的下载链接获取下载中或暂停的钟子的ID
-        :return: 种子ID
+        按标签查找新添加任务的哈希。
+
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :param status: 下载器原生任务状态，省略时不限状态
+        :return: 首个匹配任务的哈希；未找到或查询失败时返回 None
         """
         try:
             torrents, _ = self.get_torrents(status=status, tags=tags)
@@ -450,13 +516,16 @@ class Qbittorrent:
     def get_torrent_id_by_tag(self, tags: Union[str, list[str]],
                               status: Optional[str] = None) -> Optional[str]:
         """
-        通过标签多次尝试获取刚添加的种子ID，并确保移除临时标签。
+        轮询刚添加任务的临时标签，并清理临时标签。
 
-        qBittorrent 可能已接受任务但暂时无法按标签查询到种子，此时仍需删除
-        全局临时标签，避免批量添加的部分失败路径留下随机标签。
+        最多查询 9 次，每次查询前等待 3 秒。未找到任务时仍尝试删除全局临时标签。
+
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :param status: 下载器原生任务状态，省略时不限状态
+        :return: 首个匹配任务的哈希；重试后仍未找到时返回 None
         """
         torrent_id = None
-        # QB添加下载后需要时间，重试10次每次等待3秒
+        # 新任务可能尚未完成索引，最多查询 9 次，每次查询前等待 3 秒。
         for i in range(1, 10):
             time.sleep(3)
             torrent_id = self.__get_last_add_torrentid_by_tag(tags=tags,
@@ -480,20 +549,20 @@ class Qbittorrent:
                     **kwargs: object
                     ) -> Tuple[bool, List[str]]:
         """
-        添加种子
-        :param content: 种子urls或文件内容
-        :param is_paused: 添加后暂停
-        :param tag: 标签
-        :param category: 种子分类
-        :param download_dir: 下载路径
-        :param cookie: 站点Cookie用于辅助下载种子
-        :param kwargs: 可选参数，如 ignore_category_check 以及 QB相关参数
-        :return: 添加是否成功, 新版API返回的种子ID列表
+        添加种子任务，兼容旧版文本响应和新版任务标识响应。
+
+        :param content: 种子 URL、磁力链接或种子文件字节内容
+        :param is_paused: 是否以暂停状态添加，便于在启动前选择文件
+        :param download_dir: 下载器保存目录，省略时采用下载器默认目录
+        :param tag: 添加到任务的标签
+        :param category: 任务分类；分类检查开启时须同时启用自动管理才会传给下载器
+        :param cookie: 下载种子链接使用的站点 Cookie；支持 Cookie API 时会合并到下载器凭据
+        :param kwargs: 其余参数传给 torrents_add；ignore_category_check 默认为 True，关闭时检查分类与自动管理开关
+        :return: 添加请求是否成功及返回的任务标识列表；旧版成功响应可能没有标识，失败时返回 False 和空列表
         """
         if not self.qbc or not content:
             return False, []
 
-        # 下载内容
         if isinstance(content, str):
             urls = content
             torrent_files = None
@@ -501,13 +570,11 @@ class Qbittorrent:
             urls = None
             torrent_files = content
 
-        # 保存目录
         if download_dir:
             save_path = download_dir
         else:
             save_path = None
 
-        # 标签
         if tag:
             tags = tag
         else:
@@ -529,7 +596,6 @@ class Qbittorrent:
                 if self.__sync_download_cookies(url=urls, cookie_header=cookie):
                     cookie_to_use = None
 
-            # 添加下载
             qbc_ret = self.qbc.torrents_add(urls=urls,
                                             torrent_files=torrent_files,
                                             save_path=save_path,
@@ -548,7 +614,10 @@ class Qbittorrent:
 
     def start_torrents(self, ids: Union[str, list[str]]) -> bool:
         """
-        启动种子
+        启动指定种子任务。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc:
             return False
@@ -561,7 +630,10 @@ class Qbittorrent:
 
     def stop_torrents(self, ids: Union[str, list[str]]) -> bool:
         """
-        暂停种子
+        暂停指定种子任务。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc:
             return False
@@ -574,7 +646,11 @@ class Qbittorrent:
 
     def delete_torrents(self, delete_file: Optional[bool], ids: Union[str, list[str]]) -> bool:
         """
-        删除种子
+        删除指定种子任务，并按选项删除下载文件。
+
+        :param delete_file: 是否同时删除下载文件
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc:
             return False
@@ -589,11 +665,12 @@ class Qbittorrent:
 
     def get_files(self, tid: str, retry: int = 1, interval: float = 0) -> Optional[TorrentFilesList]:
         """
-        获取种子文件清单
-        :param tid: 种子Hash
-        :param retry: 最多尝试次数
-        :param interval: 重试间隔，单位秒
-        :return: 种子文件清单
+        读取任务的文件清单，等待下载器完成文件索引。
+
+        :param tid: 种子哈希
+        :param retry: 最多查询次数，最少执行 1 次
+        :param interval: 查询间隔，单位秒；0 表示立即重试
+        :return: 非空文件清单；未连接或全部尝试均无结果时返回 None
         """
         if not self.qbc:
             return None
@@ -614,7 +691,10 @@ class Qbittorrent:
 
     def set_files(self, **kwargs: object) -> bool:
         """
-        设置下载文件的状态，priority为0为不下载，priority为1为下载
+        设置任务文件的下载优先级。
+
+        :param kwargs: 需包含 torrent_hash 和非空 file_ids；priority 为 0 时不下载，为 1 时普通下载
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc:
             return False
@@ -631,7 +711,9 @@ class Qbittorrent:
 
     def transfer_info(self) -> Optional[TransferInfoDictionary]:
         """
-        获取传输信息
+        获取下载器当前传输速度和累计传输量。
+
+        :return: 客户端统计对象；未连接或查询失败时返回 None
         """
         if not self.qbc:
             return None
@@ -643,9 +725,11 @@ class Qbittorrent:
 
     def set_speed_limit(self, download_limit: Optional[float] = None, upload_limit: Optional[float] = None) -> bool:
         """
-        设置速度限制
-        :param download_limit: 下载速度限制，单位KB/s
-        :param upload_limit: 上传速度限制，单位kB/s
+        设置下载器全局下载和上传限速。
+
+        :param download_limit: 下载限速，单位 KB/s；0 表示不限速，None 按 0 处理
+        :param upload_limit: 上传限速，单位 KB/s；0 表示不限速，None 按 0 处理
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc:
             return False
@@ -661,8 +745,9 @@ class Qbittorrent:
 
     def get_speed_limit(self) -> Optional[Tuple[float, float]]:
         """
-        获取QB速度
-        :return: 返回download_limit 和upload_limit ，默认是0
+        读取下载器全局下载和上传限速。
+
+        :return: 依次为下载、上传限速，单位 KB/s；未连接时返回 None，读取抛出异常的项保留初始化值 0
         """
         if not self.qbc:
             return None
@@ -679,7 +764,10 @@ class Qbittorrent:
 
     def recheck_torrents(self, ids: Union[str, list[str]]) -> bool:
         """
-        重新校验种子
+        请求重新校验指定任务的下载文件。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc:
             return False
@@ -700,12 +788,15 @@ class Qbittorrent:
     ) -> bool:
         """
         修改单个种子的限速和做种策略。
-        :param hash_string: 种子Hash
-        :param upload_limit: 上传限速，单位 KB/s，0 表示不限速
-        :param download_limit: 下载限速，单位 KB/s，0 表示不限速
-        :param ratio_limit: 分享率限制
-        :param seeding_time_limit: 做种时间限制，单位分钟
-        :return: 是否修改成功
+
+        逐项发送修改请求，后续失败不会回滚已生效的设置。仅修改做种时间时，分享率发送为 -2。
+
+        :param hash_string: 种子哈希
+        :param upload_limit: 上传限速，单位 KB/s；0 表示不限速，None 表示不修改
+        :param download_limit: 下载限速，单位 KB/s；0 表示不限速，None 表示不修改
+        :param ratio_limit: 分享率限制，保留 qBittorrent 特殊值语义；None 表示不修改该项
+        :param seeding_time_limit: 做种时间限制，单位分钟；同时设置分享率时，缺省或 0 会发送为 -1
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc or not hash_string:
             return False
@@ -741,10 +832,11 @@ class Qbittorrent:
 
     def set_torrent_location(self, hash_string: str, location: str) -> bool:
         """
-        修改种子保存目录。
-        :param hash_string: 种子Hash
-        :param location: 新保存目录
-        :return: 是否修改成功
+        修改种子任务的保存目录。
+
+        :param hash_string: 种子哈希
+        :param location: 下载器可访问的新目录路径，不接受空值
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc or not hash_string or not location:
             return False
@@ -758,6 +850,7 @@ class Qbittorrent:
     def set_torrent_category(self, hash_string: str, category: str) -> bool:
         """
         修改种子分类。
+
         :param hash_string: 种子Hash
         :param category: 分类名称
         :return: 是否修改成功
@@ -773,7 +866,11 @@ class Qbittorrent:
 
     def update_tracker(self, hash_string: str, tracker_list: list[str]) -> bool:
         """
-        添加tracker
+        为指定种子追加 Tracker 地址。
+
+        :param hash_string: 种子哈希
+        :param tracker_list: 待添加的 Tracker 地址列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.qbc:
             return False
@@ -786,9 +883,10 @@ class Qbittorrent:
 
     def get_trackers(self, hash_string: str) -> Optional[List[str]]:
         """
-        获取种子Tracker列表。
-        :param hash_string: 种子Hash
-        :return: Tracker URL列表
+        查询种子任务的 Tracker 地址列表。
+
+        :param hash_string: 种子哈希
+        :return: 地址列表；任务无 Tracker 时为空列表，未连接、哈希为空或请求失败时返回 None
         """
         if not self.qbc or not hash_string:
             return None
@@ -805,11 +903,13 @@ class Qbittorrent:
 
     def get_content_layout(self) -> Optional[str]:
         """
-        获取内容布局
+        读取下载器的全局种子内容布局。
+
+        :return: Original 表示原始布局，Subfolder 表示创建子目录，NoSubfolder 表示不创建子目录；
+            设置缺失时默认 Original，未连接时返回 None
         """
         if not self.qbc:
             return None
-        # 获取下载器全局设置
         application = self.qbc.application.preferences
         # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
         layout: Optional[str] = application.get("torrent_content_layout", "Original")

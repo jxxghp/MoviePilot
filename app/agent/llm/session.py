@@ -1,4 +1,6 @@
-"""LLM Provider 临时授权会话状态的唯一 owner。"""
+"""
+LLM Provider 临时授权会话状态的唯一 owner。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +13,24 @@ from app.agent.llm.runtime import LLMProviderAuthError
 
 @dataclass
 class PendingAuthSession:
-    """保存临时鉴权会话，避免把 PKCE/device code 等状态写回配置。"""
+    """
+    保存临时鉴权会话，避免把 PKCE/device code 等状态写回配置。
+
+    :param session_id: 临时授权会话的随机标识
+    :param provider_id: 需要授权的提供商标识
+    :param method_id: 本次采用的授权方式标识
+    :param flow_type: 浏览器回调或设备码等授权流程类型
+    :param status: 当前授权状态，初始为 pending
+    :param message: 面向用户的进度或失败说明
+    :param authorize_url: 浏览器授权入口；不适用时为 None
+    :param instructions: 完成授权所需的操作提示；无提示时为 None
+    :param verification_url: 设备码授权使用的验证页面；不适用时为 None
+    :param user_code: 需要用户输入的设备验证码；不适用时为 None
+    :param interval_seconds: 设备授权状态的轮询间隔，单位为秒，默认 5
+    :param expires_at: 授权到期的 Unix 时间戳；0 表示按创建时间加默认时限计算
+    :param created_at: 授权会话创建的 Unix 时间戳，单位为秒
+    :param context: 仅在内存中保存的 PKCE、设备码和回调关联状态，不写入配置
+    """
 
     session_id: str
     provider_id: str
@@ -30,14 +49,18 @@ class PendingAuthSession:
 
 
 class _ProviderSession:
-    """LLM Provider 临时授权会话状态的唯一 owner。"""
+    """
+    LLM Provider 临时授权会话状态的唯一 owner。
+    """
 
     _lock: Any
     _pending_sessions: dict[str, PendingAuthSession]
     _oauth_state_index: dict[str, str]
 
     def __getattr__(self, name: str) -> Any:
-        """将跨 owner 调用交给最终 Facade 的 MRO 解析。"""
+        """
+        将跨 owner 调用交给最终 Facade 的 MRO 解析。
+        """
         raise AttributeError(name)
 
     _AUTH_SESSION_DONE_RETENTION = 300
@@ -70,7 +93,9 @@ class _ProviderSession:
                 self._oauth_state_index.pop(state, None)
 
     def get_session_status(self, session_id: str) -> dict[str, Any]:
-        """读取临时授权会话状态。"""
+        """
+        读取临时授权会话状态。
+        """
         with self._lock:
             self._cleanup_auth_sessions_locked()
             session = self._pending_sessions.get(session_id)
@@ -90,7 +115,9 @@ class _ProviderSession:
             }
 
     async def _mark_session_success(self, session: PendingAuthSession, auth_data: dict[str, Any]) -> None:
-        """标记授权会话为成功，并保存认证信息。"""
+        """
+        标记授权会话为成功，并保存认证信息。
+        """
         auth_data["updated_at"] = int(time.time())
         await self.save_auth(session.provider_id, auth_data)
         session.status = "authorized"
@@ -98,7 +125,9 @@ class _ProviderSession:
 
     @staticmethod
     def _mark_session_error(session: PendingAuthSession, message: str) -> None:
-        """标记授权会话为失败，并记录错误信息。"""
+        """
+        标记授权会话为失败，并记录错误信息。
+        """
         session.status = "failed"
         session.message = message
 

@@ -23,21 +23,21 @@ def memory_gc(
     log_memory_usage: bool = False,
 ) -> Callable[[Callable[_Params, _Return]], Callable[_Params, _Return]]:
     """
-    内存回收装饰器
+    内存回收装饰器。
 
-    Args:
-        force_collect: 是否强制执行垃圾回收，默认True
-        log_memory_usage: 是否记录内存使用日志，默认False
-
-    Returns:
-        装饰器函数
+    :param force_collect: 是否强制执行垃圾回收，默认True
+    :param log_memory_usage: 是否记录内存使用日志，默认False
+    :return: 装饰器函数
     """
     def decorator(func: Callable[_Params, _Return]) -> Callable[_Params, _Return]:
-        """保留原调用参数与返回值类型，同时附加当前配置的内存处理。"""
+        """
+        保留原调用参数与返回值类型，同时附加当前配置的内存处理。
+        """
         @functools.wraps(func)
         def wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> _Return:
-            """函数退出时执行 finally 回收，原结果或异常继续交给调用方。"""
-            # 记录函数执行前的内存使用情况
+            """
+            函数退出时执行 finally 回收，原结果或异常继续交给调用方。
+            """
             memory_before = None
             memory_after = None
             if log_memory_usage:
@@ -45,10 +45,8 @@ def memory_gc(
                 logger.info(f"函数 {func.__name__} 执行前内存使用: {memory_before}")
 
             try:
-                # 执行原函数
                 result = func(*args, **kwargs)
 
-                # 记录函数执行后的内存使用情况
                 if log_memory_usage:
                     memory_after = get_memory_usage()
                     logger.info(f"函数 {func.__name__} 执行后内存使用: {memory_after}")
@@ -59,13 +57,11 @@ def memory_gc(
                 return result
 
             finally:
-                # 强制垃圾回收
                 if force_collect:
                     collected = gc.collect()
                     if log_memory_usage:
                         logger.info(f"函数 {func.__name__} 垃圾回收完成，回收对象数: {collected}")
 
-                # 记录垃圾回收后的内存使用情况
                 if log_memory_usage:
                     memory_after_gc = get_memory_usage()
                     logger.info(f"函数 {func.__name__} 垃圾回收后内存使用: {memory_after_gc}")
@@ -79,16 +75,16 @@ def memory_gc(
 
 def get_memory_usage() -> float:
     """
-    获取当前进程的内存使用情况（MB）
+    获取当前进程的内存使用情况（MB）。
 
-    Returns:
-        内存使用量（MB）
+    :return: 当前进程常驻内存，单位为 MB；读取失败时返回 0.0
     """
     try:
         process = psutil.Process(os.getpid())
         memory_info = process.memory_info()
         rss: int = memory_info.rss
-        return rss / 1024 / 1024  # 转换为MB
+        # 转换为MB
+        return rss / 1024 / 1024
     except Exception as e:
         logger.warning(f"获取内存使用情况失败: {e}")
         return 0.0
@@ -106,7 +102,9 @@ _BACKGROUND_THREAD_OPTIONS = frozenset({"background_thread", "max_background_thr
 
 @functools.cache
 def _process_libc() -> Optional[ctypes.CDLL]:
-    """返回当前进程的全局符号表；非 Linux 或无法加载时返回 None。"""
+    """
+    返回当前进程的全局符号表；非 Linux 或无法加载时返回 None。
+    """
     if not sys.platform.startswith("linux"):
         return None
     try:
@@ -118,11 +116,14 @@ def _process_libc() -> Optional[ctypes.CDLL]:
 
 @functools.cache
 def _jemalloc_mallctl() -> Optional[Callable[..., int]]:
-    """返回 jemalloc 的 ``mallctl``；进程未加载 jemalloc 时返回 None。只解析一次，供高频调用复用。"""
+    """
+    返回 jemalloc 的 ``mallctl``；进程未加载 jemalloc 时返回 None。只解析一次，供高频调用复用。
+    """
     libc = _process_libc()
     if libc is None:
         return None
-    mallctl = getattr(libc, "mallctl", None)  # 动态符号：仅 jemalloc 提供
+    # 动态符号：仅 jemalloc 提供
+    mallctl = getattr(libc, "mallctl", None)
     if mallctl is None:
         return None
     mallctl.argtypes = [ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
@@ -138,8 +139,7 @@ def flush_thread_allocator_cache() -> bool:
     不再分配，最后一个任务留下的缓存会一直计入 RSS（线程越多越明显）。交还后的空闲页
     再由 arena 的衰减机制归还系统。只能由持有缓存的线程自己调用；未使用 jemalloc 时不做任何事。
 
-    Returns:
-        是否实际执行了刷新
+    :return: 是否实际执行了刷新
     """
     mallctl = _jemalloc_mallctl()
     if mallctl is None:
@@ -154,11 +154,8 @@ def configure_allocator_background_thread(max_threads: int = 1) -> bool:
     后台线程按衰减时间把空闲脏页归还系统，但 ``MALLOC_CONF`` 与 ``LD_PRELOAD`` 会被所有子进程
     继承，Chromium 的 GPU 进程在后台线程开启时无法启动，浏览器仿真整体 abort。
 
-    Args:
-        max_threads: 后台线程上限
-
-    Returns:
-        是否在运行时实际开启了后台线程
+    :param max_threads: 后台线程上限
+    :return: 是否在运行时实际开启了后台线程
     """
     configured = _strip_background_thread_conf()
     if configured:
@@ -174,7 +171,9 @@ def configure_allocator_background_thread(max_threads: int = 1) -> bool:
 
 
 def _strip_background_thread_conf() -> bool:
-    """从 ``os.environ["MALLOC_CONF"]`` 去掉后台线程项，返回原配置是否包含这些项。"""
+    """
+    从 ``os.environ["MALLOC_CONF"]`` 去掉后台线程项，返回原配置是否包含这些项。
+    """
     conf = os.environ.get("MALLOC_CONF")
     if not conf:
         return False
@@ -198,8 +197,7 @@ def release_allocator_memory() -> Optional[str]:
     调用 ``mallctl`` purge；源码部署等使用 glibc 的环境调用 ``malloc_trim(0)``。两者都只归还
     空闲页、不影响存活对象，其他平台或符号不存在时不做任何事。
 
-    Returns:
-        实际使用的机制（``jemalloc`` 或 ``glibc``），未执行时返回 None
+    :return: 实际使用的机制（``jemalloc`` 或 ``glibc``），未执行时返回 None
     """
     libc = _process_libc()
     if libc is None:
@@ -209,7 +207,8 @@ def release_allocator_memory() -> Optional[str]:
         if mallctl(_JEMALLOC_ARENAS_ALL_PURGE, None, None, None, 0) == 0:
             return "jemalloc"
         return None
-    malloc_trim = getattr(libc, "malloc_trim", None)  # 动态符号：仅 glibc 提供
+    # 动态符号：仅 glibc 提供
+    malloc_trim = getattr(libc, "malloc_trim", None)
     if malloc_trim is not None:
         malloc_trim.argtypes = [ctypes.c_size_t]
         malloc_trim.restype = ctypes.c_int
@@ -222,20 +221,20 @@ def memory_monitor(
     threshold_mb: Optional[float] = None,
 ) -> Callable[[Callable[_Params, _Return]], Callable[_Params, _Return]]:
     """
-    内存监控装饰器，当内存使用超过阈值时自动触发垃圾回收
+    内存监控装饰器，当内存使用超过阈值时自动触发垃圾回收。
 
-    Args:
-        threshold_mb: 内存阈值（MB），超过此值将触发垃圾回收
-
-    Returns:
-        装饰器函数
+    :param threshold_mb: 内存阈值，单位为 MB；超过时触发回收，None 或 0 表示不按阈值回收
+    :return: 装饰器函数
     """
     def decorator(func: Callable[_Params, _Return]) -> Callable[_Params, _Return]:
-        """保留原调用参数与返回值类型，同时附加当前配置的内存处理。"""
+        """
+        保留原调用参数与返回值类型，同时附加当前配置的内存处理。
+        """
         @functools.wraps(func)
         def wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> _Return:
-            """按阈值检查执行前后占用，函数抛错时保留原来的直接传播路径。"""
-            # 检查内存使用情况
+            """
+            按阈值检查执行前后占用，函数抛错时保留原来的直接传播路径。
+            """
             current_memory = get_memory_usage()
 
             if threshold_mb and current_memory > threshold_mb:
@@ -243,10 +242,8 @@ def memory_monitor(
                 collected = gc.collect()
                 logger.info(f"自动垃圾回收完成，回收对象数: {collected}")
 
-            # 执行原函数
             result = func(*args, **kwargs)
 
-            # 执行后再次检查并回收
             if threshold_mb:
                 memory_after = get_memory_usage()
                 if memory_after > threshold_mb:

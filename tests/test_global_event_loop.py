@@ -1,3 +1,7 @@
+"""
+验证全局事件循环的访问、调度及生命周期。
+"""
+
 import asyncio
 from unittest.mock import patch
 
@@ -8,7 +12,9 @@ from app.runtime.loop import MainLoopRegistry, main_loop_registry
 
 
 def test_global_loop_requires_lifecycle_owner() -> None:
-    """启动前读取主循环不得隐式创建一个无法执行任务的循环。"""
+    """
+    启动前读取主循环不得隐式创建一个无法执行任务的循环。
+    """
     runtime = GlobalVar()
     runtime.CURRENT_EVENT_LOOP = None
 
@@ -19,7 +25,9 @@ def test_global_loop_requires_lifecycle_owner() -> None:
 
 
 def test_global_loop_rejects_closed_owner() -> None:
-    """已关闭的生命周期 owner 不得继续接收跨线程任务。"""
+    """
+    已关闭的生命周期 owner 不得继续接收跨线程任务。
+    """
     runtime = GlobalVar()
     loop = asyncio.new_event_loop()
     runtime.set_loop(loop)
@@ -30,7 +38,9 @@ def test_global_loop_rejects_closed_owner() -> None:
 
 
 def test_global_loop_rejects_owner_that_is_not_running() -> None:
-    """未运行的循环不得成为跨线程任务投递目标。"""
+    """
+    未运行的循环不得成为跨线程任务投递目标。
+    """
     runtime = GlobalVar()
     loop = asyncio.new_event_loop()
     try:
@@ -43,7 +53,9 @@ def test_global_loop_rejects_owner_that_is_not_running() -> None:
 
 
 def test_clear_global_loop_preserves_new_owner() -> None:
-    """迟到的旧生命周期清理不得清除后来登记的循环。"""
+    """
+    迟到的旧生命周期清理不得清除后来登记的循环。
+    """
     runtime = GlobalVar()
     previous = asyncio.new_event_loop()
 
@@ -64,7 +76,9 @@ def test_clear_global_loop_preserves_new_owner() -> None:
 
 
 def test_nested_owner_release_restores_same_event_loop() -> None:
-    """同一循环上的内层生命周期退出后，外层 owner 仍保持登记。"""
+    """
+    同一循环上的内层生命周期退出后，外层 owner 仍保持登记。
+    """
     runtime = GlobalVar()
 
     async def verify() -> None:
@@ -82,7 +96,9 @@ def test_nested_owner_release_restores_same_event_loop() -> None:
 
 
 def test_global_var_loop_property_is_only_a_compatibility_facade() -> None:
-    """旧属性赋值与 canonical registry 必须共享事实源而不复制状态。"""
+    """
+    旧属性赋值与 canonical registry 必须共享事实源而不复制状态。
+    """
     previous = main_loop_registry.current
     loop = asyncio.new_event_loop()
     try:
@@ -95,7 +111,9 @@ def test_global_var_loop_property_is_only_a_compatibility_facade() -> None:
 
 
 def test_global_var_loop_patch_can_restore_an_empty_compatibility_value() -> None:
-    """兼容属性原值为空时，patch 清理应通过 deleter 恢复空投递目标。"""
+    """
+    兼容属性原值为空时，patch 清理应通过 deleter 恢复空投递目标。
+    """
     runtime = GlobalVar()
     loop = asyncio.new_event_loop()
     try:
@@ -108,7 +126,9 @@ def test_global_var_loop_patch_can_restore_an_empty_compatibility_value() -> Non
 
 
 def test_main_loop_registry_rejects_stale_owner_release() -> None:
-    """独立 registry 中旧 owner 的迟到释放不得覆盖更新循环。"""
+    """
+    独立 registry 中旧 owner 的迟到释放不得覆盖更新循环。
+    """
     registry = MainLoopRegistry()
     first = asyncio.new_event_loop()
     second = asyncio.new_event_loop()

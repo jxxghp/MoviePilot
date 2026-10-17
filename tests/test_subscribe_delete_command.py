@@ -1,4 +1,6 @@
-"""订阅删除应用用例的事务、权限与副作用时序测试。"""
+"""
+订阅删除应用用例的事务、权限与副作用时序测试。
+"""
 
 from types import MappingProxyType
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -20,61 +22,85 @@ from app.startup.composition import subscription as subscription_composition
 
 
 class _Repository:
-    """记录订阅删除用例数据访问顺序的仓储替身。"""
+    """
+    记录订阅删除用例数据访问顺序的仓储替身。
+    """
 
     def __init__(self, candidate, calls, delete_error=None):
-        """保存候选订阅、共享调用序列和可选删除异常。"""
+        """
+        保存候选订阅、共享调用序列和可选删除异常。
+        """
         self.candidate = candidate
         self.calls = calls
         self.delete_error = delete_error
 
     async def get_candidate(self, subscribe_id):
-        """返回预设候选订阅。"""
+        """
+        返回预设候选订阅。
+        """
         self.calls.append(("get", subscribe_id))
         return self.candidate
 
     async def stage_delete(self, subscribe_id):
-        """记录待删除的订阅编号。"""
+        """
+        记录待删除的订阅编号。
+        """
         self.calls.append(("delete", subscribe_id))
         if self.delete_error:
             raise self.delete_error
 
 
 class _UnitOfWork:
-    """可注入提交异常的事务替身。"""
+    """
+    可注入提交异常的事务替身。
+    """
 
     def __init__(self, calls, commit_error=None):
-        """保存共享调用序列与可选提交异常。"""
+        """
+        保存共享调用序列与可选提交异常。
+        """
         self.calls = calls
         self.commit_error = commit_error
 
     async def commit(self):
-        """记录提交并按需抛出异常。"""
+        """
+        记录提交并按需抛出异常。
+        """
         self.calls.append(("commit",))
         if self.commit_error:
             raise self.commit_error
 
     async def rollback(self):
-        """记录回滚。"""
+        """
+        记录回滚。
+        """
         self.calls.append(("rollback",))
 
 
 class _Outbox:
-    """记录订阅删除 intent 暂存和收口顺序的 outbox 替身。"""
+    """
+    记录订阅删除 intent 暂存和收口顺序的 outbox 替身。
+    """
 
     def __init__(self, calls, stage_error=None):
-        """保存共享调用序列与可选暂存异常。"""
+        """
+        保存共享调用序列与可选暂存异常。
+        """
         self.calls = calls
         self.stage_error = stage_error
 
     async def stage(self, intent, _now):
-        """记录 intent，并按需模拟持久化失败。"""
+        """
+        记录 intent，并按需模拟持久化失败。
+        """
         self.calls.append(("outbox_stage", intent))
         if self.stage_error:
             raise self.stage_error
 
     async def claim_by_event_key(self, event_key, _now, _lease_until):
-        """记录并返回当前测试拥有的异步 lease。"""
+        """
+        记录并返回当前测试拥有的异步 lease。
+        """
         self.calls.append(("outbox_claim", event_key))
         return ClaimedOutboxMessage(
             message_id=len(self.calls),
@@ -86,69 +112,97 @@ class _Outbox:
         )
 
     async def complete(self, message_id, attempt, _completed_at):
-        """记录带 attempt fencing 的异步完成。"""
+        """
+        记录带 attempt fencing 的异步完成。
+        """
         self.calls.append(("outbox_complete", message_id, attempt))
         return True
 
     async def retry(self, message_id, attempt, **_kwargs):
-        """记录带 attempt fencing 的异步重试。"""
+        """
+        记录带 attempt fencing 的异步重试。
+        """
         self.calls.append(("outbox_retry", message_id, attempt))
         return True
 
 
 class _SyncRepository:
-    """记录同步订阅删除的数据访问顺序。"""
+    """
+    记录同步订阅删除的数据访问顺序。
+    """
 
     def __init__(self, candidate, calls, delete_error=None):
-        """保存候选订阅、共享调用序列和可选删除异常。"""
+        """
+        保存候选订阅、共享调用序列和可选删除异常。
+        """
         self.candidate = candidate
         self.calls = calls
         self.delete_error = delete_error
 
     def get_candidate_sync(self, subscribe_id):
-        """返回预设候选订阅。"""
+        """
+        返回预设候选订阅。
+        """
         self.calls.append(("get", subscribe_id))
         return self.candidate
 
     def stage_delete_sync(self, subscribe_id):
-        """记录同步待删除编号并按需失败。"""
+        """
+        记录同步待删除编号并按需失败。
+        """
         self.calls.append(("delete", subscribe_id))
         if self.delete_error:
             raise self.delete_error
 
 
 class _SyncUnitOfWork:
-    """记录同步删除命令的提交与回滚。"""
+    """
+    记录同步删除命令的提交与回滚。
+    """
 
     def __init__(self, calls, commit_error=None):
-        """保存共享调用序列与可选提交异常。"""
+        """
+        保存共享调用序列与可选提交异常。
+        """
         self.calls = calls
         self.commit_error = commit_error
 
     def commit(self):
-        """记录提交并按需抛出异常。"""
+        """
+        记录提交并按需抛出异常。
+        """
         self.calls.append(("commit",))
         if self.commit_error:
             raise self.commit_error
 
     def rollback(self):
-        """记录回滚。"""
+        """
+        记录回滚。
+        """
         self.calls.append(("rollback",))
 
 
 class _SyncOutbox:
-    """记录同步删除 intent 的暂存与完成顺序。"""
+    """
+    记录同步删除 intent 的暂存与完成顺序。
+    """
 
     def __init__(self, calls):
-        """保存共享调用序列。"""
+        """
+        保存共享调用序列。
+        """
         self.calls = calls
 
     def stage(self, intent, _now):
-        """记录同步暂存的 intent。"""
+        """
+        记录同步暂存的 intent。
+        """
         self.calls.append(("outbox_stage", intent))
 
     def claim_by_event_key(self, event_key, _now, _lease_until):
-        """记录并返回当前测试拥有的同步 lease。"""
+        """
+        记录并返回当前测试拥有的同步 lease。
+        """
         self.calls.append(("outbox_claim", event_key))
         return ClaimedOutboxMessage(
             message_id=len(self.calls),
@@ -160,18 +214,24 @@ class _SyncOutbox:
         )
 
     def complete(self, message_id, attempt, _completed_at):
-        """记录带 attempt fencing 的同步完成。"""
+        """
+        记录带 attempt fencing 的同步完成。
+        """
         self.calls.append(("outbox_complete", message_id, attempt))
         return True
 
     def retry(self, message_id, attempt, **_kwargs):
-        """记录带 attempt fencing 的同步重试。"""
+        """
+        记录带 attempt fencing 的同步重试。
+        """
         self.calls.append(("outbox_retry", message_id, attempt))
         return True
 
 
 def _candidate(username="alice"):
-    """构造带完整事件身份字段的订阅删除候选。"""
+    """
+    构造带完整事件身份字段的订阅删除候选。
+    """
     return SubscribeDeletionCandidate(
         subscribe_id=7,
         username=username,
@@ -195,15 +255,21 @@ def _command(
     outbox=None,
     delete_error=None,
 ):
-    """构造可观察事件与上报失败的订阅删除用例。"""
+    """
+    构造可观察事件与上报失败的订阅删除用例。
+    """
     async def publish(payload):
-        """记录删除事件并按需失败。"""
+        """
+        记录删除事件并按需失败。
+        """
         calls.append(("event", payload["subscribe_id"], payload))
         if event_error:
             raise event_error
 
     def report(payload):
-        """记录删除统计并按需失败。"""
+        """
+        记录删除统计并按需失败。
+        """
         calls.append(("report", payload))
         if report_error:
             raise report_error
@@ -220,13 +286,19 @@ def _command(
 
 
 def _async_report_command(candidate, calls, result=True, error=None, outbox=None):
-    """构造异步统计 reporter，验证命令可等待真实远端确认。"""
+    """
+    构造异步统计 reporter，验证命令可等待真实远端确认。
+    """
     async def publish(payload):
-        """记录删除事件。"""
+        """
+        记录删除事件。
+        """
         calls.append(("event", payload["subscribe_id"], payload))
 
     async def report(payload):
-        """记录异步统计并按需返回未确认或抛错。"""
+        """
+        记录异步统计并按需返回未确认或抛错。
+        """
         calls.append(("report", payload))
         if error:
             raise error
@@ -250,13 +322,19 @@ def _sync_command(
     outbox=None,
     report_result=True,
 ):
-    """构造可观察事务和副作用顺序的同步订阅删除命令。"""
+    """
+    构造可观察事务和副作用顺序的同步订阅删除命令。
+    """
     def publish(payload):
-        """记录同步删除事件。"""
+        """
+        记录同步删除事件。
+        """
         calls.append(("event", payload["subscribe_id"], payload))
 
     def report(payload):
-        """记录同步删除统计。"""
+        """
+        记录同步删除统计。
+        """
         calls.append(("report", payload))
         return report_result
 
@@ -272,7 +350,9 @@ def _sync_command(
 
 @pytest.mark.asyncio
 async def test_composition_async_report_adapts_read_only_mapping():
-    """异步组合根把只读统计映射复制为服务端兼容字典。"""
+    """
+    异步组合根把只读统计映射复制为服务端兼容字典。
+    """
     reporter = AsyncMock(return_value=True)
     with patch.object(
             subscription_composition.MoviePilotServerHelper,
@@ -288,7 +368,9 @@ async def test_composition_async_report_adapts_read_only_mapping():
 
 
 def test_composition_sync_report_adapts_read_only_mapping():
-    """同步组合根把只读统计映射复制为服务端兼容字典。"""
+    """
+    同步组合根把只读统计映射复制为服务端兼容字典。
+    """
     reporter = Mock(return_value=True)
     with patch.object(
             subscription_composition.MoviePilotServerHelper,
@@ -305,7 +387,9 @@ def test_composition_sync_report_adapts_read_only_mapping():
 
 @pytest.mark.asyncio
 async def test_owner_delete_commits_before_event_and_report():
-    """owner 删除成功时必须先提交，再按原顺序发送事件和上报。"""
+    """
+    owner 删除成功时必须先提交，再按原顺序发送事件和上报。
+    """
     calls = []
     command = _command(_candidate(), calls)
 
@@ -326,7 +410,9 @@ async def test_owner_delete_commits_before_event_and_report():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("candidate", [None, _candidate("bob"), _candidate(None)])
 async def test_regular_user_cannot_delete_missing_other_or_legacy_subscribe(candidate):
-    """普通用户对不存在、他人和 legacy 订阅保持无痕成功语义。"""
+    """
+    普通用户对不存在、他人和 legacy 订阅保持无痕成功语义。
+    """
     calls = []
     command = _command(candidate, calls)
 
@@ -341,7 +427,9 @@ async def test_regular_user_cannot_delete_missing_other_or_legacy_subscribe(cand
 
 @pytest.mark.asyncio
 async def test_delete_with_status_distinguishes_missing_and_forbidden():
-    """HTTP 入口需要区分不存在与已存在但无权访问的订阅。"""
+    """
+    HTTP 入口需要区分不存在与已存在但无权访问的订阅。
+    """
     missing_calls = []
     missing = _command(None, missing_calls)
     assert await missing.execute_with_status(
@@ -361,7 +449,9 @@ async def test_delete_with_status_distinguishes_missing_and_forbidden():
 
 @pytest.mark.asyncio
 async def test_superuser_can_delete_other_users_subscribe():
-    """超级用户保留全局订阅删除权限。"""
+    """
+    超级用户保留全局订阅删除权限。
+    """
     calls = []
     command = _command(_candidate("bob"), calls)
 
@@ -376,7 +466,9 @@ async def test_superuser_can_delete_other_users_subscribe():
 
 @pytest.mark.asyncio
 async def test_commit_failure_rolls_back_without_event_or_report():
-    """提交失败必须回滚，且不得发送成功事件或统计上报。"""
+    """
+    提交失败必须回滚，且不得发送成功事件或统计上报。
+    """
     calls = []
     command = _command(_candidate(), calls, commit_error=RuntimeError("commit failed"))
 
@@ -391,7 +483,9 @@ async def test_commit_failure_rolls_back_without_event_or_report():
 
 @pytest.mark.asyncio
 async def test_delete_stage_failure_rolls_back_without_effects():
-    """异步暂存失败必须显式回滚，且不得写 intent 或发送成功副作用。"""
+    """
+    异步暂存失败必须显式回滚，且不得写 intent 或发送成功副作用。
+    """
     calls = []
     command = _command(
         _candidate(),
@@ -411,7 +505,9 @@ async def test_delete_stage_failure_rolls_back_without_effects():
 
 @pytest.mark.asyncio
 async def test_event_failure_happens_after_commit_and_stops_report():
-    """事件失败保持原有传播语义，但事务必须已经提交且不得继续上报。"""
+    """
+    事件失败保持原有传播语义，但事务必须已经提交且不得继续上报。
+    """
     calls = []
     command = _command(_candidate(), calls, event_error=RuntimeError("event failed"))
 
@@ -426,7 +522,9 @@ async def test_event_failure_happens_after_commit_and_stops_report():
 
 @pytest.mark.asyncio
 async def test_report_failure_happens_after_commit_and_event():
-    """上报异常不得把已经提交的删除误报为失败。"""
+    """
+    上报异常不得把已经提交的删除误报为失败。
+    """
     calls = []
     command = _command(_candidate(), calls, report_error=RuntimeError("report failed"))
 
@@ -440,7 +538,9 @@ async def test_report_failure_happens_after_commit_and_event():
 
 @pytest.mark.asyncio
 async def test_delete_stages_outbox_before_commit_and_completes_after_event():
-    """订阅删除、intent 与即时事件必须按原子提交和成功收口顺序执行。"""
+    """
+    订阅删除、intent 与即时事件必须按原子提交和成功收口顺序执行。
+    """
     calls = []
     command = _command(_candidate(), calls, outbox=_Outbox(calls))
 
@@ -473,7 +573,9 @@ async def test_delete_stages_outbox_before_commit_and_completes_after_event():
 
 @pytest.mark.asyncio
 async def test_delete_outbox_stage_failure_rolls_back_business_delete():
-    """订阅删除 intent 无法暂存时不得提交业务删除。"""
+    """
+    订阅删除 intent 无法暂存时不得提交业务删除。
+    """
     calls = []
     command = _command(
         _candidate(),
@@ -497,7 +599,9 @@ async def test_delete_outbox_stage_failure_rolls_back_business_delete():
 
 @pytest.mark.asyncio
 async def test_async_reporter_completes_report_intent_only_after_confirmation():
-    """异步 reporter 确认成功后才允许收口统计 intent。"""
+    """
+    异步 reporter 确认成功后才允许收口统计 intent。
+    """
     calls = []
     command = _async_report_command(_candidate(), calls, outbox=_Outbox(calls))
 
@@ -515,7 +619,9 @@ async def test_async_reporter_completes_report_intent_only_after_confirmation():
 
 @pytest.mark.asyncio
 async def test_async_reporter_false_keeps_report_intent_pending():
-    """异步 reporter 未确认时返回成功并保留待重试统计 intent。"""
+    """
+    异步 reporter 未确认时返回成功并保留待重试统计 intent。
+    """
     calls = []
     command = _async_report_command(_candidate(), calls, result=False, outbox=_Outbox(calls))
 
@@ -533,7 +639,9 @@ async def test_async_reporter_false_keeps_report_intent_pending():
 
 @pytest.mark.asyncio
 async def test_async_reporter_error_keeps_report_intent_pending():
-    """异步 reporter 异常时返回成功并保留待重试统计 intent。"""
+    """
+    异步 reporter 异常时返回成功并保留待重试统计 intent。
+    """
     calls = []
     command = _async_report_command(
         _candidate(),
@@ -556,7 +664,9 @@ async def test_async_reporter_error_keeps_report_intent_pending():
 
 @pytest.mark.asyncio
 async def test_repository_candidate_uses_loaded_orm_snapshot(monkeypatch):
-    """DB 适配器只向应用层暴露权限字段和完整列快照。"""
+    """
+    DB 适配器只向应用层暴露权限字段和完整列快照。
+    """
     subscribe = Subscribe(
         id=7,
         username="alice",
@@ -567,7 +677,9 @@ async def test_repository_candidate_uses_loaded_orm_snapshot(monkeypatch):
     )
 
     async def async_get(_self, subscribe_id):
-        """返回无需真实数据库的订阅模型。"""
+        """
+        返回无需真实数据库的订阅模型。
+        """
         assert subscribe_id == 7
         return subscribe
 
@@ -585,7 +697,9 @@ async def test_repository_candidate_uses_loaded_orm_snapshot(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_repository_stage_delete_does_not_commit():
-    """真实仓储只登记删除，提交必须由请求级 UnitOfWork 执行。"""
+    """
+    真实仓储只登记删除，提交必须由请求级 UnitOfWork 执行。
+    """
     session = MagicMock(spec=AsyncSession)
     session.execute = AsyncMock()
     session.commit = AsyncMock()
@@ -597,7 +711,9 @@ async def test_repository_stage_delete_does_not_commit():
 
 
 def test_sync_delete_uses_same_durable_effect_order():
-    """同步消息入口必须复用异步删除命令的事务、事件和统计顺序。"""
+    """
+    同步消息入口必须复用异步删除命令的事务、事件和统计顺序。
+    """
     calls = []
     command = _sync_command(_candidate(), calls, outbox=_SyncOutbox(calls))
 
@@ -616,7 +732,9 @@ def test_sync_delete_uses_same_durable_effect_order():
 
 
 def test_sync_delete_report_failure_returns_success_and_keeps_intent_pending():
-    """同步删除统计未确认时仍返回成功，且不收口 report intent。"""
+    """
+    同步删除统计未确认时仍返回成功，且不收口 report intent。
+    """
     calls = []
     command = _sync_command(
         _candidate(),
@@ -641,7 +759,9 @@ def test_sync_delete_report_failure_returns_success_and_keeps_intent_pending():
 
 @pytest.mark.parametrize("failure", ["delete", "commit"])
 def test_sync_delete_rolls_back_transaction_failures(failure):
-    """同步暂存或提交失败时必须回滚，且不得发送删除成功副作用。"""
+    """
+    同步暂存或提交失败时必须回滚，且不得发送删除成功副作用。
+    """
     calls = []
     error = RuntimeError(f"{failure} failed")
     command = _sync_command(
@@ -662,7 +782,9 @@ def test_sync_delete_rolls_back_transaction_failures(failure):
 
 
 def test_sync_repository_candidate_and_delete_share_caller_session(monkeypatch):
-    """同步仓储投影和删除都使用组合根传入的同一个 Session 且不提交。"""
+    """
+    同步仓储投影和删除都使用组合根传入的同一个 Session 且不提交。
+    """
     subscribe = Subscribe(
         id=7,
         username="alice",

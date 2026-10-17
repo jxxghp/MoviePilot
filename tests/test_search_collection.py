@@ -1,4 +1,6 @@
-"""用户场景驱动的智能收集、中断后重拉第一页与页数上限回归。"""
+"""
+用户场景驱动的智能收集、中断后重拉第一页与页数上限回归。
+"""
 
 from app.domain.search import (
     SearchCollection,
@@ -9,15 +11,28 @@ from app.domain.search import (
 
 
 def evidence(key, *targets):
+    """
+    构造资源覆盖证据，将目标集合冻结以供分页收集测试使用。
+
+    :param key: 资源去重标识
+    :param targets: 此资源能够覆盖的搜索目标
+    :return: 不含发布日期信息的资源证据
+    """
     return SearchResourceEvidence(key, frozenset(targets))
 
 
 def accept(source, page, items, *, now=1, exhausted=False):
+    """
+    向来源提交一页证据，使用固定目标集合验证游标与覆盖状态。
+    """
     return source.accept_page(page=page, evidence=items, targets={"E1", "E4"},
                               exhausted=exhausted, now=now)
 
 
 def test_closed_source_keeps_shared_cursor_for_opportunistic_candidates():
+    """
+    某来源已覆盖目标后仍保留共享游标，以接收顺路发现的候选。
+    """
     collection = SearchCollection({"E1", "E4"}, {"A": SearchSourceCursor(), "B": SearchSourceCursor()})
     source = collection.sources["A"]
     accept(source, 0, [evidence("one", "E1")])
@@ -34,6 +49,9 @@ def test_closed_source_keeps_shared_cursor_for_opportunistic_candidates():
 
 
 def test_unknown_identity_cannot_close_collection():
+    """
+    身份未知的资源不能使目标收集提前结束。
+    """
     source = SearchSourceCursor()
     accept(source, 0, [evidence("first", "E1")])
     accept(source, 1, [SearchResourceEvidence("unknown", None)])
@@ -41,6 +59,9 @@ def test_unknown_identity_cannot_close_collection():
 
 
 def test_continuous_paging_never_goes_back_to_the_first_page():
+    """
+    连续分页期间始终向后推进，不重复刷新首页。
+    """
     source = SearchSourceCursor()
     for page in range(5):
         assert source.page_to_request(page * 10) == page
@@ -48,6 +69,9 @@ def test_continuous_paging_never_goes_back_to_the_first_page():
 
 
 def test_resume_after_interruption_loads_next_page_then_refreshes_first_page():
+    """
+    搜索中断后先继续下一页，再刷新首页以补充新资源。
+    """
     source = SearchSourceCursor()
     accept(source, 0, [evidence("pin", "E1"), evidence("old")], now=1)
     accept(source, 1, [evidence("tail")], now=2)
@@ -63,6 +87,9 @@ def test_resume_after_interruption_loads_next_page_then_refreshes_first_page():
 
 
 def test_every_gap_longer_than_threshold_still_advances_between_refreshes():
+    """
+    每次间隔都超过刷新阈值时，也须在首页刷新之间推进历史页。
+    """
     source = SearchSourceCursor()
     accept(source, 0, [evidence("p0")], now=0)
     now = 0
@@ -76,7 +103,9 @@ def test_every_gap_longer_than_threshold_still_advances_between_refreshes():
 
 
 def test_twenty_pages_are_scanned_then_the_cap_stops_the_source():
-    """第 20 页后释放收集屏障，但不把预算结束当成真实末页。"""
+    """
+    第 20 页后释放收集屏障，但不把预算结束当成真实末页。
+    """
     collection = SearchCollection({"E1"}, {"A": SearchSourceCursor()})
     source = collection.sources["A"]
     for page in range(20):
@@ -89,6 +118,9 @@ def test_twenty_pages_are_scanned_then_the_cap_stops_the_source():
 
 
 def test_page_identical_to_previous_page_is_treated_as_empty_last_page():
+    """
+    与前页完全相同的页面视为末页，终止该来源继续分页。
+    """
     source = SearchSourceCursor()
     accept(source, 0, [evidence("one", "E1")])
     accept(source, 1, [evidence("two", "E2")])
@@ -99,6 +131,9 @@ def test_page_identical_to_previous_page_is_treated_as_empty_last_page():
 
 
 def test_partial_overlap_keeps_paging_and_checkpoint_page_signature():
+    """
+    只有部分资源重复时继续分页，并保存本页签名供恢复使用。
+    """
     source = SearchSourceCursor()
     accept(source, 0, [evidence("pin"), evidence("one", "E1")])
     accept(source, 1, [evidence("pin"), evidence("two", "E4")])
@@ -110,10 +145,16 @@ def test_partial_overlap_keeps_paging_and_checkpoint_page_signature():
 
 
 def released(key, latest, *targets):
+    """
+    构造带季内最新集数的资源证据，供未播出目标判定使用。
+    """
     return SearchResourceEvidence(key, frozenset(targets), (("1", latest),))
 
 
 def test_episodes_newer_than_any_seen_resource_only_need_first_pages():
+    """
+    目标集数高于所有已见资源时，只需各来源首页判断更新。
+    """
     collection = SearchCollection({"1:1003", "1:1006"}, {"A": SearchSourceCursor(), "B": SearchSourceCursor()})
     page = [released("1005", 1005), released("1003", 1003, "1:1003")]
     collection.observe(page)
@@ -131,6 +172,9 @@ def test_episodes_newer_than_any_seen_resource_only_need_first_pages():
 
 
 def test_deeper_page_with_newer_episode_restores_normal_collection():
+    """
+    后续页发现更晚集数时，恢复此前目标的普通收集流程。
+    """
     collection = SearchCollection({"1:12"}, {"A": SearchSourceCursor(next_page=1)})
     collection.observe([released("ep10", 10)])
     assert collection.unreleased() == {"1:12"}
@@ -140,7 +184,9 @@ def test_deeper_page_with_newer_episode_restores_normal_collection():
 
 
 def test_full_search_keeps_unseen_episodes_behind_the_page_barrier():
-    """完整搜索不能由前页最大集号推断后页没有资源，并提前释放目标。"""
+    """
+    完整搜索不能由前页最大集号推断后页没有资源，并提前释放目标。
+    """
     collection = SearchCollection({"1:3"}, {"A": SearchSourceCursor(), "B": SearchSourceCursor()})
     page = [released("ep1", 1)]
     collection.observe(page)
@@ -155,6 +201,9 @@ def test_full_search_keeps_unseen_episodes_behind_the_page_barrier():
 
 
 def test_without_any_resource_of_the_season_targets_keep_normal_collection():
+    """
+    尚未发现目标季资源时，不能把目标集数判定为未播出。
+    """
     collection = SearchCollection({"1:5"}, {"A": SearchSourceCursor(next_page=1)})
     collection.observe([SearchResourceEvidence("other", frozenset())])
     assert collection.unreleased() == set()

@@ -1,3 +1,7 @@
+"""
+接收浏览器扩展提交的站点 Cookie，并保留旧请求体读取方式的兼容支持。
+"""
+
 import gzip
 import hmac
 import json
@@ -21,27 +25,38 @@ from app.schemas.servcookie import CookiePassword as _SchemaCookiePassword
 
 
 class GzipRequest(Request):
-    """按请求头透明解压 gzip 请求体。"""
+    """
+    按请求头透明解压 gzip 请求体。
+    """
 
     async def body(self) -> bytes:
-        """读取请求体，并在需要时完成 gzip 解压。"""
+        """
+        读取请求体，并在需要时完成 gzip 解压。
+        """
         if not hasattr(self, "_body"):
             body = await super().body()
             if "gzip" in self.headers.getlist("Content-Encoding"):
                 body = gzip.decompress(body)
+            # 兼容 Starlette 请求对象的内部请求体缓存，保留既有检查豁免。
             self._body = body  # noqa
         return self._body
 
 
 class GzipRoute(APIRoute):
-    """为 CookieCloud 路由注入 gzip 请求对象。"""
+    """
+    为 CookieCloud 路由注入 gzip 请求对象。
+    """
 
     def get_route_handler(self) -> Callable:
-        """返回支持 gzip 请求体的路由处理器。"""
+        """
+        返回支持 gzip 请求体的路由处理器。
+        """
         original_route_handler = super().get_route_handler()
 
         async def custom_route_handler(request: Request) -> Response:
-            """将原始请求替换为可解压的请求对象后继续处理。"""
+            """
+            将原始请求替换为可解压的请求对象后继续处理。
+            """
             request = GzipRequest(request.scope, request.receive)
             return await original_route_handler(request)
 
@@ -97,7 +112,9 @@ cookie_router = APIRouter(
     },
 )
 async def get_root() -> PlainTextResponse:
-    """返回 CookieCloud 兼容服务的根路径说明。"""
+    """
+    返回 CookieCloud 兼容服务的根路径说明。
+    """
     return PlainTextResponse("Hello MoviePilot! COOKIECLOUD API ROOT = /cookiecloud")
 
 
@@ -113,7 +130,9 @@ async def get_root() -> PlainTextResponse:
     },
 )
 async def post_root() -> PlainTextResponse:
-    """通过 POST 返回 CookieCloud 兼容服务的根路径说明。"""
+    """
+    通过 POST 返回 CookieCloud 兼容服务的根路径说明。
+    """
     return PlainTextResponse("Hello MoviePilot! COOKIECLOUD API ROOT = /cookiecloud")
 
 

@@ -1,3 +1,7 @@
+"""
+同步与异步防抖调度，合并短时间内的重复调用并支持取消待执行任务。
+"""
+
 import asyncio
 import functools
 import inspect
@@ -14,24 +18,45 @@ _T = TypeVar("_T")
 
 
 class _Debounced(Protocol[_P]):
-    """保留调用参数；实际函数种类决定调用与取消是否返回可等待对象。"""
+    """
+    保留调用参数；实际函数种类决定调用与取消是否返回可等待对象。
+
+    :ivar cancel: 取消挂起调用的控制方法；异步引擎返回需等待的清理协程
+    """
 
     def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> Awaitable[None] | None:
-        """提交本次调用；同步函数直接返回，协程函数需要等待提交。"""
+        """
+        提交本次调用；同步函数直接返回，协程函数需要等待提交。
+
+        :param args: 传给被包装函数的位置参数，后续调用可替换尚未执行的参数
+        :param kwargs: 传给被包装函数的关键字参数，后续调用可替换尚未执行的参数
+        :return: 同步引擎提交后返回 None；异步引擎返回需要等待的提交协程
+        """
         ...
 
-    # 包装函数挂载的控制方法，异步引擎会等待任务进入终态。
     cancel: Callable[[], Awaitable[None] | None]
 
     @overload
     def __get__(self, instance: None, owner: type[object] | None = None) -> "_Debounced[_P]":
-        """从类访问时保留尚未绑定的参数。"""
+        """
+        从类访问时保留尚未绑定的参数。
+
+        :param instance: 访问此描述符的实例；从类访问时为 None
+        :param owner: 访问此描述符的类；未显式提供时为 None
+        :return: 从类访问时返回未绑定包装器；从实例访问时返回已绑定首个参数的包装器
+        """
         ...
 
     @overload
     def __get__(self: "_Debounced[Concatenate[_T, _BoundP]]", instance: _T,
                 owner: type[_T] | None = None) -> "_Debounced[_BoundP]":
-        """从实例访问时由函数描述符绑定首个参数。"""
+        """
+        从实例访问时由函数描述符绑定首个参数。
+
+        :param instance: 访问此描述符的实例；从类访问时为 None
+        :param owner: 访问此描述符的类；未显式提供时为 None
+        :return: 从类访问时返回未绑定包装器；从实例访问时返回已绑定首个参数的包装器
+        """
         ...
 
 
@@ -45,6 +70,7 @@ class BaseDebouncer(ABC, Generic[_P, _R]):
                  leading: bool = False, enable_logging: bool = False, source: str = "") -> None:
         """
         初始化防抖器实例。
+
         :param func: 要防抖的函数或协程
         :param interval: 防抖间隔，单位秒
         :param leading: 是否启用前沿模式
@@ -118,7 +144,7 @@ class BaseDebouncer(ABC, Generic[_P, _R]):
 
 class Debouncer(BaseDebouncer[_P, object]):
     """
-    同步防抖实现类
+    在线程计时器中执行同步防抖调用，支持立即执行首个调用或延迟执行最后一个调用。
     """
 
     def __init__(self, func: Callable[_P, object], interval: float, *,
@@ -134,10 +160,10 @@ class Debouncer(BaseDebouncer[_P, object]):
 
     def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> None:
         """
-        调用防抖函数。
-        :param args:
-        :param kwargs:
-        :return:
+        提交防抖调用，后续调用覆盖尚未执行的参数。
+
+        :param args: 传给原函数的位置参数
+        :param kwargs: 传给原函数的关键字参数
         """
         with self.lock:
             if self.leading:
@@ -147,9 +173,8 @@ class Debouncer(BaseDebouncer[_P, object]):
 
     def _call_leading(self, *args: _P.args, **kwargs: _P.kwargs) -> None:
         """
-        前沿模式的逻辑。
+        冷却结束后的首个调用立即执行，每次调用都会重新开始冷却计时。
         """
-        # 如果不在冷却期，则立即执行
         if not self.is_cooling_down:
             self.log_info("前沿模式: 立即执行函数。")
             self.func(*args, **kwargs)
@@ -158,17 +183,15 @@ class Debouncer(BaseDebouncer[_P, object]):
         if self.timer and self.timer.is_alive():
             self.timer.cancel()
 
-        # 设置自己进入冷却期
         self.is_cooling_down = True
 
-        # 在间隔结束后，将冷却状态解除
         self.timer = Timer(self.interval, self._end_cool_down)
         self.timer.start()
         self.log_debug(f"前沿模式: 进入 {self.interval} 秒的冷却期。")
 
     def _end_cool_down(self) -> None:
         """
-        计时器到期后，解除冷却状态
+        计时器到期后，解除冷却状态。
         """
         with self.lock:
             self.is_cooling_down = False
@@ -176,15 +199,16 @@ class Debouncer(BaseDebouncer[_P, object]):
 
     def _call_trailing(self, *args: _P.args, **kwargs: _P.kwargs) -> None:
         """
-        后沿模式的逻辑。
+        取消旧计时器并延后执行，使静默间隔结束后只执行最新调用。
         """
-        # 【日志点】记录计时器被重置
         if self.timer and self.timer.is_alive():
             self.timer.cancel()
             self.log_debug("后沿模式: 检测到新的调用，已重置计时器。")
 
         def execute() -> None:
-            """计时结束后执行最后一次调用保存的参数。"""
+            """
+            计时结束后执行最后一次调用保存的参数。
+            """
             self.log_info("后沿模式: 计时结束，开始执行函数。")
             self.func(*args, **kwargs)
 
@@ -206,7 +230,7 @@ class Debouncer(BaseDebouncer[_P, object]):
 
 class AsyncDebouncer(BaseDebouncer[_P, Awaitable[object]]):
     """
-    异步防抖实现类。
+    在事件循环中执行协程防抖调用，并持有被取消的任务直到其真正结束。
     """
 
     def __init__(self, func: Callable[_P, Awaitable[object]], interval: float, *,
@@ -221,7 +245,9 @@ class AsyncDebouncer(BaseDebouncer[_P, Awaitable[object]]):
         self.is_cooling_down = False
 
     def _cancel_active_task(self) -> None:
-        """取消当前任务并保留 owner，直到任务进入真实终态。"""
+        """
+        取消当前任务并保留 owner，直到任务进入真实终态。
+        """
         task = self.task
         if task is None or task.done():
             return
@@ -241,7 +267,7 @@ class AsyncDebouncer(BaseDebouncer[_P, Awaitable[object]]):
 
     async def _call_leading(self, *args: _P.args, **kwargs: _P.kwargs) -> None:
         """
-        前沿模式的逻辑。
+        等待冷却结束后的首个协程执行，再为本次调用重新开始冷却计时。
         """
         if not self.is_cooling_down:
             self.log_info("前沿模式 (async): 立即执行协程。")
@@ -255,7 +281,7 @@ class AsyncDebouncer(BaseDebouncer[_P, Awaitable[object]]):
 
     async def _end_cool_down(self) -> None:
         """
-        计时器到期后，解除冷却状态
+        计时器到期后，解除冷却状态。
         """
         await asyncio.sleep(self.interval)
         async with self.lock:
@@ -264,7 +290,7 @@ class AsyncDebouncer(BaseDebouncer[_P, Awaitable[object]]):
 
     async def _call_trailing(self, *args: _P.args, **kwargs: _P.kwargs) -> None:
         """
-        后沿模式的逻辑。
+        取消并保留旧任务的清理责任，创建携带最新参数的延迟任务。
         """
         if self.task and not self.task.done():
             self._cancel_active_task()
@@ -315,10 +341,10 @@ def debounce(interval: float, *, leading: bool = False,
     """
 
     def decorator(func: Callable[_P, object]) -> _Debounced[_P]:
-        """按实际协程函数标记选择引擎，保留原函数的参数与绑定行为。"""
-        # 检查函数类型，并选择合适的引擎
+        """
+        按实际协程函数标记选择引擎，保留原函数的参数与绑定行为。
+        """
         if inspect.iscoroutinefunction(func):
-            # 异步函数，使用 AsyncDebouncer
             async_instance = AsyncDebouncer(func, interval,
                                             leading=leading,
                                             enable_logging=enable_logging,
@@ -326,7 +352,9 @@ def debounce(interval: float, *, leading: bool = False,
 
             @functools.wraps(func)
             async def async_wrapper(*args: _P.args, **kwargs: _P.kwargs) -> None:
-                """等待异步引擎接收本次调用。"""
+                """
+                等待异步引擎接收本次调用。
+                """
                 await async_instance(*args, **kwargs)
 
             async_result = cast(_Debounced[_P], async_wrapper)
@@ -334,7 +362,6 @@ def debounce(interval: float, *, leading: bool = False,
             return async_result
 
         else:
-            # 同步函数，使用 Debouncer
             instance = Debouncer(func, interval,
                                  leading=leading,
                                  enable_logging=enable_logging,
@@ -342,7 +369,9 @@ def debounce(interval: float, *, leading: bool = False,
 
             @functools.wraps(func)
             def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> None:
-                """通过同步引擎接收本次调用。"""
+                """
+                通过同步引擎接收本次调用。
+                """
                 instance(*args, **kwargs)
 
             result = cast(_Debounced[_P], wrapper)

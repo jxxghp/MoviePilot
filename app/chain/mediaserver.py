@@ -1,3 +1,7 @@
+"""
+媒体服务器目录、条目、播放状态、图片访问与本地数据同步。
+"""
+
 import threading
 from datetime import datetime
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
@@ -31,7 +35,9 @@ class MediaServerChain(ChainBase):
 
     @staticmethod
     def _normalize_item_type(item_type: Optional[str]) -> str:
-        """把不同媒体服务器的原始条目类型归一为电影、电视剧或音乐。"""
+        """
+        把不同媒体服务器的原始条目类型归一为电影、电视剧或音乐。
+        """
         normalized = str(item_type or "").strip().casefold()
         if normalized in {
             MediaType.MUSIC.value.casefold(),
@@ -464,14 +470,12 @@ class MediaServerChain(ChainBase):
         :param progress_callback: 定时服务进度更新回调
         :param server: 指定媒体服务器名称，为空时同步全部已启用服务器
         """
-        # 设置的媒体服务器
         mediaservers = get_mediaserver_configs(include_disabled=True)
         if not mediaservers:
             if progress_callback:
                 progress_callback(value=100, text="未配置媒体服务器，跳过同步")
             return
         with lock:
-            # 汇总统计
             total_count = 0
             repository = self.media_server_repository
             mediaservers, total_servers, server_sync_contexts, global_media_total = (
@@ -494,7 +498,6 @@ class MediaServerChain(ChainBase):
                     )
                 return
 
-            # 遍历媒体服务器
             server_index = 0
             global_media_finished = 0
             for mediaserver in mediaservers:

@@ -1,4 +1,6 @@
-"""插件市场同步运行时用例。"""
+"""
+插件市场同步运行时用例。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +13,9 @@ from app.schemas.plugin import PluginRuntimeStatus
 
 
 class PluginSyncService:
-    """根据已安装清单同步缺失或过期插件，不参与插件实例生命周期。"""
+    """
+    根据已安装清单同步缺失或过期插件，不参与插件实例生命周期。
+    """
 
     def __init__(
         self,
@@ -26,7 +30,9 @@ class PluginSyncService:
         runtime_status_writer: Callable[[str, PluginRuntimeStatus], None] | None = None,
         log: Any,
     ) -> None:
-        """保存目录读取、包安装和持久化报告端口。"""
+        """
+        保存目录读取、包安装和持久化报告端口。
+        """
         self._frozen = frozen
         self._installed_plugins = installed_plugins
         self._online_plugins = online_plugins
@@ -43,7 +49,9 @@ class PluginSyncService:
         *,
         online_restore_plugins: set[str] | None = None,
     ) -> list[str]:
-        """并发安装缺失或需恢复的插件，单个失败只记状态并继续启动编排。"""
+        """
+        并发安装缺失或需恢复的插件，单个失败只记状态并继续启动编排。
+        """
         if self._frozen():
             return []
 
@@ -53,7 +61,8 @@ class PluginSyncService:
         }
         try:
             local = self._local_plugins()
-        except Exception as error:  # noqa: BLE001 - 本地来源失败不能降级在线
+        # 本地来源失败不能降级在线
+        except Exception as error:  # noqa: BLE001
             if self._runtime_status_writer:
                 for plugin_id in installed:
                     self._runtime_status_writer(
@@ -136,7 +145,9 @@ class PluginSyncService:
         failed_recovery: list[str] = []
 
         def install_one(plugin: Any) -> None:
-            """安装一个插件并记录结果。"""
+            """
+            安装一个插件并记录结果。
+            """
             started = time.time()
             state, message = self._install(
                 plugin.id,
@@ -174,6 +185,7 @@ class PluginSyncService:
                 plugin = futures[future]
                 try:
                     future.result()
+                # 单个插件并发初始化失败应记录其恢复状态，不中断其他插件初始化。
                 except Exception as error:  # noqa: BLE001
                     if plugin.id.lower() in recovery_ids:
                         failed_recovery.append(plugin.id)
@@ -199,7 +211,9 @@ class PluginSyncService:
 
 
 class LocalPluginSyncService:
-    """同步本地插件仓源码到运行目录，并记录热重载抑制窗口。"""
+    """
+    同步本地插件仓源码到运行目录，并记录热重载抑制窗口。
+    """
 
     def __init__(
         self,
@@ -210,7 +224,9 @@ class LocalPluginSyncService:
         recent_sync: dict[str, float],
         log: Any,
     ) -> None:
-        """保存本地候选、包同步和运行态监控端口。"""
+        """
+        保存本地候选、包同步和运行态监控端口。
+        """
         self._installed_plugins = installed_plugins
         self._candidate = candidate
         self._system = system
@@ -218,7 +234,9 @@ class LocalPluginSyncService:
         self._logger = log
 
     def sync(self, plugin_id: str, candidate: Optional[dict[str, Any]] = None) -> bool:
-        """同步已安装且兼容的本地插件，成功后记录短时事件抑制标记。"""
+        """
+        同步已安装且兼容的本地插件，成功后记录短时事件抑制标记。
+        """
         normalized_plugin_id = plugin_id.lower()
         installed = {
             installed_id.lower()

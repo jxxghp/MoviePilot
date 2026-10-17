@@ -1,4 +1,6 @@
-"""订阅执行批次状态与取消端点。"""
+"""
+订阅执行批次状态与取消端点。
+"""
 
 import time
 from collections.abc import AsyncIterator
@@ -48,7 +50,9 @@ async def list_subscription_activity(
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaSubscriptionActivityPage:
-    """按当前 owner 校验活动或完成历史，分页仅返回轻量概要。"""
+    """
+    按当前 owner 校验活动或完成历史，分页仅返回轻量概要。
+    """
     repository = runtime.subscription.activity_repository
     if repository is None:
         raise HTTPException(status_code=503, detail="订阅活动暂时不可用")
@@ -83,7 +87,9 @@ async def get_subscription_activity(
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaSubscriptionActivityEvent:
-    """按需读取冻结条件、资源判断和恢复记录，并再次检查订阅归属。"""
+    """
+    按需读取冻结条件、资源判断和恢复记录，并再次检查订阅归属。
+    """
     repository = runtime.subscription.activity_repository
     if repository is None:
         raise HTTPException(status_code=503, detail="订阅活动暂时不可用")
@@ -101,7 +107,9 @@ async def _accessible_subscription_ids(
     query: SubscriptionQueryService,
     current_user: ApiPrincipal,
 ) -> Optional[set[int]]:
-    """返回普通用户可访问订阅 ID；超级用户以 None 表示不限制。"""
+    """
+    返回普通用户可访问订阅 ID；超级用户以 None 表示不限制。
+    """
     if current_user.is_superuser:
         return None
     subscribes = await query.list_public(current_user.name)
@@ -119,7 +127,9 @@ async def list_subscription_execution_batches(
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """返回当前用户完整可见的最近搜索批次。"""
+    """
+    返回当前用户完整可见的最近搜索批次。
+    """
     accessible_ids = await _accessible_subscription_ids(query, current_user)
     batches = await status_service.list_batches(
         accessible_subscription_ids=accessible_ids,
@@ -139,7 +149,9 @@ async def get_subscription_execution_batch(
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """按稳定 ID 返回当前用户可访问的搜索批次。"""
+    """
+    按稳定 ID 返回当前用户可访问的搜索批次。
+    """
     accessible_ids = await _accessible_subscription_ids(query, current_user)
     batch = await status_service.get_batch(
         batch_id,
@@ -161,7 +173,9 @@ async def cancel_subscription_execution_batch(
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """在权限校验后请求取消尚未越过下载副作用边界的任务。"""
+    """
+    在权限校验后请求取消尚未越过下载副作用边界的任务。
+    """
     accessible_ids = await _accessible_subscription_ids(query, current_user)
     batch = await status_service.get_batch(
         batch_id,
@@ -181,14 +195,18 @@ async def _require_subscription_log_access(
     query: SubscriptionQueryService,
     user: _SchemaTokenPayload,
 ) -> None:
-    """日志仅对当前订阅 owner 或管理员开放，未知和越权 ID 均返回 404。"""
+    """
+    日志仅对当前订阅 owner 或管理员开放，未知和越权 ID 均返回 404。
+    """
     subscribe = await query.get_public(subscription_id)
     if subscribe is None or (not user.super_user and subscribe.username != user.username):
         raise HTTPException(status_code=404, detail="订阅不存在或无权查看")
 
 
 async def _authorize_subscription_logs(subscription_id: int, user: _SchemaTokenPayload, runtime: HostRuntime) -> None:
-    """在独立短会话中确认归属，返回后不持有数据库事务。"""
+    """
+    在独立短会话中确认归属，返回后不持有数据库事务。
+    """
     async with subscription_log_query_scope(runtime) as query:
         await _require_subscription_log_access(subscription_id, query, user)
 
@@ -207,7 +225,9 @@ async def get_subscription_logs(
     user: _SchemaTokenPayload = Depends(verify_resource_token),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Response:
-    """按订阅权限输出原始文本或实时流；首次执行前保持空流等待日志生成。"""
+    """
+    按订阅权限输出原始文本或实时流；首次执行前保持空流等待日志生成。
+    """
     await _authorize_subscription_logs(subscription_id, user, runtime)
     logfile = f"subscriptions/{subscription_id}.log"
     if length == -1:
@@ -219,7 +239,9 @@ async def get_subscription_logs(
     last_check = time.monotonic()
 
     async def disconnected() -> bool:
-        """断开或归属变更时停止流；周期重读归属并验证资源令牌的有效性。"""
+        """
+        断开或归属变更时停止流；周期重读归属并验证资源令牌的有效性。
+        """
         nonlocal last_check
         if await request.is_disconnected():
             return True
@@ -235,7 +257,9 @@ async def get_subscription_logs(
     source = await runtime.system.follow_log(logfile, max(1, length), disconnected)
 
     async def events() -> AsyncIterator[str]:
-        """逐行编码 SSE，心跳不进入前端日志列表。"""
+        """
+        逐行编码 SSE，心跳不进入前端日志列表。
+        """
         async for line in source:
             content = line
             yield "".join(f"data: {part}\n" for part in content.splitlines()) + "\n" if content else ": keepalive\n\n"
@@ -255,7 +279,9 @@ async def download_subscription_logs(
     user: _SchemaTokenPayload = Depends(verify_resource_token),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Response:
-    """在归属检查后下载当前订阅的日志及滚动备份，客户端不能指定路径。"""
+    """
+    在归属检查后下载当前订阅的日志及滚动备份，客户端不能指定路径。
+    """
     await _authorize_subscription_logs(subscription_id, user, runtime)
     return await _build_log_zip_response(
         f"subscriptions/{subscription_id}", runtime,

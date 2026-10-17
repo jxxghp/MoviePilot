@@ -1,3 +1,7 @@
+"""
+用户密码、辅助认证与二次验证的业务编排。
+"""
+
 import secrets
 from dataclasses import dataclass
 from typing import Literal, Optional, Tuple, Union
@@ -18,7 +22,11 @@ MfaMethod = Literal["otp"]
 
 @dataclass(frozen=True)
 class MfaRequired:
-    """密码验证通过后，当前账号仍需完成的二次验证要求。"""
+    """
+    密码验证通过后，当前账号仍需完成的二次验证要求。
+
+    :param methods: 当前账号必须补充的二次验证方式列表，目前仅支持 otp
+    """
 
     methods: Tuple[MfaMethod, ...]
 
@@ -44,9 +52,7 @@ class UserChain(ChainBase):
         :param mfa_code: 一次性密码，适用于 "password" grant_type
         :param code: 授权码，适用于 "authorization_code" grant_type
         :param grant_type: 认证类型，如 "password", "authorization_code", "client_credentials"
-        :return:
-            - 对于成功的认证，返回 (True, UserAuthSnapshot)
-            - 对于失败的认证，返回 (False, "错误信息") 或 (False, MfaRequired)
+        :return: 成功时返回 True 与用户快照；失败时返回 False 与错误说明或所需二次验证方式
         """
         credentials = AuthCredentials(
             username=username,
@@ -57,7 +63,6 @@ class UserChain(ChainBase):
         )
         logger.debug(f"认证类型：{grant_type}，开始准备对用户 {username} 进行身份校验")
         if credentials.grant_type == "password":
-            # Password 认证
             success, user_or_message = self.password_authenticate(credentials=credentials)
             if success and isinstance(user_or_message, UserAuthSnapshot):
                 # 如果用户启用了二次验证，则进一步验证
@@ -90,7 +95,6 @@ class UserChain(ChainBase):
                     logger.debug(f"辅助认证未启用，用户 {username} 认证失败")
                     return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
         elif credentials.grant_type == "authorization_code":
-            # 处理其他认证类型的分支
             if self.runtime_config.auxiliary_auth_enable:
                 auth_result = self.auxiliary_authenticate(credentials=credentials)
                 if auth_result[0]:
@@ -112,9 +116,7 @@ class UserChain(ChainBase):
         密码认证
 
         :param credentials: 认证凭证，包含用户名、密码以及可选的 MFA 认证码
-        :return:
-            - 成功时返回 (True, User)，其中 User 是认证通过的用户对象
-            - 失败时返回 (False, "错误信息")
+        :return: 认证成功时返回 True 与用户快照，失败时返回 False 与错误说明
         """
         if not credentials or credentials.grant_type != "password":
             logger.info("密码认证失败，认证类型不匹配")
@@ -146,14 +148,11 @@ class UserChain(ChainBase):
         辅助用户认证
 
         :param credentials: 认证凭证，包含必要的认证信息
-        :return:
-            - 成功时返回 (True, User)，其中 User 是认证通过的用户对象
-            - 失败时返回 (False, "错误信息")
+        :return: 认证成功时返回 True 与用户快照，失败时返回 False 与错误说明
         """
         if not credentials:
             return False, "认证凭证无效"
 
-        # 检查是否因为用户被禁用
         useroper = self.user_repository
         if credentials.username:
             user = useroper.get_auth_by_name(name=credentials.username)
@@ -171,12 +170,13 @@ class UserChain(ChainBase):
                 logger.error(f"认证类型：{credentials.grant_type}，辅助认证失败，未返回有效数据")
                 return False, f"认证类型：{credentials.grant_type}，辅助认证事件失败或无效"
 
-            credentials = event.event_data  # 使用事件返回的认证数据
+            # 使用事件返回的认证数据
+            credentials = event.event_data
         else:
             logger.info(f"通过系统模块辅助认证成功，用户: {credentials.username}")
-            credentials = result  # 使用模块认证返回的认证数据
+            # 使用模块认证返回的认证数据
+            credentials = result
 
-        # 处理认证成功的逻辑
         resolved_username = credentials.username
         if not resolved_username:
             return False, PASSWORD_INVALID_CREDENTIALS_MESSAGE
@@ -204,10 +204,7 @@ class UserChain(ChainBase):
 
         :param user: 用户对象
         :param mfa_code: 身份验证器生成的 6 位验证码
-        :return:
-            - 如果验证成功返回 True
-            - 如果需要 MFA 但未提供，返回当前账号实际可用的验证方式
-            - 如果MFA验证失败，返回 False
+        :return: 验证通过或无需二次验证时为 True；缺少验证码时返回 MfaRequired，验证码无效时为 False
         """
         if not user.is_otp:
             return True
@@ -223,13 +220,11 @@ class UserChain(ChainBase):
 
     def _process_auth_success(self, username: str, credentials: AuthCredentials) -> bool:
         """
-        处理辅助认证成功的逻辑，返回用户对象或创建新用户
+        完成辅助认证拦截检查，并在允许时创建本地用户。
 
         :param username: 用户名
         :param credentials: 认证凭证，包含 token、channel、service 等信息
-        :return:
-            - 如果认证成功并且用户存在或已创建，返回 User 对象
-            - 如果认证被拦截或失败，返回 None
+        :return: 已有用户可用或新用户创建成功时为 True，认证被拦截、信息不足或用户不可用时为 False
         """
         if not username:
             logger.info(f"未能获取到对应的用户信息，{credentials.grant_type} 认证不通过")

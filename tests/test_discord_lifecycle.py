@@ -1,3 +1,7 @@
+"""
+验证 Discord 连接线程、事件循环与输入提示任务的关闭边界。
+"""
+
 import asyncio
 import threading
 from typing import Optional
@@ -9,7 +13,9 @@ from app.modules.discord.discord import Discord
 
 
 class _DiscordClientStub:
-    """模拟 Discord 长连接，允许测试控制启动失败与正常关闭。"""
+    """
+    模拟 Discord 长连接，允许测试控制启动失败与正常关闭。
+    """
 
     def __init__(self, *, start_error: Optional[Exception] = None) -> None:
         self.started = threading.Event()
@@ -18,6 +24,9 @@ class _DiscordClientStub:
         self.close_calls = 0
 
     async def start(self, _token: str) -> None:
+        """
+        通知连接已开始；按预设错误失败，否则等待关闭事件。
+        """
         self._release = asyncio.Event()
         self.started.set()
         if self._start_error:
@@ -25,40 +34,56 @@ class _DiscordClientStub:
         await self._release.wait()
 
     async def close(self) -> None:
+        """
+        记录关闭调用，并释放等待中的模拟连接。
+        """
         self.close_calls += 1
         if self._release:
             self._release.set()
 
 
 class _YieldingCloseDiscordClientStub(_DiscordClientStub):
-    """关闭协程至少让出一次执行权，用于覆盖启动窗口内的停止竞态。"""
+    """
+    关闭协程至少让出一次执行权，用于覆盖启动窗口内的停止竞态。
+    """
 
     def __init__(self) -> None:
         super().__init__()
         self.closed = threading.Event()
 
     async def close(self) -> None:
+        """
+        记录关闭调用，让出执行权后通知测试关闭已完成。
+        """
         self.close_calls += 1
         await asyncio.sleep(0)
         self.closed.set()
 
 
 class _BlockingTypingChannelStub:
-    """模拟阻塞中的 Discord typing 请求。"""
+    """
+    模拟阻塞中的 Discord typing 请求。
+    """
 
     def __init__(self) -> None:
-        """初始化请求进入与释放屏障。"""
+        """
+        初始化请求进入与释放屏障。
+        """
         self.entered = asyncio.Event()
         self.release = asyncio.Event()
 
     async def trigger_typing(self) -> None:
-        """阻塞请求，直到测试释放或 owner 被取消。"""
+        """
+        阻塞请求，直到测试释放或 owner 被取消。
+        """
         self.entered.set()
         await self.release.wait()
 
 
 def _discord(client: _DiscordClientStub) -> Discord:
-    """构造只包含线程与事件循环生命周期状态的 Discord 实例。"""
+    """
+    构造只包含线程与事件循环生命周期状态的 Discord 实例。
+    """
     instance = Discord.__new__(Discord)
     instance._token = "test-token"
     instance._client = client
@@ -75,7 +100,9 @@ def _discord(client: _DiscordClientStub) -> Discord:
 
 
 def _typing_discord() -> Discord:
-    """构造绑定当前测试循环且不连接外部服务的 typing client。"""
+    """
+    构造绑定当前测试循环且不连接外部服务的 typing client。
+    """
     instance = Discord.__new__(Discord)
     instance._loop = asyncio.get_running_loop()
     instance._typing_tasks = {}
@@ -90,7 +117,9 @@ def _typing_discord() -> Discord:
 
 
 def _cleanup(instance: Discord) -> None:
-    """即使用例断言失败也回收其线程和事件循环。"""
+    """
+    即使用例断言失败也回收其线程和事件循环。
+    """
     thread = instance._thread
     loop = instance._loop
     if thread and thread.is_alive():
@@ -101,7 +130,9 @@ def _cleanup(instance: Discord) -> None:
 
 
 def test_stop_waits_for_discord_thread_and_closes_loop() -> None:
-    """正常停止返回时，Discord 线程与其事件循环必须已经结束。"""
+    """
+    正常停止返回时，Discord 线程与其事件循环必须已经结束。
+    """
     instance = _discord(_DiscordClientStub())
     instance._start()
     assert instance._client.started.wait(timeout=1)
@@ -117,7 +148,9 @@ def test_stop_waits_for_discord_thread_and_closes_loop() -> None:
 
 
 def test_start_failure_closes_discord_thread_loop() -> None:
-    """Discord 启动协程失败后不得留下空跑线程和未关闭循环。"""
+    """
+    Discord 启动协程失败后不得留下空跑线程和未关闭循环。
+    """
     instance = _discord(_DiscordClientStub(start_error=RuntimeError("invalid token")))
     instance._start()
     assert instance._client.started.wait(timeout=1)
@@ -132,7 +165,9 @@ def test_start_failure_closes_discord_thread_loop() -> None:
 
 
 def test_stop_during_thread_bootstrap_preserves_runner_cleanup(monkeypatch) -> None:
-    """线程已登记但循环尚未运行时，停止请求不得打断 runner 的关闭流程。"""
+    """
+    线程已登记但循环尚未运行时，停止请求不得打断 runner 的关闭流程。
+    """
     client = _YieldingCloseDiscordClientStub()
     instance = _discord(client)
     runner_entered = threading.Event()
@@ -168,7 +203,9 @@ def test_stop_during_thread_bootstrap_preserves_runner_cleanup(monkeypatch) -> N
 
 @pytest.mark.anyio
 async def test_short_typing_task_can_stop_before_first_trigger(monkeypatch) -> None:
-    """短响应在首发前结束时，不应留下 Discord 客户端 typing 状态。"""
+    """
+    短响应在首发前结束时，不应留下 Discord 客户端 typing 状态。
+    """
     discord_client = _typing_discord()
     channel = AsyncMock()
     channel.trigger_typing = AsyncMock()
@@ -195,7 +232,9 @@ async def test_short_typing_task_can_stop_before_first_trigger(monkeypatch) -> N
 
 @pytest.mark.anyio
 async def test_typing_stop_retains_blocked_owner_until_terminal(monkeypatch) -> None:
-    """typing 请求阻塞超过预算时，不得删除或覆盖仍运行的 task owner。"""
+    """
+    typing 请求阻塞超过预算时，不得删除或覆盖仍运行的 task owner。
+    """
     discord_client = _typing_discord()
     channel = _BlockingTypingChannelStub()
     resolve_channel = AsyncMock(return_value=channel)
@@ -228,7 +267,9 @@ async def test_typing_stop_retains_blocked_owner_until_terminal(monkeypatch) -> 
 
 @pytest.mark.anyio
 async def test_stop_all_seals_and_drains_typing_owners(monkeypatch) -> None:
-    """client shutdown 必须封住新增任务并取消、等待既有 owner 进入终态。"""
+    """
+    client shutdown 必须封住新增任务并取消、等待既有 owner 进入终态。
+    """
     discord_client = _typing_discord()
     channel = _BlockingTypingChannelStub()
     resolve_channel = AsyncMock(return_value=channel)

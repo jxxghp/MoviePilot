@@ -1,4 +1,6 @@
-"""事件处理器声明到运行实例的显式绑定解析。"""
+"""
+事件处理器声明到运行实例的显式绑定解析。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,13 @@ from app.runtime.log import logger
 
 @dataclass(frozen=True, slots=True)
 class EventHandlerBinding:
-    """描述上层运行时为某个事件处理器提供的实例绑定。"""
+    """
+    描述上层运行时为某个事件处理器提供的实例绑定。
+
+    :param instance: 接收处理器调用的绑定实例；无需绑定时为 None
+    :param owner_name: 处理器的责任域名称，用于生命周期管理
+    :param run_sync_in_threadpool: 是否将同步处理器交给受控线程池执行
+    """
 
     instance: Optional[Any]
     owner_name: str
@@ -26,7 +34,9 @@ HandlerInstanceResolver = Callable[
 
 
 class EventBindingResolver:
-    """只通过已登记 resolver 把类处理器绑定到托管运行实例。"""
+    """
+    只通过已登记 resolver 把类处理器绑定到托管运行实例。
+    """
 
     def __init__(
         self,
@@ -34,29 +44,39 @@ class EventBindingResolver:
         lock: Any,
         resolvers: Callable[[], dict[str, HandlerInstanceResolver]],
     ) -> None:
-        """绑定 resolver 存储，并记录未命中的处理器用于启动诊断。"""
+        """
+        绑定 resolver 存储，并记录未命中的处理器用于启动诊断。
+        """
         self._lock = lock
         self._resolvers = resolvers
         self._unresolved: set[str] = set()
 
     def register(self, name: str, resolver: HandlerInstanceResolver) -> None:
-        """注册或替换命名实例解析器。"""
+        """
+        注册或替换命名实例解析器。
+        """
         with self._lock:
             self._resolvers()[name] = resolver
 
     def unregister(self, name: str) -> None:
-        """移除命名实例解析器；名称不存在时保持幂等。"""
+        """
+        移除命名实例解析器；名称不存在时保持幂等。
+        """
         with self._lock:
             self._resolvers().pop(name, None)
 
     def unresolved_handlers(self) -> tuple[str, ...]:
-        """返回本进程中未被显式 resolver 接管的类处理器。"""
+        """
+        返回本进程中未被显式 resolver 接管的类处理器。
+        """
         with self._lock:
             return tuple(sorted(self._unresolved))
 
     @staticmethod
     def parse_handler_names(handler: Callable[..., object]) -> tuple[str, str]:
-        """解析处理器限定名中的类名和方法名。"""
+        """
+        解析处理器限定名中的类名和方法名。
+        """
         names = handler.__qualname__.split(".")
         if len(names) < 2:
             return "", names[0]
@@ -64,14 +84,15 @@ class EventBindingResolver:
 
     @staticmethod
     def is_class_method_declaration(handler: Callable[..., object]) -> bool:
-        """判断处理器是否声明在类体内（限定名含类前缀或签名首参为 self/cls）。
+        """
+        判断处理器是否声明在类体内（限定名含类前缀或签名首参为 self/cls）。
 
         模块级顶层自由函数的限定名不含 ``.``；类方法、装饰器包装和嵌套函数
         的限定名含 ``.``。局部作用域自由函数（如测试内联 handler）限定名形如
         ``func.<locals>.handler``，与装饰器包装方法 ``SiteStatistic.<locals>.
         wrapper`` 无法靠限定名区分，需按调用约定兜底：签名首参为 self/cls
         才视为类方法声明。模块卸载后残留的类方法一旦被 unbound 直调，会把
-        event 吞进 self 触发 missing event TypeError，因此必须跳过等待重载自愈。
+        事件对象被当作 self 接收后会触发缺少 event 参数的 TypeError，因此先跳过并等待重载恢复。
         """
         parts = handler.__qualname__.split(".")
         if len(parts) < 2:
@@ -88,7 +109,9 @@ class EventBindingResolver:
 
     @staticmethod
     def owner_class(handler: Callable[..., object]) -> Optional[Type[Any]]:
-        """从处理器对象本身解析声明类，不按字符串动态导入模块。"""
+        """
+        从处理器对象本身解析声明类，不按字符串动态导入模块。
+        """
         if inspect.ismethod(handler):
             bound_owner = handler.__self__
             return bound_owner if isinstance(bound_owner, type) else type(bound_owner)
@@ -105,7 +128,9 @@ class EventBindingResolver:
         return owner if isinstance(owner, type) else None
 
     def _record_unresolved(self, identifier: str, reason: str) -> None:
-        """首次未命中时记录告警，避免重载窗口内重复刷屏。"""
+        """
+        首次未命中时记录告警，避免重载窗口内重复刷屏。
+        """
         with self._lock:
             first_miss = identifier not in self._unresolved
             self._unresolved.add(identifier)
@@ -116,7 +141,9 @@ class EventBindingResolver:
         self,
         handler: Callable[..., object],
     ) -> Optional[tuple[Callable[..., object], EventHandlerBinding, str, str]]:
-        """通过显式 resolver 解析当前实例方法；自由函数直接返回。"""
+        """
+        通过显式 resolver 解析当前实例方法；自由函数直接返回。
+        """
         binding: Optional[EventHandlerBinding]
         owner_class = self.owner_class(handler)
         method_name = getattr(

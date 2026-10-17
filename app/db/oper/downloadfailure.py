@@ -1,3 +1,7 @@
+"""
+下载失败及重试状态的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 from typing import Dict, List, Optional
 
 from app.db.base import DbOper

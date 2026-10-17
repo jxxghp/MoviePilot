@@ -1,4 +1,6 @@
-"""Jellyfin 合集成员的存在性查询、统计和媒体库遍历回归。"""
+"""
+Jellyfin 合集成员的存在性查询、统计和媒体库遍历回归。
+"""
 
 from unittest.mock import Mock, patch
 
@@ -10,7 +12,9 @@ from app.schemas.types import MediaSource
 
 @pytest.fixture
 def client():
-    """构造跳过远端初始化的 Jellyfin 客户端。"""
+    """
+    构造跳过远端初始化的 Jellyfin 客户端。
+    """
     instance = Jellyfin.__new__(Jellyfin)
     instance._host = "http://jellyfin.local/"
     instance._apikey = "api-key"
@@ -21,14 +25,18 @@ def client():
 
 
 def _response(payload: dict) -> Mock:
-    """返回带成功状态码的离线 JSON 响应。"""
+    """
+    返回带成功状态码的离线 JSON 响应。
+    """
     response = Mock(status_code=200)
     response.json.return_value = payload
     return response
 
 
 def _movie(item_id: str, **fields) -> dict:
-    """构造保留来源身份及父目录的电影条目。"""
+    """
+    构造保留来源身份及父目录的电影条目。
+    """
     return {
         "Id": item_id,
         "Type": "Movie",
@@ -42,7 +50,9 @@ def _movie(item_id: str, **fields) -> dict:
 
 @pytest.mark.parametrize("media_source,media_id", [(None, None), (MediaSource.TMDB, "123")])
 def test_get_movies_finds_collection_members(client, media_source, media_id):
-    """电影查询应展开合集，同时保留标题、年份和来源身份匹配规则。"""
+    """
+    电影查询应展开合集，同时保留标题、年份和来源身份匹配规则。
+    """
     movies = [
         _movie("matched"),
         _movie("other-title", Name="其他电影"),
@@ -51,7 +61,9 @@ def test_get_movies_finds_collection_members(client, media_source, media_id):
     ]
 
     def get_res(_url, params):
-        """模拟 Jellyfin 按请求参数返回电影或折叠后的合集。"""
+        """
+        模拟 Jellyfin 按请求参数返回电影或折叠后的合集。
+        """
         items = movies if params.get("CollapseBoxSetItems") == "false" else [
             {"Id": "collection", "Type": "BoxSet", "Name": "系列合集"}
         ]
@@ -72,9 +84,13 @@ def test_get_movies_finds_collection_members(client, media_source, media_id):
 
 @pytest.mark.parametrize("item_types", ["Movie", "Movie,Series", "MusicAlbum"])
 def test_get_items_count_disables_collection_collapsing(client, item_types):
-    """计数应包含合集成员，并保留调用方指定的媒体类型。"""
+    """
+    计数应包含合集成员，并保留调用方指定的媒体类型。
+    """
     def get_res(_url, params):
-        """回放 Issue 中折叠前后 51/136 的计数差异。"""
+        """
+        回放 Issue 中折叠前后 51/136 的计数差异。
+        """
         count = 136 if params.get("CollapseBoxSetItems") == "false" else 51
         return _response({"TotalRecordCount": count})
 
@@ -91,9 +107,13 @@ def test_get_items_count_disables_collection_collapsing(client, item_types):
 
 
 def test_library_and_dashboard_counts_include_collection_members(client):
-    """媒体库卡片和仪表板应共用展开合集后的电影计数。"""
+    """
+    媒体库卡片和仪表板应共用展开合集后的电影计数。
+    """
     def get_res(url, params):
-        """模拟一个启用了合集折叠的电影媒体库。"""
+        """
+        模拟一个启用了合集折叠的电影媒体库。
+        """
         if url.endswith("/Views"):
             return _response({"Items": [{
                 "Id": "movies", "Name": "电影", "CollectionType": "movies",
@@ -112,7 +132,9 @@ def test_library_and_dashboard_counts_include_collection_members(client):
 
 @pytest.mark.parametrize("limit", [None, -1])
 def test_get_items_expands_nested_boxsets_and_folders(client, limit):
-    """同步应递归读取 Folder 和 BoxSet，保留普通电影、剧集和音乐专辑。"""
+    """
+    同步应递归读取 Folder 和 BoxSet，保留普通电影、剧集和音乐专辑。
+    """
     contents = {
         "movies": [
             _movie("standalone"),
@@ -129,7 +151,9 @@ def test_get_items_expands_nested_boxsets_and_folders(client, limit):
     }
 
     def get_res(_url, params):
-        """按父条目 ID 返回合集和目录的真实层级结构。"""
+        """
+        按父条目 ID 返回合集和目录的真实层级结构。
+        """
         return _response({"Items": contents[params["ParentId"]]})
 
     with patch("app.modules.jellyfin.jellyfin.RequestUtils") as request:
@@ -148,9 +172,13 @@ def test_get_items_expands_nested_boxsets_and_folders(client, limit):
 
 
 def test_get_items_pagination_does_not_truncate_collection_members(client):
-    """父目录分页参数不能传给合集，否则会漏掉合集成员。"""
+    """
+    父目录分页参数不能传给合集，否则会漏掉合集成员。
+    """
     def get_res(_url, params):
-        """返回父目录的一页数据和合集中完整的三部电影。"""
+        """
+        返回父目录的一页数据和合集中完整的三部电影。
+        """
         if params["ParentId"] == "movies":
             return _response({"Items": [
                 {"Id": "collection", "Type": "BoxSet"}, _movie("standalone"),

@@ -1,3 +1,7 @@
+"""
+验证各模型提供方的思考选项与客户端参数映射。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -38,7 +42,9 @@ def test_openai_compatible_models_forward_reasoning_effort(
     thinking_level,
     expected,
 ):
-    """未知模型目录时，OpenAI-compatible 端点应透传用户选择的思考级别。"""
+    """
+    未知模型目录时，OpenAI-compatible 端点应透传用户选择的思考级别。
+    """
     assert (
         LLMHelper._build_thinking_kwargs(
             provider=provider,
@@ -50,7 +56,9 @@ def test_openai_compatible_models_forward_reasoning_effort(
 
 
 def test_openai_reasoning_effort_respects_model_catalog():
-    """模型目录声明的 effort 范围应约束超出范围的统一思考级别。"""
+    """
+    模型目录声明的 effort 范围应约束超出范围的统一思考级别。
+    """
     metadata = {
         "reasoning": True,
         "reasoning_options": [
@@ -73,7 +81,9 @@ def test_openai_reasoning_effort_respects_model_catalog():
 
 
 def test_grok_max_uses_highest_catalog_effort():
-    """Grok 4.6 目录最高为 xhigh，选择 max 时按已知能力降级。"""
+    """
+    Grok 4.6 目录最高为 xhigh，选择 max 时按已知能力降级。
+    """
     metadata = {
         "reasoning": True,
         "reasoning_options": [
@@ -88,6 +98,9 @@ def test_grok_max_uses_highest_catalog_effort():
 
 @pytest.fixture
 def offline_runtime(monkeypatch):
+    """
+    替换模型运行配置和客户端构造，记录思考选项且不连接外部服务。
+    """
     runtime = SimpleNamespace(resolve_runtime=AsyncMock(return_value={
         "provider_id": "openai",
         "runtime": "openai_compatible",
@@ -124,7 +137,9 @@ def offline_runtime(monkeypatch):
 def test_openai_payload_preserves_selected_reasoning_effort(
     offline_runtime, protocol, effort, has_catalog,
 ) -> None:
-    """SDK 实际请求须区分 max 和 xhigh，目录未知或支持两者时均保留用户选择。"""
+    """
+    SDK 实际请求须区分 max 和 xhigh，目录未知或支持两者时均保留用户选择。
+    """
     if has_catalog:
         offline_runtime.resolve_runtime.return_value["model_metadata"] = {
             "reasoning": True,
@@ -149,7 +164,9 @@ def test_openai_payload_preserves_selected_reasoning_effort(
 
 @pytest.mark.parametrize("protocol", ["chat_completions", "responses"])
 def test_grok_payload_uses_highest_catalog_effort(offline_runtime, protocol) -> None:
-    """两种协议均按 Grok 4.6 的已知能力把 max 降级为 xhigh。"""
+    """
+    两种协议均按 Grok 4.6 的已知能力把 max 降级为 xhigh。
+    """
     metadata = {
         "reasoning": True,
         "reasoning_options": [
@@ -175,7 +192,9 @@ def test_grok_payload_uses_highest_catalog_effort(offline_runtime, protocol) -> 
 
 
 def test_openai_reasoning_effort_skips_known_unsupported_model(monkeypatch):
-    """模型目录明确不支持思考时应跳过参数并记录原因。"""
+    """
+    模型目录明确不支持思考时应跳过参数并记录原因。
+    """
     logger = Mock()
     monkeypatch.setattr("app.agent.llm.helper.logger", logger)
 

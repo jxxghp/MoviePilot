@@ -1,9 +1,9 @@
-"""2.2.14
-统一媒体身份字段并补齐 Bangumi/AniList ID
+"""
+2.2.14 统一媒体身份字段并补齐 Bangumi/AniList ID
 
-Revision ID: f7b2d5c9a301
-Revises: e6a1c4b8d2f0
-Create Date: 2026-07-21
+版本标识： f7b2d5c9a301
+前置版本： e6a1c4b8d2f0
+创建时间： 2026-07-21
 """
 
 from typing import Iterable
@@ -23,7 +23,9 @@ def _has_column(
         table_name: str,
         column_name: str,
 ) -> bool:
-    """检查数据表是否已存在指定字段。"""
+    """
+    检查数据表是否已存在指定字段。
+    """
     if table_name not in inspector.get_table_names():
         return False
     return any(
@@ -37,7 +39,9 @@ def _has_index(
         table_name: str,
         index_name: str,
 ) -> bool:
-    """检查数据表是否已存在指定索引。"""
+    """
+    检查数据表是否已存在指定索引。
+    """
     if table_name not in inspector.get_table_names():
         return False
     return any(
@@ -47,7 +51,9 @@ def _has_index(
 
 
 def _column_names(table_name: str) -> set[str]:
-    """读取数据表当前全部字段名。"""
+    """
+    读取数据表当前全部字段名。
+    """
     inspector = sa.inspect(op.get_bind())
     if table_name not in inspector.get_table_names():
         return set()
@@ -58,7 +64,9 @@ def _column_names(table_name: str) -> set[str]:
 
 
 def _add_columns(table_name: str, columns: Iterable[sa.Column]) -> None:
-    """为指定表补充尚不存在的字段。"""
+    """
+    为指定表补充尚不存在的字段。
+    """
     for column in columns:
         inspector = sa.inspect(op.get_bind())
         if not _has_column(inspector, table_name, column.name):
@@ -66,14 +74,18 @@ def _add_columns(table_name: str, columns: Iterable[sa.Column]) -> None:
 
 
 def _create_index(table_name: str, index_name: str, columns: list[str]) -> None:
-    """为指定表创建尚不存在的索引。"""
+    """
+    为指定表创建尚不存在的索引。
+    """
     inspector = sa.inspect(op.get_bind())
     if not _has_index(inspector, table_name, index_name):
         op.create_index(index_name, table_name, columns)
 
 
 def _backfill_media_identity(table_name: str) -> None:
-    """使用表中实际存在的兼容 ID 幂等回填统一媒体身份。"""
+    """
+    使用表中实际存在的兼容 ID 幂等回填统一媒体身份。
+    """
     existing_columns = _column_names(table_name)
     columns = [
         sa.column("media_source", sa.String()),
@@ -133,7 +145,9 @@ def _backfill_media_identity(table_name: str) -> None:
 
 
 def upgrade() -> None:
-    """升级媒体身份字段并迁移存量数据。"""
+    """
+    升级媒体身份字段并迁移存量数据。
+    """
     _add_columns("subscribe", (
         sa.Column("anilistid", sa.Integer(), nullable=True),
         sa.Column("media_source", sa.String(), nullable=True),
@@ -190,7 +204,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """回滚统一媒体身份及 Bangumi/AniList 字段。"""
+    """
+    回滚统一媒体身份及 Bangumi/AniList 字段。
+    """
     for table_name, index_names in {
         "subscribe": (
             "ix_subscribe_media_identity", "ix_subscribe_media_id",

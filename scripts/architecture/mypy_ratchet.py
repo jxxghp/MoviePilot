@@ -1,8 +1,9 @@
-"""为宿主源码维护 mypy 类型错误只降不增的基线。
+"""
+为宿主源码维护 mypy 类型错误只降不增的基线。
 
-与 ``complexity.py`` 同一模式：AST/subprocess 收集当前计数，与 JSON 基线对比，
-基线按 文件 -> 错误码 -> 数量 三级组织。任何增长都会被拒绝；债务下降后也必须用
-``--write`` 固化新的低水位，避免已经修复的错误重新获得回退额度。
+与 complexity.py 使用相同模式：通过子进程收集当前计数，再与 JSON 基线对比。
+基线按文件、错误码、数量三级组织。任何增长都会被拒绝；债务下降后也必须用
+--write 固化新的低水位，避免已经修复的错误重新获得回退额度。
 """
 
 from __future__ import annotations
@@ -21,10 +22,11 @@ DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/mypy-baseline.jso
 # 只扫描宿主源码；app/plugins 是运行时插件副本，质量由插件市场链路自行管理。
 MYPY_TARGETS = ("app",)
 MYPY_EXCLUDES = ("app/plugins",)
+# 与 Linux CI 保持相同平台分支，避免本机平台改变诊断基线。
 MYPY_PLATFORM = "linux"
 
-# 单体文件退役为同名 package 时，错误 owner 会从一个路径迁移到多个文件。迁移只在旧路径
-# 已从当前源码消失时生效，并且仍按错误码聚合执行只降不增；其他文件继续使用原有逐路径门禁。
+# 单体文件拆分后，诊断可能分散到多个路径；旧路径不再出现在当前诊断且目标路径存在诊断时，
+# 按错误码合并比较迁移组。这里不检查旧源码是否删除；其他文件仍使用逐路径门禁。
 MYPY_PATH_MIGRATIONS = {
     "subscribe-package": (
         ("app/chain/subscribe.py",),
@@ -82,7 +84,12 @@ _ERROR_SUMMARY = re.compile(r"^Found (?P<count>\d+) errors? in ")
 
 
 def run_mypy() -> str:
-    """运行全量 mypy；只接受可完整解析的正常成功或诊断结果。"""
+    """
+    运行全量 mypy；只接受可完整解析的正常成功或诊断结果。
+
+    :return: 已通过退出状态和摘要计数核对的 mypy 标准输出
+    :raises RuntimeError: 工具异常退出、写入标准错误或输出摘要不完整
+    """
     command = [
         sys.executable,
         "-m",
@@ -136,7 +143,9 @@ def run_mypy() -> str:
 
 
 def parse_errors(output: str) -> dict[str, dict[str, int]]:
-    """把 mypy 输出聚合为 文件 -> 错误码 -> 数量 的精确计数。"""
+    """
+    把 mypy 输出聚合为文件 -> 错误码 -> 数量的精确计数。
+    """
     report: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for raw_line in output.splitlines():
         line = raw_line.strip()
@@ -155,7 +164,9 @@ def parse_errors(output: str) -> dict[str, dict[str, int]]:
 def classify_counts(
     baseline: dict[str, dict[str, int]], current: dict[str, dict[str, int]]
 ) -> tuple[list[str], list[str]]:
-    """把计数差异分为不可写入的回退和可固化的低水位下降。"""
+    """
+    把计数差异分为不可写入的回退和可固化的低水位下降。
+    """
     baseline, current = _fold_path_migrations(baseline, current)
     regressions: list[str] = []
     stale: list[str] = []
@@ -183,7 +194,12 @@ def _fold_path_migrations(
     baseline: dict[str, dict[str, int]],
     current: dict[str, dict[str, int]],
 ) -> tuple[dict[str, dict[str, int]], dict[str, dict[str, int]]]:
-    """把已退役单文件与同名 package 折叠为按错误码比较的一次性迁移 owner。"""
+    """
+    把退役文件的诊断与迁移后路径折叠为一次性迁移归属。
+
+    只有旧路径不再出现在当前诊断、且目标路径存在诊断时才折叠；
+    按错误码汇总比较，不据此推断旧源码文件已经删除。
+    """
     folded_baseline = {path: dict(codes) for path, codes in baseline.items()}
     folded_current = {path: dict(codes) for path, codes in current.items()}
     for name, (source_paths, target_prefixes) in MYPY_PATH_MIGRATIONS.items():
@@ -213,13 +229,17 @@ def _fold_path_migrations(
 def compare_counts(
     baseline: dict[str, dict[str, int]], current: dict[str, dict[str, int]]
 ) -> list[str]:
-    """返回类型错误增长和尚未固化的新低水位。"""
+    """
+    返回类型错误增长和尚未固化的新低水位。
+    """
     regressions, stale = classify_counts(baseline, current)
     return [*regressions, *stale]
 
 
 def main() -> int:
-    """执行 mypy baseline check 或显式 write。"""
+    """
+    执行 mypy 基线检查或显式写入。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="写入当前类型错误基线")
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)

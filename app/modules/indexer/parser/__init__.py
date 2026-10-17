@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+定义站点资料解析框架及公共流程，统一读取身份、流量、做种和未读消息。
+"""
+
 import json
 import re
 from abc import ABCMeta, abstractmethod
@@ -18,34 +22,57 @@ SitePage: TypeAlias = Union[str, dict[str, object]]
 MessageContent: TypeAlias = tuple[Optional[str], Optional[str], Optional[str]]
 
 
-# 站点框架
 class SiteSchema(Enum):
-    """站点用户数据解析框架类型"""
+    """
+    站点用户数据解析框架类型。
+    """
 
+    # 基于 DiscuzX 论坛页面的站点。
     DiscuzX = "DiscuzX"
+    # 基于 Gazelle 框架的站点。
     Gazelle = "Gazelle"
+    # IPTorrents 站点。
     Ipt = "IPTorrents"
+    # 通用 NexusPHP 站点。
     NexusPhp = "NexusPhp"
+    # 采用 NexusProject 页面结构的站点。
     NexusProject = "NexusProject"
+    # 采用 NexusRabbit JSON 接口的站点。
     NexusRabbit = "NexusRabbit"
+    # 憨憨的 NexusPHP 定制页面。
     NexusHhanclub = "NexusHhanclub"
+    # Audiences 的 NexusPHP 定制页面与消息布局。
     NexusAudiences = "NexusAudiences"
+    # 采用 SmallHorse 框架的站点。
     SmallHorse = "Small Horse"
+    # 基于 Unit3D 框架的站点。
     Unit3d = "Unit3d"
+    # TorrentLeech 站点。
     TorrentLeech = "TorrentLeech"
+    # FileList 站点。
     FileList = "FileList"
+    # 采用 TNode 当前会话接口的站点。
     TNode = "TNode"
+    # M-Team 的 mTorrent API。
     MTorrent = "MTorrent"
+    # YemaPT 开放 API。
     Yema = "Yema"
+    # HDDolby API 与兼容消息页面。
     HDDolby = "HDDolby"
+    # 知行站点的页面结构。
     Zhixing = "Zhixing"
+    # 极速之星站点的页面结构。
     Bitpt = "Bitpt"
+    # Rousi.pro 的 PeerGo 兼容 API。
     RousiPro = "RousiPro"
+    # SunnyPT 的 MoviePilot API。
     SunnyPT = "SunnyPT"
 
 
 class SiteParserBase(metaclass=ABCMeta):
-    """站点用户数据解析器基类"""
+    """
+    站点用户数据解析器基类。
+    """
 
     # 站点模版
     schema: ClassVar[Optional[SiteSchema]] = None
@@ -65,7 +92,7 @@ class SiteParserBase(metaclass=ABCMeta):
                  proxy: Optional[bool] = None,
                  api_url: Optional[str] = None) -> None:
         """
-        初始化站点用户数据解析器
+        初始化站点用户数据解析器。
 
         :param site_name: 站点名称
         :param url: 站点前端地址
@@ -76,7 +103,7 @@ class SiteParserBase(metaclass=ABCMeta):
         :param ua: 请求 User-Agent
         :param emulate: 是否使用浏览器仿真
         :param proxy: 是否使用系统代理
-        :param api_url: 站点独立 API Base URL
+        :param api_url: 站点独立 API 基础地址
         """
         super().__init__()
 
@@ -177,7 +204,8 @@ class SiteParserBase(metaclass=ABCMeta):
 
     def site_schema(self) -> Optional[SiteSchema]:
         """
-        站点解析模型
+        站点解析模型。
+
         :return: 站点解析模型
         """
         return self.schema
@@ -202,8 +230,9 @@ class SiteParserBase(metaclass=ABCMeta):
 
     def parse(self) -> None:
         """
-        解析站点信息
-        :return:
+        依次读取站点身份、资料、消息、流量和做种信息，并在结束时关闭请求会话。
+
+        API 模式缺少凭据或 Cookie 模式未登录时提前结束，已解析数据保留在当前实例。
         """
         try:
             # Cookie模式时，获取站点首页html
@@ -263,8 +292,7 @@ class SiteParserBase(metaclass=ABCMeta):
 
     def _pase_unread_msgs(self) -> None:
         """
-        解析所有未读消息标题和内容
-        :return:
+        解析所有未读消息标题和内容。
         """
         unread_msg_links = []
         if self.message_unread > 0 or self.message_read_force:
@@ -311,7 +339,7 @@ class SiteParserBase(metaclass=ABCMeta):
 
     def _parse_seeding_pages(self) -> None:
         """
-        解析做种页面
+        解析做种页面。
         """
         if self._torrent_seeding_page:
             if not self._has_valid_userid():
@@ -339,7 +367,7 @@ class SiteParserBase(metaclass=ABCMeta):
     @staticmethod
     def _prepare_html_text(html_text: SitePage) -> str:
         """
-        处理掉HTML中的干扰部分
+        处理掉HTML中的干扰部分。
         """
         if isinstance(html_text, dict):
             raise TypeError("expected string or bytes-like object, got 'dict'")
@@ -348,9 +376,11 @@ class SiteParserBase(metaclass=ABCMeta):
     @abstractmethod
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
-        获取未阅读消息链接
-        :param html_text:
-        :return:
+        从消息列表提取未读链接并追加到调用方容器。
+
+        :param html_text: 当前消息列表的响应文本
+        :param msg_links: 累积未读消息地址的可变列表，解析结果追加到此列表
+        :return: 下一页地址；没有后续页面时返回 None
         """
         pass
 
@@ -362,12 +392,13 @@ class SiteParserBase(metaclass=ABCMeta):
         method: Optional[str] = None,
     ) -> str:
         """
-        获取页面内容
-        :param url: 网页地址
-        :param params: post参数
-        :param headers: 额外的请求头
-        :param method: 强制使用的 HTTP 请求方法
-        :return:
+        按当前认证模式请求页面，并返回可供站点解析器处理的文本。
+
+        :param url: 完整请求地址
+        :param params: 请求体参数；非空时使用 POST，内容类型决定发送表单还是 JSON
+        :param headers: 本次请求的额外请求头
+        :param method: 传入 post 可在参数为空时强制使用 POST
+        :return: 已解码文本；请求失败、不支持的状态码、JSON 无效或遭遇 Cloudflare 验证时为空字符串
         """
         req_headers: Optional[dict[str, Optional[str]]] = None
         proxies = get_runtime_setting('PROXY') if self._proxy else None
@@ -439,7 +470,7 @@ class SiteParserBase(metaclass=ABCMeta):
                     logger.error(f"{self._site_name} API响应JSON解析失败: {e}")
                     return ""
             else:
-                # 如果cloudflare 有防护，尝试使用浏览器仿真
+                # 遭遇 Cloudflare 验证时停止解析，并提示更新 Cookie 和 User-Agent。
                 if under_challenge(res.text):
                     logger.warn(
                         f"{self._site_name} 检测到Cloudflare，请更新Cookie和UA")
@@ -454,26 +485,27 @@ class SiteParserBase(metaclass=ABCMeta):
     @abstractmethod
     def _parse_site_page(self, html_text: SitePage) -> None:
         """
-        解析站点相关信息页面
-        :param html_text:
-        :return:
+        解析站点相关信息页面。
+
+        :param html_text: 当前页面或 API 响应文本
         """
         pass
 
     @abstractmethod
     def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
-        解析用户基础信息
-        :param html_text:
-        :return:
+        解析用户基础信息。
+
+        :param html_text: 当前页面或 API 响应文本
         """
         pass
 
     def _parse_logged_in(self, html_text: str) -> bool:
         """
-        解析用户是否已经登陆
-        :param html_text:
-        :return: True/False
+        解析用户是否已经登陆。
+
+        :param html_text: 当前页面或 API 响应文本
+        :return: 已登录时返回 True，否则返回 False
         """
         logged_in = SiteUtils.is_logged_in(html_text)
         if not logged_in:
@@ -485,50 +517,52 @@ class SiteParserBase(metaclass=ABCMeta):
     @abstractmethod
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        解析用户的上传，下载，分享率等信息
-        :param html_text:
-        :return:
+        解析用户的上传，下载，分享率等信息。
+
+        :param html_text: 当前页面或 API 响应文本
         """
         pass
 
     @abstractmethod
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Union[str, Literal[False], None]:
         """
-        解析用户的做种相关信息
-        :param html_text:
-        :param multi_page: 是否多页数据
-        :return: 下页地址
+        解析当前做种页面并更新实例上的数量、体积和做种人数分布。
+
+        :param html_text: 当前做种列表的响应文本
+        :param multi_page: 是否为后续页面，供实现区分初始化与累积统计
+        :return: 下一页地址；返回 None 或 False 时结束翻页
         """
         pass
 
     @abstractmethod
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户的详细信息
+        解析用户的详细信息。
         加入时间/等级/魔力值等
-        :param html_text:
-        :return:
+
+        :param html_text: 当前页面或 API 响应文本
         """
         pass
 
     @abstractmethod
     def _parse_message_content(self, html_text: str) -> Optional[MessageContent]:
         """
-        解析短消息内容
-        :param html_text:
-        :return:  head: message, date: time, content: message content
+        解析单条站内消息的标题、时间和正文。
+
+        :param html_text: 消息详情页面的响应文本
+        :return: 标题、时间、正文组成的三元组；缺失字段可为 None；旧实现返回 None 时，通用消息流程会报解包错误
         """
         pass
 
     def close(self) -> None:
         """
-        关闭会话
+        关闭会话。
         """
         self._request_utils.close()
 
     def clear(self) -> None:
         """
-        清除当前解析器的所有信息
+        清空首页文本、做种明细和未读消息正文缓存，不重置已解析的用户统计。
         """
         self._index_html = ""
         self.seeding_info.clear()
@@ -536,7 +570,9 @@ class SiteParserBase(metaclass=ABCMeta):
 
     def to_dict(self) -> dict[str, object]:
         """
-        转化为字典
+        导出当前实例的公开数据属性，供用户数据聚合调用方使用。
+
+        :return: 非私有且不可调用的属性字典，站点框架枚举转为对应值
         """
         attributes = [
             attr for attr in dir(self)

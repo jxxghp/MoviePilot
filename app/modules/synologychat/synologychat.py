@@ -1,3 +1,7 @@
+"""
+通过群晖 Chat Webhook 发送消息并查询机器人可见用户。
+"""
+
 import json
 import re
 from threading import Lock
@@ -15,10 +19,20 @@ lock = Lock()
 
 
 class SynologyChat:
-    """管理群晖 Chat 机器人凭据并发送文本和资源列表。"""
+    """
+    管理群晖 Chat 机器人凭据并发送文本和资源列表。
+    """
 
     def __init__(self, SYNOLOGYCHAT_WEBHOOK: Optional[str] = None, SYNOLOGYCHAT_TOKEN: Optional[str] = None, **kwargs: object) -> None:
-        """先建立禁用状态，只有凭据完整时才创建 HTTP 客户端。"""
+        """
+        保存群晖机器人凭据，配置完整时创建 HTTP 客户端。
+
+        缺少任一凭据时保留禁用状态，不执行网络请求。
+
+        :param SYNOLOGYCHAT_WEBHOOK: 发送消息的 Webhook 地址
+        :param SYNOLOGYCHAT_TOKEN: 机器人认证令牌，供入站校验和用户查询共用
+        :param kwargs: 兼容通知配置中的其他字段，当前忽略
+        """
         self._webhook_url = ""
         self._token: Optional[str] = None
         self._domain: Optional[str] = None
@@ -32,12 +46,16 @@ class SynologyChat:
             self._domain = url_tools.base_url(self._webhook_url)
 
     def check_token(self, token: Optional[str]) -> bool:
-        """仅接受已配置机器人令牌，缺失配置和缺失入站令牌均不能通过认证。"""
+        """
+        仅接受已配置机器人令牌，缺失配置和缺失入站令牌均不能通过认证。
+        """
         return self._token is not None and token == self._token
 
     def get_state(self) -> bool:
         """
-        获取状态
+        通过机器人用户查询检查服务是否可用。
+
+        :return: 配置完整且查询到至少一个未删除用户时返回 True
         """
         if not self._webhook_url or not self._token:
             return False
@@ -49,13 +67,14 @@ class SynologyChat:
     def send_msg(self, title: Optional[str], text: Optional[str] = None, image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
-        发送SynologyChat消息
-        :param title: 消息标题
-        :param text: 消息内容
-        :param image: 消息图片地址
-        :param userid: 用户ID，如有则只发消息给该用户
-        :user_id: 发送消息的目标用户ID，为空则发给管理员
-        :param link: 链接地址
+        向指定用户或机器人全部可见用户发送消息。
+
+        :param title: 消息标题，可与正文择一提供
+        :param text: 消息正文
+        :param image: 可选图片下载地址
+        :param userid: 指定数字用户标识；为空时查询机器人全部可见用户
+        :param link: 可选详情链接
+        :return: 发送成功返回 True；配置、内容、用户查询或发送失败时返回 False
         """
         if not title and not text:
             logger.error("标题和内容不能同时为空")
@@ -101,7 +120,12 @@ class SynologyChat:
 
     def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None, title: Optional[str] = None) -> Optional[bool]:
         """
-        发送列表类消息
+        将媒体条目组成带详情链接的列表消息。
+
+        :param medias: 待展示媒体列表，不接受空列表
+        :param userid: 数字用户标识；为空时发送给机器人全部可见用户
+        :param title: 列表标题，必须提供非空值
+        :return: 发送成功返回 True；输入、配置或发送失败返回 False
         """
         if not medias:
             return False
@@ -148,7 +172,13 @@ class SynologyChat:
     def send_torrents_msg(self, torrents: List[Context],
                           userid: Optional[str] = None, title: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
-        发送列表消息
+        将种子上下文组成带站点和资源信息的列表消息。
+
+        :param torrents: 待展示种子列表，不接受空列表
+        :param userid: 数字用户标识；为空时发送给机器人全部可见用户
+        :param title: 列表标题
+        :param link: 兼容调用参数；当前循环会覆盖为最后一个种子的详情地址
+        :return: 发送成功返回 True；配置缺失返回 None；空列表或发送失败返回 False
         """
         if not self._webhook_url or not self._token:
             return None
@@ -196,7 +226,9 @@ class SynologyChat:
 
     def __get_bot_users(self) -> List[object]:
         """
-        查询机器人可见的用户列表
+        查询机器人可见且未删除的用户标识。
+
+        :return: 用户标识列表；缺少配置或请求失败返回空列表
         """
         if not self._domain or not self._token:
             return []
@@ -212,7 +244,10 @@ class SynologyChat:
 
     def __send_request(self, payload_data: dict[str, object]) -> bool:
         """
-        发送消息请求
+        提交群晖消息载荷，同时检查 HTTP 和业务错误码。
+
+        :param payload_data: 已编码的消息正文、接收人和可选文件地址
+        :return: HTTP 200 且非空响应没有业务错误码时返回 True，否则返回 False
         """
         payload = f"payload={json.dumps(payload_data)}"
         ret = self._req.post_res(url=self._webhook_url, data=payload)

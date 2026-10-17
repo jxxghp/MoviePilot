@@ -1,4 +1,6 @@
-"""日志基础设施：等级过滤、控制台与文件路由、插件实例日志等级覆盖。"""
+"""
+日志基础设施：等级过滤、控制台与文件路由、插件实例日志等级覆盖。
+"""
 
 from __future__ import annotations
 
@@ -23,50 +25,49 @@ from types import FrameType
 from typing import Any, Callable, Dict, Iterator, NamedTuple, Optional, Protocol, Self, Tuple
 
 import click
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
-# strict mypy 跳过第三方实现导入，因此无法在本文件解析 Pydantic 元类类型。
+# mypy 严格检查跳过第三方实现导入，因此无法在本文件解析 Pydantic 元类类型。
 class LogConfigModel(BaseModel):  # type: ignore[misc]
-    """描述日志级别、格式和文件写入策略。"""
+    """
+    描述日志级别、格式和文件写入策略。
+
+    :cvar model_config: 模型解析策略，忽略未声明的配置项
+    """
 
     model_config = ConfigDict(extra="ignore")
 
-    # 配置文件目录
-    CONFIG_DIR: Optional[str] = None
-    # 是否启用调试日志
-    DEBUG: bool = False
-    # 全局日志等级
-    LOG_LEVEL: str = "INFO"
-    # 单个日志文件最大大小，单位 MB
-    LOG_MAX_FILE_SIZE: int = 5
-    # 每类日志保留的滚动备份文件数量
-    LOG_BACKUP_COUNT: int = 10
-    # 控制台日志格式
-    LOG_CONSOLE_FORMAT: str = (
-        "%(leveltext)s[%(name)s] %(asctime)s [%(correlation_id)s] %(message)s"
+    CONFIG_DIR: Optional[str] = Field(default=None, description='配置文件目录')
+    DEBUG: bool = Field(default=False, description='是否启用调试日志')
+    LOG_LEVEL: str = Field(default="INFO", description='全局日志等级')
+    LOG_MAX_FILE_SIZE: int = Field(default=5, description='单个日志文件最大大小，单位 MB')
+    LOG_BACKUP_COUNT: int = Field(default=10, description='每类日志保留的滚动备份文件数量')
+    LOG_CONSOLE_FORMAT: str = Field(
+        default="%(leveltext)s[%(name)s] %(asctime)s [%(correlation_id)s] %(message)s",
+        description='控制台日志格式',
     )
-    # 文件日志格式
-    LOG_FILE_FORMAT: str = (
-        "【%(levelname)s】%(asctime)s [%(correlation_id)s] - %(message)s"
+    LOG_FILE_FORMAT: str = Field(
+        default="【%(levelname)s】%(asctime)s [%(correlation_id)s] - %(message)s",
+        description='文件日志格式',
     )
-    # 异步文件日志队列容量
-    ASYNC_FILE_QUEUE_SIZE: int = 1000
-    # 保留历史配置解析兼容；协程环境文件日志已统一由单一有界队列 writer 执行。
-    ASYNC_FILE_WORKERS: int = 2
-    # 单批文件日志最大写入条数
-    BATCH_WRITE_SIZE: int = 50
-    # 日志写入等待超时时间，单位秒
-    WRITE_TIMEOUT: float = 3.0
+    ASYNC_FILE_QUEUE_SIZE: int = Field(default=1000, description='异步文件日志队列容量')
+    ASYNC_FILE_WORKERS: int = Field(default=2, description='保留历史配置解析兼容；协程环境文件日志已统一由单一有界队列 writer 执行。')
+    BATCH_WRITE_SIZE: int = Field(default=50, description='单批文件日志最大写入条数')
+    WRITE_TIMEOUT: float = Field(default=3.0, description='日志写入等待超时时间，单位秒')
 
     @property
     def LOG_MAX_FILE_SIZE_BYTES(self) -> int:
-        """将日志文件大小从 MB 转换为字节。"""
+        """
+        将日志文件大小从 MB 转换为字节。
+        """
         return self.LOG_MAX_FILE_SIZE * 1024 * 1024
 
 
 class LogSettings(LogConfigModel):
-    """保存当前进程已经生效的日志策略。"""
+    """
+    保存当前进程已经生效的日志策略。
+    """
 
 
 _SCOPED_LOG_MAX_BYTES = 1024 * 1024
@@ -79,7 +80,18 @@ _SCOPED_LOG_DETAIL_LIMIT = 300
 
 @dataclass(slots=True)
 class LogScope:
-    """携带一个业务资源的日志路由和本轮有界详情计数。"""
+    """
+    携带一个业务资源的日志路由和本轮有界详情计数。
+
+    :param category: 日志资源类别，用于选择资源日志目录
+    :param resource_id: 业务资源的正整数标识
+    :param operation_id: 本轮操作标识，用于关联同一次执行的日志
+    :param source: 触发本轮操作的来源
+    :param details: 已接收的 DEBUG 详情条数，初始为 0
+    :param suppressed: 因详情限额或重复次数被抑制的条数，初始为 0
+    :param repetitions: 本轮各消息已接收的次数，每个作用域独立维护
+    :param lock: 保护详情计数和重复统计的互斥锁，每个作用域独立创建
+    """
 
     category: str
     resource_id: int
@@ -91,7 +103,15 @@ class LogScope:
     lock: Any = field(default_factory=threading.Lock, repr=False)
 
     def accept(self, level: int, message: str) -> bool:
-        """限制 DEBUG 详情及重复内容，保留运行结果和错误。"""
+        """
+        限制 DEBUG 详情及重复内容，保留运行结果和错误。
+
+        通过的 DEBUG 消息会计入本轮详情和重复计数；被抑制的消息只累计抑制数。
+
+        :param level: 标准库日志等级数值，高于 DEBUG 的消息直接放行
+        :param message: 用于重复计数的格式化消息正文
+        :return: 当前消息是否允许输出
+        """
         if level > logging.DEBUG:
             return True
         with self.lock:
@@ -114,7 +134,9 @@ def bind_log_scope(
     operation_id: str,
     source: str,
 ) -> Iterator[LogScope]:
-    """绑定资源日志；同资源嵌套复用本轮身份，退出时恢复原上下文。"""
+    """
+    绑定资源日志；同资源嵌套复用本轮身份，退出时恢复原上下文。
+    """
     if not re.fullmatch(r"[a-z]+", category) or resource_id <= 0:
         raise ValueError("日志资源标识无效")
     current = _current_log_scope.get()
@@ -130,7 +152,9 @@ def bind_log_scope(
 
 
 class LogEntry:
-    """表示一条等待基础设施写入的文件日志。"""
+    """
+    表示一条等待基础设施写入的文件日志。
+    """
 
     def __init__(
         self,
@@ -139,7 +163,9 @@ class LogEntry:
         file_path: Path,
         timestamp: datetime | None = None,
     ) -> None:
-        """记录日志级别、格式化文本和目标文件。"""
+        """
+        记录日志级别、格式化文本和目标文件。
+        """
         self.level = level
         self.message = message
         self.file_path = file_path
@@ -148,20 +174,34 @@ class LogEntry:
 
 
 class LogWriter(Protocol):
-    """平台日志门面使用的文件写入端口。"""
+    """
+    平台日志门面使用的文件写入端口。
+    """
 
     def write_log(self, level: str, message: str, file_path: Path) -> None:
-        """将一条日志写入指定文件。"""
+        """
+        将一条日志写入指定文件。
+
+        :param level: 日志等级名称
+        :param message: 已经格式化的日志正文
+        :param file_path: 目标日志文件路径
+        """
 
     def shutdown(self) -> Optional[bool]:
-        """排空待写日志并释放写入资源，未收敛时返回 False。"""
+        """
+        排空待写日志并释放写入资源，未收敛时返回 False。
+
+        :return: 排空并关闭成功时返回 True 或 None；尚有资源未收敛时返回 False
+        """
 
 
 log_settings = LogSettings()
 
 
 def _empty_correlation_id() -> str | None:
-    """在启动组合根尚未注入请求上下文时返回空关联 ID。"""
+    """
+    在启动组合根尚未注入请求上下文时返回空关联 ID。
+    """
     return None
 
 
@@ -171,13 +211,17 @@ _log_lifecycle_lock = threading.RLock()
 
 
 def configure_correlation_id_provider(provider: Callable[[], str | None]) -> None:
-    """由组合根注入日志关联 ID 读取端口，保持日志模块为依赖叶节点。"""
+    """
+    由组合根注入日志关联 ID 读取端口，保持日志模块为依赖叶节点。
+    """
     global _correlation_id_provider
     _correlation_id_provider = provider
 
 
 def _get_log_correlation_id() -> str:
-    """读取当前关联 ID；未装配或无请求上下文时返回稳定占位符。"""
+    """
+    读取当前关联 ID；未装配或无请求上下文时返回稳定占位符。
+    """
     return _correlation_id_provider() or "-"
 
 
@@ -190,14 +234,17 @@ _CONSOLE_PIPELINE_LEVEL: int = logging.DEBUG
 
 
 def _current_global_log_level() -> int:
-    """返回当前全局日志策略对应的标准库日志级别。"""
+    """
+    返回当前全局日志策略对应的标准库日志级别。
+    """
     if log_settings.DEBUG:
         return logging.DEBUG
     return getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
 
 
 def normalize_log_expiry(expires_at: Optional[datetime]) -> Optional[datetime]:
-    """把覆盖失效时间归一为带 UTC 时区的时刻。
+    """
+    把覆盖失效时间归一为带 UTC 时区的时刻。
 
     不带时区的时间没有确定的时刻，落到 ``timestamp()`` 会按进程所在时区解释，而
     读取口一律返回 UTC-aware 值；两边不对称的结果是客户端提交什么时刻、读回来就
@@ -215,7 +262,13 @@ def normalize_log_expiry(expires_at: Optional[datetime]) -> Optional[datetime]:
 
 @dataclass(frozen=True)
 class _PluginLevelOverride:
-    """一个插件实例的日志等级覆盖。"""
+    """
+    一个插件实例的日志等级覆盖。
+
+    :param level: 覆盖后的标准库日志等级数值
+    :param level_name: 用于展示和持久化的等级名称
+    :param expires_at: 覆盖失效的 Unix 时间戳，单位为秒；为 None 时持续生效
+    """
 
     level: int
     level_name: str
@@ -251,6 +304,7 @@ def set_plugin_instance_log_level(
 
     只维护运行期生效状态；把覆盖持久化到数据库是调用方（日志控制 API、启动组合根
     的缓存预热）的职责，本函数不做任何数据库读写。
+
     :param instance_id: 实例 ID，源插件本体与其各个分身共用同一命名空间
     :param level: 目标等级，取值须在 LOG_LEVELS 内
     :param expires_at: 覆盖失效时间，None 表示不过期；不带时区时按 UTC 解读
@@ -272,6 +326,7 @@ def set_plugin_instance_log_level(
 def clear_plugin_instance_log_level(instance_id: str) -> None:
     """
     清除插件实例的日志等级覆盖，运行期立即回落全局等级。
+
     :param instance_id: 实例 ID
     """
     with _plugin_level_lock:
@@ -283,6 +338,7 @@ def get_plugin_instance_log_level_override(
 ) -> Optional[Tuple[str, Optional[datetime]]]:
     """
     返回插件实例当前缓存的原始等级覆盖设置，未设置或已过期时为 None。
+
     :param instance_id: 实例 ID
     :return: `(等级名, 失效时间)`；失效时间为 None 表示不过期
     """
@@ -306,6 +362,7 @@ def get_plugin_instance_log_level_override(
 def get_effective_plugin_instance_log_level(instance_id: str) -> str:
     """
     返回插件实例当前生效的日志等级名，覆盖过期时回落全局等级。
+
     :param instance_id: 实例 ID
     :return: 等级名，如 "DEBUG"
     """
@@ -316,7 +373,9 @@ def get_effective_plugin_instance_log_level(instance_id: str) -> str:
 
 
 def _effective_instance_level_int(instance_id: str) -> int:
-    """返回插件实例过滤日志时实际使用的等级整数，供 `LoggerManager.logger` 精确过滤。"""
+    """
+    返回插件实例过滤日志时实际使用的等级整数，供 `LoggerManager.logger` 精确过滤。
+    """
     with _plugin_level_lock:
         entry = _plugin_level_overrides.get(instance_id)
         if entry is None:
@@ -328,12 +387,15 @@ def _effective_instance_level_int(instance_id: str) -> int:
 
 
 def current_plugin_instance_id() -> Optional[str]:
-    """返回当前受控调用点绑定的插件实例 ID，未绑定时为 None。"""
+    """
+    返回当前受控调用点绑定的插件实例 ID，未绑定时为 None。
+    """
     return _current_plugin_instance.get()
 
 
 def _effective_context_log_level() -> int:
-    """返回当前上下文过滤日志时实际使用的等级整数。
+    """
+    返回当前上下文过滤日志时实际使用的等级整数。
 
     命中受控调用点绑定的插件实例时按该实例的覆盖等级（未设置覆盖时等同全局等级），
     未绑定任何实例时按全局等级。门面与输出端共用这一个判据，两处才不会各算一次、
@@ -346,7 +408,8 @@ def _effective_context_log_level() -> int:
 
 
 class _ContextLevelFilter(logging.Filter):
-    """按当前上下文生效的等级过滤输出，取代日志器自身那道固定的等级闸。
+    """
+    按当前上下文生效的等级过滤输出，取代日志器自身那道固定的等级闸。
 
     控制台日志器按日志文件复用，同一插件的多个实例共用一个；把某个实例的覆盖等级
     写进日志器会泄漏给它的兄弟实例，并发下还会互相改写。这里每条记录现算一次，
@@ -355,7 +418,9 @@ class _ContextLevelFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        """判断该记录在当前上下文的生效等级下是否应当输出。"""
+        """
+        判断该记录在当前上下文的生效等级下是否应当输出。
+        """
         return record.levelno >= _effective_context_log_level()
 
 
@@ -366,6 +431,7 @@ def bind_plugin_instance(instance_id: str) -> Iterator[None]:
     绑定当前插件实例，供日志等级过滤使用。
 
     绑定只在当前协程/任务链内生效；插件自建的原生线程不继承这个绑定。
+
     :param instance_id: 实例 ID
     """
     token = _current_plugin_instance.set(instance_id)
@@ -376,11 +442,15 @@ def bind_plugin_instance(instance_id: str) -> Iterator[None]:
 
 
 class _InstanceBinding(NamedTuple):
-    """包装函数身上的绑定标记：已绑定的实例，以及被包在最内层的原始回调。
+    """
+    包装函数身上的绑定标记：已绑定的实例，以及被包在最内层的原始回调。
 
     用私有类型而非裸值承载，是为了能用 `isinstance` 认出这确实是本模块包的：
     插件回调可能是 `Mock` 之类会为任意属性名凭空造值的对象，按属性名取值会拿到
     与包装无关的垃圾。
+
+    :param instance_id: 日志包装器绑定的插件实例标识
+    :param origin: 最内层原始回调，重新绑定时用于避免重复包装
     """
 
     instance_id: str
@@ -409,6 +479,7 @@ def wrap_for_plugin_instance(
     换成另一个实例重绑时，包的是内层的原始回调而不是上一个包装器：绑定发生在
     包装函数体内，旧包装器嵌在新绑定里只会在新绑定之后再把上下文改回旧实例，
     原始回调仍按旧实例的等级过滤。共享同一份缓存声明的多个分身依次注册即可触发。
+
     :param func: 插件提供的原始回调，通常是插件实例的绑定方法
     :param instance_id: 实例 ID
     :return: 包装后的可调用对象
@@ -424,7 +495,9 @@ def wrap_for_plugin_instance(
     if inspect.iscoroutinefunction(origin):
         @functools.wraps(origin)
         async def _async_wrapped(*args: Any, **kwargs: Any) -> Any:
-            """在绑定实例上下文内等待原始协程回调。"""
+            """
+            在绑定实例上下文内等待原始协程回调。
+            """
             with bind_plugin_instance(instance_id):
                 return await origin(*args, **kwargs)
 
@@ -433,7 +506,9 @@ def wrap_for_plugin_instance(
 
     @functools.wraps(origin)
     def _sync_wrapped(*args: Any, **kwargs: Any) -> Any:
-        """在绑定实例上下文内调用原始同步回调。"""
+        """
+        在绑定实例上下文内调用原始同步回调。
+        """
         with bind_plugin_instance(instance_id):
             return origin(*args, **kwargs)
 
@@ -442,14 +517,18 @@ def wrap_for_plugin_instance(
 
 
 class NonBlockingFileHandler:
-    """使用后台队列和滚动文件处理器写入业务日志。"""
+    """
+    使用后台队列和滚动文件处理器写入业务日志。
+    """
 
     _instance = None
     _lock = threading.Lock()
     _stop_sentinel = None
 
     def __new__(cls) -> Self:
-        """返回进程内唯一的文件写入器。"""
+        """
+        返回进程内唯一的文件写入器。
+        """
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -458,12 +537,16 @@ class NonBlockingFileHandler:
 
     @classmethod
     def get_existing_instance(cls) -> Optional["NonBlockingFileHandler"]:
-        """返回尚未释放的 writer owner，不触发创建。"""
+        """
+        返回尚未释放的 writer owner，不触发创建。
+        """
         with cls._lock:
             return cls._instance
 
     def __init__(self) -> None:
-        """初始化文件处理器缓存、异步队列和后台写线程。"""
+        """
+        初始化文件处理器缓存、异步队列和后台写线程。
+        """
         if hasattr(self, "_initialized"):
             return
         self._initialized = True
@@ -488,7 +571,9 @@ class NonBlockingFileHandler:
         self._write_thread.start()
 
     def _get_rotating_handler(self, file_path: Path) -> RotatingFileHandler:
-        """按目标路径复用滚动文件处理器。"""
+        """
+        按目标路径复用滚动文件处理器。
+        """
         with self._handlers_lock:
             handler = self._rotating_handlers.get(file_path)
             if handler:
@@ -505,7 +590,9 @@ class NonBlockingFileHandler:
             return handler
 
     def write_log(self, level: str, message: str, file_path: Path) -> None:
-        """根据当前线程是否运行事件循环选择异步或同步文件写入。"""
+        """
+        根据当前线程是否运行事件循环选择异步或同步文件写入。
+        """
         entry = LogEntry(level, message, file_path)
         if self._is_in_event_loop():
             self._write_non_blocking(entry)
@@ -516,14 +603,18 @@ class NonBlockingFileHandler:
 
     @staticmethod
     def _is_in_event_loop() -> bool:
-        """判断当前线程是否正在运行 asyncio 事件循环。"""
+        """
+        判断当前线程是否正在运行 asyncio 事件循环。
+        """
         try:
             return asyncio.get_running_loop() is not None
         except RuntimeError:
             return False
 
     def _write_non_blocking(self, entry: LogEntry) -> bool:
-        """将协程环境产生的日志无阻塞地放入写队列。"""
+        """
+        将协程环境产生的日志无阻塞地放入写队列。
+        """
         with self._state_lock:
             if not self._running:
                 return False
@@ -535,7 +626,9 @@ class NonBlockingFileHandler:
             return True
 
     def _write_sync(self, entry: LogEntry) -> None:
-        """串行完成写入和处理器回收，避免回收与 emit 并发导致重新打开已淘汰文件。"""
+        """
+        串行完成写入和处理器回收，避免回收与 emit 并发导致重新打开已淘汰文件。
+        """
         try:
             with self._handlers_lock:
                 if entry.file_path.parent.name == "subscriptions":
@@ -547,14 +640,18 @@ class NonBlockingFileHandler:
             print(f"【{entry.level.upper()}】{entry.timestamp} - {entry.message}")
 
     def _close_scoped_handler(self, path: Path) -> None:
-        """在写入锁内释放一个订阅文件句柄并移除其空闲计时。"""
+        """
+        在写入锁内释放一个订阅文件句柄并移除其空闲计时。
+        """
         handler = self._rotating_handlers.pop(path, None)
         if handler:
             handler.close()
         self._scoped_handler_times.pop(path, None)
 
     def _maintain_scoped_logs(self, active_path: Path) -> None:
-        """按空闲时间和数量回收句柄，周期清理最旧归档以限制目录总容量。"""
+        """
+        按空闲时间和数量回收句柄，周期清理最旧归档以限制目录总容量。
+        """
         now = time.monotonic()
         for path, last_used in tuple(self._scoped_handler_times.items()):
             if now - last_used >= _SCOPED_LOG_IDLE_SECONDS:
@@ -568,7 +665,9 @@ class NonBlockingFileHandler:
         self._trim_scoped_directory(active_path)
 
     def _trim_scoped_directory(self, active_path: Path) -> None:
-        """只清理数字订阅 ID 的日志及滚动备份，不跟随符号链接或删除当前写入文件。"""
+        """
+        只清理数字订阅 ID 的日志及滚动备份，不跟随符号链接或删除当前写入文件。
+        """
         directory = active_path.parent
         if not directory.is_dir():
             return
@@ -587,7 +686,9 @@ class NonBlockingFileHandler:
 
     @staticmethod
     def _to_record(entry: LogEntry) -> logging.LogRecord:
-        """把日志条目转换为标准库日志记录。"""
+        """
+        把日志条目转换为标准库日志记录。
+        """
         record = logging.LogRecord(
             name="",
             level=getattr(logging, entry.level.upper(), logging.INFO),
@@ -604,7 +705,9 @@ class NonBlockingFileHandler:
         return record
 
     def _batch_writer(self) -> None:
-        """持续收集队列日志，并在停止哨兵后排空已有批次。"""
+        """
+        持续收集队列日志，并在停止哨兵后排空已有批次。
+        """
         while True:
             try:
                 batch: list[LogEntry] = []
@@ -640,7 +743,9 @@ class NonBlockingFileHandler:
                 time.sleep(0.1)
 
     def _write_batch(self, batch: list[LogEntry]) -> None:
-        """按目标文件分组写入一批日志。"""
+        """
+        按目标文件分组写入一批日志。
+        """
         file_groups: dict[Path, list[LogEntry]] = {}
         for entry in batch:
             file_groups.setdefault(entry.file_path, []).append(entry)
@@ -655,7 +760,9 @@ class NonBlockingFileHandler:
                     self._write_sync(entry)
 
     def _close_handlers(self) -> None:
-        """在独立 owner 中关闭文件处理器，保留失败项供后续重试。"""
+        """
+        在独立 owner 中关闭文件处理器，保留失败项供后续重试。
+        """
         first_error: Optional[BaseException] = None
         with self._handlers_lock:
             handlers = tuple(self._rotating_handlers.items())
@@ -663,7 +770,8 @@ class NonBlockingFileHandler:
             try:
                 handler.flush()
                 handler.close()
-            except BaseException as err:  # noqa: BLE001  需要保留关闭失败 owner
+            # 需要保留关闭失败 owner
+            except BaseException as err:  # noqa: BLE001
                 if first_error is None:
                     first_error = err
                 print(f"日志处理器关闭失败 {file_path}: {err}")
@@ -675,7 +783,9 @@ class NonBlockingFileHandler:
             self._close_error = first_error
 
     def _close_handlers_bounded(self, deadline: float) -> bool:
-        """复用关停总预算有限等待文件处理器关闭 owner。"""
+        """
+        复用关停总预算有限等待文件处理器关闭 owner。
+        """
         with self._state_lock:
             if self._closed:
                 return True
@@ -737,7 +847,9 @@ class NonBlockingFileHandler:
         return converged
 
     def _release_instance(self) -> None:
-        """真实收敛后释放兼容单例身份，允许下一次 lifespan 创建新 owner。"""
+        """
+        真实收敛后释放兼容单例身份，允许下一次 lifespan 创建新 owner。
+        """
         with type(self)._lock:
             if type(self)._instance is self:
                 type(self)._instance = None
@@ -755,10 +867,14 @@ _LEVEL_NAME_COLORS: dict[int, Callable[[str], str]] = {
 
 
 class CustomFormatter(logging.Formatter):
-    """为控制台日志级别添加颜色和对齐文本。"""
+    """
+    为控制台日志级别添加颜色和对齐文本。
+    """
 
     def format(self, record: logging.LogRecord) -> str:
-        """格式化一条控制台日志记录。"""
+        """
+        格式化一条控制台日志记录。
+        """
         separator = " " * max(8 - len(record.levelname), 0)
         colorizer = _LEVEL_NAME_COLORS.get(record.levelno, str)
         record.leveltext = colorizer(record.levelname + ":") + separator
@@ -782,7 +898,9 @@ class LoggerManager:
     _pending_file_logs: deque[tuple[str, str, Path]] = deque(maxlen=1000)
 
     def get_logger(self, name: str) -> logging.Logger:
-        """返回使用当前控制台策略的命名标准库日志器。"""
+        """
+        返回使用当前控制台策略的命名标准库日志器。
+        """
         logfile = Path(f"{name}.log")
         return self._get_console_logger(logfile)
 
@@ -800,6 +918,7 @@ class LoggerManager:
         plugin_name = None
         frame: Optional[FrameType]
         try:
+            # 日志来源需要读取调用栈；运行时不支持此私有入口时由后续异常分支回退。
             frame = sys._getframe(3)  # noqa: SLF001
         except (AttributeError, ValueError):
             return "log.py", None
@@ -837,7 +956,8 @@ class LoggerManager:
 
     @classmethod
     def _setup_console_logger(cls, logfile: Path) -> logging.Logger:
-        """创建只负责控制台输出的标准库日志器。
+        """
+        创建只负责控制台输出的标准库日志器。
 
         日志器自身的等级闸固定放到 `_CONSOLE_PIPELINE_LEVEL`，真正的等级判定交给
         handler 上的 `_ContextLevelFilter`：日志器按日志文件复用，等级写死在它身上
@@ -860,7 +980,9 @@ class LoggerManager:
 
     @classmethod
     def _get_console_logger(cls, logfile: Path) -> logging.Logger:
-        """按日志文件语境复用控制台日志器。"""
+        """
+        按日志文件语境复用控制台日志器。
+        """
         logger_key = str(logfile)
         with cls._lock:
             configured_logger = cls._loggers.get(logger_key)
@@ -871,7 +993,9 @@ class LoggerManager:
 
     @classmethod
     def configure_writer(cls, writer: LogWriter, log_path: Path) -> None:
-        """装配文件写入器，并补写装配前暂存的启动日志。"""
+        """
+        装配文件写入器，并补写装配前暂存的启动日志。
+        """
         with cls._lock:
             previous_writer = cls._writer
         if previous_writer and previous_writer is not writer:
@@ -888,7 +1012,8 @@ class LoggerManager:
             writer.write_log(level, message, Path(log_path) / logfile)
 
     def update_loggers(self) -> None:
-        """让已创建的控制台日志器应用最新格式。
+        """
+        让已创建的控制台日志器应用最新格式。
 
         等级不在这里刷新：它由 `_ContextLevelFilter` 每条记录现算，`log_settings`
         一改就立即生效，无须逐个日志器回填。
@@ -904,7 +1029,9 @@ class LoggerManager:
 
     @classmethod
     def _write_file_log(cls, level: str, message: str, logfile: Path) -> None:
-        """写入文件，或在启动装配完成前暂存日志。"""
+        """
+        写入文件，或在启动装配完成前暂存日志。
+        """
         with cls._lock:
             writer = cls._writer
             log_path = cls._log_path
@@ -914,7 +1041,8 @@ class LoggerManager:
         writer.write_log(level, message, log_path / logfile)
 
     def logger(self, method: str, msg: object, *args: Any, **kwargs: Any) -> None:
-        """按调用来源路由并输出一条日志。
+        """
+        按调用来源路由并输出一条日志。
 
         主日志等级过滤看 `current_plugin_instance_id()`；资源日志独立接收 DEBUG，
         在落盘前脱敏并限制本轮详情数量。命中受控调用点绑定的插件
@@ -966,31 +1094,44 @@ class LoggerManager:
         log_method(formatted_msg, **kwargs)
 
     def scoped_info(self, msg: object) -> None:
-        """仅向已绑定资源输出 INFO 摘要，保持主日志的批次摘要密度。"""
+        """
+        仅向已绑定资源输出 INFO 摘要，保持主日志的批次摘要密度。
+        """
         self.logger("info", msg, scope_only=True)
 
     def info(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """输出 INFO 日志。"""
+        """
+        输出 INFO 日志。
+        """
         self.logger("info", msg, *args, **kwargs)
 
     def debug(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """输出 DEBUG 日志。"""
+        """
+        输出 DEBUG 日志。
+        """
         self.logger("debug", msg, *args, **kwargs)
 
     def warning(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """输出 WARNING 日志。"""
+        """
+        输出 WARNING 日志。
+        """
         self.logger("warning", msg, *args, **kwargs)
 
     def warn(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """兼容历史调用并输出 WARNING 日志。"""
+        """
+        兼容历史调用并输出 WARNING 日志。
+        """
         self.warning(msg, *args, **kwargs)
 
     def error(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """输出 ERROR 日志。"""
+        """
+        输出 ERROR 日志。
+        """
         self.logger("error", msg, *args, **kwargs)
 
     def exception(self, msg: object, *args: object, **kwargs: object) -> None:
-        """输出 ERROR 日志，控制台默认附带当前异常堆栈。
+        """
+        输出 ERROR 日志，控制台默认附带当前异常堆栈。
 
         适用于异常处理分支；调用方可通过 exc_info 显式关闭堆栈或指定异常信息。
         文件消息和资源日志仍由统一日志路由按 ERROR 等级输出。
@@ -999,18 +1140,24 @@ class LoggerManager:
         self.logger("error", msg, *args, **kwargs)
 
     def critical(self, msg: object, *args: Any, **kwargs: Any) -> None:
-        """输出 CRITICAL 日志。"""
+        """
+        输出 CRITICAL 日志。
+        """
         self.logger("critical", msg, *args, **kwargs)
 
     @classmethod
     def current_writer(cls) -> Optional[LogWriter]:
-        """返回当前已发布的文件 writer，不触发资源创建。"""
+        """
+        返回当前已发布的文件 writer，不触发资源创建。
+        """
         with cls._lock:
             return cls._writer
 
     @classmethod
     def shutdown(cls) -> bool:
-        """关闭当前文件写入器，未收敛时保留 owner 供后续重试。"""
+        """
+        关闭当前文件写入器，未收敛时保留 owner 供后续重试。
+        """
         with cls._lock:
             writer = cls._writer
         if writer is None:
@@ -1028,7 +1175,9 @@ logger = LoggerManager()
 
 
 def configure_log_settings(source: object) -> None:
-    """从完整系统配置同步日志相关字段并刷新控制台策略。"""
+    """
+    从完整系统配置同步日志相关字段并刷新控制台策略。
+    """
     for field_name in LogConfigModel.model_fields:
         if hasattr(source, field_name):
             setattr(log_settings, field_name, getattr(source, field_name))
@@ -1036,12 +1185,16 @@ def configure_log_settings(source: object) -> None:
 
 
 def configure_log_writer(writer: LogWriter, log_path: Path) -> None:
-    """把基础设施文件写入器装配到平台日志门面。"""
+    """
+    把基础设施文件写入器装配到平台日志门面。
+    """
     LoggerManager.configure_writer(writer=writer, log_path=log_path)
 
 
 def start_log_writer(log_path: Path) -> LogWriter:
-    """创建并发布当前 lifespan 独占的文件日志 writer。"""
+    """
+    创建并发布当前 lifespan 独占的文件日志 writer。
+    """
     with _log_lifecycle_lock:
         published = LoggerManager.current_writer()
         retained = NonBlockingFileHandler.get_existing_instance()
@@ -1058,7 +1211,9 @@ def start_log_writer(log_path: Path) -> LogWriter:
 
 
 def shutdown_log_writer(writer: Optional[LogWriter] = None) -> bool:
-    """关闭已发布 writer 及未成功发布的候选 owner，并聚合收敛结果。"""
+    """
+    关闭已发布 writer 及未成功发布的候选 owner，并聚合收敛结果。
+    """
     with _log_lifecycle_lock:
         published = LoggerManager.current_writer()
         writer = writer or NonBlockingFileHandler.get_existing_instance()

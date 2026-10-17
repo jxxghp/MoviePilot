@@ -1,3 +1,7 @@
+"""
+验证整理队列的分页、排序与结果数量。
+"""
+
 import asyncio
 import inspect
 from unittest.mock import Mock
@@ -14,7 +18,9 @@ from tests.test_transfer_job_manager import make_task
 
 
 def _job(*paths: str) -> TransferJob:
-    """构造只包含队列分页测试所需字段的整理作业。"""
+    """
+    构造只包含队列分页测试所需字段的整理作业。
+    """
     return TransferJob(
         season=1,
         tasks=[
@@ -43,7 +49,9 @@ def _job(*paths: str) -> TransferJob:
 
 
 def test_job_manager_page_keeps_flat_order_and_only_projects_the_requested_window():
-    """大队列分页必须保持任务顺序，并按窗口复制作业投影。"""
+    """
+    大队列分页必须保持任务顺序，并按窗口复制作业投影。
+    """
     manager = JobManager()
     manager._job_view = {
         ("first", 1): _job("/downloads/first-1.mkv", "/downloads/first-2.mkv"),
@@ -73,13 +81,17 @@ def test_job_manager_page_keeps_flat_order_and_only_projects_the_requested_windo
 
 @pytest.mark.parametrize("page,count", [(0, 1), (1, 0), (-1, 10)])
 def test_job_manager_page_rejects_invalid_windows(page: int, count: int):
-    """分页窗口不接受零或负数，避免异常切片产生隐性全量查询。"""
+    """
+    分页窗口不接受零或负数，避免异常切片产生隐性全量查询。
+    """
     with pytest.raises(ValueError, match="队列分页参数必须为正数"):
         JobManager().list_jobs_page(page, count)
 
 
 def test_transfer_queue_service_uses_bounded_projection_after_expiring_tasks():
-    """应用服务先清理失活任务，再调用可选的受限投影依赖。"""
+    """
+    应用服务先清理失活任务，再调用可选的受限投影依赖。
+    """
     expire_tasks = Mock()
     list_tasks_page = Mock(return_value=([_job("/downloads/page.mkv")], 101))
     service = TransferQueueService(
@@ -103,14 +115,20 @@ def test_transfer_queue_service_uses_bounded_projection_after_expiring_tasks():
 
 
 def test_queue_page_endpoint_exposes_bounded_projection_with_existing_transfer_auth(monkeypatch):
-    """轻量队列端点必须复用整理模块的鉴权并转发分页窗口。"""
+    """
+    轻量队列端点必须复用整理模块的鉴权并转发分页窗口。
+    """
     calls = []
 
     class StubTransferChain:
-        """提供端点测试所需的受限队列查询替身。"""
+        """
+        提供端点测试所需的受限队列查询替身。
+        """
 
         def get_queue_tasks_page(self, page: int, count: int):
-            """记录分页参数并返回最小合法快照。"""
+            """
+            记录分页参数并返回最小合法快照。
+            """
             calls.append((page, count))
             return ([], 7)
 
@@ -136,7 +154,9 @@ def test_queue_page_endpoint_exposes_bounded_projection_with_existing_transfer_a
 
 
 def test_job_manager_duplicate_index_is_released_when_a_cloud_task_is_removed():
-    """批量云盘任务的 O(1) 去重索引不能阻止同一源文件后续重新入队。"""
+    """
+    批量云盘任务的 O(1) 去重索引不能阻止同一源文件后续重新入队。
+    """
     manager = JobManager()
     task = make_task(1)
 

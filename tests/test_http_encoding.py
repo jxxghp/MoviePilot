@@ -1,3 +1,7 @@
+"""
+验证 HTTP 响应编码识别与文本解码。
+"""
+
 from types import SimpleNamespace
 
 import pytest
@@ -8,7 +12,9 @@ from app.adapters.network.http import RequestUtils
 
 @pytest.mark.parametrize("performance_mode", [False, True])
 def test_html_decoding_handles_incorrect_latin1_declaration(performance_mode):
-    """实际 UTF-8 内容不应被错误的 HTML 编码声明解成乱码。"""
+    """
+    实际 UTF-8 内容不应被错误的 HTML 编码声明解成乱码。
+    """
     html = (
         '<html><head><meta charset="iso-8859-1"></head>'
         '<body>电影中文标题与高清字幕更新。</body></html>'

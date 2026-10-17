@@ -1,4 +1,5 @@
-"""插件实例彻底清理的路径穿越回归测试。
+"""
+插件实例彻底清理的路径穿越回归测试。
 
 彻底清理是唯一会对用户可控标识拼出的目录执行递归删除的入口，而插件数据根是配置根下
 的一层子目录。移植这项功能时原实现把标识直接拼进 ``PLUGIN_DATA_PATH`` 再 ``rmtree``，
@@ -52,19 +53,27 @@ TRAVERSAL_IDS = (
 
 
 class _NullMutation:
-    """无准入约束的 mutation 替身。"""
+    """
+    无准入约束的 mutation 替身。
+    """
 
     def __enter__(self) -> None:
-        """进入空上下文。"""
+        """
+        进入空上下文。
+        """
 
     def __exit__(self, *_exc: object) -> bool:
-        """退出空上下文且不吞异常。"""
+        """
+        退出空上下文且不吞异常。
+        """
         return False
 
 
 @pytest.fixture(name="config_root")
 def fixture_config_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """搭出「配置根 / 插件数据根 / 同级受保护内容」这一真实布局。"""
+    """
+    搭出「配置根 / 插件数据根 / 同级受保护内容」这一真实布局。
+    """
     config_root = tmp_path / "config"
     plugin_root = config_root / "plugins"
     (plugin_root / "DemoPlugin").mkdir(parents=True)
@@ -81,7 +90,8 @@ def fixture_config_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
 
 
 def _purge_command(calls: list[tuple]) -> PluginConfigCommand:
-    """装出一个只有目录删除是真实实现的清理用例。
+    """
+    装出一个只有目录删除是真实实现的清理用例。
 
     其余端口全部记账：本文件要断言的是「越界目录没有被删」以及「越界请求根本没有走到
     任何删除动作」，把真实存储接进来只会让失败原因变糊。
@@ -105,7 +115,9 @@ def _purge_command(calls: list[tuple]) -> PluginConfigCommand:
 
 
 def _client(calls: list[tuple]) -> TestClient:
-    """挂上真实路由与真实目录删除实现的测试客户端。"""
+    """
+    挂上真实路由与真实目录删除实现的测试客户端。
+    """
     app = FastAPI()
     app.include_router(plugininstance_endpoint.router, prefix="/api/v1/plugin")
     app.dependency_overrides[get_current_active_superuser] = lambda: object()
@@ -114,7 +126,9 @@ def _client(calls: list[tuple]) -> TestClient:
 
 
 def _sentinels_intact(config_root: Path) -> bool:
-    """插件数据根之外的内容是否原封不动。"""
+    """
+    插件数据根之外的内容是否原封不动。
+    """
     return (
         (config_root / "protected" / "keep.txt").is_file()
         and (config_root / "user.db").is_file()
@@ -125,7 +139,8 @@ def _sentinels_intact(config_root: Path) -> bool:
 def test_percent_encoded_dot_dot_really_reaches_the_handler(
     config_root: Path,
 ) -> None:
-    """``%2e%2e`` 确实会被路由匹配并交到处理函数手里，服务端才是最后一道防线。
+    """
+    ``%2e%2e`` 确实会被路由匹配并交到处理函数手里，服务端才是最后一道防线。
 
     客户端与代理通常会把字面量 ``..`` 规范化掉（这里表现为 404），百分号编码则原样
     送达、由 ASGI 解码成 ``..``。把「路由层面过滤 `..`」当成防护是无效的，这条用例
@@ -149,7 +164,8 @@ def test_no_url_encoding_of_dot_dot_deletes_outside_the_plugin_data_root(
     config_root: Path,
     segment: str,
 ) -> None:
-    """越界标识的任何 URL 写法都不得删到插件数据根之外，也不得触发任何一步删除。
+    """
+    越界标识的任何 URL 写法都不得删到插件数据根之外，也不得触发任何一步删除。
 
     未修版本对 ``%2e%2e`` 会返回 200、``purged: ["data_directory"]``，而配置根下的
     全部内容已被 ``rmtree`` 清空——``PLUGIN_DATA_PATH/..`` 正是配置根。
@@ -174,7 +190,8 @@ def test_purge_refuses_every_malformed_instance_id(
     config_root: Path,
     instance_id: str,
 ) -> None:
-    """解码后的非法标识逐个被拒，且在停实例之前就被拒。
+    """
+    解码后的非法标识逐个被拒，且在停实例之前就被拒。
 
     校验放在最前面，非法标识不该先把配置行删掉再发现路径不对。
     """
@@ -201,7 +218,9 @@ def test_purge_deletes_the_directory_for_a_well_formed_instance_id(
     config_root: Path,
     instance_id: str,
 ) -> None:
-    """普通和含下划线的合法标识照常清理，且只动它自己那一层。"""
+    """
+    普通和含下划线的合法标识照常清理，且只动它自己那一层。
+    """
     calls: list[tuple] = []
     target = config_root / "plugins" / instance_id
     target.mkdir(exist_ok=True)
@@ -226,7 +245,8 @@ def test_purge_deletes_the_directory_for_a_well_formed_instance_id(
 def test_purge_reports_a_refused_directory_removal_instead_of_raising(
     config_root: Path,
 ) -> None:
-    """兜底判断拒绝删除时回报失败，而不是让 ValueError 变成 500。
+    """
+    兜底判断拒绝删除时回报失败，而不是让 ValueError 变成 500。
 
     实例 ID 合法但目录本身被换成了指向根外的软链，这是运维环境造成的状况而非请求
     非法；把它收成失败结果，调用方才拿得到可读原因。

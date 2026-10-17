@@ -45,7 +45,7 @@ def _sqlalchemy_column_names(tree: ast.Module):
     names = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            # from sqlalchemy import Column [as Col] / from sqlalchemy.sql import Column
+            # 识别从 sqlalchemy 或 sqlalchemy.sql 导入 Column 的语句及别名
             module = node.module or ""
             if module == SQLALCHEMY or module.startswith(f"{SQLALCHEMY}."):
                 names.update(alias.asname or alias.name

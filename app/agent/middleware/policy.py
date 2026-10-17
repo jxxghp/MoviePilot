@@ -1,4 +1,6 @@
-"""LangChain 工具调用的 MoviePilot 宿主策略中间件。"""
+"""
+LangChain 工具调用的 MoviePilot 宿主策略中间件。
+"""
 
 import asyncio
 import json
@@ -45,7 +47,8 @@ SUBAGENT_READ_ACTIONS = {
 
 # follow_imports=skip 下只在第三方中间件基类和装饰器边界忽略 misc。
 class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
-    """观测进入本地 ToolNode 的 client-side 工具调用和结果。
+    """
+    观测进入本地 ToolNode 的 client-side 工具调用和结果。
 
     模型供应商原生 server tools 在供应商侧执行，不经过本地 middleware，
     因而不具备这里生成的 start/finish/fail 回执。
@@ -61,7 +64,9 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
         tools: list[Any] | None = None,
         guardrails: "ToolGuardrailsMiddleware | None" = None,
     ) -> None:
-        """绑定宿主可信上下文和共享策略编排器。"""
+        """
+        绑定宿主可信上下文和共享策略编排器。
+        """
         self.guardrails = guardrails
         self.context = context
         self.orchestrator = orchestrator
@@ -70,14 +75,18 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @hook_config(can_jump_to=["end", "model"])  # type: ignore[misc]
     async def aafter_model(self, state: dict[str, Any], runtime: Any) -> Any:
-        """复用原有模型后置节点合并检测更新，不消耗额外图递归步数。"""
+        """
+        复用原有模型后置节点合并检测更新，不消耗额外图递归步数。
+        """
         paused = await self._sensitive_pause(state)
         if paused is not None:
             return paused
         return await self.guardrails.after_model_update(state, runtime) if self.guardrails else None
 
     async def _sensitive_pause(self, state: dict[str, Any]) -> Any:
-        """敏感设置暂停优先于自动续行，绝不因纠偏放行未确认的调用。"""
+        """
+        敏感设置暂停优先于自动续行，绝不因纠偏放行未确认的调用。
+        """
         messages = state.get("messages") or []
         if not messages or not isinstance(messages[-1], AIMessage):
             return None
@@ -128,7 +137,9 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在 handler 外层生成 shadow 决策和 secret-safe 回执摘要。"""
+        """
+        在 handler 外层生成 shadow 决策和 secret-safe 回执摘要。
+        """
         tool_call = request.tool_call or {}
         arguments = tool_call.get("args") or {}
         if not isinstance(arguments, dict):
@@ -147,7 +158,9 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
     def _error_result(
         tool: Any, invocation_id: str | None, error: Exception, receipt: ExecutionReceipt | None,
     ) -> ToolMessage:
-        """把普通故障转为可恢复回执，异常私有正文不进入模型上下文。"""
+        """
+        把普通故障转为可恢复回执，异常私有正文不进入模型上下文。
+        """
         outcome = receipt.outcome if isinstance(receipt, ExecutionReceipt) else ExecutionOutcome.FAILED
         if isinstance(error, TimeoutError):
             content = TOOL_TIMEOUT_MESSAGE
@@ -167,7 +180,9 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _subagent_read_only_error(tool: Any, arguments: dict[str, Any], invocation_id: str | None) -> ToolMessage:
-        """为子代理的只读拒绝返回可纠正的 operation 合同，而不是只给笼统权限错误。"""
+        """
+        为子代理的只读拒绝返回可纠正的 operation 合同，而不是只给笼统权限错误。
+        """
         payload: dict[str, Any] = {
             "success": False,
             "error": "subagent_read_only",
@@ -208,7 +223,9 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
         invocation_id: str | None = None,
         enforce_decision: bool = True,
     ) -> tuple[bool, Any]:
-        """执行一次本地工具调用，并复用 ToolNode 的策略生命周期。"""
+        """
+        执行一次本地工具调用，并复用 ToolNode 的策略生命周期。
+        """
         if self.context.origin is ToolOrigin.SUBAGENT and not self._subagent_read_allowed(tool, arguments):
             return False, self._subagent_read_only_error(tool, arguments, invocation_id)
         observation = call_policy_hook(
@@ -257,7 +274,9 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _subagent_read_allowed(tool: Any, arguments: dict[str, Any]) -> bool:
-        """按真实 API 操作限制子代理，MCP 的兼容 Read 标签不构成只读证明。"""
+        """
+        按真实 API 操作限制子代理，MCP 的兼容 Read 标签不构成只读证明。
+        """
         if isinstance(tool, MoviePilotApiTool):
             operation = resolve_api_operation(str(arguments.get("operation_id") or ""))
             if operation is None or operation.effect is not ActionEffect.SAFE_READ:

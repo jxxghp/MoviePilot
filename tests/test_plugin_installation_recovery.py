@@ -1,4 +1,6 @@
-"""插件安装 journal 启动重放与阻断边界测试。"""
+"""
+插件安装 journal 启动重放与阻断边界测试。
+"""
 
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -25,7 +27,9 @@ RECEIPT = "sha256:" + "1" * 64
 
 
 def _identity(*, revision: int = 2, receipt: str = RECEIPT) -> PluginIdentity:
-    """构造一份已提交载荷身份。"""
+    """
+    构造一份已提交载荷身份。
+    """
     return PluginIdentity(
         plugin_id="DemoPlugin",
         normalized_plugin_id="demoplugin",
@@ -55,7 +59,9 @@ def _record(
     phase: PluginInstallationPhase,
     transaction_id: str = "txn-demo",
 ) -> PluginInstallationRecord:
-    """构造 PREPARED 或 COMMITTED 恢复记录。"""
+    """
+    构造 PREPARED 或 COMMITTED 恢复记录。
+    """
     committed = phase is PluginInstallationPhase.COMMITTED
     return PluginInstallationRecord(
         transaction_id=transaction_id,
@@ -73,7 +79,9 @@ def _record(
 
 
 class _Persistence:
-    """保存恢复测试所需 journal、身份和删除故障。"""
+    """
+    保存恢复测试所需 journal、身份和删除故障。
+    """
 
     def __init__(
         self,
@@ -88,11 +96,15 @@ class _Persistence:
         self.delete_calls: list[tuple[str, PluginInstallationPhase]] = []
 
     async def list_installations(self) -> list[PluginInstallationRecord]:
-        """按创建顺序返回当前 journal。"""
+        """
+        按创建顺序返回当前 journal。
+        """
         return list(self.records.values())
 
     async def get_identity(self, _plugin_id: str) -> PluginIdentity | None:
-        """返回已提交身份。"""
+        """
+        返回已提交身份。
+        """
         return self.identity
 
     async def delete_installation(
@@ -101,7 +113,9 @@ class _Persistence:
         *,
         expected_phase: PluginInstallationPhase,
     ) -> bool:
-        """按 phase 删除 journal，并可注入一次性错误。"""
+        """
+        按 phase 删除 journal，并可注入一次性错误。
+        """
         self.delete_calls.append((transaction_id, expected_phase))
         if self.delete_errors:
             error = self.delete_errors.pop(0)
@@ -116,7 +130,9 @@ class _Persistence:
 
 
 def _packages(**overrides):
-    """构造恢复服务消费的单一包事务端口。"""
+    """
+    构造恢复服务消费的单一包事务端口。
+    """
     checkpoint = SimpleNamespace(
         plugin_existed=True,
         persistent_backup_existed=True,
@@ -135,7 +151,9 @@ def _packages(**overrides):
 
 @pytest.mark.asyncio
 async def test_prepared_replay_restores_before_releasing_journal() -> None:
-    """PREPARED 必须先恢复旧载荷，再删除 journal 和恢复材料。"""
+    """
+    PREPARED 必须先恢复旧载荷，再删除 journal 和恢复材料。
+    """
     persistence = _Persistence([_record(phase=PluginInstallationPhase.PREPARED)])
     packages = _packages()
     service = PluginInstallationRecoveryService(
@@ -156,7 +174,9 @@ async def test_prepared_replay_restores_before_releasing_journal() -> None:
 
 @pytest.mark.asyncio
 async def test_prepared_delete_failure_keeps_replayable_journal() -> None:
-    """恢复完成但 journal 删除失败时，下次启动仍可幂等重放。"""
+    """
+    恢复完成但 journal 删除失败时，下次启动仍可幂等重放。
+    """
     persistence = _Persistence(
         [_record(phase=PluginInstallationPhase.PREPARED)],
         delete_errors=[RuntimeError("database unavailable"), None],
@@ -182,7 +202,9 @@ async def test_prepared_delete_failure_keeps_replayable_journal() -> None:
 
 @pytest.mark.asyncio
 async def test_prepared_restore_failure_does_not_block_other_plugins() -> None:
-    """单个旧载荷无法恢复时保留 journal，但继续处理其他插件。"""
+    """
+    单个旧载荷无法恢复时保留 journal，但继续处理其他插件。
+    """
     persistence = _Persistence(
         [
             _record(phase=PluginInstallationPhase.PREPARED, transaction_id="txn-bad"),
@@ -212,7 +234,9 @@ async def test_prepared_restore_failure_does_not_block_other_plugins() -> None:
 
 @pytest.mark.asyncio
 async def test_committed_replay_verifies_identity_and_receipt_before_cleanup() -> None:
-    """COMMITTED 只在身份 revision 和载荷收据一致时完成幂等收尾。"""
+    """
+    COMMITTED 只在身份 revision 和载荷收据一致时完成幂等收尾。
+    """
     persistence = _Persistence(
         [_record(phase=PluginInstallationPhase.COMMITTED)],
         identity=_identity(),
@@ -248,7 +272,9 @@ async def test_committed_fact_mismatch_blocks_plugin_import(
     receipt: str,
     message: str,
 ) -> None:
-    """已提交数据库事实与可恢复载荷不一致时不得继续加载插件。"""
+    """
+    已提交数据库事实与可恢复载荷不一致时不得继续加载插件。
+    """
     persistence = _Persistence(
         [_record(phase=PluginInstallationPhase.COMMITTED)],
         identity=identity,
@@ -271,7 +297,9 @@ async def test_committed_fact_mismatch_blocks_plugin_import(
 
 @pytest.mark.asyncio
 async def test_committed_cleanup_failure_is_retried_without_rollback() -> None:
-    """COMMITTED 收尾失败只保留 journal，下一次启动继续清理。"""
+    """
+    COMMITTED 收尾失败只保留 journal，下一次启动继续清理。
+    """
     persistence = _Persistence(
         [_record(phase=PluginInstallationPhase.COMMITTED)],
         identity=_identity(),

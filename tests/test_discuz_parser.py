@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+验证 Discuz 用户信息解析的默认值、流量和页面字段。
+"""
+
 from collections.abc import Iterator
 
 import pytest
@@ -8,6 +12,11 @@ from app.modules.indexer.parser.discuz import DiscuzUserInfo
 
 @pytest.fixture
 def parser() -> Iterator[DiscuzUserInfo]:
+    """
+    创建不访问外部服务的 Discuz 解析器，并在用例结束后关闭。
+
+    :yields: 使用空凭据和示例地址的解析器
+    """
     instance = DiscuzUserInfo(
         site_name="Discuz",
         url="https://example.com/",
@@ -20,7 +29,9 @@ def parser() -> Iterator[DiscuzUserInfo]:
 
 
 def test_discuz_traffic_defaults_use_integer_bytes(parser: DiscuzUserInfo) -> None:
-    """上传/下载量使用整数字节，分享率保持浮点数。"""
+    """
+    上传/下载量使用整数字节，分享率保持浮点数。
+    """
     for value in (parser.upload, parser.download):
         assert value == 0
         assert type(value) is int
@@ -30,7 +41,9 @@ def test_discuz_traffic_defaults_use_integer_bytes(parser: DiscuzUserInfo) -> No
 
 @pytest.mark.parametrize("include_menu", [True, False])
 def test_discuz_skyeysnow_ratio(parser: DiscuzUserInfo, include_menu: bool) -> None:
-    """天雪菜单和资料页的无括号分享率均应解析，且不影响积分和流量。"""
+    """
+    天雪菜单和资料页的无括号分享率均应解析，且不影响积分和流量。
+    """
     menu = """
     <ul id="ratio_menu">
       <li><a>上传量 : 845.25 GB</a></li>
@@ -78,7 +91,9 @@ def test_discuz_skyeysnow_ratio(parser: DiscuzUserInfo, include_menu: bool) -> N
     ("<li>分享率 -- <span>保种率 (31.91)</span></li>", 0),
 ])
 def test_discuz_ratio_formats_keep_bonus(parser: DiscuzUserInfo, ratio_html: str, expected: float) -> None:
-    """分享率应读取标签后的数值，不误取其他指标或覆盖已有积分。"""
+    """
+    分享率应读取标签后的数值，不误取其他指标或覆盖已有积分。
+    """
     parser.bonus = 123
 
     parser._parse_user_detail_info(f"<html><body><ul>{ratio_html}</ul></body></html>")

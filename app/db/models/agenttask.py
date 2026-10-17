@@ -1,3 +1,9 @@
+"""
+Agent 定时任务定义和执行状态的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Optional
 
 from sqlalchemy import Boolean, Index, Integer, Select, String, Text, select, update
@@ -11,7 +17,9 @@ def _get_for_user_statement(
         task_id: int,
         user_id: Optional[str] = None,
 ) -> "Select[tuple[AgentTask]]":
-    """构造按任务 ID 与可选用户归属收窄的查询语句。"""
+    """
+    构造按任务 ID 与可选用户归属收窄的查询语句。
+    """
     statement = select(model).where(model.id == task_id)
     if user_id is not None:
         statement = statement.where(model.user_id == user_id)
@@ -23,7 +31,9 @@ def _list_for_user_statement(
         user_id: Optional[str] = None,
         enabled: Optional[bool] = None,
 ) -> "Select[tuple[AgentTask]]":
-    """构造按用户、启用状态和创建时间排序的任务列表语句。"""
+    """
+    构造按用户、启用状态和创建时间排序的任务列表语句。
+    """
     statement = select(model)
     if user_id is not None:
         statement = statement.where(model.user_id == user_id)
@@ -91,7 +101,9 @@ class AgentTask(Base):
             task_id: int,
             user_id: Optional[str] = None,
     ) -> Optional["AgentTask"]:
-        """在调用方会话中按任务 ID 和可选用户 ID 查询。"""
+        """
+        在调用方会话中按任务 ID 和可选用户 ID 查询。
+        """
         task: Optional[AgentTask] = db.execute(
             _get_for_user_statement(cls, task_id=task_id, user_id=user_id)
         ).scalars().first()
@@ -104,7 +116,9 @@ class AgentTask(Base):
             user_id: Optional[str] = None,
             enabled: Optional[bool] = None,
     ) -> list["AgentTask"]:
-        """在调用方会话中按用户和启用状态查询。"""
+        """
+        在调用方会话中按用户和启用状态查询。
+        """
         return list(db.execute(
             _list_for_user_statement(cls, user_id=user_id, enabled=enabled)
         ).scalars().all())

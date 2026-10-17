@@ -1,4 +1,6 @@
-"""手动整理历史批次的 HTTP 适配辅助函数。"""
+"""
+手动整理历史批次的 HTTP 适配辅助函数。
+"""
 
 from collections.abc import Sequence
 from typing import Any, List, Optional
@@ -12,7 +14,9 @@ from app.schemas.transfer import ManualTransferItem
 def _common_history_value(
     histories: Sequence[ManualTransferHistory], attribute: str,
 ) -> Any:
-    """返回一组整理历史中完全一致的非空字段值。"""
+    """
+    返回一组整理历史中完全一致的非空字段值。
+    """
     values = [getattr(history, attribute, None) for history in histories]
     nonempty_values = [value for value in values if value is not None and value != ""]
     if not nonempty_values or len(nonempty_values) != len(values):
@@ -25,7 +29,9 @@ def restore_manual_transfer_history_batch(
     transer_item: ManualTransferItem,
     history_query: TransferHistoryLookupService,
 ) -> tuple[List[FileItem], bool, Optional[str], Optional[str], Optional[str]]:
-    """还原多选历史的源文件集合与可安全复用的共同下载上下文。"""
+    """
+    还原多选历史的源文件集合与可安全复用的共同下载上下文。
+    """
     histories = []
     src_fileitems = []
     for logid in transer_item.logids or []:
@@ -69,7 +75,9 @@ def restore_manual_transfer_history_batch(
 def restore_manual_transfer_history_metadata(
     transer_item: ManualTransferItem, history: ManualTransferHistory,
 ) -> None:
-    """使用单条历史还原媒体身份及合并集范围，保留未提供字段的用户输入。"""
+    """
+    使用单条历史还原媒体身份及合并集范围，保留未提供字段的用户输入。
+    """
     transer_item.type_name = (
         history.type if history.type else transer_item.type_name
     )

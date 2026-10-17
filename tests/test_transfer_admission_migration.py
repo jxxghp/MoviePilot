@@ -1,4 +1,6 @@
-"""整理任务持久准入字段的 Alembic 迁移测试。"""
+"""
+整理任务持久准入字段的 Alembic 迁移测试。
+"""
 
 import importlib
 import os
@@ -34,7 +36,9 @@ ADMISSION_COLUMNS = {
 
 
 def _bind_migration(monkeypatch, connection):
-    """把迁移绑定到隔离数据库连接。"""
+    """
+    把迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(MIGRATION)
     monkeypatch.setattr(
         migration,
@@ -45,7 +49,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def _create_legacy_table(connection) -> None:
-    """创建 3.0.12 时代的待整理登记表。"""
+    """
+    创建 3.0.12 时代的待整理登记表。
+    """
     metadata = sa.MetaData()
     table = sa.Table(
         "transferpending",
@@ -79,7 +85,9 @@ def _create_legacy_table(connection) -> None:
 
 
 def _rows(connection) -> list[dict[str, object]]:
-    """读取迁移后的准入字段快照。"""
+    """
+    读取迁移后的准入字段快照。
+    """
     pending = sa.table(
         "transferpending",
         sa.column("id", sa.Integer()),
@@ -100,7 +108,9 @@ def _rows(connection) -> list[dict[str, object]]:
 def test_transfer_admission_upgrade_downgrade_reupgrade(
     monkeypatch,
 ) -> None:
-    """旧行应保守回填，且 SQLite 支持重复升级、降级和再次升级。"""
+    """
+    旧行应保守回填，且 SQLite 支持重复升级、降级和再次升级。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_table(connection)
@@ -171,7 +181,9 @@ def test_transfer_admission_upgrade_downgrade_reupgrade(
 
 
 def test_replayed_upgrade_repairs_named_constraint_and_index(monkeypatch) -> None:
-    """同名但列或唯一性错误的准入约束与索引必须精确重建。"""
+    """
+    同名但列或唯一性错误的准入约束与索引必须精确重建。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_table(connection)
@@ -211,7 +223,9 @@ def test_replayed_upgrade_repairs_named_constraint_and_index(monkeypatch) -> Non
 
 
 def test_transfer_admission_migration_runs_on_postgresql(monkeypatch) -> None:
-    """隔离 PostgreSQL 应真实执行准入字段、约束、索引和可逆回滚。"""
+    """
+    隔离 PostgreSQL 应真实执行准入字段、约束、索引和可逆回滚。
+    """
     prefix = "MOVIEPILOT_TEST_POSTGRESQL_"
     host = os.getenv(f"{prefix}HOST")
     database = os.getenv(f"{prefix}DATABASE")

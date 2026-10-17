@@ -1,4 +1,6 @@
-"""旧 SiteOper 插件导入、签名和无 Session 行为门禁。"""
+"""
+旧 SiteOper 插件导入、签名和无 Session 行为门禁。
+"""
 
 import importlib
 import inspect
@@ -11,7 +13,9 @@ from app.runtime.compat.manifest import MODULE_ALIASES
 
 
 def test_legacy_site_import_targets_private_sdk_facade() -> None:
-    """旧 DB 路径与 Oper 包根只经私有 Legacy SDK 解析 SiteOper。"""
+    """
+    旧 DB 路径与 Oper 包根只经私有 Legacy SDK 解析 SiteOper。
+    """
     alias = MODULE_ALIASES["app.db.site_oper"]
     legacy = importlib.import_module("app.db.site_oper")
 
@@ -29,7 +33,9 @@ def test_legacy_site_import_targets_private_sdk_facade() -> None:
 
 
 def test_legacy_site_oper_preserves_plugin_method_signatures() -> None:
-    """官方插件实际调用的八个 SiteOper 方法保持参数和返回 ABI。"""
+    """
+    官方插件实际调用的八个 SiteOper 方法保持参数和返回 ABI。
+    """
     oper_type = importlib.import_module("app.db.site_oper").SiteOper
 
     assert str(inspect.signature(oper_type.get)) == (
@@ -57,7 +63,9 @@ def test_legacy_site_oper_preserves_plugin_method_signatures() -> None:
 
 
 def test_legacy_site_oper_preserves_no_session_plugin_behavior(db) -> None:
-    """旧插件无需注入 Session 即可查询站点、用户数据并写访问统计。"""
+    """
+    旧插件无需注入 Session 即可查询站点、用户数据并写访问统计。
+    """
     db.watermark(Site, SiteStatistic, SiteUserData)
     active = Site(
         name="兼容站点",

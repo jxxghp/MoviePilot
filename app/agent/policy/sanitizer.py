@@ -1,4 +1,6 @@
-"""宿主工具输入、结果与异常的递归脱敏摘要。"""
+"""
+宿主工具输入、结果与异常的递归脱敏摘要。
+"""
 
 import base64
 import binascii
@@ -108,7 +110,9 @@ _CONTAINER_CLOSERS = frozenset(_CONTAINER_PAIRS.values())
 
 
 def _normalize_key(key: Any) -> str:
-    """把结构化字段名转换为可比较的 snake_case。"""
+    """
+    把结构化字段名转换为可比较的 snake_case。
+    """
     if type(key) is not str:
         return ""
     text = key
@@ -121,7 +125,9 @@ def _normalize_key(key: Any) -> str:
 
 
 def _is_secret_key(key: Any) -> bool:
-    """判断字段是否承载凭据原值，避免误伤 token_count 等统计字段。"""
+    """
+    判断字段是否承载凭据原值，避免误伤 token_count 等统计字段。
+    """
     normalized = _normalize_key(key)
     if normalized in _SECRET_KEYS:
         return True
@@ -136,7 +142,9 @@ def _is_secret_key(key: Any) -> bool:
 def _mapping_has_secret_identity(
     entries: list[tuple[str, str, bool, Any]],
 ) -> bool:
-    """判断同一结构是否声明了凭据设置身份，不把语义传播到嵌套对象。"""
+    """
+    判断同一结构是否声明了凭据设置身份，不把语义传播到嵌套对象。
+    """
     return any(
         _normalize_key(key_text) in _SECRET_IDENTITY_FIELDS and type(item) is str and is_secret_setting_key(item)
         for key_text, _output_key, _secret_key, item in entries
@@ -149,7 +157,9 @@ def _advance_quote_context(
     end: int,
     active_quote: str,
 ) -> str:
-    """线性跟踪文本片段内尚未闭合的单双引号。"""
+    """
+    线性跟踪文本片段内尚未闭合的单双引号。
+    """
     cursor = start
     while cursor < end:
         char = value[cursor]
@@ -166,22 +176,30 @@ def _advance_quote_context(
 
 
 def _is_assignment_key_start(char: str) -> bool:
-    """判断字符是否可作为 ASCII 赋值字段名的起点。"""
+    """
+    判断字符是否可作为 ASCII 赋值字段名的起点。
+    """
     return char == "_" or char.isascii() and char.isalnum()
 
 
 def _is_assignment_key_char(char: str) -> bool:
-    """判断字符是否属于常见日志或配置字段名。"""
+    """
+    判断字符是否属于常见日志或配置字段名。
+    """
     return _is_assignment_key_start(char) or char in (".", "-")
 
 
 def _is_quoted_assignment_key_char(char: str) -> bool:
-    """quoted key 额外允许横向空白，普通文本字段名仍保持窄边界。"""
+    """
+    quoted key 额外允许横向空白，普通文本字段名仍保持窄边界。
+    """
     return _is_assignment_key_char(char) or char in (" ", "\t")
 
 
 def _quote_wrapper_at(value: str, start: int) -> tuple[str, int, int]:
-    """识别引号包装，并返回引号、反斜杠数量和已扫描位置。"""
+    """
+    识别引号包装，并返回引号、反斜杠数量和已扫描位置。
+    """
     quote_at = start
     while quote_at < len(value) and value[quote_at] == "\\":
         quote_at += 1
@@ -196,7 +214,9 @@ def _quote_wrapper_end(
     quote: str,
     slash_count: int,
 ) -> int:
-    """查找同层引号结束位置，更深层转义引号视为值内容。"""
+    """
+    查找同层引号结束位置，更深层转义引号视为值内容。
+    """
     cursor = content_start
     while cursor < len(value):
         if value[cursor] == "\\":
@@ -225,7 +245,9 @@ def _unquoted_assignment_value_end(
     delimiters: str,
     outer_quote: str,
 ) -> int:
-    """线性扫描未引号值，仅在容器外识别字段分隔符。"""
+    """
+    线性扫描未引号值，仅在容器外识别字段分隔符。
+    """
     stack: list[str] = []
     cursor = value_start
     while cursor < len(value):
@@ -284,7 +306,9 @@ def _find_assignment_header(
     value: str,
     search_from: int,
 ) -> tuple[int, str, int] | None:
-    """单向查找下一个赋值头，返回起点、字段名和值起点。"""
+    """
+    单向查找下一个赋值头，返回起点、字段名和值起点。
+    """
     cursor = search_from
     while cursor < len(value):
         match_start = cursor
@@ -342,7 +366,9 @@ def _assignment_value_end(
     value_start: int,
     active_quote: str,
 ) -> int:
-    """返回凭据值的安全消费边界，并保留外层文本结构。"""
+    """
+    返回凭据值的安全消费边界，并保留外层文本结构。
+    """
     if value_start >= len(value):
         return value_start
 
@@ -374,7 +400,9 @@ def _sanitize_assignments(
     *,
     redact_identity_values: bool = False,
 ) -> str:
-    """按结构化字段语义清理文本赋值与身份不明的通用值。"""
+    """
+    按结构化字段语义清理文本赋值与身份不明的通用值。
+    """
     fragments = []
     emitted_until = 0
     search_from = 0
@@ -428,12 +456,16 @@ def _sanitize_assignments(
 
 
 def _is_uri_scheme_char(char: str) -> bool:
-    """判断字符是否属于 RFC 3986 scheme 的 ASCII 字符集。"""
+    """
+    判断字符是否属于 RFC 3986 scheme 的 ASCII 字符集。
+    """
     return char.isascii() and char.isalnum() or char in ("+", "-", ".")
 
 
 def _uri_authority_start(value: str, scheme_end: int) -> int | None:
-    """返回字面量或 slash-escaped 双斜杠后的 authority 起点。"""
+    """
+    返回字面量或 slash-escaped 双斜杠后的 authority 起点。
+    """
     if scheme_end >= len(value) or value[scheme_end] != ":":
         return None
     cursor = scheme_end + 1
@@ -450,7 +482,9 @@ def _uri_authority_start(value: str, scheme_end: int) -> int | None:
 
 
 def _starts_uri_scheme(value: str, start: int) -> bool:
-    """判断指定位置是否以完整的 URI scheme 与 authority 开始。"""
+    """
+    判断指定位置是否以完整的 URI scheme 与 authority 开始。
+    """
     if start >= len(value) or not value[start].isascii() or not value[start].isalpha():
         return False
     scheme_end = start + 1
@@ -460,7 +494,9 @@ def _starts_uri_scheme(value: str, start: int) -> bool:
 
 
 def _find_uri_authority(value: str, search_from: int) -> tuple[int, int] | None:
-    """单向查找下一个 URI scheme 及其 authority 起点。"""
+    """
+    单向查找下一个 URI scheme 及其 authority 起点。
+    """
     while (scheme_end := value.find(":", search_from)) >= 0:
         scheme_start = scheme_end
         while scheme_start > 0 and _is_uri_scheme_char(value[scheme_start - 1]):
@@ -478,7 +514,9 @@ def _find_uri_authority(value: str, search_from: int) -> tuple[int, int] | None:
 
 
 def _sanitize_uri_userinfo(value: str, *, truncated: bool = False) -> str:
-    """清理 URI authority 中 `@` 前的 userinfo 凭据。"""
+    """
+    清理 URI authority 中 `@` 前的 userinfo 凭据。
+    """
     fragments = []
     emitted_until = 0
     search_from = 0
@@ -523,7 +561,9 @@ def _redact_basic_auth(
     *,
     truncated: bool = False,
 ) -> str:
-    """仅遮蔽可解码为 `user:password` 的 Basic token。"""
+    """
+    仅遮蔽可解码为 `user:password` 的 Basic token。
+    """
     if truncated and match.end(2) == len(match.string):
         return f"{match.group(1)}{REDACTED_VALUE}"
     token = match.group(2)
@@ -540,7 +580,9 @@ def _redact_basic_auth(
 
 
 def _sanitize_text(value: str, *, truncated_input: bool = False, max_chars: int | None = _MAX_TEXT_CHARS) -> str:
-    """清理非结构化文本中的常见凭据和图像数据 URL。"""
+    """
+    清理非结构化文本中的常见凭据和图像数据 URL。
+    """
     truncated = truncated_input or (max_chars is not None and len(value) > max_chars)
     bounded_value = value[:max_chars]
     truncated_json = truncated and bounded_value.lstrip().startswith(("{", "["))
@@ -563,12 +605,16 @@ def _sanitize_text(value: str, *, truncated_input: bool = False, max_chars: int 
 
 
 def sanitize_archived_text(value: str) -> str:
-    """供独立消息库 worker 脱敏完整文本；检索返回上限不能成为原始证据丢失边界。"""
+    """
+    供独立消息库 worker 脱敏完整文本；检索返回上限不能成为原始证据丢失边界。
+    """
     return _sanitize_text(value, max_chars=None)
 
 
 def stable_type_name(value: Any) -> str:
-    """绕过自定义 metaclass 协议，返回仅用于诊断的稳定类型名。"""
+    """
+    绕过自定义 metaclass 协议，返回仅用于诊断的稳定类型名。
+    """
     try:
         name = type.__getattribute__(type(value), "__name__")
     except Exception:
@@ -577,12 +623,16 @@ def stable_type_name(value: Any) -> str:
 
 
 def _unavailable(value: Any) -> str:
-    """在对象协议异常时返回不含对象文本的稳定占位。"""
+    """
+    在对象协议异常时返回不含对象文本的稳定占位。
+    """
     return f"<unavailable:{stable_type_name(value)}>"
 
 
 def _named_tuple_fields(value: Any) -> tuple[str, ...] | None:
-    """返回合法命名元组的字段契约，普通 tuple 仍按序列处理。"""
+    """
+    返回合法命名元组的字段契约，普通 tuple 仍按序列处理。
+    """
     value_type = type(value)
     if not issubclass(value_type, tuple):
         return None
@@ -599,7 +649,9 @@ def _named_tuple_fields(value: Any) -> tuple[str, ...] | None:
 
 
 def _bounded_mapping_key_text(key: Any) -> tuple[str, bool] | None:
-    """为受信内建 key 生成有界快照，未知对象不执行字符串协议。"""
+    """
+    为受信内建 key 生成有界快照，未知对象不执行字符串协议。
+    """
     if type(key) is str:
         return key, False
     if type(key) in (bool, int, float, type(None)):
@@ -631,7 +683,9 @@ def _bounded_mapping_key_text(key: Any) -> tuple[str, bool] | None:
 
 
 def _is_dataclass_type(value_type: type) -> bool:
-    """绕过自定义 metaclass 协议检查 dataclass 类型标记。"""
+    """
+    绕过自定义 metaclass 协议检查 dataclass 类型标记。
+    """
     try:
         mro = type.__getattribute__(value_type, "__mro__")
         return any("__dataclass_fields__" in type.__getattribute__(candidate, "__dict__") for candidate in mro)
@@ -644,7 +698,9 @@ def _pydantic_alias_names(
     *,
     _budget: list[int] | None = None,
 ) -> tuple[str, ...] | None:
-    """提取有界的 Pydantic 外部字段名；未知结构要求调用方保守处理。"""
+    """
+    提取有界的 Pydantic 外部字段名；未知结构要求调用方保守处理。
+    """
     if alias is None:
         return ()
     budget = _budget if _budget is not None else [_MAX_ITEMS]
@@ -680,7 +736,9 @@ def _pydantic_alias_names(
 
 
 def _pydantic_field_is_secret(field_name: str, field_info: Any) -> bool:
-    """按 Python 字段名及 Pydantic 的输入输出别名共同判定凭据字段。"""
+    """
+    按 Python 字段名及 Pydantic 的输入输出别名共同判定凭据字段。
+    """
     if _is_secret_key(field_name):
         return True
     if field_info is None:
@@ -702,7 +760,9 @@ def _pydantic_field_is_secret(field_name: str, field_info: Any) -> bool:
 
 
 def _validation_error_details(error: ValidationError) -> dict[str, int | str]:
-    """提取不含任何动态错误文本的校验计数。"""
+    """
+    提取不含任何动态错误文本的校验计数。
+    """
     try:
         error_count = error.error_count()
     except Exception:
@@ -711,7 +771,9 @@ def _validation_error_details(error: ValidationError) -> dict[str, int | str]:
 
 
 def _consume_work_item(budget: list[int]) -> bool:
-    """从全调用预算消费一个递归节点或容器输出项。"""
+    """
+    从全调用预算消费一个递归节点或容器输出项。
+    """
     if budget[0] <= 0:
         return False
     budget[0] -= 1
@@ -719,7 +781,9 @@ def _consume_work_item(budget: list[int]) -> bool:
 
 
 def _image_log_projection(value: Any) -> Any:
-    """在日志遍历前去掉已声明图像块的像素载荷，保留类型、尺寸和文本元信息。"""
+    """
+    在日志遍历前去掉已声明图像块的像素载荷，保留类型、尺寸和文本元信息。
+    """
     if type(value) is not dict or type(value.get("type")) is not str:
         return value
     if value["type"] not in ("image", "image_url", "input_image"):
@@ -746,7 +810,9 @@ def sanitize_for_host(
     _seen: set[int] | None = None,
     _budget: list[int] | None = None,
 ) -> Any:
-    """递归清理宿主日志/回执使用的数据，不修改调用方原对象。"""
+    """
+    递归清理宿主日志/回执使用的数据，不修改调用方原对象。
+    """
     try:
         budget = _budget if _budget is not None else [_MAX_WORK_ITEMS]
         if not _consume_work_item(budget):
@@ -992,7 +1058,9 @@ def sanitize_for_host(
 
 
 def _bounded_summary(value: Any, *, max_chars: int) -> str:
-    """把脱敏结构转换为不超过指定长度的稳定文本。"""
+    """
+    把脱敏结构转换为不超过指定长度的稳定文本。
+    """
     sanitized = sanitize_for_host(value)
     if isinstance(sanitized, str):
         text = sanitized
@@ -1013,17 +1081,23 @@ def _bounded_summary(value: Any, *, max_chars: int) -> str:
 
 
 def summarize_input(value: Any, *, max_chars: int = 500) -> str:
-    """生成工具输入的 secret-safe 有界摘要。"""
+    """
+    生成工具输入的 secret-safe 有界摘要。
+    """
     return _bounded_summary(value, max_chars=max_chars)
 
 
 def summarize_result(value: Any, *, max_chars: int = 500) -> str:
-    """生成工具结果的 secret-safe 有界摘要。"""
+    """
+    生成工具结果的 secret-safe 有界摘要。
+    """
     return _bounded_summary(value, max_chars=max_chars)
 
 
 def summarize_error(error: BaseException, *, max_chars: int = 500) -> str:
-    """生成不回显异常凭据的类型化摘要。"""
+    """
+    生成不回显异常凭据的类型化摘要。
+    """
     error_text = sanitize_for_host(error)
     return _bounded_summary(
         f"{stable_type_name(error)}: {error_text}",

@@ -56,7 +56,9 @@ class RecoveryExecutor:
     """
 
     def __init__(self) -> None:
-        """初始化在途线程注册表和当前生命周期的提交状态。"""
+        """
+        初始化在途线程注册表和当前生命周期的提交状态。
+        """
         # key -> 该 key 最近一次提交的执行线程
         self._running: Dict[str, threading.Thread] = {}
         self._lock = threading.Lock()
@@ -117,12 +119,16 @@ class RecoveryExecutor:
             }
 
     def request_stop(self) -> None:
-        """封住新恢复动作提交，既有线程只能自然完成。"""
+        """
+        封住新恢复动作提交，既有线程只能自然完成。
+        """
         with self._lock:
             self._accepting = False
 
     def close(self, deadline: float) -> bool:
-        """在绝对截止时间内等待全部恢复线程，超时继续保留活线程句柄。"""
+        """
+        在绝对截止时间内等待全部恢复线程，超时继续保留活线程句柄。
+        """
         self.request_stop()
         with self._lock:
             threads = tuple(self._running.values())
@@ -136,7 +142,9 @@ class RecoveryExecutor:
             return not any(thread.is_alive() for thread in self._running.values())
 
     def reopen(self) -> bool:
-        """在旧恢复线程全部结束后，为新的 Monitor 生命周期恢复提交。"""
+        """
+        在旧恢复线程全部结束后，为新的 Monitor 生命周期恢复提交。
+        """
         self.clear()
         with self._lock:
             if any(thread.is_alive() for thread in self._running.values()):
@@ -146,7 +154,9 @@ class RecoveryExecutor:
             return True
 
     def running_threads(self) -> tuple[threading.Thread, ...]:
-        """返回仍存活且由执行器持有的恢复线程快照。"""
+        """
+        返回仍存活且由执行器持有的恢复线程快照。
+        """
         with self._lock:
             return tuple(
                 thread for thread in self._running.values() if thread.is_alive()

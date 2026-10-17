@@ -1,4 +1,6 @@
-"""订阅新增、失败与完成通知"""
+"""
+订阅新增、失败与完成通知
+"""
 
 import threading
 from collections.abc import Mapping
@@ -31,22 +33,43 @@ from app.schemas.types import (
 
 
 class SubscriptionSharePort(Protocol):
-    """订阅链访问服务端共享与统计能力所需的最小端口。"""
+    """
+    订阅链访问服务端共享与统计能力所需的最小端口。
+    """
 
     def report_added(self, payload: dict[str, Any]) -> bool:
-        """同步上报新增订阅统计。"""
+        """
+        同步上报新增订阅统计。
+
+        :param payload: 新增订阅的媒体身份、类型、季号及展示信息
+        :return: 服务端已确认接收统计时为 True，否则为 False，供持久事件重试
+        """
         ...
 
     async def async_report_added(self, payload: dict[str, Any]) -> bool:
-        """异步上报新增订阅统计。"""
+        """
+        异步上报新增订阅统计。
+
+        :param payload: 新增订阅的媒体身份、类型、季号及展示信息
+        :return: 服务端已确认接收统计时为 True，否则为 False，供持久事件重试
+        """
         ...
 
     def list_shares(self) -> List[dict[str, Any]]:
-        """读取当前用户可见的订阅分享。"""
+        """
+        读取当前用户可见的订阅分享。
+
+        :return: 当前用户可见的订阅分享字典列表，没有可用分享时为空列表
+        """
         ...
 
     def report_completed(self, payload: Mapping[str, JsonData]) -> bool:
-        """同步上报订阅完成统计。"""
+        """
+        同步上报订阅完成统计。
+
+        :param payload: 订阅完成事件对应的统计信息，包含媒体身份和完成上下文
+        :return: 服务端已确认接收完成统计时为 True，否则为 False
+        """
         ...
 
 
@@ -57,7 +80,9 @@ _subscription_share_port: Optional[SubscriptionSharePort] = None
 def configure_subscription_share_port(
     port: SubscriptionSharePort,
 ) -> Optional[SubscriptionSharePort]:
-    """装配订阅共享端口，并返回旧实现供隔离环境恢复。"""
+    """
+    装配订阅共享端口，并返回旧实现供隔离环境恢复。
+    """
     global _subscription_share_port
     with _subscription_share_lock:
         previous = _subscription_share_port
@@ -68,14 +93,18 @@ def configure_subscription_share_port(
 def reset_subscription_share_port(
     port: Optional[SubscriptionSharePort] = None,
 ) -> None:
-    """恢复指定订阅共享端口；省略参数时回到未装配状态。"""
+    """
+    恢复指定订阅共享端口；省略参数时回到未装配状态。
+    """
     global _subscription_share_port
     with _subscription_share_lock:
         _subscription_share_port = port
 
 
 def _subscription_share_snapshot() -> SubscriptionSharePort:
-    """获取当前订阅共享端口，未装配时稳定失败。"""
+    """
+    获取当前订阅共享端口，未装配时稳定失败。
+    """
     with _subscription_share_lock:
         port = _subscription_share_port
     if port is None:
@@ -84,11 +113,15 @@ def _subscription_share_snapshot() -> SubscriptionSharePort:
 
 
 class SubscribeNotificationOwner(_SubscribeOwnerBase):
-    """订阅新增、失败与完成通知，作为 SubscribeChain 的单一职责实现 owner。"""
+    """
+    订阅新增、失败与完成通知，作为 SubscribeChain 的单一职责组件。
+    """
 
     @staticmethod
     def _SubscribeChain__subscribe_added_link(mtype: MediaType) -> Optional[str]:
-        """返回订阅类型对应的前端详情入口。"""
+        """
+        返回订阅类型对应的前端详情入口。
+        """
         if mtype == MediaType.TV:
             result: Optional[str] = get_chain_runtime_config_snapshot().television_subscribe_url
             return result
@@ -100,7 +133,9 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
 
     @staticmethod
     def _SubscribeChain__subscribe_report_payload(context: _SubscribePostCommitContext) -> dict[str, Any]:
-        """构造保持旧字段和值语义的订阅统计上报。"""
+        """
+        构造保持旧字段和值语义的订阅统计上报。
+        """
         mediainfo = context.mediainfo
         music_type = getattr(mediainfo, "music_type", None)
         return {
@@ -123,7 +158,9 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         subscribe_id: int,
         context: _SubscribePostCommitContext,
     ) -> bool:
-        """同步执行提交后消息和事件；统计失败留给 outbox 重试。"""
+        """
+        同步执行提交后消息和事件；统计失败留给 outbox 重试。
+        """
         if context.notification:
             self.post_message(_SchemaMessage.model_validate(context.notification))
         self.eventmanager.send_event(
@@ -164,7 +201,9 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         subscribe_id: int,
         context: _SubscribePostCommitContext,
     ) -> bool:
-        """异步执行提交后消息和事件；统计失败留给 outbox 重试。"""
+        """
+        异步执行提交后消息和事件；统计失败留给 outbox 重试。
+        """
         if context.notification:
             await self.async_post_message(_SchemaMessage.model_validate(context.notification))
         await self.eventmanager.async_send_event(
@@ -204,7 +243,9 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         self,
         context: _SubscribeCreateContext,
     ) -> Optional[dict[str, Any]]:
-        """在事务提交前冻结已渲染消息，供即时发送与 outbox 恢复共用。"""
+        """
+        在事务提交前冻结已渲染消息，供即时发送与 outbox 恢复共用。
+        """
         if not context.message:
             return None
         message = _SchemaMessage(
@@ -233,7 +274,9 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         context: _SubscribeCreateContext,
         err_msg: str,
     ) -> None:
-        """同步记录持久化失败，并按旧规则向原用户反馈。"""
+        """
+        同步记录持久化失败，并按旧规则向原用户反馈。
+        """
         logger.error(f"{context.mediainfo.title_year} {err_msg}")
         if context.exist_ok or not context.message:
             return
@@ -244,7 +287,9 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         context: _SubscribeCreateContext,
         err_msg: str,
     ) -> None:
-        """异步记录持久化失败，并按旧规则向原用户反馈。"""
+        """
+        异步记录持久化失败，并按旧规则向原用户反馈。
+        """
         logger.error(f"{context.mediainfo.title_year} {err_msg}")
         if context.exist_ok or not context.message:
             return
@@ -255,7 +300,9 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         context: _SubscribeCreateContext,
         err_msg: str,
     ) -> _SchemaMessage:
-        """构造保持旧标题、图片和接收人字段的订阅失败消息。"""
+        """
+        构造保持旧标题、图片和接收人字段的订阅失败消息。
+        """
         return _SchemaMessage(
             channel=context.channel,
             source=context.source,
@@ -272,7 +319,9 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         mediainfo: MediaInfo,
         meta: MetaBase,
     ) -> _SchemaMessage:
-        """构造订阅完成通知，保持模板、链接与接收人字段语义。"""
+        """
+        构造订阅完成通知，保持模板、链接与接收人字段语义。
+        """
         msgstr = "订阅" if not subscribe.best_version else "洗版"
         if mediainfo.type == MediaType.TV:
             link = self.runtime_config.television_subscribe_url
@@ -302,5 +351,7 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
 
     @staticmethod
     def _SubscribeChain__report_completed(payload: Mapping[str, JsonData]) -> bool:
-        """通过装配端口投递订阅完成统计。"""
+        """
+        通过装配端口投递订阅完成统计。
+        """
         return _subscription_share_snapshot().report_completed(payload)

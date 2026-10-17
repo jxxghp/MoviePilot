@@ -1,4 +1,6 @@
-"""将工具图像投影为兼容模型协议的临时观察，不改变真实用户消息或工具授权。"""
+"""
+将工具图像投影为兼容模型协议的临时观察，不改变真实用户消息或工具授权。
+"""
 
 import base64
 import binascii
@@ -26,7 +28,12 @@ MAX_INLINE_IMAGE_CHARS = 1024 * 1024
 
 
 class VisionState(TypedDict):
-    """视觉拒绝事实只属于当前图调用，主子任务不共享可变能力缓存。"""
+    """
+    视觉拒绝事实只属于当前图调用，主子任务不共享可变能力缓存。
+
+    :ivar messages: 供视觉中间件检查及调整的会话消息列表
+    :ivar tool_vision_rejected_model: 已拒绝工具图片输入的模型标识；缺失时尚未记录，不接受外部输入覆盖
+    """
 
     messages: list[BaseMessage]
     tool_vision_rejected_model: Annotated[NotRequired[str], OmitFromInput]
@@ -34,7 +41,9 @@ class VisionState(TypedDict):
 
 # follow_imports=skip 不展开第三方中间件基类，只在框架继承边界忽略 misc。
 class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
-    """在最终压缩之后投影工具图片，确保 Chat 与 Responses 都收到真实图像输入。"""
+    """
+    在最终压缩之后投影工具图片，确保 Chat 与 Responses 都收到真实图像输入。
+    """
 
     state_schema = VisionState
 
@@ -42,34 +51,46 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
         self, *, supports_images: Optional[Callable[[Any], bool]] = None,
         is_unsupported_error: Optional[Callable[[BaseException], bool]] = None,
     ) -> None:
-        """策略依据实际请求模型，外部拒绝只触发本轮有界文字回退。"""
+        """
+        策略依据实际请求模型，外部拒绝只触发本轮有界文字回退。
+        """
         super().__init__()
         self.supports_images = supports_images or LLMHelper.supports_model_image_input
         self.is_unsupported_error = is_unsupported_error or LLMHelper.is_unsupported_image_input_error
 
     def before_agent(self, state: VisionState, runtime: Any) -> dict[str, Any]:
-        """新用户请求重新判断能力，不把一轮拒绝永久带到其他请求。"""
+        """
+        新用户请求重新判断能力，不把一轮拒绝永久带到其他请求。
+        """
         del state, runtime
         return {VISION_REJECTED_MODEL: ""}
 
     async def abefore_agent(self, state: VisionState, runtime: Any) -> dict[str, Any]:
-        """异步图与同步图使用同一调用级状态初始化。"""
+        """
+        异步图与同步图使用同一调用级状态初始化。
+        """
         return self.before_agent(state, runtime)
 
     @staticmethod
     def _model_key(model: Any) -> str:
-        """私有图状态仅关联实际模型实例，不含服务凭据或连接地址。"""
+        """
+        私有图状态仅关联实际模型实例，不含服务凭据或连接地址。
+        """
         return f"{type(model).__module__}.{type(model).__qualname__}:{id(model)}"
 
     @staticmethod
     def _has_tool_images(messages: list[BaseMessage]) -> bool:
-        """只检查真实 ToolMessage，用户附件不由工具视觉回退擅自移除。"""
+        """
+        只检查真实 ToolMessage，用户附件不由工具视觉回退擅自移除。
+        """
         return any(isinstance(message, ToolMessage) and isinstance(message.content, list)
                    and any(is_image_content_block(block) for block in message.content) for message in messages)
 
     @staticmethod
     def _image_for_model(block: dict[str, Any]) -> Optional[dict[str, Any]]:
-        """只发送本叶明确支持的内嵌图像表示，类别识别不能代替载荷合同。"""
+        """
+        只发送本叶明确支持的内嵌图像表示，类别识别不能代替载荷合同。
+        """
         source = block.get("image_url") if block.get("type") == "image_url" else None
         if not isinstance(source, dict):
             return None
@@ -92,7 +113,9 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
     def _flush_observation(
         output: list[BaseMessage], observations: list[dict[str, Any]], pending: set[str],
     ) -> None:
-        """完整工具回复批次之后再附加观察，保持并行 tool_call 的协议配对。"""
+        """
+        完整工具回复批次之后再附加观察，保持并行 tool_call 的协议配对。
+        """
         if not observations:
             return
         if pending:
@@ -102,14 +125,18 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _build_observation_message(observations: list[dict[str, Any]]) -> HumanMessage:
-        """把工具文字与图片组装成模型可见的临时 HumanMessage。"""
+        """
+        把工具文字与图片组装成模型可见的临时 HumanMessage。
+        """
         return HumanMessage(
             content=list(observations),
             additional_kwargs={TOOL_OBSERVATION_MARKER: True},
         )
 
     def project_request(self, request: ModelRequest, *, force_text: bool = False) -> ModelRequest:
-        """构造独立出站副本；同一请求反复投影不会改变原图或累积临时用户消息。"""
+        """
+        构造独立出站副本；同一请求反复投影不会改变原图或累积临时用户消息。
+        """
         if not self._has_tool_images(request.messages):
             return request
         enabled = not force_text and self.supports_images(request.model)
@@ -152,7 +179,9 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
         return projected
 
     def _fallback_result(self, request: ModelRequest, result: ModelResponse) -> ExtendedModelResponse:
-        """只保存本轮模型的能力拒绝事实；临时观察和授权信息不进入状态更新。"""
+        """
+        只保存本轮模型的能力拒绝事实；临时观察和授权信息不进入状态更新。
+        """
         return ExtendedModelResponse(
             model_response=result,
             command=Command(update={VISION_REJECTED_MODEL: self._model_key(request.model)}),
@@ -161,7 +190,9 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
     def wrap_model_call(
         self, request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse],
     ) -> Any:
-        """仅对明确图片拒绝重试一次模型调用，不重新执行截图或其他工具。"""
+        """
+        仅对明确图片拒绝重试一次模型调用，不重新执行截图或其他工具。
+        """
         projected = self.project_request(request)
         try:
             return handler(projected)
@@ -175,7 +206,9 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
     async def awrap_model_call(
         self, request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> Any:
-        """异步调用保持相同的错误分类、单次回退和原始状态保护。"""
+        """
+        异步调用保持相同的错误分类、单次回退和原始状态保护。
+        """
         projected = self.project_request(request)
         try:
             return await handler(projected)

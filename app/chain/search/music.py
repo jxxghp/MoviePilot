@@ -1,4 +1,6 @@
-"""音乐关键词、资源匹配与搜索编排 owner。"""
+"""
+音乐关键词、资源匹配与搜索编排 owner。
+"""
 
 import copy
 from collections import Counter
@@ -22,11 +24,15 @@ _MAX_MUSIC_KEYWORDS = 12
 
 
 class SearchMusicOwner(_SearchOwnerBase):
-    """音乐搜索共用严格身份规则，人工候选通过显式参数单独开放。"""
+    """
+    音乐搜索共用严格身份规则，人工候选通过显式参数单独开放。
+    """
 
     @classmethod
     def music_site_keywords(cls, music: MetaMusic | MusicInfo) -> list[str]:
-        """依次查询主名称、艺术家组合和可信别名，保留原文且不单搜艺术家。"""
+        """
+        依次查询主名称、艺术家组合和可信别名，保留原文且不单搜艺术家。
+        """
         info = MusicInfo.from_meta(music) if isinstance(music, MetaMusic) else music
         artists = music_artists(info)
         artist = info.artists[0] if info.artists else info.album_artist
@@ -49,22 +55,30 @@ class SearchMusicOwner(_SearchOwnerBase):
     def matches_music_resource(
         cls, music: MusicInfo, resource_title: str, resource_description: Optional[str] = None,
     ) -> bool:
-        """只返回可用于自动订阅的精确身份命中，不放行待确认或关联专辑。"""
+        """
+        只返回可用于自动订阅的精确身份命中，不放行待确认或关联专辑。
+        """
         return match_music_resource(music, resource_title, resource_description).status == "exact"
 
     @staticmethod
     def _normalize_music_match_text(value: Optional[str]) -> str:
-        """保留公开门面的名称归一化契约。"""
+        """
+        保留公开门面的名称归一化契约。
+        """
         return music_text_key(value)
 
     @staticmethod
     def _unique_music_texts(values: Iterable[Optional[str]]) -> list[str]:
-        """保留公开门面的有序关键词去重契约。"""
+        """
+        保留公开门面的有序关键词去重契约。
+        """
         return unique_music_texts(values)
 
     @staticmethod
     def _music_keywords(mediainfo: MusicInfo, keyword: Optional[str], include_candidates: bool) -> list[str]:
-        """人工单曲搜索在严格关键词之后追加所属专辑，仍由匹配结果区分实体。"""
+        """
+        人工单曲搜索在严格关键词之后追加所属专辑，仍由匹配结果区分实体。
+        """
         if keyword:
             return [keyword]
         keywords = SearchMusicOwner.music_site_keywords(mediainfo)
@@ -82,7 +96,9 @@ class SearchMusicOwner(_SearchOwnerBase):
         rule_groups: Optional[List[str]] = None, filter_params: Optional[Dict[str, str]] = None,
         include_candidates: bool = False, diagnostics: Optional[Counter[str]] = None,
     ) -> List[Context]:
-        """保留音乐兼容入口，全部结果交给通用资源过滤、匹配和上下文构造流程。"""
+        """
+        保留音乐兼容入口，全部结果交给通用资源过滤、匹配和上下文构造流程。
+        """
         return self._parse_result(
             torrents=torrents, mediainfo=mediainfo, rule_groups=rule_groups,
             filter_params=filter_params, include_candidates=include_candidates, diagnostics=diagnostics,
@@ -90,7 +106,9 @@ class SearchMusicOwner(_SearchOwnerBase):
 
     @staticmethod
     def _matching_music_torrents(torrents: Optional[List[TorrentInfo]], mediainfo: MusicInfo) -> List[TorrentInfo]:
-        """保留严格音乐候选筛选入口；底层匹配消费资源解析结果。"""
+        """
+        保留严格音乐候选筛选入口；底层匹配消费资源解析结果。
+        """
         return [torrent for torrent in torrents or [] if match_music_resource(
             mediainfo, torrent.title, torrent.description, torrent.category,
         ).status == "exact"]
@@ -100,7 +118,9 @@ class SearchMusicOwner(_SearchOwnerBase):
         rule_groups: Optional[List[str]] = None, filter_params: Optional[Dict[str, str]] = None,
         include_candidates: bool = False,
     ) -> List[Context]:
-        """兼容同步音乐入口，不再拥有独立站点查询和停止循环。"""
+        """
+        兼容同步音乐入口，不再拥有独立站点查询和停止循环。
+        """
         return self.process(
             mediainfo=mediainfo, keyword=keyword, sites=sites, rule_groups=rule_groups,
             filter_params=filter_params, include_candidates=include_candidates,
@@ -111,7 +131,9 @@ class SearchMusicOwner(_SearchOwnerBase):
         rule_groups: Optional[List[str]] = None, filter_params: Optional[Dict[str, str]] = None,
         include_candidates: bool = False,
     ) -> List[Context]:
-        """兼容异步音乐入口，复用所有媒体共用的异步搜索状态机。"""
+        """
+        兼容异步音乐入口，复用所有媒体共用的异步搜索状态机。
+        """
         return await self.async_process(
             mediainfo=mediainfo, keyword=keyword, sites=sites, rule_groups=rule_groups,
             filter_params=filter_params, include_candidates=include_candidates,
@@ -122,7 +144,9 @@ class SearchMusicOwner(_SearchOwnerBase):
         rule_groups: Optional[List[str]] = None, filter_params: Optional[Dict[str, str]] = None,
         include_candidates: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """兼容音乐 SSE 入口，复用相同的候选预览、过滤、统计及完成事件。"""
+        """
+        兼容音乐 SSE 入口，复用相同的候选预览、过滤、统计及完成事件。
+        """
         async for event in self.async_process_stream(
             mediainfo=mediainfo, keyword=keyword, sites=sites, rule_groups=rule_groups,
             filter_params=filter_params, include_candidates=include_candidates,

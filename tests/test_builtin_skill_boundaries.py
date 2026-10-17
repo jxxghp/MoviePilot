@@ -1,3 +1,7 @@
+"""
+验证内置技能版本、提示词入口和宿主权限边界。
+"""
+
 import re
 import runpy
 from pathlib import Path
@@ -91,19 +95,25 @@ RETIRED_TOOL_COVERAGE: dict[str, tuple[str, ...]] = {
 
 
 def _read_skill(skill_name: str) -> str:
-    """读取内置技能的 SKILL.md 内容。"""
+    """
+    读取内置技能的 SKILL.md 内容。
+    """
     return (SKILLS_ROOT / skill_name / "SKILL.md").read_text(encoding="utf-8")
 
 
 def _read_moviepilot_api_skill() -> str:
-    """读取 MoviePilot API Skill 主文档及其按需加载的分类文档。"""
+    """
+    读取 MoviePilot API Skill 主文档及其按需加载的分类文档。
+    """
     skill_root = SKILLS_ROOT / "moviepilot-api"
     paths = [skill_root / "SKILL.md", *sorted((skill_root / "api").glob("*.md"))]
     return "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
 
 def _frontmatter_value(content: str, key: str) -> str:
-    """从 SKILL.md frontmatter 中读取单行字段值。"""
+    """
+    从 SKILL.md frontmatter 中读取单行字段值。
+    """
     for line in content.splitlines():
         if line.startswith(f"{key}:"):
             return line.split(":", 1)[1].strip()
@@ -111,7 +121,9 @@ def _frontmatter_value(content: str, key: str) -> str:
 
 
 def test_modified_builtin_skills_have_incremented_versions() -> None:
-    """本次修改过的内置技能必须递增版本，确保用户端同步更新。"""
+    """
+    本次修改过的内置技能必须递增版本，确保用户端同步更新。
+    """
     expected_versions = {
         "browser-use": "4",
         "command-dispatch": "2",
@@ -136,14 +148,18 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
 
 
 def test_retired_moviepilot_cli_skill_is_removed() -> None:
-    """正式 API 方案不得保留旧 MCP CLI Skill。"""
+    """
+    正式 API 方案不得保留旧 MCP CLI Skill。
+    """
     assert not (SKILLS_ROOT / "moviepilot-cli" / "SKILL.md").exists()
     assert not (SKILLS_ROOT / "moviepilot-api" / "scripts" / "mp-api.py").exists()
     assert not (SKILLS_ROOT / "moviepilot-update" / "scripts" / "mp-update.py").exists()
 
 
 def test_core_prompt_requires_read_skill_for_skill_documents() -> None:
-    """核心提示必须阻止模型用 read_file 分段读取 SKILL.md。"""
+    """
+    核心提示必须阻止模型用 read_file 分段读取 SKILL.md。
+    """
     core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
 
     assert "Always use `read_skill`, never `read_file`, to load a skill's SKILL.md" in core_prompt
@@ -154,7 +170,9 @@ def test_core_prompt_requires_read_skill_for_skill_documents() -> None:
 
 
 def test_core_prompt_preserves_exact_identifiers_from_tool_results() -> None:
-    """核心提示必须阻止模型截断或模式化压缩持久化标识。"""
+    """
+    核心提示必须阻止模型截断或模式化压缩持久化标识。
+    """
     core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
 
     assert "Copy persistent IDs, hashes, paths, and other exact identifiers character-for-character" in core_prompt
@@ -163,7 +181,9 @@ def test_core_prompt_preserves_exact_identifiers_from_tool_results() -> None:
 
 
 def test_api_collection_counts_must_use_gateway_metadata_before_database() -> None:
-    """核心提示与 API Skill 必须阻止列表截断后错误回退数据库统计。"""
+    """
+    核心提示与 API Skill 必须阻止列表截断后错误回退数据库统计。
+    """
     core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
     api_skill = _read_skill("moviepilot-api")
 
@@ -175,7 +195,9 @@ def test_api_collection_counts_must_use_gateway_metadata_before_database() -> No
 
 
 def test_every_retired_business_tool_has_a_live_precise_owner() -> None:
-    """全部 72 个退出业务工具必须由 API、provider Skill 或统一原生工具承接。"""
+    """
+    全部 72 个退出业务工具必须由 API、provider Skill 或统一原生工具承接。
+    """
     from app.agent.policy.api import API_OPERATION_ROUTES
     from app.agent.tools.factory import MoviePilotToolFactory
 
@@ -208,7 +230,9 @@ def test_every_retired_business_tool_has_a_live_precise_owner() -> None:
 
 
 def test_api_and_database_skills_declare_final_boundaries() -> None:
-    """API Skill 应成为产品操作入口，数据库仍是显式最终兜底。"""
+    """
+    API Skill 应成为产品操作入口，数据库仍是显式最终兜底。
+    """
     api_content = _read_skill("moviepilot-api")
     db_content = _read_skill("database-operation")
 
@@ -253,7 +277,9 @@ def test_api_and_database_skills_declare_final_boundaries() -> None:
 
 
 def test_api_skill_uses_runtime_system_setting_discovery() -> None:
-    """系统设置 Skill 应指导动态发现定义，而不是复制不断变化的键清单。"""
+    """
+    系统设置 Skill 应指导动态发现定义，而不是复制不断变化的键清单。
+    """
     api_content = _read_moviepilot_api_skill()
 
     assert "## System Settings Contract" in api_content
@@ -267,7 +293,9 @@ def test_api_skill_uses_runtime_system_setting_discovery() -> None:
 
 
 def test_refactored_agent_skills_use_english_guidance() -> None:
-    """四个重构 Skill 的模型指导文本必须统一为英文。"""
+    """
+    Skill 指导正文保持英文，生成的能力契约保留中文源说明。
+    """
     for skill_name in (
         "moviepilot-api",
         "downloader-operation",
@@ -275,17 +303,27 @@ def test_refactored_agent_skills_use_english_guidance() -> None:
         "database-operation",
         "moviepilot-update",
     ):
-        content = (
-            _read_moviepilot_api_skill()
-            if skill_name == "moviepilot-api"
-            else _read_skill(skill_name)
-        )
-        assert not re.search(r"[\u3400-\u9fff]", content), skill_name
+        content = _read_skill(skill_name)
+        guidance = content
+        if skill_name in {"downloader-operation", "mediaserver-operation"}:
+            before, contract_marker, contract_and_after = content.partition("## Complete Action Contract\n")
+            assert contract_marker, skill_name
+            next_heading = (
+                "## Verification\n" if skill_name == "downloader-operation"
+                else "## Safety And Verification\n"
+            )
+            contract, verification_marker, after = contract_and_after.partition(next_heading)
+            assert verification_marker, skill_name
+            assert re.search(r"[\u3400-\u9fff]", contract), skill_name
+            guidance = before + verification_marker + after
+        assert not re.search(r"[\u3400-\u9fff]", guidance), skill_name
         assert "按接口模型语义传值" not in content
 
 
 def test_agent_core_prompt_does_not_block_plugin_source_edits() -> None:
-    """核心和插件技能共同支持代码修改，并按宿主代际选择目录与运行边界。"""
+    """
+    核心和插件技能共同支持代码修改，并按宿主代际选择目录与运行边界。
+    """
     core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
     plugin_skill = _read_skill("create-moviepilot-plugin")
     allowed_tools = _frontmatter_value(plugin_skill, "allowed-tools")
@@ -308,7 +346,9 @@ def test_agent_core_prompt_does_not_block_plugin_source_edits() -> None:
 
 
 def test_agent_core_prompt_routes_code_tools_safely() -> None:
-    """核心提示词应区分代码搜索、精确编辑和交互式命令场景。"""
+    """
+    核心提示词应区分代码搜索、精确编辑和交互式命令场景。
+    """
     core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
 
     assert '`execute_command(action="run")` with `rg`' in core_prompt

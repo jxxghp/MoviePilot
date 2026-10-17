@@ -1,3 +1,7 @@
+"""
+验证文件监控事件转换、写入稳定等待和异常恢复。
+"""
+
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -35,11 +39,15 @@ class CallbackRecorder:
         self.events.append((event, text, event_path, file_size))
 
     def event_unstable(self, event_path: Path):
-        """记录文件长时间未稳定告警。"""
+        """
+        记录文件长时间未稳定告警。
+        """
         self.stability_events.append(("unstable", event_path.as_posix()))
 
     def event_stable(self, event_path: Path):
-        """记录文件恢复稳定通知。"""
+        """
+        记录文件恢复稳定通知。
+        """
         self.stability_events.append(("stable", event_path.as_posix()))
 
 
@@ -138,7 +146,9 @@ def test_running_watcher_waits_for_file_stability_before_dispatch(tmp_path):
 
 
 def test_running_watcher_reports_long_unstable_file_and_recovery(tmp_path, monkeypatch):
-    """文件长时间写入应告警一次，并在稳定后发送恢复状态再继续整理。"""
+    """
+    文件长时间写入应告警一次，并在稳定后发送恢复状态再继续整理。
+    """
     movie_file = tmp_path / "long-writing.mkv"
     movie_file.write_bytes(b"part")
     callback = CallbackRecorder()
@@ -329,7 +339,9 @@ def test_handle_file_skips_transfer_when_history_exists(monkeypatch):
             )
 
         def get_success_by_src(self, src: str, storage: str = None):
-            """成功记录已由首次查询返回，无需二次回退。"""
+            """
+            成功记录已由首次查询返回，无需二次回退。
+            """
             return None
 
     transfer_chain = MagicMock()
@@ -375,7 +387,9 @@ def test_handle_file_invokes_transfer_when_history_missing(monkeypatch):
             return None
 
         def get_success_by_src(self, src: str, storage: str = None):
-            """空仓储没有成功历史。"""
+            """
+            空仓储没有成功历史。
+            """
             return None
 
     transfer_chain_instance = MagicMock()
@@ -401,7 +415,9 @@ def test_handle_file_invokes_transfer_when_history_missing(monkeypatch):
 
 
 def test_handle_file_prefers_music_type_from_monitor_directory(monkeypatch):
-    """音乐目录监控触发整理时应透传音乐类型，避免音频按影视名称识别。"""
+    """
+    音乐目录监控触发整理时应透传音乐类型，避免音频按影视名称识别。
+    """
     dispatcher = TransferDispatcher(all_exts=[".flac"], cache={})
     event_path = Path("/downloads/music/album/track.flac")
     directories = [

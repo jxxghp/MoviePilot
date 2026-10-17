@@ -1,4 +1,6 @@
-"""事件调度订阅快照和生命周期回归测试。"""
+"""
+事件调度订阅快照和生命周期回归测试。
+"""
 
 import asyncio
 import concurrent.futures
@@ -14,11 +16,15 @@ from app.schemas.types import ChainEventType, EventType
 
 
 class _ImmediateExecutor:
-    """在当前线程执行广播 handler，使订阅变更精确发生在调度迭代期间。"""
+    """
+    在当前线程执行广播 handler，使订阅变更精确发生在调度迭代期间。
+    """
 
     @staticmethod
     def submit(func, *args, **kwargs):
-        """立即执行调用并返回符合线程池接口的已完成 Future。"""
+        """
+        立即执行调用并返回符合线程池接口的已完成 Future。
+        """
         handle = concurrent.futures.Future()
         try:
             handle.set_result(func(*args, **kwargs))
@@ -28,23 +34,32 @@ class _ImmediateExecutor:
 
 
 class _DaemonThreadExecutor:
-    """以守护线程执行回调，让死锁回归测试能够有界失败。"""
+    """
+    以守护线程执行回调，让死锁回归测试能够有界失败。
+    """
 
     def __init__(self) -> None:
-        """初始化可观察的回调完成信号。"""
+        """
+        初始化可观察的回调完成信号。
+        """
         self.finished = threading.Event()
 
     def submit(self, func, *args, **kwargs):
-        """在线程中执行调用并返回符合线程池接口的 Future。"""
+        """
+        在线程中执行调用并返回符合线程池接口的 Future。
+        """
         handle = concurrent.futures.Future()
 
         def run() -> None:
-            """执行回调并把结果或异常写入 Future。"""
+            """
+            执行回调并把结果或异常写入 Future。
+            """
             if not handle.set_running_or_notify_cancel():
                 return
             try:
                 handle.set_result(func(*args, **kwargs))
-            except BaseException as err:  # pragma: no cover - 交由 Future 消费
+            # 异常交由 Future 保存供调用方消费，此诊断分支不要求覆盖。
+            except BaseException as err:  # pragma: no cover
                 handle.set_exception(err)
             finally:
                 self.finished.set()
@@ -54,16 +69,22 @@ class _DaemonThreadExecutor:
 
 
 class _UnboundHandler:
-    """未创建的宿主 owner，用于验证配置重载的惰性绑定语义。"""
+    """
+    未创建的宿主 owner，用于验证配置重载的惰性绑定语义。
+    """
 
     async def handle(self, _event):
-        """不应在 owner 尚未激活时执行。"""
+        """
+        不应在 owner 尚未激活时执行。
+        """
         raise AssertionError("未激活 owner 不应收到严格配置事件")
 
 
 @pytest.fixture
 def isolated_eventmanager(monkeypatch):
-    """隔离全局事件总线的订阅表和广播执行器。"""
+    """
+    隔离全局事件总线的订阅表和广播执行器。
+    """
     monkeypatch.setattr(
         global_vars,
         "CURRENT_EVENT_LOOP",
@@ -133,7 +154,9 @@ def isolated_eventmanager(monkeypatch):
 
 
 def test_broadcast_dispatch_uses_subscription_snapshot(isolated_eventmanager):
-    """广播事件中新增或移除的 handler 从下一个事件开始生效。"""
+    """
+    广播事件中新增或移除的 handler 从下一个事件开始生效。
+    """
     calls = []
     isolated_eventmanager._EventManager__lifecycle_state = "running"
 
@@ -176,12 +199,16 @@ def test_strict_broadcast_waits_and_propagates_handler_failure(
     isolated_eventmanager,
     monkeypatch,
 ):
-    """durable 广播不入队，并在真实 handler 失败时阻止调用方结算。"""
+    """
+    durable 广播不入队，并在真实 handler 失败时阻止调用方结算。
+    """
     isolated_eventmanager._EventManager__lifecycle_state = "running"
     calls = []
 
     def handler(event):
-        """记录稳定键后模拟真实 handler 失败。"""
+        """
+        记录稳定键后模拟真实 handler 失败。
+        """
         calls.append(event.event_data["idempotency_key"])
         raise RuntimeError("delivery failed")
 
@@ -204,12 +231,16 @@ def test_strict_broadcast_waits_and_propagates_handler_failure(
 
 @pytest.mark.anyio
 async def test_async_strict_broadcast_waits_for_async_handler(isolated_eventmanager):
-    """异步严格广播必须在调用方返回前等待异步 handler 完成。"""
+    """
+    异步严格广播必须在调用方返回前等待异步 handler 完成。
+    """
     isolated_eventmanager._EventManager__lifecycle_state = "running"
     calls = []
 
     async def handler(_event):
-        """模拟需要让出事件循环的配置重载。"""
+        """
+        模拟需要让出事件循环的配置重载。
+        """
         calls.append("start")
         await asyncio.sleep(0)
         calls.append("done")
@@ -227,7 +258,9 @@ async def test_async_strict_broadcast_waits_for_async_handler(isolated_eventmana
 
 @pytest.mark.anyio
 async def test_async_strict_broadcast_skips_unbound_optional_owner(isolated_eventmanager):
-    """严格配置广播应跳过尚未创建的可选 owner，而不是阻断配置保存。"""
+    """
+    严格配置广播应跳过尚未创建的可选 owner，而不是阻断配置保存。
+    """
     isolated_eventmanager._EventManager__lifecycle_state = "running"
     isolated_eventmanager.add_event_listener(
         EventType.ConfigChanged,
@@ -241,7 +274,9 @@ async def test_async_strict_broadcast_skips_unbound_optional_owner(isolated_even
 
 
 def test_sync_chain_dispatch_uses_subscription_snapshot(isolated_eventmanager):
-    """同步链式事件中的订阅变更不影响当前处理器序列。"""
+    """
+    同步链式事件中的订阅变更不影响当前处理器序列。
+    """
     calls = []
 
     def late_handler(_event):
@@ -283,7 +318,9 @@ def test_sync_chain_dispatch_uses_subscription_snapshot(isolated_eventmanager):
 async def test_async_chain_dispatch_uses_subscription_snapshot(
         isolated_eventmanager,
 ):
-    """异步链式事件中的订阅变更不影响当前处理器序列。"""
+    """
+    异步链式事件中的订阅变更不影响当前处理器序列。
+    """
     calls = []
 
     async def late_handler(_event):
@@ -323,7 +360,9 @@ async def test_async_chain_dispatch_uses_subscription_snapshot(
 
 @pytest.mark.asyncio
 async def test_async_broadcast_handles_are_cancelled_on_shutdown(isolated_eventmanager):
-    """事件总线关闭时必须取消并收口已投递的异步广播处理器。"""
+    """
+    事件总线关闭时必须取消并收口已投递的异步广播处理器。
+    """
     global_vars.set_loop(asyncio.get_running_loop())
     handler_count = 5
     active = 0
@@ -368,7 +407,9 @@ async def test_async_broadcast_handles_are_cancelled_on_shutdown(isolated_eventm
 async def test_async_broadcast_shutdown_waits_for_handler_cleanup(
         isolated_eventmanager,
 ) -> None:
-    """提交代理变为 cancelled 后仍须等待处理器 finally 真正完成。"""
+    """
+    提交代理变为 cancelled 后仍须等待处理器 finally 真正完成。
+    """
     global_vars.set_loop(asyncio.get_running_loop())
     started = asyncio.Event()
     cancelling = asyncio.Event()
@@ -417,7 +458,9 @@ async def test_drain_waits_for_slow_sync_broadcast_handler(
         isolated_eventmanager,
         monkeypatch,
 ) -> None:
-    """同步广播处理器返回前 drain 不得提前宣称结算完成。"""
+    """
+    同步广播处理器返回前 drain 不得提前宣称结算完成。
+    """
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     monkeypatch.setattr(
         isolated_eventmanager,
@@ -464,7 +507,9 @@ async def test_drain_waits_for_slow_sync_broadcast_handler(
 async def test_drain_timeout_does_not_cancel_async_broadcast_handler(
         isolated_eventmanager,
 ) -> None:
-    """drain 超时只报告未收敛，不取消仍在执行的异步业务处理器。"""
+    """
+    drain 超时只报告未收敛，不取消仍在执行的异步业务处理器。
+    """
     global_vars.set_loop(asyncio.get_running_loop())
     started = asyncio.Event()
     release = asyncio.Event()
@@ -504,7 +549,9 @@ async def test_drain_timeout_does_not_cancel_async_broadcast_handler(
 async def test_sealed_drain_waits_for_cascade_and_rejects_later_broadcasts(
         isolated_eventmanager,
 ) -> None:
-    """封口 drain 应结算 handler 派生事件，并拒绝封口后的新广播。"""
+    """
+    封口 drain 应结算 handler 派生事件，并拒绝封口后的新广播。
+    """
     calls = []
 
     def first_handler(_event) -> None:
@@ -553,7 +600,9 @@ async def test_drain_returns_false_when_stop_interleaves(
         isolated_eventmanager,
         monkeypatch,
 ) -> None:
-    """stop 开始后 drain 必须报告屏障失败，而非等待残留队列后返回成功。"""
+    """
+    stop 开始后 drain 必须报告屏障失败，而非等待残留队列后返回成功。
+    """
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     monkeypatch.setattr(
         isolated_eventmanager,
@@ -595,7 +644,9 @@ async def test_drain_returns_false_when_stop_interleaves(
 async def test_repeated_async_stop_balances_stop_sentinels(
         isolated_eventmanager,
 ) -> None:
-    """重复异步停止不得遗留哨兵或破坏队列 unfinished_tasks 计数。"""
+    """
+    重复异步停止不得遗留哨兵或破坏队列 unfinished_tasks 计数。
+    """
     isolated_eventmanager.start()
 
     await asyncio.gather(
@@ -613,7 +664,9 @@ async def test_sync_stop_waits_for_owned_sync_handler(
         isolated_eventmanager,
         monkeypatch,
 ) -> None:
-    """同步兼容停止入口也不得遗留仍运行的同步广播处理器。"""
+    """
+    同步兼容停止入口也不得遗留仍运行的同步广播处理器。
+    """
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     monkeypatch.setattr(
         isolated_eventmanager,
@@ -659,7 +712,9 @@ def test_sync_broadcast_handler_can_call_legacy_stop_without_self_wait(
         isolated_eventmanager,
         monkeypatch,
 ) -> None:
-    """同步 handler 调用旧 stop() 时不得等待承载自己的 Future。"""
+    """
+    同步 handler 调用旧 stop() 时不得等待承载自己的 Future。
+    """
     executor = _DaemonThreadExecutor()
     monkeypatch.setattr(
         isolated_eventmanager,
@@ -696,7 +751,9 @@ def test_sync_broadcast_handler_can_call_legacy_stop_without_self_wait(
 async def test_async_broadcast_handler_can_await_stop_without_self_cancel(
         isolated_eventmanager,
 ) -> None:
-    """异步 handler 调用 stop_async() 时不得取消或等待自身 completion。"""
+    """
+    异步 handler 调用 stop_async() 时不得取消或等待自身 completion。
+    """
     global_vars.set_loop(asyncio.get_running_loop())
     stopped = asyncio.Event()
     cancelled = False
@@ -720,7 +777,9 @@ async def test_async_broadcast_handler_can_await_stop_without_self_cancel(
     await asyncio.wait_for(stopped.wait(), timeout=1)
 
     async def wait_for_owner_release() -> None:
-        """等待 handler 返回后的 completion 回调移除 owner。"""
+        """
+        等待 handler 返回后的 completion 回调移除 owner。
+        """
         while isolated_eventmanager._EventManager__async_handles:
             await asyncio.sleep(0)
 
@@ -733,7 +792,9 @@ async def test_async_broadcast_handler_can_await_stop_without_self_cancel(
 async def test_broadcast_handler_cannot_seal_while_own_completion_is_pending(
         isolated_eventmanager,
 ) -> None:
-    """handler 内 drain 应立即失败，且不能把仍运行的事件总线伪装成已封口。"""
+    """
+    handler 内 drain 应立即失败，且不能把仍运行的事件总线伪装成已封口。
+    """
     global_vars.set_loop(asyncio.get_running_loop())
     drain_results = []
     handler_done = asyncio.Event()
@@ -765,7 +826,9 @@ async def test_async_broadcast_submission_is_registered_before_stop_snapshot(
         isolated_eventmanager,
         monkeypatch,
 ) -> None:
-    """事件处理器提交和 owner 登记不得被关闭快照从中切开。"""
+    """
+    事件处理器提交和 owner 登记不得被关闭快照从中切开。
+    """
     global_vars.set_loop(asyncio.get_running_loop())
     submission_entered = threading.Event()
     submission_release = threading.Event()
@@ -819,7 +882,9 @@ async def test_async_broadcast_submission_is_registered_before_stop_snapshot(
                                         EventType.AudioTransferFailed])
 def test_outbox_retries_strict_failure_without_repeating_system_alert(
         isolated_eventmanager, monkeypatch, event_type):
-    """真实失败 handler 仍重试至死信，相同事件的系统错误提示只发送一次。"""
+    """
+    真实失败 handler 仍重试至死信，相同事件的系统错误提示只发送一次。
+    """
     from unittest.mock import Mock
 
     from app.application.outbox import ClaimedOutboxMessage, OutboxDispatcher
@@ -834,7 +899,9 @@ def test_outbox_retries_strict_failure_without_repeating_system_alert(
     attempts = []
 
     def failed_handler(event):
-        """模拟稳定重现的插件处理器故障。"""
+        """
+        模拟稳定重现的插件处理器故障。
+        """
         attempts.append(event.event_data["idempotency_key"])
         raise RuntimeError("broken transfer consumer")
 

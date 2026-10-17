@@ -1,3 +1,7 @@
+"""
+验证 MCP 插件工具动态发现、移除和调用准入边界。
+"""
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -16,19 +20,25 @@ from app.runtime.extensions.plugin.manager import PluginManager
 
 
 class DemoPluginTool(MoviePilotTool):
-    """测试用插件 MCP 工具。"""
+    """
+    测试用插件 MCP 工具。
+    """
 
     name: str = "demo_plugin_tool"
     description: str = "测试插件动态注册的 MCP 工具"
 
     async def run(self, **kwargs) -> str:
-        """返回固定测试结果。"""
+        """
+        返回固定测试结果。
+        """
         return "plugin-ok"
 
 
 @pytest.fixture
 def plugin_manager() -> Iterator[PluginManager]:
-    """构造隔离的插件管理器并在测试后恢复原单例。"""
+    """
+    构造隔离的插件管理器并在测试后恢复原单例。
+    """
     singleton_key = (PluginManager, (), frozenset())
     previous_instance = Singleton._instances.pop(singleton_key, None)
     manager = PluginManager()
@@ -39,7 +49,9 @@ def plugin_manager() -> Iterator[PluginManager]:
 
 
 def _build_plugin() -> SimpleNamespace:
-    """构造声明一个 Agent 工具的已启用插件。"""
+    """
+    构造声明一个 Agent 工具的已启用插件。
+    """
     return SimpleNamespace(
         plugin_name="Demo Plugin",
         get_state=lambda: True,
@@ -51,7 +63,9 @@ def test_mcp_refreshes_tools_after_plugin_lifecycle_change(
     plugin_manager: PluginManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """MCP 管理器应发现初始化后新增的插件工具，并在插件移除后停止暴露。"""
+    """
+    MCP 管理器应发现初始化后新增的插件工具，并在插件移除后停止暴露。
+    """
     with patch.object(
         MoviePilotToolFactory,
         "_get_builtin_tool_classes",
@@ -98,7 +112,9 @@ def test_mcp_refreshes_tools_after_plugin_lifecycle_change(
 
 
 def test_direct_manager_rejects_ambiguous_tool_identity() -> None:
-    """HTTP/MCP direct 调用不得保留 first-wins 执行路径。"""
+    """
+    HTTP/MCP direct 调用不得保留 first-wins 执行路径。
+    """
     first = DemoPluginTool(session_id="session", user_id="user")
     second = DemoPluginTool(session_id="session", user_id="user")
     manager = MoviePilotToolsManager(session_id="session", user_id="user")
@@ -120,7 +136,9 @@ def test_direct_manager_rejects_ambiguous_tool_identity() -> None:
 
 
 def test_read_skill_is_hidden_from_mcp_calls() -> None:
-    """read_skill 只属于内置 Agent，中间件工具不得通过 MCP 直接调用。"""
+    """
+    read_skill 只属于内置 Agent，中间件工具不得通过 MCP 直接调用。
+    """
     builtin_names = {
         MoviePilotToolFactory._tool_class_name(tool_class)
         for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES

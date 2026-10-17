@@ -1,4 +1,6 @@
-"""IMDb 原生媒体数据源 Module。"""
+"""
+IMDb 原生媒体数据源 Module。
+"""
 
 import asyncio
 import re
@@ -37,21 +39,36 @@ from .api import (
 
 @dataclass(frozen=True, slots=True)
 class ImdbConfigSnapshot:
-    """IMDb Module 一次配置 generation 使用的网络快照。"""
+    """
+    一次 IMDb 模块配置加载周期内稳定使用的网络设置。
+
+    :param proxy: 宿主 HTTP 代理配置，None 表示未显式配置代理
+    """
 
     proxy: Any
 
 
 @dataclass(frozen=True, slots=True)
 class _ImdbRecognitionPlan:
-    """描述一次 IMDb 识别应走显式详情还是标题搜索。"""
+    """
+    保存 IMDb 明确身份查询或标题搜索所需的线索。
+
+    :param media_id: 规范化的 IMDb 条目标识，None 表示按标题搜索
+    :param meta: 标题解析线索，明确身份查询时可为 None
+    :param media_type: 请求的媒体类型，None 表示未指定
+    """
 
     media_id: Optional[str]
     meta: Optional[MetaBase]
     media_type: Optional[MediaType]
 
     def require_meta(self) -> MetaBase:
-        """返回标题搜索计划必有的解析元数据。"""
+        """
+        读取标题搜索必需的解析线索。
+
+        :return: 计划保存的标题线索
+        :raises RuntimeError: 计划未包含 meta，调用方错误进入标题搜索分支
+        """
         if self.meta is None:
             raise RuntimeError("IMDb 标题识别计划缺少解析元数据")
         return self.meta
@@ -59,7 +76,12 @@ class _ImdbRecognitionPlan:
 
 @dataclass(frozen=True, slots=True)
 class _ImdbCandidatePlan:
-    """保存无需别名查询即可命中的候选及后续别名候选。"""
+    """
+    拆分无需查询别名即可命中的候选与待补充别名的候选。
+
+    :param direct_match: 已确定匹配的标题，None 表示尚未直接命中
+    :param alias_candidates: 需要进一步查询别名的标题，空元组表示没有可继续核验的候选
+    """
 
     direct_match: Optional[ImdbTitle]
     alias_candidates: tuple[ImdbTitle, ...]
@@ -67,14 +89,21 @@ class _ImdbCandidatePlan:
 
 @dataclass(frozen=True, slots=True)
 class _ImdbSearchPlan:
-    """保存 IMDb 搜索来源准入结果和有效查询元数据。"""
+    """
+    来源选择和有效标题搜索线索的检查结果。
+
+    :param enabled: 本次来源选择是否启用 IMDb
+    :param meta: 有效的标题线索，来源未启用或标题缺失时为 None
+    """
 
     enabled: bool
     meta: Optional[MetaBase]
 
 
 class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
-    """提供 IMDb 搜索、识别、详情补全与刮削能力。"""
+    """
+    提供 IMDb 搜索、识别、详情补全与刮削能力。
+    """
 
     auxiliary_media_source = MediaSource.IMDb
     CONFIG_WATCH = {"PROXY_HOST"}
@@ -87,44 +116,60 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     _config = ImdbConfigSnapshot(proxy=None)
 
     def init_module(self) -> None:
-        """按当前代理配置初始化 IMDb 客户端和通用刮削器。"""
+        """
+        按当前代理配置初始化 IMDb 客户端和通用刮削器。
+        """
         self._config = ImdbConfigSnapshot(proxy=get_runtime_setting('PROXY'))
         self.imdb_api = ImdbApi(proxies=self._config.proxy)
         self.scraper = MediaScraperHelper()
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
-        """IMDb 随宿主启动，无需独立模块开关。"""
+        """
+        IMDb 随宿主启动，无需独立模块开关。
+        """
         return None
 
     @staticmethod
     def get_name() -> str:
-        """返回模块展示名称。"""
+        """
+        返回模块展示名称。
+        """
         return "IMDb"
 
     @staticmethod
     def get_type() -> ModuleType:
-        """返回模块所属的媒体识别类型。"""
+        """
+        返回模块所属的媒体识别类型。
+        """
         return ModuleType.MediaRecognize
 
     @staticmethod
     def get_subtype() -> MediaRecognizeType:
-        """返回 IMDb 媒体识别子类型。"""
+        """
+        返回 IMDb 媒体识别子类型。
+        """
         return MediaRecognizeType.IMDb
 
     @staticmethod
     def get_priority() -> int:
-        """返回模块调度优先级。"""
+        """
+        返回模块调度优先级。
+        """
         return 4
 
     def stop(self) -> None:
-        """释放当前 generation 持有的客户端引用。"""
+        """
+        关闭当前客户端并释放本次配置加载周期持有的引用。
+        """
         if self.imdb_api:
             self.imdb_api.close()
         self.imdb_api = None
         self.scraper = None
 
     def test(self) -> Tuple[bool, str]:
-        """通过最小标题搜索测试 IMDb 数据服务连通性。"""
+        """
+        通过最小标题搜索测试 IMDb 数据服务连通性。
+        """
         if not self.imdb_api:
             return False, "IMDb 模块未初始化"
         results = self.imdb_api.search_titles("The Shawshank Redemption", limit=1)
@@ -132,7 +177,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     @classmethod
     def _media_type(cls, title_type: str) -> MediaType:
-        """把 IMDb 标题类型转换为 MoviePilot 媒体类型。"""
+        """
+        把 IMDb 标题类型转换为 MoviePilot 媒体类型。
+        """
         if title_type in cls._MOVIE_TYPES:
             return MediaType.MOVIE
         if title_type in cls._TV_TYPES:
@@ -141,12 +188,16 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     @staticmethod
     def _normalize_name(value: Optional[str]) -> str:
-        """移除标题标点与空白，生成用于精确比较的稳定文本。"""
+        """
+        移除标题标点与空白，生成用于精确比较的稳定文本。
+        """
         return re.sub(r"[\W_]+", "", value or "", flags=re.UNICODE).casefold()
 
     @classmethod
     def _name_matches(cls, query: str, names: list[Optional[str]]) -> bool:
-        """判断查询标题是否与任一 IMDb 标题或别名精确匹配。"""
+        """
+        判断查询标题是否与任一 IMDb 标题或别名精确匹配。
+        """
         normalized_query = cls._normalize_name(query)
         return bool(
             normalized_query
@@ -159,7 +210,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     @classmethod
     def _normalize_imdb_id(cls, media_id: object) -> Optional[str]:
-        """校验并规范化 IMDb 的 ``tt`` 数字 ID。"""
+        """
+        校验并规范化 IMDb 的 ``tt`` 数字 ID。
+        """
         value = str(media_id or "").strip().lower()
         return value if cls._IMDB_ID_PATTERN.fullmatch(value) else None
 
@@ -167,7 +220,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     def _supports_request_type(
         cls, meta: Optional[MetaBase], mtype: Optional[MediaType]
     ) -> bool:
-        """限制 IMDb Module 只处理电影和电视剧请求。"""
+        """
+        限制 IMDb Module 只处理电影和电视剧请求。
+        """
         requested_type = mtype or getattr(meta, "type", None)
         return requested_type not in {MediaType.MUSIC, MediaType.MUSIC.value, "music"}
 
@@ -179,7 +234,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         media_source: Optional[MediaSource],
         media_id: Optional[str],
     ) -> Optional[_ImdbRecognitionPlan]:
-        """统一校验媒体类型、来源选择和显式 IMDb ID。"""
+        """
+        统一校验媒体类型、来源选择和显式 IMDb ID。
+        """
         if not cls._supports_request_type(meta, mtype):
             return None
         requested_source = normalize_media_source(media_source)
@@ -202,7 +259,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         meta: Optional[MetaBase],
         media_source: Optional[MediaSourceSelection],
     ) -> _ImdbSearchPlan:
-        """统一决定 IMDb 搜索是否响应以及是否具备查询标题。"""
+        """
+        统一决定 IMDb 搜索是否响应以及是否具备查询标题。
+        """
         enabled = is_media_source_enabled(media_source, MediaSource.IMDb)
         return _ImdbSearchPlan(
             enabled=enabled,
@@ -211,7 +270,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     @staticmethod
     def _recognize_names(meta: MetaBase) -> list[str]:
-        """按中文、简体中文、英文和解析主标题顺序生成识别词。"""
+        """
+        按中文、简体中文、英文和解析主标题顺序生成识别词。
+        """
         simplified_name = (
             zhconv_convert(meta.cn_name, "zh-hans") if meta.cn_name else None
         )
@@ -225,7 +286,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         mtype: Optional[MediaType],
         year: Optional[str],
     ) -> list[ImdbTitle]:
-        """按支持类型、请求类型和年份给 IMDb 候选项排序。"""
+        """
+        按支持类型、请求类型和年份给 IMDb 候选项排序。
+        """
         candidates = [
             title
             for title in titles
@@ -255,7 +318,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         mtype: Optional[MediaType],
         year: Optional[str],
     ) -> _ImdbCandidatePlan:
-        """生成直接标题匹配和最多十个别名回查候选。"""
+        """
+        生成直接标题匹配和最多十个别名回查候选。
+        """
         candidates = cls._candidate_titles(titles, mtype, year)
         direct_match = next(
             (
@@ -279,7 +344,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         mtype: Optional[MediaType],
         year: Optional[str],
     ) -> Optional[ImdbTitle]:
-        """同步选取标题、原名或别名精确命中的 IMDb 候选项。"""
+        """
+        同步选取标题、原名或别名精确命中的 IMDb 候选项。
+        """
         plan = self._candidate_plan(query, titles, mtype, year)
         if plan.direct_match:
             return plan.direct_match
@@ -298,7 +365,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         mtype: Optional[MediaType],
         year: Optional[str],
     ) -> Optional[ImdbTitle]:
-        """异步选取标题、原名或别名精确命中的 IMDb 候选项。"""
+        """
+        异步选取标题、原名或别名精确命中的 IMDb 候选项。
+        """
         plan = self._candidate_plan(query, titles, mtype, year)
         if plan.direct_match:
             return plan.direct_match
@@ -313,7 +382,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     def _match_by_meta(
         self, meta: MetaBase, mtype: Optional[MediaType]
     ) -> Optional[ImdbTitle]:
-        """同步按解析元数据搜索并匹配一个 IMDb 条目。"""
+        """
+        同步按解析元数据搜索并匹配一个 IMDb 条目。
+        """
         if not self.imdb_api:
             return None
         requested_type = mtype or meta.type
@@ -328,7 +399,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     async def _async_match_by_meta(
         self, meta: MetaBase, mtype: Optional[MediaType]
     ) -> Optional[ImdbTitle]:
-        """异步按解析元数据搜索并匹配一个 IMDb 条目。"""
+        """
+        异步按解析元数据搜索并匹配一个 IMDb 条目。
+        """
         if not self.imdb_api:
             return None
         requested_type = mtype or meta.type
@@ -346,7 +419,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     def _person_credit(
         credit: ImdbCredit, *, director: bool = False
     ) -> Optional[dict]:
-        """把 IMDb 演职员条目转换为统一演职员摘要。"""
+        """
+        把 IMDb 演职员条目转换为统一演职员摘要。
+        """
         if not credit.name or not credit.name.display_name:
             return None
         image_url = credit.name.primary_image.url if credit.name.primary_image else None
@@ -368,7 +443,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     @staticmethod
     def _backdrop_url(images: list[ImdbImage]) -> Optional[str]:
-        """按剧照、幕后照顺序选择一张 IMDb 背景图。"""
+        """
+        按剧照、幕后照顺序选择一张 IMDb 背景图。
+        """
         for image_type in ("still_frame", "behind_the_scenes"):
             if image := next(
                 (item for item in images if item.type == image_type and item.url),
@@ -387,7 +464,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         seasons: Optional[list[ImdbSeason]] = None,
         images: Optional[list[ImdbImage]] = None,
     ) -> MediaInfo:
-        """把 IMDb 详情及关联资源转换为统一媒体信息。"""
+        """
+        把 IMDb 详情及关联资源转换为统一媒体信息。
+        """
         akas = akas or []
         credits = credits or []
         episodes = episodes or []
@@ -516,7 +595,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         mtype: Optional[MediaType],
         year: Optional[str],
     ) -> list[MediaInfo]:
-        """排序过滤 IMDb 搜索候选并投影为统一媒体信息。"""
+        """
+        排序过滤 IMDb 搜索候选并投影为统一媒体信息。
+        """
         return [
             cls._to_media_info(title)
             for title in cls._candidate_titles(titles, mtype, year)
@@ -526,7 +607,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     def _finish_recognition(
         media_info: MediaInfo, meta: Optional[MetaBase]
     ) -> MediaInfo:
-        """保留解析季号并统一记录 IMDb 识别结果。"""
+        """
+        保留解析季号并统一记录 IMDb 识别结果。
+        """
         if meta and meta.begin_season is not None:
             media_info.season = meta.begin_season
         logger.info(
@@ -539,7 +622,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return media_info
 
     def _load_media_info(self, title: ImdbTitle) -> MediaInfo:
-        """同步补齐一个 IMDb 条目的别名、演职员、剧集和图片。"""
+        """
+        同步补齐一个 IMDb 条目的别名、演职员、剧集和图片。
+        """
         if not self.imdb_api:
             return self._to_media_info(title)
         details = self.imdb_api.get_title(title.id) or title
@@ -562,7 +647,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
 
     async def _async_load_media_info(self, title: ImdbTitle) -> MediaInfo:
-        """并发补齐一个 IMDb 条目的别名、演职员、剧集和图片。"""
+        """
+        并发补齐一个 IMDb 条目的别名、演职员、剧集和图片。
+        """
         if not self.imdb_api:
             return self._to_media_info(title)
         is_tv = self._media_type(title.type) == MediaType.TV
@@ -595,7 +682,18 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         cache: bool = True,
         **kwargs,
     ) -> Optional[MediaInfo]:
-        """按 IMDb 显式身份或标题元数据同步识别影视信息。"""
+        """
+        按明确 IMDb 身份或标题线索识别影视媒体。
+
+        :param meta: 标题、年份、季号等解析线索，明确身份查询时可省略
+        :param mtype: 目标媒体类型，用于候选筛选
+        :param media_source: 显式识别来源，其他来源不响应
+        :param media_id: IMDb 原生条目标识
+        :param episode_group: 兼容统一识别接口，当前不使用
+        :param cache: 兼容统一识别接口，当前不改变底层请求缓存行为
+        :param kwargs: 统一识别接口额外参数，当前不使用
+        :return: 补充详情后的统一媒体模型；客户端未初始化、请求不适用或无匹配时为 None
+        """
         del episode_group, cache, kwargs
         if not self.imdb_api:
             return None
@@ -621,7 +719,18 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         cache: bool = True,
         **kwargs,
     ) -> Optional[MediaInfo]:
-        """按 IMDb 显式身份或标题元数据异步识别影视信息。"""
+        """
+        异步按明确 IMDb 身份或标题线索识别影视媒体。
+
+        :param meta: 标题、年份、季号等解析线索，明确身份查询时可省略
+        :param mtype: 目标媒体类型，用于候选筛选
+        :param media_source: 显式识别来源，其他来源不响应
+        :param media_id: IMDb 原生条目标识
+        :param episode_group: 兼容统一识别接口，当前不使用
+        :param cache: 兼容统一识别接口，当前不改变底层请求缓存行为
+        :param kwargs: 统一识别接口额外参数，当前不使用
+        :return: 补充详情后的统一媒体模型；客户端未初始化、请求不适用或无匹配时为 None
+        """
         del episode_group, cache, kwargs
         if not self.imdb_api:
             return None
@@ -643,7 +752,13 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         meta: MetaBase,
         media_source: Optional[MediaSourceSelection] = None,
     ) -> Optional[list[MediaInfo]]:
-        """按请求级来源选择同步搜索 IMDb 影视条目。"""
+        """
+        按来源选择搜索 IMDb 条目，并筛选媒体类型和年份。
+
+        :param meta: 包含标题、类型和可选年份的搜索线索
+        :param media_source: 本次搜索启用的来源选择条件
+        :return: 统一媒体列表；来源未启用为 None，客户端未初始化、标题缺失或无结果时为空列表
+        """
         plan = self._search_plan(meta, media_source)
         if not plan.enabled:
             return None
@@ -660,7 +775,13 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         meta: MetaBase,
         media_source: Optional[MediaSourceSelection] = None,
     ) -> Optional[list[MediaInfo]]:
-        """按请求级来源选择异步搜索 IMDb 影视条目。"""
+        """
+        异步按来源选择搜索 IMDb 条目，并筛选媒体类型和年份。
+
+        :param meta: 包含标题、类型和可选年份的搜索线索
+        :param media_source: 本次搜索启用的来源选择条件
+        :return: 统一媒体列表；来源未启用为 None，客户端未初始化、标题缺失或无结果时为空列表
+        """
         plan = self._search_plan(meta, media_source)
         if not plan.enabled:
             return None
@@ -672,7 +793,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
 
     def clear_cache(self) -> None:
-        """清理 IMDb 请求缓存并记录统一模块日志。"""
+        """
+        清理 IMDb 请求缓存并记录统一模块日志。
+        """
         if not self.imdb_api:
             return
         logger.info("开始清除 IMDb 缓存 ...")
@@ -680,7 +803,12 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         logger.info("IMDb 缓存清除完成")
 
     def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
-        """为 IMDb 媒体信息同步补充缺失的背景图片。"""
+        """
+        为 IMDb 媒体补充缺失的背景图。
+
+        :param mediainfo: 待补充的媒体对象，背景图字段可能原地修改
+        :return: 原对象，已有背景图时直接返回；来源不符、客户端不可用或标识无效时为 None
+        """
         if mediainfo.media_source != MediaSource.IMDb or not self.imdb_api:
             return None
         if mediainfo.backdrop_path:
@@ -694,7 +822,12 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return mediainfo
 
     async def async_obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
-        """为 IMDb 媒体信息异步补充缺失的背景图片。"""
+        """
+        异步为 IMDb 媒体补充缺失的背景图。
+
+        :param mediainfo: 待补充的媒体对象，背景图字段可能原地修改
+        :return: 原对象，已有背景图时直接返回；来源不符、客户端不可用或标识无效时为 None
+        """
         if mediainfo.media_source != MediaSource.IMDb or not self.imdb_api:
             return None
         if mediainfo.backdrop_path:
@@ -714,7 +847,15 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         episode: Optional[int] = None,
         **kwargs,
     ) -> Optional[bytes]:
-        """生成 IMDb 来源的 UTF-8 编码 NFO XML 字节。"""
+        """
+        为选择 IMDb 刮削来源的媒体生成 NFO。
+
+        :param mediainfo: 统一媒体对象，scrape_source 优先于全局配置
+        :param season: 可选季号
+        :param episode: 可选集号
+        :param kwargs: 统一刮削接口的额外参数，当前不读取
+        :return: UTF-8 XML 字节；来源不符、刮削器未初始化或无法生成时为 None
+        """
         del kwargs
         if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != MediaSource.IMDb.value:
             return None
@@ -730,7 +871,14 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         season: Optional[int] = None,
         episode: Optional[int] = None,
     ) -> Optional[dict]:
-        """生成 IMDb 来源的图片文件名与下载地址映射。"""
+        """
+        为选择 IMDb 刮削来源的媒体生成图片清单。
+
+        :param mediainfo: 统一媒体对象，scrape_source 优先于全局配置
+        :param season: 可选季号
+        :param episode: 可选集号
+        :return: 图片文件名与地址映射；来源不符或刮削器未初始化时为 None
+        """
         if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != MediaSource.IMDb.value:
             return None
         if not self.scraper:

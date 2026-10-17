@@ -1,4 +1,6 @@
-"""订阅搜索持久批次与任务模型。"""
+"""
+订阅搜索持久批次与任务模型。
+"""
 
 from typing import Optional
 
@@ -9,7 +11,9 @@ from app.db.base import Base, get_id_column
 
 
 class SubscriptionSearchBatch(Base):
-    """记录一次订阅搜索请求及其可观察聚合终态。"""
+    """
+    记录一次订阅搜索请求及其可观察聚合终态。
+    """
 
     id = get_id_column()
     batch_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -35,7 +39,9 @@ class SubscriptionSearchBatch(Base):
 
 
 class SubscriptionSearchTask(Base):
-    """记录一个具有 single-flight、租约和恢复游标的订阅搜索任务。"""
+    """
+    记录一个具有 single-flight、租约和恢复游标的订阅搜索任务。
+    """
 
     id = get_id_column()
     task_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -80,7 +86,9 @@ class SubscriptionSearchTask(Base):
 
 
 class SubscriptionSiteBudget(Base):
-    """记录兜底搜索对单个站点的唯一租约与错误冷却。"""
+    """
+    记录兜底搜索对单个站点的唯一租约与错误冷却。
+    """
 
     id = get_id_column()
     site_id: Mapped[int] = mapped_column(Integer, nullable=False)

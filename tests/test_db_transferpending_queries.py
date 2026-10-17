@@ -22,7 +22,9 @@ from app.db.oper.transferpending import TransferPendingOper
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把待整理表纳入用例级回收。"""
+    """
+    把待整理表纳入用例级回收。
+    """
     db.watermark(TransferPending)
     db.watermark(TransferExecutionStep)
 
@@ -33,7 +35,9 @@ def _leased_pending(
         execution_state: str,
         admission_state: str = "accepted",
 ) -> TransferPending:
-    """构造持有有效租约且其余执行证据为空的 pending。"""
+    """
+    构造持有有效租约且其余执行证据为空的 pending。
+    """
     return TransferPending(
         task_id=task_id,
         storage="local",
@@ -57,7 +61,9 @@ def _leased_pending(
 
 
 def _planning_input(path: str) -> TransferPlanningInput:
-    """构造准入仓储要求的真实版本化规划输入。"""
+    """
+    构造准入仓储要求的真实版本化规划输入。
+    """
     return TransferPlanningInput(
         source_fileitem={
             "storage": "local",
@@ -71,7 +77,9 @@ def _planning_input(path: str) -> TransferPlanningInput:
 
 
 def _planning_fields(path: str) -> dict[str, object]:
-    """返回 direct model/Oper 准入所需的显式版本化字段。"""
+    """
+    返回 direct model/Oper 准入所需的显式版本化字段。
+    """
     planning_input = _planning_input(path)
     return {
         "input_version": planning_input.schema_version,
@@ -81,7 +89,9 @@ def _planning_fields(path: str) -> dict[str, object]:
 
 
 def test_stage_admit_is_idempotent_and_keeps_stable_task_id(db):
-    """显式准入重复执行时必须复用首个稳定任务标识。"""
+    """
+    显式准入重复执行时必须复用首个稳定任务标识。
+    """
     first = TransferPending.stage_admit(
         db.session,
         task_id="task-first",
@@ -107,7 +117,9 @@ def test_stage_admit_is_idempotent_and_keeps_stable_task_id(db):
 
 
 def test_unfenced_legacy_mutation_apis_are_absent() -> None:
-    """持久整理表不得重新暴露绕过稳定任务身份和租约的旧写入口。"""
+    """
+    持久整理表不得重新暴露绕过稳定任务身份和租约的旧写入口。
+    """
     for owner in (TransferPending, TransferPendingOper):
         for method_name in (
                 "register",
@@ -131,7 +143,9 @@ def test_unfenced_legacy_mutation_apis_are_absent() -> None:
 
 
 def test_state_queries_and_failure_record_share_stable_identity(db):
-    """状态查询与失败留痕应共享同一稳定身份。"""
+    """
+    状态查询与失败留痕应共享同一稳定身份。
+    """
     TransferPending.stage_admit(
         db.session,
         task_id="task-accepted",
@@ -175,7 +189,9 @@ def test_state_queries_and_failure_record_share_stable_identity(db):
 
 
 def test_oper_staging_reuses_explicit_write_session(db, monkeypatch):
-    """Oper 的新暂存入口必须服从调用方 Session，不得隐式提交。"""
+    """
+    Oper 的新暂存入口必须服从调用方 Session，不得隐式提交。
+    """
     monkeypatch.setattr(
         db_base,
         "run_sync_transaction",
@@ -204,7 +220,9 @@ def test_oper_staging_reuses_explicit_write_session(db, monkeypatch):
 
 
 def test_transactional_repository_commits_frozen_projections(tmp_path):
-    """适配器应独立提交 UoW，并在会话关闭前冻结应用 DTO。"""
+    """
+    适配器应独立提交 UoW，并在会话关闭前冻结应用 DTO。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'transfer.db'}")
     TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
@@ -272,7 +290,9 @@ def test_abandon_unstarted_allows_only_pristine_execution_state(
         execution_state,
         expected_deleted,
 ) -> None:
-    """缺失源注销必须拒绝所有已开始、待重试、结算和人工状态。"""
+    """
+    缺失源注销必须拒绝所有已开始、待重试、结算和人工状态。
+    """
     task_id = f"abandon-{execution_state}"
     db.add(_leased_pending(task_id=task_id, execution_state=execution_state))
     db.session.flush()
@@ -297,7 +317,9 @@ def test_abandon_unstarted_rejects_nonaccepted_admission_state(
         db,
         admission_state,
 ) -> None:
-    """已进入 provider 或计划态的任务即使无步骤也不得按缺失源删除。"""
+    """
+    已进入 provider 或计划态的任务即使无步骤也不得按缺失源删除。
+    """
     task_id = f"abandon-{admission_state}"
     db.add(_leased_pending(
         task_id=task_id,
@@ -316,7 +338,9 @@ def test_abandon_unstarted_rejects_nonaccepted_admission_state(
 
 
 def test_abandon_unstarted_rejects_task_with_any_step_evidence(db) -> None:
-    """即使聚合状态尚未推进，已落库步骤也必须阻止删除 pending。"""
+    """
+    即使聚合状态尚未推进，已落库步骤也必须阻止删除 pending。
+    """
     task_id = "abandon-with-step"
     db.add(_leased_pending(task_id=task_id, execution_state="not_started"))
     db.add(TransferExecutionStep(
@@ -349,7 +373,9 @@ def test_abandon_unstarted_rejects_task_with_any_step_evidence(db) -> None:
 
 
 def test_abandon_unstarted_rejects_task_with_terminal_history_evidence(db) -> None:
-    """已有任务关联历史时不得删除 pending，避免掩盖未闭环结算。"""
+    """
+    已有任务关联历史时不得删除 pending，避免掩盖未闭环结算。
+    """
     task_id = "abandon-with-history"
     db.add(_leased_pending(task_id=task_id, execution_state="not_started"))
     db.add(TransferHistory(
@@ -371,29 +397,43 @@ def test_abandon_unstarted_rejects_task_with_terminal_history_evidence(db) -> No
 
 
 def test_transactional_repository_rolls_back_failed_write(monkeypatch):
-    """适配器写入异常时必须回滚自身 UoW 并传播原异常。"""
+    """
+    适配器写入异常时必须回滚自身 UoW 并传播原异常。
+    """
     class SessionContext:
-        """为回滚断言提供最小 Session 上下文。"""
+        """
+        为回滚断言提供最小 Session 上下文。
+        """
 
         def __init__(self):
-            """初始化提交与回滚计数。"""
+            """
+            初始化提交与回滚计数。
+            """
             self.commits = 0
             self.rollbacks = 0
 
         def __enter__(self):
-            """返回当前伪会话。"""
+            """
+            返回当前伪会话。
+            """
             return self
 
         def __exit__(self, _exc_type, _exc_value, _traceback):
-            """不吞掉被测异常。"""
+            """
+            不吞掉被测异常。
+            """
             return False
 
         def commit(self):
-            """记录提交调用。"""
+            """
+            记录提交调用。
+            """
             self.commits += 1
 
         def rollback(self):
-            """记录回滚调用。"""
+            """
+            记录回滚调用。
+            """
             self.rollbacks += 1
 
     session = SessionContext()

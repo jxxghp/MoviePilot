@@ -1,3 +1,7 @@
+"""
+验证文件管理中的特别篇目录和第零季处理。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -7,7 +11,9 @@ from app.schemas.types import MediaType
 
 
 def test_local_media_exists_keeps_special_season_zero():
-    """本地 S00 文件必须归入特别季，不能计入第一季。"""
+    """
+    本地 S00 文件必须归入特别季，不能计入第一季。
+    """
     module = FileManagerModule()
     module.media_files = lambda _mediainfo: [SimpleNamespace(basename="Test.Show.S00E01.mkv")]
     mediainfo = MediaInfo(title="Test Show", type=MediaType.TV)

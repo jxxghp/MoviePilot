@@ -1,3 +1,7 @@
+"""
+管理内置、本地及市场技能的发现、安装与来源记录。
+"""
+
 import io
 import json
 import re
@@ -37,7 +41,26 @@ _OFFICIAL_SKILL_REPOS = {
 
 @dataclass
 class SkillInfo:
-    """描述本地或市场中的一个 Skill。"""
+    """
+    描述本地或市场中的一个 Skill。
+
+    :param id: 本地注册或市场记录使用的技能标识
+    :param name: 供用户识别的技能名称
+    :param description: 技能用途与适用场景说明
+    :param version: 技能版本号；未知时为 0
+    :param path: 已安装技能的本地路径；尚未安装时可为空
+    :param source_type: 技能来源类别，默认 local 表示本地来源
+    :param source_label: 供用户显示的来源名称
+    :param repo_url: 来源代码仓库地址；非仓库来源可为 None
+    :param repo_name: 来源仓库名称；非仓库来源可为 None
+    :param skill_path: 技能在来源仓库中的相对目录；不适用时为 None
+    :param registry_url: 技能注册服务地址；无注册服务时为 None
+    :param registry_name: 技能注册服务名称；无注册服务时为 None
+    :param registry_slug: 技能在注册服务中的定位标识；不适用时为 None
+    :param download_url: 可用的技能下载地址；尚未提供时为 None
+    :param installed: 技能是否已安装到当前实例
+    :param removable: 是否允许通过管理界面移除此技能
+    """
 
     id: str
     name: str
@@ -59,7 +82,14 @@ class SkillInfo:
 
 @dataclass
 class SkillMarketSource:
-    """描述一个 Skill 市场来源及其可移除状态。"""
+    """
+    描述一个 Skill 市场来源及其可移除状态。
+
+    :param source: 技能市场或代码仓库的来源地址
+    :param label: 用于展示的来源名称
+    :param builtin: 是否属于宿主内置来源，默认 True
+    :param removable: 是否允许从市场来源列表移除，默认 False
+    """
 
     source: str
     label: str

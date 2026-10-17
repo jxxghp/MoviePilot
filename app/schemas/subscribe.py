@@ -1,3 +1,7 @@
+"""
+订阅、搜索执行进度与订阅分享接口的数据结构。
+"""
+
 import json
 from typing import Any, ClassVar, Dict, List, Literal, Optional
 
@@ -9,25 +13,31 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM as _MUSIC_ENTITY_ALBUM
 from app.schemas.types import MediaSource, MediaType
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class SubscriptionActivityEvent(BaseModel):  # type: ignore[misc]
-    """面向用户的结构化业务活动，明细只包含安全资源摘要。"""
+    """
+    面向用户的结构化业务活动，明细只包含安全资源摘要。
+    """
 
-    event_id: str
-    kind: str
-    source: str
-    status: str
-    started_at: str
-    finished_at: Optional[str] = None
-    counts: Dict[str, int] = Field(default_factory=dict)
-    details: Dict[str, JsonData] = Field(default_factory=dict)
-    details_loaded: bool = True
+    event_id: str = Field(description="活动事件标识")
+    kind: str = Field(description="订阅业务活动类型")
+    source: str = Field(description="触发该业务活动的入口或来源")
+    status: str = Field(description="本次订阅业务轮次的运行或结束状态，独立于订阅是否启用")
+    started_at: str = Field(description="开始时间")
+    finished_at: Optional[str] = Field(default=None, description="结束时间")
+    counts: Dict[str, int] = Field(default_factory=dict, description="活动事件涉及的分类计数")
+    details: Dict[str, JsonData] = Field(default_factory=dict, description="活动事件的详细数据")
+    details_loaded: bool = Field(default=True, description="是否已加载活动详情")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class SubscriptionActivityPage(BaseModel):  # type: ignore[misc]
-    """业务活动游标分页；升级前的记录不会由运行日志补造。"""
+    """
+    业务活动游标分页；升级前的记录不会由运行日志补造。
+    """
 
-    items: List[SubscriptionActivityEvent] = Field(default_factory=list)
-    next_cursor: Optional[str] = None
+    items: List[SubscriptionActivityEvent] = Field(default_factory=list, description="当前页条目列表")
+    next_cursor: Optional[str] = Field(default=None, description="下一页查询游标，为空时没有后续记录")
 
 
 def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]:
@@ -36,6 +46,9 @@ def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]
 
     普通电视剧按 ``total_episode - lack_episode`` 计算；分集洗版按订阅目标范围内
     priority==100 的分集数量计算；全集洗版按整包准入基线是否达到 100 计算。
+
+    :param subscribe: 需要计算进度的订阅快照
+    :return: 已完成集数；不是电视剧或没有总集数时返回 None
     """
     total_episode = subscribe.total_episode or 0
     if subscribe.type != MediaType.TV.value or not total_episode:
@@ -69,9 +82,16 @@ def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]
 
 
 def compute_subscribe_completed_tracks(subscribe: Any) -> Optional[int]:
-    """计算专辑订阅已累计曲目数，仅用于响应派生，不把内部音轨键暴露给客户端。"""
+    """
+    计算专辑订阅已累计曲目数，仅用于响应派生，不把内部音轨键暴露给客户端。
+
+    :param subscribe: 含下载曲目事实的订阅对象或字典
+    :return: 去重后的已下载曲目数，不超过总曲目数；不满足专辑进度条件时返回 None
+    """
     def value(name: str) -> Any:
-        """从快照、ORM 行或字典读取订阅字段。"""
+        """
+        从快照、ORM 行或字典读取订阅字段。
+        """
         if isinstance(subscribe, dict):
             return subscribe.get(name)
         return getattr(subscribe, name, None)
@@ -98,61 +118,74 @@ def compute_subscribe_completed_tracks(subscribe: Any) -> Optional[int]:
     return min(completed_tracks, total_tracks)
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class SubscriptionExecutionStatus(BaseModel):  # type: ignore[misc]
-    """订阅列表可见的当前业务执行状态。"""
+    """
+    订阅列表可见的当前业务执行状态。
+    """
 
-    state: str
-    phase: str
-    updated_at: str
-    source: Optional[str] = None
-    batch_id: Optional[str] = None
-    task_id: Optional[str] = None
-    current_site_id: Optional[int] = None
-    next_run_at: Optional[str] = None
-    error: Optional[str] = None
-    can_cancel: bool = False
+    state: str = Field(description="当前业务状态")
+    phase: str = Field(description="当前执行阶段")
+    updated_at: str = Field(description="更新时间")
+    source: Optional[str] = Field(default=None, description="触发本轮订阅执行的入口或来源")
+    batch_id: Optional[str] = Field(default=None, description="所属批次标识")
+    task_id: Optional[str] = Field(default=None, description="任务标识")
+    current_site_id: Optional[int] = Field(default=None, description="正在处理的站点标识")
+    next_run_at: Optional[str] = Field(default=None, description="下次计划执行时间")
+    error: Optional[str] = Field(default=None, description="错误摘要")
+    can_cancel: bool = Field(default=False, description="当前任务是否允许取消")
 
     model_config = ConfigDict(from_attributes=True)
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class SubscriptionBatchStatus(BaseModel):  # type: ignore[misc]
-    """订阅搜索批次的用户可见进度和操作能力。"""
+    """
+    订阅搜索批次的用户可见进度和操作能力。
+    """
 
-    batch_id: str
-    source: str
-    state: str
-    phase: str
-    total_count: int
-    processed_count: int
-    finished_count: int
-    failed_count: int
-    cancelled_count: int
-    created_at: str
-    updated_at: str
-    skipped_count: int = 0
-    current_subscription_id: Optional[int] = None
-    current_site_id: Optional[int] = None
-    error: Optional[str] = None
-    can_cancel: bool = False
+    batch_id: str = Field(description="所属批次标识")
+    source: str = Field(description="触发搜索批次的入口或来源")
+    state: str = Field(description="当前业务状态")
+    phase: str = Field(description="当前执行阶段")
+    total_count: int = Field(description="总条目数量")
+    processed_count: int = Field(description="已处理的任务数量")
+    finished_count: int = Field(description="已结束的任务数量")
+    failed_count: int = Field(description="执行失败的任务数量")
+    cancelled_count: int = Field(description="已取消的任务数量")
+    created_at: str = Field(description="创建时间")
+    updated_at: str = Field(description="更新时间")
+    skipped_count: int = Field(default=0, description="已跳过的订阅任务数量")
+    current_subscription_id: Optional[int] = Field(default=None, description="正在处理的订阅标识")
+    current_site_id: Optional[int] = Field(default=None, description="正在处理的站点标识")
+    error: Optional[str] = Field(default=None, description="错误摘要")
+    can_cancel: bool = Field(default=False, description="当前任务是否允许取消")
 
     model_config = ConfigDict(from_attributes=True)
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class SubscriptionSearchSubmission(BaseModel):  # type: ignore[misc]
-    """手工订阅搜索已安排后的轻量跟踪信息。"""
+    """
+    手工订阅搜索已安排后的轻量跟踪信息。
+    """
 
-    batch_id: Optional[str] = None
-    batch_ids: List[str] = Field(default_factory=list)
-    target_count: int = 0
-    queued_count: int = 0
-    ongoing_count: int = 0
-    single: bool = False
+    batch_id: Optional[str] = Field(default=None, description="所属批次标识")
+    batch_ids: List[str] = Field(default_factory=list, description="本次提交涉及的批次标识列表")
+    target_count: int = Field(default=0, description="本次搜索涉及的订阅数量")
+    queued_count: int = Field(default=0, description="本次新增排队任务数量")
+    ongoing_count: int = Field(default=0, description="已在运行且无需重复提交的任务数量")
+    single: bool = Field(default=False, description="本次是否为单条订阅搜索")
 
 
 class Subscribe(OptionalMediaIdentityMixin, BaseModel):
-    """订阅输入与响应模型，媒体身份必须为空对或完整有效对。"""
+    """
+    订阅输入与响应模型，媒体身份必须为空对或完整有效对。
 
-    # 表单清空可选设置时保留字段，更新接口才能用 None 覆盖旧值；媒体身份和集数仍单独处理。
+    :cvar CLEARABLE_OPTIONAL_FIELDS: 表单显式清空时保留为 None 的可选设置，用于覆盖旧值
+    :cvar PUBLIC_WRITE_EXCLUDED_FIELDS: 公共创建和更新接口禁止写入的系统字段与运行事实
+    """
+
     CLEARABLE_OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({
         "filter", "include", "exclude", "quality", "resolution", "effect",
         "audio_quality", "audio_format",
@@ -160,7 +193,6 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         "min_bitrate", "min_bit_depth", "min_sample_rate",
     })
 
-    # 公共创建和更新接口不得接收系统字段和运行事实；其余字段默认作为订阅输入透传。
     PUBLIC_WRITE_EXCLUDED_FIELDS: ClassVar[frozenset[str]] = frozenset({
         "id", "poster", "backdrop", "vote", "description", "lack_episode", "completed_episode", "completed_tracks",
         "note", "state", "last_update", "username", "current_priority", "episode_priority", "date",
@@ -169,119 +201,64 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         "execution_status", "last_search",
     })
 
-    id: Optional[int] = None
-    # 订阅名称
-    name: Optional[str] = None
-    # 订阅年份
-    year: Optional[str] = None
-    # 订阅类型 电影/电视剧
-    type: Optional[str] = None
-    # 定时搜索间隔（小时）；空值跟随系统设置
-    search_interval: Optional[int] = Field(default=None, ge=1, le=8760)
-    # 最近一次主动搜索开始时间，仅供读取
-    last_search: Optional[str] = None
-    # 搜索关键字
-    keyword: Optional[str] = None
-    media_source: Optional[MediaSource] = None
-    media_id: Optional[str] = None
-    # 音乐实体类型：recording 单曲、album 专辑
-    music_type: Optional[str] = None
-    # 专辑预期总曲目数
-    total_tracks: Optional[int] = None
-    # 已累计下载曲目数，仅由后端根据专辑音轨事实派生
-    completed_tracks: Optional[int] = None
-    # 季号
-    season: Optional[int] = None
-    # 海报
-    poster: Optional[str] = None
-    # 背景图
-    backdrop: Optional[str] = None
-    # 评分
-    vote: Optional[float] = 0.0
-    # 描述
-    description: Optional[str] = None
-    # 过滤规则
-    filter: Optional[str] = None
-    # 包含
-    include: Optional[str] = None
-    # 排除
-    exclude: Optional[str] = None
-    # 质量
-    quality: Optional[str] = None
-    # 分辨率
-    resolution: Optional[str] = None
-    # 特效
-    effect: Optional[str] = None
-    # 音乐音质等级，可用 | 组合 hires/lossless/lossy
-    audio_quality: Optional[str] = None
-    # 音频格式正则，如 FLAC|ALAC
-    audio_format: Optional[str] = None
-    # 最低码率（bps）
-    min_bitrate: Optional[int] = None
-    # 最低位深（bit）
-    min_bit_depth: Optional[int] = None
-    # 最低采样率（Hz）
-    min_sample_rate: Optional[int] = None
-    # 总集数
-    total_episode: Optional[int] = 0
-    # 开始集数
-    start_episode: Optional[int] = 0
-    # 缺失集数
-    lack_episode: Optional[int] = 0
-    # 已完成集数
-    completed_episode: Optional[int] = None
-    # 附加信息
-    note: Optional[List[int]] = None
-    # 状态：N-新建， R-订阅中
-    state: Optional[str] = None
-    # 最后更新时间
-    last_update: Optional[str] = None
-    # 订阅用户
-    username: Optional[str] = None
-    # 订阅站点
-    sites: Optional[List[int]] = Field(default_factory=list)
-    # 下载器
-    downloader: Optional[str] = None
-    # 是否洗版
-    best_version: Optional[int] = None
-    # 是否只洗全集整包
-    best_version_full: Optional[int] = None
-    # 当前优先级
-    current_priority: Optional[int] = None
-    # 当前音乐版本格式
-    current_audio_format: Optional[str] = None
-    # 当前音乐版本码率（bps）
-    current_bitrate: Optional[int] = None
-    # 当前音乐版本位深（bit）
-    current_bit_depth: Optional[int] = None
-    # 当前音乐版本采样率（Hz）
-    current_sample_rate: Optional[int] = None
-    # 洗版时已下载剧集的优先级状态
-    episode_priority: Optional[Dict[str, int]] = None
-    # 保存路径
-    save_path: Optional[str] = None
-    # 是否使用 imdbid 搜索
-    search_imdbid: Optional[int] = 0
-    # 时间
-    date: Optional[str] = None
-    # 自定义识别词
-    custom_words: Optional[str] = None
-    # 自定义媒体类别稳定标识
-    media_category_id: Optional[str] = None
-    # 自定义媒体类别兼容路径快照
-    media_category: Optional[str] = None
-    # 历史命中的分类规则标识，活动订阅中为空
-    classification_rule_id: Optional[str] = None
-    # 历史执行时分类策略版本，活动订阅中为空
-    classification_policy_revision: Optional[int] = None
-    # 历史最终分类来源，活动订阅中为空
-    classification_source: Optional[str] = None
-    # 过滤规则组
-    filter_groups: Optional[List[str]] = Field(default_factory=list)
-    # 剧集组
-    episode_group: Optional[str] = None
-    # 当前搜索或下载执行状态，只用于响应投影
-    execution_status: Optional[SubscriptionExecutionStatus] = None
+    id: Optional[int] = Field(default=None, description="记录标识")
+    name: Optional[str] = Field(default=None, description="订阅名称")
+    year: Optional[str] = Field(default=None, description="媒体发行年份")
+    type: Optional[str] = Field(default=None, description="订阅类型 电影/电视剧")
+    search_interval: Optional[int] = Field(default=None, ge=1, le=8760, description="定时搜索间隔（小时）；空值跟随系统设置")
+    last_search: Optional[str] = Field(default=None, description="最近一次主动搜索开始时间，仅供读取")
+    keyword: Optional[str] = Field(default=None, description="搜索关键字")
+    media_source: Optional[MediaSource] = Field(default=None, description="媒体数据源")
+    media_id: Optional[str] = Field(default=None, description="数据源原生 ID")
+    music_type: Optional[str] = Field(default=None, description="音乐实体类型：recording 单曲、album 专辑")
+    total_tracks: Optional[int] = Field(default=None, description="专辑预期总曲目数")
+    completed_tracks: Optional[int] = Field(default=None, description="已累计下载曲目数，仅由后端根据专辑音轨事实派生")
+    season: Optional[int] = Field(default=None, description="季号")
+    poster: Optional[str] = Field(default=None, description="海报")
+    backdrop: Optional[str] = Field(default=None, description="背景图")
+    vote: Optional[float] = Field(default=0.0, description="评分")
+    description: Optional[str] = Field(default=None, description="描述")
+    filter: Optional[str] = Field(default=None, description="过滤规则")
+    include: Optional[str] = Field(default=None, description="包含")
+    exclude: Optional[str] = Field(default=None, description="排除")
+    quality: Optional[str] = Field(default=None, description="质量")
+    resolution: Optional[str] = Field(default=None, description="分辨率")
+    effect: Optional[str] = Field(default=None, description="特效")
+    audio_quality: Optional[str] = Field(default=None, description="音乐音质等级，可用 | 组合 hires/lossless/lossy")
+    audio_format: Optional[str] = Field(default=None, description="音频格式正则，如 FLAC|ALAC")
+    min_bitrate: Optional[int] = Field(default=None, description="最低码率（bps）")
+    min_bit_depth: Optional[int] = Field(default=None, description="最低位深（bit）")
+    min_sample_rate: Optional[int] = Field(default=None, description="最低采样率（Hz）")
+    total_episode: Optional[int] = Field(default=0, description="总集数")
+    start_episode: Optional[int] = Field(default=0, description="开始集数")
+    lack_episode: Optional[int] = Field(default=0, description="缺失集数")
+    completed_episode: Optional[int] = Field(default=None, description="已完成集数")
+    note: Optional[List[int]] = Field(default=None, description="附加信息")
+    state: Optional[str] = Field(default=None, description="状态：N-新建， R-订阅中")
+    last_update: Optional[str] = Field(default=None, description="最后更新时间")
+    username: Optional[str] = Field(default=None, description="订阅用户")
+    sites: Optional[List[int]] = Field(default_factory=list, description="订阅站点")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    best_version: Optional[int] = Field(default=None, description="是否洗版")
+    best_version_full: Optional[int] = Field(default=None, description="是否只洗全集整包")
+    current_priority: Optional[int] = Field(default=None, description="当前优先级")
+    current_audio_format: Optional[str] = Field(default=None, description="当前音乐版本格式")
+    current_bitrate: Optional[int] = Field(default=None, description="当前音乐版本码率（bps）")
+    current_bit_depth: Optional[int] = Field(default=None, description="当前音乐版本位深（bit）")
+    current_sample_rate: Optional[int] = Field(default=None, description="当前音乐版本采样率（Hz）")
+    episode_priority: Optional[Dict[str, int]] = Field(default=None, description="洗版时已下载剧集的优先级状态")
+    save_path: Optional[str] = Field(default=None, description="保存路径")
+    search_imdbid: Optional[int] = Field(default=0, description="是否使用 imdbid 搜索")
+    date: Optional[str] = Field(default=None, description="时间")
+    custom_words: Optional[str] = Field(default=None, description="自定义识别词")
+    media_category_id: Optional[str] = Field(default=None, description="自定义媒体类别稳定标识")
+    media_category: Optional[str] = Field(default=None, description="自定义媒体类别兼容路径快照")
+    classification_rule_id: Optional[str] = Field(default=None, description="历史命中的分类规则标识，活动订阅中为空")
+    classification_policy_revision: Optional[int] = Field(default=None, description="历史执行时分类策略版本，活动订阅中为空")
+    classification_source: Optional[str] = Field(default=None, description="历史最终分类来源，活动订阅中为空")
+    filter_groups: Optional[List[str]] = Field(default_factory=list, description="过滤规则组")
+    episode_group: Optional[str] = Field(default=None, description="剧集组")
+    execution_status: Optional[SubscriptionExecutionStatus] = Field(default=None, description="当前搜索或下载执行状态，只用于响应投影")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -332,7 +309,7 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     @model_validator(mode="after")
     def _fill_completed_episode(self) -> "Subscribe":
         """
-        填充 ``completed_episode`` 派生字段。电视剧订阅按 best_version 分支计算，
+        填充 ``completed_episode`` 派生字段。电视剧订阅按 best_version 分支计算，。
         电影或缺少 total_episode 时保持 None。
         """
         if self.completed_episode is not None:
@@ -342,7 +319,9 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         return self
 
     def to_public_write_payload(self, *, exclude_unset: bool = False) -> Dict[str, Any]:
-        """裁剪公共订阅写入字段，可仅保留更新请求显式提交的字段。"""
+        """
+        裁剪公共订阅写入字段，可仅保留更新请求显式提交的字段。
+        """
         return self.model_dump(
             exclude=self.PUBLIC_WRITE_EXCLUDED_FIELDS,
             exclude_unset=exclude_unset,
@@ -350,147 +329,110 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
 
 
 class SubscribeShare(OptionalMediaIdentityMixin, BaseModel):
-    """可供其他用户复用的订阅分享信息。"""
+    """
+    可供其他用户复用的订阅分享信息。
+    """
 
-    # 分享ID
-    id: Optional[int] = None
-    # 订阅ID
-    subscribe_id: Optional[int] = None
-    # 分享标题
-    share_title: Optional[str] = None
-    # 分享说明
-    share_comment: Optional[str] = None
-    # 分享人
-    share_user: Optional[str] = None
-    # 分享人唯一ID
-    share_uid: Optional[str] = None
-    # 订阅名称
-    name: Optional[str] = None
-    # 订阅年份
-    year: Optional[str] = None
-    # 订阅类型 电影/电视剧
-    type: Optional[str] = None
-    # 搜索关键字
-    keyword: Optional[str] = None
-    media_source: Optional[MediaSource] = None
-    media_id: Optional[str] = None
-    # 音乐实体类型：recording 单曲、album 专辑
-    music_type: Optional[str] = None
-    # 专辑预期总曲目数
-    total_tracks: Optional[int] = None
-    # 季号
-    season: Optional[int] = None
-    # 海报
-    poster: Optional[str] = None
-    # 背景图
-    backdrop: Optional[str] = None
-    # 评分
-    vote: Optional[float] = 0.0
-    # 描述
-    description: Optional[str] = None
-    # 包含
-    include: Optional[str] = None
-    # 排除
-    exclude: Optional[str] = None
-    # 质量
-    quality: Optional[str] = None
-    # 分辨率
-    resolution: Optional[str] = None
-    # 特效
-    effect: Optional[str] = None
-    # 音乐音质等级
-    audio_quality: Optional[str] = None
-    # 音频格式
-    audio_format: Optional[str] = None
-    # 最低码率（bps）
-    min_bitrate: Optional[int] = None
-    # 最低位深（bit）
-    min_bit_depth: Optional[int] = None
-    # 最低采样率（Hz）
-    min_sample_rate: Optional[int] = None
-    # 总集数
-    total_episode: Optional[int] = 0
-    # 时间
-    date: Optional[str] = None
-    # 自定义识别词
-    custom_words: Optional[str] = None
-    # 自定义媒体类别稳定标识
-    media_category_id: Optional[str] = None
-    # 自定义媒体类别兼容路径快照
-    media_category: Optional[str] = None
-    # 自定义剧集组
-    episode_group: Optional[str] = None
-    # 复用人次
-    count: Optional[int] = 0
+    id: Optional[int] = Field(default=None, description="分享ID")
+    subscribe_id: Optional[int] = Field(default=None, description="订阅ID")
+    share_title: Optional[str] = Field(default=None, description="分享标题")
+    share_comment: Optional[str] = Field(default=None, description="分享说明")
+    share_user: Optional[str] = Field(default=None, description="分享人")
+    share_uid: Optional[str] = Field(default=None, description="分享人唯一ID")
+    name: Optional[str] = Field(default=None, description="订阅名称")
+    year: Optional[str] = Field(default=None, description="媒体发行年份")
+    type: Optional[str] = Field(default=None, description="订阅类型 电影/电视剧")
+    keyword: Optional[str] = Field(default=None, description="搜索关键字")
+    media_source: Optional[MediaSource] = Field(default=None, description="媒体数据源")
+    media_id: Optional[str] = Field(default=None, description="数据源原生 ID")
+    music_type: Optional[str] = Field(default=None, description="音乐实体类型：recording 单曲、album 专辑")
+    total_tracks: Optional[int] = Field(default=None, description="专辑预期总曲目数")
+    season: Optional[int] = Field(default=None, description="季号")
+    poster: Optional[str] = Field(default=None, description="海报")
+    backdrop: Optional[str] = Field(default=None, description="背景图")
+    vote: Optional[float] = Field(default=0.0, description="评分")
+    description: Optional[str] = Field(default=None, description="描述")
+    include: Optional[str] = Field(default=None, description="包含")
+    exclude: Optional[str] = Field(default=None, description="排除")
+    quality: Optional[str] = Field(default=None, description="质量")
+    resolution: Optional[str] = Field(default=None, description="分辨率")
+    effect: Optional[str] = Field(default=None, description="特效")
+    audio_quality: Optional[str] = Field(default=None, description="音乐音质等级")
+    audio_format: Optional[str] = Field(default=None, description="音频格式")
+    min_bitrate: Optional[int] = Field(default=None, description="最低码率（bps）")
+    min_bit_depth: Optional[int] = Field(default=None, description="最低位深（bit）")
+    min_sample_rate: Optional[int] = Field(default=None, description="最低采样率（Hz）")
+    total_episode: Optional[int] = Field(default=0, description="总集数")
+    date: Optional[str] = Field(default=None, description="时间")
+    custom_words: Optional[str] = Field(default=None, description="自定义识别词")
+    media_category_id: Optional[str] = Field(default=None, description="自定义媒体类别稳定标识")
+    media_category: Optional[str] = Field(default=None, description="自定义媒体类别兼容路径快照")
+    episode_group: Optional[str] = Field(default=None, description="自定义剧集组")
+    count: Optional[int] = Field(default=0, description="复用人次")
 
 
 class SubscribeShareStatistics(BaseModel):
-    """单个用户的订阅分享数量与复用统计。"""
+    """
+    单个用户的订阅分享数量与复用统计。
+    """
 
-    # 分享人
-    share_user: Optional[str] = None
-    # 分享数量
-    share_count: Optional[int] = 0
-    # 总复用人次
-    total_reuse_count: Optional[int] = 0
+    share_user: Optional[str] = Field(default=None, description="分享人")
+    share_count: Optional[int] = Field(default=0, description="分享数量")
+    total_reuse_count: Optional[int] = Field(default=0, description="总复用人次")
 
 
 class SubscribeDownloadFileInfo(BaseModel):
-    """订阅剧集关联的下载文件信息。"""
+    """
+    订阅剧集关联的下载文件信息。
+    """
 
-    # 种子名称
-    torrent_title: Optional[str] = None
-    # 站点名称
-    site_name: Optional[str] = None
-    # 下载器
-    downloader: Optional[str] = None
-    # hash
-    hash: Optional[str] = None
-    # 文件路径
-    file_path: Optional[str] = None
+    torrent_title: Optional[str] = Field(default=None, description="种子名称")
+    site_name: Optional[str] = Field(default=None, description="站点名称")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    hash: Optional[str] = Field(default=None, description="下载任务 hash")
+    file_path: Optional[str] = Field(default=None, description="文件路径")
 
 
 class SubscribeLibraryFileInfo(BaseModel):
-    """订阅剧集关联的媒体库文件信息。"""
+    """
+    订阅剧集关联的媒体库文件信息。
+    """
 
-    # 存储
-    storage: Optional[str] = "local"
-    # 文件路径
-    file_path: Optional[str] = None
-    # 媒体服务器名称
-    server: Optional[str] = None
-    # 媒体服务器类型：emby、jellyfin、plex 等
-    server_type: Optional[str] = None
-    # 媒体服务器条目 ID
-    itemid: Optional[str] = None
+    storage: Optional[str] = Field(default="local", description="存储")
+    file_path: Optional[str] = Field(default=None, description="文件路径")
+    server: Optional[str] = Field(default=None, description="媒体服务器名称")
+    server_type: Optional[str] = Field(default=None, description="媒体服务器类型：emby、jellyfin、plex 等")
+    itemid: Optional[str] = Field(default=None, description="媒体服务器条目 ID")
 
 
 class SubscribeEpisodeInfo(BaseModel):
-    """订阅单集的元数据及关联文件。"""
+    """
+    订阅单集的元数据及关联文件。
+    """
 
-    # 标题
-    title: Optional[str] = None
-    # 描述
-    description: Optional[str] = None
-    # 背景图
-    backdrop: Optional[str] = None
-    # 下载文件信息
-    download: Optional[List[SubscribeDownloadFileInfo]] = Field(default_factory=list)
-    # 媒体库文件信息
-    library: Optional[List[SubscribeLibraryFileInfo]] = Field(default_factory=list)
+    title: Optional[str] = Field(default=None, description="标题")
+    description: Optional[str] = Field(default=None, description="描述")
+    backdrop: Optional[str] = Field(default=None, description="背景图")
+    download: Optional[List[SubscribeDownloadFileInfo]] = Field(default_factory=list, description="下载文件信息")
+    library: Optional[List[SubscribeLibraryFileInfo]] = Field(default_factory=list, description="媒体库文件信息")
 
 
 class SubscrbieInfo(BaseModel):
-    """订阅详情及按集号归组的文件信息。"""
+    """
+    订阅详情及按集号归组的文件信息。
+    """
 
-    # 订阅信息
-    subscribe: Optional[Subscribe] = None
-    # 集信息 {集号: {download: 文件路径，library: 文件路径, backdrop: url, title: 标题, description: 描述}}
-    episodes: Optional[Dict[int, SubscribeEpisodeInfo]] = Field(default_factory=dict)
+    subscribe: Optional[Subscribe] = Field(default=None, description="订阅信息")
+    episodes: Optional[Dict[int, SubscribeEpisodeInfo]] = Field(
+        default_factory=dict,
+        description="集信息 {集号: {download: 文件路径，library: 文件路径, backdrop: url, title: 标题, description: 描述}}",
+    )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class SubscribeDeletionResult(BaseModel):  # type: ignore[misc]
-    """订阅删除成功后的机器可判断结果。"""
+    """
+    订阅删除成功后的机器可判断结果。
+    """
 
-    # deleted 表示数据库事务已提交；不存在或无权限由 HTTP 状态码表达。
-    status: Literal["deleted"]
+    status: Literal["deleted"] = Field(description="deleted 表示数据库事务已提交；不存在或无权限由 HTTP 状态码表达")

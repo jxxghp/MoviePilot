@@ -1,3 +1,7 @@
+"""
+从已配置站点的详情页提取可下载的字幕链接。
+"""
+
 import re
 from typing import List, Optional, Tuple, Union
 from urllib.parse import urljoin, urlparse
@@ -6,6 +10,8 @@ from lxml import etree
 
 from app.adapters.network.http import RequestUtils
 from app.application.site.query import get_configured_site_query_service
+
+# 站点资源在安装时提供，静态源码树不包含运行时生成的目录。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.domain.context import Context
 from app.modules import _ModuleBase
@@ -16,14 +22,15 @@ from app.schemas.types import ModuleType, OtherModulesType
 
 class SubtitleModule(_ModuleBase):
     """
-    字幕下载模块
+    字幕下载模块。
     """
 
     # 站点详情页字幕下载元素识别XPATH
     _SITE_SUBTITLE_XPATH = [
         '//td[@class="rowhead"][text()="字幕"]/following-sibling::td//a[not(@class)]',
         '//td[@class="rowhead"][text()="字幕"]/following-sibling::td//a',
-        '//div[contains(@class, "font-bold")][text()="字幕"]/following-sibling::div[1]//a[not(@class)]', # 憨憨
+        # 憨憨站点的字幕区域
+        '//div[contains(@class, "font-bold")][text()="字幕"]/following-sibling::div[1]//a[not(@class)]',
     ]
     _SUBTITLE_URL_ATTRS = (
         "href",
@@ -39,46 +46,65 @@ class SubtitleModule(_ModuleBase):
     )
 
     def init_module(self) -> None:
+        """
+        字幕链接按请求解析，无需创建常驻客户端。
+        """
         pass
 
     @staticmethod
     def get_name() -> str:
+        """
+        返回站点字幕模块的展示名称。
+        """
         return "站点字幕"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return OtherModulesType.Subtitle
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 0
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """
+        字幕解析没有独立开关，是否执行由调用方决定。
+        """
         pass
 
     def stop(self) -> None:
+        """
+        字幕解析不持有需要停止的后台资源。
+        """
         pass
 
     def test(self):
+        """
+        字幕能力依赖具体资源详情页，不提供独立连接测试。
+        """
         pass
 
     @classmethod
     def __normalize_subtitle_link(cls, page_url: str, sublink: str) -> Optional[str]:
         """
-        转换并过滤真实字幕下载链接
+        将字幕候选地址解析为可请求的 HTTP 或 HTTPS 链接。
+
+        :param page_url: 字幕所在详情页地址，用于补齐相对路径和协议
+        :param sublink: 页面提取的候选地址
+        :return: 完整下载地址；空值、锚点或非 HTTP 协议返回 None
         """
         if not sublink:
             return None
@@ -101,7 +127,13 @@ class SubtitleModule(_ModuleBase):
     @classmethod
     def _parse_subtitle_links(cls, html, page_url: str) -> List[str]:
         """
-        从站点详情页中解析字幕下载链接
+        按站点页面结构提取去重后的字幕下载链接。
+
+        第一个成功提取链接的区域优先，不再扫描后续较宽泛的匹配规则。
+
+        :param html: 已解析的详情页文档
+        :param page_url: 详情页地址，用于补齐相对链接
+        :return: 按页面发现顺序排列的有效下载地址
         """
         sublink_list = []
         found_links = set()
@@ -128,9 +160,10 @@ class SubtitleModule(_ModuleBase):
 
     def site_subtitle_links(self, context: Context) -> Optional[List[str]]:
         """
-        解析普通站点详情页获取字幕下载链接
-        :param context:  上下文，包括识别信息、媒体信息、种子信息
-        :return: 字幕下载链接列表，无法访问页面时返回None
+        访问普通站点的详情页并提取字幕下载链接。
+
+        :param context: 含种子详情页地址、站点凭据和代理配置的资源上下文
+        :return: 下载链接列表；页面为空时返回空列表，缺少地址、访问失败或站点使用独立接口时返回 None
         """
         torrent = context.torrent_info
         if not torrent.page_url:

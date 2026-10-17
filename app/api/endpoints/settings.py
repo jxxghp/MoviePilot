@@ -1,4 +1,6 @@
-"""系统设置查询、合同发现和受控更新接口。"""
+"""
+系统设置查询、合同发现和受控更新接口。
+"""
 
 from typing import Annotated, Any, Optional, Union
 
@@ -26,7 +28,9 @@ router = ResponseAPIRouter()
 
 
 def _settings_service(runtime: HostRuntime) -> SystemSettingsService:
-    """基于当前宿主运行时构造系统设置应用服务。"""
+    """
+    基于当前宿主运行时构造系统设置应用服务。
+    """
     return SystemSettingsService(
         get_runtime_settings(),
         get_configured_system_config(),
@@ -43,7 +47,9 @@ async def get_setting(
     key: str,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse[Any]:
-    """查询系统设置（仅管理员）。"""
+    """
+    查询系统设置（仅管理员）。
+    """
     runtime_settings = get_runtime_settings()
     if runtime_settings.contains(key):
         value = runtime_settings.get(key)
@@ -63,35 +69,39 @@ async def set_setting(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """更新系统设置（仅管理员）。"""
+    """
+    更新系统设置（仅管理员）。
+    """
     result = await runtime.system.update_setting(key, value)
     return _SchemaResponse(success=result.success, message=result.message)
 
 
 @router.get(
     "/settings/catalog",
-    summary="List system setting contracts",
+    summary='列出系统设置契约',
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def catalog_settings(
     group: Annotated[
         Optional[str],
-        Query(description="Setting contract group. Use all to list every registered setting."),
+        Query(description='设置契约分组；使用 all 可列出全部已登记设置。'),
     ] = "all",
     keyword: Annotated[
         Optional[str],
-        Query(description="Case-insensitive substring matched against key, group, label, or description."),
+        Query(description='匹配设置键、分组、标签或说明的子串，不区分大小写。'),
     ] = None,
     source: Annotated[
         Optional[str],
-        Query(description="Optional source filter: settings or systemconfig."),
+        Query(description='可选的来源筛选：settings 或 systemconfig。'),
     ] = None,
-    offset: Annotated[int, Query(ge=0, description="Zero-based result offset.")] = 0,
-    limit: Annotated[int, Query(ge=1, le=500, description="Maximum contracts to return.")] = 100,
+    offset: Annotated[int, Query(ge=0, description='结果偏移量，从 0 开始。')] = 0,
+    limit: Annotated[int, Query(ge=1, le=500, description='最多返回的设置契约条数。')] = 100,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """分页返回轻量设置合同，供 Agent 建立可用设置索引。"""
+    """
+    分页返回轻量设置合同，供 Agent 建立可用设置索引。
+    """
     try:
         data = _settings_service(runtime).catalog(
             group=group,
@@ -107,23 +117,25 @@ async def catalog_settings(
 
 @router.get(
     "/settings/describe/{setting_key}",
-    summary="Describe one system setting contract",
+    summary='查询单项系统设置契约',
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def describe_setting(
     setting_key: str,
     include_value: Annotated[
         bool,
-        Query(description="Return the current value in addition to the complete contract."),
+        Query(description='是否在完整契约之外返回当前值。'),
     ] = True,
     show_secrets: Annotated[
         bool,
-        Query(description="Return unredacted secret values only when explicitly authorized."),
+        Query(description='是否返回未脱敏的秘密值，仅可在明确授权后使用。'),
     ] = False,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """返回单项完整设置合同、当前值和 revision。"""
+    """
+    返回单项完整设置合同、当前值和 revision。
+    """
     try:
         data = _settings_service(runtime).describe(
             setting_key=setting_key,
@@ -137,7 +149,7 @@ async def describe_setting(
 
 @router.get(
     "/settings",
-    summary="Discover or read registered system settings",
+    summary='发现或读取已登记的系统设置',
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def query_settings(
@@ -145,9 +157,8 @@ async def query_settings(
         Optional[str],
         Query(
             description=(
-                "Exact setting key. Accepts Settings field names such as APP_DOMAIN or LLM_MODEL, "
-                "SystemConfigKey values or enum names such as Downloaders or MediaServers, and "
-                "aliases that resolve to one unique setting. Omit it to use list-style discovery."
+                '精确设置键，接受 APP_DOMAIN 或 LLM_MODEL 等 Settings 字段名、Downloaders 或 MediaServers 等 Syst'
+                'emConfigKey 值或枚举名，以及能唯一解析的别名；省略时按列表发现设置。'
             )
         ),
     ] = None,
@@ -155,28 +166,29 @@ async def query_settings(
         Optional[str],
         Query(
             description=(
-                "Discovery group used when setting_key is omitted. Use config.system.list for a complete, "
-                "machine-readable group index; this compatibility endpoint accepts all registered catalog groups, "
-                "including settings and systemconfig."
+                '省略 setting_key 时使用的发现分组。调用 config.system.list 可获取完整、机器可读的分组索引；此兼容端点接受全部已登记分组，包括 '
+                'settings 和 systemconfig。'
             )
         ),
     ] = "all",
     keyword: Annotated[
         Optional[str],
-        Query(description="Case-insensitive substring used to discover matching keys, groups, or labels."),
+        Query(description='用于发现匹配设置键、分组或标签的子串，不区分大小写。'),
     ] = None,
     include_values: Annotated[
         Optional[bool],
-        Query(description="Return full values. Defaults to true for one exact key and false for discovery results."),
+        Query(description='是否返回完整值；查询单个精确设置键时默认为 True，发现设置列表时默认为 False。'),
     ] = None,
     show_secrets: Annotated[
         bool,
-        Query(description="Return unredacted secret values. Defaults to false and remains confirmation-protected."),
+        Query(description='是否返回未脱敏的秘密值；默认为 False，启用时仍需通过确认保护。'),
     ] = False,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """按登记元数据查询设置，并默认对敏感值递归脱敏。"""
+    """
+    按登记元数据查询设置，并默认对敏感值递归脱敏。
+    """
     try:
         data = _settings_service(runtime).query(
             setting_key=setting_key,
@@ -192,7 +204,7 @@ async def query_settings(
 
 @router.post(
     "/settings",
-    summary="Update one registered system setting",
+    summary='更新单项已登记系统设置',
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def update_settings(
@@ -200,7 +212,9 @@ async def update_settings(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """按替换、字典合并或列表项操作更新一个登记设置。"""
+    """
+    按替换、字典合并或列表项操作更新一个登记设置。
+    """
     try:
         data = await _settings_service(runtime).update(**payload.model_dump())
     except SystemSettingConflictError as error:

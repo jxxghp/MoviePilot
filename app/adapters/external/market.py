@@ -1,4 +1,6 @@
-"""插件市场历史兼容门面。"""
+"""
+插件市场历史兼容门面。
+"""
 
 from __future__ import annotations
 
@@ -23,7 +25,9 @@ AsyncPluginInstallGateway = Callable[[str, str, Optional[str], Optional[str], bo
 
 
 def _empty_installed_plugins() -> List[str]:
-    """组合根尚未注入配置读取器时返回空安装清单。"""
+    """
+    组合根尚未注入配置读取器时返回空安装清单。
+    """
     return []
 
 
@@ -31,7 +35,9 @@ def _unconfigured_plugin_install_gateway(
     _pid: str, _repo_url: str, _package_version: Optional[str],
     _release_version: Optional[str], _force_install: bool,
 ) -> Tuple[bool, str]:
-    """在组合根尚未装配来源门禁时拒绝插件包写入。"""
+    """
+    在组合根尚未装配来源门禁时拒绝插件包写入。
+    """
     return False, "插件安装服务尚未完成初始化"
 
 
@@ -39,7 +45,9 @@ async def _unconfigured_async_plugin_install_gateway(
     _pid: str, _repo_url: str, _package_version: Optional[str],
     _release_version: Optional[str], _force_install: bool,
 ) -> Tuple[bool, str]:
-    """在组合根尚未装配来源门禁时拒绝异步插件包写入。"""
+    """
+    在组合根尚未装配来源门禁时拒绝异步插件包写入。
+    """
     return False, "插件安装服务尚未完成初始化"
 
 
@@ -56,21 +64,27 @@ def configure_plugin_runtime_owners(
     health: PluginRuntimeHealth,
     dependency: PluginDependencyInstaller,
 ) -> None:
-    """发布组合根构造的插件运行健康与依赖安装唯一 owner。"""
+    """
+    发布组合根构造的插件运行健康与依赖安装唯一 责任实例。
+    """
     global _plugin_runtime_health, _plugin_dependency_installer
     _plugin_runtime_health = health
     _plugin_dependency_installer = dependency
 
 
 def reset_plugin_runtime_owners() -> None:
-    """撤销当前 lifespan 发布的插件运行健康与依赖安装 owner。"""
+    """
+    撤销当前 应用生命周期 发布的插件运行健康与依赖安装 责任实例。
+    """
     global _plugin_runtime_health, _plugin_dependency_installer
     _plugin_runtime_health = None
     _plugin_dependency_installer = None
 
 
 def _plugin_runtime_health_owner() -> PluginRuntimeHealth:
-    """返回已发布 owner；旧入口提前调用时惰性保留兼容行为。"""
+    """
+    返回已发布 责任实例；旧入口提前调用时惰性保留兼容行为。
+    """
     global _plugin_runtime_health
     if _plugin_runtime_health is None:
         _plugin_runtime_health = PluginRuntimeHealth()
@@ -78,7 +92,9 @@ def _plugin_runtime_health_owner() -> PluginRuntimeHealth:
 
 
 def _plugin_dependency_owner() -> PluginDependencyInstaller:
-    """返回已发布 owner；旧入口提前调用时只构造一份惰性实例。"""
+    """
+    返回已发布 责任实例；旧入口提前调用时只构造一份惰性实例。
+    """
     global _plugin_dependency_installer
     if _plugin_dependency_installer is None:
         _plugin_dependency_installer = PluginDependencyInstaller(
@@ -90,7 +106,9 @@ def _plugin_dependency_owner() -> PluginDependencyInstaller:
 
 
 def configure_installed_plugins_provider(provider: InstalledPluginsProvider) -> None:
-    """由启动组合层注入已安装插件读取器，避免兼容门面访问数据库。"""
+    """
+    由启动组合层注入已安装插件读取器，避免兼容门面访问数据库。
+    """
     global _installed_plugins_provider
     _installed_plugins_provider = provider
 
@@ -98,14 +116,18 @@ def configure_installed_plugins_provider(provider: InstalledPluginsProvider) -> 
 def configure_plugin_install_gateway(
     *, install: PluginInstallGateway, async_install: AsyncPluginInstallGateway,
 ) -> None:
-    """由启动组合根装配公开兼容安装入口的来源门禁。"""
+    """
+    由启动组合根装配公开兼容安装入口的来源门禁。
+    """
     global _plugin_install_gateway, _async_plugin_install_gateway
     _plugin_install_gateway = install
     _async_plugin_install_gateway = async_install
 
 
 def reset_plugin_install_gateway() -> None:
-    """恢复未装配状态，供隔离测试清理进程级安装入口。"""
+    """
+    恢复未装配状态，供隔离测试清理进程级安装入口。
+    """
     global _plugin_install_gateway, _async_plugin_install_gateway
     _plugin_install_gateway = _unconfigured_plugin_install_gateway
     _async_plugin_install_gateway = _unconfigured_async_plugin_install_gateway
@@ -113,7 +135,9 @@ def reset_plugin_install_gateway() -> None:
 
 @observe_compat_facade("PluginHelper")
 class PluginHelper(metaclass=WeakSingleton):
-    """保留第三方插件公开 ABI，并把行为委托给独立 owner。"""
+    """
+    保留第三方插件公开 ABI，并把行为委托给独立 责任实例。
+    """
 
     PLUGIN_DEPENDENCY_INSTALL_TIMEOUT = PluginRuntimeHealth.PLUGIN_DEPENDENCY_INSTALL_TIMEOUT
 
@@ -169,13 +193,17 @@ class PluginHelper(metaclass=WeakSingleton):
         self, pid: str, repo_url: str, package_version: Optional[str] = None,
         release_version: Optional[str] = None, force_install: bool = False,
     ) -> Tuple[bool, str]:
-        """通过宿主统一 Gateway 安装插件。"""
+        """
+        通过宿主统一 安装入口 安装插件。
+        """
         return _plugin_install_gateway(pid, repo_url, package_version, release_version, force_install)
 
     def install_local(
         self, pid: str, repo_url: str = "", force_install: bool = False,
     ) -> Tuple[bool, str]:
-        """通过宿主统一 Gateway 安装本地插件。"""
+        """
+        通过宿主统一 安装入口 安装本地插件。
+        """
         target_repo = repo_url or self.make_local_repo_url(pid)
         return _plugin_install_gateway(
             pid, target_repo, self.parse_local_repo_package_version(target_repo),
@@ -187,17 +215,23 @@ class PluginHelper(metaclass=WeakSingleton):
         cls, dependency_files: Path | Sequence[Path],
         find_links_dirs: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
-        """把兼容入口委托给系统运行环境 owner。"""
+        """
+        把兼容入口委托给系统运行环境 责任实例。
+        """
         return _plugin_runtime_health_owner().install_packages_with_fallback(
             dependency_files, find_links_dirs
         )
 
     def find_missing_dependencies(self) -> List[str]:
-        """把兼容入口委托给依赖聚合 owner。"""
+        """
+        把兼容入口委托给依赖聚合 责任实例。
+        """
         return _plugin_dependency_owner().find_missing()
 
     def install_dependencies(self, dependencies: List[str]) -> Tuple[bool, str]:
-        """把兼容入口委托给依赖聚合 owner。"""
+        """
+        把兼容入口委托给依赖聚合 责任实例。
+        """
         return _plugin_dependency_owner().install(dependencies)
 
     @classmethod
@@ -205,7 +239,9 @@ class PluginHelper(metaclass=WeakSingleton):
         cls, dependency_files: Path | Sequence[Path],
         find_links_dirs: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
-        """把异步兼容入口委托给系统运行环境 owner。"""
+        """
+        把异步兼容入口委托给系统运行环境 责任实例。
+        """
         return await _plugin_runtime_health_owner().async_install_packages_with_fallback(
             dependency_files, find_links_dirs
         )
@@ -213,18 +249,24 @@ class PluginHelper(metaclass=WeakSingleton):
     async def async_install_dependencies(
         self, dependencies: List[str],
     ) -> Tuple[bool, str]:
-        """把异步兼容入口委托给依赖聚合 owner。"""
+        """
+        把异步兼容入口委托给依赖聚合 责任实例。
+        """
         return await _plugin_dependency_owner().async_install(dependencies)
 
     async def async_find_missing_dependencies(self) -> List[str]:
-        """把异步兼容入口委托给依赖聚合 owner。"""
+        """
+        把异步兼容入口委托给依赖聚合 责任实例。
+        """
         return await _plugin_dependency_owner().async_find_missing()
 
     async def async_install(
         self, pid: str, repo_url: str, package_version: Optional[str] = None,
         release_version: Optional[str] = None, force_install: bool = False,
     ) -> Tuple[bool, str]:
-        """通过宿主统一 Gateway 异步安装插件。"""
+        """
+        通过宿主统一 安装入口 异步安装插件。
+        """
         return await _async_plugin_install_gateway(
             pid, repo_url, package_version, release_version, force_install
         )

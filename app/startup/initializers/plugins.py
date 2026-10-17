@@ -1,3 +1,7 @@
+"""
+加载插件并协调安装、启停与兼容入口。
+"""
+
 import asyncio
 import threading
 import uuid
@@ -155,12 +159,15 @@ from app.startup.composition.plugin import (
 
 
 def _read_plugin_config(instance_id: str) -> Any:
-    """从实例行读取该实例的业务参数。"""
+    """
+    从实例行读取该实例的业务参数。
+    """
     return PluginInstanceOper().get_config_data(instance_id)
 
 
 def _write_plugin_config(instance_id: str, config: Any) -> Any:
-    """把业务参数写进该实例行；没有实例行时按本体建出。
+    """
+    把业务参数写进该实例行；没有实例行时按本体建出。
 
     分身的实例行由分身服务先行建出，这里建不出分身；能落到建行分支的只有本体
     自身，源插件因而就是它自己。
@@ -173,7 +180,9 @@ def _write_plugin_config(instance_id: str, config: Any) -> Any:
 
 
 async def _async_write_plugin_config(instance_id: str, config: Any) -> Any:
-    """异步把业务参数写进该实例行，建行规则与同步写入一致。"""
+    """
+    异步把业务参数写进该实例行，建行规则与同步写入一致。
+    """
     return await PluginInstanceOper().async_save_config_data(
         instance_id=instance_id,
         source_plugin_id=instance_id,
@@ -182,7 +191,8 @@ async def _async_write_plugin_config(instance_id: str, config: Any) -> Any:
 
 
 def _delete_plugin_config(instance_id: str) -> bool:
-    """清空该实例的业务参数，保留其身份与展示信息。
+    """
+    清空该实例的业务参数，保留其身份与展示信息。
 
     只清业务参数：这一行还承载着实例身份与展示信息，整行删掉会把「删一份配置」
     变成「删掉这个实例」。该行本就不存在时同样报告已删除，删除只承诺事后没有
@@ -193,7 +203,9 @@ def _delete_plugin_config(instance_id: str) -> bool:
 
 
 def _delete_plugin_data(plugin_id: str) -> None:
-    """用独占同步会话执行插件重置的数据删除事务。"""
+    """
+    用独占同步会话执行插件重置的数据删除事务。
+    """
     session = SessionFactory()
     try:
         DeletePluginDataCommand(
@@ -205,7 +217,8 @@ def _delete_plugin_data(plugin_id: str) -> None:
 
 
 def _read_plugin_runtime_declaration(plugin_id: str) -> Mapping[str, bool]:
-    """读取插件安装时随载荷提交的 package 运行时声明，供加载门禁判定代际与变体。
+    """
+    读取插件安装时随载荷提交的 package 运行时声明，供加载门禁判定代际与变体。
 
     声明快照是运行目录唯一可离线信任的来源：插件目录里不存在主程序写入的 package
     文件，市场索引又要联网才能取。存量安装可能还没有身份行或声明快照，这里一律回落
@@ -220,7 +233,9 @@ def _read_plugin_runtime_declaration(plugin_id: str) -> Mapping[str, bool]:
 
 
 def _read_plugin_log_level(instance_id: str) -> LogLevelOverride:
-    """从实例行读取日志等级覆盖与失效时间。"""
+    """
+    从实例行读取日志等级覆盖与失效时间。
+    """
     session = SessionFactory()
     try:
         record = PluginInstanceRecord.get_by_instance_id(session, instance_id)
@@ -239,7 +254,8 @@ def _write_plugin_log_level(
     level: str | None,
     expires_at: datetime | None,
 ) -> None:
-    """把日志等级覆盖写进该实例行；没有实例行时按本体建出。
+    """
+    把日志等级覆盖写进该实例行；没有实例行时按本体建出。
 
     失效时间按 UTC 归一后再转字符串：库里存的是裸 ISO 文本，不带时区的写入会在
     读回时被当成本地时间，同一个覆盖在不同进程时区下表示不同时刻。
@@ -253,7 +269,8 @@ def _write_plugin_log_level(
 
 
 def _prime_plugin_instance_log_levels() -> None:
-    """进程启动时把数据库中已设置的实例日志等级覆盖预热进运行期缓存。
+    """
+    进程启动时把数据库中已设置的实例日志等级覆盖预热进运行期缓存。
 
     过期覆盖也照常预热：过期判定统一在读取时惰性执行（见 `app.runtime.log`），
     这里不重复实现一份过期过滤逻辑。单条记录预热失败不得阻断其余记录。
@@ -286,7 +303,8 @@ _invalid_instance_warning_lock = threading.Lock()
 
 
 def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance | None:
-    """把插件实例表的 ORM 行投影为运行时端口使用的 Pydantic 描述。
+    """
+    把插件实例表的 ORM 行投影为运行时端口使用的 Pydantic 描述。
 
     只投影描述符各列：业务参数走插件配置读取端口，运行时端口拿到的应当是一份实例
     身份、展示信息与调用目标置位的视图。
@@ -324,7 +342,9 @@ def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance
 def _plugin_instances_from_records(
     records: list[PluginInstanceRecord],
 ) -> list[PluginInstance]:
-    """逐行投影实例记录，跳过不能通过运行时模型校验的历史行。"""
+    """
+    逐行投影实例记录，跳过不能通过运行时模型校验的历史行。
+    """
     instances: list[PluginInstance] = []
     for record in records:
         instance = _plugin_instance_from_record(record)
@@ -334,7 +354,8 @@ def _plugin_instances_from_records(
 
 
 def _save_plugin_instance_record(instance: PluginInstance) -> None:
-    """把运行时实例描述写入插件实例表，以实例 ID 为稳定键做新增或更新。
+    """
+    把运行时实例描述写入插件实例表，以实例 ID 为稳定键做新增或更新。
 
     默认调用目标置位与启用位随描述一起写：读取口 ``_plugin_instance_from_record`` 会
     把它们投影出来，读改写一轮下来原值原样回去，不存在被顺手抹掉的风险；漏写反而会让
@@ -357,7 +378,8 @@ def _save_plugin_instance_record(instance: PluginInstance) -> None:
 
 
 def _set_plugin_default_target(source_plugin_id: str, instance_id: str) -> bool:
-    """把某源插件的默认调用目标置为指定实例，清旧与置新在库层同一事务内完成。
+    """
+    把某源插件的默认调用目标置为指定实例，清旧与置新在库层同一事务内完成。
 
     不经实例表的逐行写入端口：那条路径按实例 ID 各写各的行，清旧与置新会落进两个
     事务，中间窗口里两行同时为真，正好撞上「同一源插件至多一个默认目标」的条件
@@ -371,29 +393,41 @@ def _set_plugin_default_target(source_plugin_id: str, instance_id: str) -> bool:
 
 
 def _clear_plugin_default_target(source_plugin_id: str) -> None:
-    """清除某源插件的默认调用目标置位。"""
+    """
+    清除某源插件的默认调用目标置位。
+    """
     PluginInstanceOper().clear_default_target(source_plugin_id)
 
 
 def _build_plugin_instance_directory() -> PluginInstanceDirectory:
-    """把插件实例表端口装配到 db 层实现。"""
+    """
+    把插件实例表端口装配到 db 层实现。
+    """
     oper = PluginInstanceOper()
 
     def _get(instance_id: str) -> PluginInstance | None:
-        """按实例 ID 查询实例并投影为运行时描述。"""
+        """
+        按实例 ID 查询实例并投影为运行时描述。
+        """
         record = oper.get(instance_id)
         return _plugin_instance_from_record(record) if record is not None else None
 
     def _list_all() -> list[PluginInstance]:
-        """列出全部可用实例描述，历史无效行只影响自身。"""
+        """
+        列出全部可用实例描述，历史无效行只影响自身。
+        """
         return _plugin_instances_from_records(oper.list_all())
 
     def _list_by_source(source_plugin_id: str) -> list[PluginInstance]:
-        """列出指定源插件的可用实例描述，跳过历史无效行。"""
+        """
+        列出指定源插件的可用实例描述，跳过历史无效行。
+        """
         return _plugin_instances_from_records(oper.list_by_source(source_plugin_id))
 
     def _list_enabled() -> list[PluginInstance]:
-        """列出启用且可投影的实例描述，供启动依赖分类使用。"""
+        """
+        列出启用且可投影的实例描述，供启动依赖分类使用。
+        """
         return _plugin_instances_from_records(oper.list_enabled())
 
     return PluginInstanceDirectory(
@@ -412,7 +446,9 @@ def _build_plugin_instance_directory() -> PluginInstanceDirectory:
 
 
 def _build_plugin_database() -> PluginDatabase:
-    """把插件自有数据库端口装配到 db 层的建库、释放与销毁实现。"""
+    """
+    把插件自有数据库端口装配到 db 层的建库、释放与销毁实现。
+    """
     return PluginDatabase(
         ensure=ensure_database,
         release=release_database,
@@ -421,7 +457,9 @@ def _build_plugin_database() -> PluginDatabase:
 
 
 def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
-    """在执行旧插件顶层代码前准备其静态导入所需的宿主资源。"""
+    """
+    在执行旧插件顶层代码前准备其静态导入所需的宿主资源。
+    """
     for capability_id in scan_plugin_resource_imports(plugin_id, plugin_dir):
         acquire_managed_resource(
             capability_id,
@@ -430,7 +468,9 @@ def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
 
 
 def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
-    """在启动组合根构造插件 Runtime 的完整依赖图。"""
+    """
+    在启动组合根构造插件 Runtime 的完整依赖图。
+    """
     return build_plugin_runtime(
         host,
         PluginRuntimeEnvironment(
@@ -455,7 +495,8 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
 
 
 def repair_plugin_package_root() -> list[str]:
-    """在导入任何插件前修复被旧版本实现遮蔽的插件安装包根。
+    """
+    在导入任何插件前修复被旧版本实现遮蔽的插件安装包根。
 
     UI 内更新由替换前的旧版本执行插件目录迁移，旧版 ``app/plugins/__init__.py``
     会随插件目录进入新版运行目录并遮蔽 SDK 兼容符号，使全部插件导入失败。运行
@@ -485,7 +526,9 @@ def repair_plugin_package_root() -> list[str]:
 
 
 def configure_plugin_runtime_services() -> None:
-    """在模块对象图构造前修复插件包根，并发布插件 Runtime 工厂和应用层提供器。"""
+    """
+    在模块对象图构造前修复插件包根，并发布插件 Runtime 工厂和应用层提供器。
+    """
     repair_plugin_package_root()
     configure_plugin_catalog_factory(_build_plugin_catalog)
     configure_plugin_runtime_factory(build_plugin_runtime_graph)
@@ -499,7 +542,9 @@ def configure_plugin_runtime_services() -> None:
 
 
 def configure_plugin_services() -> None:
-    """在模块持久化端口就绪后装配完整插件应用服务。"""
+    """
+    在模块持久化端口就绪后装配完整插件应用服务。
+    """
     market_composition = compose_plugin_market(
         installed_plugins_provider=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
@@ -526,7 +571,9 @@ def configure_plugin_services() -> None:
     persistence = get_plugin_persistence()
 
     async def refresh_plugin_releases(plugin_id: str, repo_url: str) -> None:
-        """绕过已有 Release 缓存执行后台刷新。"""
+        """
+        绕过已有 Release 缓存执行后台刷新。
+        """
         async with async_fresh(True):
             await market_transport.async_get_plugin_release_versions(
                 plugin_id, repo_url
@@ -576,21 +623,27 @@ def configure_plugin_services() -> None:
     )
 
     async def load_inventory(force: bool):
-        """读取本轮配置市场和本地仓库的完整候选事实。"""
+        """
+        读取本轮配置市场和本地仓库的完整候选事实。
+        """
         return await inventory_reader.async_load(
             split_plugin_market_repo_urls(get_runtime_setting('PLUGIN_MARKET')),
             force=force,
         )
 
     async def reload_plugin_tree(plugin_id: str) -> object:
-        """在线程池中重建源插件及其全部虚拟实例。"""
+        """
+        在线程池中重建源插件及其全部虚拟实例。
+        """
         return await run_in_threadpool_to_completion(
             plugin_manager.reload_plugin_tree,
             plugin_id,
         )
 
     async def refresh_plugin_registrations(plugin_id: str) -> None:
-        """刷新源插件及其虚拟实例的调度、命令和路由注册。"""
+        """
+        刷新源插件及其虚拟实例的调度、命令和路由注册。
+        """
         for target_id in plugin_manager.get_plugin_reload_targets(plugin_id):
             await run_in_threadpool_to_completion(
                 _register_plugin_runtime,
@@ -659,7 +712,9 @@ def configure_plugin_services() -> None:
         release_version: str | None,
         force: bool,
     ) -> tuple[bool, str]:
-        """保留本地来源定位；在线兼容参数不得升级为选源授权。"""
+        """
+        保留本地来源定位；在线兼容参数不得升级为选源授权。
+        """
         local_sync = bool(repo_url and repo_url.startswith(LOCAL_REPO_PREFIX))
         return _run_plugin_install_sync(
             gateway,
@@ -679,7 +734,9 @@ def configure_plugin_services() -> None:
         release_version: str | None,
         force: bool,
     ) -> tuple[bool, str]:
-        """异步保留本地来源定位；在线兼容参数不得升级为选源授权。"""
+        """
+        异步保留本地来源定位；在线兼容参数不得升级为选源授权。
+        """
         local_sync = bool(repo_url and repo_url.startswith(LOCAL_REPO_PREFIX))
         return await _run_plugin_install_async(
             gateway,
@@ -737,7 +794,9 @@ def configure_plugin_services() -> None:
 
 
 def _register_plugin_runtime(plugin_id: str) -> None:
-    """重建一个插件的定时任务、命令和动态路由注册。"""
+    """
+    重建一个插件的定时任务、命令和动态路由注册。
+    """
     update_plugin_job(plugin_id)
     init_commands(plugin_id)
     register_plugin_api(plugin_id)
@@ -747,7 +806,9 @@ async def _collect_online_restore_plugins(
     persistence: PluginPersistenceService,
     installed_plugins: list[str],
 ) -> set[str]:
-    """找出当前载荷为本地且仍保留可信在线来源的物理插件。"""
+    """
+    找出当前载荷为本地且仍保留可信在线来源的物理插件。
+    """
     restore_plugins: set[str] = set()
     seen: set[str] = set()
     for plugin_id in installed_plugins:
@@ -780,7 +841,9 @@ async def _run_plugin_install_async(
     explicit_source: bool,
     startup_token: PluginStartupLease | None = None,
 ) -> tuple[bool, str]:
-    """把公开异步兼容入口转为统一 Gateway 结果。"""
+    """
+    把公开异步兼容入口转为统一 Gateway 结果。
+    """
     try:
         result = await gateway.install(
             plugin_id=plugin_id,
@@ -810,7 +873,9 @@ def _run_plugin_install_sync(
     explicit_source: bool,
     startup_token: PluginStartupLease | None = None,
 ) -> tuple[bool, str]:
-    """从插件工作线程把同步兼容调用提交到宿主事件循环。"""
+    """
+    从插件工作线程把同步兼容调用提交到宿主事件循环。
+    """
     try:
         loop = main_loop_registry.require()
     except RuntimeError:
@@ -843,7 +908,9 @@ def _run_plugin_install_sync(
 
 
 def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogService:
-    """在组合根连接目录用例、市场客户端、持久化读取和插件 DTO 映射。"""
+    """
+    在组合根连接目录用例、市场客户端、持久化读取和插件 DTO 映射。
+    """
     client = get_composed_plugin_market_client()
     return PluginCatalogService(
         market_loader=client.get_plugins,
@@ -899,7 +966,9 @@ async def _sync_plugins_admitted(
     startup_token: PluginStartupLease | None,
     online_restore_plugins: set[str],
 ) -> bool:
-    """在一个 admission lease 内完成包、依赖、实例和动态路由同步。"""
+    """
+    在一个 admission lease 内完成包、依赖、实例和动态路由同步。
+    """
     sync_result = await execute_task(
         loop,
         lambda: plugin_manager.sync(
@@ -963,7 +1032,9 @@ def _activate_ready_plugins(
     synced_ids: list[str],
     previous_statuses: dict[str, PluginRuntimeStatus],
 ) -> list[str]:
-    """在线程池中完成插件导入和初始化，避免阻塞 Web 事件循环。"""
+    """
+    在线程池中完成插件导入和初始化，避免阻塞 Web 事件循环。
+    """
     running_ids = set(plugin_manager.running_plugins)
     synced = {
         _plugin_source_id(plugin_manager, plugin_id)
@@ -992,7 +1063,9 @@ def _activate_ready_plugins(
 
 
 def _plugin_source_id(plugin_manager: PluginManager, plugin_id: str) -> str:
-    """把物理插件和虚拟实例归一到同一个源码身份。"""
+    """
+    把物理插件和虚拟实例归一到同一个源码身份。
+    """
     source_id = plugin_manager.get_plugin_source_id(plugin_id)
     try:
         return normalize_physical_plugin_id(source_id)
@@ -1001,7 +1074,9 @@ def _plugin_source_id(plugin_manager: PluginManager, plugin_id: str) -> str:
 
 
 def _local_plugin_sources(plugin_manager: PluginManager) -> set[str]:
-    """返回安装清单中存在本地仓候选的物理插件身份。"""
+    """
+    返回安装清单中存在本地仓候选的物理插件身份。
+    """
     installed: set[str] = set()
     for plugin_id in (
         get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins)
@@ -1023,7 +1098,9 @@ def _local_plugin_sources(plugin_manager: PluginManager) -> set[str]:
 
 
 async def quiesce_plugins(timeout: float = 240.0) -> bool:
-    """封口插件变更并停用 handler，保留超时 Future 的运行所有权。"""
+    """
+    封口插件变更并停用 handler，保留超时 Future 的运行所有权。
+    """
     plugin_manager = PluginManager.get_existing_instance()
     if plugin_manager is None:
         return True
@@ -1031,7 +1108,9 @@ async def quiesce_plugins(timeout: float = 240.0) -> bool:
 
 
 async def quiesce_plugin_services(timeout: float = 240.0) -> bool:
-    """在事件结算后有界执行旧插件 close、stop_service hook。"""
+    """
+    在事件结算后有界执行旧插件 close、stop_service hook。
+    """
     plugin_manager = PluginManager.get_existing_instance()
     if plugin_manager is None:
         return True
@@ -1039,7 +1118,9 @@ async def quiesce_plugin_services(timeout: float = 240.0) -> bool:
 
 
 def finalize_plugins() -> bool:
-    """在事件屏障封口后卸载已停用 handler 的插件实例。"""
+    """
+    在事件屏障封口后卸载已停用 handler 的插件实例。
+    """
     plugin_manager = PluginManager.get_existing_instance()
     if plugin_manager is None:
         return True
@@ -1101,7 +1182,9 @@ def init_plugins():
 
 
 def stop_plugin_monitor(timeout: float = 5.0) -> bool:
-    """封口已创建管理器的文件监控线程，并返回是否完成收口。"""
+    """
+    封口已创建管理器的文件监控线程，并返回是否完成收口。
+    """
     plugin_manager = PluginManager.get_existing_instance()
     if plugin_manager is None:
         return True
@@ -1113,7 +1196,9 @@ def stop_plugin_monitor(timeout: float = 5.0) -> bool:
 
 
 def stop_plugins() -> bool:
-    """停止已创建的插件监控和运行实例，不在停机阶段反向物化管理器。"""
+    """
+    停止已创建的插件监控和运行实例，不在停机阶段反向物化管理器。
+    """
     try:
         plugin_manager = PluginManager.get_existing_instance()
         if plugin_manager is None:

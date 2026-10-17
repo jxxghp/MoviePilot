@@ -1,3 +1,7 @@
+"""
+解析并校验能力清单，维护不可变声明与类型适配器的注册目录。
+"""
+
 from __future__ import annotations
 
 import re
@@ -40,7 +44,9 @@ _ENTRYPOINT_PATTERN = re.compile(
 
 
 def _freeze(value: Any, *, field: str) -> Any:
-    """把 TOML 容器递归转换为不可变结构，并拒绝非配置标量。"""
+    """
+    把 TOML 容器递归转换为不可变结构，并拒绝非配置标量。
+    """
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, list):
@@ -56,7 +62,9 @@ def _freeze(value: Any, *, field: str) -> Any:
 
 
 def _string_list(value: Any, *, field: str, path: Path) -> tuple[str, ...]:
-    """校验无重复的非空字符串列表。"""
+    """
+    校验无重复的非空字符串列表。
+    """
     if not isinstance(value, list):
         raise CapabilityManifestError(f"{path}: {field} 必须是字符串数组")
     if any(not isinstance(item, str) or not item.strip() for item in value):
@@ -68,7 +76,9 @@ def _string_list(value: Any, *, field: str, path: Path) -> tuple[str, ...]:
 
 
 class CapabilityRegistry:
-    """只读取 data-only manifest 的不可变能力注册表。"""
+    """
+    只读取 data-only manifest 的不可变能力注册表。
+    """
 
     def __init__(
         self,
@@ -89,7 +99,9 @@ class CapabilityRegistry:
         kinds: Collection[str],
         selector_schemas: Mapping[str, SelectorSchema],
     ) -> "CapabilityRegistry":
-        """扫描全部声明根；任何根或 manifest 非法都会阻止 Registry 构建。"""
+        """
+        扫描全部声明根；任何根或 manifest 非法都会阻止 Registry 构建。
+        """
         normalized_kinds = frozenset(kinds)
         if not normalized_kinds:
             raise CapabilityManifestError("至少需要注册一个 capability kind")
@@ -267,20 +279,28 @@ class CapabilityRegistry:
 
     @property
     def kinds(self) -> frozenset[str]:
-        """返回该 Registry 接受的 capability kind。"""
+        """
+        返回该 Registry 接受的 capability kind。
+        """
         return self._kinds
 
     def get_spec(self, capability_id: str) -> CapabilitySpec | None:
-        """查询声明；不存在时返回 None。"""
+        """
+        查询声明；不存在时返回 None。
+        """
         return self._specs.get(capability_id)
 
     def require_spec(self, capability_id: str) -> CapabilitySpec:
-        """查询必需声明；不存在时给出稳定的领域错误。"""
+        """
+        查询必需声明；不存在时给出稳定的领域错误。
+        """
         spec = self.get_spec(capability_id)
         if spec is None:
             raise UnknownCapabilityError(f"未知 capability：{capability_id}")
         return spec
 
     def list_specs(self) -> tuple[CapabilitySpec, ...]:
-        """按 ID 返回稳定排序的声明快照。"""
+        """
+        按 ID 返回稳定排序的声明快照。
+        """
         return tuple(self._specs[key] for key in sorted(self._specs))

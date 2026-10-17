@@ -1,3 +1,7 @@
+"""
+企业微信通知模块的实例路由、回调解析与媒体下载入口。
+"""
+
 import json
 import re
 import xml.dom.minidom
@@ -22,7 +26,9 @@ from app.schemas.types import ModuleType
 
 
 def _resolve_wechat_admin_ids(config: Optional[dict]) -> set[str]:
-    """解析企业微信管理员及机器人模式下的主用户 ID。"""
+    """
+    解析企业微信管理员及机器人模式下的主用户 ID。
+    """
     config_keys = ["WECHAT_ADMINS"]
     if (config or {}).get("WECHAT_MODE", "app") == "bot":
         config_keys.append("WECHAT_BOT_CHAT_ID")
@@ -34,8 +40,10 @@ register_channel_admin_resolver(NotificationChannel.Wechat, _resolve_wechat_admi
 
 class WechatModule(_MessageChannelModuleBase[WeChat]):
 
-    # 管理员配置键，与渠道 resolver 保持一致
-    """按企业微信实例模式处理应用和智能机器人消息。"""
+    """
+    按实例模式路由企业微信应用消息和智能机器人消息。
+    """
+    # 管理员配置键与渠道解析器保持一致
     _admin_config_key = "WECHAT_ADMINS"
     _notification_user_target_keys = ("wechat_userid",)
     _notification_admin_default_config_keys = ("WECHAT_BOT_CHAT_ID",)
@@ -44,7 +52,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
 
     def init_module(self) -> None:
         """
-        初始化模块
+        注册企业微信客户端工厂并加载各通知实例。
         """
         super().init_service(service_name=WeChat.__name__.lower(),
                              service_type=self._create_client)
@@ -52,83 +60,100 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
 
     @staticmethod
     def get_name() -> str:
-        """返回渠道的显示名称。"""
+        """
+        返回通知配置中显示的渠道名称。
+
+        :return: 企业微信
+        """
         return "企业微信"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        声明模块属于通知服务。
+
+        :return: 通知模块类型
         """
         return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:
         """
-        获取模块的子类型
+        声明模块处理企业微信渠道。
+
+        :return: 企业微信渠道枚举
         """
         return NotificationChannel.Wechat
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        返回相同接口下的模块调度优先级。
+
+        :return: 固定为 1；数值越小越先调用
         """
         return 1
 
     def stop(self) -> bool:
-        """停止全部微信实例，并返回长连接资源是否全部收敛。"""
+        """
+        停止全部实例并等待客户端释放长连接。
+
+        :return: 所有实例均成功停止时返回 True，否则返回 False
+        """
         return self._stop_service_instances()
 
     @staticmethod
     def _is_bot_mode(config: dict) -> bool:
-        """区分 Markdown 智能机器人与原有企业微信应用消息协议。"""
+        """
+        区分 Markdown 智能机器人与原有企业微信应用消息协议。
+        """
         return (config or {}).get("WECHAT_MODE", "app") == "bot"
 
     @classmethod
     def _create_client(cls, conf):
-        """按实例模式创建企业微信应用或智能机器人客户端。"""
+        """
+        按实例模式创建企业微信应用或智能机器人客户端。
+        """
         if cls._is_bot_mode(conf.config):
             return WeChatBot(name=conf.name, **conf.config)
         return WeChat(name=conf.name, **conf.config)
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """保留设置初始化钩子，实例配置由通知服务管理。"""
+        """
+        保留设置初始化钩子，实例配置由通知服务管理。
+        """
         pass
 
     def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[IncomingMessage]:
         """
-        解析消息内容，返回字典，注意以下约定值：
-        userid: 用户ID
-        username: 用户名
-        text: 内容
-        :param source: 消息来源
-        :param body: 请求体
-        :param form: 表单
-        :param args: 参数
-        :return: 渠道、消息体
+        解析企业微信回调并检查管理员命令权限。
+
+        应用模式支持文本、图片、语音、文件和菜单点击；机器人模式只接受私聊。
+        解析错误记录日志后忽略该消息。
+
+        :param source: 通知实例名称
+        :param body: 应用模式的加密 XML，或机器人模式的 JSON 回调
+        :param form: 保留的表单参数，当前不使用
+        :param args: 应用模式所需的签名、时间戳和随机数查询参数
+        :return: 统一消息；配置缺失、校验失败、内容不支持或无权限时返回 None
         """
         try:
-            # 获取服务配置
             client_config = self.get_config(source)
             if not client_config:
                 return None
             if self._is_bot_mode(client_config.config):
                 return self._parse_bot_message(source=source, body=body, client_config=client_config)
             client: WeChat = self.get_instance(client_config.name)
-            # URL参数
             sVerifyMsgSig = args.get("msg_signature")
             sVerifyTimeStamp = args.get("timestamp")
             sVerifyNonce = args.get("nonce")
             if not sVerifyMsgSig or not sVerifyTimeStamp or not sVerifyNonce:
                 logger.debug(f"微信请求参数错误：{args}")
                 return None
-            # 解密模块
             wxcpt = WXBizMsgCrypt(sToken=client_config.config.get('WECHAT_TOKEN'),
                                   sEncodingAESKey=client_config.config.get('WECHAT_ENCODING_AESKEY'),
                                   sReceiveId=client_config.config.get('WECHAT_CORPID'))
-            # 报文数据
             if not body:
                 logger.debug("微信请求数据为空")
                 return None
@@ -140,43 +165,18 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             if ret != 0:
                 logger.error(f"解密微信消息失败 DecryptMsg ret = {ret}")
                 return None
-            # 解析XML报文
-            """
-            1、消息格式：
-            <xml>
-               <ToUserName><![CDATA[toUser]]></ToUserName>
-               <FromUserName><![CDATA[fromUser]]></FromUserName>
-               <CreateTime>1348831860</CreateTime>
-               <MsgType><![CDATA[text]]></MsgType>
-               <Content><![CDATA[this is a test]]></Content>
-               <MsgId>1234567890123456</MsgId>
-               <AgentID>1</AgentID>
-            </xml>
-            2、事件格式：
-            <xml>
-                <ToUserName><![CDATA[toUser]]></ToUserName>
-                <FromUserName><![CDATA[UserID]]></FromUserName>
-                <CreateTime>1348831860</CreateTime>
-                <MsgType><![CDATA[event]]></MsgType>
-                <Event><![CDATA[subscribe]]></Event>
-                <AgentID>1</AgentID>
-            </xml>
-            """
             # DecryptMsg 的成功分支只返回解密后的 bytes，失败分支已在上方返回。
             dom_tree = xml.dom.minidom.parseString(cast(bytes, sMsg).decode('UTF-8'))
             # parseString 成功即有根元素；空文档会在解析阶段抛错。
             root_node = cast(xml.dom.minidom.Element, dom_tree.documentElement)
-            # 消息类型
             msg_type = DomUtils.tag_value(root_node, "MsgType")
-            # Event event事件只有click才有效,enter_agent无效
+            # 菜单事件只处理 click，忽略进入应用等其他事件
             event = DomUtils.tag_value(root_node, "Event")
-            # 用户ID
             user_id = DomUtils.tag_value(root_node, "FromUserName")
-            # 没的消息类型和用户ID的消息不要
+            # 缺少消息类型或发送者时无法路由消息
             if not msg_type or not user_id:
                 logger.warn("解析不到消息类型和用户ID")
                 return None
-            # 解析消息内容
             content = None
             images = None
             audio_refs = None
@@ -190,7 +190,6 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
                 content = DomUtils.tag_value(root_node, "EventKey")
                 logger.info(f"收到来自 {client_config.name} 的微信事件：userid={user_id}, event={content}")
             elif msg_type == "text":
-                # 文本消息
                 content = DomUtils.tag_value(root_node, "Content", default="")
                 logger.info(f"收到来自 {client_config.name} 的微信消息：userid={user_id}, text={content}")
             elif msg_type == "image":
@@ -236,7 +235,6 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
                 return None
 
             if content or images or audio_refs or files:
-                # 处理消息内容
                 return IncomingMessage(channel=NotificationChannel.Wechat, source=client_config.name,
                                        userid=user_id, username=user_id,
                                        is_channel_admin=matches_channel_admin(
@@ -250,7 +248,14 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         return None
 
     def _parse_bot_message(self, source: str, body: Any, client_config) -> Optional[IncomingMessage]:
-        """解析智能机器人私聊消息，并携带用户授权和附件信息。"""
+        """
+        提取机器人私聊内容并检查管理员命令权限。
+
+        :param source: 保留的来源参数，实际来源使用 client_config.name
+        :param body: JSON 字节、文本或已解析的字典
+        :param client_config: 当前实例配置，提供来源名称和管理员策略
+        :return: 含附件和管理员标记的统一消息；群聊、空内容或未授权命令返回 None
+        """
         try:
             if isinstance(body, bytes):
                 msg_json = json.loads(body)
@@ -327,9 +332,10 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
 
     def post_message(self, message: Message, **kwargs) -> None:
         """
-        发送消息
-        :param message: 消息内容
-        :return: 成功或失败
+        向符合通知规则的实例发送文本、图文或语音。
+
+        :param message: 通知内容及接收对象；语音发送失败时回退到文本或图文
+        :param kwargs: 兼容模块分发的附加参数，当前不使用
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -352,7 +358,11 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
 
     def download_wechat_image_to_data_url(self, image_ref: str, source: str) -> Optional[str]:
         """
-        下载企业微信渠道图片并转换为 data URL
+        通过来源实例下载企业微信图片。
+
+        :param image_ref: 应用媒体引用 wxwork://media_id/ 或机器人图片引用 wxbot://image/
+        :param source: 通知实例名称
+        :return: 含图片 MIME 类型的 Base64 数据地址；引用不支持、实例缺失或下载失败返回 None
         """
         if not image_ref:
             return None
@@ -371,7 +381,11 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
 
     def download_wechat_media_bytes(self, media_ref: str, source: str) -> Optional[bytes]:
         """
-        下载企业微信语音媒体并返回原始字节。
+        通过应用实例下载语音或文件的原始内容。
+
+        :param media_ref: wxwork://voice_media_id/ 或 wxwork://file_media_id/ 引用
+        :param source: 通知实例名称
+        :return: 媒体字节；引用不支持、实例缺失或下载失败返回 None
         """
         if not media_ref:
             return None
@@ -391,10 +405,10 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """
-        发送媒体信息选择列表
-        :param message: 消息内容
-        :param medias: 媒体列表
-        :return: 成功或失败
+        先发送通知标题，再发送媒体候选列表。
+
+        :param message: 通知路由条件、接收对象和标题
+        :param medias: 按原顺序展示的媒体候选项
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -402,17 +416,15 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             client: WeChat = self.get_instance(conf.name)
             if client:
                 userid = self.get_notification_userid(message, "wechat_userid")
-                # 先发送标题
                 client.send_msg(title=message.title, userid=userid, link=message.link)
-                # 再发送内容
                 client.send_medias_msg(medias=medias, userid=userid)
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """
-        发送种子信息选择列表
-        :param message: 消息内容
-        :param torrents: 种子列表
-        :return: 成功或失败
+        向符合通知规则的实例发送种子候选列表。
+
+        :param message: 通知路由条件、接收对象、标题和链接
+        :param torrents: 含种子及媒体信息的候选上下文
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -436,9 +448,13 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         return True
 
     def _delete_commands(self, client) -> None:
-        """企业微信使用自定义菜单 API 清理命令。"""
+        """
+        企业微信使用自定义菜单 API 清理命令。
+        """
         client.delete_menus()
 
     def _apply_commands(self, client, commands: Dict[str, dict]) -> None:
-        """企业微信使用自定义菜单 API 注册命令。"""
+        """
+        企业微信使用自定义菜单 API 注册命令。
+        """
         client.create_menus(commands)

@@ -1,4 +1,6 @@
-"""下载器已有任务的媒体识别、资源归类与根目录重命名。"""
+"""
+下载器已有任务的媒体识别、资源归类与根目录重命名。
+"""
 
 import re
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
@@ -30,7 +32,9 @@ _MUSIC_PRIMARY_TYPES = {
 
 
 def _safe_relative_name(value: Any, *, label: str) -> str:
-    """把识别结果规范为单层路径名，避免展示分隔符变成真实目录。"""
+    """
+    把识别结果规范为单层路径名，避免展示分隔符变成真实目录。
+    """
     text = _INVALID_NAME.sub(" - ", str(value or "").strip())
     text = " ".join(text.split()).strip(" .")
     if not text or text in (".", ".."):
@@ -39,13 +43,17 @@ def _safe_relative_name(value: Any, *, label: str) -> str:
 
 
 def _source_value(value: Any) -> str | None:
-    """把媒体来源枚举或字符串归一化，供来源与 ID 成对比较。"""
+    """
+    把媒体来源枚举或字符串归一化，供来源与 ID 成对比较。
+    """
     normalized = str(getattr(value, "value", value) or "").strip()
     return normalized.casefold() or None
 
 
 def _local_path(value: Any, *, label: str, validate: bool = False) -> PurePath:
-    """按 POSIX/Windows 风格解析本地路径，并统一输出正斜杠形式。"""
+    """
+    按 POSIX/Windows 风格解析本地路径，并统一输出正斜杠形式。
+    """
     text = str(value or "").strip()
     if _WINDOWS_DRIVE_PATH.match(text):
         text = text.replace("\\", "/")
@@ -62,7 +70,9 @@ def _local_path(value: Any, *, label: str, validate: bool = False) -> PurePath:
 
 
 def _normalize_music_category(media: Any) -> tuple[str, list[str]]:
-    """优先使用已生效分类路径，缺失时兼容退回音乐主类型。"""
+    """
+    优先使用已生效分类路径，缺失时兼容退回音乐主类型。
+    """
     if str(getattr(media, "music_type", None) or "").casefold() == "artist":
         return MUSIC_ARTIST_COLLECTION_CATEGORY, []
     classified_path = DirectoryHelper().resolve_media_category(media).path
@@ -86,7 +96,9 @@ def _normalize_music_category(media: Any) -> tuple[str, list[str]]:
 
 
 def _resolve_media(request: Any, history: Any, torrent: Any, media_chain: Any) -> tuple[MetaBase, Any]:
-    """复用 MoviePilot 的媒体识别链，支持自动识别和显式原生媒体 ID。"""
+    """
+    复用 MoviePilot 的媒体识别链，支持自动识别和显式原生媒体 ID。
+    """
     raw_type = request.type_name or history.type
     try:
         media_type = MediaType(raw_type) if raw_type else None
@@ -142,7 +154,9 @@ def _resolve_media(request: Any, history: Any, torrent: Any, media_chain: Any) -
 
 
 def _download_root(current: PurePath, media_type: str, category: str) -> tuple[Any, PurePath]:
-    """按媒体类型与主类别选择资源目录，优先保持在当前配置根内。"""
+    """
+    按媒体类型与主类别选择资源目录，优先保持在当前配置根内。
+    """
     candidates = []
     for directory in DirectoryHelper().get_download_dirs():
         if directory.storage != "local" or not directory.download_path:
@@ -176,12 +190,16 @@ def _download_root(current: PurePath, media_type: str, category: str) -> tuple[A
 
 
 def _manual_target(value: str) -> PurePath:
-    """校验手动目录是已配置资源目录本身或其子目录。"""
+    """
+    校验手动目录是已配置资源目录本身或其子目录。
+    """
     return _local_path(value, label="手动目标路径", validate=True)
 
 
 def _requested_category(value: Any, media_type: Any) -> str:
-    """校验手动分类属于当前媒体类型的启用分类策略。"""
+    """
+    校验手动分类属于当前媒体类型的启用分类策略。
+    """
     path = validate_classification_category_path(
         tuple(segment.strip() for segment in str(value or "").split("/") if segment.strip())
     )
@@ -191,7 +209,9 @@ def _requested_category(value: Any, media_type: Any) -> str:
 
 
 def _root_name(media: Any) -> str:
-    """生成跨电影、电视剧和音乐通用的规范任务根目录名。"""
+    """
+    生成跨电影、电视剧和音乐通用的规范任务根目录名。
+    """
     is_artist_collection = False
     if getattr(media, "type", None) == MediaType.MUSIC:
         if str(getattr(media, "music_type", None) or "").casefold() == "artist":
@@ -211,14 +231,18 @@ def _root_name(media: Any) -> str:
 
 
 def _downloader_kind(name: str) -> str | None:
-    """返回已配置下载器类型，用于在预览阶段显式限定重命名能力。"""
+    """
+    返回已配置下载器类型，用于在预览阶段显式限定重命名能力。
+    """
     downloaders = get_configured_system_config().get(SystemConfigKey.Downloaders) or []
     match = next((item for item in downloaders if item.get("name") == name), None)
     return str(match.get("type") or "").casefold() if match else None
 
 
 def _qb_module(chain: Any) -> Any:
-    """返回当前运行的 qBittorrent 模块。"""
+    """
+    返回当前运行的 qBittorrent 模块。
+    """
     return chain.modulemanager.get_running_module("QbittorrentModule")
 
 
@@ -229,7 +253,8 @@ def _qb_root_folder(
     current: PurePath,
     content: PurePath | None,
 ) -> str | None:
-    """确认 qB 任务是否拥有一个独立顶层目录。
+    """
+    确认 qB 任务是否拥有一个独立顶层目录。
 
     文件夹名称允许包含点号；不能使用 ``Path.suffix`` 猜测它是不是文件。
     优先检查已挂载文件系统，路径尚不存在时再用 qB 文件清单确认。
@@ -265,7 +290,8 @@ def _qb_root_folder(
 
 
 def _rename_qb_root(chain: Any, downloader: str, hash_value: str, old_name: str, new_name: str) -> bool:
-    """通过已运行的 qBittorrent 模块调用官方 renameFolder API。
+    """
+    通过已运行的 qBittorrent 模块调用官方 renameFolder API。
 
     此变更由下载器维护任务与文件的对应关系，不直接操作文件系统。
     """
@@ -286,7 +312,9 @@ def _rename_qb_root(chain: Any, downloader: str, hash_value: str, old_name: str,
 
 
 def organize_existing_source(hash_value: str, request: Any, chain: Any, media_chain: Any) -> dict[str, Any]:
-    """生成可重放的预览计划，确认后仅通过下载器修改任务路径。"""
+    """
+    生成可重放的预览计划，确认后仅通过下载器修改任务路径。
+    """
     validate_torrent_hash(hash_value)
     history = chain.download_history_repository.get_by_hash(hash_value)
     if history is None:

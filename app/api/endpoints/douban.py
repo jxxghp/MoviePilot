@@ -1,3 +1,7 @@
+"""
+提供豆瓣媒体搜索、详情和关联内容查询接口。
+"""
+
 from typing import Any, List, Optional, Sequence
 
 from fastapi import Depends
@@ -21,7 +25,9 @@ router = ResponseAPIRouter()
 
 
 def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
-    """按 browse 端点统一的页码协议切片媒体结果。"""
+    """
+    按 browse 端点统一的页码协议切片媒体结果。
+    """
     normalized_page = max(page, 1)
     normalized_count = max(count, 1)
     start = (normalized_page - 1) * normalized_count
@@ -29,7 +35,9 @@ def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
 
 
 def _resolve_media_type(type_name: str) -> Optional[MediaType]:
-    """把 Agent 类型名或中文类型名解析为媒体类型。"""
+    """
+    把 Agent 类型名或中文类型名解析为媒体类型。
+    """
     return MediaType.from_agent(type_name) or MediaType(type_name)
 
 

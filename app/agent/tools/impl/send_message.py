@@ -1,4 +1,6 @@
-"""发送消息工具"""
+"""
+发送消息工具
+"""
 
 from typing import Optional, Type
 
@@ -12,32 +14,36 @@ from app.schemas.types import MessageType
 
 
 class SendMessageInput(BaseModel):
-    """发送消息工具的输入参数模型"""
+    """
+    发送消息工具的输入参数模型
+    """
 
     message: Optional[str] = Field(
         None,
-        description="The message content to send to the user (should be clear and informative)",
+        description="发送给用户的清晰完整消息正文",
     )
     title: Optional[str] = Field(
         None,
-        description="Title of the message, a short summary of the message content",
+        description="简短概括正文的消息标题",
     )
     image_url: Optional[str] = Field(
         None,
-        description="Optional image URL to send together with the message on channels that support images (such as Telegram and Slack)",
+        description="支持图片的渠道中随消息发送的可选图片 URL，例如 Telegram 或 Slack",
     )
     rich_message: Optional[str] = Field(
         None,
         description=(
-            "Optional complete Telegram Rich Message body written in GitHub-style "
-            "Markdown. Telegram renders this instead of message, title, and image_url; "
-            "other channels use it as the plain-text fallback when message is empty."
+            "采用 GitHub 风格 Markdown 的完整 Telegram 富文本正文。"
+            "Telegram 用它替代 message、title 和 image_url；"
+            "其他渠道在 message 为空时用作纯文本回退"
         ),
     )
 
     @model_validator(mode="after")
     def validate_payload(self) -> "SendMessageInput":
-        """校验消息内容和可选格式参数。"""
+        """
+        校验消息内容和可选格式参数。
+        """
         if (
             not self.message
             and not self.title
@@ -49,30 +55,49 @@ class SendMessageInput(BaseModel):
 
 
 class SendMessageTool(MoviePilotTool):
-    """发送普通通知消息给当前用户。"""
+    """
+    发送普通通知消息给当前用户。
+    """
 
-    name: str = "send_message"
-    tags: list[str] = [
-        ToolTag.Write,
-        ToolTag.Message,
-        ToolTag.Admin,
-        ToolTag.TerminalResponse,
-    ]
-    sends_message: bool = True
-    return_direct: bool = True
-    description: str = (
-        "Send notification message to the user through configured notification channels "
-        "(Telegram, Slack, WeChat, etc.). Supports optional image_url on channels that can "
-        "send images. On Telegram, prefer the optional rich_message parameter for structured "
-        "final replies; write its complete content in GitHub-style Markdown. This is a "
-        "terminal response tool: after it sends the user-facing message, do not send another "
-        "final text reply with the same content."
+    name: str = Field(
+        default="send_message",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = SendMessageInput
-    require_admin: bool = True
+    tags: list[str] = Field(
+        default=[ToolTag.Write, ToolTag.Message, ToolTag.Admin, ToolTag.TerminalResponse],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    sends_message: bool = Field(
+        default=True,
+        description="工具是否直接向当前用户发送消息",
+    )
+    return_direct: bool = Field(
+        default=True,
+        description="是否直接返回工具结果并结束本轮智能体响应",
+    )
+    description: str = Field(
+        default=(
+            "通过已配置的通知渠道（Telegram、Slack、微信等）向用户发送消息。"
+            "支持图片的渠道可传 image_url。"
+            "Telegram 的结构化最终回复优先使用 rich_message，并以 GitHub 风格 Markdown 提供完整内容。"
+            "本工具直接完成用户回复；"
+            "发送后不要再发送内容相同的最终文本。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=SendMessageInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
+    require_admin: bool = Field(
+        default=True,
+        description="是否仅允许系统管理员调用",
+    )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """根据消息参数生成友好的提示消息"""
+        """
+        根据消息参数生成友好的提示消息
+        """
         rich_message = kwargs.get("rich_message") or ""
         message = kwargs.get("message", "") or rich_message
         title = kwargs.get("title") or ""
@@ -100,7 +125,9 @@ class SendMessageTool(MoviePilotTool):
         rich_message: Optional[str] = None,
         **kwargs,
     ) -> str:
-        """发送消息到当前会话渠道。"""
+        """
+        发送消息到当前会话渠道。
+        """
         title = title or ("图片" if image_url and not message and not rich_message else "")
         text = message or rich_message or ""
 

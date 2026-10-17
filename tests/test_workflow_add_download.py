@@ -1,4 +1,6 @@
-"""覆盖 RSS 领域上下文通过工作流动作桥接后提交下载的契约。"""
+"""
+覆盖 RSS 领域上下文通过工作流动作桥接后提交下载的契约。
+"""
 
 import json
 from unittest.mock import Mock
@@ -20,7 +22,9 @@ from app.workflow.actions.filter_torrents import FilterTorrentsAction
 @pytest.mark.parametrize("match_media", [False, True])
 @pytest.mark.parametrize("only_lack", [False, True])
 def test_rss_filter_add_download_accepts_domain_context(monkeypatch, match_media, only_lack):
-    """RSS 无论是否预先识别，都应经资源过滤及动作输入桥接正常提交下载。"""
+    """
+    RSS 无论是否预先识别，都应经资源过滤及动作输入桥接正常提交下载。
+    """
     media = MediaInfo(title="Show", type=MediaType.TV, tmdb_id=123)
     rss_helper = Mock()
     rss_helper.parse.return_value = [{
@@ -92,7 +96,9 @@ def test_rss_filter_add_download_accepts_domain_context(monkeypatch, match_media
 
 
 def test_add_download_reuses_complete_domain_context():
-    """领域对象应原样交给下载链，保留剧集限制、识别状态及原始媒体信息。"""
+    """
+    领域对象应原样交给下载链，保留剧集限制、识别状态及原始媒体信息。
+    """
     context = Context(
         meta_info=MetaInfo("Show S01E03"),
         media_info=MediaInfo(title="Show", type=MediaType.TV, tmdb_id=123),
@@ -108,7 +114,9 @@ def test_add_download_reuses_complete_domain_context():
 
 @pytest.mark.parametrize("missing", ["media_info", "torrent_info"])
 def test_add_download_rejects_incomplete_domain_context(missing):
-    """原生领域输入仍须满足下载动作的媒体及种子信息完整性要求。"""
+    """
+    原生领域输入仍须满足下载动作的媒体及种子信息完整性要求。
+    """
     context = Context(
         media_info=MediaInfo(title="Show", type=MediaType.TV),
         torrent_info=TorrentInfo(title="Show S01E03"),
@@ -121,7 +129,9 @@ def test_add_download_rejects_incomplete_domain_context(missing):
 
 @pytest.mark.parametrize("resume_at", ["filter", "download"])
 def test_restored_node_output_can_filter_and_download(monkeypatch, resume_at):
-    """持久化的节点输出字典经显式输入恢复后，仍应按领域契约过滤并提交下载。"""
+    """
+    持久化的节点输出字典经显式输入恢复后，仍应按领域契约过滤并提交下载。
+    """
     source = Context(
         meta_info=MetaInfo("Show S01E03"),
         media_info=MediaInfo(title="Show", type=MediaType.TV, tmdb_id=123),
@@ -176,7 +186,9 @@ def test_restored_node_output_can_filter_and_download(monkeypatch, resume_at):
 
 @pytest.mark.parametrize("include_valid", [False, True])
 def test_historical_text_resource_reports_failure_without_blocking_valid_download(monkeypatch, include_valid):
-    """旧版存成文本的资源无法恢复，应提示重跑且保留失败状态，仍处理其余有效资源。"""
+    """
+    旧版存成文本的资源无法恢复，应提示重跑且保留失败状态，仍处理其余有效资源。
+    """
     source = Context(
         meta_info=MetaInfo("Show S01E03"),
         media_info=MediaInfo(title="Show", type=MediaType.TV, tmdb_id=123),

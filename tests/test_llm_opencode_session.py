@@ -1,4 +1,6 @@
-"""OpenCode 官方端点的会话路由请求头回归测试。"""
+"""
+OpenCode 官方端点的会话路由请求头回归测试。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock
@@ -16,11 +18,15 @@ from app.agent.llm.helper import LLMHelper
 ])
 @pytest.mark.parametrize("cache_key", ["moviepilot-agent-private-hash", None])
 def test_opencode_model_sends_stable_session_on_every_request(monkeypatch, base_url, cache_key):
-    """主对话与独立调用经过真实 SDK 后仍携带稳定标识，工具绑定不丢失请求头。"""
+    """
+    主对话与独立调用经过真实 SDK 后仍携带稳定标识，工具绑定不丢失请求头。
+    """
     requests = []
 
     def respond(request):
-        """在本地捕获 SDK 请求并返回最小聊天响应，禁止真实出站。"""
+        """
+        在本地捕获 SDK 请求并返回最小聊天响应，禁止真实出站。
+        """
         requests.append(request)
         return httpx.Response(200, json={
             "id": "chatcmpl-test",
@@ -34,7 +40,9 @@ def test_opencode_model_sends_stable_session_on_every_request(monkeypatch, base_
     transport = httpx.MockTransport(respond)
     with httpx.Client(transport=transport) as client:
         async def invoke():
-            """使用离线运行时创建模型，并验证同步与异步请求使用同一标识。"""
+            """
+            使用离线运行时创建模型，并验证同步与异步请求使用同一标识。
+            """
             async with httpx.AsyncClient(transport=transport) as async_client:
                 monkeypatch.setattr(
                     helper, "_build_httpx_client",
@@ -72,7 +80,9 @@ def test_opencode_model_sends_stable_session_on_every_request(monkeypatch, base_
     "https://opencode.ai/zen/go/v1", "https://OPENCODE.AI/zen/v1",
 ])
 def test_opencode_independent_models_have_distinct_sessions(base_url):
-    """没有对话标识的独立模型互不共用会话，并保留自定义 UA 和模型参数。"""
+    """
+    没有对话标识的独立模型互不共用会话，并保留自定义 UA 和模型参数。
+    """
     original = {"user-agent": "custom-client/1.0", "X-Test": "value"}
     options = {"extra_body": {"test": True}}
     headers = [LLMHelper._build_openai_prompt_cache_options(
@@ -92,7 +102,9 @@ def test_opencode_independent_models_have_distinct_sessions(base_url):
     "https://opencode.ai@proxy.example/v1", "https://[invalid", None,
 ])
 def test_opencode_headers_do_not_leak_to_other_hosts(base_url):
-    """供应商名称与路径不能代替官方主机校验，兼容端点保持原有参数。"""
+    """
+    供应商名称与路径不能代替官方主机校验，兼容端点保持原有参数。
+    """
     headers, kwargs = LLMHelper._build_openai_prompt_cache_options(
         provider="opencode", base_url=base_url, use_responses_api=False,
         prompt_cache_key="private-cache-key", default_headers=None, model_kwargs={},

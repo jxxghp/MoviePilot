@@ -1,3 +1,7 @@
+"""
+定义工作流动作的公共接口和编辑器字段契约。
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, TypedDict, TypeVar, Union
 
@@ -11,7 +15,15 @@ from app.schemas.workflow import ActionContext, ActionResult
 
 
 class _ActionFieldInput(TypedDict, total=False):
-    """声明插件和内置动作允许提供的字段元数据，不转换已有原始值。"""
+    """
+    声明插件和内置动作允许提供的字段元数据，不转换已有原始值。
+
+    :ivar name: 运行时字段的稳定名称
+    :ivar label: 编辑器显示的字段名称
+    :ivar kind: 编辑器使用的字段类型标识
+    :ivar merge: 输入合并方式的原始声明
+    :ivar identity: 区分同名字段的原始身份声明
+    """
 
     name: str
     label: object
@@ -21,7 +33,15 @@ class _ActionFieldInput(TypedDict, total=False):
 
 
 class _ActionField(TypedDict):
-    """记录补齐展示默认值后的动作字段。"""
+    """
+    记录补齐展示默认值后的动作字段。
+
+    :ivar name: 运行时字段的稳定名称
+    :ivar label: 编辑器最终显示的字段名称
+    :ivar kind: 编辑器最终使用的字段类型
+    :ivar merge: 解析后的输入合并方式
+    :ivar identity: 解析后的字段身份
+    """
 
     name: str
     label: object
@@ -31,7 +51,13 @@ class _ActionField(TypedDict):
 
 
 class _DeclaredActionContract(TypedDict, total=False):
-    """描述动作类可选声明的输入、输出和互斥键。"""
+    """
+    描述动作类可选声明的输入、输出和互斥键。
+
+    :ivar inputs: 动作接受的输入字段声明；未提供时由基类推导
+    :ivar outputs: 动作产生的输出字段声明；未提供时由基类推导
+    :ivar concurrency_key: 可选的并发互斥键声明
+    """
 
     inputs: list[str | _ActionFieldInput]
     outputs: list[str | _ActionFieldInput]
@@ -39,7 +65,14 @@ class _DeclaredActionContract(TypedDict, total=False):
 
 
 class _ResolvedActionContract(TypedDict):
-    """提供编辑器与运行器读取的完整动作契约投影。"""
+    """
+    提供编辑器与运行器读取的完整动作契约投影。
+
+    :ivar inputs: 解析后的输入字段列表
+    :ivar outputs: 解析后的输出字段列表
+    :ivar condition_fields: 可供后续动作条件引用的字段列表
+    :ivar concurrency_key: 解析后的并发互斥键
+    """
 
     inputs: list[_ActionField]
     outputs: list[_ActionField]
@@ -51,13 +84,17 @@ _CacheItem = TypeVar("_CacheItem")
 
 
 class ActionChain(ChainBase):
-    """复用已注册模块能力执行工作流动作所需的业务调用。"""
+    """
+    复用已注册模块能力执行工作流动作所需的业务调用。
+    """
 
     pass
 
 
 def domain_media_info_from_dict(data: dict[str, Any]) -> DomainMediaInfo | DomainMusicInfo:
-    """把工作流 Schema 媒体字典按媒体类型还原为下载、过滤等业务链使用的领域对象。"""
+    """
+    把工作流 Schema 媒体字典按媒体类型还原为下载、过滤等业务链使用的领域对象。
+    """
     if data.get("type") == MediaType.MUSIC.value:
         return DomainMusicInfo.from_dict(data)
     media_info = DomainMediaInfo()
@@ -66,7 +103,9 @@ def domain_media_info_from_dict(data: dict[str, Any]) -> DomainMediaInfo | Domai
 
 
 def domain_torrent_info_from_dict(data: dict[str, Any]) -> DomainTorrentInfo:
-    """把工作流 Schema 种子字典还原为提供发布时间等运行时接口的领域对象。"""
+    """
+    把工作流 Schema 种子字典还原为提供发布时间等运行时接口的领域对象。
+    """
     torrent_info = DomainTorrentInfo()
     torrent_info.from_dict(data)
     return torrent_info
@@ -94,7 +133,9 @@ class BaseAction(ABC):
     contract: ClassVar[_DeclaredActionContract] = {}
 
     def __init__(self, action_id: str) -> None:
-        """建立当前动作的执行状态并绑定配置服务。"""
+        """
+        建立当前动作的执行状态并绑定配置服务。
+        """
         self._action_id = action_id
         self._done_flag = False
         self._message = ""

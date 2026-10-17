@@ -1,4 +1,6 @@
-"""媒体存在性计算与缺失集投影 owner。"""
+"""
+媒体存在性计算与缺失集投影 owner。
+"""
 
 from typing import Any, Dict, Optional, Tuple, cast
 
@@ -20,7 +22,9 @@ from app.schemas.types import (
 
 
 class DownloadExistenceOwner(_DownloadOwnerBase):
-    """媒体存在性计算与缺失集投影 owner。"""
+    """
+    媒体存在性计算与缺失集投影 owner。
+    """
 
     def get_no_exists_info(self, meta: MetaBase,
                            mediainfo: MediaInfo | MusicInfo,
@@ -29,6 +33,7 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                            ) -> Tuple[bool, Dict[str, Dict[int, NotExistMediaInfo]]]:
         """
         检查媒体库，查询电影或音乐是否存在；对于剧集同时返回不存在的季集信息
+
         :param meta: 元数据
         :param mediainfo: 已识别的媒体信息
         :param no_exists: 在调用该方法前已经存储的不存在的季集信息，有传入时该函数搜索的内容将会叠加后输出
@@ -47,7 +52,6 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
             totals = {}
 
         if mediainfo.type == MediaType.MOVIE:
-            # 电影
             exists_movies = self._media_exists_with_server_cache(
                 mediainfo=cast(MediaInfo, mediainfo),
                 query={
@@ -80,7 +84,6 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
             if not isinstance(mediainfo, MediaInfo):
                 return False, {}
             if not mediainfo.seasons:
-                # 补充媒体信息
                 recognized_media = MediaChain().recognize_media(
                     mtype=mediainfo.type,
                     media_source=media_source,
@@ -94,8 +97,6 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                 if not mediainfo.seasons:
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.title_year}")
                     return False, {}
-            # 电视剧
-            # 媒体库已存在的剧集
             exists_tvs = self._media_exists_with_server_cache(
                 mediainfo=mediainfo,
                 query={
@@ -108,15 +109,12 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                 },
             )
             if not exists_tvs:
-                # 所有季集均缺失
                 for season, episodes in mediainfo.seasons.items():
                     if not episodes:
                         continue
-                    # 全季不存在
                     if meta.sea \
                             and season not in meta.season_list:
                         continue
-                    # 总集数
                     total_ep = totals.get(season) or len(episodes)
                     self._append_no_exists(
                         no_exists, media_source, media_id, season, [],
@@ -124,19 +122,15 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                     )
                 return False, no_exists
             else:
-                # 存在一些，检查每季缺失的季集
                 for season, episodes in mediainfo.seasons.items():
                     if meta.sea \
                             and season not in meta.season_list:
                         continue
                     if not episodes:
                         continue
-                    # 该季总集数
                     season_total = totals.get(season) or len(episodes)
-                    # 该季已存在的集
                     exist_episodes = (exists_tvs.seasons or {}).get(season)
                     if exist_episodes:
-                        # 已存在取差集
                         if totals.get(season):
                             # 按总集数计算缺失集（开始集为TMDB中的最小集）
                             lack_episodes = list(set(range(min(episodes),
@@ -146,24 +140,19 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                             # 按TMDB集数计算缺失集
                             lack_episodes = list(set(episodes).difference(set(exist_episodes)))
                         if not lack_episodes:
-                            # 全部集存在
                             continue
-                        # 添加不存在的季集信息
                         self._append_no_exists(
                             no_exists, media_source, media_id, season,
                             lack_episodes, season_total, min(lack_episodes)
                         )
                     else:
-                        # 全季不存在
                         self._append_no_exists(
                             no_exists, media_source, media_id, season, [],
                             season_total, min(episodes)
                         )
-            # 存在不完整的剧集
             if no_exists:
                 logger.debug(f"媒体库中已存在部分剧集，缺失：{no_exists}")
                 return False, no_exists
-            # 全部存在
             return True, no_exists
 
     def _media_exists_with_server_cache(
@@ -171,7 +160,9 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
             mediainfo: MediaInfo,
             query: dict[str, Any],
     ) -> Optional[ExistMediaInfo]:
-        """按媒体服务器隔离缓存条目，再执行存在性检查。"""
+        """
+        按媒体服务器隔离缓存条目，再执行存在性检查。
+        """
         server_names = [
             str(config.name)
             for config in get_mediaserver_configs()
@@ -204,7 +195,9 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
             total: int,
             start: int,
     ) -> None:
-        """把一季缺失信息合并到标准媒体身份对应的结果中。"""
+        """
+        把一季缺失信息合并到标准媒体身份对应的结果中。
+        """
         media_key = build_media_key(media_source, media_id)
         if media_key is None:
             return

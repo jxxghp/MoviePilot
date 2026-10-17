@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""校验人工审查的宿主 Event consumer 精确政策。"""
+"""
+校验人工审查的宿主事件消费精确政策。
+"""
 
 import argparse
 import json
@@ -23,11 +25,13 @@ DEFAULT_EVENT_POLICY_PATH = (
     / "architecture"
     / "runtime-contract-policy.json"
 )
+# 政策只治理规范事件管理器上的宿主调用，排除运行时插件副本。
 EVENT_CONSUMER_POLICY_SCOPE = {
     "root": "app",
     "excluded": ["app.plugins"],
     "receiver_contract": "canonical_event_manager_only",
 }
+# 这些稳定语义字段共同标识消费事实，源码行号不参与政策匹配。
 EVENT_CONSUMER_FACT_FIELDS = (
     "caller",
     "qualname",
@@ -47,16 +51,25 @@ EVENT_CONSUMER_POLICY_FIELDS = (
     "owner",
     "reason",
 )
+# 纯静态注册必须使用此人工审批分类，不能与动态例外混用。
 STATIC_CLASSIFICATION = "approved_static_registration"
+# 含动态事件部分的注册必须单独登记此审批分类及明确理由。
 DYNAMIC_CLASSIFICATION = "approved_dynamic_exception"
 _FINGERPRINT_PATTERN = re.compile(r"[0-9a-f]{64}")
 _WILDCARD_CHARACTERS = frozenset("*?[")
+# 占位说明不构成人工审查理由，遇到这些值必须拒绝政策条目。
 _PLACEHOLDER_REASONS = frozenset({"todo", "tbd"})
 
 
 @dataclass(frozen=True, slots=True)
 class EventPolicyViolation:
-    """描述一条可稳定排序和断言的 Event policy 违规。"""
+    """
+    描述一条可稳定排序和断言的事件政策违规。
+
+    :param code: 用于分类和断言的稳定违规代码
+    :param fingerprint: 关联事件事实的 SHA256 指纹；无法关联单条事实时为 None
+    :param detail: 说明不匹配内容或无效字段的诊断文本
+    """
 
     code: str
     fingerprint: str | None
@@ -65,7 +78,16 @@ class EventPolicyViolation:
 
 @dataclass(frozen=True, slots=True)
 class EventPolicyCheck:
-    """汇总当前 consumer 事实、人工政策和全部校验结果。"""
+    """
+    汇总当前事件消费事实、人工政策和全部校验结果。
+
+    :param actual_count: 当前扫描到的事件消费事实条数
+    :param reviewed_count: 人工政策中登记的审查条目数
+    :param static_count: 当前事实中静态注册的条数
+    :param dynamic_count: 当前事实中带动态事件部分的条数
+    :param invalid_count: 当前事实中带无效注册标记的条数
+    :param violations: 按确定顺序保存的全部违规；空元组表示检查通过
+    """
 
     actual_count: int
     reviewed_count: int
@@ -76,7 +98,9 @@ class EventPolicyCheck:
 
     @property
     def ok(self) -> bool:
-        """返回当前事实是否完整匹配人工政策。"""
+        """
+        返回当前事实是否完整匹配人工政策。
+        """
         return not self.violations
 
 
@@ -85,7 +109,9 @@ def _violation(
     detail: str,
     fingerprint: object = None,
 ) -> EventPolicyViolation:
-    """构造字段类型安全的违规对象。"""
+    """
+    构造字段类型安全的违规对象。
+    """
     return EventPolicyViolation(
         code=code,
         fingerprint=fingerprint if isinstance(fingerprint, str) else None,
@@ -96,7 +122,9 @@ def _violation(
 def _sort_violations(
     violations: list[EventPolicyViolation],
 ) -> tuple[EventPolicyViolation, ...]:
-    """按错误码、指纹和说明输出确定顺序。"""
+    """
+    按错误码、指纹和说明输出确定顺序。
+    """
     return tuple(
         sorted(
             violations,
@@ -110,7 +138,9 @@ def _sort_violations(
 
 
 def _has_wildcard(value: object) -> bool:
-    """判断字符串或字符串列表是否包含 glob 通配符。"""
+    """
+    判断字符串或字符串列表是否包含 glob 通配符。
+    """
     if isinstance(value, str):
         return any(character in value for character in _WILDCARD_CHARACTERS)
     if isinstance(value, list):
@@ -119,7 +149,9 @@ def _has_wildcard(value: object) -> bool:
 
 
 def _fact_projection(value: Mapping[str, object]) -> dict[str, object]:
-    """提取 policy 与 collector 共用的完整 line-free consumer 字段。"""
+    """
+    提取政策与收集器共用的完整不含行号的事件消费字段。
+    """
     return {
         field: value[field]
         for field in EVENT_CONSUMER_FACT_FIELDS
@@ -132,7 +164,9 @@ def _validate_fact_shape(
     *,
     source: str,
 ) -> list[EventPolicyViolation]:
-    """校验 collector fact 或 policy entry 的公共语义字段。"""
+    """
+    校验收集到的事实或政策条目的公共语义字段。
+    """
     if not isinstance(value, Mapping):
         return [_violation("invalid_entry", f"{source} 必须是对象")]
 
@@ -252,7 +286,9 @@ def _validate_policy_entry(
     *,
     index: int,
 ) -> list[EventPolicyViolation]:
-    """校验人工 entry 的精确字段、分类、owner 和理由。"""
+    """
+    校验人工条目的精确字段、分类、责任归属和理由。
+    """
     source = f"policy.entries[{index}]"
     violations = _validate_fact_shape(value, source=source)
     if not isinstance(value, Mapping):
@@ -321,7 +357,9 @@ def _fingerprint_errors(
     *,
     source: str,
 ) -> list[EventPolicyViolation]:
-    """使用统一 Event fact 摘要函数验证 line-free identity。"""
+    """
+    使用统一事件事实摘要函数验证不含行号的身份。
+    """
     fingerprint = value.get("fingerprint")
     if not isinstance(fingerprint, str):
         return []
@@ -343,7 +381,9 @@ def _duplicate_fingerprint_errors(
     code: str,
     source: str,
 ) -> list[EventPolicyViolation]:
-    """拒绝会被集合比较吞掉的重复 consumer identity。"""
+    """
+    拒绝会被集合比较吞掉的重复事件消费标识。
+    """
     fingerprints: list[str] = [
         fingerprint
         for value in values
@@ -360,7 +400,13 @@ def validate_event_consumer_policy(
     policy: Mapping[str, object],
     facts: Sequence[Mapping[str, object]],
 ) -> EventPolicyCheck:
-    """按 exact fingerprint set 校验当前 consumer 事实与人工政策。"""
+    """
+    按精确指纹集合校验当前事件消费事实与人工政策。
+
+    :param policy: 包含版本、扫描范围和已审查消费条目的完整政策对象
+    :param facts: 当前收集到的事件消费事实，包含用于匹配的稳定指纹
+    :return: 事实计数和全部违规；不会修改政策或事实
+    """
     violations: list[EventPolicyViolation] = []
     actual_facts = list(facts)
     valid_actual: list[Mapping[str, object]] = []
@@ -496,7 +542,13 @@ def check_event_consumer_policy(
     facts: Sequence[Mapping[str, object]],
     policy_path: Path = DEFAULT_EVENT_POLICY_PATH,
 ) -> EventPolicyCheck:
-    """读取人工 policy 文件并校验给定的当前 consumer facts。"""
+    """
+    读取人工政策文件并校验给定的当前事件消费事实。
+
+    :param facts: 当前收集到的事件消费事实
+    :param policy_path: 人工审查并提交的 JSON 政策文件路径
+    :return: 检查结果；文件读取或 JSON 解析失败时以违规记录返回
+    """
     try:
         policy = json.loads(policy_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -520,7 +572,9 @@ def check_event_consumer_policy(
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    """解析只读 Event policy 检查参数。"""
+    """
+    解析只读事件政策检查参数。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--policy",
@@ -532,7 +586,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """收集当前事实并只读检查人工政策，不提供任何写入入口。"""
+    """
+    收集当前事实并只读检查人工政策，不提供任何写入入口。
+    """
     args = parse_args(argv)
     try:
         from scripts.architecture.baseline import collect_current_event_facts

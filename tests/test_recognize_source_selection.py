@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""识别测试类请求的数据源选择回归测试。
+"""
+识别测试类请求的数据源选择回归测试。
 
 识别测试（名称测试）前端只传请求级数据源 media_source，不携带 media_id；
 该路径必须按名称在指定数据源内识别，而不是被"显式身份必须成对"规则拦截。
@@ -17,7 +18,9 @@ FAILING_TITLE = "[ANI] 關於我轉生變成史萊姆這檔事 第四季 - 90 [1
 
 
 def _tmdb_media() -> MediaInfo:
-    """构造带 TMDB 身份的识别结果。"""
+    """
+    构造带 TMDB 身份的识别结果。
+    """
     return MediaInfo(
         media_source=MediaSource.TMDB,
         media_id="120089",
@@ -28,7 +31,9 @@ def _tmdb_media() -> MediaInfo:
 
 
 def test_recognize_media_with_source_only_uses_name_search():
-    """仅传 media_source 时应按名称在指定数据源识别，不得直接拒绝。"""
+    """
+    仅传 media_source 时应按名称在指定数据源识别，不得直接拒绝。
+    """
     chain = ChainBase()
     meta = MetaInfo(FAILING_TITLE)
     captured = {}
@@ -52,7 +57,9 @@ def test_recognize_media_with_source_only_uses_name_search():
 
 
 def test_async_recognize_media_with_source_only_uses_name_search():
-    """异步入口与同步入口保持同一语义。"""
+    """
+    异步入口与同步入口保持同一语义。
+    """
     chain = ChainBase()
     meta = MetaInfo(FAILING_TITLE)
     captured = {}
@@ -82,7 +89,9 @@ def test_async_recognize_media_with_source_only_uses_name_search():
 
 
 def test_recognize_media_accepts_string_source_only():
-    """第三方客户端可能传字符串数据源，应规范为枚举后按名称识别。"""
+    """
+    第三方客户端可能传字符串数据源，应规范为枚举后按名称识别。
+    """
     chain = ChainBase()
     meta = MetaInfo(FAILING_TITLE)
     captured = {}
@@ -101,7 +110,9 @@ def test_recognize_media_accepts_string_source_only():
 
 
 def test_recognize_media_meta_identity_same_source_uses_id():
-    """仅传数据源且 meta 自带同源身份（如 {tmdbid=}）时应直接按身份识别。"""
+    """
+    仅传数据源且 meta 自带同源身份（如 {tmdbid=}）时应直接按身份识别。
+    """
     chain = ChainBase()
     meta = MetaInfo("空之境界 第五章 矛盾螺旋 (2008) {tmdbid=23155}")
     captured = {}
@@ -121,7 +132,9 @@ def test_recognize_media_meta_identity_same_source_uses_id():
 
 
 def test_recognize_media_media_id_without_source_still_rejected():
-    """显式 media_id 缺少有效来源时仍应拒绝，成对约束不放宽。"""
+    """
+    显式 media_id 缺少有效来源时仍应拒绝，成对约束不放宽。
+    """
     chain = ChainBase()
     native = Mock()
 
@@ -133,7 +146,9 @@ def test_recognize_media_media_id_without_source_still_rejected():
 
 
 def test_recognize_media_invalid_pair_still_rejected():
-    """media_id 为 0 等无效值与来源组合仍应拒绝。"""
+    """
+    media_id 为 0 等无效值与来源组合仍应拒绝。
+    """
     chain = ChainBase()
     native = Mock()
 

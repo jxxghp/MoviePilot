@@ -1,4 +1,6 @@
-"""AMLL TTML 歌词搜索、录音匹配和下载模块。"""
+"""
+AMLL TTML 歌词搜索、录音匹配和下载模块。
+"""
 
 import json
 import math
@@ -27,63 +29,96 @@ from app.schemas.types import ModuleType, OtherModulesType
 
 
 class AmllModule(_ModuleBase):
-    """聚合 AMLL 原生 API 的可信 TTML 候选，由宿主刮削链统一保存。"""
+    """
+    聚合 AMLL 原生 API 的可信 TTML 候选，由宿主刮削链统一保存。
+    """
 
+    # 文本搜索仅检查首页，最多读取 20 条身份候选
     _page_size = 20
+    # 一次搜索最多下载三个不同候选的完整歌词
     _download_limit = 3
+    # 服务端 Retry-After 最多延长冷却 300 秒
     _maximum_cooldown = 300.0
     _cache_region = "app.modules.amll"
 
     def __init__(self) -> None:
-        """建立实例级请求互斥和冷却状态，不在模块构造时请求网络。"""
+        """
+        建立实例级请求互斥和冷却状态，不在模块构造时请求网络。
+        """
         super().__init__()
         self._request_lock = threading.Lock()
         self._cooldown_until = 0.0
 
     def init_module(self) -> None:
-        """来源配置变化时清理缓存与冷却，后续查询使用新的服务地址。"""
+        """
+        来源配置变化时清理缓存与冷却，后续查询使用新的服务地址。
+        """
         with self._request_lock:
             Cache(maxsize=1024, ttl=3600).clear(region=self._cache_region)
             self._cooldown_until = 0.0
 
     def init_setting(self) -> None:
-        """公共歌词服务无需密钥，请求由音乐歌词刮削策略控制。"""
+        """
+        公共歌词服务无需密钥，请求由音乐歌词刮削策略控制。
+        """
 
     def stop(self) -> None:
-        """当前模块不持有后台任务或持久网络客户端。"""
+        """
+        当前模块不持有后台任务或持久网络客户端。
+        """
 
     def test(self) -> tuple[bool, str]:
-        """用有界搜索请求检查原生歌词接口连通性。"""
+        """
+        用有界搜索请求检查原生歌词接口连通性。
+        """
         response = self._search(self._base_url(), "test", "", "")
         return (True, "") if response is not None else (False, "AMLL TTML API 网络连接失败")
 
     @staticmethod
     def get_name() -> str:
-        """返回歌词来源展示名称。"""
+        """
+        返回歌词来源展示名称。
+        """
         return "AMLL TTML"
 
     @staticmethod
     def get_type() -> ModuleType:
-        """返回歌词模块所属的杂项能力分类。"""
+        """
+        返回歌词模块所属的杂项能力分类。
+        """
         return ModuleType.Other
 
     @staticmethod
     def get_subtype() -> OtherModulesType:
-        """返回 AMLL 歌词来源的稳定模块标识。"""
+        """
+        返回 AMLL 歌词来源的稳定模块标识。
+        """
         return OtherModulesType.Amll
 
     @staticmethod
     def get_priority() -> int:
-        """在候选聚合阶段按常规歌词来源顺序执行。"""
+        """
+        在候选聚合阶段按常规歌词来源顺序执行。
+        """
         return 6
 
     @staticmethod
     def _base_url() -> str:
-        """解析当前配置地址，空地址表示本次不调用该来源。"""
+        """
+        解析当前配置地址，空地址表示本次不调用该来源。
+        """
         return str(get_runtime_setting("AMLL_BASE_URL") or "").strip().rstrip("/")
 
     def music_lyrics_candidates(self, music: MetaMusic | MusicInfo) -> list[MusicLyrics]:
-        """优先以 ISRC 获取歌词，否则严格筛选搜索结果后下载至多三个候选。"""
+        """
+        优先按 ISRC 查询，未获得有效歌词时回退严格的文本身份匹配。
+
+        文本搜索仅检查首页 20 条，去重后最多下载三个候选并再次核对身份。
+        请求在实例内串行执行，限流或服务繁忙时遵守有上限的冷却期。
+
+        :param music: 待查单曲的标题、艺术家、专辑和可选 ISRC
+        :return: 最多三个已验证歌词候选；无可用来源配置或无匹配时为空列表
+        """
         base_url = self._base_url()
         if not base_url:
             return []
@@ -99,7 +134,9 @@ class AmllModule(_ModuleBase):
         return self._search_candidates(music, base_url)
 
     def _search_candidates(self, music: MetaMusic | MusicInfo, base_url: str) -> list[MusicLyrics]:
-        """搜索仅提供候选身份，详情下载后再次核对身份与请求 ID。"""
+        """
+        搜索仅提供候选身份，详情下载后再次核对身份与请求 ID。
+        """
         title, artists, album = search_identity(music)
         if not title or not artists:
             return []
@@ -130,7 +167,9 @@ class AmllModule(_ModuleBase):
     def _to_lyrics(
         music: MetaMusic | MusicInfo, payload: dict[str, Any], score: int,
     ) -> Optional[MusicLyrics]:
-        """将确认身份后的 TTML 正文交给来源解析器，保留逐词时间轴。"""
+        """
+        将确认身份后的 TTML 正文交给来源解析器，保留逐词时间轴。
+        """
         content = payload.get("lyrics")
         identifier = lyric_id(payload)
         if payload.get("format") != "ttml" or not identifier or not isinstance(content, str):
@@ -149,7 +188,9 @@ class AmllModule(_ModuleBase):
     def _search(
         self, base_url: str, music_name: str, artist_name: str, album_name: str,
     ) -> Optional[dict[str, Any]]:
-        """短期缓存动态搜索，控制单页候选数量并避免宽泛正文查询。"""
+        """
+        短期缓存动态搜索，控制单页候选数量并避免宽泛正文查询。
+        """
         params = {"musicName": music_name, "page": 1, "pageSize": self._page_size}
         if artist_name:
             params["artistName"] = artist_name
@@ -158,17 +199,23 @@ class AmllModule(_ModuleBase):
         return self._cached_json("/v1/lyrics/search", params, base_url, ttl=3600)
 
     def _get(self, base_url: str, identifier: str) -> Optional[dict[str, Any]]:
-        """特定歌词 ID 内容固定，成功下载后使用独立的较长缓存。"""
+        """
+        特定歌词 ID 内容固定，成功下载后使用独立的较长缓存。
+        """
         return self._cached_json("/v1/lyrics/get", {"id": identifier}, base_url, ttl=7 * 24 * 3600)
 
     def _lookup_isrc(self, base_url: str, isrc: str) -> Optional[dict[str, Any]]:
-        """ISRC 对应的最新版歌词会变化，因此使用短期缓存。"""
+        """
+        ISRC 对应的最新版歌词会变化，因此使用短期缓存。
+        """
         return self._cached_json("/v1/lyrics/get", {"isrc": isrc}, base_url, ttl=3600)
 
     def _cached_json(
         self, path: str, params: dict[str, Any], base_url: str, ttl: int,
     ) -> Optional[dict[str, Any]]:
-        """按来源地址隔离缓存，未命中短期保存，网络失败保持可立即重试。"""
+        """
+        按来源地址隔离缓存，未命中短期保存，网络失败保持可立即重试。
+        """
         cache = Cache(maxsize=1024, ttl=3600)
         key = json.dumps([base_url, path, params], ensure_ascii=False, sort_keys=True)
         cached_value = cache.get(key, region=self._cache_region)
@@ -183,7 +230,9 @@ class AmllModule(_ModuleBase):
     def _request_json(
         self, path: str, params: dict[str, Any], base_url: str,
     ) -> Optional[dict[str, Any]]:
-        """串行发起有限超时请求，限流期间跳过该来源并确保释放响应。"""
+        """
+        串行发起有限超时请求，限流期间跳过该来源并确保释放响应。
+        """
         with self._request_lock:
             if time.monotonic() < self._cooldown_until:
                 return None
@@ -222,7 +271,9 @@ class AmllModule(_ModuleBase):
 
     @classmethod
     def _retry_after_seconds(cls, value: str | None) -> float:
-        """解析秒数或 HTTP 日期，限制异常远期值并避免无限等待。"""
+        """
+        解析秒数或 HTTP 日期，限制异常远期值并避免无限等待。
+        """
         try:
             delay = float(value or "1")
         except ValueError:

@@ -1,4 +1,6 @@
-"""虚拟插件实例的持久化、加载和创建行为测试。"""
+"""
+虚拟插件实例的持久化、加载和创建行为测试。
+"""
 
 import importlib.util
 import sys
@@ -25,7 +27,8 @@ from app.schemas.types import EventType, SystemConfigKey
 
 
 def _make_directory() -> tuple[PluginInstanceDirectory, dict[str, PluginInstance]]:
-    """构造进程内插件实例表，供分身持久化测试使用。
+    """
+    构造进程内插件实例表，供分身持久化测试使用。
 
     返回背后的字典，用例据此断言写入落在哪一行上，而不是只看端口回报的结果。
     """
@@ -46,11 +49,15 @@ def _make_directory() -> tuple[PluginInstanceDirectory, dict[str, PluginInstance
 
 
 def _make_storage(values: dict) -> tuple[PluginStorage, list]:
-    """构造进程内配置存储，并记录写入过的键，供幂等性断言使用。"""
+    """
+    构造进程内配置存储，并记录写入过的键，供幂等性断言使用。
+    """
     written: list = []
 
     def _write(key, value):
-        """记录写入键并落进内存配置字典。"""
+        """
+        记录写入键并落进内存配置字典。
+        """
         written.append(key)
         values[key] = value
 
@@ -58,12 +65,16 @@ def _make_storage(values: dict) -> tuple[PluginStorage, list]:
 
 
 def _legacy_values(**entries) -> dict:
-    """构造只含旧 systemconfig 单键的配置字典。"""
+    """
+    构造只含旧 systemconfig 单键的配置字典。
+    """
     return {SystemConfigKey.PluginInstances: dict(entries)}
 
 
 def _logger() -> SimpleNamespace:
-    """提供加载器测试所需的最小日志对象。"""
+    """
+    提供加载器测试所需的最小日志对象。
+    """
     return SimpleNamespace(
         debug=lambda *_args: None,
         info=lambda *_args: None,
@@ -73,7 +84,9 @@ def _logger() -> SimpleNamespace:
 
 
 def test_instance_store_keeps_virtual_instances_out_of_installed_list():
-    """虚拟实例使用独立配置键，不改写存量物理插件安装清单。"""
+    """
+    虚拟实例使用独立配置键，不改写存量物理插件安装清单。
+    """
     values = {SystemConfigKey.UserInstalledPlugins: ["DemoPlugin"]}
     storage = PluginStorage(
         read=values.get,
@@ -97,7 +110,8 @@ def test_instance_store_keeps_virtual_instances_out_of_installed_list():
 
 
 def test_host_rows_do_not_leak_into_the_clone_listing():
-    """本体自身那一行与分身共用一张表，但不得出现在分身清单里。
+    """
+    本体自身那一行与分身共用一张表，但不得出现在分身清单里。
 
     本体行承载的是插件自己的业务参数，混进分身清单会让「我的插件」里多出一张
     指向插件自身的分身卡片。
@@ -124,7 +138,9 @@ def test_host_rows_do_not_leak_into_the_clone_listing():
 
 
 def test_saving_a_clone_whose_id_equals_its_source_is_rejected():
-    """两者相等的那一行表示本体自身，按分身写入会把本体承载的配置顶掉。"""
+    """
+    两者相等的那一行表示本体自身，按分身写入会把本体承载的配置顶掉。
+    """
     values: dict = {}
     storage = PluginStorage(
         read=values.get,
@@ -142,7 +158,8 @@ def test_saving_a_clone_whose_id_equals_its_source_is_rejected():
 
 
 def test_legacy_instances_are_not_reimported_after_being_deleted():
-    """删光分身后重启不得从旧 systemconfig 键把它们导回来。
+    """
+    删光分身后重启不得从旧 systemconfig 键把它们导回来。
 
     旧键刻意保留作回滚依据、从不清理，若以「表为空」作为兜底导入的判据，
     用户每删光一次分身、下次启动就会复活一次。
@@ -178,7 +195,8 @@ def test_legacy_instances_are_not_reimported_after_being_deleted():
 
 
 def test_legacy_entries_added_by_an_older_version_are_merged_in():
-    """回滚到旧版本新增的分身，切回新版本后要能合并进独立表。
+    """
+    回滚到旧版本新增的分身，切回新版本后要能合并进独立表。
 
     旧版本只认 `PluginInstances` 旧键，在那里新建的分身既不在独立表里，也不在
     已导入指纹里。若判据只有「一条永久标记」加「整表是否为空」，标记落下且表非空
@@ -213,7 +231,9 @@ def test_legacy_entries_added_by_an_older_version_are_merged_in():
 
 
 def test_legacy_entries_changed_by_an_older_version_are_merged_in():
-    """回滚到旧版本改写过的分身，切回新版本后要按旧键的新内容合并。"""
+    """
+    回滚到旧版本改写过的分身，切回新版本后要按旧键的新内容合并。
+    """
     values = _legacy_values(
         DemoPluginWork={
             "instance_id": "DemoPluginWork",
@@ -236,7 +256,9 @@ def test_legacy_entries_changed_by_an_older_version_are_merged_in():
 
 
 def test_rows_edited_in_the_new_table_are_not_overwritten_by_stale_legacy_copies():
-    """旧键没变时，独立表里被用户改过的行不得被旧键里的陈旧副本盖回去。"""
+    """
+    旧键没变时，独立表里被用户改过的行不得被旧键里的陈旧副本盖回去。
+    """
     values = _legacy_values(
         DemoPluginWork={
             "instance_id": "DemoPluginWork",
@@ -263,7 +285,9 @@ def test_rows_edited_in_the_new_table_are_not_overwritten_by_stale_legacy_copies
 
 
 def test_rows_migrated_by_alembic_are_claimed_without_being_overwritten():
-    """迁移已搬进独立表、指纹还没记过的那批行，只认领指纹不覆盖内容。"""
+    """
+    迁移已搬进独立表、指纹还没记过的那批行，只认领指纹不覆盖内容。
+    """
     values = _legacy_values(
         DemoPluginWork={
             "instance_id": "DemoPluginWork",
@@ -287,7 +311,9 @@ def test_rows_migrated_by_alembic_are_claimed_without_being_overwritten():
 
 
 def test_merging_legacy_entries_is_idempotent_across_restarts():
-    """旧键没有新增或变化时，重复启动既不重复建行也不重复落盘指纹。"""
+    """
+    旧键没有新增或变化时，重复启动既不重复建行也不重复落盘指纹。
+    """
     values = _legacy_values(
         DemoPluginWork={
             "instance_id": "DemoPluginWork",
@@ -306,7 +332,8 @@ def test_merging_legacy_entries_is_idempotent_across_restarts():
 
 
 def test_entries_deleted_by_an_older_version_are_removed_from_the_table():
-    """回滚到旧版本删掉的分身，切回新版本后必须从独立表里一并消失。
+    """
+    回滚到旧版本删掉的分身，切回新版本后必须从独立表里一并消失。
 
     旧键是旧版本唯一认得的清单，保留它作回滚依据就等于承诺「在那边做的改动切回来
     还算数」。只合并新增与改写、不同步删除，用户在旧版本里删掉的分身会在新版本里
@@ -339,7 +366,9 @@ def test_entries_deleted_by_an_older_version_are_removed_from_the_table():
 
 
 def test_renaming_in_the_legacy_key_does_not_leave_the_old_row_behind():
-    """旧版本里的重命名表现为「旧 ID 消失 + 新 ID 出现」，旧行不得残留。"""
+    """
+    旧版本里的重命名表现为「旧 ID 消失 + 新 ID 出现」，旧行不得残留。
+    """
     values = _legacy_values(
         DemoPluginWork={
             "instance_id": "DemoPluginWork",
@@ -368,7 +397,8 @@ def test_renaming_in_the_legacy_key_does_not_leave_the_old_row_behind():
 
 
 def test_rows_created_natively_in_the_new_table_survive_legacy_deletions():
-    """新表里原生创建、从未由旧键导入过的分身不受旧键删除牵连。
+    """
+    新表里原生创建、从未由旧键导入过的分身不受旧键删除牵连。
 
     删除判据必须是「曾经认领过指纹、现在旧键里没有了」；若退化成「旧键里没有就删」，
     新版本创建的分身会在下一次启动时被旧键当成「已删除」整批清掉。
@@ -401,7 +431,8 @@ def test_rows_created_natively_in_the_new_table_survive_legacy_deletions():
 
 
 def test_bootstrap_is_retried_after_a_transient_persistence_failure():
-    """引导过程中的暂时性故障不得让同一进程此后永久跳过引导。
+    """
+    引导过程中的暂时性故障不得让同一进程此后永久跳过引导。
 
     完成标记若在读取、合并、写指纹之前就落下，首次访问撞上一次数据库抖动之后，
     本进程剩余生命周期里读到的都是一份没导完的分身清单，只能靠重启自愈。
@@ -417,7 +448,9 @@ def test_bootstrap_is_retried_after_a_transient_persistence_failure():
     failures = {"remaining": 1}
 
     def _read(key):
-        """第一次读旧键时模拟一次持久化层抖动。"""
+        """
+        第一次读旧键时模拟一次持久化层抖动。
+        """
         reads.append(key)
         if key is SystemConfigKey.PluginInstances and failures["remaining"]:
             failures["remaining"] -= 1
@@ -445,7 +478,9 @@ def test_loader_executes_each_instance_in_an_isolated_module_namespace(
     tmp_path,
     monkeypatch,
 ):
-    """两个实例共享磁盘源码，但模块全局状态、类身份和相对导入互相隔离。"""
+    """
+    两个实例共享磁盘源码，但模块全局状态、类身份和相对导入互相隔离。
+    """
     source_dir = tmp_path / "demoplugin"
     source_dir.mkdir()
     (source_dir / "state.py").write_text("state = []\n", encoding="utf-8")
@@ -512,11 +547,15 @@ def test_loader_executes_each_instance_in_an_isolated_module_namespace(
 
 
 def test_loader_handles_missing_pickle_module_and_instance_icon_metadata():
-    """插件类型模块已卸载时应安全跳过，并保留分身图标元数据。"""
+    """
+    插件类型模块已卸载时应安全跳过，并保留分身图标元数据。
+    """
     from app.runtime.extensions.plugin import loader as loader_module
 
     class Candidate:
-        """提供分身元数据适配所需的最小插件类。"""
+        """
+        提供分身元数据适配所需的最小插件类。
+        """
 
         __module__ = "removed_plugin_module"
 
@@ -535,7 +574,8 @@ def test_loader_handles_missing_pickle_module_and_instance_icon_metadata():
 
 
 def _import_host_package(module_name: str, source_dir: Path) -> ModuleType:
-    """按源插件本体的模块名导入磁盘源码，复刻本体已被装载的运行事实。
+    """
+    按源插件本体的模块名导入磁盘源码，复刻本体已被装载的运行事实。
 
     本体必须真的在 ``sys.modules`` 里：处理器的注册键要靠函数的 ``__module__``
     反查模块对象才能算出来，本体缺席会让两边都算成同一个占位名，掩盖分身与本体
@@ -553,7 +593,9 @@ def _import_host_package(module_name: str, source_dir: Path) -> ModuleType:
 
 
 def _forget_modules(*prefixes: str) -> None:
-    """清除用例在模块缓存里留下的插件模块，避免污染后续用例。"""
+    """
+    清除用例在模块缓存里留下的插件模块，避免污染后续用例。
+    """
     for name in list(sys.modules):
         if any(name == prefix or name.startswith(f"{prefix}.") for prefix in prefixes):
             sys.modules.pop(name, None)
@@ -563,7 +605,8 @@ def test_loader_gives_submodule_handlers_of_each_instance_distinct_registry_keys
     tmp_path,
     monkeypatch,
 ):
-    """分身在子模块类体内声明的处理器，注册键必须与本体的区分开。
+    """
+    分身在子模块类体内声明的处理器，注册键必须与本体的区分开。
 
     事件处理器的注册键取自函数所在模块名。类体内的函数是类的属性而不是模块的
     属性，只遍历模块顶层碰不到它们；漏改会让分身与本体注册到同一个键上，后注册
@@ -646,7 +689,8 @@ def test_loader_runtime_gate_only_rejects_explicit_incompatible_declarations(
     tmp_path,
     monkeypatch,
 ):
-    """未建立声明或声明为空时保持历史插件可加载，只有显式 false 才拒绝。
+    """
+    未建立声明或声明为空时保持历史插件可加载，只有显式 false 才拒绝。
 
     判据来自安装时提交的声明快照。运行目录里的 ``package.json`` 是模块联邦组件的
     npm manifest，主程序既不写它也不读它，这里一并钉住：它的存在不能影响门禁。
@@ -694,7 +738,8 @@ def test_loader_marks_incompatible_runtime_status_when_skipping(
     tmp_path,
     monkeypatch,
 ):
-    """运行时不兼容的插件被跳过时必须留下卡片可见的状态。
+    """
+    运行时不兼容的插件被跳过时必须留下卡片可见的状态。
 
     启动期全量加载不会让生命周期遍历到这些插件，状态只能由加载器落记；
     否则用户在 v3t 上只能看到一张既不运行也不解释的占位卡片。
@@ -733,14 +778,18 @@ def test_loader_marks_incompatible_runtime_status_when_skipping(
 
 
 def test_clone_service_persists_descriptor_without_copying_source_package():
-    """创建分身只写实例描述和隔离配置，并始终跟随源插件版本。"""
+    """
+    创建分身只写实例描述和隔离配置，并始终跟随源插件版本。
+    """
     instances: dict[str, PluginInstance] = {}
     configs = {"DemoPlugin": {"enable": True, "token": "secret"}}
     reloaded: list[str] = []
     removed: list[str] = []
 
     class DemoPlugin:
-        """提供创建用例需要的最小源插件类。"""
+        """
+        提供创建用例需要的最小源插件类。
+        """
 
     service = PluginCloneService(
         plugin_class=lambda plugin_id: DemoPlugin if plugin_id == "DemoPlugin" else None,
@@ -785,14 +834,17 @@ def test_clone_service_persists_descriptor_without_copying_source_package():
 
 
 def test_clone_service_gives_up_allocating_when_no_id_is_ever_reported_free():
-    """占用判据恒为真时自动分配必须有限次放弃，不能扣着占位锁原地打转。
+    """
+    占用判据恒为真时自动分配必须有限次放弃，不能扣着占位锁原地打转。
 
     探测上限随已登记分身数抬高是为了不把仍可用的号误报成耗尽；上限本身不能因此取消，
     判据一旦因端口故障恒为真，无界的循环会让请求线程一直占着创建入口不放。
     """
 
     class DemoPlugin:
-        """提供探测上限用例需要的最小源插件类。"""
+        """
+        提供探测上限用例需要的最小源插件类。
+        """
 
     service = PluginCloneService(
         plugin_class=lambda _plugin_id: DemoPlugin,
@@ -818,13 +870,17 @@ def test_clone_service_gives_up_allocating_when_no_id_is_ever_reported_free():
 
 
 def test_clone_service_rolls_back_descriptor_and_config_after_load_failure():
-    """实例首次加载失败时不留下不可见描述或孤立配置。"""
+    """
+    实例首次加载失败时不留下不可见描述或孤立配置。
+    """
     instances: dict[str, PluginInstance] = {}
     configs = {"DemoPlugin": {"enabled": True}}
     removed: list[str] = []
 
     class DemoPlugin:
-        """提供失败回滚用例需要的最小源插件类。"""
+        """
+        提供失败回滚用例需要的最小源插件类。
+        """
 
     service = PluginCloneService(
         plugin_class=lambda _plugin_id: DemoPlugin,
@@ -861,7 +917,8 @@ def test_clone_service_rolls_back_descriptor_and_config_after_load_failure():
 
 
 def _tree_manager(reloaded: list[str]) -> MagicMock:
-    """构造带一个分身的插件管理器替身，重载树语义取自真实实现。
+    """
+    构造带一个分身的插件管理器替身，重载树语义取自真实实现。
 
     只替换重载动作本身，实例树的解析仍走 PluginManager 的真实方法，避免用例把
     「分身也被重载」断言在一个自己编造的树上。
@@ -896,7 +953,8 @@ def _tree_manager(reloaded: list[str]) -> MagicMock:
 
 
 def test_manual_reload_covers_source_plugin_and_its_clones(monkeypatch):
-    """手工重载本体要连分身一起换掉旧类对象，并逐个刷新它们的注册。
+    """
+    手工重载本体要连分身一起换掉旧类对象，并逐个刷新它们的注册。
 
     只重载本体时，分身继续持有旧模块与旧类对象，改完源码点重载后新旧代码会在同一
     进程内并存，分身的 API、调度与命令注册也不会刷新。
@@ -919,7 +977,9 @@ def test_manual_reload_covers_source_plugin_and_its_clones(monkeypatch):
 
 
 def test_manual_reload_of_a_clone_rebuilds_the_whole_instance_tree(monkeypatch):
-    """从分身发起的重载要回到源码本体，再带上同源的全部分身。"""
+    """
+    从分身发起的重载要回到源码本体，再带上同源的全部分身。
+    """
     reloaded: list[str] = []
     refreshed: list[str] = []
     manager = _tree_manager(reloaded)

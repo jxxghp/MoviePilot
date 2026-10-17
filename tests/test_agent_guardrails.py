@@ -1,4 +1,6 @@
-"""真实 LangChain 图中验证循环停止、并行顺序、轮询和原始工具结果。"""
+"""
+真实 LangChain 图中验证循环停止、并行顺序、轮询和原始工具结果。
+"""
 
 import asyncio
 import json
@@ -24,7 +26,9 @@ from app.agent.tools.result import TOOL_OBSERVATION_MARKER, messages_for_persist
 
 
 def create_agent(**kwargs):
-    """使用生产的策略节点组合，保持循环检测不新增模型前后图节点。"""
+    """
+    使用生产的策略节点组合，保持循环检测不新增模型前后图节点。
+    """
     middleware = kwargs['middleware']
     guard = next(item for item in middleware if isinstance(item, ToolGuardrailsMiddleware))
     policy = next((item for item in middleware if isinstance(item, AgentPolicyMiddleware)), None)
@@ -36,15 +40,21 @@ def create_agent(**kwargs):
 
 
 class GuardModel(FakeMessagesListChatModel):
-    """固定工具调用模型，保证测试不依赖真实服务或模型概率。"""
+    """
+    固定工具调用模型，保证测试不依赖真实服务或模型概率。
+    """
 
     def bind_tools(self, _tools, **_kwargs):
-        """使用真实 ToolNode，模型仅返回预定消息。"""
+        """
+        使用真实 ToolNode，模型仅返回预定消息。
+        """
         return self
 
 
 def context(*, unattended=True):
-    """只有宿主入口身份决定是否默认强制停止。"""
+    """
+    只有宿主入口身份决定是否默认强制停止。
+    """
     return ToolPolicyContext(session_id='guard', user_id='alice', origin=ToolOrigin.AGENT_INTERACTIVE,
                              principal_type=PrincipalType.HUMAN,
                              auth_source=AuthSource.CHANNEL if unattended else AuthSource.WEB_SESSION,
@@ -52,19 +62,27 @@ def context(*, unattended=True):
 
 
 def call(index, *names, arguments=None):
-    """构造唯一调用编号但参数相同的模型工具批次。"""
+    """
+    构造唯一调用编号但参数相同的模型工具批次。
+    """
     return AIMessage(content='', tool_calls=[dict(name=name, args=arguments or {}, id=f'{index}-{name}') for name in names])
 
 
 @pytest.mark.parametrize('unattended, expected', [(True, 5), (False, 7)])
 def test_successful_replay_stops_only_unattended_and_resets_next_turn(unattended, expected):
-    """成功但无进展的普通工具也被检测，前台只提示，新轮次不继承停止。"""
+    """
+    成功但无进展的普通工具也被检测，前台只提示，新轮次不继承停止。
+    """
     async def scenario():
-        """实际执行工具，检查第六次是否被省掉，而非只测试检测器状态。"""
+        """
+        实际执行工具，检查第六次是否被省掉，而非只测试检测器状态。
+        """
         executed = []
 
         async def probe():
-            """稳定输出模拟没有取得进展的探测。"""
+            """
+            稳定输出模拟没有取得进展的探测。
+            """
             executed.append(True)
             return '相同结果'
 
@@ -91,20 +109,28 @@ def test_successful_replay_stops_only_unattended_and_resets_next_turn(unattended
 
 
 def test_parallel_two_call_cycles_follow_emission_order():
-    """工具完成次序交错时仍按模型声明顺序检测 A/B 循环。"""
+    """
+    工具完成次序交错时仍按模型声明顺序检测 A/B 循环。
+    """
     async def scenario():
-        """A 在偶数轮较慢，B 在奇数轮较慢，结果始终相同。"""
+        """
+        A 在偶数轮较慢，B 在奇数轮较慢，结果始终相同。
+        """
         counts = {'a': 0, 'b': 0}
 
         async def a():
-            """返回稳定 A 结果，并交替让出事件循环。"""
+            """
+            返回稳定 A 结果，并交替让出事件循环。
+            """
             counts['a'] += 1
             if counts['a'] % 2:
                 await asyncio.sleep(.002)
             return 'A'
 
         async def b():
-            """返回稳定 B 结果，与 A 的完成顺序交替。"""
+            """
+            返回稳定 B 结果，与 A 的完成顺序交替。
+            """
             counts['b'] += 1
             if not counts['b'] % 2:
                 await asyncio.sleep(.002)
@@ -122,13 +148,19 @@ def test_parallel_two_call_cycles_follow_emission_order():
 
 
 def test_polling_is_exempt_but_still_executes_and_deduplicates_fresh_results():
-    """正常等待不会被当成循环，每次仍执行；较长重复回执仅压缩上下文表示。"""
+    """
+    正常等待不会被当成循环，每次仍执行；较长重复回执仅压缩上下文表示。
+    """
     async def scenario():
-        """等待七次之后得到完成结果，状态变化必须使正文重新完整出现。"""
+        """
+        等待七次之后得到完成结果，状态变化必须使正文重新完整出现。
+        """
         executed = []
 
         async def execute_command(action: str):
-            """模拟真实终端等待协议，不启动任何进程。"""
+            """
+            模拟真实终端等待协议，不启动任何进程。
+            """
             executed.append(action)
             return json.dumps(dict(execution_outcome='pending' if len(executed) < 7 else 'succeeded', output='x' * 1000))
 
@@ -145,13 +177,19 @@ def test_polling_is_exempt_but_still_executes_and_deduplicates_fresh_results():
 
 
 def test_raw_result_changes_survive_identical_truncated_previews():
-    """只在被截掉中部发生的真实结果变化也必须清除重复判断。"""
+    """
+    只在被截掉中部发生的真实结果变化也必须清除重复判断。
+    """
     async def scenario():
-        """截断原文记录器与循环观察器组合，确认没有把相同预览当完整结果。"""
+        """
+        截断原文记录器与循环观察器组合，确认没有把相同预览当完整结果。
+        """
         count = 0
 
         async def read_file():
-            """生成中段变化的长文件。"""
+            """
+            生成中段变化的长文件。
+            """
             nonlocal count
             count += 1
             return format_tool_result_for_agent(json.dumps({'content': 'a' * 80000 + str(count) + 'b' * 80000}), tool_name='read_file')
@@ -170,15 +208,21 @@ def test_raw_result_changes_survive_identical_truncated_previews():
 
 @pytest.mark.parametrize('tool_name', ['web_search', 'search_web'])
 def test_evicted_reference_uses_fresh_full_result_and_cap_blocks_before_execution(tool_name):
-    """压缩后不产生悬空引用；总调用上限在实际调用之前执行。"""
+    """
+    压缩后不产生悬空引用；总调用上限在实际调用之前执行。
+    """
     async def scenario():
-        """直接使用真实 ToolCallRequest，隔离验证存根恢复和调用预算。"""
+        """
+        直接使用真实 ToolCallRequest，隔离验证存根恢复和调用预算。
+        """
         guard = ToolGuardrailsMiddleware(context(unattended=False))
         guard.controller.config = ToolCallGuardrailConfig(loop_caps=SimpleNamespace(max_web_searches=2, max_subagents=50))
         executed = []
 
         async def handler(request):
-            """计数实际执行，第三次必须无法到达这里。"""
+            """
+            计数实际执行，第三次必须无法到达这里。
+            """
             executed.append(True)
             return ToolMessage(content='x' * 700, tool_call_id=request.tool_call['id'], name='web_search', id=request.tool_call['id'])
 
@@ -196,18 +240,26 @@ def test_evicted_reference_uses_fresh_full_result_and_cap_blocks_before_executio
 
 
 def test_moviepilot_file_edit_restarts_failed_terminal_experiment():
-    """宿主 edit_file 名称映射到 patch 修改类别，真实修改后重试不能累积成原样失败循环。"""
+    """
+    宿主 edit_file 名称映射到 patch 修改类别，真实修改后重试不能累积成原样失败循环。
+    """
     async def scenario():
-        """七次失败之间每次有不同修复，最终正常返回，不在第五次失败处截断。"""
+        """
+        七次失败之间每次有不同修复，最终正常返回，不在第五次失败处截断。
+        """
         attempts = []
 
         async def execute_command(command: str):
-            """模拟未通过的验证命令。"""
+            """
+            模拟未通过的验证命令。
+            """
             attempts.append(command)
             return json.dumps({'execution_outcome': 'failed', 'exit_code': 1})
 
         async def edit_file(content: str):
-            """模拟已经落盘的不同修复。"""
+            """
+            模拟已经落盘的不同修复。
+            """
             attempts.append(content)
             return json.dumps({'success': True})
 
@@ -225,13 +277,19 @@ def test_moviepilot_file_edit_restarts_failed_terminal_experiment():
 
 
 def test_parallel_graph_runs_do_not_share_counters_or_pending_results():
-    """子代理可共享图中间件，但两个真实 thread_id 各执行五次后独立停止。"""
+    """
+    子代理可共享图中间件，但两个真实 thread_id 各执行五次后独立停止。
+    """
     async def scenario():
-        """同一中间件及相同工具调用 ID 用于两个并行运行，验证作用域来自宿主。"""
+        """
+        同一中间件及相同工具调用 ID 用于两个并行运行，验证作用域来自宿主。
+        """
         count = 0
 
         async def probe():
-            """交错执行，制造两个图同时等待的窗口。"""
+            """
+            交错执行，制造两个图同时等待的窗口。
+            """
             nonlocal count
             count += 1
             await asyncio.sleep(.001)
@@ -252,13 +310,19 @@ def test_parallel_graph_runs_do_not_share_counters_or_pending_results():
 
 
 def test_outer_policy_exception_receipts_remain_unknown_when_halted():
-    """检测也覆盖策略层转换的异常，超时可能已经发生的副作用不能写成成功。"""
+    """
+    检测也覆盖策略层转换的异常，超时可能已经发生的副作用不能写成成功。
+    """
     async def scenario():
-        """工具在循环中抛出超时，外层真实策略生成未知回执。"""
+        """
+        工具在循环中抛出超时，外层真实策略生成未知回执。
+        """
         attempts = []
 
         async def probe():
-            """不访问外部服务，仅模拟结果未确认。"""
+            """
+            不访问外部服务，仅模拟结果未确认。
+            """
             attempts.append(True)
             raise TimeoutError('unconfirmed')
 
@@ -275,11 +339,17 @@ def test_outer_policy_exception_receipts_remain_unknown_when_halted():
 
 @pytest.mark.parametrize('text', ['Let me now inspect the file.', '接下来我会检查文件。'])
 def test_announced_action_gets_only_two_nudges_and_not_fake_user_history(text):
-    """英文和中文尾部动作使用同一有界继续机制，模型始终不行动时明确部分完成。"""
+    """
+    英文和中文尾部动作使用同一有界继续机制，模型始终不行动时明确部分完成。
+    """
     async def scenario():
-        """始终只返回下一步计划，确保不会无限追加模型调用。"""
+        """
+        始终只返回下一步计划，确保不会无限追加模型调用。
+        """
         async def probe():
-            """不会实际被调用的可用工具。"""
+            """
+            不会实际被调用的可用工具。
+            """
             raise AssertionError('unexpected execution')
 
         graph = create_agent(model=GuardModel(responses=[AIMessage(content=text, id=f'ack-{index}') for index in range(3)]),
@@ -295,13 +365,19 @@ def test_announced_action_gets_only_two_nudges_and_not_fake_user_history(text):
 
 
 def test_continuation_recovers_to_actual_work_and_normal_answer():
-    """一次纠偏后实际调用工具并给出答案，不把正常完成回复继续追问。"""
+    """
+    一次纠偏后实际调用工具并给出答案，不把正常完成回复继续追问。
+    """
     async def scenario():
-        """真实图走过承诺、继续提示、工具执行及最终答案四种节点。"""
+        """
+        真实图走过承诺、继续提示、工具执行及最终答案四种节点。
+        """
         attempts = []
 
         async def probe():
-            """记录已实际执行的核验。"""
+            """
+            记录已实际执行的核验。
+            """
             attempts.append(True)
             return 'observed'
 
@@ -315,7 +391,9 @@ def test_continuation_recovers_to_actual_work_and_normal_answer():
 
 
 def test_short_answers_and_nonterminal_plans_do_not_trigger_continuation():
-    """保留尾部动作的窄匹配边界，数字、正常中文短答、已交付内容和礼貌提议都不触发。"""
+    """
+    保留尾部动作的窄匹配边界，数字、正常中文短答、已交付内容和礼貌提议都不触发。
+    """
     for text in ('42', 'SQLite', 'report.csv', '你好。', 'Done.', ':8080', 'Let me now check. The answer is 42.', "I'll help if needed."):
         assert not trailing_continue_intent(text)
         assert not degenerate_final(text, '正常中文问题')
@@ -325,11 +403,17 @@ def test_short_answers_and_nonterminal_plans_do_not_trigger_continuation():
 
 
 def test_stream_delivers_host_generated_guardrail_stop():
-    """没有模型 token 的停止说明也会进入真实流式回调，不能只存到 checkpoint。"""
+    """
+    没有模型 token 的停止说明也会进入真实流式回调，不能只存到 checkpoint。
+    """
     async def scenario():
-        """执行五轮无进展后由宿主结束，通过 MoviePilot 流式入口读取说明。"""
+        """
+        执行五轮无进展后由宿主结束，通过 MoviePilot 流式入口读取说明。
+        """
         async def probe():
-            """返回稳定读取结果。"""
+            """
+            返回稳定读取结果。
+            """
             return 'same'
 
         graph = create_agent(model=GuardModel(responses=[call(index, 'probe') for index in range(8)]),
@@ -345,13 +429,19 @@ def test_stream_delivers_host_generated_guardrail_stop():
 
 
 def test_duplicate_preview_references_latest_live_output_after_eviction():
-    """重复工具仍执行，超过八项输出缓存容量后存根仍引用最新可读正文。"""
+    """
+    重复工具仍执行，超过八项输出缓存容量后存根仍引用最新可读正文。
+    """
     async def scenario():
-        """执行十二次相同长结果，检查最后引用仍在宿主缓存中。"""
+        """
+        执行十二次相同长结果，检查最后引用仍在宿主缓存中。
+        """
         calls = []
 
         async def read_file():
-            """读取相同长文本以触发存根而非跳过真实读取。"""
+            """
+            读取相同长文本以触发存根而非跳过真实读取。
+            """
             calls.append(True)
             return format_tool_result_for_agent('x' * 100000, tool_name='read_file')
 

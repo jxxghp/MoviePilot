@@ -1,4 +1,6 @@
-"""标题搜索入口与标题候选过滤 owner。"""
+"""
+标题搜索入口与候选资源过滤编排。
+"""
 
 from dataclasses import dataclass
 from typing import (
@@ -35,7 +37,9 @@ def _build_title_search_params(
     mtype: Optional[MediaType],
     include_empty_type: bool = False,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """构造标题搜索共享的 provider 与缓存参数。"""
+    """
+    构造标题搜索共享的 provider 与缓存参数。
+    """
     provider_params: Dict[str, Any] = {
         "keyword": title,
         "sites": sites,
@@ -57,7 +61,9 @@ def _build_title_contexts(
     mtype: Optional[MediaType],
     build_meta: Callable[[TorrentInfo, Optional[MediaType]], Any],
 ) -> List[Context]:
-    """将过滤后的标题候选统一投影为搜索上下文。"""
+    """
+    将过滤后的标题候选统一投影为搜索上下文。
+    """
     return [
         Context(
             meta_info=build_meta(torrent, mtype),
@@ -70,7 +76,12 @@ def _build_title_contexts(
 
 @dataclass(frozen=True, slots=True)
 class _TitleSearchResult:
-    """封装标题搜索候选解析结果及需要记录的失败原因。"""
+    """
+    封装标题搜索候选解析结果及需要记录的失败原因。
+
+    :param contexts: 标题候选过滤并投影后的资源上下文列表
+    :param warning: 需要写入日志的搜索失败说明，无需警告时为 None
+    """
 
     contexts: List[Context]
     warning: Optional[str] = None
@@ -78,21 +89,36 @@ class _TitleSearchResult:
 
 @dataclass(frozen=True, slots=True)
 class _TitleSearchCacheRequest:
-    """请求保存标题搜索参数并清理旧的 AI 推荐状态。"""
+    """
+    请求保存标题搜索参数并清理旧的 AI 推荐状态。
+
+    :param params: 本轮标题、类型、搜索区域和站点范围等缓存条件
+    """
 
     params: Dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class _TitleSearchProviderRequest:
-    """请求执行标题搜索 provider I/O。"""
+    """
+    请求驱动器执行标题搜索的站点访问。
+
+    :param params: 交给站点搜索的关键词、站点、页码及媒体类型参数
+    """
 
     params: Dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class _TitleSearchResolveRequest:
-    """请求过滤并投影标题搜索候选。"""
+    """
+    请求过滤并投影标题搜索候选。
+
+    :param title: 用于标题匹配的用户检索文本
+    :param torrents: 各搜索来源返回的原始种子候选
+    :param rule_groups: 用于过滤候选的规则组名称，None 时由入口选择默认规则
+    :param mtype: 候选媒体类型，None 表示未限定类型
+    """
 
     title: str
     torrents: List[TorrentInfo]
@@ -102,7 +128,11 @@ class _TitleSearchResolveRequest:
 
 @dataclass(frozen=True, slots=True)
 class _TitleSearchSaveRequest:
-    """请求持久化成功的标题搜索结果。"""
+    """
+    请求持久化成功的标题搜索结果。
+
+    :param contexts: 本次标题搜索得到的资源上下文列表
+    """
 
     contexts: List[Context]
 
@@ -126,7 +156,9 @@ def _title_search_resolution(
     mtype: Optional[MediaType],
     rule_groups: Optional[List[str]],
 ) -> _TitleSearchResolution:
-    """统一标题搜索的缓存、provider、过滤、短路与结果保存顺序。"""
+    """
+    统一标题搜索的缓存、provider、过滤、短路与结果保存顺序。
+    """
     if cache_local:
         yield _TitleSearchCacheRequest(params=cache_params)
     torrents = cast(
@@ -157,7 +189,9 @@ def _resolve_title_search_result(
     filter_torrents: Callable[..., List[TorrentInfo]],
     build_meta: Callable[[TorrentInfo, Optional[MediaType]], Any],
 ) -> _TitleSearchResult:
-    """统一标题候选为空、过滤和上下文投影的结果决策。"""
+    """
+    统一标题候选为空、过滤和上下文投影的结果决策。
+    """
     if not torrents:
         return _TitleSearchResult(
             contexts=[],
@@ -182,12 +216,16 @@ def _resolve_title_search_result(
 
 
 class SearchTitleOwner(_SearchOwnerBase):
-    """标题搜索入口与标题候选过滤 owner。"""
+    """
+    标题搜索入口与候选资源过滤编排。
+    """
 
     def _resolve_title_request(
         self, request: _TitleSearchResolveRequest
     ) -> _TitleSearchResult:
-        """通过可替换过滤与元数据投影点解析标题候选。"""
+        """
+        通过可替换过滤与元数据投影点解析标题候选。
+        """
         return _resolve_title_search_result(
             title=request.title,
             torrents=request.torrents,
@@ -200,7 +238,9 @@ class SearchTitleOwner(_SearchOwnerBase):
     def _run_title_search_sync(
         self, resolution: _TitleSearchResolution
     ) -> _TitleSearchResult:
-        """用同步 I/O 与过滤外壳驱动共享标题搜索状态机。"""
+        """
+        用同步 I/O 与过滤外壳驱动共享标题搜索状态机。
+        """
         response: object = None
         while True:
             try:
@@ -224,7 +264,9 @@ class SearchTitleOwner(_SearchOwnerBase):
     async def _run_title_search_async(
         self, resolution: _TitleSearchResolution
     ) -> _TitleSearchResult:
-        """用异步 I/O 与线程池过滤外壳驱动共享标题搜索状态机。"""
+        """
+        用异步 I/O 与线程池过滤外壳驱动共享标题搜索状态机。
+        """
         response: object = None
         while True:
             try:
@@ -413,7 +455,9 @@ class SearchTitleOwner(_SearchOwnerBase):
         torrent: TorrentInfo,
         mtype: Optional[MediaType],
     ) -> Any:
-        """根据限定媒体类型构造模糊搜索结果的上下文元数据。"""
+        """
+        根据限定媒体类型构造模糊搜索结果的上下文元数据。
+        """
         return MetaInfo(title=torrent.title, subtitle=torrent.description, mtype=mtype)
 
     def _filter_title_search_torrents(

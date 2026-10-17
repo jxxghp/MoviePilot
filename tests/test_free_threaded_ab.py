@@ -1,4 +1,6 @@
-"""free-threaded 镜像 A/B harness 的无 Docker 合同测试。"""
+"""
+free-threaded 镜像 A/B harness 的无 Docker 合同测试。
+"""
 
 from __future__ import annotations
 
@@ -15,7 +17,9 @@ SCRIPT = ROOT / "scripts" / "perf" / "free_threaded_ab.py"
 
 
 def load_harness(name: str = "free_threaded_ab_test"):
-    """从脚本路径加载 harness，避免把 scripts 变成运行时 package。"""
+    """
+    从脚本路径加载 harness，避免把 scripts 变成运行时 package。
+    """
     spec = importlib.util.spec_from_file_location(name, SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -24,12 +28,16 @@ def load_harness(name: str = "free_threaded_ab_test"):
 
 
 def digest_image(repository: str, character: str) -> str:
-    """构造测试用不可变镜像引用。"""
+    """
+    构造测试用不可变镜像引用。
+    """
     return f"registry.example/{repository}@sha256:{character * 64}"
 
 
 def valid_preflight(variant: str) -> dict:
-    """构造满足目标镜像合同的 preflight。"""
+    """
+    构造满足目标镜像合同的 preflight。
+    """
     common = {
         "python_version": "3.14.7",
         "python_implementation": "CPython",
@@ -132,7 +140,9 @@ def valid_preflight(variant: str) -> dict:
 
 
 def sample(harness, variant: str, index: int, multiplier: float = 1.0) -> dict:
-    """构造可汇总的真实字段形状。"""
+    """
+    构造可汇总的真实字段形状。
+    """
     checksum = "same-checksum"
     application = {
         "rust_on": {
@@ -215,7 +225,9 @@ def sample(harness, variant: str, index: int, multiplier: float = 1.0) -> dict:
 
 
 def result_for_evaluation(harness, ft_multiplier: float = 1.0) -> dict:
-    """按平衡顺序构造三组 A/B。"""
+    """
+    按平衡顺序构造三组 A/B。
+    """
     samples = [
         sample(harness, variant, index, ft_multiplier if variant == "v3t" else 1.0)
         for variant, index in harness.SAMPLE_ORDER
@@ -243,7 +255,9 @@ def result_for_evaluation(harness, ft_multiplier: float = 1.0) -> dict:
 
 
 def test_digest_inputs_and_public_image_names_are_strict() -> None:
-    """拒绝可变 tag、短 digest、旧 v3t 名称及参数传反。"""
+    """
+    拒绝可变 tag、短 digest、旧 v3t 名称及参数传反。
+    """
     harness = load_harness("free_threaded_ab_images")
     standard = digest_image("moviepilot-v3", "a")
     free_threaded = digest_image("moviepilot-v3t", "b")
@@ -262,7 +276,9 @@ def test_digest_inputs_and_public_image_names_are_strict() -> None:
 
 
 def test_local_image_id_is_an_immutable_offline_fallback() -> None:
-    """未拉取时允许用本地 image ID 验收尚未发布的候选。"""
+    """
+    未拉取时允许用本地 image ID 验收尚未发布的候选。
+    """
     harness = load_harness("free_threaded_ab_local_image")
     digest = f"sha256:{'a' * 64}"
     reference = f"moviepilot-v3@{digest}"
@@ -295,7 +311,9 @@ def test_local_image_id_is_an_immutable_offline_fallback() -> None:
 def test_docker_client_uses_current_cli_context_when_default_socket_fails(
     monkeypatch,
 ) -> None:
-    """Docker Desktop 等非默认 socket 由当前 CLI context 统一定位。"""
+    """
+    Docker Desktop 等非默认 socket 由当前 CLI context 统一定位。
+    """
     harness = load_harness("free_threaded_ab_docker_context")
     monkeypatch.delenv("DOCKER_HOST", raising=False)
     default_client = Mock()
@@ -317,7 +335,9 @@ def test_docker_client_uses_current_cli_context_when_default_socket_fails(
 
 
 def test_fixture_and_sample_order_are_stable() -> None:
-    """固定 seed、内容 hash 和交替顺序防止样本漂移。"""
+    """
+    固定 seed、内容 hash 和交替顺序防止样本漂移。
+    """
     harness = load_harness("free_threaded_ab_fixture")
 
     assert harness.fixture_hash(harness.build_fixture()) == harness.FIXTURE_SHA256
@@ -334,7 +354,9 @@ def test_fixture_and_sample_order_are_stable() -> None:
 
 
 def test_preflight_enforces_runtime_and_native_profiles() -> None:
-    """标准与 FT 镜像必须满足互斥 ABI、GIL、Rust 和原生依赖合同。"""
+    """
+    标准与 FT 镜像必须满足互斥 ABI、GIL、Rust 和原生依赖合同。
+    """
     harness = load_harness("free_threaded_ab_preflight")
 
     assert harness.validate_preflight("v3", valid_preflight("v3")) == []
@@ -361,7 +383,9 @@ def test_preflight_enforces_runtime_and_native_profiles() -> None:
 
 
 def test_evaluation_distinguishes_invalid_regression_and_pass() -> None:
-    """合同错误优先 invalid，有效性能失败才归为 regression。"""
+    """
+    合同错误优先 invalid，有效性能失败才归为 regression。
+    """
     harness = load_harness("free_threaded_ab_evaluation")
 
     summary, invalid, regressions = harness.evaluate_samples(result_for_evaluation(harness))
@@ -407,7 +431,9 @@ def test_evaluation_distinguishes_invalid_regression_and_pass() -> None:
 
 
 def test_markdown_and_exit_codes_preserve_machine_verdict(tmp_path: Path, monkeypatch) -> None:
-    """JSON verdict、Markdown 摘要与 0/1/2 进程状态保持一致。"""
+    """
+    JSON verdict、Markdown 摘要与 0/1/2 进程状态保持一致。
+    """
     harness = load_harness("free_threaded_ab_exit")
     base = {
         "schema_version": harness.SCHEMA_VERSION,

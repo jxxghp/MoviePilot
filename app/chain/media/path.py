@@ -1,4 +1,6 @@
-"""音频证据、单曲层级与统一路径识别 owner。"""
+"""
+音频证据分层核验与统一媒体路径识别。
+"""
 
 import re
 from copy import deepcopy
@@ -50,20 +52,32 @@ _SINGLE_RELEASE_SUFFIX = re.compile(
 
 
 def _is_regular_file(path: Path) -> bool:
-    """判断路径是否仍指向可读取的普通文件。"""
+    """
+    判断路径是否仍指向可读取的普通文件。
+    """
     return path.exists() and path.is_file()
 
 
 class _MusicTierActionKind(Enum):
-    """音乐证据层允许执行的外部识别动作。"""
+    """
+    音乐证据层允许执行的外部识别动作。
+    """
 
+    # 按已知 MusicBrainz 录音标识直查。
     DIRECT = "direct"
+    # 按本层音乐标题与艺人证据搜索。
     SEARCH = "search"
 
 
 @dataclass(frozen=True, slots=True)
 class _MusicTierAction:
-    """描述一次音乐证据层 I/O，不携带可变执行状态。"""
+    """
+    描述一次音乐证据层 I/O，不携带可变执行状态。
+
+    :param kind: 本层需要执行的身份直查或标题搜索动作
+    :param meta: 本层用于验证远程候选的本地音乐证据
+    :param recording_id: MusicBrainz 录音直查标识，标题搜索时为 None
+    """
 
     kind: _MusicTierActionKind
     meta: MetaMusic
@@ -72,24 +86,41 @@ class _MusicTierAction:
 
 @dataclass(frozen=True, slots=True)
 class _MusicTierOutcome:
-    """保存证据层命中结果及其日志说明。"""
+    """
+    保存证据层命中结果及其日志说明。
+
+    :param info: 本证据层识别出的音乐信息，未命中时为 None
+    :param message: 命中后向日志说明证据层与识别来源的文本，未命中时可为 None
+    """
 
     info: Optional[MusicInfo] = None
     message: Optional[str] = None
 
 
 class _MusicPathActionKind(Enum):
-    """音乐路径识别状态机的稳定动作顺序。"""
+    """
+    音乐路径识别状态机的稳定动作顺序。
+    """
 
+    # 读取音频指纹并核验远程候选。
     FINGERPRINT = "fingerprint"
+    # 使用音频标签中的身份与标题证据。
     TAG = "tag"
+    # 使用文件名解析出的音乐证据。
     FILENAME = "filename"
+    # 使用已确认的专辑目录匹配结果。
     ALBUM = "album"
 
 
 @dataclass(frozen=True, slots=True)
 class _MusicPathAction:
-    """描述音乐路径状态机的一层识别动作。"""
+    """
+    描述音乐路径状态机的一层识别动作。
+
+    :param kind: 当前需要尝试的指纹、标签、文件名或专辑目录识别层
+    :param meta: 标签或文件名层使用的音乐元数据，其他层可为 None
+    :param tier_name: 用于诊断的证据层名称，未指定时为 None
+    """
 
     kind: _MusicPathActionKind
     meta: Optional[MetaMusic] = None
@@ -97,15 +128,27 @@ class _MusicPathAction:
 
 
 class _PathRoute(Enum):
-    """统一路径识别入口的业务路由。"""
+    """
+    统一路径识别入口的业务路由。
+    """
 
+    # 按音乐证据层处理路径。
     MUSIC = "music"
+    # 按影视文件名与媒体识别流程处理路径。
     VIDEO = "video"
 
 
 @dataclass(frozen=True, slots=True)
 class _PathRecognitionRequest:
-    """保存同步和异步路径识别共同使用的请求参数。"""
+    """
+    保存同步和异步路径识别共同使用的请求参数。
+
+    :param path: 待识别媒体的文件或目录路径
+    :param route: 按音乐或影视协议处理路径的路由
+    :param media_source: 调用方指定的识别来源，None 时按系统来源策略选择
+    :param episode_group: 影视识别使用的剧集组标识，None 表示未指定
+    :param obtain_images: 是否在识别结果中补充图片信息
+    """
 
     path: str
     route: _PathRoute
@@ -117,12 +160,16 @@ class _PathRecognitionRequest:
 def _has_remote_music_identity(
     info: Optional[MusicInfo],
 ) -> TypeGuard[MusicInfo]:
-    """判断音乐结果是否已获得可终止回退的远程身份。"""
+    """
+    判断音乐结果是否已获得可终止回退的远程身份。
+    """
     return bool(info and info.media_source and info.media_id)
 
 
 def _musicbrainz_recording_meta(meta: MetaMusic, recording_id: str) -> MetaMusic:
-    """构造 MusicBrainz Recording 直查使用的独立身份副本。"""
+    """
+    构造 MusicBrainz Recording 直查使用的独立身份副本。
+    """
     identity_meta = MetaMusic.from_dict(meta.to_dict())
     identity_meta.media_source = MediaSource.MusicBrainz
     identity_meta.media_id = recording_id
@@ -131,7 +178,9 @@ def _musicbrainz_recording_meta(meta: MetaMusic, recording_id: str) -> MetaMusic
 
 
 def _without_music_identity(meta: MetaMusic) -> MetaMusic:
-    """复制音乐元数据并移除可能误导标题搜索的远程身份。"""
+    """
+    复制音乐元数据并移除可能误导标题搜索的远程身份。
+    """
     clean_meta = MetaMusic.from_dict(meta.to_dict())
     clean_meta.media_source = None
     clean_meta.media_id = None
@@ -142,7 +191,9 @@ def _merge_music_path_evidence(
     meta: MetaMusic,
     evidence: Optional[MetaMusic],
 ) -> MetaMusic:
-    """把同一文件的标签证据补入文件名搜索，保留ISRC约束但不传播来源实体ID。"""
+    """
+    把同一文件的标签证据补入文件名搜索，保留ISRC约束但不传播来源实体ID。
+    """
     if not meta or not evidence:
         return meta
     merged = MetaMusic.from_dict(meta.to_dict())
@@ -165,7 +216,9 @@ def _merge_contextual_music_evidence(
     meta: MetaMusic,
     contextual_meta: MetaMusic,
 ) -> MetaMusic:
-    """以同目录高置信共识补齐缺失的艺人和专辑证据。"""
+    """
+    以同目录高置信共识补齐缺失的艺人和专辑证据。
+    """
     merged = MetaMusic.from_dict(meta.to_dict())
     for key, value in music_credit_values(contextual_meta).items():
         if value and not getattr(merged, key):
@@ -187,7 +240,9 @@ def _merge_contextual_music_evidence(
 
 
 def _merge_music_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
-    """合并实际音频参数和明确的本地角色标签，不改变主艺人或远端身份。"""
+    """
+    合并实际音频参数和明确的本地角色标签，不改变主艺人或远端身份。
+    """
     for key in (
         "audio_format",
         "audio_lossless",
@@ -211,7 +266,9 @@ def _finalize_music_path_info(
     meta: MetaMusic,
     info: Optional[MusicInfo],
 ) -> MusicInfo:
-    """统一远端命中和本地兜底的音频质量合并。"""
+    """
+    统一远端命中和本地兜底的音频质量合并。
+    """
     if info and music_recognition_is_blocked(info) and not _has_remote_music_identity(info):
         result = MusicInfo.from_meta(meta)
         result.raw_data["recognition"] = deepcopy(info.raw_data["recognition"])
@@ -235,7 +292,10 @@ def _fingerprint_info_matches_evidence(
     fingerprint_score: Optional[float] = None,
     fingerprint_duration: Optional[int] = None,
 ) -> bool:
-    """保留强标签冲突检查；原生高分指纹可用真实时长弥补占位名称或缺失署名。"""
+    """
+    保留强标签冲突检查；原生高分指纹可用真实时长弥补占位名称或缺失署名。
+    """
+    # 仅在本层音乐证据核验时加载所需的匹配规则。
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_album_matches,
         music_artist_evidence_matches,
@@ -291,9 +351,12 @@ def _fingerprint_info_matches_evidence(
 
 
 def _fingerprint_title_matches(info: MusicInfo, title_evidence: str) -> bool:
-    """在音频与署名已核验后比较曲名别称及展示差异，避免混入发行身份判断。"""
+    """
+    在音频与署名已核验后比较曲名别称及展示差异，避免混入发行身份判断。
+    """
     from difflib import SequenceMatcher
 
+    # 仅在本层音乐证据核验时加载所需的匹配规则。
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_base_title,
         music_text_key,
@@ -330,7 +393,10 @@ def _fingerprint_title_matches(info: MusicInfo, title_evidence: str) -> bool:
 
 
 def _is_standalone_single_evidence(meta: MetaMusic) -> bool:
-    """判断本地标签是否明确把当前录音描述为同名单曲发行。"""
+    """
+    判断本地标签是否明确把当前录音描述为同名单曲发行。
+    """
+    # 仅在本层音乐证据核验时加载所需的匹配规则。
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_base_title,
         music_text_key,
@@ -362,12 +428,14 @@ def _reconcile_fingerprint_release(
     *,
     verified_audio: bool = False,
 ) -> MusicInfo:
-    """指纹只确认录音，用本地发行证据校正远端随意选取的关联专辑。
+    """
+    指纹只确认录音，用本地发行证据校正远端随意选取的关联专辑。
 
     MusicBrainz Recording 可以同时收录于单曲和原声专辑。指纹证明的是录音
     身份，不能确认实际发行；采用本地专辑字段时移除没有证明的发行标识，
     保留字段来源，旧插件的单ID回执仍只适用原有同名单曲纠正。
     """
+    # 仅在本层音乐证据核验时加载所需的匹配规则。
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_album_matches,
         music_year_matches,
@@ -422,7 +490,9 @@ def _select_fingerprint_info(
         tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
         *, truncated: bool = False,
 ) -> Optional[MusicInfo]:
-    """只采用唯一可解释的录音候选，近分多录音保留待确认，不用文本回退掩盖歧义。"""
+    """
+    只采用唯一可解释的录音候选，近分多录音保留待确认，不用文本回退掩盖歧义。
+    """
     if not matches:
         return None
     if tag_meta and tag_meta.media_source == MediaSource.MusicBrainz and tag_meta.media_id:
@@ -447,7 +517,9 @@ def _select_fingerprint_info(
 def _finish_fingerprint_recording(
         score: Optional[float], info: MusicInfo, tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
 ) -> MusicInfo:
-    """仅确认Recording；发行ID只能沿用实际标签，不能从指纹详情所选关联发行推断。"""
+    """
+    仅确认Recording；发行ID只能沿用实际标签，不能从指纹详情所选关联发行推断。
+    """
     if score is None:
         # 旧插件的单ID回执沿用既有对象及文本核验契约，不伪造原生指纹结论。
         return _reconcile_fingerprint_release(info, tag_meta, filename_meta)
@@ -468,7 +540,9 @@ def _finish_fingerprint_recording(
 
 
 def _fingerprint_candidate_list(recording_id: Optional[str], observed: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """旧插件仍只给ID时保持原核验要求，不给它制造AcoustID分数。"""
+    """
+    旧插件仍只给ID时保持原核验要求，不给它制造AcoustID分数。
+    """
     if observed:
         return observed[:5]
     return [{"recording_id": recording_id, "score": None, "duration": None}] if recording_id else []
@@ -478,7 +552,9 @@ def _matching_fingerprint(
         candidate: dict[str, Any], info: Optional[MusicInfo],
         tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
 ) -> bool:
-    """同步和异步候选采用同一证据核验规则。"""
+    """
+    同步和异步候选采用同一证据核验规则。
+    """
     return _fingerprint_info_matches_evidence(info, tag_meta, filename_meta,
                                              fingerprint_score=candidate.get("score"),
                                              fingerprint_duration=candidate.get("duration"))
@@ -488,7 +564,9 @@ def _recognize_fingerprints(
         path: Union[str, Path], meta: MetaMusic, tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
         recognize: Callable[[MetaMusic, str], Optional[MusicInfo]],
 ) -> Optional[MusicInfo]:
-    """在一次有界调用中逐个核验原生候选，保留旧指纹插件的调用顺序。"""
+    """
+    在一次有界调用中逐个核验原生候选，保留旧指纹插件的调用顺序。
+    """
     with capture_music_recognition(seconds=90, request_limit=16) as observation:
         report_music_fingerprints([])
         recording_id = AcoustIdChain().identify_music_by_fingerprint(path)
@@ -506,7 +584,9 @@ async def _async_recognize_fingerprints(
         path: Union[str, Path], meta: MetaMusic, tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
         recognize: Callable[[MetaMusic, str], Awaitable[Optional[MusicInfo]]],
 ) -> Optional[MusicInfo]:
-    """异步路径使用相同候选集合、预算和最终歧义判断。"""
+    """
+    异步路径使用相同候选集合、预算和最终歧义判断。
+    """
     with capture_music_recognition(seconds=90, request_limit=16) as observation:
         report_music_fingerprints([])
         recording_id = await AcoustIdChain().async_identify_music_by_fingerprint(path)
@@ -524,7 +604,10 @@ def _music_info_matches_text_evidence(
     info: Optional[MusicInfo],
     meta: Optional[MetaMusic],
 ) -> bool:
-    """统一校验版本、年份、ISRC和演奏证据，插件结果也不能绕过明确冲突。"""
+    """
+    统一校验版本、年份、ISRC和演奏证据，插件结果也不能绕过明确冲突。
+    """
+    # 仅在本层音乐证据核验时加载所需的匹配规则。
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_artist_evidence_matches,
         music_credit_conflicts,
@@ -548,7 +631,9 @@ def _music_tier_plan(
     media_source: Optional[MediaSource],
     tier_name: str,
 ) -> Generator[_MusicTierAction, Optional[MusicInfo], _MusicTierOutcome]:
-    """按 MBID 直查再标题搜索的固定顺序生成证据层动作。"""
+    """
+    按 MBID 直查再标题搜索的固定顺序生成证据层动作。
+    """
     if not meta:
         return _MusicTierOutcome()
     normalized_source = normalize_media_source(media_source)
@@ -589,7 +674,9 @@ def _music_path_plan(
     filename_meta: Optional[MetaMusic],
     media_source: Optional[MediaSource],
 ) -> Generator[_MusicPathAction, Optional[MusicInfo], Optional[MusicInfo]]:
-    """生成“指纹→标签→文件名→专辑目录”的唯一回退状态机。"""
+    """
+    生成“指纹→标签→文件名→专辑目录”的唯一回退状态机。
+    """
     normalized_source = normalize_media_source(media_source)
     if normalized_source in (None, MediaSource.MusicBrainz):
         info = yield _MusicPathAction(kind=_MusicPathActionKind.FINGERPRINT)
@@ -621,7 +708,9 @@ def _build_path_recognition_request(
     obtain_images: bool,
     is_music: bool,
 ) -> _PathRecognitionRequest:
-    """将路径识别参数投影为同步和异步共用的稳定路由请求。"""
+    """
+    将路径识别参数投影为同步和异步共用的稳定路由请求。
+    """
     return _PathRecognitionRequest(
         path=path,
         route=_PathRoute.MUSIC if is_music else _PathRoute.VIDEO,
@@ -635,23 +724,31 @@ def _path_context(
     meta: Any,
     info: Optional[Union[MediaInfo, MusicInfo]],
 ) -> Context:
-    """统一成功与失败路径的 Context 投影。"""
+    """
+    统一成功与失败路径的 Context 投影。
+    """
     if info is not None:
         return Context(meta_info=meta, media_info=info)
     return Context(meta_info=meta)
 
 
 class MediaPathOwner(_MediaOwnerBase):
-    """音频证据、单曲层级与统一路径识别 owner。"""
+    """
+    音频证据分层核验与统一媒体路径识别。
+    """
 
     @classmethod
     def is_audio_path(cls, path: Union[str, Path]) -> bool:
-        """判断路径是否指向系统支持的音频文件。"""
+        """
+        判断路径是否指向系统支持的音频文件。
+        """
         return Path(path).suffix.lower() in get_chain_runtime_config_snapshot().audio_extensions
 
     @classmethod
     def read_path_meta(cls, path: Union[str, Path], *, storage: Optional[str] = "local") -> MetaMusic:
-        """本地文件读取音频证据；远端只解析名称，不能借用本机同名路径。"""
+        """
+        本地文件读取音频证据；远端只解析名称，不能借用本机同名路径。
+        """
         file_path = Path(path)
         if storage == "local" and file_path.is_file():
             return AudioMetadataHelper.read(file_path)
@@ -659,22 +756,30 @@ class MediaPathOwner(_MediaOwnerBase):
 
     @classmethod
     def _music_info_from_path_meta(cls, meta: MetaMusic) -> MusicInfo:
-        """把音频标签转换为文件管理可展示的最小音乐信息。"""
+        """
+        把音频标签转换为文件管理可展示的最小音乐信息。
+        """
         return MusicInfo.from_meta(meta)
 
     @staticmethod
     def _merge_music_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
-        """将本地文件的实际音频参数合并到远端音乐身份识别结果。"""
+        """
+        将本地文件的实际音频参数合并到远端音乐身份识别结果。
+        """
         return _merge_music_audio_quality(info, meta)
 
     @staticmethod
     def _clear_music_identity(meta: MetaMusic) -> MetaMusic:
-        """复制音乐元数据并清除远程身份，供直查失败后按要素重新匹配。"""
+        """
+        复制音乐元数据并清除远程身份，供直查失败后按要素重新匹配。
+        """
         return _without_music_identity(meta)
 
     @staticmethod
     def _is_remote_music_info(info: Optional[MusicInfo]) -> TypeGuard[MusicInfo]:
-        """判断音乐识别结果是否携带可复用的远程身份。"""
+        """
+        判断音乐识别结果是否携带可复用的远程身份。
+        """
         return _has_remote_music_identity(info)
 
     def _recognize_musicbrainz_recording(
@@ -682,7 +787,9 @@ class MediaPathOwner(_MediaOwnerBase):
         meta: MetaMusic,
         recording_id: str,
     ) -> Optional[MusicInfo]:
-        """按已知 MusicBrainz Recording ID 直接读取单曲详情。"""
+        """
+        按已知 MusicBrainz Recording ID 直接读取单曲详情。
+        """
         identity_meta = _musicbrainz_recording_meta(meta, recording_id)
         return self.recognize_music_from_source(
             media_source=MediaSource.MusicBrainz,
@@ -696,7 +803,9 @@ class MediaPathOwner(_MediaOwnerBase):
         meta: MetaMusic,
         recording_id: str,
     ) -> Optional[MusicInfo]:
-        """异步按已知 MusicBrainz Recording ID 直接读取单曲详情。"""
+        """
+        异步按已知 MusicBrainz Recording ID 直接读取单曲详情。
+        """
         identity_meta = _musicbrainz_recording_meta(meta, recording_id)
         return await self.async_recognize_music_from_source(
             media_source=MediaSource.MusicBrainz,
@@ -711,7 +820,9 @@ class MediaPathOwner(_MediaOwnerBase):
         media_source: Optional[MediaSource],
         tier_name: str,
     ) -> Optional[MusicInfo]:
-        """识别单个音乐元数据证据层，标签中的 MBID 优先直查。"""
+        """
+        识别单个音乐元数据证据层，标签中的 MBID 优先直查。
+        """
         plan = _music_tier_plan(meta, media_source, tier_name)
         outcome = _MusicTierOutcome()
         try:
@@ -750,7 +861,9 @@ class MediaPathOwner(_MediaOwnerBase):
         media_source: Optional[MediaSource],
         tier_name: str,
     ) -> Optional[MusicInfo]:
-        """异步识别单个音乐元数据证据层，标签中的 MBID 优先直查。"""
+        """
+        异步识别单个音乐元数据证据层，标签中的 MBID 优先直查。
+        """
         plan = _music_tier_plan(meta, media_source, tier_name)
         outcome = _MusicTierOutcome()
         try:
@@ -787,7 +900,9 @@ class MediaPathOwner(_MediaOwnerBase):
         self,
         path: Union[str, Path],
     ) -> Optional[MusicInfo]:
-        """单曲识别无远端身份时，查找所在目录专辑匹配中属于当前文件的结果。"""
+        """
+        单曲识别无远端身份时，查找所在目录专辑匹配中属于当前文件的结果。
+        """
         file_path = Path(path)
         if not file_path.exists() or not file_path.is_file():
             return None
@@ -806,7 +921,9 @@ class MediaPathOwner(_MediaOwnerBase):
         self,
         path: Union[str, Path],
     ) -> Optional[MusicInfo]:
-        """异步查找所在目录专辑匹配中属于当前文件的结果。"""
+        """
+        异步查找所在目录专辑匹配中属于当前文件的结果。
+        """
         file_path = Path(path)
         if not await run_in_threadpool(_is_regular_file, file_path):
             return None
@@ -827,7 +944,9 @@ class MediaPathOwner(_MediaOwnerBase):
         media_source: Optional[MediaSource] = None,
         contextual_meta: Optional[MetaMusic] = None,
     ) -> Tuple[MetaMusic, MusicInfo]:
-        """按指纹、文件标签、文件名三级顺序识别本地音乐。"""
+        """
+        按指纹、文件标签、文件名三级顺序识别本地音乐。
+        """
         meta, tag_meta, filename_meta = AudioMetadataHelper.read_evidence(Path(path))
         if meta.music_layout == "image_cue" or meta.organization_error:
             # 整轨包含多个逻辑音轨，不能把开头的指纹 Recording 当作整个文件。
@@ -881,7 +1000,9 @@ class MediaPathOwner(_MediaOwnerBase):
         media_source: Optional[MediaSource] = None,
         contextual_meta: Optional[MetaMusic] = None,
     ) -> Tuple[MetaMusic, MusicInfo]:
-        """异步按指纹、文件标签、文件名三级顺序识别本地音乐。"""
+        """
+        异步按指纹、文件标签、文件名三级顺序识别本地音乐。
+        """
         meta, tag_meta, filename_meta = await run_in_threadpool(
             AudioMetadataHelper.read_evidence,
             Path(path),
@@ -929,7 +1050,9 @@ class MediaPathOwner(_MediaOwnerBase):
         )
 
     def _is_music_path_request(self, path: str, media_source: Optional[MediaSource]) -> bool:
-        """路径识别请求是否属于音乐：音频后缀文件或显式指定音乐数据源。"""
+        """
+        路径识别请求是否属于音乐：音频后缀文件或显式指定音乐数据源。
+        """
         return self.is_audio_path(path) or is_music_media_source(media_source)
 
     def recognize_by_path(

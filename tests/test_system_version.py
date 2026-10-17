@@ -1,3 +1,7 @@
+"""
+验证系统版本比较、显示与更新判断。
+"""
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -13,7 +17,9 @@ def test_installed_frontend_version_prefers_deployed_resource(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """当前前端版本优先读取已部署资源中的版本声明。"""
+    """
+    当前前端版本优先读取已部署资源中的版本声明。
+    """
     frontend_path = tmp_path / "public"
     frontend_path.mkdir()
     (frontend_path / "version.txt").write_text("v3.2.1\n", encoding="utf-8")
@@ -33,7 +39,9 @@ def test_installed_frontend_version_falls_back_to_release_declaration(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """未部署前端时按调用约定回退到构建声明。"""
+    """
+    未部署前端时按调用约定回退到构建声明。
+    """
     monkeypatch.setattr(runtime_version, "is_frozen", lambda: False)
     monkeypatch.setattr(runtime_version, "is_windows", lambda: False)
     monkeypatch.setattr(runtime_version, "_FRONTEND_VERSION", "v3.0.0")
@@ -51,7 +59,9 @@ def test_installed_frontend_version_falls_back_to_release_declaration(
 
 @pytest.fixture
 def release_http(monkeypatch):
-    """隔离发布查询的 HTTP 与运行配置，禁止访问真实 GitHub。"""
+    """
+    隔离发布查询的 HTTP 与运行配置，禁止访问真实 GitHub。
+    """
     http = Mock()
     monkeypatch.setattr(system_module, "_system_ports_snapshot", lambda: (http, None))
     monkeypatch.setattr(
@@ -79,7 +89,9 @@ def release_http(monkeypatch):
     ],
 )
 def test_remote_version_selects_v3(release_http, getter, repository, tags, expected):
-    """前后端只比较 V3 标签的数值版本，缺少 V3 时不回退到其他代际。"""
+    """
+    前后端只比较 V3 标签的数值版本，缺少 V3 时不回退到其他代际。
+    """
     response = release_http.get.return_value
     response.json.return_value = [{"tag_name": tag} for tag in tags]
 
@@ -93,7 +105,9 @@ def test_remote_version_selects_v3(release_http, getter, repository, tags, expec
 
 
 def test_remote_version_closes_invalid_response(release_http):
-    """发布响应解析失败仍释放连接，并维持查询失败返回空值的约定。"""
+    """
+    发布响应解析失败仍释放连接，并维持查询失败返回空值的约定。
+    """
     response = release_http.get.return_value
     response.json.side_effect = ValueError("invalid JSON")
 
@@ -102,7 +116,9 @@ def test_remote_version_closes_invalid_response(release_http):
 
 
 def test_version_command_reports_current_v3(release_http, monkeypatch):
-    """重现当前前后端均为 V3 时，命令应报告最新版本而非 V2 远程版本。"""
+    """
+    重现当前前后端均为 V3 时，命令应报告最新版本而非 V2 远程版本。
+    """
     release_http.get.return_value.json.return_value = [
         {"tag_name": "v2.15.6"},
         {"tag_name": "v3.1.0"},

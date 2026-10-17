@@ -1,3 +1,7 @@
+"""
+按用户隔离的配置键值的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 import copy
 import threading
 from collections.abc import Iterator
@@ -19,7 +23,9 @@ class UserConfigOper(DbOper, metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        """初始化空快照，数据库加载由启动组合根显式执行。"""
+        """
+        初始化空快照，数据库加载由启动组合根显式执行。
+        """
         super().__init__()
         self.__USERCONF: dict[str, dict[str, JsonData]] = {}
         self._snapshot_lock = threading.RLock()
@@ -27,7 +33,9 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         self._loaded = False
 
     def load_snapshot(self, db: Optional[Session] = None) -> None:
-        """从显式会话或 Oper 事务边界加载用户配置并发布内存快照。"""
+        """
+        从显式会话或 Oper 事务边界加载用户配置并发布内存快照。
+        """
         with self._write_lock:
             snapshot: dict[str, dict[str, JsonData]] = {}
             items = UserConfig.list(db) if db is not None else self._execute_sync_query(
@@ -43,13 +51,17 @@ class UserConfigOper(DbOper, metaclass=Singleton):
                 self._loaded = True
 
     def _require_loaded(self) -> None:
-        """阻止消费者读取尚未完成启动加载的半成品快照。"""
+        """
+        阻止消费者读取尚未完成启动加载的半成品快照。
+        """
         if not self._loaded:
             raise RuntimeError("用户配置快照尚未加载")
 
     @contextmanager
     def write_scope(self) -> Iterator[None]:
-        """串行化数据库提交与对应快照发布，避免并发写入乱序。"""
+        """
+        串行化数据库提交与对应快照发布，避免并发写入乱序。
+        """
         self._require_loaded()
         with self._write_lock:
             yield
@@ -61,7 +73,9 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         key: Union[str, UserConfigKey],
         value: JsonData,
     ) -> bool:
-        """在调用方 Session 中暂存写入，返回提交后是否应移除缓存项。"""
+        """
+        在调用方 Session 中暂存写入，返回提交后是否应移除缓存项。
+        """
         if isinstance(key, UserConfigKey):
             key = key.value
         conf = UserConfig.get_by_key(db=db, username=username, key=key)
@@ -88,7 +102,9 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         *,
         deleted: bool,
     ) -> None:
-        """仅在数据库提交成功后原子发布对应配置快照。"""
+        """
+        仅在数据库提交成功后原子发布对应配置快照。
+        """
         if isinstance(key, UserConfigKey):
             key = key.value
         if not username or not key:
@@ -105,7 +121,9 @@ class UserConfigOper(DbOper, metaclass=Singleton):
             self.__USERCONF.setdefault(username, {})[key] = copy.deepcopy(value)
 
     def publish_rename(self, previous_name: str, current_name: str) -> None:
-        """原子迁移已提交改名对应的配置快照，并清理目标孤儿配置。"""
+        """
+        原子迁移已提交改名对应的配置快照，并清理目标孤儿配置。
+        """
         if not previous_name or not current_name or previous_name == current_name:
             return
         with self._snapshot_lock:
@@ -116,7 +134,9 @@ class UserConfigOper(DbOper, metaclass=Singleton):
                 self.__USERCONF[current_name] = copy.deepcopy(values)
 
     def publish_delete(self, username: str) -> None:
-        """原子移除已提交用户删除对应的配置快照。"""
+        """
+        原子移除已提交用户删除对应的配置快照。
+        """
         if not username:
             return
         with self._snapshot_lock:

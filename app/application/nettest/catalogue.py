@@ -1,4 +1,6 @@
-"""按配置生成可控的网络连通性探测目标目录。"""
+"""
+按配置生成可控的网络连通性探测目标目录。
+"""
 
 from collections.abc import Callable, Collection, Mapping
 from typing import Any, Optional
@@ -21,7 +23,9 @@ def _configured_service_rule(
     name_suffix: Optional[str] = None,
     request_path: str = "",
 ) -> Optional[NetworkTestRule]:
-    """为 HTTPS 服务生成隐藏真实路径的目录项和同源跳转范围。"""
+    """
+    为 HTTPS 服务生成隐藏真实路径的目录项和同源跳转范围。
+    """
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
@@ -59,7 +63,9 @@ def _configured_service_rule(
 
 
 def _address_label(url: str) -> Optional[str]:
-    """从 URL 中提取不含凭据的主机和显式端口作为目标名称。"""
+    """
+    从 URL 中提取不含凭据的主机和显式端口作为目标名称。
+    """
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
@@ -74,7 +80,9 @@ def _address_label(url: str) -> Optional[str]:
 
 
 def _freeze_headers(value: Any) -> tuple[tuple[str, str], ...]:
-    """把动态配置中的请求头复制为不可变、可比较的规则字段。"""
+    """
+    把动态配置中的请求头复制为不可变、可比较的规则字段。
+    """
     if not isinstance(value, Mapping):
         return ()
     return tuple((str(key), str(item)) for key, item in value.items() if item is not None)
@@ -84,7 +92,9 @@ def build_network_rules(
     settings: SettingsReader,
     enabled_module_ids_reader: Optional[Callable[[], Collection[str]]],
 ) -> tuple[NetworkTestRule, ...]:
-    """组合外部模块、代理和固定服务目标，并按模块开关裁剪目录。"""
+    """
+    组合外部模块、代理和固定服务目标，并按模块开关裁剪目录。
+    """
     enabled_module_ids = set(enabled_module_ids_reader()) if enabled_module_ids_reader is not None else None
     github_proxy = UrlUtils.standardize_base_url(settings("GITHUB_PROXY", None) or "")
     pip_proxy = UrlUtils.standardize_base_url(settings("PIP_PROXY", None) or "https://pypi.org/simple/")
@@ -101,7 +111,9 @@ def build_network_rules(
 
 
 def _build_metadata_module_rules(settings: SettingsReader) -> list[NetworkTestRule]:
-    """构建 TMDB、TVDB、Fanart 和豆瓣等启用时使用的媒体服务目标。"""
+    """
+    构建 TMDB、TVDB、Fanart 和豆瓣等启用时使用的媒体服务目标。
+    """
     tmdb_key = settings("TMDB_API_KEY", None)
     tmdb_domain = settings("TMDB_API_DOMAIN", None) or "api.themoviedb.org"
     rules = [
@@ -193,7 +205,9 @@ def _build_metadata_module_rules(settings: SettingsReader) -> list[NetworkTestRu
 
 
 def _build_notification_module_rules() -> list[NetworkTestRule]:
-    """构建已启用通知渠道对应的固定服务目标。"""
+    """
+    构建已启用通知渠道对应的固定服务目标。
+    """
     return [
         NetworkTestRule(
             id="telegram_api",
@@ -316,7 +330,9 @@ def _build_notification_module_rules() -> list[NetworkTestRule]:
 
 
 def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRule]:
-    """构建 AniList、IMDb 与 AcoustID 等外部媒体来源探测目标。"""
+    """
+    构建 AniList、IMDb 与 AcoustID 等外部媒体来源探测目标。
+    """
     return [
         NetworkTestRule(
             id="acoustid_api",
@@ -381,7 +397,9 @@ def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRul
 
 
 def _build_music_service_rules(settings: SettingsReader) -> list[NetworkTestRule]:
-    """构建音乐服务目标，并让 TheAudioDB 使用模块当前配置的 API Key。"""
+    """
+    构建音乐服务目标，并让 TheAudioDB 使用模块当前配置的 API Key。
+    """
     return [
         NetworkTestRule(
             id="musicbrainz_api",
@@ -418,7 +436,9 @@ def _build_music_service_rules(settings: SettingsReader) -> list[NetworkTestRule
 
 
 def _build_configured_module_rules(settings: SettingsReader) -> list[NetworkTestRule]:
-    """根据模块配置构建 Bangumi、封面、歌词和自定义代理目标。"""
+    """
+    根据模块配置构建 Bangumi、封面、歌词和自定义代理目标。
+    """
     rules: list[NetworkTestRule] = []
     bangumi_proxy = bool(settings("BANGUMI_PROXY_ENABLE", False))
     bangumi_domain = (
@@ -493,7 +513,9 @@ def _build_network_proxy_rules(
     github_proxy: str,
     pip_proxy: str,
 ) -> list[NetworkTestRule]:
-    """构建全局代理、GitHub 与 Python 包镜像的连通性目标。"""
+    """
+    构建全局代理、GitHub 与 Python 包镜像的连通性目标。
+    """
     rules: list[NetworkTestRule] = []
     network_proxy_rule = _build_network_proxy_rule(settings)
     if network_proxy_rule:
@@ -518,7 +540,9 @@ def _build_network_proxy_rules(
 
 
 def _build_network_proxy_rule(settings: SettingsReader) -> Optional[NetworkTestRule]:
-    """沿用 GitHub 身份请求 API，验证当前配置的通用出站代理。"""
+    """
+    沿用 GitHub 身份请求 API，验证当前配置的通用出站代理。
+    """
     proxy_config = settings("PROXY", None)
     proxy_address = settings("PROXY_HOST", None)
     if not proxy_address and isinstance(proxy_config, Mapping):
@@ -544,7 +568,9 @@ def _build_github_proxy_rules(
     settings: SettingsReader,
     github_proxy: str,
 ) -> list[NetworkTestRule]:
-    """构建 GitHub 页面、API、源码和归档下载连通性目标。"""
+    """
+    构建 GitHub 页面、API、源码和归档下载连通性目标。
+    """
     headers = _freeze_headers(settings("GITHUB_HEADERS", None))
     github_readme_url = "https://github.com/jxxghp/MoviePilot/blob/v2/README.md"
     raw_readme_url = "https://raw.githubusercontent.com/jxxghp/MoviePilot/v2/README.md"
@@ -609,7 +635,9 @@ def _build_fixed_service_rules(
     settings: SettingsReader,
     github_proxy: str,
 ) -> list[NetworkTestRule]:
-    """保留插件市场和 MoviePilot 等非模块固定服务目标。"""
+    """
+    保留插件市场和 MoviePilot 等非模块固定服务目标。
+    """
     rules: list[NetworkTestRule] = []
     plugin_repo_url = "https://github.com/jxxghp/MoviePilot-Plugins"
     plugin_repo_prefix = f"{plugin_repo_url}/"

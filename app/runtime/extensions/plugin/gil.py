@@ -1,4 +1,6 @@
-"""free-threaded 运行时下插件触发 GIL 回退的归因。"""
+"""
+free-threaded 运行时下插件触发 GIL 回退的归因。
+"""
 
 from __future__ import annotations
 
@@ -12,7 +14,9 @@ GilFallbackRecorder = Callable[[str], None]
 
 
 def ignore_gil_fallback(_plugin_id: str) -> None:
-    """默认归因端口：未装配注册表的加载器／生命周期不记录归因。"""
+    """
+    默认归因端口：未装配注册表的加载器／生命周期不记录归因。
+    """
 
 
 @contextmanager

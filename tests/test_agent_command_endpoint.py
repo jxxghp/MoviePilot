@@ -1,3 +1,7 @@
+"""
+验证 Agent 命令端点的参数校验、权限边界及调用结果。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import quote
@@ -11,7 +15,9 @@ from app.schemas.types import NotificationChannel
 
 @pytest.mark.asyncio
 async def test_agent_command_endpoint_decodes_internal_channel_headers() -> None:
-    """命令端点应解析 ASCII 编码的渠道，并还原编码后的来源名称。"""
+    """
+    命令端点应解析 ASCII 编码的渠道，并还原编码后的来源名称。
+    """
     user = SimpleNamespace(id=1, is_superuser=True)
     command_result = {
         "message": "命令已触发",

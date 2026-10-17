@@ -1,4 +1,6 @@
-"""调度器具体实现的组合门面与旧插件 ABI。"""
+"""
+调度器具体实现的组合门面与旧插件 ABI。
+"""
 
 import threading
 from collections.abc import Callable
@@ -25,7 +27,9 @@ _Handler = TypeVar("_Handler", bound=Callable[..., Any])
 
 
 def _public_handler(handler: _Handler) -> _Handler:
-    """在事件注册前恢复插件可见的稳定模块身份。"""
+    """
+    在事件注册前恢复插件可见的稳定模块身份。
+    """
     handler.__module__ = _PUBLIC_MODULE
     return handler
 
@@ -89,7 +93,9 @@ class Scheduler(
     }
 
     def __init__(self) -> None:
-        """创建调度器状态；后台任务由应用生命周期显式启动。"""
+        """
+        创建调度器状态；后台任务由应用生命周期显式启动。
+        """
         # 定时服务
         self._scheduler = None
         # 退出事件
@@ -115,13 +121,17 @@ class Scheduler(
         self._services: SchedulerServices | None = None
 
     def configure_services(self, services: SchedulerServices) -> None:
-        """在调度器启动前绑定由组合根构造的业务能力。"""
+        """
+        在调度器启动前绑定由组合根构造的业务能力。
+        """
         if self._lifecycle_state not in {"new", "stopped"}:
             raise RuntimeError("Scheduler 已运行，不能替换业务能力")
         self._services = services
 
     def reset_runtime_bindings(self) -> None:
-        """在调度器停止后撤销当前 lifespan 的仓储与业务能力引用。"""
+        """
+        在调度器停止后撤销当前 lifespan 的仓储与业务能力引用。
+        """
         with self._lock:
             if self._lifecycle_state not in {"new", "stopped"}:
                 raise RuntimeError("Scheduler 仍在运行，不能撤销运行时绑定")
@@ -130,7 +140,9 @@ class Scheduler(
             self._agent_task_interruptions_reconciled = False
 
     def _scheduler_services(self) -> SchedulerServices:
-        """返回显式注入能力；缺少组合根装配时稳定失败。"""
+        """
+        返回显式注入能力；缺少组合根装配时稳定失败。
+        """
         if self._services is None:
             raise RuntimeError("Scheduler 的业务能力尚未注入")
         return self._services
@@ -144,7 +156,9 @@ class Scheduler(
     @eventmanager.register(EventType.PluginReload)
     @_public_handler
     def on_plugin_reload(self, event: Event) -> None:
-        """插件重载后按当前实例重新注册全部定时服务"""
+        """
+        插件重载后按当前实例重新注册全部定时服务
+        """
         plugin_id = event.event_data.get("plugin_id")
         if not plugin_id:
             return

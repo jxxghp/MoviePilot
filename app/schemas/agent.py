@@ -1,4 +1,6 @@
-"""AI智能体相关数据模型"""
+"""
+AI智能体相关数据模型。
+"""
 
 from datetime import datetime
 from typing import Literal, Optional, Union
@@ -9,7 +11,9 @@ from app.schemas.common import JsonData
 
 
 class AgentState(BaseModel):
-    """AI智能体状态模型"""
+    """
+    AI智能体状态模型。
+    """
 
     session_id: str = Field(description="会话ID")
     current_task: Optional[str] = Field(default=None, description="当前任务")
@@ -20,11 +24,19 @@ class AgentState(BaseModel):
 
     @field_serializer("last_activity", when_used="json")
     def serialize_datetime(self, value: datetime) -> str:
+        """
+        将最后活动时间序列化为 ISO 8601 字符串。
+
+        :param value: 需要写入 JSON 的最后活动时间
+        :return: 包含日期和时间的 ISO 8601 文本
+        """
         return value.isoformat()
 
 
 class UserMessage(BaseModel):
-    """用户消息模型"""
+    """
+    用户消息模型。
+    """
 
     session_id: str = Field(description="会话ID")
     content: str = Field(description="消息内容")
@@ -34,7 +46,9 @@ class UserMessage(BaseModel):
 
 
 class ToolResult(BaseModel):
-    """工具执行结果模型"""
+    """
+    工具执行结果模型。
+    """
 
     session_id: str = Field(description="会话ID")
     call_id: str = Field(description="调用ID")
@@ -44,7 +58,9 @@ class ToolResult(BaseModel):
 
 
 class AgentMcpServerConfig(BaseModel):
-    """Agent 外部 MCP 服务器配置。"""
+    """
+    Agent 外部 MCP 服务器配置。
+    """
 
     id: str = Field(..., description="服务器唯一 ID")
     name: str = Field(..., description="服务器显示名称")
@@ -62,19 +78,25 @@ class AgentMcpServerConfig(BaseModel):
 
 
 class AgentMcpServersSaveRequest(BaseModel):
-    """Agent 外部 MCP 服务器保存请求。"""
+    """
+    Agent 外部 MCP 服务器保存请求。
+    """
 
     servers: list[AgentMcpServerConfig] = Field(default_factory=list, description="MCP 服务器配置列表")
 
 
 class AgentMcpServerTestRequest(BaseModel):
-    """Agent 外部 MCP 服务器测试请求。"""
+    """
+    Agent 外部 MCP 服务器测试请求。
+    """
 
     server: AgentMcpServerConfig = Field(..., description="待测试的 MCP 服务器配置")
 
 
 class AgentMcpServerToolInfo(BaseModel):
-    """Agent 外部 MCP 工具摘要。"""
+    """
+    Agent 外部 MCP 工具摘要。
+    """
 
     name: str = Field(..., description="原始 MCP 工具名称")
     agent_tool_name: str = Field(..., description="注入 Agent 后的工具名称")
@@ -83,7 +105,9 @@ class AgentMcpServerToolInfo(BaseModel):
 
 
 class AgentMcpServerTestResult(BaseModel):
-    """Agent 外部 MCP 服务器测试结果。"""
+    """
+    Agent 外部 MCP 服务器测试结果。
+    """
 
     success: bool = Field(..., description="测试是否成功")
     message: str = Field(default="", description="测试消息")
@@ -101,7 +125,7 @@ class AgentChatAttachment(BaseModel):
     download_url: Optional[str] = Field(None, description="附件下载地址")
     name: Optional[str] = Field(None, description="附件名称")
     mime_type: Optional[str] = Field(None, description="MIME 类型")
-    size: Optional[int] = Field(None, description="附件大小")
+    size: Optional[int] = Field(None, description="附件大小，单位为字节")
     local_path: Optional[str] = Field(None, description="服务端本地路径")
 
 
@@ -216,7 +240,9 @@ class AgentChatDisplaySaveRequest(BaseModel):
 
 
 class AgentMcpServerListData(BaseModel):
-    """Agent MCP 服务器列表与启用统计。"""
+    """
+    Agent MCP 服务器列表与启用统计。
+    """
 
     servers: list[AgentMcpServerConfig] = Field(default_factory=list, description="服务器列表")
     enabled_count: int = Field(default=0, description="已启用服务器数量")
@@ -224,14 +250,18 @@ class AgentMcpServerListData(BaseModel):
 
 
 class AgentChatUploadAttachment(AgentChatAttachment):
-    """Web Agent 上传完成后的附件描述。"""
+    """
+    Web Agent 上传完成后的附件描述。
+    """
 
     ref: str = Field(description="供 Agent 消费的附件引用")
     status: str = Field(default="ready", description="附件处理状态")
 
 
 class AgentWebChoiceFeedback(BaseModel):
-    """Web Agent 选择回调的反馈快照。"""
+    """
+    Web Agent 选择回调的反馈快照。
+    """
 
     request_id: str = Field(description="选择请求 ID")
     title: Optional[str] = Field(default=None, description="选择标题")
@@ -244,7 +274,9 @@ class AgentWebChoiceFeedback(BaseModel):
 
 
 class AgentWebCallbackData(BaseModel):
-    """Web Agent 按钮回调后供前端继续发送的数据。"""
+    """
+    Web Agent 按钮回调后供前端继续发送的数据。
+    """
 
     message: str = Field(description="下一条用户消息")
     display_message: str = Field(default="", description="前端展示消息")
@@ -257,7 +289,9 @@ class AgentWebCallbackData(BaseModel):
 
 
 class AgentWebCommandInfo(BaseModel):
-    """Web Agent 可用斜杠命令摘要。"""
+    """
+    Web Agent 可用斜杠命令摘要。
+    """
 
     command: str = Field(description="命令")
     description: str = Field(default="", description="命令说明")
@@ -266,14 +300,20 @@ class AgentWebCommandInfo(BaseModel):
     pid: Optional[str | int] = Field(default=None, description="插件 ID")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class AgentCommandRunRequest(BaseModel):  # type: ignore[misc]
-    """通过 Agent API 触发斜杠命令的请求。"""
+    """
+    通过 Agent API 触发斜杠命令的请求。
+    """
 
     command: str = Field(description="要执行的完整斜杠命令")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class AgentCommandRunData(BaseModel):  # type: ignore[misc]
-    """斜杠命令进入事件队列后的稳定回执。"""
+    """
+    斜杠命令进入事件队列后的稳定回执。
+    """
 
     message: str = Field(description="命令触发结果")
     command: str = Field(description="规范化后的完整命令")
@@ -282,7 +322,9 @@ class AgentCommandRunData(BaseModel):  # type: ignore[misc]
 
 
 class AgentChatSessionSummary(BaseModel):
-    """Agent 历史会话摘要。"""
+    """
+    Agent 历史会话摘要。
+    """
 
     id: Optional[int] = Field(default=None, description="数据库 ID")
     session_id: str = Field(description="Agent 内部会话 ID")
@@ -299,13 +341,17 @@ class AgentChatSessionSummary(BaseModel):
 
 
 class AgentChatSessionDetail(AgentChatSessionSummary):
-    """Agent 历史会话详情。"""
+    """
+    Agent 历史会话详情。
+    """
 
     messages: list[AgentChatMessage] = Field(default_factory=list, description="展示消息列表")
     is_processing: bool = Field(default=False, description="会话是否正在处理")
 
 
 class AgentSessionStopData(BaseModel):
-    """Agent 会话停止结果。"""
+    """
+    Agent 会话停止结果。
+    """
 
     stopped: bool = Field(description="是否停止了正在执行的任务")

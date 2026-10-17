@@ -1,3 +1,7 @@
+"""
+监听本地目录变化并等待文件写入稳定。
+"""
+
 import threading
 import time
 import traceback
@@ -15,6 +19,10 @@ from app.runtime.settings import get_runtime_setting
 class DirectoryChangeEvent:
     """
     目录文件变化事件，隔离底层 watchfiles 事件结构。
+
+    :param change_type: 底层观察到的新增、修改或删除类型
+    :param src_path: 发生变化的文件或目录路径
+    :param is_directory: 变化对象是否为目录
     """
     change_type: Change
     src_path: str
@@ -22,7 +30,18 @@ class DirectoryChangeEvent:
 
 
 class _PendingStability(TypedDict):
-    """记录同一文件版本的稳定采样、检查期限和告警状态。"""
+    """
+    记录同一文件版本的稳定采样、检查期限和告警状态。
+
+    :ivar change_type: 需要延后分发的变化类型
+    :ivar path: 正在观察的文件路径
+    :ivar file_size: 上一次采样时的字节数
+    :ivar mtime_ns: 上一次采样时的纳秒修改时间
+    :ivar stable_checks: 连续两次内容未变化的采样次数
+    :ivar due: 下一次检查的单调时钟时间
+    :ivar first_seen: 首次观察到该文件版本的单调时钟时间
+    :ivar warning_sent: 是否已发送长时间不稳定告警
+    """
 
     change_type: Change
     path: Path
@@ -35,7 +54,15 @@ class _PendingStability(TypedDict):
 
 
 class _PendingRescan(TypedDict):
-    """保留延迟重扫目录、已见文件、轮次、到期时间与连续失败次数。"""
+    """
+    保留延迟重扫目录、已见文件、轮次、到期时间与连续失败次数。
+
+    :ivar path: 等待重扫的目录路径
+    :ivar seen: 前次扫描已观察到的文件路径集合
+    :ivar round: 当前延迟重扫轮次
+    :ivar due: 下一轮扫描的单调时钟时间
+    :ivar failures: 连续完整扫描失败的次数
+    """
 
     path: Path
     seen: set[str]
@@ -417,7 +444,9 @@ class LocalDirectoryWatcher:
             self._dispatch_changes({(item["change_type"], path_str)}, defer_unstable=False)
 
     def _notify_stability_state(self, event_path: Path, *, stable: bool) -> None:
-        """把长期不稳定和后续恢复事件交给监控门面；兼容旧回调时静默跳过。"""
+        """
+        把长期不稳定和后续恢复事件交给监控门面；兼容旧回调时静默跳过。
+        """
         callback_name = "event_stable" if stable else "event_unstable"
         callback = getattr(self._callback, callback_name, None)
         if not callable(callback):

@@ -131,8 +131,10 @@ When updating a dependency:
 The `moviepilot` CLI is the local-mode entrypoint. Its update path is:
 
 ```bash
-moviepilot update all     # updates backend + frontend + resources
-moviepilot update backend # git pull + reinstall deps
+# 同时更新后端、前端和资源
+moviepilot update all
+# 拉取后端代码并重新安装依赖
+moviepilot update backend
 moviepilot update frontend
 ```
 

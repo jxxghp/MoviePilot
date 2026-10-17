@@ -1,4 +1,5 @@
-"""批量下载候选的缺集记账与覆盖判定规则。
+"""
+批量下载候选的缺集记账与覆盖判定规则。
 
 本模块承载批量择优下载的纯决策规则：缺集字典（no_exists）的季/集
 记账更新、整季候选的目标范围推导、允许集裁剪和下载去重键构造。
@@ -24,9 +25,7 @@ def update_no_exists_seasons(
 
     就地维护传入的 no_exists：已满足的季从记账中移除，媒体条目清空后整体删除。
     """
-    # 剩余季数
     need = list(set(needed_seasons).difference(set(current_seasons)))
-    # 清除已下载的季信息
     seas = deepcopy(no_exists.get(media_key))
     if seas:
         for season in list(seas):
@@ -51,7 +50,6 @@ def update_no_exists_episodes(
     就地维护传入的 no_exists：仍有缺集时重写该季缺失信息，集齐后移除季条目，
     媒体条目清空后整体删除。
     """
-    # 剩余集数
     need = list(set(needed_episodes).difference(set(current_episodes)))
     if need:
         not_exist = no_exists[media_key][season]
@@ -145,14 +143,18 @@ def apply_allowed_episodes(need_episodes: Set[int], context: Context) -> Set[int
 
 
 def allows_full_pack(episodes: Set[int], context: Context) -> bool:
-    """整包下载前确认包内每一集均获当前候选的允许集放行。"""
+    """
+    整包下载前确认包内每一集均获当前候选的允许集放行。
+    """
     return apply_allowed_episodes(episodes, context) == episodes
 
 
 def allows_full_season(
         seasons: List[int], required_episodes: Set[int], context: Context,
 ) -> bool:
-    """整季候选仅在无按集约束，或单季目标全集均获准时整体下载。"""
+    """
+    整季候选仅在无按集约束，或单季目标全集均获准时整体下载。
+    """
     if context.allowed_episodes is None:
         return True
     return len(seasons) == 1 and bool(required_episodes) and allows_full_pack(required_episodes, context)
@@ -168,7 +170,9 @@ def get_movie_download_key(context: Context) -> str:
 
 
 def get_music_download_key(context: Context) -> str:
-    """获取音乐下载去重键，同一订阅目标失败后仍可尝试后续候选。"""
+    """
+    获取音乐下载去重键，同一订阅目标失败后仍可尝试后续候选。
+    """
     if context.media_info is None:
         return ""
     media_source, media_id = resolve_media_identity(media=context.media_info)

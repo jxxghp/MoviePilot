@@ -1,3 +1,7 @@
+"""
+OpenList 兼容存储的鉴权、分页查询、传输和目标元数据回退。
+"""
+
 import hashlib
 import json
 import time
@@ -24,9 +28,10 @@ OPENLIST_MAX_LIST_PAGE_SIZE = 500
 
 class Alist(StorageBase, metaclass=WeakSingleton):
     """
-    Openlist相关操作
+    通过 OpenList 兼容接口查询文件、传输内容和管理路径。
 
     API 文档：https://fox.oplist.org/
+    普通查询可能以空结果表示接口失败，需要覆盖保护时应使用严格查询。
     """
 
     # 存储类型
@@ -39,19 +44,26 @@ class Alist(StorageBase, metaclass=WeakSingleton):
     }
 
     def __init__(self):
+        """
+        初始化存储配置访问服务，登录令牌按首次请求惰性获取。
+        """
         super().__init__()
 
     @property
     def snapshot_check_folder_modtime(self) -> bool:
-        """读取当前 OpenList 目录时间检查开关，支持配置保存后立即生效。"""
+        """
+        读取 OpenList 目录修改时间检查开关，配置更新后立即生效。
+
+        :return: OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME 的布尔值
+        """
         return bool(get_runtime_setting('OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME'))
 
     def init_storage(self):
         """
-        初始化
+        清除当前地址和账号对应的临时登录令牌缓存。
         """
         conf = self.get_conf()
-        self.__login_token.cache_delete(  # noqa
+        self.__login_token.cache_delete(
             self, self.__get_base_url, conf.get("username"), conf.get("password")
         )
 
@@ -59,11 +71,13 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         self, path: Path, /, refresh: bool = False
     ) -> Optional[_SchemaFileItem]:
         """
-        自动延迟重试 get_item 模块
+        最多两次延迟查询目标，兼容远端操作后的可见性延迟。
 
-        :param path: 文件路径
-        :param refresh: 是否刷新
-        :return: 文件项
+        每次查询前等待 2 秒，包括第一次。
+
+        :param path: 需要查询的目标路径
+        :param refresh: 是否要求服务端刷新元数据缓存
+        :return: 首次查到的存储项；两次均无结果返回 None
         """
         for _ in range(2):
             time.sleep(2)
@@ -98,7 +112,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
     @property
     def __get_base_url(self) -> str:
         """
-        获取基础URL
+        获取基础URL。
         """
         url = self.get_conf().get("url")
         if url is None:
@@ -107,17 +121,17 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def __get_api_url(self, path: str) -> str:
         """
-        获取API URL
+        获取API URL。
 
         :param path: API路径
-        :return: API URL
+        :return: 基础地址与接口路径组合后的完整请求地址
         """
         return UrlUtils.adapt_request_url(self.__get_base_url, path)
 
     @property
     def __get_valuable_toke(self) -> str:
         """
-        获取一个可用的token
+        获取一个可用的token。
         如果设置永久令牌则返回永久令牌
         否则使用账号密码生成临时令牌
         """
@@ -125,7 +139,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def __generate_token(self) -> str:
         """
-        如果设置永久令牌则返回永久令牌，否则使用账号密码生成一个临时 token
+        如果设置永久令牌则返回永久令牌，否则使用账号密码生成一个临时 token。
         """
         conf = self.get_conf()
         token = conf.get("token")
@@ -140,7 +154,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         self, base_url: str, username: Optional[str], password: Optional[str]
     ) -> str:
         """
-        使用账号密码生成一个临时 token
+        使用账号密码生成一个临时 token。
         缓存2天，提前5分钟更新
         """
         resp = RequestUtils(headers={"Content-Type": "application/json"}).post_res(
@@ -152,20 +166,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 }
             ),
         )
-        """
-        {
-            "username": "{{alist_username}}",
-            "password": "{{alist_password}}"
-        }
-        ======================================
-        {
-            "code": 200,
-            "message": "success",
-            "data": {
-                "token": "abcd"
-            }
-        }
-        """
 
         if resp is None:
             logger.warning("【OpenList】请求登录失败，无法连接alist服务")
@@ -188,13 +188,15 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def __get_header_with_token(self) -> dict:
         """
-        获取带有token的header
+        获取带有token的header。
         """
         return {"Authorization": self.__get_valuable_toke}
 
     def check(self) -> bool:
         """
-        检查存储是否可用
+        检查能否取得配置令牌或账号登录令牌。
+
+        :return: 令牌非空返回 True；永久令牌不在此方法额外向服务器验证
         """
         return True if self.__generate_token() else False
 
@@ -207,13 +209,16 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         refresh: bool = False,
     ) -> List[_SchemaFileItem]:
         """
-        浏览文件
-        :param fileitem: 文件项
-        :param password: 路径密码
-        :param page: 页码
-        :param per_page: 每页数量
-        :param refresh: 是否刷新
-        :return: 文件列表
+        列举文件或目录，可按服务端总数自动翻页。
+
+        自动翻页依赖服务端返回总数等分页信息，缺少总数时可能在首个非空页结束。
+
+        :param fileitem: 目录项；文件项改为查询详情并返回单元素列表
+        :param password: 可选路径访问密码
+        :param page: 起始页码，从 1 开始
+        :param per_page: 正数时只查一页；小于等于 0 时以每页 500 项自动翻页
+        :param refresh: 是否要求服务端刷新列表缓存
+        :return: 文件项列表；HTTP 或业务错误返回空列表，之前成功页的结果也会丢弃
         """
         if fileitem.type == "file":
             item = self.get_item(Path(fileitem.path))
@@ -235,41 +240,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                     "refresh": refresh,
                 },
             )
-            """
-            {
-                "path": "/t",
-                "password": "",
-                "page": 1,
-                "per_page": 0,
-                "refresh": false
-            }
-            ======================================
-            {
-                "code": 200,
-                "message": "success",
-                "data": {
-                    "content": [
-                    {
-                        "name": "Alist V3.md",
-                        "size": 1592,
-                        "is_dir": false,
-                        "modified": "2024-05-17T13:47:55.4174917+08:00",
-                        "created": "2024-05-17T13:47:47.5725906+08:00",
-                        "sign": "",
-                        "thumb": "",
-                        "type": 4,
-                        "hashinfo": "null",
-                        "hash_info": null
-                    }
-                    ],
-                    "total": 1,
-                    "readme": "",
-                    "header": "",
-                    "write": true,
-                    "provider": "Local"
-                }
-            }
-            """
 
             if resp is None:
                 logger.warn(
@@ -327,27 +297,17 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         self, fileitem: _SchemaFileItem, name: str
     ) -> Optional[_SchemaFileItem]:
         """
-        创建目录
-        :param fileitem: 父目录
-        :param name: 目录名
-        :return: 目录项
+        调用目录创建接口，成功后延迟查询元数据。
+
+        :param fileitem: 父目录项
+        :param name: 要创建的子目录名称
+        :return: 查询到的目录项；接口成功但暂不可见时按目标路径构造目录项，接口失败返回 None
         """
         path = Path(fileitem.path) / name
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/mkdir"),
             json={"path": path.as_posix()},
         )
-        """
-        {
-            "path": "/tt"
-        }
-        ======================================
-        {
-            "code": 200,
-            "message": "success",
-            "data": null
-        }
-        """
         if resp is None:
             logger.warn(f"【OpenList】请求创建目录 {path} 失败，无法连接alist服务")
             return None
@@ -379,10 +339,10 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取目录，如目录不存在则创建
+        查询目标目录，查不到时向服务端请求创建。
 
-        :param path: 目录路径
-        :return: 目录项
+        :param path: 目标目录路径
+        :return: 目录项；创建失败返回 None，是否递归创建由服务端决定
         """
         folder = self.get_item(path)
         if folder:
@@ -409,13 +369,14 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         refresh: bool = False,
     ) -> Optional[_SchemaFileItem]:
         """
-        获取文件或目录，不存在返回None
-        :param path: 文件路径
-        :param password: 路径密码
-        :param page: 页码
-        :param per_page: 每页数量
-        :param refresh: 是否刷新
-        :return: 文件项
+        查询单个路径的元数据。
+
+        :param path: 目标文件或目录路径
+        :param password: 可选路径访问密码
+        :param page: 透传给详情接口的页码，默认 1
+        :param per_page: 透传给详情接口的每页数量，默认 0
+        :param refresh: 是否要求服务端刷新元数据
+        :return: 文件或目录项；无响应、HTTP 错误或业务失败返回 None
         """
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/get"),
@@ -427,37 +388,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 "refresh": refresh,
             },
         )
-        """
-        {
-            "path": "/t",
-            "password": "",
-            "page": 1,
-            "per_page": 0,
-            "refresh": false
-        }
-        ======================================
-        {
-            "code": 200,
-            "message": "success",
-            "data": {
-                "name": "Alist V3.md",
-                "size": 2618,
-                "is_dir": false,
-                "modified": "2024-05-17T16:05:36.4651534+08:00",
-                "created": "2024-05-17T16:05:29.2001008+08:00",
-                "sign": "",
-                "thumb": "",
-                "type": 4,
-                "hashinfo": "null",
-                "hash_info": null,
-                "raw_url": "http://127.0.0.1:5244/p/local/Alist%20V3.md",
-                "readme": "",
-                "header": "",
-                "provider": "Local",
-                "related": null
-            }
-        }
-        """
         if resp is None:
             logger.warn(f"【OpenList】请求获取文件 {path} 失败，无法连接alist服务")
             return None
@@ -479,6 +409,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
     def __build_fileitem(self, path: Path, data: dict) -> _SchemaFileItem:
         """
         根据接口返回数据构建文件项。
+
         :param path: 文件路径
         :param data: 接口返回的 data 字段
         :return: 文件项
@@ -497,9 +428,11 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
-        只有接口明确回报「对象不存在」才是确定结果，连接失败、HTTP 异常与其他
-        业务错误都无法确认目标状态，必须保守失败以免覆盖保护被绕过。
+        查询路径并区分服务端明确不存在与其他故障。
+
+        :param path: 需要确认状态的路径
+        :return: 文件或目录项；错误说明包含 not found 或 not exist 时返回 None
+        :raises StorageQueryError: 无响应、HTTP 错误、JSON 解析失败或其他业务错误
         """
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/get"),
@@ -528,19 +461,19 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def get_parent(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
-        获取父目录
+        按存储项路径查询父目录。
 
-        :param fileitem: 文件项
-        :return: 父目录项
+        :param fileitem: 目标存储项
+        :return: 父目录信息；普通查询无结果时返回 None
         """
         return self.get_folder(Path(fileitem.path).parent)
 
     def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
-        删除文件或目录
+        调用删除接口移除父目录中的指定名称。
 
-        :param fileitem: 文件项
-        :return: 是否删除成功
+        :param fileitem: 目标存储项；优先使用 name，否则取 path 的末段
+        :return: HTTP 与业务状态均为 200 返回 True；名称为空或接口失败返回 False
         """
         path = Path(fileitem.path)
         name = fileitem.name or path.name
@@ -575,11 +508,11 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
-        重命名文件
+        请求服务端修改存储项名称。
 
-        :param fileitem: 文件项
-        :param name: 新文件名
-        :return: 是否重命名成功
+        :param fileitem: 原存储项
+        :param name: 目标名称
+        :return: HTTP 与业务状态均为 200 返回 True，否则返回 False；不原地修改输入项
         """
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/rename"),
@@ -588,18 +521,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 "path": fileitem.path,
             },
         )
-        """
-        {
-            "name": "test3",
-            "path": "/阿里云盘/test2"
-        }
-        ======================================
-        {
-            "code": 200,
-            "message": "success",
-            "data": null
-        }
-        """
         if not resp:
             logger.warn(
                 f"【OpenList】请求重命名文件 {fileitem.path} 失败，无法连接alist服务"
@@ -627,11 +548,15 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         password: Optional[str] = "",
     ) -> Optional[Path]:
         """
-        下载文件，保存到本地，返回本地临时文件地址
-        :param fileitem: 文件项
-        :param path: 文件保存路径
-        :param password: 文件密码
-        :return: 本地临时文件地址
+        取得下载地址后流式写入本地文件。
+
+        当前捕获传输异常后仍返回目标路径，不能据此断定文件完整甚至已经创建；
+        取消和失败都可能留下部分文件，调用方需另行核验。
+
+        :param fileitem: 源远端文件；name 直接用于拼接保存路径
+        :param path: 本地保存目录；为空时使用 TEMP_PATH
+        :param password: 详情查询使用的可选访问密码
+        :return: 本地目标路径；详情查询失败或取消返回 None
         """
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/get"),
@@ -643,29 +568,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 "refresh": False,
             },
         )
-        """
-        {
-            "code": 200,
-            "message": "success",
-            "data": {
-                "name": "[ANi]輝夜姬想讓人告白～天才們的戀愛頭腦戰～[01][1080P][Baha][WEB-DL].mp4",
-                "size": 924933111,
-                "is_dir": false,
-                "modified": "1970-01-01T00:00:00Z",
-                "created": "1970-01-01T00:00:00Z",
-                "sign": "1v0xkMQz_uG8fkEOQ7-l58OnbB-g4GkdBlUBcrsApCQ=:0",
-                "thumb": "",
-                "type": 2,
-                "hashinfo": "null",
-                "hash_info": null,
-                "raw_url": "xxxxxx",
-                "readme": "",
-                "header": "",
-                "provider": "UrlTree",
-                "related": null
-            }
-        }
-        """
         if not resp:
             logger.warn(f"【OpenList】请求获取文件 {path} 失败，无法连接alist服务")
             return None
@@ -723,23 +625,21 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         task: bool = False,
     ) -> Optional[_SchemaFileItem]:
         """
-        上传文件（带进度）
-        :param fileitem: 上传目录项
-        :param path: 本地文件路径
-        :param new_name: 上传后文件名
-        :param task: 是否为任务，默认为False避免未完成上传时对文件进行操作
-        :return: 上传后的文件项
+        以支持取消和进度的文件流上传，并延迟查询目标元数据。
+
+        :param fileitem: 远端目标目录
+        :param path: 本地源文件路径；发送后保留
+        :param new_name: 可选目标名称，默认使用本地文件名
+        :param task: 是否要求服务端作为后台任务处理；默认 False，避免后续操作抢先执行
+        :return: 上传后查询到的文件项；上传、取消或元数据确认失败返回 None
         """
         try:
-            # 获取文件大小
             target_name = new_name or path.name
             target_path = Path(fileitem.path) / target_name
             stat = path.stat()
 
-            # 初始化进度回调
             progress_callback = transfer_process(path.as_posix())
 
-            # 准备上传请求
             encoded_path = UrlUtils.quote(target_path.as_posix())
             headers = self.__get_header_with_token()
             headers.setdefault("Content-Type", "application/octet-stream")
@@ -749,18 +649,38 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             headers.setdefault("Last-Modified", str(int(stat.st_mtime * 1000)))
             headers.update(self.__get_upload_hash_headers(path))
 
-            # 创建自定义的文件流，支持进度回调
             class ProgressFileReader:
+                """
+                为上传请求提供可计长、支持取消及进度回调的文件读取器。
+                """
                 def __init__(self, file_path: Path, callback):
+                    """
+                    打开源文件并记录上传进度回调。
+
+                    :param file_path: 需要读取的本地文件，调用方负责 close 释放句柄
+                    :param callback: 接收百分比的回调，可为空
+                    """
                     self.file = open(file_path, "rb")
                     self.callback = callback
                     self.uploaded_size = 0
                     self.file_size = file_path.stat().st_size
 
                 def __len__(self) -> int:
+                    """
+                    提供 HTTP 上传所需的完整内容长度。
+
+                    :return: 初始化时读取的文件字节数
+                    """
                     return self.file_size
 
                 def read(self, size=-1):
+                    """
+                    读取上传内容并报告累计进度。
+
+                    :param size: 最多读取的字节数；默认 -1 表示读取剩余内容
+                    :return: 本次读取的字节；到文件末尾返回空字节
+                    :raises OperationInterrupted: 消费到该传输的停止信号
+                    """
                     if runtime_stop_state.consume_transfer_stop(path.as_posix()):
                         logger.info(f"【OpenList】{path} 上传已取消！")
                         raise OperationInterrupted(f"Upload cancelled: {path}")
@@ -773,9 +693,11 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                     return chunk
 
                 def close(self):
+                    """
+                    关闭上传源文件句柄。
+                    """
                     self.file.close()
 
-            # 使用自定义文件流上传
             progress_reader = ProgressFileReader(path, progress_callback)
             try:
                 resp = RequestUtils(headers=headers, timeout=6000).put_res(
@@ -796,10 +718,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 )
                 return None
 
-            # 完成上传
             progress_callback(100)
 
-            # 获取上传后的文件项
             new_item = self._delay_get_item(target_path, refresh=True)
             if new_item and new_name and new_name != path.name:
                 if self.rename(new_item, new_name):
@@ -837,17 +757,23 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
-        获取文件详情
+        按存储项路径重新读取详情。
+
+        :param fileitem: 目标文件或目录项
+        :return: 最新文件项；普通查询失败返回 None
         """
         return self.get_item(Path(fileitem.path))
 
     def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
-        复制文件
-        :param fileitem: 文件项
-        :param path: 目标目录
-        :param new_name: 新文件名
-        :return: 是否复制成功
+        请求服务端复制，再尽力把目标改为新名称。
+
+        不在此方法确认异步复制已经完成，调用方需要目标信息时应使用 copy_item。
+
+        :param fileitem: 源存储项
+        :param path: 远端目标目录
+        :param new_name: 目标文件名
+        :return: 复制接口成功返回 True，接口失败返回 False；后续重命名失败不改变成功结果
         """
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/copy"),
@@ -857,21 +783,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 "names": [fileitem.name],
             },
         )
-        """
-        {
-            "src_dir": "string",
-            "dst_dir": "string",
-            "names": [
-                "string"
-            ]
-        }
-        ======================================
-        {
-            "code": 200,
-            "message": "success",
-            "data": null
-        }
-        """
         if resp is None:
             logger.warn(
                 f"【OpenList】请求复制文件 {fileitem.path} 失败，无法连接alist服务"
@@ -889,7 +800,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 f"【OpenList】复制文件 {fileitem.path} 失败，错误信息：{result['message']}"
             )
             return False
-        # 重命名
         if fileitem.name != new_name:
             new_item = self._delay_get_item(path / fileitem.name, refresh=True)
             if new_item:
@@ -900,7 +810,12 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             self, fileitem: _SchemaFileItem, path: Path, new_name: str
     ) -> Optional[_SchemaFileItem]:
         """
-        复制文件并返回目标文件项，兼容 OpenList 成功响应不携带目标对象的格式。
+        复制并查询目标项，兼容远端元数据暂不可见。
+
+        :param fileitem: 源存储项
+        :param path: 远端目标目录
+        :param new_name: 目标文件名
+        :return: 目标项；同名复制成功但暂不可见时按源元数据构造，改名无法确认时返回 None
         """
         if not self.copy(fileitem=fileitem, path=path, new_name=new_name):
             return None
@@ -920,13 +835,13 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
-        移动文件
-        :param fileitem: 文件项
-        :param path: 目标目录
-        :param new_name: 新文件名
-        :return: 是否移动成功
+        先请求源项改名，再请求服务端移动目标名称。
+
+        :param fileitem: 源存储项
+        :param path: 远端目标目录
+        :param new_name: 目标文件名
+        :return: 移动接口成功返回 True，否则返回 False；前置重命名的布尔结果不单独检查
         """
-        # 先重命名
         if fileitem.name != new_name:
             self.rename(fileitem, new_name)
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
@@ -937,21 +852,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 "names": [new_name],
             },
         )
-        """
-        {
-            "src_dir": "string",
-            "dst_dir": "string",
-            "names": [
-                "string"
-            ]
-        }
-        ======================================
-        {
-            "code": 200,
-            "message": "success",
-            "data": null
-        }
-        """
         if resp is None:
             logger.warn(
                 f"【OpenList】请求移动文件 {fileitem.path} 失败，无法连接alist服务"
@@ -975,7 +875,12 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             self, fileitem: _SchemaFileItem, path: Path, new_name: str
     ) -> Optional[_SchemaFileItem]:
         """
-        移动文件并返回目标文件项，兼容 OpenList 成功响应不携带目标对象的格式。
+        移动并查询目标项，元数据暂不可见时根据源项构造。
+
+        :param fileitem: 源存储项
+        :param path: 远端目标目录
+        :param new_name: 目标文件名
+        :return: 目标项；移动接口失败返回 None，构造结果不代表已经独立核验远端状态
         """
         if not self.move(fileitem=fileitem, path=path, new_name=new_name):
             return None
@@ -986,25 +891,35 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
     def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
-        硬链接文件
+        保留硬链接接口，OpenList 当前不实现该操作。
+
+        :param fileitem: 兼容接口的源文件项，当前忽略
+        :param target_file: 兼容接口的目标路径，当前忽略
+        :return: 固定返回 None
         """
         pass
 
     def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
-        软链接文件
+        保留符号链接接口，OpenList 当前不实现该操作。
+
+        :param fileitem: 兼容接口的源文件项，当前忽略
+        :param target_file: 兼容接口的目标路径，当前忽略
+        :return: 固定返回 None
         """
         pass
 
     def usage(self) -> Optional[_SchemaStorageUsage]:
         """
-        存储使用情况
+        保留容量查询接口，OpenList 当前不提供汇总容量。
+
+        :return: 固定返回 None
         """
         pass
 
     @staticmethod
     def __parse_timestamp(time_str: str) -> float:
         """
-        直接使用 ISO 8601 格式解析时间
+        直接使用 ISO 8601 格式解析时间。
         """
         return datetime.fromisoformat(time_str).timestamp()

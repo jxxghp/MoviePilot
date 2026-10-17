@@ -1,4 +1,6 @@
-"""对 JSON 工具回执分类，为循环检测提供结果语义。"""
+"""
+对 JSON 工具回执分类，为循环检测提供结果语义。
+"""
 
 import json
 from typing import Any
@@ -8,7 +10,9 @@ GUARDRAIL_REFUSAL_KEY = 'guardrail_refusal'
 
 
 def safe_json_loads(value: str) -> Any:
-    """无法解析的自然语言结果返回 None，不能让检测异常中断真实工具。"""
+    """
+    无法解析的自然语言结果返回 None，不能让检测异常中断真实工具。
+    """
     try:
         return json.loads(value)
     except (TypeError, ValueError, RecursionError):
@@ -16,7 +20,9 @@ def safe_json_loads(value: str) -> Any:
 
 
 def is_guardrail_refusal(result: Any) -> bool:
-    """Return True when ``result`` (JSON string or parsed dict) is a harness refusal."""
+    """
+    判断 JSON 文本或已解析字典是否表示宿主主动拒绝工具调用。
+    """
     data = result
     if isinstance(result, str):
         try:
@@ -27,7 +33,9 @@ def is_guardrail_refusal(result: Any) -> bool:
 
 
 def file_mutation_result_landed(tool_name: str, result: Any) -> bool:
-    """Return True when a file mutation result proves the write landed."""
+    """
+    判断文件变更回执是否明确证明写入已经完成。
+    """
     if tool_name not in FILE_MUTATING_TOOL_NAMES or not isinstance(result, str):
         return False
     try:

@@ -1,3 +1,7 @@
+"""
+识别标题中的流媒体平台标记并转换为标准名称。
+"""
+
 from typing import List, Optional, Tuple
 
 from app.foundation.singleton import Singleton
@@ -278,7 +282,9 @@ class StreamingPlatforms(metaclass=Singleton):
     ]
 
     def __init__(self) -> None:
-        """初始化流媒体平台匹配器"""
+        """
+        初始化流媒体平台匹配器。
+        """
         self._lookup_cache: dict[str, str] = {}
         self._build_cache()
 

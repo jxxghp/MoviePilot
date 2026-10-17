@@ -1,4 +1,6 @@
-"""Chain 运行上下文注入和无参兼容 provider 测试。"""
+"""
+Chain 运行上下文注入和无参兼容 provider 测试。
+"""
 
 import asyncio
 import sys
@@ -19,7 +21,9 @@ from app.startup.composition.runtime import RuntimeDependencies
 
 
 def _context() -> ChainRuntimeContext:
-    """构造不连接数据库、不启动线程的最小 Chain 上下文。"""
+    """
+    构造不连接数据库、不启动线程的最小 Chain 上下文。
+    """
     message_queue = Mock()
     message_queue.bind.return_value = Mock()
     return ChainRuntimeContext(
@@ -55,7 +59,9 @@ def _context() -> ChainRuntimeContext:
 
 
 def test_chain_accepts_explicit_runtime_context() -> None:
-    """新代码应能显式注入最小运行时依赖而不创建真实管理器。"""
+    """
+    新代码应能显式注入最小运行时依赖而不创建真实管理器。
+    """
     context = _context()
 
     chain = ChainBase(context)
@@ -70,13 +76,19 @@ def test_chain_accepts_explicit_runtime_context() -> None:
 
 
 def _failing_chain(error: Exception, source: str) -> ChainBase:
-    """注入会抛出指定异常的同步、异步模块，覆盖真实调度到通知的链路。"""
+    """
+    注入会抛出指定异常的同步、异步模块，覆盖真实调度到通知的链路。
+    """
     def fail(**_kwargs):
-        """模拟同步模块执行失败。"""
+        """
+        模拟同步模块执行失败。
+        """
         raise error
 
     async def async_fail(**_kwargs):
-        """模拟异步模块执行失败。"""
+        """
+        模拟异步模块执行失败。
+        """
         raise error
 
     context = _context()
@@ -109,7 +121,9 @@ def _failing_chain(error: Exception, source: str) -> ChainBase:
     ],
 )
 def test_module_error_notification_preserves_reason(source, asynchronous, error, expected_reason) -> None:
-    """系统与插件的同步、异步失败通知应携带调用位置和错误原因，空异常使用类型兜底。"""
+    """
+    系统与插件的同步、异步失败通知应携带调用位置和错误原因，空异常使用类型兜底。
+    """
     chain = _failing_chain(error, source)
     method = "async_fail" if asynchronous else "fail"
 
@@ -134,7 +148,9 @@ def test_module_error_notification_preserves_reason(source, asynchronous, error,
 @pytest.mark.parametrize("source", ["system", "plugin"])
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_module_explicit_error_propagation_does_not_notify(source, asynchronous) -> None:
-    """显式要求传播异常时，保持原异常对象且不重复生成通知或错误事件。"""
+    """
+    显式要求传播异常时，保持原异常对象且不重复生成通知或错误事件。
+    """
     error = RuntimeError("连接被拒绝")
     chain = _failing_chain(error, source)
 
@@ -150,7 +166,9 @@ def test_module_explicit_error_propagation_does_not_notify(source, asynchronous)
 
 
 def test_module_business_rejection_is_not_reported_as_system_error() -> None:
-    """模块按业务规则拒绝属于预期结果，不生成错误通知和事件，严格调用仍把原异常交给调用方结算。"""
+    """
+    模块按业务规则拒绝属于预期结果，不生成错误通知和事件，严格调用仍把原异常交给调用方结算。
+    """
     error = TransferPlanningRejectedError("未找到有效的媒体库目录")
     chain = _failing_chain(error, "system")
 
@@ -165,7 +183,9 @@ def test_module_business_rejection_is_not_reported_as_system_error() -> None:
 
 
 def test_chains_bind_distinct_callbacks_without_starting_queue() -> None:
-    """多个 Chain 只创建轻量客户端，不得启动或覆盖共享队列 owner。"""
+    """
+    多个 Chain 只创建轻量客户端，不得启动或覆盖共享队列 owner。
+    """
     context = _context()
 
     first = ChainBase(context)
@@ -179,7 +199,9 @@ def test_chains_bind_distinct_callbacks_without_starting_queue() -> None:
 
 
 def test_no_arg_chain_uses_compatibility_context_provider(monkeypatch) -> None:
-    """V3 兼容期内无参 Chain() 应从组合根 provider 获取相同上下文。"""
+    """
+    V3 兼容期内无参 Chain() 应从组合根 provider 获取相同上下文。
+    """
     context = _context()
     provider = Mock(return_value=context)
     monkeypatch.setattr(chain_context, "_context_provider", provider)
@@ -192,7 +214,9 @@ def test_no_arg_chain_uses_compatibility_context_provider(monkeypatch) -> None:
 
 
 def test_chain_runtime_context_rejects_unconfigured_provider(monkeypatch) -> None:
-    """未由组合根配置运行上下文时必须显式拒绝无参 Chain。"""
+    """
+    未由组合根配置运行上下文时必须显式拒绝无参 Chain。
+    """
     monkeypatch.setattr(
         chain_context,
         "_context_provider",
@@ -204,7 +228,9 @@ def test_chain_runtime_context_rejects_unconfigured_provider(monkeypatch) -> Non
 
 
 def test_chain_keeps_explicit_typed_repositories() -> None:
-    """Chain 实例必须直接保存组合根注入的数据端口，不再查找全局注册表。"""
+    """
+    Chain 实例必须直接保存组合根注入的数据端口，不再查找全局注册表。
+    """
     context = _context()
 
     chain = ChainBase(context)
@@ -221,7 +247,9 @@ def test_chain_keeps_explicit_typed_repositories() -> None:
 
 
 def test_chain_runtime_config_provider_refreshes_compatibility_singleton() -> None:
-    """兼容单例 Chain 应在配置保存后读取新的运行时配置。"""
+    """
+    兼容单例 Chain 应在配置保存后读取新的运行时配置。
+    """
     context = _context()
     state = {"configuration": context.configuration}
     context = replace(
@@ -248,7 +276,9 @@ def test_chain_runtime_config_provider_refreshes_compatibility_singleton() -> No
 
 
 def test_chain_composition_registers_lazy_compatibility_provider(monkeypatch) -> None:
-    """组合 API 只登记 provider，首次无参 Chain 请求时才构造完整上下文。"""
+    """
+    组合 API 只登记 provider，首次无参 Chain 请求时才构造完整上下文。
+    """
     from app.startup.composition import chain as chain_composition
 
     context = _context()
@@ -287,7 +317,9 @@ def test_chain_composition_registers_lazy_compatibility_provider(monkeypatch) ->
 
 
 def test_chain_composition_keeps_legacy_transfer_import_lazy(monkeypatch) -> None:
-    """旧整理命令仅在真实调用时加载 TransferChain，并原样转交参数。"""
+    """
+    旧整理命令仅在真实调用时加载 TransferChain，并原样转交参数。
+    """
     from app.startup.composition import chain as chain_composition
 
     execute = Mock(return_value="transferred")
@@ -307,7 +339,9 @@ def test_chain_composition_keeps_legacy_transfer_import_lazy(monkeypatch) -> Non
 
 
 def test_chain_composition_registers_lazy_wallpaper_providers(monkeypatch) -> None:
-    """壁纸装配只登记 callable，不在启动阶段提前物化业务 Chain。"""
+    """
+    壁纸装配只登记 callable，不在启动阶段提前物化业务 Chain。
+    """
     from app.startup.composition import chain as chain_composition
 
     register = Mock()

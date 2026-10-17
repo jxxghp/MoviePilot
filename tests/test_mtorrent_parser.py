@@ -1,3 +1,7 @@
+"""
+验证 MTorrent 用户做种信息对空种子条目的容错。
+"""
+
 # -*- coding: utf-8 -*-
 import json
 

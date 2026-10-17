@@ -1,4 +1,6 @@
-"""专辑发行身份、入库覆盖和重复提交的回归测试。"""
+"""
+专辑发行身份、入库覆盖和重复提交的回归测试。
+"""
 
 from dataclasses import replace
 from pathlib import Path
@@ -23,14 +25,18 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
 
 @pytest.fixture
 def album():
-    """目标发行版总数高于实际标准版，但保留正确的发行组身份。"""
+    """
+    目标发行版总数高于实际标准版，但保留正确的发行组身份。
+    """
     return MusicInfo(media_source=MediaSource.MusicBrainz, media_id="group", music_type=MUSIC_ENTITY_ALBUM,
                      title="叶惠美", album="叶惠美", artists=["周杰伦"], total_tracks=100,
                      musicbrainz_release_group_id="group", musicbrainz_release_id="deluxe")
 
 
 def _track(number, *, total=3, disc=1, discs=1, release="standard"):
-    """构造有明确盘数、曲序和发行身份的真实标签证据。"""
+    """
+    构造有明确盘数、曲序和发行身份的真实标签证据。
+    """
     return MetaMusic(title=f"曲目{number}", album="叶惠美", artists=["周杰伦"], track_number=number,
                      total_tracks=total, disc_number=disc, total_discs=discs,
                      musicbrainz_release_id=release, musicbrainz_release_group_id="group")
@@ -44,12 +50,16 @@ def _track(number, *, total=3, disc=1, discs=1, release="standard"):
     ({"music_type": "recording"}, False),
 ])
 def test_album_identity_checks_group_and_title(album, changes, expected):
-    """同发行组可跨发行，冲突的组、专辑名和音乐实体不能借身份相同串扰。"""
+    """
+    同发行组可跨发行，冲突的组、专辑名和音乐实体不能借身份相同串扰。
+    """
     assert music_subscription_album_matches(album, replace(album, **changes)) is expected
 
 
 def test_album_identity_fallback_requires_artist_and_album(album):
-    """缺失组身份时须同时核验专辑和艺人，不能只按同名歌曲放行。"""
+    """
+    缺失组身份时须同时核验专辑和艺人，不能只按同名歌曲放行。
+    """
     candidate = MusicInfo(music_type=MUSIC_ENTITY_ALBUM, title="葉惠美", album="葉惠美", artists=["周杰倫"])
     assert music_subscription_album_matches(album, candidate)
     candidate.artists = ["其他艺人"]
@@ -70,12 +80,16 @@ def test_album_identity_fallback_requires_artist_and_album(album):
     ([_track(1), _track(2, release="other"), _track(3)], []),
 ])
 def test_actual_release_requires_complete_per_disc_coverage(album, metas, expected):
-    """数量不足、缺盘、重复、未知总数和跨发行拼接都不能收紧完成上界。"""
+    """
+    数量不足、缺盘、重复、未知总数和跨发行拼接都不能收紧完成上界。
+    """
     assert music_completed_album_keys(metas, album) == expected
 
 
 def test_image_cue_counts_logical_tracks(album):
-    """整轨音频使用有效 CUE 的逻辑曲目覆盖，不按一个物理文件计算完成。"""
+    """
+    整轨音频使用有效 CUE 的逻辑曲目覆盖，不按一个物理文件计算完成。
+    """
     image = _track(1)
     image.music_layout = "image_cue"
     image.cue_tracks = [{"number": number, "start_frame": (number - 1) * 7500, "title": f"曲目{number}"}
@@ -86,7 +100,9 @@ def test_image_cue_counts_logical_tracks(album):
 
 
 def test_history_recovery_completes_actual_release_across_hashes(album, monkeypatch):
-    """旧下载关联的成功入库证据可跨 hash 补记，并以完整实际发行版结束普通订阅。"""
+    """
+    旧下载关联的成功入库证据可跨 hash 补记，并以完整实际发行版结束普通订阅。
+    """
     chain = SubscribeChain()
     subscribe = SubscriptionSnapshot(id=7, name=album.title, type=MediaType.MUSIC.value,
                                      media_source=album.media_source, media_id=album.media_id,
@@ -120,7 +136,9 @@ def test_history_recovery_completes_actual_release_across_hashes(album, monkeypa
 
 
 def test_history_rejects_failed_remote_and_missing_tag_evidence(album, monkeypatch):
-    """失败整理、远端路径和无真实标签的本地路径不会贡献曲目。"""
+    """
+    失败整理、远端路径和无真实标签的本地路径不会贡献曲目。
+    """
     chain = SubscribeChain()
     chain.transfer_history_repository = Mock()
     chain.transfer_history_repository.list_by_hash.return_value = [
@@ -136,7 +154,9 @@ def test_history_rejects_failed_remote_and_missing_tag_evidence(album, monkeypat
 
 
 def test_mismatched_album_cannot_update_progress_or_upgrade(album):
-    """持久化合并和洗版预判共享身份门禁；跨专辑键即使数量足够也无效。"""
+    """
+    持久化合并和洗版预判共享身份门禁；跨专辑键即使数量足够也无效。
+    """
     subscribe = SubscriptionSnapshot(id=7, name=album.title, music_type=MUSIC_ENTITY_ALBUM,
                                      total_tracks=3, downloaded_tracks=[])
     other = replace(album, musicbrainz_release_group_id="other")
@@ -153,12 +173,16 @@ def test_mismatched_album_cannot_update_progress_or_upgrade(album):
     ("magnet:?xt=urn:btih:bad", None),
 ])
 def test_actual_torrent_hash_parser(content, expected):
-    """磁力身份归一化，无法解析的内容保持原下载流程而不触发误去重。"""
+    """
+    磁力身份归一化，无法解析的内容保持原下载流程而不触发误去重。
+    """
     assert TorrentHelper.get_torrent_hash(content) == expected
 
 
 def test_hash_guard_skips_only_fully_transferred_subscription(album, tmp_path):
-    """跨轮次去重以种子真实 hash 和全部音频成功整理为准，保留人工下载与失败重试。"""
+    """
+    跨轮次去重以种子真实 hash 和全部音频成功整理为准，保留人工下载与失败重试。
+    """
     content = Bencode.encode({"info": {"name": "album", "piece length": 16384, "pieces": "x" * 20, "length": 100}})
     actual_hash = TorrentHelper.get_torrent_hash(content)
     prepared = _PreparedDownload(torrent=TorrentInfo(title="专辑"), media=album,
@@ -195,7 +219,9 @@ def test_hash_guard_skips_only_fully_transferred_subscription(album, tmp_path):
 
 
 def test_duplicate_guard_precedes_downloader_and_notifications(album, monkeypatch):
-    """已完整整理的资源不得调用下载器、写重复历史、通知或提前标记下载已开始。"""
+    """
+    已完整整理的资源不得调用下载器、写重复历史、通知或提前标记下载已开始。
+    """
     chain = DownloadChain()
     prepared = SimpleNamespace(torrent=TorrentInfo(title="专辑"))
     monkeypatch.setattr(chain, "_prepare_download_single", Mock(return_value=(prepared, None)))
@@ -212,7 +238,9 @@ def test_duplicate_guard_precedes_downloader_and_notifications(album, monkeypatc
 
 
 def test_album_progress_uses_durable_mutation_and_preserves_attached_fields(album, db):
-    """真实事务保存完成上界及曲目事实，并保留数据库较新的附加字段与 durable 修改事件。"""
+    """
+    真实事务保存完成上界及曲目事实，并保留数据库较新的附加字段与 durable 修改事件。
+    """
     from contextlib import contextmanager
 
     from sqlalchemy import select
@@ -237,7 +265,9 @@ def test_album_progress_uses_durable_mutation_and_preserves_attached_fields(albu
 
     @contextmanager
     def mutation_scope():
-        """沿用生产短事务及 outbox，事件投递仅在测试内捕获。"""
+        """
+        沿用生产短事务及 outbox，事件投递仅在测试内捕获。
+        """
         with SessionFactory() as session:
             yield SyncSubscriptionMutationService(
                 repository=SessionSubscriptionRepository(session), unit_of_work=SqlAlchemyUnitOfWork(session),
@@ -265,7 +295,9 @@ def test_album_progress_uses_durable_mutation_and_preserves_attached_fields(albu
 
 
 def test_different_release_positions_cannot_fabricate_completion(album):
-    """不同发行版的编号不能与旧进度拼凑，只有实际完整覆盖证明可替换上界。"""
+    """
+    不同发行版的编号不能与旧进度拼凑，只有实际完整覆盖证明可替换上界。
+    """
     target = replace(album, total_tracks=3)
     subscribe = SubscriptionSnapshot(id=7, name=album.title, music_type=MUSIC_ENTITY_ALBUM,
                                      total_tracks=3, downloaded_tracks=["[1,1]", "[1,2]"])

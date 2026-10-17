@@ -1,8 +1,9 @@
-"""3.0.35 插件配置迁入插件实例表。
+"""
+3.0.35 插件配置迁入插件实例表。
 
-Revision ID: c4e1a7b9d2f6
-Revises: 281965691a20
-Create Date: 2026-09-11
+版本标识： c4e1a7b9d2f6
+前置版本： 281965691a20
+创建时间： 2026-09-11
 """
 
 import json
@@ -21,19 +22,25 @@ _LEGACY_PREFIX = "plugin."
 
 
 def _table_names(connection) -> set:
-    """读取当前数据库已有表名。"""
+    """
+    读取当前数据库已有表名。
+    """
     return set(sa.inspect(connection).get_table_names())
 
 
 def _column_names(connection) -> set:
-    """读取实例表已有列名；表不存在时为空集。"""
+    """
+    读取实例表已有列名；表不存在时为空集。
+    """
     if _TABLE not in _table_names(connection):
         return set()
     return {column["name"] for column in sa.inspect(connection).get_columns(_TABLE)}
 
 
 def _decode(value):
-    """把 JSON 列还原为 Python 值，兼容驱动直接返回原始字符串的情形。"""
+    """
+    把 JSON 列还原为 Python 值，兼容驱动直接返回原始字符串的情形。
+    """
     if isinstance(value, (str, bytes, bytearray)):
         try:
             return json.loads(value)
@@ -43,7 +50,8 @@ def _decode(value):
 
 
 def upgrade() -> None:
-    """把每实例的业务参数收拢到它自己那一行上。
+    """
+    把每实例的业务参数收拢到它自己那一行上。
 
     插件配置此前寄存在 systemconfig 的 plugin.<实例ID> 单键下：键由插件 ID 决定、
     条目数随安装量增长，混在系统设置里会把主程序自己的设置项淹掉；而且那个键存的
@@ -112,7 +120,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """把业务参数搬回 systemconfig 原键，并移除新增列，回退路径上不丢配置。"""
+    """
+    把业务参数搬回 systemconfig 原键，并移除新增列，回退路径上不丢配置。
+    """
     connection = op.get_bind()
     columns = _column_names(connection)
     if "config_data" not in columns:

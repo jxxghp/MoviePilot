@@ -1,10 +1,22 @@
+"""
+历史导入路径与公开符号的精确兼容映射清单。
+"""
+
 from dataclasses import dataclass
 from typing import Dict, Set
 
 
 @dataclass(frozen=True, slots=True)
 class ModuleAlias:
-    """描述一个旧模块路径到 canonical 模块的精确映射。"""
+    """
+    描述一个旧模块路径到 canonical 模块的精确映射。
+
+    :param target: 旧导入路径对应的规范模块路径
+    :param replacement: 供迁移提示使用的新公开导入路径
+    :param introduced: 引入此兼容映射的版本或阶段标识
+    :param owner: 负责该旧路径的能力归属
+    :param is_package: 兼容路径是否表现为包，默认作为普通模块
+    """
 
     target: str
     replacement: str
@@ -15,7 +27,13 @@ class ModuleAlias:
 
 @dataclass(frozen=True, slots=True)
 class SymbolAlias:
-    """描述合成兼容包公开符号的精确来源。"""
+    """
+    描述合成兼容包公开符号的精确来源。
+
+    :param target_module: 符号实现所在的规范模块
+    :param target_name: 目标模块导出的符号名称
+    :param replacement: 建议调用方迁移使用的公开符号路径
+    """
 
     target_module: str
     target_name: str

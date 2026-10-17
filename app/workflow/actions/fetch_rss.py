@@ -1,3 +1,7 @@
+"""
+解析 RSS 资源并按需匹配媒体信息。
+"""
+
 from typing import Optional
 
 from pydantic import Field
@@ -20,9 +24,9 @@ class FetchRssParams(ActionParams):
     url: str = Field(default=None, description="RSS地址")
     proxy: Optional[bool] = Field(default=False, description="是否使用代理")
     timeout: Optional[int] = Field(default=15, description="超时时间")
-    content_type: Optional[str] = Field(default=None, description="Content-Type")
-    referer: Optional[str] = Field(default=None, description="Referer")
-    ua: Optional[str] = Field(default=None, description="User-Agent")
+    content_type: Optional[str] = Field(default=None, description="请求使用的 Content-Type 头；不传时由客户端决定")
+    referer: Optional[str] = Field(default=None, description="请求使用的 Referer 来源地址；不传时省略")
+    ua: Optional[str] = Field(default=None, description="请求使用的 User-Agent 标识；不传时由客户端决定")
     match_media: Optional[bool] = Field(default=False, description="匹配媒体信息")
 
 
@@ -46,6 +50,11 @@ class FetchRssAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """
+返回 RSS 请求和解析过程是否未记录错误。
+
+        :return: 未遇到请求或解析错误时为 True
+        """
         return not self._has_error
 
     def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:

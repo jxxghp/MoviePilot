@@ -1,3 +1,7 @@
+"""
+验证音乐整理计划中的分类决策。
+"""
+
 from app.chain.media import MediaChain
 from app.chain.transfer.filter import FileFilterMixin
 from app.domain.context import MusicInfo
@@ -10,7 +14,9 @@ def test_album_context_preserves_classification_and_remote_music_facts(
         tmp_path,
         monkeypatch,
 ) -> None:
-    """目录专辑匹配重建曲目时应保留分类事实，并隔离缓存中的可变结果。"""
+    """
+    目录专辑匹配重建曲目时应保留分类事实，并隔离缓存中的可变结果。
+    """
     file_path = tmp_path / "album" / "01-track.flac"
     classification = ClassificationResult(
         recommended=ClassificationSelection(
@@ -133,7 +139,9 @@ def test_album_context_rejects_candidate_conflicting_with_file_tags(
         tmp_path,
         monkeypatch,
 ) -> None:
-    """目录级匹配仍须核验逐文件明确的发行年份，不能用普通年份规则绕过冲突。"""
+    """
+    目录级匹配仍须核验逐文件明确的发行年份，不能用普通年份规则绕过冲突。
+    """
     file_path = tmp_path / "Speak Now" / "02 - Sparks Fly.flac"
     local_meta = MetaMusic(
         title="Sparks Fly",
@@ -179,7 +187,9 @@ def test_album_context_preserves_local_release_track_position(
         tmp_path,
         monkeypatch,
 ) -> None:
-    """Recording 的其它发行版曲序不得覆盖当前文件的本地曲序。"""
+    """
+    Recording 的其它发行版曲序不得覆盖当前文件的本地曲序。
+    """
     file_path = tmp_path / "Speak Now (Taylor's Version)" / "20 - Castles Crumbling.flac"
     local_meta = MetaMusic(
         title="Castles Crumbling (Taylor's Version)",

@@ -1,3 +1,7 @@
+"""
+存储文件地址、文件条目和存储空间信息的数据结构。
+"""
+
 import re
 from pathlib import Path
 from typing import Optional
@@ -11,29 +15,29 @@ WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 class FileURI(BaseModel):
-    """带存储类型的文件 URI。"""
+    """
+    带存储类型的文件 URI。
+    """
 
-    # 文件路径
-    path: Optional[str] = "/"
-    # 存储类型
-    storage: Optional[str] = Field(default="local")
+    path: Optional[str] = Field(default="/", description="文件路径")
+    storage: Optional[str] = Field(default="local", description="存储类型，默认 local 表示本地存储")
 
     @property
     def uri(self) -> str:
         """
-        文件 URI，本地存储直接返回路径，其他存储带上存储前缀
+        文件 URI，本地存储直接返回路径，其他存储带上存储前缀。
         """
         return self.path if self.storage == "local" else f"{self.storage}:{self.path}"
 
     @classmethod
     def from_uri(cls, uri: str) -> "FileURI":
         """
-        解析文件 URI 为存储类型和路径
+        解析文件 URI 为存储类型和路径。
 
         :param uri: 文件 URI，如 /media/movie、u115:/media/movie 或 Windows 盘符路径 Z:/media
         :return: FileURI 对象
         """
-        storage, path = 'local', uri
+        storage, path = "local", uri
         for s in StorageSchema:
             protocol = f"{s.value}:"
             if uri.startswith(protocol):
@@ -48,47 +52,37 @@ class FileURI(BaseModel):
 
 
 class FileItem(FileURI):
-    """文件或目录条目，目录可递归包含子条目。"""
+    """
+    文件或目录条目，目录可递归包含子条目。
+    """
 
-    # 类型 dir/file
-    type: Optional[str] = None
-    # 文件名
-    name: Optional[str] = None
-    # 文件名
-    basename: Optional[str] = None
-    # 文件后缀
-    extension: Optional[str] = None
-    # 文件大小
-    size: Optional[int] = None
-    # 修改时间
-    modify_time: Optional[float] = None
-    # 子节点
-    children: Optional[list["FileItem"]] = Field(default_factory=list)
-    # ID
-    fileid: Optional[str] = None
-    # 父ID
-    parent_fileid: Optional[str] = None
-    # 缩略图
-    thumbnail: Optional[str] = None
-    # 115 pickcode
-    pickcode: Optional[str] = None
-    # drive_id
-    drive_id: Optional[str] = None
-    # url
-    url: Optional[str] = None
+    type: Optional[str] = Field(default=None, description="条目类型，dir 表示目录，file 表示文件")
+    name: Optional[str] = Field(default=None, description="文件名")
+    basename: Optional[str] = Field(default=None, description="不含扩展名的文件基本名称")
+    extension: Optional[str] = Field(default=None, description="文件后缀")
+    size: Optional[int] = Field(default=None, description="文件大小，单位为字节；目录或来源未提供时可为 None")
+    modify_time: Optional[float] = Field(default=None, description="文件修改时间的 Unix 时间戳，单位为秒，未提供时为 None")
+    children: Optional[list["FileItem"]] = Field(default_factory=list, description="子节点")
+    fileid: Optional[str] = Field(default=None, description="存储服务分配的文件标识")
+    parent_fileid: Optional[str] = Field(default=None, description="父ID")
+    thumbnail: Optional[str] = Field(default=None, description="缩略图")
+    pickcode: Optional[str] = Field(default=None, description="115 文件下载提取码")
+    drive_id: Optional[str] = Field(default=None, description="云盘驱动器标识")
+    url: Optional[str] = Field(default=None, description="访问地址")
 
 
 class StorageUsage(BaseModel):
-    """存储空间使用情况。"""
+    """
+    存储空间使用情况。
+    """
 
-    # 总空间
-    total: float = 0.0
-    # 剩余空间
-    available: float = 0.0
+    total: float = Field(default=0.0, description="存储总容量，单位为字节")
+    available: float = Field(default=0.0, description="存储剩余容量，单位为字节")
 
 
 class StorageTransType(BaseModel):
-    """存储支持的传输类型及其显示名称。"""
+    """
+    存储支持的传输类型及其显示名称。
+    """
 
-    # 传输类型
-    transtype: Optional[dict[str, str]] = Field(default_factory=dict)
+    transtype: Optional[dict[str, str]] = Field(default_factory=dict, description="传输类型")

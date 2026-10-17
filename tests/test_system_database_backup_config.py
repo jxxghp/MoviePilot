@@ -1,4 +1,6 @@
-"""系统数据库备份策略配置测试。"""
+"""
+系统数据库备份策略配置测试。
+"""
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -17,11 +19,15 @@ from app.startup.composition.system import compose_system_service
 
 
 def _runtime():
-    """构造使用真实配置校验逻辑的最小系统运行时。"""
+    """
+    构造使用真实配置校验逻辑的最小系统运行时。
+    """
 
     @asynccontextmanager
     async def rule_group_mutation():
-        """提供本组测试不会进入的规则组事务替身。"""
+        """
+        提供本组测试不会进入的规则组事务替身。
+        """
         yield SimpleNamespace()
 
     return SimpleNamespace(
@@ -48,7 +54,9 @@ def test_database_backup_policy_rejects_invalid_values(
     env: dict,
     message: str,
 ) -> None:
-    """无效策略必须在批量配置写入前被拒绝。"""
+    """
+    无效策略必须在批量配置写入前被拒绝。
+    """
     env["DB_BACKUP_ENABLE"] = True
     assert message in str(_runtime().system._validate_database_backup_config(env))
 
@@ -68,14 +76,18 @@ def test_database_backup_policy_rejects_invalid_values(
     ],
 )
 def test_database_backup_policy_accepts_supported_boundaries(env: dict) -> None:
-    """空目录使用默认路径，两个保留值的零均表示不限制。"""
+    """
+    空目录使用默认路径，两个保留值的零均表示不限制。
+    """
     env["DB_BACKUP_ENABLE"] = True
     assert _runtime().system._validate_database_backup_config(env) is None
 
 
 @pytest.mark.parametrize("disabled", [False, "false", "0", "off"])
 def test_database_backup_policy_rejects_invalid_hidden_values_when_disabled(disabled) -> None:
-    """关闭总开关只暂停调度，不能把无效策略写入持久配置。"""
+    """
+    关闭总开关只暂停调度，不能把无效策略写入持久配置。
+    """
     error = _runtime().system._validate_database_backup_config({
         "DB_BACKUP_ENABLE": disabled,
         "DB_BACKUP_CRON": "invalid",
@@ -88,7 +100,9 @@ def test_database_backup_policy_rejects_invalid_hidden_values_when_disabled(disa
 
 
 def test_set_env_rejects_invalid_database_backup_policy_without_partial_write() -> None:
-    """备份策略校验失败时不得调用 Settings 的批量写入。"""
+    """
+    备份策略校验失败时不得调用 Settings 的批量写入。
+    """
     env = {
         "DB_BACKUP_ENABLE": True,
         "DB_BACKUP_CRON": "invalid",
@@ -107,7 +121,9 @@ def test_set_env_rejects_invalid_database_backup_policy_without_partial_write() 
 
 
 def test_database_backup_default_path_tracks_config_directory(tmp_path, monkeypatch) -> None:
-    """未显式配置目录时应跟随当前配置根，而不是写死 Docker 路径。"""
+    """
+    未显式配置目录时应跟随当前配置根，而不是写死 Docker 路径。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(settings, "DB_BACKUP_PATH", None)
 

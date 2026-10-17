@@ -1,3 +1,7 @@
+"""
+验证 Bangumi 平台信息到媒体类型的映射与显式类型优先级。
+"""
+
 import asyncio
 from typing import Optional
 from unittest.mock import AsyncMock, Mock
@@ -25,14 +29,18 @@ from app.schemas.types import MediaSource, MediaType
 def test_bangumi_platform_maps_to_media_type(
         platform: Optional[str], expected_type: MediaType
 ) -> None:
-    """Bangumi媒介平台应映射为正确的标准媒体类型。"""
+    """
+    Bangumi媒介平台应映射为正确的标准媒体类型。
+    """
     media_info = MediaInfo(bangumi_info={"id": 1, "name": "测试条目", "platform": platform})
 
     assert media_info.type == expected_type
 
 
 def test_bangumi_media_type_does_not_override_explicit_type() -> None:
-    """显式媒体类型应优先于Bangumi媒介平台。"""
+    """
+    显式媒体类型应优先于Bangumi媒介平台。
+    """
     media_info = MediaInfo(
         type=MediaType.TV,
         bangumi_info={"id": 1, "name": "测试条目", "platform": "剧场版"},
@@ -42,15 +50,21 @@ def test_bangumi_media_type_does_not_override_explicit_type() -> None:
 
 
 class _SyncBangumiMediaChain:
-    """同步Bangumi跨数据源转换测试桩。"""
+    """
+    同步Bangumi跨数据源转换测试桩。
+    """
 
     def __init__(self):
-        """初始化调用参数记录。"""
+        """
+        初始化调用参数记录。
+        """
         self.tmdb_mtype = None
         self.douban_mtype = None
 
     def bangumi_info(self, bangumiid: int) -> dict:
-        """返回剧场版Bangumi条目信息。"""
+        """
+        返回剧场版Bangumi条目信息。
+        """
         return {
             "id": bangumiid,
             "name": "Movie Test",
@@ -61,22 +75,30 @@ class _SyncBangumiMediaChain:
 
     @staticmethod
     def _extract_year_from_bangumi(bangumi_info: dict) -> str:
-        """返回测试条目的年份。"""
+        """
+        返回测试条目的年份。
+        """
         return bangumi_info["date"][:4]
 
     def _match_tmdb_with_names(self, **kwargs) -> dict:
-        """记录TMDB匹配使用的媒体类型。"""
+        """
+        记录TMDB匹配使用的媒体类型。
+        """
         self.tmdb_mtype = kwargs["mtype"]
         return {"id": 100}
 
     def match_doubaninfo(self, **kwargs) -> dict:
-        """记录豆瓣匹配使用的媒体类型。"""
+        """
+        记录豆瓣匹配使用的媒体类型。
+        """
         self.douban_mtype = kwargs["mtype"]
         return {"id": "200"}
 
 
 def test_bangumi_movie_conversion_uses_movie_type() -> None:
-    """Bangumi剧场版转TMDB和豆瓣时均应按电影匹配。"""
+    """
+    Bangumi剧场版转TMDB和豆瓣时均应按电影匹配。
+    """
     chain = _SyncBangumiMediaChain()
 
     tmdb_info = MediaChain.convert_media_identity(
@@ -99,7 +121,9 @@ def test_bangumi_movie_conversion_uses_movie_type() -> None:
 
 
 def test_media_identity_conversion_rejects_invalid_pair_without_plugin_handler() -> None:
-    """跨源转换拒绝无效 pair，且没有插件处理器时返回空结果。"""
+    """
+    跨源转换拒绝无效 pair，且没有插件处理器时返回空结果。
+    """
     chain = _SyncBangumiMediaChain()
 
     assert MediaChain.convert_media_identity(
@@ -121,12 +145,16 @@ def test_media_identity_conversion_rejects_invalid_pair_without_plugin_handler()
 
 
 def test_media_identity_conversion_dispatches_plugin_source() -> None:
-    """内置转换无匹配时应把动态来源交给插件转换事件。"""
+    """
+    内置转换无匹配时应把动态来源交给插件转换事件。
+    """
     chain = _SyncBangumiMediaChain()
     result = {"media_source": MediaSource.TMDB, "media_id": "550"}
 
     def handle_event(_event_type, event_data):
-        """模拟插件在链式事件中写入转换结果。"""
+        """
+        模拟插件在链式事件中写入转换结果。
+        """
         event_data.media_dict.update(result)
         return Mock(event_data=event_data)
 
@@ -143,15 +171,21 @@ def test_media_identity_conversion_dispatches_plugin_source() -> None:
 
 
 class _AsyncBangumiMediaChain:
-    """异步Bangumi跨数据源转换测试桩。"""
+    """
+    异步Bangumi跨数据源转换测试桩。
+    """
 
     def __init__(self):
-        """初始化调用参数记录。"""
+        """
+        初始化调用参数记录。
+        """
         self.tmdb_mtype = None
         self.douban_mtype = None
 
     async def async_bangumi_info(self, bangumiid: int) -> dict:
-        """返回剧场版Bangumi条目信息。"""
+        """
+        返回剧场版Bangumi条目信息。
+        """
         return {
             "id": bangumiid,
             "name": "Movie Test",
@@ -162,22 +196,30 @@ class _AsyncBangumiMediaChain:
 
     @staticmethod
     def _extract_year_from_bangumi(bangumi_info: dict) -> str:
-        """返回测试条目的年份。"""
+        """
+        返回测试条目的年份。
+        """
         return bangumi_info["date"][:4]
 
     async def _async_match_tmdb_with_names(self, **kwargs) -> dict:
-        """记录异步TMDB匹配使用的媒体类型。"""
+        """
+        记录异步TMDB匹配使用的媒体类型。
+        """
         self.tmdb_mtype = kwargs["mtype"]
         return {"id": 100}
 
     async def async_match_doubaninfo(self, **kwargs) -> dict:
-        """记录异步豆瓣匹配使用的媒体类型。"""
+        """
+        记录异步豆瓣匹配使用的媒体类型。
+        """
         self.douban_mtype = kwargs["mtype"]
         return {"id": "200"}
 
 
 def test_async_bangumi_movie_conversion_uses_movie_type() -> None:
-    """异步Bangumi电影转换应向TMDB和豆瓣传递电影类型。"""
+    """
+    异步Bangumi电影转换应向TMDB和豆瓣传递电影类型。
+    """
     chain = _AsyncBangumiMediaChain()
 
     tmdb_info = asyncio.run(
@@ -204,12 +246,16 @@ def test_async_bangumi_movie_conversion_uses_movie_type() -> None:
 
 
 def test_async_media_identity_conversion_dispatches_plugin_source() -> None:
-    """异步内置转换无匹配时也应分派插件转换事件。"""
+    """
+    异步内置转换无匹配时也应分派插件转换事件。
+    """
     chain = _AsyncBangumiMediaChain()
     result = {"media_source": MediaSource.Douban, "media_id": "1295644"}
 
     async def handle_event(_event_type, event_data):
-        """模拟异步插件在链式事件中写入转换结果。"""
+        """
+        模拟异步插件在链式事件中写入转换结果。
+        """
         event_data.media_dict.update(result)
         return Mock(event_data=event_data)
 

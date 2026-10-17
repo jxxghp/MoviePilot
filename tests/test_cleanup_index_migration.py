@@ -1,4 +1,6 @@
-"""历史表清理索引迁移测试。"""
+"""
+历史表清理索引迁移测试。
+"""
 
 import importlib
 
@@ -24,7 +26,9 @@ INDEXES = {
 
 
 def _index_columns(connection, table_name: str) -> dict[str, tuple[str, ...]]:
-    """返回测试表的索引字段签名。"""
+    """
+    返回测试表的索引字段签名。
+    """
     return {
         index["name"]: tuple(index.get("column_names") or ())
         for index in sa.inspect(connection).get_indexes(table_name)
@@ -32,7 +36,9 @@ def _index_columns(connection, table_name: str) -> dict[str, tuple[str, ...]]:
 
 
 def test_cleanup_index_migration_is_idempotent_and_reversible(monkeypatch) -> None:
-    """升级可重复执行并创建准确索引，降级只移除新增索引。"""
+    """
+    升级可重复执行并创建准确索引，降级只移除新增索引。
+    """
     engine = sa.create_engine("sqlite://")
     metadata = sa.MetaData()
     sa.Table(

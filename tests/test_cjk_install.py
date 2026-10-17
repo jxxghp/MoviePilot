@@ -1,4 +1,6 @@
-"""验证原生扩展安装、目标解释器验收及部署入口，不访问用户数据。"""
+"""
+验证原生扩展安装、目标解释器验收及部署入口，不访问用户数据。
+"""
 
 import importlib.util
 import shutil
@@ -18,7 +20,9 @@ INSTALLER = ROOT / "native/fts5_cjk/install.py"
 
 
 def load_script(path: Path):
-    """独立加载纯标准库脚本，避免安装脚本的全局状态污染其他测试。"""
+    """
+    独立加载纯标准库脚本，避免安装脚本的全局状态污染其他测试。
+    """
     spec = importlib.util.spec_from_file_location(f"test_{path.stem}", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -28,7 +32,9 @@ def load_script(path: Path):
 
 @pytest.fixture(scope="module")
 def installed_extension(tmp_path_factory):
-    """在临时目录用生产安装入口真实编译一次，不写入测试环境或用户目录。"""
+    """
+    在临时目录用生产安装入口真实编译一次，不写入测试环境或用户目录。
+    """
     if not any(shutil.which(name) for name in ("cc", "gcc", "clang", "cl")):
         pytest.skip("原生安装验收需要本机 C 编译器")
     extension = tmp_path_factory.mktemp("cjk-install") / "libfts5_cjk.so"
@@ -37,7 +43,9 @@ def installed_extension(tmp_path_factory):
 
 
 def test_installed_extension_activates_history_and_backfills_old_messages(tmp_path, monkeypatch, installed_extension):
-    """补装后旧消息完成后台回填，两字搜索切换为 cjk，用户数据仍位于配置目录。"""
+    """
+    补装后旧消息完成后台回填，两字搜索切换为 cjk，用户数据仍位于配置目录。
+    """
     bundled = tmp_path / "venv/lib/moviepilot/libfts5_cjk.so"
     monkeypatch.setattr(schema, "BUNDLED_CJK_EXTENSION", bundled)
     repository = SqliteRecallRepository(tmp_path / "config/agent/runtime")
@@ -54,12 +62,16 @@ def test_installed_extension_activates_history_and_backfills_old_messages(tmp_pa
 
 
 def test_repeated_install_validates_without_recompiling(monkeypatch, installed_extension):
-    """同源码和架构重复安装不需要编译器，检查模式同样只读。"""
+    """
+    同源码和架构重复安装不需要编译器，检查模式同样只读。
+    """
     installer = load_script(INSTALLER)
     previous = installed_extension.stat().st_mtime_ns
 
     def unexpected_compile(_output):
-        """有有效缓存时调用编译器即为回归。"""
+        """
+        有有效缓存时调用编译器即为回归。
+        """
         pytest.fail("有效扩展不应重新编译")
 
     monkeypatch.setattr(installer, "compiler_command", unexpected_compile)
@@ -70,7 +82,9 @@ def test_repeated_install_validates_without_recompiling(monkeypatch, installed_e
 
 
 def test_cli_installs_into_selected_venv_and_check_is_readonly(tmp_path, installed_extension):
-    """真实 CLI 在独立 venv 中安装、检查，运行时可从该解释器前缀加载。"""
+    """
+    真实 CLI 在独立 venv 中安装、检查，运行时可从该解释器前缀加载。
+    """
     assert installed_extension.is_file()
     venv = tmp_path / "selected-venv"
     subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(venv)], check=True, capture_output=True)
@@ -91,7 +105,9 @@ def test_cli_installs_into_selected_venv_and_check_is_readonly(tmp_path, install
 
 
 def test_failed_rebuild_keeps_working_extension(tmp_path, monkeypatch, installed_extension):
-    """编译失败不覆盖已安装文件，也不留下临时编译目录。"""
+    """
+    编译失败不覆盖已安装文件，也不留下临时编译目录。
+    """
     installer = load_script(INSTALLER)
     extension = tmp_path / "libfts5_cjk.so"
     shutil.copy2(installed_extension, extension)
@@ -105,7 +121,9 @@ def test_failed_rebuild_keeps_working_extension(tmp_path, monkeypatch, installed
 
 
 def test_invalid_bundled_extension_falls_back_to_legacy_and_disables_loading(tmp_path, monkeypatch, installed_extension):
-    """跨架构或损坏的自带文件不屏蔽旧手工安装，扩展加载权限始终关闭。"""
+    """
+    跨架构或损坏的自带文件不屏蔽旧手工安装，扩展加载权限始终关闭。
+    """
     invalid = tmp_path / "libfts5_cjk.so"
     invalid.write_bytes(b"invalid library")
     monkeypatch.setattr(schema, "BUNDLED_CJK_EXTENSION", invalid)
@@ -116,7 +134,9 @@ def test_invalid_bundled_extension_falls_back_to_legacy_and_disables_loading(tmp
 
 
 def test_missing_compiler_reports_repair_command(monkeypatch):
-    """缺少编译器时明确说明补装方式，不能宣称扩展已启用。"""
+    """
+    缺少编译器时明确说明补装方式，不能宣称扩展已启用。
+    """
     installer = load_script(INSTALLER)
     monkeypatch.delenv("CC", raising=False)
     monkeypatch.setattr(installer.shutil, "which", lambda _name: None)
@@ -125,13 +145,17 @@ def test_missing_compiler_reports_repair_command(monkeypatch):
 
 
 def test_cli_uses_selected_interpreter_and_distinguishes_optional_failure(tmp_path, monkeypatch, capsys):
-    """自动安装告警降级，显式补装失败返回错误；两者都使用指定 venv。"""
+    """
+    自动安装告警降级，显式补装失败返回错误；两者都使用指定 venv。
+    """
     setup = load_script(ROOT / "scripts/local_setup.py")
     python = tmp_path / "custom-venv/bin/python"
     calls = []
 
     def fail(command, **_kwargs):
-        """模拟目标解释器缺少扩展加载能力。"""
+        """
+        模拟目标解释器缺少扩展加载能力。
+        """
         calls.append(command)
         raise subprocess.CalledProcessError(1, command, stderr="SQLite extension loading unavailable")
 
@@ -144,7 +168,9 @@ def test_cli_uses_selected_interpreter_and_distinguishes_optional_failure(tmp_pa
 
 
 def test_dependency_install_includes_cjk_and_parser_supports_repair(tmp_path, monkeypatch):
-    """deps 是 setup 和后端升级的共用入口，每次同步后都检查 CJK 扩展。"""
+    """
+    deps 是 setup 和后端升级的共用入口，每次同步后都检查 CJK 扩展。
+    """
     setup = load_script(ROOT / "scripts/local_setup.py")
     calls = []
     monkeypatch.setattr(setup, "ensure_supported_python", lambda _python: None)
@@ -160,7 +186,9 @@ def test_dependency_install_includes_cjk_and_parser_supports_repair(tmp_path, mo
 
 
 def test_docker_packages_extension_outside_config_and_verifies_selected_python():
-    """镜像按目标架构构建并随 venv 交付，普通和 free-threaded 环境均需真实验收。"""
+    """
+    镜像按目标架构构建并随 venv 交付，普通和 free-threaded 环境均需真实验收。
+    """
     dockerfile = (ROOT / "docker/Dockerfile").read_text(encoding="utf-8")
     stage = dockerfile.split("FROM base AS prepare_cjk", 1)[1].split("FROM base AS prepare_package", 1)[0]
     assert "build-essential" in stage

@@ -1,4 +1,6 @@
-"""执行 Shell 命令工具。"""
+"""
+执行 Shell 命令工具。
+"""
 
 from __future__ import annotations
 
@@ -47,7 +49,19 @@ _command_semaphore = asyncio.Semaphore(COMMAND_CONCURRENCY_LIMIT)
 
 @dataclass
 class _CommandOutput:
-    """保存命令头尾预览，并在超限时将完整输出写入临时文件。"""
+    """
+    保存命令头尾预览，并在超限时将完整输出写入临时文件。
+
+    :param preview_limit_bytes: 允许缓存的头部预览上限，单位为 UTF-8 字节
+    :param preview_entries: 头部预览的输出流名称和文本片段，按接收顺序保存
+    :param tail_entries: 尾部预览的输出流名称和文本片段，超过尾部上限时淘汰旧内容
+    :param captured_bytes: 当前头部预览累计的 UTF-8 字节数，初始为 0
+    :param tail_bytes: 当前尾部预览累计的 UTF-8 字节数，初始为 0
+    :param preview_truncated: 完整输出是否已超过头部预览上限
+    :param temp_file_path: 保存完整超限输出的日志路径；尚未创建时为 None
+    :param temp_file_handle: 完整输出日志的打开句柄；尚未创建或已关闭时为 None
+    :param last_written_stream: 日志最后写入的输出流名称，用于切换流时插入标题；初始为 None
+    """
 
     preview_limit_bytes: int
     preview_entries: list[tuple[str, str]] = field(default_factory=list)
@@ -61,13 +75,17 @@ class _CommandOutput:
 
     @staticmethod
     def _clip_text_to_bytes(text: str, byte_limit: int) -> str:
-        """按 UTF-8 字节数截断文本，避免截断后出现非法字符。"""
+        """
+        按 UTF-8 字节数截断文本，避免截断后出现非法字符。
+        """
         if byte_limit <= 0:
             return ""
         return text.encode("utf-8")[:byte_limit].decode("utf-8", errors="ignore")
 
     def _write_chunk(self, stream_name: str, text: str) -> None:
-        """把输出分片按 stdout/stderr 分段写入临时文件。"""
+        """
+        把输出分片按 stdout/stderr 分段写入临时文件。
+        """
         if not self.temp_file_handle or not text:
             return
 
@@ -81,7 +99,9 @@ class _CommandOutput:
         self.temp_file_handle.write(text)
 
     def _ensure_temp_file(self) -> None:
-        """首次超出预览上限时创建临时文件并补写已缓存预览。"""
+        """
+        首次超出预览上限时创建临时文件并补写已缓存预览。
+        """
         if self.temp_file_handle:
             return
 
@@ -98,7 +118,9 @@ class _CommandOutput:
             self._write_chunk(stream_name, chunk)
 
     def close(self) -> None:
-        """关闭临时文件句柄，确保输出落盘。"""
+        """
+        关闭临时文件句柄，确保输出落盘。
+        """
         if not self.temp_file_handle:
             return
         self.temp_file_handle.flush()
@@ -106,7 +128,9 @@ class _CommandOutput:
         self.temp_file_handle = None
 
     def append(self, stream_name: str, text: str) -> None:
-        """追加一段输出，超出预览上限后保留头尾预览和完整日志文件。"""
+        """
+        追加一段输出，超出预览上限后保留头尾预览和完整日志文件。
+        """
         if not text:
             return
 
@@ -133,7 +157,9 @@ class _CommandOutput:
             self.captured_bytes += len(preview.encode("utf-8"))
 
     def _append_tail(self, stream_name: str, text: str) -> None:
-        """维护固定字节大小的尾部输出，方便定位测试和构建失败信息。"""
+        """
+        维护固定字节大小的尾部输出，方便定位测试和构建失败信息。
+        """
         self.tail_entries.append((stream_name, text))
         self.tail_bytes += len(text.encode("utf-8"))
         while self.tail_bytes > MAX_OUTPUT_TAIL_BYTES and self.tail_entries:
@@ -154,7 +180,9 @@ class _CommandOutput:
 
     @staticmethod
     def _format_entries(entries: list[tuple[str, str]]) -> str:
-        """按 stdout/stderr 切换插入可读的输出分段标题。"""
+        """
+        按 stdout/stderr 切换插入可读的输出分段标题。
+        """
         parts: list[str] = []
         last_stream: Optional[str] = None
         for stream_name, text in entries:
@@ -167,7 +195,9 @@ class _CommandOutput:
 
     @property
     def combined_preview(self) -> str:
-        """返回完整输出或头尾组合预览。"""
+        """
+        返回完整输出或头尾组合预览。
+        """
         if not self.preview_truncated:
             return self._format_entries(self.preview_entries)
 
@@ -188,145 +218,162 @@ class _CommandOutput:
 
     @property
     def stdout(self) -> str:
-        """返回当前保留的 stdout 预览。"""
+        """
+        返回当前保留的 stdout 预览。
+        """
         return "".join(
             text for stream_name, text in self.preview_entries if stream_name == "stdout"
         ).strip()
 
     @property
     def stderr(self) -> str:
-        """返回当前保留的 stderr 预览。"""
+        """
+        返回当前保留的 stderr 预览。
+        """
         return "".join(
             text for stream_name, text in self.preview_entries if stream_name == "stderr"
         ).strip()
 
 
 class ExecuteCommandInput(BaseModel):
-    """执行 Shell 命令工具的输入参数模型。"""
+    """
+    执行 Shell 命令工具的输入参数模型。
+    """
 
-    action: Optional[Literal["start", "read", "wait", "write", "interrupt", "kill", "run"]] = Field(
+    action: Optional[Literal['start', 'read', 'wait', 'write', 'interrupt', 'kill', 'run']] = Field(
         "start",
         description=(
-            "Command action. start launches a managed background session and returns "
-            "session_id. read/wait/write/interrupt/kill operate on that session. interrupt sends one "
-            "interrupt without escalating to a forced kill; kill terminates the session. run executes "
-            "once and waits until completion or timeout."
+            "命令动作：start 启动受管理后台会话并返回 session_id；"
+            "read/wait/write/interrupt/kill 操作已有会话。"
+            "interrupt 只发送一次中断，不升级为强杀；"
+            "kill 终止会话；"
+            "run 执行一次并等待完成或超时"
         ),
     )
     command: Optional[str] = Field(
         None,
-        description="Shell command. Required for action=start or action=run.",
+        description="start 或 run 必填的 Shell 命令",
     )
     session_id: Optional[str] = Field(
         None,
-        description="Command session id returned by action=start.",
+        description="start 返回的命令会话标识",
     )
     input_text: Optional[str] = Field(
         None,
-        description=(
-            "Text to send to stdin for action=write. In pipe mode, \\u0003/\\u0004 are ordinary bytes. "
-            "In PTY mode their Ctrl+C/EOF behavior depends on terminal settings. Use action=interrupt for a signal."
-        ),
+        description="write 写入标准输入的文本。管道模式下控制字符作为普通字节；PTY 中 Ctrl+C/EOF 的含义由终端设置决定，发送信号应使用 interrupt",
     )
     close_stdin: Optional[bool] = Field(
-        False, strict=True,
-        description=(
-            "For action=write in pipe mode, send optional final input then close stdin so the command receives EOF. "
-            "Output stays readable. Empty input alone does not send EOF. PTY half-close is not supported."
-        ),
+        False,
+        strict=True,
+        description="write 在管道模式下写入可选末段输入后关闭标准输入，使命令收到 EOF，输出仍可读取。空文本本身不表示 EOF；不支持 PTY 半关闭",
     )
     signal_name: Optional[str] = Field(
         "TERM",
-        description="Signal for action=kill, such as TERM, INT, KILL, or 15. Invalid or unsupported signals are rejected.",
+        description="kill 使用的信号名或编号，例如 TERM、INT、KILL 或 15；无效或不支持的信号会被拒绝",
     )
     cwd: Optional[str] = Field(
         None,
-        description="Launch directory for start/run. Omitted or relative paths use the MoviePilot root directory; ~ is expanded.",
+        description="start/run 的启动目录；省略或相对路径以 MoviePilot 根目录解析，支持展开 ~",
     )
     shell: Optional[str] = Field(
         None,
-        description="Shell executable for start/run. All pipe and PTY launches use the same selection policy and report the selected shell.",
+        description="start/run 使用的解释器可执行文件；管道和 PTY 使用相同选择策略并报告实际选择",
     )
     login: Optional[bool] = Field(
-        None, strict=True,
-        description=(
-            "For start/run, explicitly enable or disable login-shell startup where supported. "
-            "POSIX defaults to non-login; Windows preserves its configured shell defaults. "
-            "Login startup files can change environment and directory."
-        ),
+        None,
+        strict=True,
+        description="start/run 是否显式启用登录模式。POSIX 默认非登录，Windows 保留配置默认值；登录启动文件可能改变环境和目录",
     )
     env: Optional[dict[str, Any]] = Field(
         None,
-        description="Additional environment variables for action=start or action=run.",
+        description="start 或 run 追加的环境变量",
     )
     use_pty: Optional[bool] = Field(
         True,
-        description="Use a pseudo terminal for action=start when supported.",
+        description="start 是否在支持的平台上使用伪终端，默认 True",
     )
     since_seq: Optional[int] = Field(
-        None, ge=0, strict=True,
-        description="For read/wait/write/interrupt/kill, last fully delivered output seq. Resume with output_until_seq, never last_seq.",
+        None,
+        ge=0,
+        strict=True,
+        description="read/wait/write/interrupt/kill 中最后完整交付的输出序号；续读应使用 output_until_seq，不能使用 last_seq",
     )
     since_offset: Optional[int] = Field(
-        None, ge=0, strict=True,
+        None,
+        ge=0,
+        strict=True,
         description=(
-            "UTF-8 byte offset within the chunk after since_seq. Pass 0 to enable partial-chunk paging; "
-            "resume using output_until_seq and output_until_offset together. Omit for legacy whole-chunk reads."
+            "since_seq 之后分片内的 UTF-8 字节偏移。"
+            "传 0 启用分片内分页，续读须同时使用 output_until_seq 和 output_until_offset；"
+            "省略时沿用整分片读取"
         ),
     )
     max_bytes: Optional[int] = Field(
         TERMINAL_DEFAULT_READ_BYTES,
-        description="For start/read/wait/write/interrupt/kill, maximum output bytes to return.",
+        description="start/read/wait/write/interrupt/kill 最多返回的输出字节数",
     )
     timeout_ms: Optional[int] = Field(
         TERMINAL_WAIT_DEFAULT_MS,
-        description="For action=wait, wait for unread output or output completion; 0 returns immediately without stopping the process.",
+        description="wait 等待未读输出或输出完成的毫秒数；0 立即返回且不停止进程",
     )
     yield_time_ms: Optional[int] = Field(
-        TERMINAL_YIELD_DEFAULT_MS, ge=0, strict=True,
-        description="For action=start, first-output wait budget in milliseconds (default 250, capped at 10000); 0 returns immediately.",
+        TERMINAL_YIELD_DEFAULT_MS,
+        ge=0,
+        strict=True,
+        description="start 首次等待输出的毫秒预算，默认 250，上限 10000；0 立即返回",
     )
     timeout: Optional[int] = Field(
         60,
-        description="For action=run, max execution time in seconds.",
+        description="run 的最长执行秒数，默认 60",
     )
     confirm_dangerous: Optional[bool] = Field(
         False,
-        description=(
-            "Explicit confirmation for high-risk commands such as recursive root deletion, "
-            "disk formatting, shutdown/reboot, or destructive permission changes."
-        ),
+        description="是否明确确认根目录递归删除、磁盘格式化、关机重启或破坏性权限修改等高风险命令",
     )
 
 
 class ExecuteCommandTool(MoviePilotTool):
-    """统一执行和管理 Shell 命令的 Agent 工具。"""
+    """
+    统一执行和管理 Shell 命令的 Agent 工具。
+    """
 
-    name: str = "execute_command"
-    tags: list[str] = [
-        ToolTag.Read,
-        ToolTag.Command,
-        ToolTag.Admin,
-    ]
-    description: str = (
-        "Start and manage shell commands on the server. By default action=start "
-        "launches a background session, waits briefly for initial output, then returns its session_id and output cursor. "
-        "Continue with both output_until_seq and output_until_offset; last_seq is not a consumed cursor. "
-        "Call the same tool with action=read, wait, "
-        "write, interrupt, or kill to poll output, wait in short segments, send stdin, "
-        "send one interrupt, or terminate it. write(close_stdin=true) sends EOF in pipe mode after optional final input; "
-        "PTY input and output cannot be half-closed. start/run share cwd, shell and login selection. "
-        "Use action=run only when a one-shot bounded command result "
-        "is preferred. run returns JSON with exit_code, timed_out, execution_outcome, "
-        "output preview and optional output_file. Only a normal zero exit is success; "
-        "a timeout does not undo any side effects."
+    name: str = Field(
+        default="execute_command",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = ExecuteCommandInput
-    require_admin: bool = True
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.Command, ToolTag.Admin],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default=(
+            "在服务器启动并管理 Shell 命令。"
+            "默认 action=start 创建后台会话，短暂等待初始输出后返回 session_id 与输出游标。"
+            "续读须同时使用 output_until_seq 和 output_until_offset；"
+            "last_seq 不表示已消费游标。"
+            "使用 action=read、wait、write、interrupt 或 kill 轮询输出、分段短时等待、写入标准输入、发送一次中断或终止会话。"
+            "管道模式下 write(close_stdin=true) 在可选末段输入后发送 EOF，PTY 输入输出不能半关闭。"
+            "start/run 共用 cwd、shell 和 login 选择规则。"
+            "只需一次有时限的命令结果时可用 action=run，返回包含 exit_code、timed_out、execution_outcome、输出预览及可选 output_f"
+            "ile 的 JSON。"
+            "只有正常以零退出才算成功，超时不会撤销已有副作用。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=ExecuteCommandInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
+    require_admin: bool = Field(
+        default=True,
+        description="是否仅允许系统管理员调用",
+    )
     result_max_chars = TERMINAL_MAX_READ_BYTES + 4096
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """根据命令动作生成友好的提示消息。"""
+        """
+        根据命令动作生成友好的提示消息。
+        """
         action = kwargs.get("action") or "start"
         command = kwargs.get("command")
         session_id = kwargs.get("session_id")
@@ -348,31 +395,41 @@ class ExecuteCommandTool(MoviePilotTool):
 
     @staticmethod
     def _dump(payload: dict[str, Any]) -> str:
-        """把结构化命令会话结果转换为 Agent 容易解析的 JSON 字符串。"""
+        """
+        把结构化命令会话结果转换为 Agent 容易解析的 JSON 字符串。
+        """
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     @staticmethod
     def _require_session_id(session_id: Optional[str]) -> str:
-        """校验会话型 action 必须传入 session_id。"""
+        """
+        校验会话型 action 必须传入 session_id。
+        """
         if not session_id:
             raise ValueError("action 需要传入 session_id")
         return session_id
 
     @staticmethod
     def _require_command(command: Optional[str]) -> str:
-        """校验启动型 action 必须传入 command。"""
+        """
+        校验启动型 action 必须传入 command。
+        """
         if not command or not command.strip():
             raise ValueError("action 需要传入 command")
         return command
 
     @staticmethod
     def _validate_command(command: str, *, confirmed: bool = False) -> None:
-        """复用旧工具的基础危险命令过滤，避免明显破坏性命令进入 shell。"""
+        """
+        复用旧工具的基础危险命令过滤，避免明显破坏性命令进入 shell。
+        """
         validate_command_safety(command, confirmed=confirmed)
 
     @staticmethod
     def _normalize_timeout(timeout: Optional[int]) -> tuple[int, Optional[str]]:
-        """限制一次性执行命令的最长运行时间。"""
+        """
+        限制一次性执行命令的最长运行时间。
+        """
         try:
             normalized = int(timeout or DEFAULT_TIMEOUT_SECONDS)
         except (TypeError, ValueError):
@@ -389,7 +446,9 @@ class ExecuteCommandTool(MoviePilotTool):
 
     @staticmethod
     def _subprocess_kwargs() -> dict:
-        """为一次性命令创建独立进程组，便于超时清理整棵子进程。"""
+        """
+        为一次性命令创建独立进程组，便于超时清理整棵子进程。
+        """
         kwargs = {
             "stdin": subprocess.DEVNULL,
             "stdout": asyncio.subprocess.PIPE,
@@ -407,7 +466,9 @@ class ExecuteCommandTool(MoviePilotTool):
         stream_name: str,
         output: _CommandOutput,
     ) -> None:
-        """每个流增量解码 UTF-8，跨读取边界的字符不能被提前替换。"""
+        """
+        每个流增量解码 UTF-8，跨读取边界的字符不能被提前替换。
+        """
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         while True:
             chunk = await stream.read(READ_CHUNK_SIZE)
@@ -418,7 +479,9 @@ class ExecuteCommandTool(MoviePilotTool):
 
     @staticmethod
     def _terminate_process(process: Any, sig: int) -> None:
-        """向进程组发送终止信号，不支持进程组的平台回退为单进程终止。"""
+        """
+        向进程组发送终止信号，不支持进程组的平台回退为单进程终止。
+        """
         try:
             if os.name == "posix":
                 os.killpg(process.pid, sig)
@@ -435,7 +498,9 @@ class ExecuteCommandTool(MoviePilotTool):
         process: Any,
         wait_task: asyncio.Task,
     ) -> None:
-        """先温和终止，失败后强杀，避免超时 shell 遗留子进程。"""
+        """
+        先温和终止，失败后强杀，避免超时 shell 遗留子进程。
+        """
         if wait_task.done():
             return
 
@@ -459,7 +524,9 @@ class ExecuteCommandTool(MoviePilotTool):
 
     @staticmethod
     async def _finish_reader_tasks(reader_tasks: list[asyncio.Task]) -> None:
-        """等待一次性命令输出读取任务退出，异常只记录不影响工具返回。"""
+        """
+        等待一次性命令输出读取任务退出，异常只记录不影响工具返回。
+        """
         if not reader_tasks:
             return
         done, pending = await asyncio.wait(reader_tasks, timeout=1)
@@ -485,7 +552,9 @@ class ExecuteCommandTool(MoviePilotTool):
         login: bool = False,
         scope_cancelled: bool = False,
     ) -> str:
-        """分开返回机器可判定的执行状态与有界输出，不能靠完成提示推断成功。"""
+        """
+        分开返回机器可判定的执行状态与有界输出，不能靠完成提示推断成功。
+        """
         if scope_cancelled:
             result = "命令因任务作用域关闭而取消，未确认业务动作是否完成"
         elif exit_code is None:
@@ -541,7 +610,9 @@ class ExecuteCommandTool(MoviePilotTool):
         login: Optional[bool] = None,
         confirm_dangerous: bool = False,
     ) -> str:
-        """一次性执行命令并返回结构化终态；退出路径都必须释放读取任务和归档句柄。"""
+        """
+        一次性执行命令并返回结构化终态；退出路径都必须释放读取任务和归档句柄。
+        """
         self._validate_command(command, confirmed=confirm_dangerous)
         scope = require_terminal_scope()
         scope.begin_run()
@@ -555,7 +626,9 @@ class ExecuteCommandTool(MoviePilotTool):
 
     @staticmethod
     async def _acquire_command_slot(scope: TerminalScope) -> None:
-        """并发槽等待期间响应作用域封口，禁止取消后迟到启动一次性进程。"""
+        """
+        并发槽等待期间响应作用域封口，禁止取消后迟到启动一次性进程。
+        """
         acquire_task = asyncio.create_task(_command_semaphore.acquire())
         closed_task = asyncio.create_task(scope.changed.wait())
         acquired = False
@@ -597,7 +670,9 @@ class ExecuteCommandTool(MoviePilotTool):
         login: Optional[bool] = None,
         confirm_dangerous: bool = False,
     ) -> str:
-        """在已登记作用域下运行一次命令，并对封口和进程收尾保持可观察。"""
+        """
+        在已登记作用域下运行一次命令，并对封口和进程收尾保持可观察。
+        """
         normalized_timeout, timeout_note = self._normalize_timeout(timeout)
         project_root = get_runtime_setting("ROOT_PATH")
         normalized_cwd = resolve_agent_cwd(cwd, root_path=project_root)
@@ -629,10 +704,8 @@ class ExecuteCommandTool(MoviePilotTool):
                     {wait_task, scope_task}, timeout=normalized_timeout,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
-                # The scope can be sealed in the same event-loop turn after
-                # ``wait_task`` wins. Recheck the authoritative owner state so
-                # a run that crossed the cancellation boundary never reports
-                # an unqualified success.
+                # wait_task 先完成后，作用域仍可能在同一轮事件循环内被封闭。
+                # 再次检查所有者的权威状态，避免跨过取消边界的命令被报告为成功。
                 scope_cancelled = scope_task in done or scope.closed
                 if wait_task not in done:
                     timed_out = not scope_cancelled
@@ -684,7 +757,9 @@ class ExecuteCommandTool(MoviePilotTool):
         confirm_dangerous: Optional[bool] = False,
         **kwargs,
     ) -> str:
-        """按同一启动策略执行命令，区分写入/EOF、一次中断与会话终止。"""
+        """
+        按同一启动策略执行命令，区分写入/EOF、一次中断与会话终止。
+        """
         normalized_action = (action or "start").strip().lower()
         logger.info(
             f"执行工具: {self.name}, action={normalized_action}, "

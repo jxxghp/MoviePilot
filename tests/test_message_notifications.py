@@ -1,3 +1,7 @@
+"""
+验证通知消息队列、历史和事件流投递行为。
+"""
+
 import asyncio
 import json
 from unittest.mock import Mock
@@ -195,6 +199,9 @@ def test_sse_endpoint_flushes_backlog_in_one_tick() -> None:
 
     class _ConnectedRequest:
         async def is_disconnected(self) -> bool:
+            """
+            始终保持连接，确保测试可完整消费积压事件。
+            """
             return False
 
     async def _read_backlog() -> list[str]:

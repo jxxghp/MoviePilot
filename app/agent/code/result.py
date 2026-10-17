@@ -1,4 +1,6 @@
-"""代码执行的模型输出投影，工具失败与内核状态各自如实报告。"""
+"""
+代码执行的模型输出投影，工具失败与内核状态各自如实报告。
+"""
 
 import re
 from pathlib import Path
@@ -12,7 +14,9 @@ _ANSI = re.compile(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))')
 
 def render_result(payload: dict[str, Any], *, directory: Path, output_directory: Path,
                   reused: bool, state_reset: bool, elapsed: float) -> dict[str, Any]:
-    """完整 stdout 脱敏后才落盘，内核退出后仍能从独立输出目录继续读取。"""
+    """
+    完整 stdout 脱敏后才落盘，内核退出后仍能从独立输出目录继续读取。
+    """
     source = read_cell_stdout(payload, directory) + str(payload.get('raw_stdout') or '')
     source_captured = len(source.encode('utf-8'))
     stdout = sanitize_archived_text(_ANSI.sub('', source))

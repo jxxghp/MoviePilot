@@ -1,10 +1,12 @@
-"""外部 MCP 工具适配器。"""
+"""
+外部 MCP 工具适配器。
+"""
 
 import hashlib
 import json
 from typing import Any, Optional
 
-from pydantic import PrivateAttr
+from pydantic import Field, PrivateAttr
 
 from app.agent.mcp import AgentMcpToolSpec, agent_mcp_manager
 from app.agent.tools.base import MoviePilotTool
@@ -12,21 +14,39 @@ from app.agent.tools.tags import ToolTag
 
 
 class McpExternalTool(MoviePilotTool):
-    """将外部 MCP 工具包装为 MoviePilot Agent 工具。"""
+    """
+    将外部 MCP 工具包装为 MoviePilot Agent 工具。
 
-    name: str = "mcp_external_tool"
-    tags: list[str] = [
-        ToolTag.Read,
-        ToolTag.Admin,
-    ]
-    description: str = "Call an external MCP tool configured for MoviePilot Agent."
-    args_schema: dict[str, Any] = {"type": "object", "properties": {}, "required": []}
-    require_admin: bool = True
+    :ivar _spec: 已绑定的外部 MCP 服务与具体工具调用契约
+    """
+
+    name: str = Field(
+        default="mcp_external_tool",
+        description="供模型调用的稳定工具名称",
+    )
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.Admin],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default="调用为 MoviePilot Agent 配置的外部 MCP 工具。",
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: dict[str, Any] = Field(
+        default={'type': 'object', 'properties': {}, 'required': []},
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
+    require_admin: bool = Field(
+        default=True,
+        description="是否仅允许系统管理员调用",
+    )
 
     _spec: AgentMcpToolSpec = PrivateAttr()
 
     def __init__(self, spec: AgentMcpToolSpec, session_id: str, user_id: str) -> None:
-        """绑定已配置的 MCP 工具及其输入协议。"""
+        """
+        绑定已配置的 MCP 工具及其输入协议。
+        """
         super().__init__(
             session_id=session_id,
             user_id=user_id,
@@ -38,7 +58,9 @@ class McpExternalTool(MoviePilotTool):
         self._spec = spec
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """根据 MCP 工具信息生成友好的提示消息。"""
+        """
+        根据 MCP 工具信息生成友好的提示消息。
+        """
         return f"调用 MCP 工具: {self._spec.server.name}/{self._spec.name}"
 
     async def run(self, **kwargs) -> str:
@@ -57,7 +79,9 @@ class McpExternalTool(MoviePilotTool):
 
     @staticmethod
     def _format_mcp_result(result: Any) -> str:
-        """将 MCP tools/call 返回结构转换为 Agent 可读文本。"""
+        """
+        将 MCP tools/call 返回结构转换为 Agent 可读文本。
+        """
         if isinstance(result, dict):
             if result.get("isError") is True:
                 return json.dumps(result, ensure_ascii=False, indent=2, default=str)
@@ -79,7 +103,9 @@ class McpExternalTool(MoviePilotTool):
 
 
 def _mcp_binding_identity(spec: AgentMcpToolSpec) -> str:
-    """生成不暴露端点配置的稳定 MCP 工具绑定身份。"""
+    """
+    生成不暴露端点配置的稳定 MCP 工具绑定身份。
+    """
     payload = json.dumps(
         {
             "agent_tool_name": spec.agent_tool_name,
@@ -105,7 +131,9 @@ async def create_external_mcp_tools(
     agent_context: Optional[dict] = None,
     specs: Optional[list[AgentMcpToolSpec]] = None,
 ) -> list[McpExternalTool]:
-    """创建当前已启用的外部 MCP Agent 工具列表。"""
+    """
+    创建当前已启用的外部 MCP Agent 工具列表。
+    """
     tools = []
     current_specs = specs
     if current_specs is None:

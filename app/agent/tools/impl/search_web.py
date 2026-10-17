@@ -1,3 +1,7 @@
+"""
+提供网络搜索及网站范围筛选，并将结果整理为有界摘要。
+"""
+
 import json
 import re
 from dataclasses import dataclass
@@ -38,7 +42,13 @@ SITE_SEARCH_PATTERN = re.compile(r"\bsite:", re.IGNORECASE)
 
 @dataclass(frozen=True)
 class _SearchSiteFilter:
-    """站点限定搜索参数"""
+    """
+    站点限定搜索参数
+
+    :param domain: 规范化的网站域名，用于验证结果归属
+    :param path: 限定的 URL 路径；不限制路径时为空字符串
+    :param search_target: 加入 site: 查询条件的域名及可选路径
+    """
 
     domain: str
     path: str
@@ -46,29 +56,25 @@ class _SearchSiteFilter:
 
 
 class SearchWebInput(BaseModel):
-    """搜索网络内容工具的输入参数模型"""
+    """
+    搜索网络内容工具的输入参数模型
+    """
 
     query: str = Field(
-        ..., description="The search query string to search for on the web"
+        ...,
+        description="需要搜索的网络查询文本",
     )
     max_results: Optional[int] = Field(
         MAX_SEARCH_RESULTS,
-        description="Maximum number of search results to return (default: 20, max: 20)",
+        description="最多返回的搜索结果数，默认 20，上限 20",
     )
     search_engine: Optional[str] = Field(
         DEFAULT_SEARCH_ENGINE,
-        description=(
-            "Search backend to use. Supported values: auto, duckduckgo, google, "
-            "brave, yahoo, wikipedia, yandex, mojeek. "
-            "Use auto unless the user asks for a specific search engine."
-        ),
+        description="搜索后端：auto、duckduckgo、google、brave、yahoo、wikipedia、yandex 或 mojeek；用户未指定时使用 auto",
     )
     site_url: Optional[str] = Field(
         None,
-        description=(
-            "Optional website/domain/URL to limit the search to, for example "
-            "'https://docs.python.org/3/' or 'github.com'."
-        ),
+        description="限制搜索范围的可选网站、域名或 URL，例如 https://docs.python.org/3/ 或 github.com",
     )
 
 
@@ -77,22 +83,27 @@ class SearchWebTool(MoviePilotTool):
     网络搜索工具，支持 DDGS 搜索引擎和指定站点限定搜索。
     """
 
-    name: str = "search_web"
-    tags: list[str] = [
-        ToolTag.Read,
-        ToolTag.Web,
-    ]
-    description: str = (
-        "Search the web for information when you need current information, facts, "
-        "or references. Supports DDGS-backed search engine selection, automatic "
-        "fallback, and site_url-limited searches for a specified website "
-        "or URL. Uses the configured system proxy by default. Returns search "
-        "results with titles, snippets, and URLs."
+    name: str = Field(
+        default="search_web",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = SearchWebInput
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.Web],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default="需要最新信息、事实或参考来源时搜索网络。支持选择 DDGS 搜索后端、自动回退及通过 site_url 限定网站或 URL。默认使用系统代理，返回标题、摘要和链接。",
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=SearchWebInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """根据搜索参数生成友好的提示消息"""
+        """
+        根据搜索参数生成友好的提示消息
+        """
         query = kwargs.get("query", "")
         max_results = kwargs.get("max_results", MAX_SEARCH_RESULTS)
         search_engine = self._normalize_search_engine(kwargs.get("search_engine"))
@@ -171,7 +182,9 @@ class SearchWebTool(MoviePilotTool):
 
     @staticmethod
     def _normalize_search_engine(search_engine: Optional[str]) -> str:
-        """规范化搜索源参数"""
+        """
+        规范化搜索源参数
+        """
         engine = (search_engine or DEFAULT_SEARCH_ENGINE).strip().lower()
         aliases = {
             "ddgs": DEFAULT_SEARCH_ENGINE,
@@ -184,7 +197,9 @@ class SearchWebTool(MoviePilotTool):
 
     @staticmethod
     def _get_search_plan(search_engine: str) -> List[str]:
-        """根据搜索源配置生成兜底搜索顺序"""
+        """
+        根据搜索源配置生成兜底搜索顺序
+        """
         if search_engine != DEFAULT_SEARCH_ENGINE:
             return [search_engine]
         return [DEFAULT_SEARCH_ENGINE]
@@ -381,7 +396,9 @@ class SearchWebTool(MoviePilotTool):
 
     @staticmethod
     def _get_proxy_url(proxy_setting) -> Optional[str]:
-        """从代理设置中提取代理URL"""
+        """
+        从代理设置中提取代理URL
+        """
         if not proxy_setting:
             return None
         if isinstance(proxy_setting, dict):
@@ -407,7 +424,9 @@ class SearchWebTool(MoviePilotTool):
         try:
 
             def sync_search():
-                """在线程中执行同步搜索"""
+                """
+                在线程中执行同步搜索
+                """
                 results = []
                 ddgs_kwargs = {"timeout": SEARCH_TIMEOUT}
                 proxy_url = self._get_proxy_url(get_runtime_setting('PROXY'))
@@ -449,7 +468,9 @@ class SearchWebTool(MoviePilotTool):
 
     @staticmethod
     def _format_and_truncate_results(results: List[Dict], max_results: int) -> Dict:
-        """格式化并裁剪搜索结果"""
+        """
+        格式化并裁剪搜索结果
+        """
         formatted = {"total_results": len(results), "results": []}
 
         for idx, result in enumerate(results[:max_results], 1):
@@ -459,7 +480,7 @@ class SearchWebTool(MoviePilotTool):
             source = result.get("source", "Unknown")
 
             # 裁剪摘要
-            max_snippet_length = 1000  # 增加到1000字符，提供更多上下文
+            max_snippet_length = 1000
             if len(snippet) > max_snippet_length:
                 snippet = snippet[:max_snippet_length] + "..."
 

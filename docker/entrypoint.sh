@@ -1,6 +1,8 @@
 #!/bin/bash
 # shellcheck shell=bash
+# 单引号中的变量模板需留给后续渲染或子进程展开，不能在此提前替换。
 # shellcheck disable=SC2016
+# 局部声明可同时初始化变量；需要观察子命令状态时必须单独赋值。
 # shellcheck disable=SC2155
 
 Green="\033[32m"
@@ -50,17 +52,16 @@ function apply_package_cache_env() {
 }
 
 # 环境变量补全
-# 优先级: 系统环境变量 -> .env 文件 (即使为空字符串) -> 预设默认值
-# 精准适配 Python 端 set_key (quote_mode="always", 单引号包裹, \' 转义)
+# 优先级：系统环境变量、app.env 文件中的值（包括空字符串）、预设默认值。
+# 兼容 Python 端 set_key 的单引号包裹与转义格式（quote_mode="always"）。
 function load_config_from_app_env() {
     # 保留未配置的新 Dev 开关为空，交由更新器兼容旧模式、Python 持久化迁移。
 
     local env_file="${CONFIG_DIR}/app.env"
 
-    # 定义 ["变量名"]="预设默认值"
     # 禁止填入 CONFIG_DIR 变量，ACME_ENV_ 开头的变量不设默认值，仅透传 app.env 中已有配置。
     declare -A vars_and_default_values=(
-        # update.sh
+        # 更新与运行环境参数
         ["PIP_PROXY"]=""
         ["PACKAGE_CACHE_ROOT"]=""
         ["GITHUB_PROXY"]=""
@@ -72,7 +73,7 @@ function load_config_from_app_env() {
         ["MOVIEPILOT_SAFE_MODE"]="false"
         ["BROWSER_EMULATION"]="cloakbrowser"
 
-        # cert
+        # 证书与 Web 服务参数
         ["ENABLE_SSL"]="false"
         ["AUTO_ISSUE_CERT"]="false"
         ["SSL_DOMAIN"]=""
@@ -145,7 +146,6 @@ function load_config_from_app_env() {
 
         # 检查变量是否在环境中已设置（可能为空）
         if eval "[ -n \"\${${var_name}+x}\" ]"; then
-            # 获取其值
             final_value="$(eval echo \"\$"${var_name}"\")"
             value_source="系统环境变量"
         elif [[ -n "${values_from_env_file["${var_name}"]+_}" ]]; then
@@ -476,7 +476,7 @@ if [ -f "${ONE_SHOT_DEV_UPDATE_FLAG}" ]; then
     INFO "检测到一次性 Dev 更新标记，本次启动将更新开发分支"
 fi
 
-# 使用env配置渲染 nginx 配置
+# 按本次生效的环境变量渲染 nginx 配置
 render_nginx_config
 
 # 自动更新，控制脚本由 launcher 固化到同一代运行目录，源码替换不会改变本轮执行内容。
@@ -517,7 +517,7 @@ fi
 
 source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/browser.sh"
 
-# 更改 moviepilot userid 和 groupid
+# 按部署配置调整 moviepilot 用户与组标识
 groupmod -o -g "${PGID}" moviepilot
 usermod -o -u "${PUID}" moviepilot
 

@@ -1,3 +1,7 @@
+"""
+验证VoceChat 通知客户端的消息请求与响应处理。
+"""
+
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -17,6 +21,9 @@ from app.modules.vocechat.vocechat import VoceChat
     ],
 )
 def test_send_msg_normalizes_vocechat_target(userid: str, endpoint: str):
+    """
+    VoceChat 目标标识归一化到正确的用户或频道发送端点。
+    """
     client = Mock()
     client.post_res.return_value = SimpleNamespace(status_code=200)
     vocechat = VoceChat(
@@ -34,6 +41,9 @@ def test_send_msg_normalizes_vocechat_target(userid: str, endpoint: str):
 
 @pytest.mark.parametrize("userid", ["UID#", "GID#", "SID#123", "abc"])
 def test_send_msg_rejects_invalid_vocechat_target(userid: str):
+    """
+    非法 VoceChat 目标在发起请求前被拒绝，避免误发消息。
+    """
     client = Mock()
     vocechat = VoceChat(
         VOCECHAT_HOST="https://voce.example.com",
@@ -57,7 +67,9 @@ def test_send_msg_rejects_invalid_vocechat_target(userid: str):
 def test_message_parser_routes_reply_to_origin(
     target: dict, content: str, expected_userid: str, endpoint: str
 ):
-    """频道搜索与序号交互回原频道，私聊回复发起用户。"""
+    """
+    频道搜索与序号交互回原频道，私聊回复发起用户。
+    """
     module = VoceChatModule()
     vocechat = VoceChat(
         VOCECHAT_HOST="https://voce.example.com",

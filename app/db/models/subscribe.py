@@ -1,3 +1,9 @@
+"""
+影视与音乐订阅配置及状态的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 import time
 from typing import Any, Optional, Self
 from uuid import uuid4
@@ -137,7 +143,9 @@ class Subscribe(Base):
         media_id: Optional[str] = None,
         music_type: Optional[str] = None,
     ) -> Optional[ColumnElement[bool]]:
-        """按统一媒体身份优先级构造订阅查询条件。"""
+        """
+        按统一媒体身份优先级构造订阅查询条件。
+        """
         if not media_source or media_id is None or not str(media_id).strip():
             return None
         condition = (cls.media_source == str(media_source)) & (cls.media_id == str(media_id).strip())
@@ -157,7 +165,9 @@ class Subscribe(Base):
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
     ) -> Optional[Self]:
-        """按媒体身份、季号与剧集组查询已有订阅。"""
+        """
+        按媒体身份、季号与剧集组查询已有订阅。
+        """
         condition = cls._identity_condition(media_source, media_id, music_type)
         if condition is None:
             return None
@@ -177,7 +187,9 @@ class Subscribe(Base):
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
     ) -> Optional[Self]:
-        """异步按媒体身份、季号与剧集组查询已有订阅。"""
+        """
+        异步按媒体身份、季号与剧集组查询已有订阅。
+        """
         condition = cls._identity_condition(media_source, media_id, music_type)
         if condition is None:
             return None
@@ -241,7 +253,9 @@ class Subscribe(Base):
 
     @classmethod
     def get_by_state(cls, db: Session, state: str | None = None) -> list[Self]:
-        """在调用方 Session 中按状态列表查询订阅。"""
+        """
+        在调用方 Session 中按状态列表查询订阅。
+        """
         statement = select(cls)
         if state:
             statement = statement.where(cls.state.in_(state.split(",")))
@@ -249,7 +263,9 @@ class Subscribe(Base):
 
     @classmethod
     async def async_get_by_state(cls, db: AsyncSession, state: str | None = None) -> list[Self]:
-        """在调用方 AsyncSession 中按状态列表查询订阅。"""
+        """
+        在调用方 AsyncSession 中按状态列表查询订阅。
+        """
         statement = select(cls)
         if state:
             statement = statement.where(cls.state.in_(state.split(",")))
@@ -263,7 +279,9 @@ class Subscribe(Base):
         title: str,
         season: Optional[int] = None,
     ) -> Optional[Self]:
-        """在调用方 Session 中按标题查询订阅。"""
+        """
+        在调用方 Session 中按标题查询订阅。
+        """
         statement = select(cls).where(cls.name == title)
         if season is not None:
             statement = statement.where(cls.season == season)
@@ -277,7 +295,9 @@ class Subscribe(Base):
         title: str,
         season: Optional[int] = None,
     ) -> Optional[Self]:
-        """在调用方 AsyncSession 中按标题查询订阅。"""
+        """
+        在调用方 AsyncSession 中按标题查询订阅。
+        """
         statement = select(cls).where(cls.name == title)
         if season is not None:
             statement = statement.where(cls.season == season)
@@ -292,7 +312,9 @@ class Subscribe(Base):
         title: str,
         season: Optional[int] = None,
     ) -> list[Self]:
-        """在调用方 AsyncSession 中按标题查询候选订阅列表。"""
+        """
+        在调用方 AsyncSession 中按标题查询候选订阅列表。
+        """
         statement = select(cls).where(cls.name == title)
         if season is not None:
             statement = statement.where(cls.season == season)
@@ -307,7 +329,9 @@ class Subscribe(Base):
         media_id: str | None = None,
         music_type: Optional[str] = None,
     ) -> list[Self]:
-        """同步按统一媒体身份查询候选订阅列表。"""
+        """
+        同步按统一媒体身份查询候选订阅列表。
+        """
         condition = cls._identity_condition(
             media_source=media_source,
             media_id=media_id,
@@ -325,7 +349,9 @@ class Subscribe(Base):
         media_id: str | None = None,
         music_type: Optional[str] = None,
     ) -> list[Self]:
-        """异步按统一媒体身份查询候选订阅列表。"""
+        """
+        异步按统一媒体身份查询候选订阅列表。
+        """
         condition = cls._identity_condition(
             media_source=media_source,
             media_id=media_id,
@@ -383,7 +409,9 @@ class Subscribe(Base):
 
     @classmethod
     def list_by_username(cls, db: Session, username: str, state: Optional[str] = None, mtype: Optional[str] = None) -> list[Self]:
-        """在调用方 Session 中按用户筛选订阅。"""
+        """
+        在调用方 Session 中按用户筛选订阅。
+        """
         statement = select(cls).where(cls.username == username)
         if state:
             statement = statement.where(cls.state == state)
@@ -395,7 +423,9 @@ class Subscribe(Base):
     async def async_list_by_username(
         cls, db: AsyncSession, username: str, state: Optional[str] = None, mtype: Optional[str] = None
     ) -> list[Self]:
-        """在调用方 AsyncSession 中按用户筛选订阅。"""
+        """
+        在调用方 AsyncSession 中按用户筛选订阅。
+        """
         statement = select(cls).where(cls.username == username)
         if state:
             statement = statement.where(cls.state == state)
@@ -406,7 +436,9 @@ class Subscribe(Base):
 
     @classmethod
     def list_by_type(cls, db: Session, mtype: str, days: int = 7) -> list[Self]:
-        """在调用方 Session 中按类型查询最近时间窗内的订阅。"""
+        """
+        在调用方 Session 中按类型查询最近时间窗内的订阅。
+        """
         return list(
             db.execute(
                 select(cls).where(
@@ -420,7 +452,9 @@ class Subscribe(Base):
 
     @classmethod
     async def async_list_by_type(cls, db: AsyncSession, mtype: str, days: int = 7) -> list[Self]:
-        """在调用方 AsyncSession 中按类型查询最近时间窗内的订阅。"""
+        """
+        在调用方 AsyncSession 中按类型查询最近时间窗内的订阅。
+        """
         result = await db.execute(
             select(cls).where(
                 cls.type == mtype,

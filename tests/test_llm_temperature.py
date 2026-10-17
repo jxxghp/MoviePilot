@@ -1,4 +1,6 @@
-"""LLM 温度的未指定、显式留空与数值透传合同。"""
+"""
+LLM 温度的未指定、显式留空与数值透传合同。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -18,7 +20,9 @@ _NATIVE_GEMINI_GENERATION = _google_models._is_gemini_3_or_later
 
 @pytest.fixture
 def offline_runtime(monkeypatch):
-    """隔离提供商解析和 HTTP 客户端，所有温度验证禁止真实网络请求。"""
+    """
+    隔离提供商解析和 HTTP 客户端，所有温度验证禁止真实网络请求。
+    """
     runtime = SimpleNamespace(resolve_runtime=AsyncMock(return_value={
         "provider_id": "openai",
         "runtime": "openai_compatible",
@@ -32,11 +36,15 @@ def offline_runtime(monkeypatch):
     clients = []
 
     def reject_request(_request):
-        """拒绝任何意外的提供商网络调用。"""
+        """
+        拒绝任何意外的提供商网络调用。
+        """
         raise AssertionError("温度序列化测试不得发起外部请求")
 
     def make_client(_proxy, *, async_client=False):
-        """创建只经过离线传输器的同步或异步客户端。"""
+        """
+        创建只经过离线传输器的同步或异步客户端。
+        """
         client_type = httpx.AsyncClient if async_client else httpx.Client
         client = client_type(transport=httpx.MockTransport(reject_request))
         clients.append(client)
@@ -65,7 +73,9 @@ def offline_runtime(monkeypatch):
 def test_llm_payload_omits_empty_temperature(
     monkeypatch, offline_runtime, protocol, saved, override, expected,
 ) -> None:
-    """两个 OpenAI 协议均省略空温度，并保留显式零及未覆盖的已保存值。"""
+    """
+    两个 OpenAI 协议均省略空温度，并保留显式零及未覆盖的已保存值。
+    """
     original_setting = helper.get_runtime_setting
     monkeypatch.setattr(
         helper, "get_runtime_setting",
@@ -88,7 +98,9 @@ def test_llm_payload_omits_empty_temperature(
 
 @pytest.fixture
 def _native_google_defaults(monkeypatch):
-    """原生默认值测试恢复 SDK 世代判断，隔离其它签名兼容测试留下的全局补丁。"""
+    """
+    原生默认值测试恢复 SDK 世代判断，隔离其它签名兼容测试留下的全局补丁。
+    """
     monkeypatch.setattr(_google_models, "_is_gemini_3_or_later", _NATIVE_GEMINI_GENERATION)
 
 
@@ -97,7 +109,9 @@ def _native_google_defaults(monkeypatch):
 def test_google_empty_temperature_uses_sdk_default(
     monkeypatch, offline_runtime, model_name, temperature, _native_google_defaults,
 ) -> None:
-    """原生 Google SDK 不接受 None，留空须保留其模型默认值且显式零仍有效。"""
+    """
+    原生 Google SDK 不接受 None，留空须保留其模型默认值且显式零仍有效。
+    """
     from langchain_google_genai import chat_models
 
     offline_runtime.resolve_runtime.return_value.update(
@@ -119,7 +133,9 @@ def test_google_empty_temperature_uses_sdk_default(
 
 @pytest.mark.parametrize("override", [{}, {"temperature": None}, {"temperature": 0}])
 def test_llm_test_preserves_temperature_presence(monkeypatch, override) -> None:
-    """连接测试区分未传温度与显式留空，避免清空草稿沿用旧配置。"""
+    """
+    连接测试区分未传温度与显式留空，避免清空草稿沿用旧配置。
+    """
     get_model = AsyncMock(return_value=SimpleNamespace(
         ainvoke=AsyncMock(return_value=SimpleNamespace(content="OK")),
     ))
@@ -138,7 +154,9 @@ def test_llm_test_preserves_temperature_presence(monkeypatch, override) -> None:
 
 @pytest.mark.parametrize("override", [{}, {"temperature": None}, {"temperature": 0}])
 def test_provider_test_preserves_temperature_presence(monkeypatch, override) -> None:
-    """管理 API 原样保留温度是否出现及其空值，不借用已保存温度。"""
+    """
+    管理 API 原样保留温度是否出现及其空值，不借用已保存温度。
+    """
     manager = LLMProviderManager()
     monkeypatch.setattr(manager, "get_saved_auth", lambda _provider: None)
     monkeypatch.setattr(manager, "get_provider", lambda _provider: SimpleNamespace(oauth_methods=()))

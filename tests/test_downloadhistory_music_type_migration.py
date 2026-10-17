@@ -1,3 +1,7 @@
+"""
+验证下载历史迁移从音乐备注回填音乐类型。
+"""
+
 import importlib
 
 import sqlalchemy as sa
@@ -6,7 +10,9 @@ from alembic.operations import Operations
 
 
 def test_downloadhistory_music_type_migration_backfills_music_notes(monkeypatch) -> None:
-    """迁移应新增实体字段，并从版本化音乐备注中回填旧记录。"""
+    """
+    迁移应新增实体字段，并从版本化音乐备注中回填旧记录。
+    """
     migration = importlib.import_module(
         "database.versions.6f9a1c2d3e4b_3_0_1"
     )

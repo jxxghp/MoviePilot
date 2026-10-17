@@ -1,4 +1,6 @@
-"""业务活动 API 概要、按需详情和鉴权边界测试。"""
+"""
+业务活动 API 概要、按需详情和鉴权边界测试。
+"""
 
 from types import SimpleNamespace
 from uuid import uuid4
@@ -13,19 +15,25 @@ from app.application.subscription.activity import SubscriptionActivity
 
 
 def _client():
-    """装配真实响应路由与可核验归属参数的活动端口。"""
+    """
+    装配真实响应路由与可核验归属参数的活动端口。
+    """
     event = SubscriptionActivity(uuid4().hex, uuid4().hex, "refresh", "automatic", "empty", "2026-10-12T01:00:00Z",
                                  details={"reason": "没有相关资源", "resources": [{"title": "Example", "decision": "rejected"}], "rules": {"resolution": "2160p"}},
                                  tracking={"related": ["private-internal-key"]})
     calls = []
 
     async def list_accessible(subscription_id, username, superuser, **query):
-        """普通用户读取其他订阅时与不存在返回相同结果。"""
+        """
+        普通用户读取其他订阅时与不存在返回相同结果。
+        """
         calls.append((subscription_id, username, superuser, query))
         return ([event], None) if subscription_id == 1 else None
 
     async def get_accessible(subscription_id, event_id, username, superuser, **query):
-        """按订阅和事件的共同身份返回完整详情。"""
+        """
+        按订阅和事件的共同身份返回完整详情。
+        """
         calls.append((subscription_id, username, superuser, query))
         return event if subscription_id == 1 and event_id == event.event_id else None
 
@@ -38,7 +46,9 @@ def _client():
 
 
 def test_activity_api_requires_authentication_and_validates_queries():
-    """概要和详情均需登录，类型、时间范围和游标必须验证。"""
+    """
+    概要和详情均需登录，类型、时间范围和游标必须验证。
+    """
     client, app, event, _calls = _client()
     assert client.get("/subscribe/1/activity").status_code == 401
     assert client.get(f"/subscribe/1/activity/{event.event_id}").status_code == 401
@@ -48,7 +58,9 @@ def test_activity_api_requires_authentication_and_validates_queries():
 
 
 def test_activity_summary_is_lightweight_and_details_are_owner_scoped():
-    """列表只含概要，完整详情不含内部身份或去重键且使用相同归属校验。"""
+    """
+    列表只含概要，完整详情不含内部身份或去重键且使用相同归属校验。
+    """
     client, app, event, calls = _client()
     app.dependency_overrides[get_current_active_user_async] = lambda: SimpleNamespace(name="owner", is_superuser=False)
     response = client.get("/subscribe/1/activity?history=true&days=7&kind=refresh")

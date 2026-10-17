@@ -1,4 +1,5 @@
-"""OpenAI 兼容请求中函数工具参数 schema 的规整契约测试。
+"""
+OpenAI 兼容请求中函数工具参数 schema 的规整契约测试。
 
 Pydantic 为 `Optional[T]` 字段生成不带顶层 `type` 的 `anyOf`；把 OpenAI tools
 转成 Gemini `functionDeclaration` 的网关不处理 `anyOf`，整次 Agent 请求会被 400
@@ -33,10 +34,14 @@ _TOOL_INPUTS = {
 
 
 def _build_model(model_name: str, **kwargs: Any) -> ChatOpenAI:
-    """构造带独立补丁的 ChatOpenAI 子类实例，避免修补真实类或跨用例残留。"""
+    """
+    构造带独立补丁的 ChatOpenAI 子类实例，避免修补真实类或跨用例残留。
+    """
 
     class _PatchedChatOpenAI(ChatOpenAI):
-        """承载本用例工具 schema 补丁的模型类。"""
+        """
+        承载本用例工具 schema 补丁的模型类。
+        """
 
     llm_module._patch_tool_schema_request_support(
         _PatchedChatOpenAI,
@@ -51,10 +56,14 @@ def _build_model(model_name: str, **kwargs: Any) -> ChatOpenAI:
 
 
 def _build_tools() -> list[StructuredTool]:
-    """用真实 Agent 工具入参模型构造 LangChain 工具。"""
+    """
+    用真实 Agent 工具入参模型构造 LangChain 工具。
+    """
 
     async def _noop(**_kwargs: Any) -> str:
-        """提供构造工具所需的离线执行入口。"""
+        """
+        提供构造工具所需的离线执行入口。
+        """
         return ""
 
     return [
@@ -69,7 +78,9 @@ def _build_tools() -> list[StructuredTool]:
 
 
 def _request_tools(model: ChatOpenAI, **bind_kwargs: Any) -> tuple[list[dict], list[dict]]:
-    """返回绑定后的原始工具定义与请求 payload 中的最终工具定义。"""
+    """
+    返回绑定后的原始工具定义与请求 payload 中的最终工具定义。
+    """
     bound = model.bind_tools(_build_tools(), **bind_kwargs)
     bound_tools = bound.kwargs["tools"]
     snapshot = copy.deepcopy(bound_tools)
@@ -79,7 +90,9 @@ def _request_tools(model: ChatOpenAI, **bind_kwargs: Any) -> tuple[list[dict], l
 
 
 def _parameters(tools: list[dict], name: str) -> dict:
-    """按名称取 Chat Completions 或 Responses 格式工具的参数 schema。"""
+    """
+    按名称取 Chat Completions 或 Responses 格式工具的参数 schema。
+    """
     for tool in tools:
         function = tool.get("function", tool)
         if function.get("name") == name:
@@ -88,7 +101,9 @@ def _parameters(tools: list[dict], name: str) -> dict:
 
 
 def _iter_schema_nodes(schema: dict, path: str = ""):
-    """遍历 properties/items/additionalProperties 位置上的全部 schema 节点。"""
+    """
+    遍历 properties/items/additionalProperties 位置上的全部 schema 节点。
+    """
     for name, child in (schema.get("properties") or {}).items():
         yield f"{path}.{name}", child
         yield from _iter_schema_nodes(child, f"{path}.{name}")
@@ -109,7 +124,9 @@ def test_non_gemini_requests_preserve_nullable_tool_parameters(
     use_responses_api: bool,
     bind_kwargs: dict[str, Any],
 ) -> None:
-    """两种协议的非 Gemini 工具保留可空语义，不依赖上游是否自动启用 strict。"""
+    """
+    两种协议的非 Gemini 工具保留可空语义，不依赖上游是否自动启用 strict。
+    """
     model = _build_model("gpt-4o", use_responses_api=use_responses_api)
     bound_tools, tools = _request_tools(model, **bind_kwargs)
 
@@ -124,7 +141,9 @@ def test_non_gemini_requests_preserve_nullable_tool_parameters(
 
 
 def test_optional_fields_collapse_to_single_type_for_gemini_models() -> None:
-    """Gemini 的 Optional[T] 字段折叠为 T，保留字段描述、默认值与分支约束。"""
+    """
+    Gemini 的 Optional[T] 字段折叠为 T，保留字段描述、默认值与分支约束。
+    """
     _, tools = _request_tools(_build_model("gemini-2.5-flash"))
 
     skill = _parameters(tools, "read_skill")
@@ -147,7 +166,9 @@ def test_optional_fields_collapse_to_single_type_for_gemini_models() -> None:
 
 
 def test_true_unions_keep_their_semantics_for_non_gemini_models() -> None:
-    """非 Gemini 模型的多类型联合及 null 分支保持原样。"""
+    """
+    非 Gemini 模型的多类型联合及 null 分支保持原样。
+    """
     bound_tools, tools = _request_tools(_build_model("gpt-4o"))
 
     body = _parameters(tools, "moviepilot_api")["properties"]["body"]
@@ -166,7 +187,9 @@ def test_every_schema_node_is_typed_for_gemini_models(
     model_name: str,
     use_responses_api: bool,
 ) -> None:
-    """Gemini 模型的每个参数节点都必须带 type，且不再依赖 anyOf/oneOf。"""
+    """
+    Gemini 模型的每个参数节点都必须带 type，且不再依赖 anyOf/oneOf。
+    """
     _, tools = _request_tools(_build_model(model_name, use_responses_api=use_responses_api))
 
     for name in _TOOL_INPUTS:
@@ -181,7 +204,9 @@ def test_every_schema_node_is_typed_for_gemini_models(
 
 
 def test_responses_api_function_tools_are_normalized() -> None:
-    """Responses API 的扁平函数工具格式同样在上线前规整。"""
+    """
+    Responses API 的扁平函数工具格式同样在上线前规整。
+    """
     model = _build_model("gemini-2.5-flash", use_responses_api=True)
 
     _, tools = _request_tools(model)
@@ -194,7 +219,9 @@ def test_responses_api_function_tools_are_normalized() -> None:
 
 @pytest.mark.parametrize("use_responses_api", [False, True], ids=["chat", "responses"])
 def test_strict_tools_are_left_unchanged(use_responses_api: bool) -> None:
-    """strict 工具依赖 anyOf 表达可空必填字段，规整不得改变其语义。"""
+    """
+    strict 工具依赖 anyOf 表达可空必填字段，规整不得改变其语义。
+    """
     model = _build_model("gemini-2.5-flash", use_responses_api=use_responses_api)
     bound_tools, tools = _request_tools(model, strict=True)
 
@@ -204,10 +231,14 @@ def test_strict_tools_are_left_unchanged(use_responses_api: bool) -> None:
 
 
 def test_normalization_is_idempotent_when_patched_twice() -> None:
-    """重复修补同一模型类不会重复包装请求构造。"""
+    """
+    重复修补同一模型类不会重复包装请求构造。
+    """
 
     class _PatchedChatOpenAI(ChatOpenAI):
-        """验证修补标记的模型类。"""
+        """
+        验证修补标记的模型类。
+        """
 
     llm_module._patch_tool_schema_request_support(_PatchedChatOpenAI, patch_marker=_PATCH_MARKER)
     patched = _PatchedChatOpenAI._get_request_payload
@@ -217,18 +248,26 @@ def test_normalization_is_idempotent_when_patched_twice() -> None:
 
 
 def test_openai_runtime_applies_tool_schema_patch(monkeypatch) -> None:
-    """OpenAI 兼容运行时构造的模型类必须挂上工具 schema 规整。"""
+    """
+    OpenAI 兼容运行时构造的模型类必须挂上工具 schema 规整。
+    """
 
     class _FakeChatOpenAI:
-        """隔离模型初始化，只保留请求补丁需要的最小接口。"""
+        """
+        隔离模型初始化，只保留请求补丁需要的最小接口。
+        """
 
         def __init__(self, **kwargs: Any) -> None:
-            """记录模型身份与工具调用能力。"""
+            """
+            记录模型身份与工具调用能力。
+            """
             self.model_name = kwargs["model"]
             self.profile = {"tool_calling": True}
 
         def _get_request_payload(self, input_, *, stop=None, **kwargs):
-            """返回工具定义，让真实补丁处理出站参数。"""
+            """
+            返回工具定义，让真实补丁处理出站参数。
+            """
             return {"tools": kwargs.get("tools", [])}
 
     monkeypatch.setitem(sys.modules, "langchain_openai", SimpleNamespace(ChatOpenAI=_FakeChatOpenAI))

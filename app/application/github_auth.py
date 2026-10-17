@@ -1,4 +1,6 @@
-"""GitHub Token 授权与持久化应用服务。"""
+"""
+GitHub Token 授权与持久化应用服务。
+"""
 
 from __future__ import annotations
 
@@ -22,17 +24,28 @@ from app.schemas.types import SystemConfigKey
 
 
 class GithubAuthError(RuntimeError):
-    """表示 GitHub 授权流程或本地 Token 持久化失败。"""
+    """
+    表示 GitHub 授权流程或本地 Token 持久化失败。
+    """
 
     def __init__(self, message: str, *, unauthorized: bool = False) -> None:
-        """保存面向接口层的错误信息及是否为 Token 失效。"""
+        """
+        保存面向接口层的错误信息及是否为 Token 失效。
+        """
         super().__init__(message)
         self.unauthorized = unauthorized
 
 
 @dataclass(slots=True)
 class _PendingDeviceSession:
-    """进程内设备授权会话，不保存任何用户 Token。"""
+    """
+    进程内设备授权会话，不保存任何用户 Token。
+
+    :param device_code: GitHub 分配的设备授权代码，仅用于后端轮询
+    :param expires_at: 本地授权会话过期的 Unix 时间戳，单位为秒
+    :param interval_seconds: 服务端要求的最小轮询间隔，单位为秒
+    :param next_poll_at: 下次允许轮询的 Unix 时间戳，单位为秒；0 表示尚未安排
+    """
 
     device_code: str
     expires_at: float
@@ -42,7 +55,17 @@ class _PendingDeviceSession:
 
 @dataclass(frozen=True, slots=True)
 class GithubAuthStatus:
-    """返回给 API 层的 GitHub Token 状态摘要。"""
+    """
+    返回给 API 层的 GitHub Token 状态摘要。
+
+    :param configured: 是否已配置访问 Token
+    :param valid: True 表示验证有效，False 表示已失效，None 表示未验证或暂时无法判断
+    :param source: Token 来源：oauth 为设备授权、manual 为手工配置，未配置时为 None
+    :param login: 授权的 GitHub 登录名，未知时为 None
+    :param masked_token: 供设置页展示的脱敏 Token，未配置时为 None
+    :param expires_at: Token 过期的 Unix 时间戳，单位为秒；未知时为 None
+    :param needs_reauthorization: Token 失效或授权范围不足时是否需要用户重新授权
+    """
 
     configured: bool
     valid: bool | None
@@ -55,7 +78,15 @@ class GithubAuthStatus:
 
 @dataclass(frozen=True, slots=True)
 class GithubDeviceAuthStartResult:
-    """设备授权启动后供前端展示的操作数据。"""
+    """
+    设备授权启动后供前端展示的操作数据。
+
+    :param session_id: 宿主生成的本地授权会话标识，供后续轮询使用
+    :param verification_uri: 用户打开并输入授权码的 GitHub 页面地址
+    :param user_code: 向用户展示的设备授权短码
+    :param expires_in: 设备授权有效时长，单位为秒
+    :param interval_seconds: 允许的最小轮询间隔，单位为秒
+    """
 
     session_id: str
     verification_uri: str
@@ -66,7 +97,14 @@ class GithubDeviceAuthStartResult:
 
 @dataclass(frozen=True, slots=True)
 class GithubDeviceAuthPollResult:
-    """设备授权轮询的阶段结果。"""
+    """
+    设备授权轮询的阶段结果。
+
+    :param state: 轮询阶段：pending、slow_down、authorized、denied、expired 或 failed
+    :param message: 向用户说明当前阶段或失败原因的文本
+    :param retry_after: 建议等待后再次轮询的秒数，None 表示无需提供等待时间
+    :param status: 授权成功后的 Token 状态，尚未成功时为 None
+    """
 
     state: str
     message: str = ""
@@ -75,7 +113,9 @@ class GithubDeviceAuthPollResult:
 
 
 class GithubAuthService:
-    """编排 GitHub Device Flow、Token 刷新、状态校验和安全持久化。"""
+    """
+    编排 GitHub Device Flow、Token 刷新、状态校验和安全持久化。
+    """
 
     _AUTH_CONFIG_KEY = SystemConfigKey.GithubAuth
     _POLL_PENDING = "authorization_pending"
@@ -92,7 +132,9 @@ class GithubAuthService:
         client_id: str,
         clock: Callable[[], float] = time.time,
     ) -> None:
-        """注入部署设置、系统配置、GitHub 传输端口和可测试时钟。"""
+        """
+        注入部署设置、系统配置、GitHub 传输端口和可测试时钟。
+        """
         self._settings = settings
         self._system_config = system_config
         self._transport = transport
@@ -102,7 +144,9 @@ class GithubAuthService:
         self._pending_sessions: dict[str, _PendingDeviceSession] = {}
 
     async def start_device_auth(self) -> GithubDeviceAuthStartResult:
-        """申请 Issue、PR 和 GitHub 工作流操作所需的设备码授权会话。"""
+        """
+        申请 Issue、PR 和 GitHub 工作流操作所需的设备码授权会话。
+        """
         try:
             device = await self._transport.request_device_code(
                 self._client_id,
@@ -131,7 +175,9 @@ class GithubAuthService:
         )
 
     async def poll_device_auth(self, session_id: str) -> GithubDeviceAuthPollResult:
-        """按 GitHub 要求的频率轮询设备码，并在成功后保存 Token。"""
+        """
+        按 GitHub 要求的频率轮询设备码，并在成功后保存 Token。
+        """
         now = self._clock()
         async with self._lock:
             session = self._pending_sessions.get(session_id)
@@ -163,7 +209,8 @@ class GithubAuthService:
                 await self._save_oauth_token(exchange, github_user)
             except GithubAuthError:
                 raise
-            except Exception as error:  # noqa: BLE001 - 外部响应仅转换为授权错误
+            # 外部响应仅转换为授权错误
+            except Exception as error:  # noqa: BLE001
                 raise GithubAuthError("GitHub Token 校验失败，请稍后重试。") from error
             async with self._lock:
                 self._pending_sessions.pop(session_id, None)
@@ -212,7 +259,9 @@ class GithubAuthService:
         )
 
     async def status(self) -> GithubAuthStatus:
-        """返回脱敏状态，并在 OAuth Token 临近过期时尝试刷新。"""
+        """
+        返回脱敏状态，并在 OAuth Token 临近过期时尝试刷新。
+        """
         token = self._read_access_token()
         metadata = self._read_auth_metadata()
         if not token:
@@ -248,7 +297,8 @@ class GithubAuthService:
         except GithubAuthTransportError as error:
             valid = False if error.unauthorized else None
             needs_reauthorization = needs_reauthorization or error.unauthorized
-        except Exception:  # noqa: BLE001 - 网络暂不可达不应让设置页误清 Token
+        # 网络暂不可达不应让设置页误清 Token
+        except Exception:  # noqa: BLE001
             valid = None
 
         return GithubAuthStatus(
@@ -262,7 +312,9 @@ class GithubAuthService:
         )
 
     async def access_token(self) -> str:
-        """为受信任的服务端 GitHub 用例提供可刷新凭据，禁止投影到 API。"""
+        """
+        为受信任的服务端 GitHub 用例提供可刷新凭据，禁止投影到 API。
+        """
         token = self._read_access_token()
         metadata = self._read_auth_metadata()
         if token and metadata:
@@ -270,7 +322,9 @@ class GithubAuthService:
         return token
 
     async def set_manual_token(self, token: str) -> GithubAuthStatus:
-        """保存手动 Token 并清理旧 OAuth 元数据，兼容原有 PAT 配置方式。"""
+        """
+        保存手动 Token 并清理旧 OAuth 元数据，兼容原有 PAT 配置方式。
+        """
         normalized = token.strip()
         if not normalized:
             raise GithubAuthError("GitHub Token 不能为空")
@@ -281,14 +335,18 @@ class GithubAuthService:
         return await self.status()
 
     async def clear_token(self) -> None:
-        """清除 GitHub Token 和 OAuth 刷新元数据。"""
+        """
+        清除 GitHub Token 和 OAuth 刷新元数据。
+        """
         success, message = self._settings.update("GITHUB_TOKEN", None)
         if success is False:
             raise GithubAuthError(message or "GitHub Token 清除失败")
         await self.forget_oauth_metadata()
 
     async def forget_oauth_metadata(self) -> None:
-        """清除 OAuth 元数据但保留当前部署设置中的 Token 值。"""
+        """
+        清除 OAuth 元数据但保留当前部署设置中的 Token 值。
+        """
         await self._system_config.async_delete(self._AUTH_CONFIG_KEY)
 
     async def _save_oauth_token(
@@ -296,7 +354,9 @@ class GithubAuthService:
         exchange: GithubTokenExchange,
         github_user: GithubUser,
     ) -> None:
-        """安全写入访问 Token，并将刷新信息保存到受保护的系统配置。"""
+        """
+        安全写入访问 Token，并将刷新信息保存到受保护的系统配置。
+        """
         if not exchange.access_token:
             raise GithubAuthError("GitHub 未返回访问 Token")
         success, message = self._settings.update(
@@ -322,7 +382,9 @@ class GithubAuthService:
         token: str,
         metadata: dict[str, Any],
     ) -> tuple[str, dict[str, Any], bool]:
-        """在过期窗口内刷新 OAuth Token，失败时保留原值供诊断和重试。"""
+        """
+        在过期窗口内刷新 OAuth Token，失败时保留原值供诊断和重试。
+        """
         expires_at = self._as_int(metadata.get("expires_at"))
         if expires_at is None or expires_at > int(self._clock()) + 60:
             return token, metadata, False
@@ -357,7 +419,9 @@ class GithubAuthService:
         return exchange.access_token, refreshed_metadata, False
 
     async def _session_interval(self, session_id: str) -> int:
-        """读取会话当前轮询间隔，并在会话刚过期时返回最小等待值。"""
+        """
+        读取会话当前轮询间隔，并在会话刚过期时返回最小等待值。
+        """
         async with self._lock:
             session = self._pending_sessions.get(session_id)
             if session is None:
@@ -365,7 +429,9 @@ class GithubAuthService:
             return max(session.interval_seconds, 1)
 
     async def _increase_session_interval(self, session_id: str) -> int:
-        """处理 GitHub slow_down 响应并增加后续轮询间隔。"""
+        """
+        处理 GitHub slow_down 响应并增加后续轮询间隔。
+        """
         async with self._lock:
             session = self._pending_sessions.get(session_id)
             if session is None:
@@ -375,35 +441,47 @@ class GithubAuthService:
             return session.interval_seconds
 
     async def _remove_session(self, session_id: str) -> None:
-        """移除一个已经结束的设备授权会话。"""
+        """
+        移除一个已经结束的设备授权会话。
+        """
         async with self._lock:
             self._pending_sessions.pop(session_id, None)
 
     def _cleanup_sessions_locked(self, now: float) -> None:
-        """在设备码申请时清理已经过期的内存会话。"""
+        """
+        在设备码申请时清理已经过期的内存会话。
+        """
         for session_id, session in list(self._pending_sessions.items()):
             if session.expires_at <= now:
                 del self._pending_sessions[session_id]
 
     def _read_access_token(self) -> str:
-        """读取部署设置中的访问 Token 并去除空白。"""
+        """
+        读取部署设置中的访问 Token 并去除空白。
+        """
         return str(self._settings.get("GITHUB_TOKEN") or "").strip()
 
     def _read_auth_metadata(self) -> dict[str, Any]:
-        """读取 OAuth 元数据的深拷贝，避免修改配置缓存中的对象。"""
+        """
+        读取 OAuth 元数据的深拷贝，避免修改配置缓存中的对象。
+        """
         value = self._system_config.get(self._AUTH_CONFIG_KEY)
         return copy.deepcopy(value) if isinstance(value, dict) else {}
 
     @staticmethod
     def _mask_token(token: str) -> str:
-        """生成不含可用凭据的 Token 摘要。"""
+        """
+        生成不含可用凭据的 Token 摘要。
+        """
         if len(token) <= 8:
             return f"{token[:2]}…"
         return f"{token[:4]}…{token[-4:]}"
 
     @staticmethod
     def _as_int(value: Any) -> int | None:
-        """把外部 OAuth 元数据中的时间字段规范化为整数。"""
+        """
+        把外部 OAuth 元数据中的时间字段规范化为整数。
+        """
         try:
             return int(value) if value is not None else None
         except (TypeError, ValueError):

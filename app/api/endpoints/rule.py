@@ -1,4 +1,6 @@
-"""过滤规则和规则组管理 API。"""
+"""
+过滤规则和规则组管理 API。
+"""
 
 from typing import Annotated, Any, Optional
 
@@ -38,7 +40,9 @@ router = ResponseAPIRouter()
 
 
 def _service(runtime: HostRuntime) -> FilterRuleService:
-    """从宿主组合根收窄出规则 API 所需端口。"""
+    """
+    从宿主组合根收窄出规则 API 所需端口。
+    """
     return FilterRuleService(
         runtime.agent.subscriptions,
         runtime.agent.async_rule_group_mutation_scope,
@@ -56,14 +60,15 @@ async def query_builtin_rules(
         Optional[list[str]],
         Query(
             description=(
-                "Exact built-in rule IDs to return. Repeat rule_ids in the query string; "
-                "omit it to list every built-in rule."
+                "要返回的内置规则标识；可在查询字符串中重复传入 rule_ids，省略时列出全部内置规则。"
             )
         ),
     ] = None,
     _: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> _SchemaResponse[Any]:
-    """返回内置规则及规则串语法。"""
+    """
+    返回内置规则及规则串语法。
+    """
     return _SchemaResponse(
         success=True,
         data=FilterRuleService.query_builtin(rule_ids),
@@ -80,15 +85,16 @@ async def query_custom_rules(
         Optional[list[str]],
         Query(
             description=(
-                "Exact custom rule IDs to return. Repeat rule_ids in the query string; "
-                "omit it to list every custom rule."
+                "要返回的自定义规则标识；可在查询字符串中重复传入 rule_ids，省略时列出全部自定义规则。"
             )
         ),
     ] = None,
     include_group_refs: bool = True,
     _: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> _SchemaResponse[Any]:
-    """返回自定义规则和可选规则组引用。"""
+    """
+    返回自定义规则和可选规则组引用。
+    """
     return _SchemaResponse(
         success=True,
         data=FilterRuleService.query_custom(
@@ -108,8 +114,7 @@ async def query_rule_groups(
         Optional[list[str]],
         Query(
             description=(
-                "Exact rule-group names to return. Repeat group_names in the query string; "
-                "omit it to list every group."
+                "要返回的规则组名称；可在查询字符串中重复传入 group_names，省略时列出全部规则组。"
             )
         ),
     ] = None,
@@ -117,7 +122,9 @@ async def query_rule_groups(
     _: ApiPrincipal = Depends(get_current_active_user_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """返回规则组、解析层级和可选引用位置。"""
+    """
+    返回规则组、解析层级和可选引用位置。
+    """
     return _SchemaResponse(
         success=True,
         data=await _service(runtime).query_groups(
@@ -137,7 +144,9 @@ async def add_custom_rule(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """校验并新增一条自定义过滤规则。"""
+    """
+    校验并新增一条自定义过滤规则。
+    """
     try:
         data = await _service(runtime).add_custom(**payload.model_dump())
     except ValueError as error:
@@ -155,7 +164,9 @@ async def reorder_custom_rules(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """只调整现有自定义规则顺序并拒绝过期集合覆盖。"""
+    """
+    只调整现有自定义规则顺序并拒绝过期集合覆盖。
+    """
     try:
         data = await _service(runtime).reorder_custom(
             payload.rule_ids,
@@ -177,7 +188,9 @@ async def update_custom_rule(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """更新自定义规则并在改名时原子重写引用。"""
+    """
+    更新自定义规则并在改名时原子重写引用。
+    """
     try:
         data = await _service(runtime).update_custom(
             current_rule_id=rule_id,
@@ -198,7 +211,9 @@ async def delete_custom_rule(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """删除一条未被规则组引用的自定义过滤规则。"""
+    """
+    删除一条未被规则组引用的自定义过滤规则。
+    """
     try:
         data = await _service(runtime).delete_custom(rule_id)
     except ValueError as error:
@@ -216,7 +231,9 @@ async def add_rule_group(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """新增一个已经完成语法与引用校验的规则组。"""
+    """
+    新增一个已经完成语法与引用校验的规则组。
+    """
     try:
         data = await _service(runtime).add_group(**payload.model_dump())
     except ValueError as error:
@@ -234,7 +251,9 @@ async def reorder_rule_groups(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """只调整现有规则组顺序并拒绝过期集合覆盖。"""
+    """
+    只调整现有规则组顺序并拒绝过期集合覆盖。
+    """
     try:
         data = await _service(runtime).reorder_groups(
             payload.group_names,
@@ -256,7 +275,9 @@ async def update_rule_group(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """更新规则组并原子重写全部名称引用。"""
+    """
+    更新规则组并原子重写全部名称引用。
+    """
     try:
         data = await _service(runtime).update_group(
             current_name=name,
@@ -277,7 +298,9 @@ async def delete_rule_group(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """删除规则组并原子清理全部全局和订阅引用。"""
+    """
+    删除规则组并原子清理全部全局和订阅引用。
+    """
     try:
         data = await _service(runtime).delete_group(name)
     except ValueError as error:

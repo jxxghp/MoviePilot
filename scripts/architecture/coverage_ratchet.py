@@ -1,4 +1,6 @@
-"""检查除官方插件外全部 app Python 文件的覆盖率低水位。"""
+"""
+检查除官方插件外全部 app Python 文件的覆盖率低水位。
+"""
 
 from __future__ import annotations
 
@@ -13,27 +15,35 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = PROJECT_ROOT / "coverage.json"
 DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/coverage-baseline.json"
+# 第 2 版覆盖率快照以逐文件计数为准，同时保留包级和全量摘要。
 SCHEMA_VERSION = 2
 SCOPE_ROOT = "app"
 EXCLUDED_PREFIXES = ("app/plugins/",)
+# 新受治理文件必须覆盖至少 80% 的可执行语句。
 NEW_FILE_COVERAGE_PERCENT = 80.0
 _METRIC_FIELDS = {"statements", "covered_lines", "percent"}
 
 
 def _non_negative_int(value: object, *, field: str) -> int:
-    """读取 coverage 整数计数，拒绝 bool、字符串和负值。"""
+    """
+    读取 coverage 整数计数，拒绝 bool、字符串和负值。
+    """
     if type(value) is not int or value < 0:
         raise ValueError(f"{field} 必须是非负整数")
     return value
 
 
 def _normalise_path(path: str) -> str:
-    """将 coverage.py 的路径统一为仓库相对 POSIX 路径。"""
+    """
+    将 coverage.py 路径中的反斜杠统一为 POSIX 分隔符。
+    """
     return path.replace("\\", "/")
 
 
 def _is_governed_path(path: str) -> bool:
-    """判断路径是否属于 app 且不在官方插件目录。"""
+    """
+    判断路径是否属于 app 且不在官方插件目录。
+    """
     normalised = _normalise_path(path)
     return (
         normalised.startswith("app/")
@@ -46,7 +56,9 @@ def _is_governed_path(path: str) -> bool:
 
 
 def _metric(statements: int, covered: int) -> dict[str, int | float]:
-    """根据 coverage.py 计数构造稳定的逐文件覆盖率记录。"""
+    """
+    根据 coverage.py 计数构造稳定的逐文件覆盖率记录。
+    """
     percent = round(covered * 100 / statements, 2) if statements else 0.0
     return {"statements": statements, "covered_lines": covered, "percent": percent}
 
@@ -54,7 +66,9 @@ def _metric(statements: int, covered: int) -> dict[str, int | float]:
 def _validate_metric(
     values: object, *, name: str, allow_zero: bool = True
 ) -> list[str]:
-    """校验一条覆盖率记录的字段、计数边界和派生百分比。"""
+    """
+    校验一条覆盖率记录的字段、计数边界和派生百分比。
+    """
     problems: list[str] = []
     if not isinstance(values, Mapping):
         return [f"{name}: 覆盖率数据必须是对象"]
@@ -92,14 +106,18 @@ def _validate_metric(
 def _aggregate(
     metrics: Mapping[str, Mapping[str, int | float]],
 ) -> dict[str, int | float]:
-    """按真实语句数聚合逐文件覆盖率，避免平均百分比失真。"""
+    """
+    按真实语句数聚合逐文件覆盖率，避免平均百分比失真。
+    """
     statements = sum(int(values["statements"]) for values in metrics.values())
     covered = sum(int(values["covered_lines"]) for values in metrics.values())
     return _metric(statements, covered)
 
 
 def _package_name(path: str) -> str:
-    """返回 app 文件对应的一级包名。"""
+    """
+    返回 app 文件对应的一级包名。
+    """
     relative = path.removeprefix("app/")
     return relative.split("/", 1)[0] if "/" in relative else "__root__"
 
@@ -107,7 +125,9 @@ def _package_name(path: str) -> str:
 def _snapshot_from_files(
     files: dict[str, dict[str, int | float]],
 ) -> dict[str, Any]:
-    """从逐文件记录构造带包级和全量摘要的快照。"""
+    """
+    从逐文件记录构造带包级和全量摘要的快照。
+    """
     package_files: dict[str, dict[str, dict[str, int | float]]] = {}
     for path, values in files.items():
         package_files.setdefault(_package_name(path), {})[path] = values
@@ -125,7 +145,13 @@ def _snapshot_from_files(
 
 
 def collect_package_coverage(report: dict[str, Any]) -> dict[str, Any]:
-    """收集全部受治理文件，并附带一级包与全量聚合摘要。"""
+    """
+    收集全部受治理文件，并附带一级包与全量聚合摘要。
+
+    :param report: coverage.py 导出的 JSON 报告，必须含有效的 files 对象
+    :return: 按文件、一级包和全部源码汇总的覆盖率快照
+    :raises ValueError: 报告结构、文件路径或计数不符合要求
+    """
     if not isinstance(report, Mapping):
         raise ValueError("coverage JSON 顶层必须是对象")
     files = report.get("files")
@@ -157,7 +183,13 @@ def collect_package_coverage(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_coverage(current: object, *, require_data: bool = False) -> list[str]:
-    """拒绝超出治理范围、字段不完整或计数与百分比不一致的快照。"""
+    """
+    拒绝超出治理范围、字段不完整或计数与百分比不一致的快照。
+
+    :param current: 待检查的覆盖率快照
+    :param require_data: 是否拒绝空快照或没有可执行语句的数据
+    :return: 格式与计数错误列表；空列表表示有效
+    """
     problems: list[str] = []
     if not isinstance(current, Mapping):
         return ["覆盖率快照必须是对象"]
@@ -211,7 +243,9 @@ def validate_coverage(current: object, *, require_data: bool = False) -> list[st
 def _file_ratio_is_lower(
     previous: Mapping[str, int | float], current: Mapping[str, int | float]
 ) -> bool:
-    """使用真实计数比较两个文件的覆盖率，避免四舍五入误判。"""
+    """
+    使用真实计数比较两个文件的覆盖率，避免四舍五入误判。
+    """
     previous_statements = int(previous["statements"])
     current_statements = int(current["statements"])
     if previous_statements == 0:
@@ -223,10 +257,31 @@ def _file_ratio_is_lower(
     ) * current_statements
 
 
+def _fewer_statements_without_new_misses(
+    previous: Mapping[str, int | float], current: Mapping[str, int | float]
+) -> bool:
+    """
+    允许语句减少且未覆盖行数不增加造成的比例下降。
+    """
+    previous_statements = int(previous["statements"])
+    current_statements = int(current["statements"])
+    return (
+        current_statements < previous_statements
+        and current_statements - int(current["covered_lines"])
+        <= previous_statements - int(previous["covered_lines"])
+    )
+
+
 def classify_coverage(
     baseline: Mapping[str, Any], current: Mapping[str, Any]
 ) -> tuple[list[str], list[str]]:
-    """拒绝存量文件覆盖率下降，并要求新文件达到 80%。"""
+    """
+    拒绝存量文件新增未覆盖行造成的回退，并要求新文件达到 80%。
+
+    :param baseline: 已确认的逐文件覆盖率低水位
+    :param current: 当前逐文件覆盖率快照
+    :return: 回退问题与可提升低水位的条目两个列表
+    """
     regressions: list[str] = []
     improvements: list[str] = []
     baseline_files = baseline.get("files", {})
@@ -245,7 +300,9 @@ def classify_coverage(
                 )
             else:
                 improvements.append(f"{path}: 新文件达到覆盖率门槛")
-        elif _file_ratio_is_lower(previous, values):
+        elif _file_ratio_is_lower(previous, values) and not _fewer_statements_without_new_misses(
+            previous, values
+        ):
             regressions.append(
                 f"{path}: 存量覆盖率下降 "
                 f"{float(previous['percent']):.2f}%->{float(values['percent']):.2f}%"
@@ -258,7 +315,9 @@ def classify_coverage(
 def compare_coverage(
     baseline: Mapping[str, Any], current: Mapping[str, Any]
 ) -> list[str]:
-    """返回存量覆盖率回退或新文件低于 80% 的问题。"""
+    """
+    返回存量覆盖率回退或新文件低于 80% 的问题。
+    """
     regressions, _ = classify_coverage(baseline, current)
     return regressions
 
@@ -266,7 +325,9 @@ def compare_coverage(
 def _merge_baseline(
     baseline: Mapping[str, Any], current: Mapping[str, Any]
 ) -> dict[str, Any]:
-    """只提升逐文件低水位，并移除已删除文件。"""
+    """
+    只提升逐文件低水位，并移除已删除文件。
+    """
     old_files = baseline.get("files", {})
     current_files = current["files"]
     merged: dict[str, Mapping[str, int | float]] = {}
@@ -282,7 +343,9 @@ def _merge_baseline(
 
 
 def main() -> int:
-    """检查 coverage JSON，或在无回退时显式刷新逐文件低水位。"""
+    """
+    检查 coverage JSON，或在无回退时显式刷新逐文件低水位。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="写入当前覆盖率低水位")
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)

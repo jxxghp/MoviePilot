@@ -1,12 +1,16 @@
-"""GitHub Token 授权接口的数据模型。"""
+"""
+GitHub Token 授权接口的数据模型。
+"""
 
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class GithubCommunityProfile(BaseModel):  # type: ignore[misc]
-    """实例 Token 对应 GitHub 用户的社区勋章快照，不包含凭据。
+    """
+    实例 Token 对应 GitHub 用户的社区勋章快照，不包含凭据。
 
     state 为 disabled 表示社区勋章对当前实例未生效：本机 COMMUNITY_MEDALS_ENABLE 关闭，或
     MoviePilot Server 未开放（全局开关关闭且当前 GitHub 用户不在预览名单、未登录 GitHub 或服务端
@@ -38,8 +42,11 @@ class GithubCommunityProfile(BaseModel):  # type: ignore[misc]
     stale: bool = Field(default=False, description="最近一次刷新失败，当前为同一 Token 的上次结果")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class GithubTokenStatus(BaseModel):  # type: ignore[misc]
-    """描述当前 GitHub Token 的可用状态，不包含 Token 原文。"""
+    """
+    描述当前 GitHub Token 的可用状态，不包含 Token 原文。
+    """
 
     configured: bool = Field(description="是否已配置 GitHub Token")
     valid: bool | None = Field(default=None, description="最近一次校验是否有效")
@@ -49,15 +56,18 @@ class GithubTokenStatus(BaseModel):  # type: ignore[misc]
     )
     login: str | None = Field(default=None, description="授权 GitHub 用户名")
     masked_token: str | None = Field(default=None, description="脱敏后的 Token 摘要")
-    expires_at: int | None = Field(default=None, description="Token 过期时间戳")
+    expires_at: int | None = Field(default=None, description="Token 过期的 Unix 时间戳，单位为秒；未知或无过期时间时为 None")
     needs_reauthorization: bool = Field(
         default=False,
         description="Token 是否失效、临近过期或缺少 Agent 提交 Issue/PR 所需授权范围",
     )
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class GithubDeviceAuthStart(BaseModel):  # type: ignore[misc]
-    """返回 GitHub Device Flow 的浏览器操作信息。"""
+    """
+    返回 GitHub Device Flow 的浏览器操作信息。
+    """
 
     session_id: str = Field(description="服务端设备授权会话标识")
     verification_uri: str = Field(description="GitHub 验证页面")
@@ -66,22 +76,33 @@ class GithubDeviceAuthStart(BaseModel):  # type: ignore[misc]
     interval_seconds: int = Field(description="建议的轮询间隔秒数")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class GithubDeviceAuthPollRequest(BaseModel):  # type: ignore[misc]
-    """轮询 GitHub Device Flow 所需的会话标识。"""
+    """
+    轮询 GitHub Device Flow 所需的会话标识。
+    """
 
-    session_id: str = Field(min_length=1, max_length=128)
+    session_id: str = Field(min_length=1, max_length=128, description="待查询的 GitHub 设备授权会话标识")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class GithubDeviceAuthPoll(BaseModel):  # type: ignore[misc]
-    """返回设备授权当前阶段，授权成功时附带脱敏状态。"""
+    """
+    返回设备授权当前阶段，授权成功时附带脱敏状态。
+    """
 
-    state: Literal["pending", "authorized", "slow_down", "denied", "expired", "failed"]
-    message: str = ""
+    state: Literal["pending", "authorized", "slow_down", "denied", "expired", "failed"] = Field(
+        description="设备授权阶段：等待、成功、减慢轮询、拒绝、过期或失败",
+    )
+    message: str = Field(default="", description="面向调用方的结果说明")
     retry_after: int | None = Field(default=None, description="下一次轮询建议等待秒数")
     status: GithubTokenStatus | None = Field(default=None, description="授权成功后的 Token 状态")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class GithubManualTokenRequest(BaseModel):  # type: ignore[misc]
-    """兼容手动填写 GitHub Token 的请求体。"""
+    """
+    兼容手动填写 GitHub Token 的请求体。
+    """
 
-    token: str = Field(min_length=1, max_length=512)
+    token: str = Field(min_length=1, max_length=512, description="用户手动填写的 GitHub 访问令牌")

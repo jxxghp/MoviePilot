@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""Code generator for AnySearch CLI scripts.
+"""
+根据共享常量生成 AnySearch 各语言命令行脚本的固定代码段。
 
-Reads constants.json from scripts/shared/ and injects the domain list
-and doc command implementation into each CLI script. Eliminates duplication
-across all 4 language implementations.
-
-Usage:
-    python scripts/generate.py          # Generate all scripts
-    python scripts/generate.py --check  # Verify scripts are up-to-date (for CI)
+从 scripts/shared/constants.json 读取领域列表，并更新四种语言的常量与文档命令。
+使用 --check 只核对产物是否最新，不写入文件。
 """
 
 import json
@@ -17,10 +13,9 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SHARED_DIR = os.path.join(SCRIPT_DIR, "shared")
 
-# --- Marker format per language ---
-# Each script uses paired comments to delimit generated sections:
+# 各语言用成对标记限定生成区域，标记文本本身是生成器协议，不可翻译：
 #   BEGIN GENERATED:<section_name>
-#   ... generated content ...
+#   ... 生成内容 ...
 #   END GENERATED:<section_name>
 
 MARKERS = {
@@ -32,12 +27,23 @@ MARKERS = {
 
 
 def load_constants():
+    """
+    读取生成各语言脚本所需的共享常量。
+
+    :return: 包含可用搜索领域的配置字典
+    """
     with open(os.path.join(SHARED_DIR, "constants.json"), "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def render_constants(ext, constants):
-    """Render constants block in the target language syntax."""
+    """
+    按目标语言语法生成领域常量声明。
+
+    :param ext: 目标脚本的文件扩展名
+    :param constants: 共享领域常量
+    :return: 可插入生成区域的源码文本
+    """
     domains = constants["available_domains"]
 
     if ext == ".py":
@@ -77,9 +83,20 @@ def render_constants(ext, constants):
 
 
 def render_doc_block(ext, constants):
-    """Generate code that reads and renders doc_spec.md at runtime."""
+    """
+    生成运行时读取并渲染 doc_spec.md 的代码段。
+
+    :param ext: 目标脚本的文件扩展名
+    :param constants: 共享常量；当前代码段运行时再读取最新值
+    :return: 对应语言的文档命令源码
+    """
     if ext == ".py":
         return '''def _render_doc():
+    """
+    根据共享模板渲染当前语言的接口说明。
+
+    :return: 已替换语言和领域占位符的说明文本
+    """
     import json as _json
     _dir = os.path.dirname(os.path.abspath(__file__))
     _shared = os.path.join(_dir, "shared")
@@ -135,7 +152,15 @@ def render_doc_block(ext, constants):
 
 
 def replace_marker_section(content, ext, section_name, new_text):
-    """Replace everything between marker comments for section_name with new_text."""
+    """
+    替换指定生成标记之间的内容，保留标记本身。
+
+    :param content: 目标脚本的完整源码
+    :param ext: 用于选择标记语法的文件扩展名
+    :param section_name: 待替换生成区域的名称
+    :param new_text: 新区域源码
+    :return: 替换后的完整源码
+    """
     begin_tag, end_tag = MARKERS[ext]
     begin = begin_tag.format(name=section_name)
     end = end_tag.format(name=section_name)
@@ -151,7 +176,13 @@ def replace_marker_section(content, ext, section_name, new_text):
 
 
 def generate_script(script_path, constants):
-    """Regenerate the constants and doc blocks in a CLI script."""
+    """
+    更新单个语言脚本中的常量与文档生成区域。
+
+    :param script_path: 待更新脚本路径
+    :param constants: 共享领域常量
+    :return: 更新后的完整源码，不直接写入文件
+    """
     ext = os.path.splitext(script_path)[1]
     if ext not in MARKERS:
         raise ValueError(f"Unsupported extension: {ext}")
@@ -169,6 +200,9 @@ def generate_script(script_path, constants):
 
 
 def main():
+    """
+    批量更新各语言脚本，或只核对生成内容是否最新。
+    """
     import argparse
 
     parser = argparse.ArgumentParser(description="Generate AnySearch CLI scripts from shared data")

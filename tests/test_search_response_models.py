@@ -1,4 +1,6 @@
-"""搜索接口响应模型测试。"""
+"""
+搜索接口响应模型测试。
+"""
 
 from app.schemas.context import Context, MetaInfo, SubtitleInfo, TorrentInfo
 from app.schemas.response import Response
@@ -6,7 +8,9 @@ from app.schemas.search import SearchLastContextData
 
 
 def test_last_search_context_preserves_nested_torrent_context() -> None:
-    """最近搜索响应必须保留资源上下文的嵌套元数据和种子信息。"""
+    """
+    最近搜索响应必须保留资源上下文的嵌套元数据和种子信息。
+    """
     context = Context(
         meta_info=MetaInfo(title="Example", name="Example"),
         torrent_info=TorrentInfo(title="Example torrent", site_name="Site A"),
@@ -27,7 +31,9 @@ def test_last_search_context_preserves_nested_torrent_context() -> None:
 
 
 def test_last_search_context_keeps_subtitle_result_shape() -> None:
-    """修正资源上下文类型后仍必须完整保留字幕搜索结果。"""
+    """
+    修正资源上下文类型后仍必须完整保留字幕搜索结果。
+    """
     subtitle = SubtitleInfo(
         title="Example subtitle",
         site_name="Subtitle Site",
@@ -49,7 +55,9 @@ def test_last_search_context_keeps_subtitle_result_shape() -> None:
 
 
 def test_schema_metainfo_season_and_episode_properties() -> None:
-    """Schema MetaInfo 应具备与领域 MetaBase 一致的季、集属性和序列化兼容性。"""
+    """
+    Schema MetaInfo 应具备与领域 MetaBase 一致的季、集属性和序列化兼容性。
+    """
     from app.schemas.types import MediaType
 
     # 单季剧集（未显式指定季）

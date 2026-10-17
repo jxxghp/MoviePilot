@@ -1,4 +1,6 @@
-"""AI 搜索推荐协调 owner。"""
+"""
+AI 搜索推荐的任务协调、代际隔离与结果发布。
+"""
 
 import asyncio
 import hashlib
@@ -19,7 +21,16 @@ from app.runtime.tasks import get_task_registry
 
 @dataclass(frozen=True)
 class RecommendSnapshot:
-    """AI 推荐协调器的只读状态快照。"""
+    """
+    AI 推荐协调器的只读状态快照。
+
+    :param generation: 推荐请求代际编号，用于拒绝旧任务发布结果
+    :param request_hash: 当前推荐输入的稳定摘要，尚无请求时为 None
+    :param running: 当前代际是否仍在生成推荐
+    :param task: 当前推荐后台任务，尚未绑定或已经清理时为 None
+    :param result: 推荐资源在原始搜索结果中的索引，尚无成功结果时为 None
+    :param error: 当前代际的失败说明，未失败时为 None
+    """
 
     generation: int
     request_hash: Optional[str]
@@ -30,10 +41,14 @@ class RecommendSnapshot:
 
 
 class RecommendCoordinator:
-    """串行化 AI 推荐代际、任务和结果发布，阻止旧请求覆盖新状态。"""
+    """
+    串行化 AI 推荐代际、任务和结果发布，阻止旧请求覆盖新状态。
+    """
 
     def __init__(self) -> None:
-        """初始化空闲推荐状态和跨线程保护锁。"""
+        """
+        初始化空闲推荐状态和跨线程保护锁。
+        """
         self._lock = threading.RLock()
         self._generation = 0
         self._request_hash: Optional[str] = None
@@ -43,7 +58,9 @@ class RecommendCoordinator:
         self._error: Optional[str] = None
 
     def snapshot(self) -> RecommendSnapshot:
-        """返回同一锁快照中的完整推荐状态。"""
+        """
+        返回同一锁快照中的完整推荐状态。
+        """
         with self._lock:
             return RecommendSnapshot(
                 generation=self._generation,
@@ -55,7 +72,9 @@ class RecommendCoordinator:
             )
 
     def begin(self, request_hash: str) -> tuple[int, Optional[asyncio.Task[Any]], bool]:
-        """开始新代际；相同请求仍处于运行或已有终态时保持幂等。"""
+        """
+        开始新代际；相同请求仍处于运行或已有终态时保持幂等。
+        """
         with self._lock:
             if request_hash == self._request_hash and (
                 self._running or self._result is not None or self._error is not None
@@ -71,7 +90,9 @@ class RecommendCoordinator:
             return self._generation, previous_task, True
 
     def attach(self, generation: int, task: asyncio.Task[Any]) -> bool:
-        """仅把任务绑定到仍为当前的代际。"""
+        """
+        仅把任务绑定到仍为当前的代际。
+        """
         with self._lock:
             if generation != self._generation:
                 return False
@@ -79,12 +100,16 @@ class RecommendCoordinator:
             return True
 
     def is_current(self, generation: int, request_hash: str) -> bool:
-        """判断任务是否仍拥有当前代际。"""
+        """
+        判断任务是否仍拥有当前代际。
+        """
         with self._lock:
             return generation == self._generation and request_hash == self._request_hash
 
     def publish_result(self, generation: int, result: List[int]) -> bool:
-        """仅允许当前代际发布推荐结果。"""
+        """
+        仅允许当前代际发布推荐结果。
+        """
         with self._lock:
             if generation != self._generation:
                 return False
@@ -93,7 +118,9 @@ class RecommendCoordinator:
             return True
 
     def publish_error(self, generation: int, error: str) -> bool:
-        """仅允许当前代际发布错误。"""
+        """
+        仅允许当前代际发布错误。
+        """
         with self._lock:
             if generation != self._generation:
                 return False
@@ -102,7 +129,9 @@ class RecommendCoordinator:
             return True
 
     def restore(self, request_hash: str, result: List[int]) -> None:
-        """在空闲状态恢复与当前请求精确匹配的持久缓存。"""
+        """
+        在空闲状态恢复与当前请求精确匹配的持久缓存。
+        """
         with self._lock:
             self._generation += 1
             self._request_hash = request_hash
@@ -112,7 +141,9 @@ class RecommendCoordinator:
             self._error = None
 
     def finish(self, generation: int, task: Optional[asyncio.Task[Any]]) -> None:
-        """当前代际任务结束后清理运行标记，不影响已经发布的终态。"""
+        """
+        当前代际任务结束后清理运行标记，不影响已经发布的终态。
+        """
         with self._lock:
             if generation != self._generation:
                 return
@@ -121,7 +152,9 @@ class RecommendCoordinator:
             self._running = False
 
     def cancel(self) -> Optional[asyncio.Task[Any]]:
-        """推进代际并清空状态，返回需要由调用方取消的旧任务。"""
+        """
+        推进代际并清空状态，返回需要由调用方取消的旧任务。
+        """
         with self._lock:
             previous_task = self._task
             self._generation += 1
@@ -137,8 +170,11 @@ recommend_coordinator = RecommendCoordinator()
 
 
 class SearchRecommendOwner(_SearchOwnerBase):
-    """AI 搜索推荐协调 owner。"""
+    """
+    AI 搜索推荐的任务协调、代际隔离与结果发布。
+    """
 
+    # 组合契约以可调用成员声明此能力，实际门面对外暴露只读属性。
     @property
     def is_ai_recommend_enabled(self) -> bool:  # type: ignore[override]
         """
@@ -167,7 +203,9 @@ class SearchRecommendOwner(_SearchOwnerBase):
 
     @staticmethod
     def _recommend_result_identity(result: Any) -> dict[str, Any]:
-        """投影推荐候选的稳定资源身份，不依赖对象地址或展示顺序之外的状态。"""
+        """
+        投影推荐候选的稳定资源身份，不依赖对象地址或展示顺序之外的状态。
+        """
         torrent = getattr(result, "torrent_info", None)
         if torrent is None:
             return {"value": str(result)}
@@ -343,7 +381,9 @@ class SearchRecommendOwner(_SearchOwnerBase):
 
     @staticmethod
     def _parse_recommend_response(ai_response: str) -> List[int]:
-        """从模型文本中提取并规范化推荐索引数组。"""
+        """
+        从模型文本中提取并规范化推荐索引数组。
+        """
         json_match = re.search(r"\[.*?]", ai_response, re.DOTALL)
         if not json_match:
             raise ValueError(f"无法从响应中提取JSON数组: {ai_response}")
@@ -353,7 +393,9 @@ class SearchRecommendOwner(_SearchOwnerBase):
         return SearchRecommendOwner._normalize_ai_indices(ai_indices)
 
     def _recommend_prompt(self, items: List[str]) -> str:
-        """组合用户偏好和候选资源，生成稳定的推荐输入。"""
+        """
+        组合用户偏好和候选资源，生成稳定的推荐输入。
+        """
         user_preference = (
             self.runtime_config.ai_recommend_user_preference or "Prefer high-quality resources with more seeders"
         )
@@ -365,7 +407,9 @@ class SearchRecommendOwner(_SearchOwnerBase):
         filtered_indices: Optional[List[int]],
         results: List[Any],
     ) -> List[int]:
-        """执行一次推荐请求并把局部索引恢复为原搜索结果索引。"""
+        """
+        执行一次推荐请求并把局部索引恢复为原搜索结果索引。
+        """
         items, valid_indices = self._extract_recommend_items(
             filtered_indices=filtered_indices,
             results=results,
@@ -390,7 +434,9 @@ class SearchRecommendOwner(_SearchOwnerBase):
         filtered_indices: Optional[List[int]],
         results: List[Any],
     ) -> None:
-        """执行一个受代际栅栏保护的推荐任务并发布唯一终态。"""
+        """
+        执行一个受代际栅栏保护的推荐任务并发布唯一终态。
+        """
         current_task = asyncio.current_task()
         try:
             original_indices = await SearchRecommendOwner._generate_recommend_indices(

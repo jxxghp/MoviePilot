@@ -1,3 +1,7 @@
+"""
+验证媒体服务器增量同步的身份隔离、统计和类型归一。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -17,7 +21,9 @@ from app.runtime.config import global_vars
 
 @pytest.fixture
 def database(tmp_path):
-    """创建隔离的媒体服务器测试数据库。"""
+    """
+    创建隔离的媒体服务器测试数据库。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'mediaserver.db'}")
     session_factory = sessionmaker(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -26,7 +32,9 @@ def database(tmp_path):
 
 
 def test_add_allows_same_item_id_across_servers(database):
-    """不同媒体服务器允许复用相同 item_id。"""
+    """
+    不同媒体服务器允许复用相同 item_id。
+    """
     with database() as db:
         oper = MediaServerOper(db)
 
@@ -56,7 +64,9 @@ def test_add_allows_same_item_id_across_servers(database):
 
 
 def test_media_count_reuses_existing_server_statistics():
-    """整服同步应复用现有媒体统计并排除剧集集数。"""
+    """
+    整服同步应复用现有媒体统计并排除剧集集数。
+    """
     chain = object.__new__(MediaServerChain)
     chain.run_module = lambda *_args, **_kwargs: [
         schemas.Statistic(movie_count=12, tv_count=8, music_count=3, episode_count=200)
@@ -80,12 +90,16 @@ def test_media_count_reuses_existing_server_statistics():
     ],
 )
 def test_sync_normalizes_movie_tv_and_music_item_types(raw_type, expected):
-    """同步缓存应保留音乐类型，并兼容不同媒体服务器的原始类型名称。"""
+    """
+    同步缓存应保留音乐类型，并兼容不同媒体服务器的原始类型名称。
+    """
     assert MediaServerChain._normalize_item_type(raw_type) == expected
 
 
 def test_sync_persists_music_without_querying_tv_episodes(database):
-    """Navidrome 专辑同步应写成音乐条目，且不能触发电视剧分集查询。"""
+    """
+    Navidrome 专辑同步应写成音乐条目，且不能触发电视剧分集查询。
+    """
     chain = object.__new__(MediaServerChain)
     chain.librarys = lambda _server: [SimpleNamespace(id="music", name="音乐")]
     chain.media_count = lambda _server: 1
@@ -121,7 +135,9 @@ def test_sync_persists_music_without_querying_tv_episodes(database):
 
 
 def test_sync_normalizes_incomplete_tv_episode_rows(database):
-    """TV 同步应丢弃无季号记录，并把缺失集列表规范为空列表。"""
+    """
+    TV 同步应丢弃无季号记录，并把缺失集列表规范为空列表。
+    """
     chain = object.__new__(MediaServerChain)
     chain.librarys = lambda _server: [SimpleNamespace(id="shows", name="剧集库")]
     chain.media_count = lambda _server: 1
@@ -155,7 +171,9 @@ def test_sync_normalizes_incomplete_tv_episode_rows(database):
 
 
 def test_sync_updates_rows_and_removes_stale_entries(database):
-    """同步应更新已存在条目，并清理未再出现或已移除服务的数据。"""
+    """
+    同步应更新已存在条目，并清理未再出现或已移除服务的数据。
+    """
     old_sync_time = "2026-05-01 00:00:00"
 
     with database() as db:
@@ -252,7 +270,9 @@ def test_sync_updates_rows_and_removes_stale_entries(database):
 
 
 def test_sync_queries_counts_before_items_and_reports_media_progress(database):
-    """同步前应查询全部目标媒体库总数，并按媒体条目更新进度。"""
+    """
+    同步前应查询全部目标媒体库总数，并按媒体条目更新进度。
+    """
     chain = object.__new__(MediaServerChain)
     events = []
     progress_snapshots = []
@@ -285,7 +305,9 @@ def test_sync_queries_counts_before_items_and_reports_media_progress(database):
     chain.librarys = lambda server: server_libraries[server]
 
     def media_count(server):
-        """记录整服统计顺序并返回待同步媒体总数。"""
+        """
+        记录整服统计顺序并返回待同步媒体总数。
+        """
         events.append(f"count:{server}")
         return sum(
             len(items)
@@ -294,7 +316,9 @@ def test_sync_queries_counts_before_items_and_reports_media_progress(database):
         )
 
     def items(**kwargs):
-        """记录同步顺序并返回媒体库条目。"""
+        """
+        记录同步顺序并返回媒体库条目。
+        """
         server = kwargs["server"]
         library_id = kwargs["library_id"]
         events.append(f"items:{server}:{library_id}")
@@ -344,16 +368,22 @@ def test_sync_queries_counts_before_items_and_reports_media_progress(database):
 
 
 def test_sync_targets_one_server_without_excluding_other_enabled_servers(monkeypatch):
-    """定向同步只访问目标服务器，缓存清理仍保留其他已启用服务器。"""
+    """
+    定向同步只访问目标服务器，缓存清理仍保留其他已启用服务器。
+    """
     chain = object.__new__(MediaServerChain)
     library_calls = []
     excluded_server_calls = []
 
     class FakeMediaServerOper:
-        """记录媒体服务器缓存清理参数的测试替身。"""
+        """
+        记录媒体服务器缓存清理参数的测试替身。
+        """
 
         def delete_excluded_servers(self, servers):
-            """记录应保留的全部已启用服务器名称。"""
+            """
+            记录应保留的全部已启用服务器名称。
+            """
             excluded_server_calls.append(servers)
 
     chain.librarys = lambda server: library_calls.append(server) or []
@@ -375,7 +405,9 @@ def test_sync_targets_one_server_without_excluding_other_enabled_servers(monkeyp
 
 @pytest.mark.parametrize("failure", [TimeoutError("read timeout"), ConnectionError("connection refused")])
 def test_sync_preserves_cached_rows_when_plex_read_fails(database, failure):
-    """Plex 读取中断时，应保留上一轮缓存且不报告同步完成。"""
+    """
+    Plex 读取中断时，应保留上一轮缓存且不报告同步完成。
+    """
     with database() as session:
         session.add(
             MediaServerItem(
@@ -395,7 +427,9 @@ def test_sync_preserves_cached_rows_when_plex_read_fails(database, failure):
     chain.items_count = lambda **_kwargs: pytest.fail("整服统计存在时不应逐库计数")
 
     def items_with_failure(**_kwargs):
-        """模拟 Plex 已返回部分条目后，下一次分页读取失败。"""
+        """
+        模拟 Plex 已返回部分条目后，下一次分页读取失败。
+        """
         yield schemas.MediaServerItem(
             server="plex",
             library="movies",
@@ -435,7 +469,9 @@ _CUSTOM_NAMED_JELLYFIN = [SimpleNamespace(name="服务器1", enabled=True, sync_
 
 
 def _custom_named_jellyfin_chain(database, items):
-    """构造配置名称与模块类型名不同的 Jellyfin 同步链。"""
+    """
+    构造配置名称与模块类型名不同的 Jellyfin 同步链。
+    """
     chain = object.__new__(MediaServerChain)
     chain.librarys = lambda _server: [SimpleNamespace(id="movies", name="电影库")]
     chain.media_count = lambda _server: 1
@@ -447,7 +483,9 @@ def _custom_named_jellyfin_chain(database, items):
 
 
 def _jellyfin_movie_items(**_kwargs):
-    """模拟 Jellyfin 模块返回的条目，server 字段为类型名而非配置名称。"""
+    """
+    模拟 Jellyfin 模块返回的条目，server 字段为类型名而非配置名称。
+    """
     yield schemas.MediaServerItem(
         server="jellyfin",
         library="movies",
@@ -459,7 +497,9 @@ def _jellyfin_movie_items(**_kwargs):
 
 
 def test_sync_stores_rows_under_config_name_for_existence_lookup(database):
-    """缓存必须按配置名称写入，存在性检查按配置名称查询才能命中。"""
+    """
+    缓存必须按配置名称写入，存在性检查按配置名称查询才能命中。
+    """
     chain = _custom_named_jellyfin_chain(database, _jellyfin_movie_items)
 
     with patch.object(MEDIA_SERVER_CHAIN_MODULE, "get_mediaserver_configs", return_value=_CUSTOM_NAMED_JELLYFIN):
@@ -474,11 +514,15 @@ def test_sync_stores_rows_under_config_name_for_existence_lookup(database):
 
 
 def test_sync_keeps_custom_named_server_cache_when_read_fails(database):
-    """配置名称与类型名不同时，后续读取失败也不得清空上一轮缓存。"""
+    """
+    配置名称与类型名不同时，后续读取失败也不得清空上一轮缓存。
+    """
     chain = _custom_named_jellyfin_chain(database, _jellyfin_movie_items)
 
     def items_with_timeout(**_kwargs):
-        """模拟条目列表请求超时。"""
+        """
+        模拟条目列表请求超时。
+        """
         yield from ()
         raise TimeoutError("read timeout")
 
@@ -497,7 +541,9 @@ def test_sync_partial_commit_preserves_stale_rows_until_next_run(
     database,
     monkeypatch,
 ):
-    """前序条目提交后发生失败时保留 stale，并由下一轮成功同步收敛。"""
+    """
+    前序条目提交后发生失败时保留 stale，并由下一轮成功同步收敛。
+    """
     old_sync_time = "2026-05-01 00:00:00"
     with database() as session:
         session.add(MediaServerItem(
@@ -525,25 +571,35 @@ def test_sync_partial_commit_preserves_stale_rows_until_next_run(
     transactional = TransactionalMediaServerRepository(database)
 
     class FailingMediaServerRepository:
-        """提交首个条目后让第二个条目失败，并记录不应发生的清理。"""
+        """
+        提交首个条目后让第二个条目失败，并记录不应发生的清理。
+        """
 
         def __init__(self):
-            """初始化本轮已尝试写入计数。"""
+            """
+            初始化本轮已尝试写入计数。
+            """
             self.upsert_count = 0
 
         def delete_excluded_servers(self, servers):
-            """委托真实短事务清理已移除服务器。"""
+            """
+            委托真实短事务清理已移除服务器。
+            """
             return transactional.delete_excluded_servers(servers)
 
         def upsert(self, item):
-            """提交首条记录，在第二条写入前模拟数据库不可用。"""
+            """
+            提交首条记录，在第二条写入前模拟数据库不可用。
+            """
             self.upsert_count += 1
             if self.upsert_count == 2:
                 raise RuntimeError("database unavailable")
             return transactional.upsert(item)
 
         def delete_stale(self, **kwargs):
-            """记录不应发生的 stale 清理。"""
+            """
+            记录不应发生的 stale 清理。
+            """
             stale_calls.append(kwargs)
             return transactional.delete_stale(**kwargs)
 
@@ -581,19 +637,27 @@ def test_sync_partial_commit_preserves_stale_rows_until_next_run(
 
 
 def test_sync_stops_without_emitting_completion_after_stop_signal(monkeypatch):
-    """系统停止发生在逐库同步期间时，不应再发送服务器或全局完成进度。"""
+    """
+    系统停止发生在逐库同步期间时，不应再发送服务器或全局完成进度。
+    """
     chain = object.__new__(MediaServerChain)
     server = SimpleNamespace(name="plex", enabled=True)
     progress = []
 
     class FakeMediaServerOper:
-        """提供同步阶段所需的最小数据库端口。"""
+        """
+        提供同步阶段所需的最小数据库端口。
+        """
 
         def delete_excluded_servers(self, _servers):
-            """忽略测试中的媒体服务器清理。"""
+            """
+            忽略测试中的媒体服务器清理。
+            """
 
     def stop_during_sync(**_kwargs):
-        """模拟读取媒体条目时收到系统停止信号。"""
+        """
+        模拟读取媒体条目时收到系统停止信号。
+        """
         global_vars.stop_system()
         return 0, 0
 

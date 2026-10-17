@@ -1,3 +1,7 @@
+"""
+启动和停止 MoviePilot 的 Uvicorn 服务进程。
+"""
+
 import os
 import shutil
 import sys
@@ -75,9 +79,17 @@ setproctitle.setproctitle(get_runtime_setting('PROJECT_NAME'))
 
 
 class MoviePilotServer(uvicorn.Server):
-    """在 Uvicorn 开始优雅退出前发布应用协作停止标志"""
+    """
+    在 Uvicorn 开始优雅退出前发布应用协作停止标志
+    """
 
     def handle_exit(self, sig, frame) -> None:
+        """
+收到退出信号时先通知业务任务收尾，再交给 Uvicorn 处理。
+
+        :param sig: 操作系统传入的退出信号
+        :param frame: 信号触发时的执行帧
+        """
         runtime_stop_state.stop_system()
         super().handle_exit(sig, frame)
 
@@ -87,7 +99,9 @@ Server: Optional[MoviePilotServer] = None
 
 
 def create_server() -> MoviePilotServer:
-    """创建不带 reload/multiprocess supervisor 的单进程生产服务器。"""
+    """
+    创建不带 reload/multiprocess supervisor 的单进程生产服务器。
+    """
     server = MoviePilotServer(
         Config(
             app,
@@ -105,7 +119,9 @@ def create_server() -> MoviePilotServer:
 
 
 def run_api_server() -> None:
-    """按开发 reload、安全模式多进程或生产单进程选择 Uvicorn 入口。"""
+    """
+    按开发 reload、安全模式多进程或生产单进程选择 Uvicorn 入口。
+    """
     global Server
     supervised = get_runtime_setting('DEV') or get_runtime_setting('API_WORKERS') > 1
     if supervised:
@@ -137,7 +153,9 @@ def run_api_server() -> None:
 
 
 def request_shutdown() -> None:
-    """发布协作停止标志并请求 Uvicorn 退出"""
+    """
+    发布协作停止标志并请求 Uvicorn 退出
+    """
     runtime_stop_state.stop_system()
     if Server is not None:
         Server.should_exit = True
@@ -196,7 +214,9 @@ def signal_handler(signum, frame):
 
 
 def run_application() -> None:
-    """初始化进程并启动 API 服务"""
+    """
+    初始化进程并启动 API 服务
+    """
     validate_process_topology(
         workers=get_runtime_setting('API_WORKERS'),
         safe_mode=get_runtime_setting('MOVIEPILOT_SAFE_MODE'),

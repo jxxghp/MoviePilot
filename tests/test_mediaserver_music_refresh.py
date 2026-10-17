@@ -1,3 +1,7 @@
+"""
+验证音乐媒体库定位、批量刷新及失败汇总。
+"""
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, call
@@ -5,12 +9,14 @@ from unittest.mock import Mock, call
 from app.modules.emby.emby import Emby
 from app.modules.plex.plex import Plex
 from app.modules.zspace.zspace import ZSpace
-from app.schemas import RefreshMediaItem
+from app.schemas.mediaserver import RefreshMediaItem
 from app.schemas.types import MediaType
 
 
 def _music_item(path: str) -> RefreshMediaItem:
-    """构造不依赖发行年份的音乐媒体库刷新项。"""
+    """
+    构造不依赖发行年份的音乐媒体库刷新项。
+    """
     return RefreshMediaItem(
         title="晴天",
         type=MediaType.MUSIC,
@@ -20,7 +26,9 @@ def _music_item(path: str) -> RefreshMediaItem:
 
 
 def test_emby_music_refresh_resolves_library_by_path_without_year():
-    """Emby 音乐刷新应直接按目标路径定位媒体库，不得误查电视剧。"""
+    """
+    Emby 音乐刷新应直接按目标路径定位媒体库，不得误查电视剧。
+    """
     service = object.__new__(Emby)
     service.folders = [
         {"Id": "music-library", "SubFolders": [{"Path": "/library/music"}]},
@@ -38,7 +46,9 @@ def test_emby_music_refresh_resolves_library_by_path_without_year():
 
 
 def test_zspace_music_refresh_resolves_library_by_path_without_year():
-    """极影视音乐刷新应直接按目标路径定位媒体库，不得误查电视剧。"""
+    """
+    极影视音乐刷新应直接按目标路径定位媒体库，不得误查电视剧。
+    """
     service = object.__new__(ZSpace)
     service.folders = [
         {"Id": "music-library", "SubFolders": [{"Path": "/library/music"}]},
@@ -56,7 +66,9 @@ def test_zspace_music_refresh_resolves_library_by_path_without_year():
 
 
 def test_emby_refreshes_all_unique_libraries_and_aggregates_failures():
-    """Emby 批量刷新必须处理全部唯一媒体库，并汇总任一刷新失败。"""
+    """
+    Emby 批量刷新必须处理全部唯一媒体库，并汇总任一刷新失败。
+    """
     service = object.__new__(Emby)
     service._Emby__get_emby_library_id_by_item = Mock(
         side_effect=["library-a", "library-b", "library-a"]
@@ -72,7 +84,9 @@ def test_emby_refreshes_all_unique_libraries_and_aggregates_failures():
 
 
 def test_zspace_refreshes_all_unique_libraries_and_aggregates_failures():
-    """极影视批量刷新必须处理全部唯一媒体库，并汇总任一刷新失败。"""
+    """
+    极影视批量刷新必须处理全部唯一媒体库，并汇总任一刷新失败。
+    """
     service = object.__new__(ZSpace)
     service._ZSpace__get_library_id_by_item = Mock(
         side_effect=["library-a", "library-b", "library-a"]
@@ -88,7 +102,9 @@ def test_zspace_refreshes_all_unique_libraries_and_aggregates_failures():
 
 
 def test_plex_refreshes_every_matched_path():
-    """Plex 批量刷新不能在首个路径后提前返回。"""
+    """
+    Plex 批量刷新不能在首个路径后提前返回。
+    """
     service = object.__new__(Plex)
     service._plex = SimpleNamespace(
         library=SimpleNamespace(update=Mock(return_value=True)),

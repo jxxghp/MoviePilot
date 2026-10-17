@@ -1,4 +1,6 @@
-"""MoviePilot 中心服务适配器同步异步一致性测试。"""
+"""
+MoviePilot 中心服务适配器同步异步一致性测试。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -12,7 +14,9 @@ from app.adapters.external.server import MoviePilotServerHelper
 
 @pytest.fixture(autouse=True)
 def _reset_server_identity_cache():
-    """隔离中心服务用户名与权限短时缓存，避免同步入口短路异步入口或用例间串值。"""
+    """
+    隔离中心服务用户名与权限短时缓存，避免同步入口短路异步入口或用例间串值。
+    """
     previous_user = MoviePilotServerHelper._github_user
     MoviePilotServerHelper._github_user = None
     asyncio.run(MoviePilotServerHelper._async_fetch_user_permissions.cache_clear())
@@ -22,12 +26,16 @@ def _reset_server_identity_cache():
 
 
 def _response(status_code: int, payload: object) -> SimpleNamespace:
-    """构造不会触发真实网络的最小 HTTP 响应。"""
+    """
+    构造不会触发真实网络的最小 HTTP 响应。
+    """
     return SimpleNamespace(status_code=status_code, json=Mock(return_value=payload))
 
 
 def _settings(monkeypatch, **values) -> None:
-    """只为当前用例注入中心服务配置。"""
+    """
+    只为当前用例注入中心服务配置。
+    """
     monkeypatch.setattr(
         server_module,
         "get_runtime_setting",
@@ -37,7 +45,9 @@ def _settings(monkeypatch, **values) -> None:
 
 @pytest.mark.asyncio
 async def test_github_user_sync_async_use_same_request_plan(monkeypatch) -> None:
-    """GitHub 用户同步异步入口必须使用同一凭据、代理和响应映射。"""
+    """
+    GitHub 用户同步异步入口必须使用同一凭据、代理和响应映射。
+    """
     response = _response(200, {"login": "moviepilot"})
     sync_client = Mock()
     sync_client.get_res.return_value = response
@@ -81,7 +91,9 @@ async def test_user_permissions_sync_async_classify_response_identically(
     payload: dict,
     expected: dict,
 ) -> None:
-    """用户权限同步异步入口必须共享 HTTP 状态和对象响应分类。"""
+    """
+    用户权限同步异步入口必须共享 HTTP 状态和对象响应分类。
+    """
     response = _response(status_code, payload)
     monkeypatch.setattr(
         MoviePilotServerHelper,
@@ -114,7 +126,9 @@ async def test_user_permissions_sync_async_classify_response_identically(
 async def test_user_permissions_sync_async_map_transport_failure_identically(
     monkeypatch,
 ) -> None:
-    """用户权限同步异步传输异常都必须回退为空权限。"""
+    """
+    用户权限同步异步传输异常都必须回退为空权限。
+    """
     monkeypatch.setattr(
         MoviePilotServerHelper,
         "get_github_user",
@@ -157,7 +171,9 @@ async def test_usage_report_sync_async_share_preflight_and_result_mapping(
     status_code: int,
     expected: bool,
 ) -> None:
-    """版本统计开关、实例身份和成功状态必须由同一计划解释。"""
+    """
+    版本统计开关、实例身份和成功状态必须由同一计划解释。
+    """
     payload = {"user_uid": user_uid, "backend_version": "3.0.0"}
     response = _response(status_code, {})
     _settings(monkeypatch, USAGE_STATISTIC_SHARE=enabled)
@@ -187,7 +203,9 @@ async def test_usage_report_sync_async_share_preflight_and_result_mapping(
 async def test_usage_report_sync_async_map_transport_failure_identically(
     monkeypatch,
 ) -> None:
-    """版本统计同步异步传输异常都必须映射为上报失败。"""
+    """
+    版本统计同步异步传输异常都必须映射为上报失败。
+    """
     _settings(monkeypatch, USAGE_STATISTIC_SHARE=True)
     monkeypatch.setattr(
         MoviePilotServerHelper,
@@ -211,7 +229,9 @@ async def test_usage_report_sync_async_map_transport_failure_identically(
 
 @pytest.mark.asyncio
 async def test_plugin_install_sync_async_share_payload_and_result(monkeypatch) -> None:
-    """插件安装统计同步异步入口必须使用同一脱敏载荷和成功分类。"""
+    """
+    插件安装统计同步异步入口必须使用同一脱敏载荷和成功分类。
+    """
     response = _response(200, {})
     _settings(monkeypatch, PLUGIN_STATISTIC_SHARE=True)
     sync_request = Mock(return_value=response)
@@ -245,7 +265,9 @@ async def test_plugin_install_sync_async_share_payload_and_result(monkeypatch) -
 async def test_plugin_statistic_sync_async_share_response_classification(
     monkeypatch,
 ) -> None:
-    """插件统计同步异步入口必须共享功能开关和对象响应分类。"""
+    """
+    插件统计同步异步入口必须共享功能开关和对象响应分类。
+    """
     response = _response(200, {"DemoPlugin": 3})
     _settings(monkeypatch, PLUGIN_STATISTIC_SHARE=True)
     sync_request = Mock(return_value=response)
@@ -281,7 +303,9 @@ async def test_subscribe_statistic_sync_async_share_payload_and_result(
     sync_transport: str,
     async_transport: str,
 ) -> None:
-    """订阅新增与完成统计必须共享功能开关、载荷生成和成功分类。"""
+    """
+    订阅新增与完成统计必须共享功能开关、载荷生成和成功分类。
+    """
     response = _response(200, {})
     payload = {"media_source": "tmdb", "media_id": "1"}
     _settings(monkeypatch, SUBSCRIBE_STATISTIC_SHARE=True)
@@ -307,7 +331,9 @@ async def test_subscribe_statistic_sync_async_share_payload_and_result(
 
 @pytest.mark.asyncio
 async def test_subscribe_list_sync_async_share_query_and_result(monkeypatch) -> None:
-    """订阅分享列表同步异步入口必须共享筛选参数和列表响应分类。"""
+    """
+    订阅分享列表同步异步入口必须共享筛选参数和列表响应分类。
+    """
     response = _response(200, [{"id": 1}])
     _settings(monkeypatch, SUBSCRIBE_STATISTIC_SHARE=True)
     sync_request = Mock(return_value=response)
@@ -354,7 +380,9 @@ async def test_subscribe_list_sync_async_share_query_and_result(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_workflow_list_sync_async_share_query_and_result(monkeypatch) -> None:
-    """工作流分享列表同步异步入口必须共享开关、分页计划和结果分类。"""
+    """
+    工作流分享列表同步异步入口必须共享开关、分页计划和结果分类。
+    """
     response = _response(200, [{"id": 2}])
     _settings(monkeypatch, WORKFLOW_STATISTIC_SHARE=True)
     sync_request = Mock(return_value=response)
@@ -405,7 +433,9 @@ async def test_share_delete_sync_async_use_same_disabled_result(
     async_name: str,
     message: str,
 ) -> None:
-    """订阅与工作流删除入口必须共享禁用状态和失败文案。"""
+    """
+    订阅与工作流删除入口必须共享禁用状态和失败文案。
+    """
     _settings(monkeypatch, **{setting_key: False})
 
     sync_result = getattr(MoviePilotServerHelper, sync_name)(9)
@@ -416,7 +446,9 @@ async def test_share_delete_sync_async_use_same_disabled_result(
 
 @pytest.mark.asyncio
 async def test_recognize_query_sync_async_share_plan_and_result(monkeypatch) -> None:
-    """共享识别查询必须共用启用判断、查询计划和业务响应解析。"""
+    """
+    共享识别查询必须共用启用判断、查询计划和业务响应解析。
+    """
     response = _response(200, {"code": 0, "data": {"item": {"media_id": "1"}}})
     params = {"keyword": "Demo", "type": "movie"}
     _settings(monkeypatch, MEDIA_RECOGNIZE_SHARE=True)
@@ -446,7 +478,9 @@ async def test_recognize_query_sync_async_share_plan_and_result(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_recognize_report_sync_async_share_plan_and_result(monkeypatch) -> None:
-    """共享识别上报必须共用启用判断、载荷计划和业务成功分类。"""
+    """
+    共享识别上报必须共用启用判断、载荷计划和业务成功分类。
+    """
     response = _response(200, {"code": 0})
     payload = {"keyword": "Demo", "media_source": "tmdb", "media_id": "1"}
     _settings(monkeypatch, MEDIA_RECOGNIZE_SHARE=True)

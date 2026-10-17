@@ -1,4 +1,6 @@
-"""插件实例目录对历史无效持久化行的读取隔离测试。"""
+"""
+插件实例目录对历史无效持久化行的读取隔离测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -12,12 +14,16 @@ from app.startup.initializers import plugins as plugins_initializer
 
 @pytest.fixture(autouse=True)
 def isolate_invalid_instance_warnings(monkeypatch) -> None:
-    """每个用例使用独立的告警去重集合，退出时恢复进程状态。"""
+    """
+    每个用例使用独立的告警去重集合，退出时恢复进程状态。
+    """
     monkeypatch.setattr(plugins_initializer, "_invalid_instance_warnings", set())
 
 
 def _record(instance_id: str, source_plugin_id: str) -> SimpleNamespace:
-    """构造包含 ORM 所需字段的轻量实例记录替身。"""
+    """
+    构造包含 ORM 所需字段的轻量实例记录替身。
+    """
     return SimpleNamespace(
         instance_id=instance_id,
         source_plugin_id=source_plugin_id,
@@ -30,7 +36,9 @@ def _record(instance_id: str, source_plugin_id: str) -> SimpleNamespace:
 
 
 def test_plugin_instance_directory_skips_invalid_records_on_every_read(monkeypatch) -> None:
-    """单条历史非法实例记录不得阻断其它实例读取或启动分类。"""
+    """
+    单条历史非法实例记录不得阻断其它实例读取或启动分类。
+    """
     invalid = _record("__ConfigCenter__", "__ConfigCenter__")
     valid = _record("DemoPlugin", "DemoPlugin")
     oper = MagicMock()
@@ -56,7 +64,9 @@ def test_plugin_instance_directory_skips_invalid_records_on_every_read(monkeypat
 
 
 def test_underscore_host_can_be_disabled_without_repeated_projection_warnings(monkeypatch) -> None:
-    """含下划线的存量本体能在卸载时停用，保留配置的重复读取也不误报无效行。"""
+    """
+    含下划线的存量本体能在卸载时停用，保留配置的重复读取也不误报无效行。
+    """
     plugin_id = "nullbr_search"
     oper = PluginInstanceOper()
     logger = MagicMock()
@@ -85,7 +95,9 @@ def test_underscore_host_can_be_disabled_without_repeated_projection_warnings(mo
 
 
 def test_invalid_records_warn_independently_and_repaired_rows_are_visible(monkeypatch) -> None:
-    """去重不掩盖另一条坏记录，也不能缓存失败导致修复后的行仍不可见。"""
+    """
+    去重不掩盖另一条坏记录，也不能缓存失败导致修复后的行仍不可见。
+    """
     logger = MagicMock()
     monkeypatch.setattr(plugins_initializer, "logger", logger)
     invalid = _record("Emby角色中文化", "Emby角色中文化")
@@ -99,7 +111,9 @@ def test_invalid_records_warn_independently_and_repaired_rows_are_visible(monkey
 
 
 def test_concurrent_reads_warn_once(monkeypatch) -> None:
-    """并行读取同一坏行也只输出一次告警。"""
+    """
+    并行读取同一坏行也只输出一次告警。
+    """
     from concurrent.futures import ThreadPoolExecutor
 
     logger = MagicMock()

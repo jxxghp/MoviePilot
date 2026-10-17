@@ -1,3 +1,7 @@
+"""
+提供音乐身份、曲目、歌词与资源发现接口。
+"""
+
 from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, Query
@@ -59,7 +63,9 @@ def _validate_music_source(
         media_source: MediaSource,
         allowed_sources: Optional[frozenset[MediaSource]] = None,
 ) -> MediaSource:
-    """规范音乐来源；仅来源专属端点额外限制内置来源集合。"""
+    """
+    规范音乐来源；仅来源专属端点额外限制内置来源集合。
+    """
     try:
         normalized_source = MediaSource(media_source)
     except (TypeError, ValueError) as err:
@@ -70,17 +76,23 @@ def _validate_music_source(
 
 
 def _serialize_music(info: MusicInfo) -> _SchemaMusicInfo:
-    """将内部音乐信息转换为 REST 响应模型。"""
+    """
+    将内部音乐信息转换为 REST 响应模型。
+    """
     return _SchemaMusicInfo(**info.to_dict())
 
 
 def _serialize_album(info: MusicAlbumInfo) -> _SchemaMusicAlbumInfo:
-    """将内部专辑信息转换为 REST 响应模型。"""
+    """
+    将内部专辑信息转换为 REST 响应模型。
+    """
     return _SchemaMusicAlbumInfo(**info.to_dict())
 
 
 def _serialize_artist(info: MusicArtistInfo) -> _SchemaMusicArtistInfo:
-    """将内部艺术家信息转换为 REST 响应模型。"""
+    """
+    将内部艺术家信息转换为 REST 响应模型。
+    """
     return _SchemaMusicArtistInfo(**info.to_dict())
 
 
@@ -93,7 +105,9 @@ async def recognize_music(
         request: _SchemaMusicRecognizeRequest,
         _: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaMusicInfo:
-    """根据音乐元数据来源和媒体 ID 获取标准详情，与影视识别共用统一入口。"""
+    """
+    根据音乐元数据来源和媒体 ID 获取标准详情，与影视识别共用统一入口。
+    """
     recognize_kwargs = {
         "media_source": request.media_source,
         "media_id": request.media_id,
@@ -117,7 +131,9 @@ async def recognize_music(
 async def music_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
-    """查询可管理的 MusicBrainz 识别缓存。"""
+    """
+    查询可管理的 MusicBrainz 识别缓存。
+    """
     cache_items = MusicBrainzChain().cache_items()
     recognized_count = sum(1 for item in cache_items if item["media_id"])
     return _SchemaResponse(
@@ -140,7 +156,9 @@ async def delete_music_recognition_cache(
     cache_key: str,
     _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
-    """按缓存键删除单条 MusicBrainz 识别缓存。"""
+    """
+    按缓存键删除单条 MusicBrainz 识别缓存。
+    """
     deleted_item = MusicBrainzChain().delete_cache(cache_key)
     if not deleted_item:
         return _SchemaResponse(success=False, message="音乐识别缓存不存在")
@@ -154,7 +172,9 @@ async def delete_music_recognition_cache(
 async def clear_music_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse:
-    """清空全部 MusicBrainz 识别缓存。"""
+    """
+    清空全部 MusicBrainz 识别缓存。
+    """
     MusicBrainzChain().clear_cache()
     MediaChain.clear_music_album_cache()
     return _SchemaResponse(success=True, message="音乐识别缓存清理完成")
@@ -183,7 +203,9 @@ async def explore_music(
         douban_sort: DoubanMusicSortParam = "U",
         _: _SchemaTokenPayload = Depends(verify_token),
 ) -> list[_SchemaMusicInfo]:
-    """MusicBrainz 返回榜单或新发行，豆瓣音乐固定按官方标签分类浏览。"""
+    """
+    MusicBrainz 返回榜单或新发行，豆瓣音乐固定按官方标签分类浏览。
+    """
     media_source = _validate_music_source(media_source, _MUSIC_EXPLORE_SOURCES)
     chain = RecommendChain()
     if media_source != MediaSource.MusicBrainz:
@@ -234,7 +256,9 @@ async def music_album(
             Optional[str], Query(pattern=r"^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"),
         ] = None,
 ) -> _SchemaMusicAlbumInfo:
-    """按专辑 ID 返回详情；显式发行版必须属于该发行组，失败时不改选其它版。"""
+    """
+    按专辑 ID 返回详情；显式发行版必须属于该发行组，失败时不改选其它版。
+    """
     media_source = _validate_music_source(media_source)
     if musicbrainz_release_id is not None and media_source != MediaSource.MusicBrainz:
         raise HTTPException(status_code=422, detail="具体发行版仅支持 MusicBrainz 专辑")
@@ -258,7 +282,9 @@ async def music_album_related(
         media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: _SchemaTokenPayload = Depends(verify_token),
 ) -> list[_SchemaMusicInfo]:
-    """按来源和专辑 ID 返回可继续浏览的关联专辑。"""
+    """
+    按来源和专辑 ID 返回可继续浏览的关联专辑。
+    """
     media_source = _validate_music_source(media_source)
     results = await MediaChain().async_get_music_album_related(
         media_source=media_source,
@@ -281,7 +307,9 @@ async def music_artist_albums(
         media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: _SchemaTokenPayload = Depends(verify_token),
 ) -> list[_SchemaMusicInfo]:
-    """按艺术家标准 ID 分页返回其专辑、EP 和单曲。"""
+    """
+    按艺术家标准 ID 分页返回其专辑、EP 和单曲。
+    """
     media_source = _validate_music_source(media_source)
     results = await MediaChain().async_get_music_artist_albums(
         media_source=media_source,
@@ -302,15 +330,19 @@ def music_library_status(
         request: _SchemaMusicLibraryStatusRequest,
         _: _SchemaTokenPayload = Depends(verify_token),
 ) -> list[_SchemaMusicLibraryStatus]:
-    """按稳定音乐身份批量判断专辑是否已入库。"""
+    """
+    按稳定音乐身份批量判断专辑是否已入库。
+    """
     statuses: list[_SchemaMusicLibraryStatus] = []
     media_chain = MediaChain()
     for item in request.items:
+        # 音乐模型沿用动态反序列化入口，静态类型无法完整描述返回模型。
         info = MusicInfo.from_dict(item.model_dump())  # type: ignore[misc]
         # 艺术家作品列表来自 Release Group，本身不包含曲数。此查询的语义
         # 是“已存在/已入库”，无曲数时一首匹配曲目即足以阻止重复下载。
         expected_tracks = info.total_tracks or 1
         info.total_tracks = expected_tracks
+        # 音乐媒体复用既有媒体存在性接口，其静态参数类型尚未包含音乐模型。
         exists = media_chain.media_exists(mediainfo=info) is not None  # type: ignore[arg-type]
         assert item.media_source is not None
         assert item.media_id is not None
@@ -335,7 +367,9 @@ async def music_artist_related(
         media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: _SchemaTokenPayload = Depends(verify_token),
 ) -> list[_SchemaMusicArtistInfo]:
-    """按艺术家关系返回可继续浏览的关联艺术家。"""
+    """
+    按艺术家关系返回可继续浏览的关联艺术家。
+    """
     media_source = _validate_music_source(media_source)
     results = await MediaChain().async_get_music_artist_related(
         media_source=media_source,
@@ -355,7 +389,9 @@ async def music_artist(
         media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaMusicArtistInfo:
-    """按艺术家标准 ID 返回艺术家详情。"""
+    """
+    按艺术家标准 ID 返回艺术家详情。
+    """
     media_source = _validate_music_source(media_source)
     info = await MediaChain().async_get_music_artist(
         media_source=media_source, media_id=artist_id

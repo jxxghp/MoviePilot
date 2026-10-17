@@ -1,4 +1,6 @@
-"""独立内存业务世界；只解释固定 API 请求，不依赖宿主业务或模型回答。"""
+"""
+独立内存业务世界；只解释固定 API 请求，不依赖宿主业务或模型回答。
+"""
 
 import base64
 import binascii
@@ -58,7 +60,9 @@ _LONG_CONTEXT_SCENARIOS = frozenset({"long_context", "steering_long_context", "s
 
 
 def _infohash(enclosure: str) -> Optional[str]:
-    """按资源身份归一化磁力链接，名称、参数顺序及十六进制大小写不参与防重。"""
+    """
+    按资源身份归一化磁力链接，名称、参数顺序及十六进制大小写不参与防重。
+    """
     try:
         parsed = urlsplit(enclosure)
     except ValueError:
@@ -80,7 +84,9 @@ def _infohash(enclosure: str) -> Optional[str]:
 
 
 def _result(outcome: str, message: str, data: Any = None) -> dict[str, Any]:
-    """保留成功、失败与结果未知的区别，未知回执不能泄漏真实写入事实。"""
+    """
+    保留成功、失败与结果未知的区别，未知回执不能泄漏真实写入事实。
+    """
     return {
         "success": outcome == "succeeded", "outcome": outcome, "execution_outcome": outcome,
         "message": message, "data": data,
@@ -88,7 +94,9 @@ def _result(outcome: str, message: str, data: Any = None) -> dict[str, Any]:
 
 
 def _subscription(record_id: int, media_id: str, name: str) -> dict[str, Any]:
-    """构造与标题无关的订阅业务身份，供列表与精确查询共同读取。"""
+    """
+    构造与标题无关的订阅业务身份，供列表与精确查询共同读取。
+    """
     return {
         "id": record_id, "media_source": "themoviedb", "media_id": media_id,
         "name": name, "type": "电影", "season": None, "state": "N",
@@ -96,7 +104,9 @@ def _subscription(record_id: int, media_id: str, name: str) -> dict[str, Any]:
 
 
 def _download(infohash: str, media_source: str, media_id: str, title: str) -> dict[str, Any]:
-    """保存下载器的 Hash 主键，并提供真实下载响应中的媒体摘要。"""
+    """
+    保存下载器的 Hash 主键，并提供真实下载响应中的媒体摘要。
+    """
     return {
         "id": infohash, "hash": infohash, "infohash": infohash, "media_source": media_source, "media_id": media_id,
         "title": title, "name": title, "downloader": "evaluation-downloader", "state": "downloading",
@@ -105,10 +115,14 @@ def _download(infohash: str, media_source: str, media_id: str, title: str) -> di
 
 
 class EvaluationWorld:
-    """每次运行独占状态、故障时序与证据账本；只有执行 API 会产生模型可见事实。"""
+    """
+    每次运行独占状态、故障时序与证据账本；只有执行 API 会产生模型可见事实。
+    """
 
     def __init__(self, scenario_id: str) -> None:
-        """绑定唯一场景，不能由后续请求选择或读取其他场景。"""
+        """
+        绑定唯一场景，不能由后续请求选择或读取其他场景。
+        """
         self.scenario = get_scenario(scenario_id)
         self._lock = RLock()
         self._state: dict[str, Any] = {}
@@ -120,17 +134,23 @@ class EvaluationWorld:
 
     @property
     def ledger(self) -> list[dict[str, Any]]:
-        """只向评测控制器交付账本副本；调用方修改副本不能伪造读取证据。"""
+        """
+        只向评测控制器交付账本副本；调用方修改副本不能伪造读取证据。
+        """
         with self._lock:
             return deepcopy(self._ledger)
 
     def snapshot(self) -> dict[str, Any]:
-        """供独立判定器读取真实终态，不注册为模型工具。"""
+        """
+        供独立判定器读取真实终态，不注册为模型工具。
+        """
         with self._lock:
             return deepcopy(self._state)
 
     def initial_snapshot(self) -> dict[str, Any]:
-        """供独立判定器检查无关记录和既有记录是否保持不变。"""
+        """
+        供独立判定器检查无关记录和既有记录是否保持不变。
+        """
         with self._lock:
             return deepcopy(self._initial)
 
@@ -145,7 +165,9 @@ class EvaluationWorld:
         scope_kind: Optional[str] = None,
         scope_task_id: Optional[str] = None,
     ) -> None:
-        """记录命令或终端会话的实际回执，供独立判定器核验动作顺序与输入证据。"""
+        """
+        记录命令或终端会话的实际回执，供独立判定器核验动作顺序与输入证据。
+        """
         with self._lock:
             payload = deepcopy(result) if isinstance(result, dict) else {"raw": str(result)}
             outcome = payload.get("execution_outcome") if isinstance(payload, dict) else None
@@ -174,7 +196,9 @@ class EvaluationWorld:
             self._ledger.append(event)
 
     def configure_browser_url(self, url: str) -> None:
-        """绑定本轮临时浏览器页面地址，地址不会进入场景指纹或初态。"""
+        """
+        绑定本轮临时浏览器页面地址，地址不会进入场景指纹或初态。
+        """
         if self.scenario.kind != "browser" or not isinstance(url, str) or not url.startswith("http://127.0.0.1:"):
             raise ValueError("浏览器评测地址无效")
         with self._lock:
@@ -182,12 +206,16 @@ class EvaluationWorld:
 
     @property
     def browser_url(self) -> str:
-        """返回本轮已绑定的浏览器地址，未启动时为空字符串。"""
+        """
+        返回本轮已绑定的浏览器地址，未启动时为空字符串。
+        """
         with self._lock:
             return self._browser_url
 
     def model_input(self) -> str:
-        """返回已注入临时资源地址的模型输入，其他场景保持公开定义不变。"""
+        """
+        返回已注入临时资源地址的模型输入，其他场景保持公开定义不变。
+        """
         rendered = self.scenario.model_input()
         if self.scenario.kind == "browser":
             if not self._browser_url:
@@ -196,7 +224,9 @@ class EvaluationWorld:
         return rendered
 
     def record_browser(self, action: str, result: Any) -> None:
-        """记录生产浏览器工具实际回执，供动态页面场景独立核验。"""
+        """
+        记录生产浏览器工具实际回执，供动态页面场景独立核验。
+        """
         with self._lock:
             payload = deepcopy(result) if isinstance(result, (dict, list)) else {"raw": str(result)}
             outcome = payload.get("execution_outcome") if isinstance(payload, dict) else None
@@ -213,12 +243,16 @@ class EvaluationWorld:
             })
 
     def reset(self) -> None:
-        """重建该场景初态并清空尝试及证据，使重复运行具有相同故障时序。"""
+        """
+        重建该场景初态并清空尝试及证据，使重复运行具有相同故障时序。
+        """
         with self._lock:
             self._reset()
 
     def _reset(self) -> None:
-        """在执行互斥范围内重建状态，避免并行工具读取到半个场景。"""
+        """
+        在执行互斥范围内重建状态，避免并行工具读取到半个场景。
+        """
         self._browser_url = ""
         self._state = {
             "scenario_id": self.scenario.scenario_id,
@@ -271,7 +305,9 @@ class EvaluationWorld:
         query: Optional[dict[str, Any]] = None,
         body: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """解释固定操作和字段位置；任何失败也记录尝试，但不会凭空产生观察事实。"""
+        """
+        解释固定操作和字段位置；任何失败也记录尝试，但不会凭空产生观察事实。
+        """
         with self._lock:
             return self._execute(operation_id, path_params, query, body)
 
@@ -282,7 +318,9 @@ class EvaluationWorld:
         query: Optional[dict[str, Any]],
         body: Optional[dict[str, Any]],
     ) -> dict[str, Any]:
-        """把查重、副作用和账本提交作为同一内存事务，防止并行调用漏记尝试。"""
+        """
+        把查重、副作用和账本提交作为同一内存事务，防止并行调用漏记尝试。
+        """
         request = deepcopy({
             "path_params": {} if path_params is None else path_params,
             "query": {} if query is None else query,
@@ -302,7 +340,9 @@ class EvaluationWorld:
         return deepcopy(response)
 
     def _validate(self, operation_id: str, request: dict[str, Any]) -> Optional[str]:
-        """在业务执行前拒绝虚构操作、错误参数位置和无效分页，避免错误查询被当作核验。"""
+        """
+        在业务执行前拒绝虚构操作、错误参数位置和无效分页，避免错误查询被当作核验。
+        """
         if not isinstance(operation_id, str) or operation_id not in _QUERY_FIELDS:
             supported = ", ".join(sorted(_QUERY_FIELDS))
             return f"不支持的 operation_id；可用操作: {supported}"
@@ -351,7 +391,9 @@ class EvaluationWorld:
     def _dispatch(
         self, operation_id: str, request: dict[str, Any], event: dict[str, Any],
     ) -> dict[str, Any]:
-        """按真实业务操作分发，写入副作用与可观察结果保持分离。"""
+        """
+        按真实业务操作分发，写入副作用与可观察结果保持分离。
+        """
         if operation_id == "download.add":
             return self._add_download(request["body"], event)
         if operation_id == "subscription.add":
@@ -363,7 +405,9 @@ class EvaluationWorld:
     def _read(
         self, operation_id: str, request: dict[str, Any], event: dict[str, Any],
     ) -> dict[str, Any]:
-        """只有实际返回的记录才能成为读取证据，分页外或过滤掉的记录不算已观察。"""
+        """
+        只有实际返回的记录才能成为读取证据，分页外或过滤掉的记录不算已观察。
+        """
         query = request["query"]
         if operation_id == 'transfer.queue':
             return self._collection(self._state.get('transfers', []), query, 'transfer', event)
@@ -399,7 +443,9 @@ class EvaluationWorld:
     def _read_subscription(
         self, operation_id: str, request: dict[str, Any], event: dict[str, Any],
     ) -> dict[str, Any]:
-        """通过主键或完整媒体身份查订阅；旧名称不改变媒体身份。"""
+        """
+        通过主键或完整媒体身份查订阅；旧名称不改变媒体身份。
+        """
         query, path_params = request["query"], request["path_params"]
         for row in self._state["subscriptions"]:
             if operation_id == "subscription.get":
@@ -418,7 +464,9 @@ class EvaluationWorld:
         rows: list[dict[str, Any]], query: dict[str, Any], kind: Optional[str], event: dict[str, Any],
         history: bool = False,
     ) -> dict[str, Any]:
-        """保持列表和总量分离，读取小页只提供该页记录的证据。"""
+        """
+        保持列表和总量分离，读取小页只提供该页记录的证据。
+        """
         page, count = query.get("page"), query.get("count")
         selected = rows
         if history or page is not None or count is not None:
@@ -432,7 +480,9 @@ class EvaluationWorld:
         return response
 
     def _add_download(self, body: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
-        """首次写入可在副作用落地后丢失回执，重试按真实资源身份拒绝并记录。"""
+        """
+        首次写入可在副作用落地后丢失回执，重试按真实资源身份拒绝并记录。
+        """
         torrent = body.get("torrent_in")
         if not isinstance(torrent, dict) or set(torrent) - _TORRENT_FIELDS:
             return _result("failed", "必须提供符合 TorrentInfo 字段定义的 torrent_in")
@@ -463,7 +513,9 @@ class EvaluationWorld:
         return _result("succeeded", "添加下载成功", {"download_id": row["id"]})
 
     def _add_subscription(self, body: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
-        """以媒体身份而非新旧标题防重，并保留被拒绝的重复写入尝试。"""
+        """
+        以媒体身份而非新旧标题防重，并保留被拒绝的重复写入尝试。
+        """
         if any(not isinstance(body.get(field), str) or not body[field].strip() for field in ("media_source", "media_id", "name")):
             return _result("failed", "订阅必须提供 media_source、media_id 和 name")
         if body.get("season") is not None and type(body["season"]) is not int:
@@ -481,7 +533,9 @@ class EvaluationWorld:
         return _result("succeeded", "新增订阅成功", {"id": record_id})
 
     def _delete_subscription(self, record_id: int, event: dict[str, Any]) -> dict[str, Any]:
-        """按主键执行删除，使错误清理无关订阅可由真实状态和事件账本检出。"""
+        """
+        按主键执行删除，使错误清理无关订阅可由真实状态和事件账本检出。
+        """
         for index, row in enumerate(self._state["subscriptions"]):
             if row["id"] == record_id:
                 self._state["subscriptions"].pop(index)

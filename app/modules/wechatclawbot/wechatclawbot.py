@@ -1,3 +1,7 @@
+"""
+微信 ClawBot 的 iLink 协议、扫码登录、持久化状态和消息收发。
+"""
+
 import base64
 import hashlib
 import json
@@ -28,7 +32,20 @@ from app.runtime.settings import get_runtime_setting
 
 @dataclass
 class ILinkIncomingMessage:
-    """iLink 归一化后的入站消息。"""
+    """
+    保存经过 iLink 字段兼容处理的入站消息。
+
+    :param user_id: 必需的发送者标识
+    :param text: 提取后的文字；无文字时为 None
+    :param username: 发送者显示名；未知时为 None，转发时回退到用户标识
+    :param message_id: 可选消息标识，供模块去重
+    :param chat_id: 可选来源会话标识
+    :param context_token: 可选回复上下文令牌，后续发送时复用
+    :param images: 图片引用及格式元数据列表；无图片时为空列表
+    :param audio_refs: 语音内部引用列表；无语音时为空列表
+    :param files: 文件引用、名称及格式等元数据列表；无附件时为空列表
+    :param raw: 原始入站字典，保留用于内部排查，不加入转发报文
+    """
 
     user_id: str
     text: Optional[str] = None
@@ -42,6 +59,11 @@ class ILinkIncomingMessage:
     raw: Dict[str, Any] = field(default_factory=dict)
 
     def to_message_payload(self) -> Dict[str, Any]:
+        """
+        构造统一消息入口需要的渠道报文。
+
+        :return: 含渠道、用户和内容的字典；空附件及其他 None 字段省略，文本缺失时使用空字符串
+        """
         payload = {
             "__channel__": "wechatclawbot",
             "userid": self.user_id,
@@ -58,8 +80,11 @@ class ILinkIncomingMessage:
 
 
 class ILinkClient:
-    """iLink HTTP 客户端，负责二维码登录、消息发送与长轮询。"""
+    """
+    iLink HTTP 客户端，负责二维码登录、消息发送与长轮询。
+    """
 
+    # 发送报文携带的 iLink 渠道协议版本
     channel_version = "1.0.2"
     cdn_base_url = "https://novac2c.cdn.weixin.qq.com/c2c"
 
@@ -71,7 +96,15 @@ class ILinkClient:
         sync_buf: Optional[str] = None,
         timeout: int = 20,
     ):
-        """保存 iLink 会话参数，供二维码登录、长轮询和消息发送复用。"""
+        """
+        保存一次 iLink 会话的请求地址、凭据和轮询游标。
+
+        :param base_url: iLink API 基址；空值时使用官方服务地址
+        :param bot_token: 扫码登录取得的机器人令牌；未登录时为 None
+        :param account_id: 可选登录账号标识，用于构建发送报文
+        :param sync_buf: 可选消息轮询游标
+        :param timeout: 普通请求超时，单位为秒，默认 20
+        """
         self.base_url = (base_url or "https://ilinkai.weixin.qq.com").rstrip("/")
         self.bot_token = bot_token
         self.account_id = account_id
@@ -84,14 +117,22 @@ class ILinkClient:
         account_id: Optional[str] = None,
         sync_buf: Optional[str] = None,
     ) -> None:
-        """更新 iLink 登录凭证与会话状态。"""
+        """
+        更新登录凭据，并按需替换轮询游标。
+
+        :param bot_token: 新的机器人令牌；None 会清空旧值
+        :param account_id: 新的账号标识；None 会清空旧值
+        :param sync_buf: 新轮询游标；None 表示保留旧游标
+        """
         self.bot_token = bot_token
         self.account_id = account_id
         if sync_buf is not None:
             self.sync_buf = sync_buf
 
     def _headers(self, auth_required: bool = True) -> Dict[str, str]:
-        """构建请求头，包含必要的身份验证信息。"""
+        """
+        构建请求头，包含必要的身份验证信息。
+        """
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*",
@@ -105,12 +146,21 @@ class ILinkClient:
 
     @staticmethod
     def _build_wechat_uin() -> str:
-        """生成一个随机的微信 UIN，用于标识请求来源。"""
+        """
+        生成一个随机的微信 UIN，用于标识请求来源。
+        """
         random_u32 = random.getrandbits(32)
         return base64.b64encode(str(random_u32).encode("utf-8")).decode("ascii")
 
     def _with_base_info(self, body: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """向请求体中补充基础信息（如版本号）。"""
+        """
+        浅复制请求体并补充缺失的渠道版本信息。
+
+        已有 base_info 字典会复用并可能被原地补充字段。
+
+        :param body: 原始请求体；为空时使用空字典
+        :return: 含 base_info.channel_version 的请求体
+        """
         payload = dict(body or {})
         base_info = payload.get("base_info")
         if not isinstance(base_info, dict):
@@ -121,7 +171,9 @@ class ILinkClient:
 
     @staticmethod
     def _json(resp: Any) -> Dict[str, Any]:
-        """尝试将响应解析为 JSON，处理异常情况。"""
+        """
+        尝试将响应解析为 JSON，处理异常情况。
+        """
         if not resp:
             return {}
         try:
@@ -137,7 +189,9 @@ class ILinkClient:
 
     @staticmethod
     def _short_text(value: Any, max_len: int = 240) -> str:
-        """将对象转换为简短的字符串描述，用于日志记录。"""
+        """
+        将对象转换为简短的字符串描述，用于日志记录。
+        """
         if value is None:
             return ""
         if isinstance(value, (dict, list)):
@@ -154,7 +208,9 @@ class ILinkClient:
 
     @staticmethod
     def _normalize_qrcode_url(value: Any) -> Optional[str]:
-        """规范化二维码展示字段，兼容图片 URL、data URL 与裸 base64。"""
+        """
+        规范化二维码展示字段，兼容图片 URL、data URL 与裸 base64。
+        """
         if value is None:
             return None
         raw = str(value).strip()
@@ -172,7 +228,9 @@ class ILinkClient:
 
     @staticmethod
     def _pick_value(obj: Dict[str, Any], keys: List[str]) -> Optional[Any]:
-        """从字典中尝试获取指定键中的第一个非空值。"""
+        """
+        从字典中尝试获取指定键中的第一个非空值。
+        """
         for key in keys:
             if key in obj and obj.get(key) not in (None, ""):
                 return obj.get(key)
@@ -195,7 +253,9 @@ class ILinkClient:
     def _find_first_value(
         cls, data: Any, keys: List[str], max_depth: int = 5
     ) -> Optional[Any]:
-        """在嵌套结构中递归查找指定键中的第一个非空值。"""
+        """
+        在嵌套结构中递归查找指定键中的第一个非空值。
+        """
         if max_depth < 0 or data is None:
             return None
         if isinstance(data, dict):
@@ -217,7 +277,9 @@ class ILinkClient:
     def _find_first_list(
         cls, data: Any, prefer_keys: List[str], max_depth: int = 5
     ) -> Optional[List[Any]]:
-        """在嵌套结构中递归查找第一个符合条件的列表。"""
+        """
+        在嵌套结构中递归查找第一个符合条件的列表。
+        """
         if max_depth < 0 or data is None:
             return None
         if isinstance(data, dict):
@@ -240,7 +302,9 @@ class ILinkClient:
 
     @staticmethod
     def _ok(payload: Dict[str, Any]) -> bool:
-        """检查 API 响应是否表示成功。"""
+        """
+        检查 API 响应是否表示成功。
+        """
         if not payload:
             return False
         code = payload.get("errcode")
@@ -268,7 +332,9 @@ class ILinkClient:
             return str(code).strip().lower() in {"0", "ok", "success", "succeed"}
 
     def _is_send_success(self, payload: Dict[str, Any]) -> bool:
-        """检查 API 响应中是否包含明确的发送成功信号。"""
+        """
+        检查 API 响应中是否包含明确的发送成功信号。
+        """
         if not payload:
             return False
         code = self._find_first_value(
@@ -308,7 +374,9 @@ class ILinkClient:
         return False
 
     def _is_send_explicit_failure(self, payload: Dict[str, Any]) -> bool:
-        """检查 API 响应中是否包含明确的发送失败信号。"""
+        """
+        检查 API 响应中是否包含明确的发送失败信号。
+        """
         if not payload:
             return False
         code = self._find_first_value(
@@ -351,7 +419,13 @@ class ILinkClient:
         return False
 
     def _is_send_http_success(self, resp: Any, payload: Dict[str, Any]) -> bool:
-        """根据 HTTP 状态码和解析后的响应判断发送是否成功。"""
+        """
+        兼容仅以 HTTP 状态确认发送结果的 iLink 服务。
+
+        :param resp: 原始 HTTP 响应
+        :param payload: 已解析的响应内容
+        :return: HTTP 为 2xx 且内容没有显式失败标记时返回 True；空响应体也可判定成功
+        """
         if resp is None:
             return False
         status_code = getattr(resp, "status_code", None)
@@ -369,7 +443,9 @@ class ILinkClient:
 
     @staticmethod
     def _build_user_candidates(to_user: str) -> List[str]:
-        """为目标用户 ID 构建多种格式的候选列表以提高匹配成功率。"""
+        """
+        为目标用户 ID 构建多种格式的候选列表以提高匹配成功率。
+        """
         raw = str(to_user or "").strip()
         if not raw:
             return []
@@ -389,7 +465,9 @@ class ILinkClient:
 
     @staticmethod
     def _build_text_payloads(user_id: str, text: str) -> List[Dict[str, Any]]:
-        """构建多种格式的纯文本消息报文以兼容不同接口。"""
+        """
+        构建多种格式的纯文本消息报文以兼容不同接口。
+        """
         return [
             {"to_user": user_id, "msg_type": "text", "text": {"content": text}},
             {"to_user": user_id, "msg_type": "text", "text": text},
@@ -401,24 +479,32 @@ class ILinkClient:
 
     @staticmethod
     def _aes_ecb_padded_size(plaintext_size: int) -> int:
-        """计算 AES ECB 加密后的填充大小。"""
+        """
+        计算 AES ECB 加密后的填充大小。
+        """
         return ((int(plaintext_size) + 1 + 15) // 16) * 16
 
     @staticmethod
     def _encrypt_aes_ecb(plaintext: bytes, key: bytes) -> bytes:
-        """使用 AES ECB 模式对明文进行加密。"""
+        """
+        使用 AES ECB 模式对明文进行加密。
+        """
         cipher = AES.new(key, AES.MODE_ECB)
         return cipher.encrypt(pad(plaintext, AES.block_size))
 
     @staticmethod
     def _encode_media_aes_key(aeskey: bytes) -> str:
-        """将媒体 AES 密钥进行 Base64 编码。"""
+        """
+        将媒体 AES 密钥进行 Base64 编码。
+        """
         return base64.b64encode(aeskey.hex().encode("ascii")).decode("ascii")
 
     def _build_protocol_text_payload(
         self, user_id: str, text: str, context_token: Optional[str]
     ) -> Dict[str, Any]:
-        """构建协议层标准文本消息报文。"""
+        """
+        构建协议层标准文本消息报文。
+        """
         msg = {
             "from_user_id": str(self.account_id or ""),
             "to_user_id": user_id,
@@ -439,7 +525,9 @@ class ILinkClient:
         aeskey_b64: str,
         cipher_size: int,
     ) -> Dict[str, Any]:
-        """构建协议层标准图片消息报文。"""
+        """
+        构建协议层标准图片消息报文。
+        """
         msg: Dict[str, Any] = {
             "from_user_id": str(self.account_id or ""),
             "to_user_id": user_id,
@@ -476,7 +564,9 @@ class ILinkClient:
         mime_type: str,
         file_md5: str,
     ) -> List[Dict[str, Any]]:
-        """构建协议层标准文件消息报文（含多种格式候选）。"""
+        """
+        构建协议层标准文件消息报文（含多种格式候选）。
+        """
         media = {
             "encrypt_query_param": download_param,
             "aes_key": aeskey_b64,
@@ -532,10 +622,12 @@ class ILinkClient:
         media_types: Optional[List[int]] = None,
     ) -> Tuple[Optional[str], Optional[str], Optional[bytes], Optional[int], Optional[str]]:
         """
-        向 iLink 申请 CDN 上传参数。
+        按候选媒体类型申请 CDN 上传地址与一次性加密材料。
 
-        iLink 对同一文件类型的兼容性并不稳定，这里会按候选 media_type 依次尝试，
-        成功后返回上传地址、AES 密钥和文件元信息给后续 CDN 上传流程复用。
+        :param to_user: iLink 接收用户标识，兼容候选格式由发送流程处理
+        :param plaintext: 待上传的原始字节，用于计算大小和摘要
+        :param media_types: 按顺序尝试的媒体类型编号；为空时默认图片类型 1
+        :return: 上传查询参数、完整上传 URL、AES 密钥、填充后字节数及文件标识的五元组；失败时均为 None
         """
         rawsize = len(plaintext)
         rawfilemd5 = hashlib.md5(plaintext).hexdigest()
@@ -592,7 +684,16 @@ class ILinkClient:
         plaintext: bytes,
         aeskey: bytes,
     ) -> Tuple[Optional[str], Optional[int]]:
-        """将文件按协议加密后上传到微信 CDN，并返回后续发送消息所需的下载参数。"""
+        """
+        按 AES ECB 与 PKCS#7 填充上传加密资源。
+
+        :param upload_param: 可选 CDN 上传查询参数
+        :param upload_full_url: 可选完整上传地址，优先于查询参数
+        :param filekey: 申请上传时生成的文件标识
+        :param plaintext: 待加密的原始字节
+        :param aeskey: 申请上传时生成的 AES 密钥
+        :return: 下载查询参数和密文字节数；HTTP 非 200 或缺少下载参数时返回两个 None
+        """
         ciphertext = self._encrypt_aes_ecb(plaintext, aeskey)
         if upload_full_url:
             upload_url = str(upload_full_url).strip()
@@ -629,10 +730,14 @@ class ILinkClient:
         url_candidates: Optional[List[str]] = None,
     ) -> bool:
         """
-        尝试一组候选发送报文，兼容 iLink 不同接口形态。
+        按候选接口与报文逐次尝试发送，首个成功结果即结束。
 
-        这里不会只依赖单一 URL 或单一报文结构，而是按“用户候选 -> 接口候选 -> 报文候选”
-        逐层回退，尽量提高不同账号和不同版本服务端的发送成功率。
+        外层按用户候选重复尝试同一组报文，兼容调用方传入的不同版本报文结构。
+
+        :param to_user: iLink 接收用户标识，兼容候选格式由发送流程处理
+        :param payload_candidates: 完整候选报文；本方法不会根据循环中的用户候选改写其接收字段
+        :param url_candidates: 候选发送地址；为空时尝试默认地址及带 bot_type 的地址
+        :return: 明确业务成功或 HTTP 2xx 且无显式失败时返回 True；全部尝试失败返回 False
         """
         url_candidates = url_candidates or [
             f"{self.base_url}/ilink/bot/sendmessage",
@@ -668,7 +773,11 @@ class ILinkClient:
         return False
 
     def get_qrcode(self) -> Dict[str, Any]:
-        """向服务端请求并解析二维码登录信息。"""
+        """
+        请求登录二维码并兼容不同响应字段名称。
+
+        :return: 含 success、二维码标识、图片或登录地址、原始响应及可选错误说明的字典
+        """
         url = f"{self.base_url}/ilink/bot/get_bot_qrcode?bot_type=3"
         logger.debug(f"请求二维码: {url}")
         resp = RequestUtils(
@@ -702,7 +811,12 @@ class ILinkClient:
         }
 
     def get_qrcode_status(self, qrcode: str) -> Dict[str, Any]:
-        """查询二维码扫描状态并获取登录凭证。"""
+        """
+        查询二维码状态，并把返回的登录凭据写入当前客户端。
+
+        :param qrcode: 待查询的二维码标识或票据
+        :return: 含 success、状态、令牌、账号和原始响应的字典；空响应使用 waiting 状态并标记失败
+        """
         url = f"{self.base_url}/ilink/bot/get_qrcode_status"
         resp = RequestUtils(
             headers=self._headers(auth_required=False), timeout=self.timeout
@@ -788,7 +902,14 @@ class ILinkClient:
         }
 
     def send_text(self, to_user: str, text: str, context_token: Optional[str] = None) -> bool:
-        """发送纯文本消息。"""
+        """
+        按标准与兼容报文格式发送纯文本。
+
+        :param to_user: iLink 接收用户标识，兼容候选格式由发送流程处理
+        :param text: 必需的非空正文
+        :param context_token: 最近一次入站消息携带的可选会话上下文令牌
+        :return: 首个候选发送成功返回 True；凭据或内容缺失及全部尝试失败返回 False
+        """
         if not self.bot_token:
             logger.warning("发送消息失败：bot token 未配置")
             return False
@@ -810,7 +931,17 @@ class ILinkClient:
         text: str,
         context_token: Optional[str] = None,
     ) -> bool:
-        """发送包含图片和文本的消息。"""
+        """
+        加密上传图片，再分别发送文字和图片两条消息。
+
+        失败时不撤回已发送的文字，继续尝试其他用户候选可能重复发送前一部分。
+
+        :param to_user: iLink 接收用户标识，兼容候选格式由发送流程处理
+        :param image_bytes: 必需的图片原始字节，不在此方法转换格式
+        :param text: 必需的非空正文
+        :param context_token: 最近一次入站消息携带的可选会话上下文令牌
+        :return: 某个用户候选的文字和图片均发送成功返回 True，否则返回 False
+        """
         if not self.bot_token:
             logger.warning("发送图文失败：bot token 未配置")
             return False
@@ -872,7 +1003,14 @@ class ILinkClient:
     def send_image_png(
         self, to_user: str, image_bytes: bytes, context_token: Optional[str] = None
     ) -> bool:
-        """发送图片消息。"""
+        """
+        加密上传并发送图片引用。
+
+        :param to_user: iLink 接收用户标识，兼容候选格式由发送流程处理
+        :param image_bytes: 图片原始字节；方法名称不代表会转换为 PNG
+        :param context_token: 最近一次入站消息携带的可选会话上下文令牌
+        :return: 首个用户候选发送成功返回 True；参数缺失、上传或发送失败返回 False
+        """
         if not self.bot_token:
             logger.warning("发送图片失败：bot token 未配置")
             return False
@@ -917,7 +1055,16 @@ class ILinkClient:
         mime_type: str,
         context_token: Optional[str] = None,
     ) -> bool:
-        """发送文件消息。"""
+        """
+        申请上传、加密文件并尝试兼容附件报文。
+
+        :param to_user: iLink 接收用户标识，兼容候选格式由发送流程处理
+        :param file_bytes: 非空文件原始字节
+        :param file_name: 显示文件名；空值时使用 attachment
+        :param mime_type: 文件 MIME 类型；空值时使用 application/octet-stream
+        :param context_token: 最近一次入站消息携带的可选会话上下文令牌
+        :return: 首个用户候选发送成功返回 True；参数缺失、上传或发送失败返回 False
+        """
         if not self.bot_token:
             logger.warning("发送文件失败：bot token 未配置")
             return False
@@ -963,7 +1110,9 @@ class ILinkClient:
 
     @classmethod
     def _encode_ref_payload(cls, kind: str, payload: Dict[str, Any]) -> str:
-        """将附件元信息编码为 wxclaw:// 协议链接。"""
+        """
+        将附件元信息编码为 wxclaw:// 协议链接。
+        """
         encoded = base64.urlsafe_b64encode(
             json.dumps(payload, ensure_ascii=False).encode("utf-8")
         ).decode("ascii").rstrip("=")
@@ -1011,7 +1160,9 @@ class ILinkClient:
 
     @staticmethod
     def _as_scalar(value: Any) -> Optional[Any]:
-        """将值转换为标量，过滤掉字典和列表。"""
+        """
+        将值转换为标量，过滤掉字典和列表。
+        """
         if value in (None, ""):
             return None
         if isinstance(value, (dict, list, tuple, set)):
@@ -1078,7 +1229,9 @@ class ILinkClient:
         item_count: int = 0,
         parsed_count: int = 0,
     ) -> Dict[str, Any]:
-        """构建轮询结果摘要。"""
+        """
+        构建轮询结果摘要。
+        """
         payload = payload or {}
         resolved_message = message or self._find_first_value(
             payload, ["errmsg", "message", "error", "error_msg", "detail"]
@@ -1330,7 +1483,9 @@ class ILinkClient:
 
     @staticmethod
     def _has_canonical_poll_shape(payload: Dict[str, Any]) -> bool:
-        """官方响应至少应包含顶层 msgs 列表。"""
+        """
+        官方响应至少应包含顶层 msgs 列表。
+        """
         return isinstance(payload.get("msgs"), list)
 
     def _resolve_poll_success(self, payload: Dict[str, Any]) -> Optional[bool]:
@@ -1377,10 +1532,12 @@ class ILinkClient:
         self, timeout_seconds: int = 25
     ) -> Tuple[List[ILinkIncomingMessage], Optional[str], Dict[str, Any]]:
         """
-        执行一次 iLink 长轮询。
+        执行一次长轮询，仅消费包含顶层 msgs 列表的成功响应。
 
-        返回值同时包含归一化后的消息、最新游标和原始结果摘要，
-        便于上层在推进 sync_buf 的同时记录调试信息。
+        有效响应中的新游标会写入当前客户端；缺少显式状态时可依据官方结构接受响应。
+
+        :param timeout_seconds: 长轮询等待预算，单位为秒；HTTP 超时在此基础上增加 10 秒
+        :return: 规范化消息列表、当前游标和轮询诊断结果的三元组；失败时消息列表为空且保留旧游标
         """
         if not self.bot_token:
             return [], self.sync_buf, {"success": False, "message": "bot token 未配置"}
@@ -1441,7 +1598,11 @@ class ILinkClient:
         )
 
     def test_connection(self) -> Tuple[bool, str]:
-        """测试与 iLink 服务端的连接连通性。"""
+        """
+        请求账号配置接口以探测当前凭据的连通性。
+
+        :return: 成功标记与说明的二元组；缺少令牌返回失败，缺少 ilink_user_id 的特定响应按连通处理
+        """
         if not self.bot_token:
             return False, "未登录，缺少 bot token"
         url = f"{self.base_url}/ilink/bot/getconfig"
@@ -1458,16 +1619,23 @@ class ILinkClient:
 
 
 class WechatClawBot:
-    """微信 ClawBot 渠道客户端。"""
+    """
+    管理微信 ClawBot 登录缓存、轮询线程、互动目标和通知发送。
+    """
 
     _default_base_url = "https://ilinkai.weixin.qq.com"
+    # 本地二维码有效期，按最后更新的 Unix 秒级时间判断
     _qrcode_ttl_seconds = 240
+    # 无显式目标时优先选择的近期互动窗口，单位为秒
     _active_target_ttl_seconds = 24 * 60 * 60
+    # 停止轮询时等待线程退出的上限，单位为秒
     _poll_join_timeout_seconds = 5
 
     @classmethod
     def _build_cache_key(cls, identity: str) -> str:
-        """根据稳定渠道身份构建缓存键。"""
+        """
+        根据稳定渠道身份构建缓存键。
+        """
         safe_name = hashlib.md5(str(identity or "wechatclawbot").encode("utf-8")).hexdigest()[:12]
         return f"__wechatclawbot_state_{safe_name}__"
 
@@ -1482,7 +1650,18 @@ class WechatClawBot:
         auto_start_polling: bool = True,
         **kwargs,
     ):
-        """初始化微信 ClawBot 实例及相关参数。"""
+        """
+        恢复持久化登录状态，并按配置启动消息轮询。
+
+        :param WECHATCLAWBOT_BASE_URL: iLink 服务基址，默认使用官方地址
+        :param WECHATCLAWBOT_DEFAULT_TARGET: 可选默认通知目标
+        :param WECHATCLAWBOT_ADMINS: 逗号分隔的管理员标识，保存在实例中
+        :param WECHATCLAWBOT_POLL_TIMEOUT: 轮询等待秒数；默认 25，最小 10，无效输入回退到 25
+        :param name: 显示实例名；为空时使用 wechatclawbot
+        :param identity: 稳定缓存身份；为空时回退到实例名
+        :param auto_start_polling: 已有令牌或扫码登录成功时是否自动启动轮询；预览实例可禁用
+        :param kwargs: 通知实例附加配置，当前不使用
+        """
         self._config_name = name or "wechatclawbot"
         self._identity = str(identity or self._config_name)
         self._base_url = (WECHATCLAWBOT_BASE_URL or self._default_base_url).rstrip("/")
@@ -1508,7 +1687,13 @@ class WechatClawBot:
             self._start_polling()
 
     def _load_state(self) -> Dict[str, Any]:
-        """从文件缓存加载登录状态。"""
+        """
+        恢复稳定身份下的登录状态，必要时迁移旧名称缓存。
+
+        稳定身份下无缓存时复制旧名称缓存并删除旧键；损坏内容只在内存中重置，后续保存时覆盖。
+
+        :return: 包含凭据、二维码、游标和互动目标的状态字典；缓存缺失或损坏时使用初始状态
+        """
         content = self._filecache.get(self._cache_key)
         if not content and self._legacy_cache_key != self._cache_key:
             content = self._filecache.get(self._legacy_cache_key)
@@ -1547,7 +1732,9 @@ class WechatClawBot:
             }
 
     def _save_state(self) -> None:
-        """将当前状态持久化到文件缓存。"""
+        """
+        将当前状态持久化到文件缓存。
+        """
         self._state["base_url"] = self._base_url
         self._filecache.set(
             self._cache_key,
@@ -1555,7 +1742,9 @@ class WechatClawBot:
         )
 
     def _build_client(self) -> ILinkClient:
-        """根据当前持久化状态构建一次性的 iLink 客户端。"""
+        """
+        根据当前持久化状态构建一次性的 iLink 客户端。
+        """
         return ILinkClient(
             base_url=self._state.get("base_url") or self._base_url,
             bot_token=self._state.get("bot_token"),
@@ -1565,13 +1754,19 @@ class WechatClawBot:
         )
 
     def _update_state(self, **kwargs) -> None:
-        """更新并保存持久化状态。"""
+        """
+        更新并保存持久化状态。
+        """
         with self._lock:
             self._state.update(kwargs)
             self._save_state()
 
     def _clear_login_state(self) -> None:
-        """清理当前的登录状态。"""
+        """
+        清除令牌、账号、轮询游标和用户上下文令牌并持久化。
+
+        保留二维码和已知互动目标；轮询循环会因令牌缺失而退出。
+        """
         with self._lock:
             self._state["bot_token"] = None
             self._state["account_id"] = None
@@ -1580,7 +1775,9 @@ class WechatClawBot:
             self._save_state()
 
     def _qrcode_expired(self, updated_at: Optional[int]) -> bool:
-        """检查二维码是否过期。"""
+        """
+        检查二维码是否过期。
+        """
         if not updated_at:
             return True
         return int(time.time()) - int(updated_at) > self._qrcode_ttl_seconds
@@ -1588,7 +1785,13 @@ class WechatClawBot:
     def _remember_target(
         self, user_id: str, username: Optional[str], context_token: Optional[str]
     ) -> None:
-        """记录已知消息目标，用于消息发送时定位。"""
+        """
+        保存发送者最近活动时间及可选回复上下文令牌。
+
+        :param user_id: 发送者标识；为空时忽略
+        :param username: 显示名称；为空时回退到用户标识
+        :param context_token: 可选新上下文令牌；为空时保留此前令牌
+        """
         if not user_id:
             return
         now_ts = int(time.time())
@@ -1604,13 +1807,20 @@ class WechatClawBot:
             self._save_state()
 
     def _get_context_token(self, user_id: str) -> Optional[str]:
-        """获取特定用户的上下文 Token。"""
+        """
+        获取特定用户的上下文 Token。
+        """
         tokens = self._state.get("user_context_tokens") or {}
         token = tokens.get(str(user_id))
         return str(token) if token else None
 
     def _get_targets(self, userid: Optional[str] = None) -> List[str]:
-        """获取消息发送的目标列表。"""
+        """
+        按显式用户、默认目标和互动记录选择通知接收者。
+
+        :param userid: 显式接收用户；为空时使用默认目标，再回退到近期活跃或全部已知用户
+        :return: 目标标识列表；优先选择 24 小时内活跃用户，无活跃用户时回退到全部已知用户并排序
+        """
         if userid:
             return [str(userid)]
         if self._default_target:
@@ -1629,7 +1839,9 @@ class WechatClawBot:
 
     @staticmethod
     def _short_text(value: Any, max_len: int = 240) -> str:
-        """将内容缩短用于日志记录。"""
+        """
+        将内容缩短用于日志记录。
+        """
         if value is None:
             return ""
         if isinstance(value, (dict, list)):
@@ -1646,7 +1858,13 @@ class WechatClawBot:
 
     @staticmethod
     def _split_content(content: str, max_bytes: int = 3000) -> List[str]:
-        """将长消息内容拆分为符合大小限制的块。"""
+        """
+        按 UTF-8 字节数拆分文本并保留完整字符。
+
+        :param content: 完整正文；每块首尾空白会移除
+        :param max_bytes: 每块目标字节上限，默认 3000；必须足以容纳单个字符
+        :return: 按原顺序排列的非空文本块
+        """
         if not content:
             return []
         chunks: List[str] = []
@@ -1679,7 +1897,9 @@ class WechatClawBot:
         text: Optional[str] = None,
         link: Optional[str] = None,
     ) -> str:
-        """组合标题、文本和链接，生成消息内容。"""
+        """
+        组合标题、文本和链接，生成消息内容。
+        """
         parts = []
         if title:
             parts.append(str(title).strip())
@@ -1691,7 +1911,9 @@ class WechatClawBot:
 
     @staticmethod
     def _guess_mime_type(file_path: Path, file_bytes: bytes) -> str:
-        """猜测文件 MIME 类型。"""
+        """
+        猜测文件 MIME 类型。
+        """
         guessed = mimetypes.guess_type(file_path.name)[0]
         if guessed:
             return guessed
@@ -1705,7 +1927,9 @@ class WechatClawBot:
 
     @staticmethod
     def _load_remote_image(image: str) -> Optional[bytes]:
-        """加载远程图片并返回二进制数据。"""
+        """
+        加载远程图片并返回二进制数据。
+        """
         image_url = str(image or "").strip()
         if not image_url:
             return None
@@ -1734,11 +1958,19 @@ class WechatClawBot:
         return None
 
     def get_state(self) -> bool:
-        """获取当前登录状态。"""
+        """
+        检查本地缓存是否保存了登录令牌。
+
+        :return: 有令牌时返回 True；不代表服务端已验证令牌或轮询线程正在运行
+        """
         return bool(self._state.get("bot_token"))
 
     def stop(self) -> bool:
-        """停止消息轮询，并保留超时线程 owner 供后续重试。"""
+        """
+        请求停止轮询并最多等待 5 秒，保留未退出线程以便重试。
+
+        :return: 轮询线程不存在或已退出返回 True，仍存活返回 False
+        """
         self._stop_event.set()
         poll_thread = self._poll_thread
         if (
@@ -1754,7 +1986,9 @@ class WechatClawBot:
         return True
 
     def _start_polling(self) -> None:
-        """启动消息轮询线程。"""
+        """
+        启动消息轮询线程。
+        """
         if not self._state.get("bot_token"):
             return
         if self._poll_thread and self._poll_thread.is_alive():
@@ -1766,10 +2000,10 @@ class WechatClawBot:
 
     def _poll_loop(self) -> None:
         """
-        持续拉取微信消息并转发到本地消息入口。
+        轮询并先保存游标，再同步转发每条入站消息。
 
-        轮询异常时按退避策略重试；本地消息入口失败只记日志，不回滚 sync_buf，
-        由上层的消息ID去重兜底，避免单次本地异常导致后续消息全部阻塞。
+        入口转发失败只记录日志，不回滚游标，因此失败消息不会由本循环保证重投。
+        轮询异常依次等待 1、2、5、10、30 秒，连续失败 10 次会清除登录状态并结束轮询。
         """
         consecutive_failures = 0
         backoff = [1, 2, 5, 10, 30]
@@ -1813,7 +2047,9 @@ class WechatClawBot:
                 self._stop_event.wait(delay)
 
     def _forward_to_message_chain(self, payload: dict) -> bool:
-        """把 WeChatClawBot 轮询消息同步转交统一消息入口。"""
+        """
+        把 WeChatClawBot 轮询消息同步转交统一消息入口。
+        """
         return forward_message_to_host(payload, self._config_name)
 
     def _build_known_targets(self) -> List[Dict[str, Any]]:
@@ -1832,6 +2068,11 @@ class WechatClawBot:
         return sorted(items, key=lambda item: item.get("last_active") or 0, reverse=True)
 
     def refresh_qrcode(self) -> Dict[str, Any]:
+        """
+        未登录时请求并持久化新二维码；已登录时只返回本地状态。
+
+        :return: 状态字典，二维码更新时含 Unix 秒级时间戳；获取失败时返回接口的失败结果
+        """
         if self._state.get("bot_token"):
             return self.get_status(refresh_remote=False)
         client = ILinkClient(
@@ -1855,6 +2096,15 @@ class WechatClawBot:
         refresh_remote: bool = True,
         auto_generate_qrcode: bool = False,
     ) -> Dict[str, Any]:
+        """
+        查询登录与二维码状态，必要时更新持久化凭据并启动轮询。
+
+        状态结果的 success 固定为 True，不代表远端登录校验成功；轮询自动启动受实例配置控制。
+
+        :param refresh_remote: 未登录且已有二维码时是否请求远端扫码状态
+        :param auto_generate_qrcode: 二维码缺失或超过本地 240 秒有效期时是否自动生成
+        :return: 包含 success、connected、二维码、账号及已知目标的状态字典；connected 只依据本地令牌
+        """
         qrcode = self._state.get("qrcode") or {}
         if (
             auto_generate_qrcode
@@ -1905,6 +2155,13 @@ class WechatClawBot:
         }
 
     def logout(self) -> Dict[str, Any]:
+        """
+        请求停止轮询并清空本地登录、二维码及上下文令牌。
+
+        保留已知互动目标；不向远端发送账号注销请求。
+
+        :return: 本地状态清理成功的结果字典；不保证停止请求返回时轮询线程已退出
+        """
         self.stop()
         with self._lock:
             self._state["bot_token"] = None
@@ -1916,6 +2173,11 @@ class WechatClawBot:
         return {"success": True, "message": "已退出微信 ClawBot 登录"}
 
     def test_connection(self) -> Tuple[bool, str]:
+        """
+        使用当前缓存令牌探测 iLink 服务连接。
+
+        :return: 状态与说明的二元组；未登录直接返回失败
+        """
         if not self._state.get("bot_token"):
             return False, "未登录，请先扫码完成绑定"
         return self._build_client().test_connection()
@@ -1928,7 +2190,15 @@ class WechatClawBot:
         cleanup_old: bool = False,
         overwrite: bool = False,
     ) -> Tuple[bool, str]:
-        """迁移配置重命名后的登录缓存，默认复制而不是删除旧缓存。"""
+        """
+        按配置名称迁移登录缓存。
+
+        :param old_name: 来源配置名，不能为空
+        :param new_name: 目标配置名，不能为空
+        :param cleanup_old: 复制成功后是否删除旧缓存，默认 False
+        :param overwrite: 目标已有缓存时是否覆盖，默认 False
+        :return: 是否完成或可安全跳过与说明的二元组；无来源缓存或不覆盖已有目标也视为成功
+        """
         source_name = str(old_name or "").strip()
         target_name = str(new_name or "").strip()
         if not source_name or not target_name:
@@ -1952,7 +2222,13 @@ class WechatClawBot:
 
     @classmethod
     def reconcile_cached_states(cls, previous: list[dict], current: list[dict]) -> Dict[str, Any]:
-        """按稳定身份迁移改名缓存，并清理已删除渠道的登录状态。"""
+        """
+        按稳定身份迁移改名缓存，并删除已移除渠道的缓存。
+
+        :param previous: 修改前完整通知配置列表，使用 id、name 和 type 字段
+        :param current: 修改后完整通知配置列表，用稳定 id 判断保留与删除
+        :return: 含 success 与说明的同步结果；缓存操作异常向上传播
+        """
         cache = FileCache()
         old_by_id = {str(item.get("id")): item for item in previous if item.get("id")}
         current_ids = {str(item.get("id")) for item in current if item.get("id")}
@@ -2034,6 +2310,16 @@ class WechatClawBot:
         aeskey: Optional[str],
         mime_type: Optional[str] = None,
     ) -> bytes:
+        """
+        尝试 ECB、CBC 及去填充候选，以已知文件头选择可用内容。
+
+        此兼容逻辑只做格式启发式判断，不保证任意文件都能判定解密是否成功。
+
+        :param content: 下载到的原始字节
+        :param aeskey: 可选编码后的 AES 密钥
+        :param mime_type: 优先匹配的文件 MIME 类型
+        :return: 找到有效文件头的候选字节；无密钥、解密失败或无法识别时保留原始内容
+        """
         aes_bytes = cls._decode_aes_key(aeskey)
         if not aes_bytes or not content:
             return content
@@ -2093,6 +2379,13 @@ class WechatClawBot:
         return default
 
     def _download_ref_bytes(self, ref: str, kind: str) -> Optional[Tuple[bytes, str, Optional[str]]]:
+        """
+        下载内部资源引用并尝试兼容解密。
+
+        :param ref: wxclaw:// 引用，包含下载地址及可选密钥、名称和格式
+        :param kind: 引用类型，如 image、file 或 voice
+        :return: 内容字节、MIME 类型和可选名称的三元组；引用无效或下载失败返回 None
+        """
         payload = self._decode_ref_payload(ref=ref, kind=kind)
         if not payload:
             return None
@@ -2120,6 +2413,12 @@ class WechatClawBot:
         return content, mime_type, payload.get("name")
 
     def download_image_to_data_url(self, image_ref: str) -> Optional[str]:
+        """
+        下载内部图片引用并编码为数据地址。
+
+        :param image_ref: wxclaw://image/ 内部图片引用
+        :return: 包含 MIME 类型的 Base64 数据地址；引用无效或下载失败返回 None
+        """
         result = self._download_ref_bytes(ref=image_ref, kind="image")
         if not result:
             return None
@@ -2127,6 +2426,12 @@ class WechatClawBot:
         return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
 
     def download_media_bytes(self, media_ref: str) -> Optional[bytes]:
+        """
+        下载内部文件或语音引用的内容。
+
+        :param media_ref: wxclaw://file/ 或 wxclaw://voice/ 引用
+        :return: 下载及兼容解密后的字节；类型不支持或下载失败返回 None
+        """
         kind = None
         if media_ref.startswith("wxclaw://file/"):
             kind = "file"
@@ -2146,6 +2451,20 @@ class WechatClawBot:
         link: Optional[str] = None,
         **kwargs,
     ) -> Optional[bool]:
+        """
+        优先发送组合文字，只有无文字时才尝试发送图片。
+
+        各目标独立发送，已发出的分块不会撤回。当前无文字且无可用图片时，
+        只要存在目标也会返回 True，此结果不表示实际发出消息。
+
+        :param title: 可选标题
+        :param text: 可选正文
+        :param image: 可选远程图片或图片数据地址；标题、正文或链接产生文字时忽略
+        :param userid: 显式接收用户；为空时使用默认目标，再回退到近期活跃或全部已知用户
+        :param link: 追加为详情文字的链接
+        :param kwargs: 兼容发送接口的附加参数，当前忽略
+        :return: 至少一个目标的全部发送步骤成功时返回 True；无目标或全部发送失败返回 False
+        """
         targets = self._get_targets(userid=userid)
         if not targets:
             logger.warning("未找到可发送的微信 ClawBot 目标")
@@ -2198,6 +2517,17 @@ class WechatClawBot:
         userid: Optional[str] = None,
         **kwargs,
     ) -> Optional[bool]:
+        """
+        发送本地附件；图片类型使用图片协议，其他类型使用文件协议。
+
+        :param file_path: 本地普通文件路径；完整读入内存后发送，保留源文件
+        :param file_name: 普通附件显示名称；为空时使用路径文件名
+        :param title: 兼容发送接口的标题，当前不发送
+        :param text: 兼容发送接口的说明，当前不发送
+        :param userid: 显式接收用户；为空时使用默认目标，再回退到近期活跃或全部已知用户
+        :param kwargs: 兼容发送接口的附加参数，当前忽略
+        :return: 至少一个目标的全部发送步骤成功时返回 True；无目标或全部发送失败返回 False
+        """
         path = Path(file_path)
         if not path.exists() or not path.is_file():
             logger.warning(f"待发送文件不存在：{file_path}")
@@ -2233,6 +2563,13 @@ class WechatClawBot:
     def send_medias_msg(
         self, medias: List[MediaInfo], userid: Optional[str] = None
     ) -> Optional[bool]:
+        """
+        发送包含评分和详情地址的媒体候选列表。
+
+        :param medias: 按原顺序展示的候选项；空列表不发送
+        :param userid: 显式接收用户；为空时使用默认目标，再回退到近期活跃或全部已知用户
+        :return: 至少一个目标的全部发送步骤成功时返回 True；无目标或全部发送失败返回 False
+        """
         if not medias:
             return False
         lines = []
@@ -2252,6 +2589,15 @@ class WechatClawBot:
         title: Optional[str] = None,
         link: Optional[str] = None,
     ) -> Optional[bool]:
+        """
+        发送带站点、资源信息和详情地址的种子候选列表。
+
+        :param torrents: 按原顺序展示的种子上下文；空列表不发送
+        :param userid: 显式接收用户；为空时使用默认目标，再回退到近期活跃或全部已知用户
+        :param title: 列表标题；为空时使用“种子列表”
+        :param link: 列表末尾的可选详情地址
+        :return: 至少一个目标的全部发送步骤成功时返回 True；无目标或全部发送失败返回 False
+        """
         if not torrents:
             return False
         lines = []

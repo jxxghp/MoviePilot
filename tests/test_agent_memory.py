@@ -1,3 +1,7 @@
+"""
+验证 Agent 记忆文件的用户隔离、主文件加载及按需检索。
+"""
+
 import asyncio
 import json
 from datetime import datetime
@@ -16,7 +20,9 @@ from app.agent.tools.tags import ToolTag
 
 
 def _write_activity_log(activity_dir, date_str: str, lines: list[str]) -> None:
-    """写入测试用活动记忆文件。"""
+    """
+    写入测试用活动记忆文件。
+    """
     activity_dir.mkdir(parents=True, exist_ok=True)
     body = "\n".join(lines)
     (activity_dir / f"{date_str}.md").write_text(
@@ -26,7 +32,9 @@ def _write_activity_log(activity_dir, date_str: str, lines: list[str]) -> None:
 
 
 def test_memory_loads_only_primary_file(tmp_path):
-    """每轮默认上下文只能装载 MEMORY.md，不应装载主题或活动正文。"""
+    """
+    每轮默认上下文只能装载 MEMORY.md，不应装载主题或活动正文。
+    """
     primary = tmp_path / "MEMORY.md"
     primary.write_text("用户偏好：简洁回复。", encoding="utf-8")
     (tmp_path / "MEDIA_RULES.md").write_text("主题记忆：优先 Remux。", encoding="utf-8")
@@ -60,7 +68,9 @@ def test_memory_loads_only_primary_file(tmp_path):
 
 
 def test_memory_loads_global_and_current_user_primary_files_only(tmp_path):
-    """默认上下文应按全局再当前用户顺序加载，且不触及其他用户记忆。"""
+    """
+    默认上下文应按全局再当前用户顺序加载，且不触及其他用户记忆。
+    """
     global_memory = tmp_path / "MEMORY.md"
     global_memory.write_text("公共规则：使用简洁风格。", encoding="utf-8")
     user_memory_dir = tmp_path / "users" / "user-a"
@@ -91,7 +101,9 @@ def test_memory_loads_global_and_current_user_primary_files_only(tmp_path):
 
 
 def test_memory_onboarding_exposes_relevant_retrieval(tmp_path):
-    """主记忆为空时仍提供按需主题与历史证据检索。"""
+    """
+    主记忆为空时仍提供按需主题与历史证据检索。
+    """
     (tmp_path / "MEDIA_RULES.md").write_text("主题记忆：偏好 HEVC。", encoding="utf-8")
     middleware = MemoryMiddleware(memory_dir=str(tmp_path))
     state_update = asyncio.run(middleware.abefore_agent({}, runtime=None, config=None))
@@ -107,7 +119,9 @@ def test_memory_onboarding_exposes_relevant_retrieval(tmp_path):
 
 
 def test_query_memory_files_excludes_obsolete_activity_but_preserves_files(tmp_path):
-    """旧活动文件原地保留，但所有分类与显式路径都不能把摘要当历史证据。"""
+    """
+    旧活动文件原地保留，但所有分类与显式路径都不能把摘要当历史证据。
+    """
     (tmp_path / "MEDIA_RULES.md").write_text("优先 Remux", encoding="utf-8")
     _write_activity_log(tmp_path / "activity", "2026-06-18", ["- **10:00** 旧摘要"])
     payload = query_memory_files(str(tmp_path))
@@ -119,7 +133,9 @@ def test_query_memory_files_excludes_obsolete_activity_but_preserves_files(tmp_p
 
 
 def test_query_memory_files_scopes_global_and_current_user_memory(tmp_path):
-    """检索只能看到公共记忆与当前用户记忆，不能跨用户读取。"""
+    """
+    检索只能看到公共记忆与当前用户记忆，不能跨用户读取。
+    """
     (tmp_path / "PUBLIC_RULES.md").write_text("公共主题：优先 Remux。\n", encoding="utf-8")
     user_memory_dir = tmp_path / "users" / "user-a"
     (user_memory_dir / "USER_RULES.md").parent.mkdir(parents=True)
@@ -150,7 +166,9 @@ def test_query_memory_files_scopes_global_and_current_user_memory(tmp_path):
 
 
 def test_query_memory_files_supports_regex_and_bounds_results(tmp_path):
-    """记忆检索应支持显式正则，并对返回条数做有界处理。"""
+    """
+    记忆检索应支持显式正则，并对返回条数做有界处理。
+    """
     (tmp_path / "one.md").write_text("整理电影 A\n查询站点\n", encoding="utf-8")
     (tmp_path / "two.md").write_text("整理电影 B\n", encoding="utf-8")
 
@@ -177,18 +195,22 @@ def test_query_memory_files_supports_regex_and_bounds_results(tmp_path):
 
 
 def test_memory_middleware_exposes_search_tool(tmp_path):
-    """统一记忆中间件应通过一个只读系统工具提供按需检索。"""
+    """
+    统一记忆中间件应通过一个只读系统工具提供按需检索。
+    """
     middleware = MemoryMiddleware(memory_dir=str(tmp_path))
 
     assert [tool.name for tool in middleware.tools] == [SEARCH_MEMORY_TOOL_NAME]
     assert ToolTag.Read in middleware.tools[0].tags
     assert ToolTag.System in middleware.tools[0].tags
     assert middleware.tools[0]._agent_tool_source == "middleware:memory"
-    assert "topic memory" in middleware.tools[0].description
+    assert "主题记忆" in middleware.tools[0].description
 
 
 def test_memory_search_tool_returns_json_payload(tmp_path):
-    """search_memory 工具应返回结构化 JSON，而不是将文件正文隐式注入上下文。"""
+    """
+    search_memory 工具应返回结构化 JSON，而不是将文件正文隐式注入上下文。
+    """
     (tmp_path / "MEDIA_RULES.md").write_text("优先 Remux。\n", encoding="utf-8")
     middleware = MemoryMiddleware(memory_dir=str(tmp_path))
 
@@ -203,7 +225,9 @@ def test_memory_search_tool_returns_json_payload(tmp_path):
 
 
 def test_memory_search_tool_reports_streaming_execution(tmp_path):
-    """search_memory 工具执行时应复用统一的工具显示策略。"""
+    """
+    search_memory 工具执行时应复用统一的工具显示策略。
+    """
 
     async def _run_test():
         calls = []
@@ -222,7 +246,9 @@ def test_memory_search_tool_reports_streaming_execution(tmp_path):
         )
 
         async def _fake_handler(_request):
-            """返回模拟工具结果。"""
+            """
+            返回模拟工具结果。
+            """
             return "ok"
 
         result = await middleware.awrap_tool_call(request, _fake_handler)
@@ -242,7 +268,9 @@ def test_memory_search_tool_reports_streaming_execution(tmp_path):
 
 
 def test_memory_middleware_sanitizes_its_own_logs(tmp_path):
-    """记忆中间件读取参数和异常写日志时必须脱敏。"""
+    """
+    记忆中间件读取参数和异常写日志时必须脱敏。
+    """
 
     async def _run_test():
         secret_marker = "memory-secret-marker-6825"
@@ -276,7 +304,9 @@ def test_memory_middleware_sanitizes_its_own_logs(tmp_path):
 
 
 def test_memory_provider_error_does_not_echo_secret(tmp_path):
-    """记忆 provider 内部异常不能进入日志或模型错误结果。"""
+    """
+    记忆 provider 内部异常不能进入日志或模型错误结果。
+    """
     secret_marker = "memory-provider-secret-3584"
     middleware = MemoryMiddleware(memory_dir=str(tmp_path))
     mock_logger = MagicMock()
@@ -299,7 +329,9 @@ def test_memory_provider_error_does_not_echo_secret(tmp_path):
 
 
 def test_memory_has_no_activity_summary_hooks(tmp_path):
-    """稳定记忆中间件不再生成或清理逐轮活动摘要。"""
+    """
+    稳定记忆中间件不再生成或清理逐轮活动摘要。
+    """
     middleware = MemoryMiddleware(memory_dir=str(tmp_path))
     assert "aafter_agent" not in MemoryMiddleware.__dict__
     assert not hasattr(middleware, "_record_activity")
@@ -308,7 +340,9 @@ def test_memory_has_no_activity_summary_hooks(tmp_path):
 
 
 def test_factory_does_not_register_memory_tool():
-    """记忆检索工具由统一中间件注册，不应进入全局工具工厂。"""
+    """
+    记忆检索工具由统一中间件注册，不应进入全局工具工厂。
+    """
     with patch(
         "app.agent.tools.factory._get_plugin_agent_tools",
         return_value=[],

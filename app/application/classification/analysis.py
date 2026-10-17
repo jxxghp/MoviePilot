@@ -1,4 +1,6 @@
-"""分类字段目录、预览和近期历史影响分析应用服务。"""
+"""
+分类字段目录、预览和近期历史影响分析应用服务。
+"""
 
 from __future__ import annotations
 
@@ -66,16 +68,27 @@ from app.schemas.music import MusicInfo as SchemaMusicInfo
 _UNCLASSIFIED_CATEGORY_ID = "__unclassified__"
 _DEFAULT_RESOLVE_CONCURRENCY = 3
 
+# 一次读取历史媒体详情，再分别按活动和候选策略准备事实的异步端口。
 ClassificationImpactFactsResolver: TypeAlias = Callable[
     [DownloadHistorySnapshot | TransferHistorySnapshot, ClassificationPolicy, ClassificationPolicy],
     Awaitable[tuple[ClassificationFacts, ClassificationFacts] | None],
 ]
-"""一次读取历史媒体详情，再分别按活动和候选策略准备事实的异步端口。"""
 
 
 @dataclass(frozen=True, slots=True)
 class ClassificationImpactSampleBatch:
-    """保存一次影响分析使用的有界事实集合及其采样边界。"""
+    """
+    保存一次影响分析使用的有界事实集合及其采样边界。
+
+    :param source: 样本来源，request 表示请求自带事实，recent_history 表示近期历史
+    :param facts: 按活动策略准备的标准事实样本
+    :param scanned_count: 本轮实际扫描的历史记录或请求样本数
+    :param skipped_count: 因重复、无效、解析失败或超出采样上限而未纳入比较的数量
+    :param unresolved_count: 因详情或身份无法解析而缺失的样本数量
+    :param truncated: 样本是否因数量上限或请求数据被跳过而不完整
+    :param warnings: 影响分析完整性或可信度的可读提示
+    :param candidate_facts: 按候选策略准备且与 facts 顺序对应的事实；None 表示复用 facts
+    """
 
     source: Literal["request", "recent_history"]
     facts: tuple[ClassificationFacts, ...]
@@ -88,17 +101,28 @@ class ClassificationImpactSampleBatch:
 
 
 class ClassificationImpactSampleProvider(Protocol):
-    """为影响分析异步提供近期标准分类事实样本。"""
+    """
+    为影响分析异步提供近期标准分类事实样本。
+    """
 
     async def load(
         self, limit: int, *, active: ClassificationPolicy, candidate: ClassificationPolicy,
     ) -> ClassificationImpactSampleBatch:
-        """读取最多 ``limit`` 个媒体，分别准备两套策略所需事实。"""
+        """
+        读取最多 ``limit`` 个媒体，分别准备两套策略所需事实。
+
+        :param limit: 本轮最多纳入的媒体样本数
+        :param active: 用于计算当前分类结果的活动策略
+        :param candidate: 用于计算变更后分类结果的候选策略
+        :return: 包含成对事实样本、扫描数量及截断提示的采样结果
+        """
         ...
 
 
 class RecentHistoryClassificationSampleProvider:
-    """从近期下载和成功整理历史构造有限的标准分类事实。"""
+    """
+    从近期下载和成功整理历史构造有限的标准分类事实。
+    """
 
     def __init__(
         self,
@@ -108,7 +132,9 @@ class RecentHistoryClassificationSampleProvider:
         facts_resolver: ClassificationImpactFactsResolver | None = None,
         resolve_concurrency: int = _DEFAULT_RESOLVE_CONCURRENCY,
     ) -> None:
-        """保存由 API 请求或宿主运行时提供的只读历史端口。"""
+        """
+        保存由 API 请求或宿主运行时提供的只读历史端口。
+        """
         if resolve_concurrency <= 0:
             raise ValueError("影响分析详情读取并发上限必须大于 0")
         self._download_history = download_history
@@ -119,7 +145,9 @@ class RecentHistoryClassificationSampleProvider:
     async def load(
         self, limit: int, *, active: ClassificationPolicy, candidate: ClassificationPolicy,
     ) -> ClassificationImpactSampleBatch:
-        """合并去重近期历史，保持活动与候选策略样本按身份成对。"""
+        """
+        合并去重近期历史，保持活动与候选策略样本按身份成对。
+        """
         downloads, transfers = await asyncio.gather(
             self._download_history.async_list_by_page(page=1, count=limit),
             self._transfer_history.async_list_by_page(
@@ -212,7 +240,9 @@ class RecentHistoryClassificationSampleProvider:
         active: ClassificationPolicy,
         candidate: ClassificationPolicy,
     ) -> list[tuple[ClassificationFacts, ClassificationFacts] | None]:
-        """以固定并发上限重新读取详情，并拒绝身份不一致的返回值。"""
+        """
+        以固定并发上限重新读取详情，并拒绝身份不一致的返回值。
+        """
         facts_resolver = self._facts_resolver
         if facts_resolver is None:
             return [(projected, projected) for _, projected in records]
@@ -222,11 +252,14 @@ class RecentHistoryClassificationSampleProvider:
             record: _HistorySampleRecord,
             projected: ClassificationFacts,
         ) -> tuple[ClassificationFacts, ClassificationFacts] | None:
-            """在同一并发窗口内准备两份事实，任一身份不符则排除整个样本。"""
+            """
+            在同一并发窗口内准备两份事实，任一身份不符则排除整个样本。
+            """
             async with semaphore:
                 try:
                     facts = await facts_resolver(record.payload, active, candidate)
-                except Exception:  # noqa: BLE001  单条详情失败不应阻断整批分析
+                # 单条详情失败不应阻断整批分析
+                except Exception:  # noqa: BLE001
                     return None
             if facts is None or any(
                 _classification_identity_key(item) != _classification_identity_key(projected)
@@ -240,7 +273,14 @@ class RecentHistoryClassificationSampleProvider:
 
 @dataclass(frozen=True, slots=True)
 class _HistorySampleRecord:
-    """统一下载和整理历史的排序元数据。"""
+    """
+    统一下载和整理历史的排序元数据。
+
+    :param kind: 记录来源，download 表示下载历史，transfer 表示整理历史
+    :param date: 历史时间文本，参与跨来源排序；缺失时为 None
+    :param record_id: 来源历史表中的主键，辅助稳定排序
+    :param payload: 用于恢复媒体身份及分类事实的历史快照
+    """
 
     kind: Literal["download", "transfer"]
     date: Optional[str]
@@ -249,7 +289,9 @@ class _HistorySampleRecord:
 
 
 class ClassificationAnalysisService:
-    """协调当前策略快照、纯求值器和有边界样本影响分析。"""
+    """
+    协调当前策略快照、纯求值器和有边界样本影响分析。
+    """
 
     def __init__(
         self,
@@ -258,13 +300,17 @@ class ClassificationAnalysisService:
         sample_provider: ClassificationImpactSampleProvider | None = None,
         execution: ClassificationExecutionPort | None = None,
     ) -> None:
-        """保存策略配置、样本提供器和可选的统一执行事实端口。"""
+        """
+        保存策略配置、样本提供器和可选的统一执行事实端口。
+        """
         self._configuration = configuration
         self._sample_provider = sample_provider
         self._execution = execution
 
     def fields(self) -> ClassificationFieldCatalog:
-        """分开返回新规则可选字段和已有规则使用的退役字段。"""
+        """
+        分开返回新规则可选字段和已有规则使用的退役字段。
+        """
         extra_fields = self._configuration.extra_fields()
         return ClassificationFieldCatalog(
             fields=list(
@@ -288,11 +334,15 @@ class ClassificationAnalysisService:
         self,
         policy: ClassificationPolicy,
     ) -> ClassificationValidationResult:
-        """使用发布时相同字段目录校验一个完整策略草稿。"""
+        """
+        使用发布时相同字段目录校验一个完整策略草稿。
+        """
         return self._configuration.validate(policy)
 
     def preview(self, request: ClassificationPreviewRequest) -> ClassificationEvaluation:
-        """对完整媒体详情或兼容事实执行活动策略或合法草稿，并返回完整命中轨迹。"""
+        """
+        对完整媒体详情或兼容事实执行活动策略或合法草稿，并返回完整命中轨迹。
+        """
         policy = request.policy or self._configuration.active()
         if request.policy is not None:
             self._require_valid(policy)
@@ -304,7 +354,9 @@ class ClassificationAnalysisService:
         return evaluate_classification_facts(policy, facts, trace=True)
 
     async def async_preview(self, request: ClassificationPreviewRequest) -> ClassificationEvaluation:
-        """异步补充预览事实，避免网络补充占用 API 事件循环。"""
+        """
+        异步补充预览事实，避免网络补充占用 API 事件循环。
+        """
         policy = request.policy or self._configuration.active()
         if request.policy is not None:
             self._require_valid(policy)
@@ -323,7 +375,9 @@ class ClassificationAnalysisService:
         policy: ClassificationPolicy,
         use_execution: bool,
     ) -> ClassificationFacts:
-        """构造预览事实；媒体输入按所选策略复用真实执行端口的补充链路。"""
+        """
+        构造预览事实；媒体输入按所选策略复用真实执行端口的补充链路。
+        """
         if input_data.kind == "facts":
             return input_data.facts
         media = _preview_media(input_data.media)
@@ -345,7 +399,9 @@ class ClassificationAnalysisService:
         example_limit: int,
         samples: Sequence[ClassificationFacts] = (),
     ) -> ClassificationImpactAnalysis:
-        """在最多 200 条有界样本内比较活动策略和合法候选策略。"""
+        """
+        在最多 200 条有界样本内比较活动策略和合法候选策略。
+        """
         active = self._configuration.active()
         if expected_revision != active.revision:
             raise ClassificationPolicyConflictError(
@@ -366,7 +422,9 @@ class ClassificationAnalysisService:
         )
 
     def _require_valid(self, policy: ClassificationPolicy) -> None:
-        """策略存在发布阻断错误时抛出携带结构化结果的稳定异常。"""
+        """
+        策略存在发布阻断错误时抛出携带结构化结果的稳定异常。
+        """
         validation = self.validate(policy)
         if not validation.valid:
             raise ClassificationPolicyValidationError(validation)
@@ -378,7 +436,9 @@ class ClassificationAnalysisService:
         active: ClassificationPolicy,
         candidate: ClassificationPolicy,
     ) -> ClassificationImpactSampleBatch:
-        """优先使用请求事实，否则委托近期历史提供器生成样本。"""
+        """
+        优先使用请求事实，否则委托近期历史提供器生成样本。
+        """
         if samples:
             selected_list: list[ClassificationFacts] = []
             seen: set[tuple[str, str, str, str]] = set()
@@ -437,7 +497,9 @@ class ClassificationAnalysisService:
 def _history_facts(
     history: DownloadHistorySnapshot | TransferHistorySnapshot,
 ) -> ClassificationFacts | None:
-    """把历史中稳定保存的身份、类型、标题和年份投影为部分事实。"""
+    """
+    把历史中稳定保存的身份、类型、标题和年份投影为部分事实。
+    """
     media_source = _enum_text(history.media_source)
     media_id = str(history.media_id or "").strip()
     media_type = _classification_media_type(history.type)
@@ -463,7 +525,9 @@ def _history_facts(
 
 
 def _classification_identity_key(facts: ClassificationFacts) -> tuple[str, str, str, str]:
-    """返回媒体详情可用于核对的来源、编号、类型和音乐实体键。"""
+    """
+    返回媒体详情可用于核对的来源、编号、类型和音乐实体键。
+    """
     return (
         facts.identity.media_source,
         facts.identity.media_id,
@@ -473,7 +537,9 @@ def _classification_identity_key(facts: ClassificationFacts) -> tuple[str, str, 
 
 
 def _preview_media(payload: Mapping[str, Any]) -> object:
-    """把预览媒体载荷转换为可供执行服务消费的媒体对象。"""
+    """
+    把预览媒体载荷转换为可供执行服务消费的媒体对象。
+    """
     media_type = _enum_text(payload.get("type"))
     model = SchemaMusicInfo if media_type == "音乐" else SchemaMediaInfo
     try:
@@ -488,7 +554,9 @@ def build_classification_facts_from_media(
     *,
     extra_fields: Sequence[object] = (),
 ) -> ClassificationFacts:
-    """把搜索或识别得到的完整媒体对象转换为统一分类数据。"""
+    """
+    把搜索或识别得到的完整媒体对象转换为统一分类数据。
+    """
     return build_classification_facts(
         cast(Any, media),
         extensions=_media_extension_facts(media, extra_fields=extra_fields),
@@ -500,7 +568,9 @@ def build_classification_facts_from_media_payload(
     *,
     extra_fields: Sequence[object] = (),
 ) -> ClassificationFacts:
-    """把前端选择的媒体搜索结果转换为统一分类数据，并兼容插件来源。"""
+    """
+    把前端选择的媒体搜索结果转换为统一分类数据，并兼容插件来源。
+    """
     return build_classification_facts_from_media(
         _preview_media(payload),
         extra_fields=extra_fields,
@@ -512,7 +582,9 @@ def _media_extension_facts(
     *,
     extra_fields: Sequence[object] = (),
 ) -> dict[str, dict[str, ClassificationFactValue]]:
-    """按 extensions.<source>.<field> 命名空间整理媒体携带的扩展字段。"""
+    """
+    按 extensions.<source>.<field> 命名空间整理媒体携带的扩展字段。
+    """
     raw_facts = getattr(media, "classification_facts", None)
     if not isinstance(raw_facts, Mapping):
         return {}
@@ -548,7 +620,9 @@ def _media_extension_facts(
 
 
 def _is_classification_fact_value(value: object) -> bool:
-    """判断扩展字段是否为分类契约允许的 JSON 标量或标量列表。"""
+    """
+    判断扩展字段是否为分类契约允许的 JSON 标量或标量列表。
+    """
     if value is None or isinstance(value, (str, int, float, bool)):
         return True
     return isinstance(value, list) and all(
@@ -557,7 +631,9 @@ def _is_classification_fact_value(value: object) -> bool:
 
 
 def _classification_media_type(value: object) -> ClassificationMediaType | None:
-    """兼容历史中使用的中英文媒体类型值。"""
+    """
+    兼容历史中使用的中英文媒体类型值。
+    """
     normalized = _enum_text(value).casefold()
     aliases: dict[str, ClassificationMediaType] = {
         "电影": "电影",
@@ -572,13 +648,17 @@ def _classification_media_type(value: object) -> ClassificationMediaType | None:
 
 
 def _history_year(value: object) -> int | None:
-    """从历史字符串中提取四位年份，异常值按事实缺失处理。"""
+    """
+    从历史字符串中提取四位年份，异常值按事实缺失处理。
+    """
     text = _enum_text(value)[:4]
     return int(text) if text.isdigit() else None
 
 
 def _enum_text(value: object) -> str:
-    """把字符串枚举和值统一为去除首尾空白的文本。"""
+    """
+    把字符串枚举和值统一为去除首尾空白的文本。
+    """
     if isinstance(value, Enum):
         value = value.value
     return str(value or "").strip()
@@ -591,7 +671,9 @@ def _build_impact_analysis(
     requested_limit: int,
     example_limit: int,
 ) -> ClassificationImpactAnalysis:
-    """同步执行有界纯求值比较，并生成按稳定分类 ID 聚合的统计。"""
+    """
+    同步执行有界纯求值比较，并生成按稳定分类 ID 聚合的统计。
+    """
     previous_categories: Counter[str] = Counter()
     candidate_categories: Counter[str] = Counter()
     changes: list[ClassificationImpactChange] = []
@@ -690,7 +772,9 @@ def _build_impact_analysis(
 
 
 def _category_id(result: ClassificationResult) -> str:
-    """返回结果中的稳定分类 ID；无分类时使用明确聚合键。"""
+    """
+    返回结果中的稳定分类 ID；无分类时使用明确聚合键。
+    """
     selection = result.effective or result.recommended
     return selection.category_id if selection and selection.category_id else _UNCLASSIFIED_CATEGORY_ID
 
@@ -699,7 +783,9 @@ def _changed_result_fields(
     previous: ClassificationResult,
     candidate: ClassificationResult,
 ) -> list[str]:
-    """返回除预期 revision 变化外真正影响分类行为的结果字段。"""
+    """
+    返回除预期 revision 变化外真正影响分类行为的结果字段。
+    """
     previous_selection = previous.effective or previous.recommended
     candidate_selection = candidate.effective or candidate.recommended
     fields = {

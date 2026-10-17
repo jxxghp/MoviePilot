@@ -1,4 +1,6 @@
-"""发送语音消息工具。"""
+"""
+发送语音消息工具。
+"""
 from typing import Optional, Type
 
 from pydantic import BaseModel, Field
@@ -12,44 +14,65 @@ from app.schemas.message import Message, MessageType
 
 
 class SendVoiceMessageInput(BaseModel):
-    """发送语音消息工具输入。"""
+    """
+    发送语音消息工具输入。
+    """
 
     message: str = Field(
         ...,
-        description="The spoken content to send back to the user",
+        description="需要通过语音回复给当前用户的完整正文",
     )
 
 
 class SendVoiceMessageTool(MoviePilotTool):
-    """发送 Agent 语音回复的工具。"""
+    """
+    发送 Agent 语音回复的工具。
+    """
 
-    name: str = "send_voice_message"
-    tags: list[str] = [
-        ToolTag.Write,
-        ToolTag.Message,
-        ToolTag.TerminalResponse,
-    ]
-    sends_message: bool = True
-    return_direct: bool = True
-    description: str = (
-        "Send a voice reply to the current user. Use this only when the user explicitly asks for "
-        "a voice reply or when spoken playback is clearly better than plain text. On channels "
-        "without voice support or when TTS is unavailable, it automatically falls back to sending "
-        "the same content as plain text. This is a terminal response tool: put the complete "
-        "user-facing reply in `message`; after this tool runs, do not send another text reply "
-        "or call `send_message` with the same content."
+    name: str = Field(
+        default="send_voice_message",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = SendVoiceMessageInput
+    tags: list[str] = Field(
+        default=[ToolTag.Write, ToolTag.Message, ToolTag.TerminalResponse],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    sends_message: bool = Field(
+        default=True,
+        description="工具是否直接向当前用户发送消息",
+    )
+    return_direct: bool = Field(
+        default=True,
+        description="是否直接返回工具结果并结束本轮智能体响应",
+    )
+    description: str = Field(
+        default=(
+            "向当前用户发送语音回复。"
+            "仅在用户明确要求语音，或语音播放明显更合适时使用。"
+            "渠道不支持语音或 TTS 不可用时，自动回退为发送相同内容的纯文本。"
+            "本工具直接完成用户回复：在 message 中提供完整正文；"
+            "执行后不要再发送相同文本或调用 send_message 重复发送。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=SendVoiceMessageInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """生成语音回复工具的执行提示。"""
+        """
+        生成语音回复工具的执行提示。
+        """
         message = kwargs.get("message") or ""
         if len(message) > 40:
             message = message[:40] + "..."
         return f"发送语音回复: {message}"
 
     async def run(self, message: str, **kwargs) -> str:
-        """合成语音并发送到当前对话渠道，不支持时回退为文字。"""
+        """
+        合成语音并发送到当前对话渠道，不支持时回退为文字。
+        """
         if not message:
             return "语音回复内容不能为空"
 

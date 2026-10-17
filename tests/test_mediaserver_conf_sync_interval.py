@@ -1,10 +1,16 @@
+"""
+验证媒体服务器同步间隔的容错解析和配置条目隔离。
+"""
+
 from app.runtime.extensions.service import ServiceConfigHelper
 from app.schemas.system import MediaServerConf
 from app.schemas.types import SystemConfigKey
 
 
 def test_mediaserver_conf_tolerates_blank_sync_interval():
-    """自动同步间隔为空字符串等非法值时应回退为 None 而不是抛出校验错误。"""
+    """
+    自动同步间隔为空字符串等非法值时应回退为 None 而不是抛出校验错误。
+    """
     assert MediaServerConf(name="blank", sync_interval="").sync_interval is None
     assert MediaServerConf(name="spaces", sync_interval="  ").sync_interval is None
     assert MediaServerConf(name="invalid", sync_interval="abc").sync_interval is None
@@ -14,7 +20,9 @@ def test_mediaserver_conf_tolerates_blank_sync_interval():
 
 
 def test_get_configs_skips_invalid_entries(monkeypatch):
-    """单条配置校验失败时应跳过该条，不影响其它服务配置的加载。"""
+    """
+    单条配置校验失败时应跳过该条，不影响其它服务配置的加载。
+    """
     monkeypatch.setattr(
         "app.runtime.extensions.service._service_config_reader",
         lambda key: [

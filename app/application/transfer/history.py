@@ -1,4 +1,6 @@
-"""整理历史写入所需的稳定字段投影。"""
+"""
+整理历史写入所需的稳定字段投影。
+"""
 
 from typing import Any, Optional, TypedDict, Union
 
@@ -15,7 +17,9 @@ from app.schemas.types import MUSIC_ENTITY_RECORDING
 def classification_fields(
     media: Union[MediaInfo, MusicInfo],
 ) -> dict[str, Any]:
-    """投影整理历史使用的最终分类标量，避免保存推荐分类。"""
+    """
+    投影整理历史使用的最终分类标量，避免保存推荐分类。
+    """
     snapshot = effective_classification_snapshot(media)
     return {
         "media_category_id": snapshot.category_id,
@@ -30,7 +34,9 @@ def history_title(
     meta: MetaBase,
     mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
 ) -> Optional[str]:
-    """音乐文件优先记录曲目标题，其它媒体保持识别标题。"""
+    """
+    音乐文件优先记录曲目标题，其它媒体保持识别标题。
+    """
     if isinstance(meta, MetaMusic) and meta.title:
         return str(meta.title)
     if mediainfo and mediainfo.title:
@@ -39,14 +45,18 @@ def history_title(
 
 
 def history_source_path(fileitem: FileItem) -> str:
-    """返回整理历史必需的源路径，拒绝持久化无身份记录。"""
+    """
+    返回整理历史必需的源路径，拒绝持久化无身份记录。
+    """
     if not fileitem.path:
         raise ValueError("整理历史缺少源文件路径")
     return fileitem.path
 
 
 def history_year(value: object) -> Optional[str]:
-    """把媒体年份规范为整理历史稳定字符串。"""
+    """
+    把媒体年份规范为整理历史稳定字符串。
+    """
     return str(value) if value is not None else None
 
 
@@ -213,7 +223,13 @@ def failure_fields(
 
 
 class HistoryFileFingerprint(TypedDict):
-    """查重描述与裁决共享的源文件版本字段。"""
+    """
+    查重描述与裁决共享的源文件版本字段。
+
+    :ivar file_size: 源文件大小，单位为字节；未知时为 None
+    :ivar file_modify_time: 源文件修改时间戳，单位为秒；未知时为 None
+    :ivar fileid: 存储后端提供的稳定文件标识；未提供时为 None
+    """
 
     file_size: Optional[int]
     file_modify_time: Optional[float]
@@ -221,7 +237,9 @@ class HistoryFileFingerprint(TypedDict):
 
 
 def history_file_fingerprint(fileitem: FileItem) -> HistoryFileFingerprint:
-    """从同一个文件快照取出查重所需的版本指纹。"""
+    """
+    从同一个文件快照取出查重所需的版本指纹。
+    """
     return {
         "file_size": fileitem.size,
         "file_modify_time": fileitem.modify_time,

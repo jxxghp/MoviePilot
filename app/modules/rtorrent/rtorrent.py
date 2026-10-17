@@ -95,7 +95,9 @@ def _rpc_text(value: object) -> str:
 
 
 def _rpc_optional_text(value: object) -> Optional[str]:
-    """保留下载器空路径返回，使调用端继续回退到保存目录和任务名。"""
+    """
+    保留下载器空路径返回，使调用端继续回退到保存目录和任务名。
+    """
     if value is None:
         return None
     return _rpc_text(value)
@@ -121,7 +123,7 @@ def _rpc_integer(value: object) -> int:
 
 class SCGITransport(xmlrpc.client.Transport):
     """
-    通过SCGI协议与rTorrent通信的Transport
+    通过 SCGI 传输 XML-RPC 报文，为 rTorrent 提供直连通道。
     """
 
     def single_request(
@@ -129,7 +131,13 @@ class SCGITransport(xmlrpc.client.Transport):
         request_body: Buffer, verbose: bool = False,
     ) -> tuple[Any, ...]:
         """
-        用 SCGI netstring 交换 XML-RPC 报文，并在解析前释放连接。
+        通过临时连接交换 SCGI 报文，并在解析响应前关闭连接。
+
+        :param host: 目标主机及端口，省略端口时使用 5000
+        :param handler: 为 XML-RPC 传输接口保留，实际请求路径固定为 /RPC2
+        :param request_body: 已经编码的 XML-RPC 请求字节
+        :param verbose: 是否启用标准库响应解析的调试输出
+        :return: 标准库解码后的 XML-RPC 返回值；连接、协议和服务端故障由调用方处理
         """
         request_body = bytes(request_body)
         if isinstance(host, tuple):
@@ -149,9 +157,7 @@ class SCGITransport(xmlrpc.client.Transport):
             )
             # netstring格式: "len:headers,"
             netstring = f"{len(headers)}:{headers},".encode()
-            # 发送请求
             sock.sendall(netstring + request_body)
-            # 读取响应
             response = b""
             while True:
                 chunk = sock.recv(4096)
@@ -173,7 +179,7 @@ class SCGITransport(xmlrpc.client.Transport):
     @staticmethod
     def _build_response(data: bytes) -> http.client.HTTPResponse:
         """
-        构造类文件对象用于parse_response
+        构造类文件对象用于parse_response。
         """
         class _FakeSocket(io.BytesIO):
             """
@@ -195,7 +201,7 @@ class SCGITransport(xmlrpc.client.Transport):
 
 class Rtorrent:
     """
-    rTorrent下载器
+    Rtorrent 下载器客户端，封装连接、任务查询和管理操作。
     """
 
     def __init__(
@@ -207,7 +213,13 @@ class Rtorrent:
         **kwargs: object,
     ) -> None:
         """
-        读取下载器连接配置并建立代理，连接失败时保留待重连状态。
+        根据显式配置连接 rTorrent；连接失败时保留待重连状态。
+
+        :param host: HTTP 代理地址或 scgi:// 直连地址；缺少时不创建代理
+        :param port: 可选端口，提供时追加到 host 后
+        :param username: HTTP 代理认证用户名，SCGI 模式不使用
+        :param password: HTTP 代理认证密码，SCGI 模式不使用
+        :param kwargs: 为统一服务配置保留的额外参数，当前不读取
         """
         self._proxy = None
         self._host = ""
@@ -224,7 +236,7 @@ class Rtorrent:
 
     def __login_rtorrent(self) -> Optional[xmlrpc.client.ServerProxy]:
         """
-        连接rTorrent
+        连接rTorrent。
         """
         if not self._host:
             return None
@@ -233,7 +245,7 @@ class Rtorrent:
             if url.startswith("scgi://"):
                 # SCGI直连模式
                 logger.info(f"正在通过SCGI连接 rTorrent：{url}")
-                # ServerProxy 仅接受 HTTP scheme；该 URI 只用于解析地址，实际报文仍由 SCGITransport 发送。
+                # ServerProxy 仅接受 HTTP 协议地址；该 URI 只用于解析地址，实际报文仍由 SCGITransport 发送。
                 proxy_url = "http://" + url[len("scgi://"):]
                 proxy = xmlrpc.client.ServerProxy(proxy_url, transport=SCGITransport())
             else:
@@ -252,7 +264,6 @@ class Rtorrent:
                 )
                 proxy = xmlrpc.client.ServerProxy(url)
 
-            # 测试连接
             proxy.system.client_version()
             return proxy
         except Exception as err:
@@ -264,7 +275,9 @@ class Rtorrent:
 
     def is_inactive(self) -> bool:
         """
-        判断是否需要重连
+        判断已配置的下载器是否需要重新连接。
+
+        :return: 连接配置存在但客户端未建立时返回 True；缺少配置时返回 False
         """
         if not self._host:
             return False
@@ -272,7 +285,7 @@ class Rtorrent:
 
     def reconnect(self) -> None:
         """
-        重连
+        按当前连接配置重建客户端；失败时保留未连接状态。
         """
         self._proxy = self.__login_rtorrent()
 
@@ -283,8 +296,12 @@ class Rtorrent:
         tags: Optional[Union[str, list[str]]] = None,
     ) -> Tuple[List[TorrentData], bool]:
         """
-        获取种子列表
-        :return: 种子列表, 是否发生异常
+        查询种子任务并按标识和标签筛选。
+
+        :param ids: 种子哈希或哈希列表，省略时查询全部任务
+        :param status: 保留的接口参数，当前实现不按此参数筛选
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :return: 任务列表和错误标志；未连接或查询失败时返回空列表及 True，查询无匹配项时错误标志为 False
         """
         if not self._proxy:
             return [], True
@@ -306,7 +323,6 @@ class Rtorrent:
                 "d.ratio=",
                 "d.base_path=",
             ]
-            # 获取所有种子
             results = self._proxy.d.multicall2("", "main", *fields)
             torrents: list[TorrentData] = []
             for r in _rpc_rows(results):
@@ -317,17 +333,16 @@ class Rtorrent:
                     "completed": _rpc_number(r[3]),
                     "dlspeed": _rpc_number(r[4]),
                     "upspeed": _rpc_number(r[5]),
-                    "state": _rpc_number(r[6]),  # 0=stopped, 1=started
-                    "complete": _rpc_number(r[7]),  # 0=incomplete, 1=complete
+                    "state": _rpc_number(r[6]),
+                    "complete": _rpc_number(r[7]),
                     "save_path": _rpc_text(r[8]),
-                    "tags": _rpc_text(r[9]),  # d.custom1 用于标签
+                    "tags": _rpc_text(r[9]),
                     "is_active": _rpc_number(r[10]),
                     "is_open": _rpc_number(r[11]),
                     "ratio": _rpc_integer(r[12]) / 1000.0 if r[12] else 0,
                     "progress": 0,
-                    "content_path": _rpc_optional_text(r[13]),  # base_path 即完整内容路径
+                    "content_path": _rpc_optional_text(r[13]),
                 }
-                # 计算进度
                 if torrent["total_size"] > 0:
                     torrent["progress"] = (
                         torrent["completed"] / torrent["total_size"] * 100
@@ -335,7 +350,6 @@ class Rtorrent:
                 else:
                     torrent["progress"] = 0
 
-                # ID过滤
                 if ids:
                     if isinstance(ids, str):
                         ids_list = [ids.upper()]
@@ -344,7 +358,6 @@ class Rtorrent:
                     if torrent["hash"].upper() not in ids_list:
                         continue
 
-                # 标签过滤
                 if tags:
                     torrent_tags = [
                         t.strip() for t in torrent["tags"].split(",") if t.strip()
@@ -366,7 +379,11 @@ class Rtorrent:
         self, ids: Optional[Union[str, list[str]]] = None, tags: Optional[Union[str, list[str]]] = None
     ) -> Optional[List[TorrentData]]:
         """
-        获取已完成的种子
+        获取已完成的种子任务。
+
+        :param ids: 种子哈希或哈希列表，省略时不限任务
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :return: 匹配的任务列表；未连接或查询失败时返回 None，无匹配项时返回空列表
         """
         if not self._proxy:
             return None
@@ -379,7 +396,11 @@ class Rtorrent:
         self, ids: Optional[Union[str, list[str]]] = None, tags: Optional[Union[str, list[str]]] = None
     ) -> Optional[List[TorrentData]]:
         """
-        获取正在下载的种子
+        获取尚未完成的种子任务。
+
+        :param ids: 种子哈希或哈希列表，省略时不限任务
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :return: 匹配的任务列表；未连接或查询失败时返回 None，无匹配项时返回空列表
         """
         if not self._proxy:
             return None
@@ -398,18 +419,19 @@ class Rtorrent:
         **kwargs: object,
     ) -> bool:
         """
-        添加种子
-        :param content: 种子内容（bytes）或磁力链接/URL（str）
-        :param is_paused: 添加后暂停
-        :param download_dir: 下载路径
-        :param tags: 标签列表
-        :param cookie: Cookie
-        :return: bool
+        通过 XML-RPC 添加种子任务。
+
+        :param content: 种子文件字节、磁力链接或 URL；磁力链接的字节形式先解码为字符串
+        :param is_paused: 是否以暂停状态添加
+        :param download_dir: 下载器保存目录，省略时不覆盖下载器配置
+        :param tags: 写入 d.custom1 的标签列表
+        :param cookie: 兼容统一下载接口的站点 Cookie，当前实现不使用
+        :param kwargs: 兼容统一调用的额外参数，当前实现不使用
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self._proxy or not content:
             return False
         try:
-            # 构造命令参数
             commands = []
             if download_dir:
                 commands.append(f'd.directory.set="{download_dir}"')
@@ -442,7 +464,12 @@ class Rtorrent:
 
     def start_torrents(self, ids: Union[str, list[str]]) -> bool:
         """
-        启动种子
+        启动指定种子任务。
+
+        批量操作按任务依次发送，后续失败不会撤销此前已完成的请求。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self._proxy:
             return False
@@ -458,7 +485,12 @@ class Rtorrent:
 
     def stop_torrents(self, ids: Union[str, list[str]]) -> bool:
         """
-        停止种子
+        暂停指定种子任务。
+
+        批量操作按任务依次发送，后续失败不会撤销此前已完成的请求。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self._proxy:
             return False
@@ -474,7 +506,14 @@ class Rtorrent:
 
     def delete_torrents(self, delete_file: bool, ids: Union[str, list[str]]) -> bool:
         """
-        删除种子
+        删除指定种子任务，并按选项删除下载文件。
+
+        rTorrent 返回的内容路径在 MoviePilot 所在文件系统中删除。文件清理失败会记录警告；
+        返回 True 只说明任务删除流程完成，不保证文件全部移除。
+
+        :param delete_file: 是否同时删除下载文件
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self._proxy:
             return False
@@ -509,7 +548,11 @@ class Rtorrent:
 
     def get_files(self, tid: str) -> Optional[List[TorrentFileData]]:
         """
-        获取种子文件列表
+        读取任务的文件大小、下载优先级和完成进度。
+
+        :param tid: 种子哈希
+        :return: 文件字典列表；size 单位为字节，progress 为 0 至 100 的百分比；
+            哈希为空、未连接或查询失败时返回 None
         """
         if not self._proxy:
             return None
@@ -545,7 +588,12 @@ class Rtorrent:
         self, torrent_hash: Optional[str] = None, file_ids: Optional[Union[list[int], list[str]]] = None, priority: int = 0
     ) -> bool:
         """
-        设置下载文件的优先级，priority为0为不下载，priority为1为普通
+        批量设置文件优先级并通知任务更新优先级。
+
+        :param torrent_hash: 种子哈希，不接受空值
+        :param file_ids: 种子内部的非空文件索引列表
+        :param priority: 文件优先级，0 表示不下载，1 表示普通下载
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self._proxy:
             return False
@@ -554,7 +602,6 @@ class Rtorrent:
         try:
             for file_id in file_ids:
                 self._proxy.f.priority.set(f"{torrent_hash}:f{file_id}", priority)
-            # 更新种子优先级
             self._proxy.d.update_priorities(torrent_hash)
             return True
         except Exception as err:
@@ -565,10 +612,12 @@ class Rtorrent:
         self, ids: Union[str, list[str]], tags: List[str], overwrite: bool = False
     ) -> bool:
         """
-        设置种子标签（使用d.custom1）
-        :param ids: 种子Hash
-        :param tags: 标签列表
-        :param overwrite: 是否覆盖现有标签，默认为合并
+        将任务标签写入 rTorrent 的 d.custom1 字段。
+
+        :param ids: 种子哈希或哈希列表
+        :param tags: 待写入的标签列表
+        :param overwrite: 是否覆盖已有标签；默认合并并去重
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self._proxy:
             return False
@@ -579,17 +628,14 @@ class Rtorrent:
                 ids = [ids]
             for tid in ids:
                 if overwrite:
-                    # 直接覆盖标签
                     self._proxy.d.custom1.set(tid, ",".join(tags))
                 else:
-                    # 获取现有标签
                     existing = self._proxy.d.custom1(tid)
                     existing_tags = (
                         [t.strip() for t in _rpc_text(existing).split(",") if t.strip()]
                         if existing
                         else []
                     )
-                    # 合并标签
                     merged = list(set(existing_tags + tags))
                     self._proxy.d.custom1.set(tid, ",".join(merged))
             return True
@@ -599,7 +645,11 @@ class Rtorrent:
 
     def remove_torrents_tag(self, ids: Union[str, list[str]], tag: Union[str, list[str]]) -> bool:
         """
-        移除种子标签
+        移除指定任务的标签，保留其他标签。
+
+        :param ids: 种子哈希或哈希列表
+        :param tag: 待移除的单个标签或标签列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self._proxy:
             return False
@@ -626,7 +676,10 @@ class Rtorrent:
 
     def get_torrent_tags(self, ids: str) -> List[str]:
         """
-        获取种子标签
+        读取单个种子在 d.custom1 中保存的标签。
+
+        :param ids: 单个种子哈希
+        :return: 标签列表；未连接、标签为空或查询失败时返回空列表
         """
         if not self._proxy:
             return []
@@ -645,7 +698,13 @@ class Rtorrent:
         self, tags: Union[str, list[str]], status: Optional[str] = None
     ) -> Optional[str]:
         """
-        通过标签多次尝试获取刚添加的种子ID，并移除标签
+        通过临时标签查找新任务，找到后尝试移除查询标签。
+
+        每次查询前等待 3 秒；移除临时标签失败不影响返回已找到的哈希。
+
+        :param tags: 需要同时匹配的临时标签；字符串按单个标签处理
+        :param status: 保留的兼容参数，当前不参与筛选
+        :return: 首个匹配任务的哈希；最多查询 9 次仍未找到时返回 None
         """
         import time
 
@@ -657,7 +716,6 @@ class Rtorrent:
             torrents, error = self.get_torrents(tags=tags)
             if not error and torrents:
                 torrent_id = torrents[0]["hash"]
-                # 移除查找标签
                 for tag in tags:
                     self.remove_torrents_tag(ids=torrent_id, tag=[tag])
                 break
@@ -678,6 +736,7 @@ class Rtorrent:
     ) -> bool:
         """
         修改单个种子的上传和下载限速。
+
         :param hash_string: 种子Hash
         :param upload_limit: 上传限速，单位 KB/s，0 表示不限速
         :param download_limit: 下载限速，单位 KB/s，0 表示不限速
@@ -705,10 +764,13 @@ class Rtorrent:
 
     def set_torrent_location(self, hash_string: str, location: str) -> bool:
         """
-        修改种子保存目录。
-        :param hash_string: 种子Hash
-        :param location: 新保存目录
-        :return: 是否修改成功
+        修改种子任务的保存目录。
+
+        仅修改 rTorrent 的目录配置，不负责移动已有文件。
+
+        :param hash_string: 种子哈希
+        :param location: 下载器可访问的新目录路径，不接受空值
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self._proxy or not hash_string or not location:
             return False
@@ -721,7 +783,9 @@ class Rtorrent:
 
     def transfer_info(self) -> Optional[Dict[str, object]]:
         """
-        获取传输信息
+        获取下载器全局传输统计。
+
+        :return: 包含上下行速度（字节/秒）与累计传输量（字节）的字典；未连接或查询失败时返回 None
         """
         if not self._proxy:
             return None

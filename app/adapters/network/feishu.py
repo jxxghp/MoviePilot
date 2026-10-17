@@ -34,7 +34,7 @@ EventHandler = Callable[[bytes], Optional[JsonDict]]
 
 # 以应用凭据换取 WebSocket 连接地址的接口路径。
 _ENDPOINT_PATH = "/callback/ws/endpoint"
-# pbbp2 Frame.method
+# pbbp2 帧的 method 字段：控制帧与数据帧分别使用以下常量。
 _FRAME_CONTROL = 0
 _FRAME_DATA = 1
 # 连接地址获取与握手失败时的错误码，含义同 lark-oapi ws.const。
@@ -54,14 +54,18 @@ _LIVENESS_GRACE_SECONDS = 30
 
 
 class FatalConnectionError(Exception):
-    """凭据错误、无权限或连接数超限等重试无意义的失败，长连接线程据此退出。"""
+    """
+    凭据错误、无权限或连接数超限等重试无意义的失败，长连接线程据此退出。
+    """
 
 
-# ---------------------------------------------------------------- pbbp2 帧编解码
+# pbbp2 帧编解码
 
 
 def _encode_varint(value: int) -> bytes:
-    """编码 protobuf varint；负数按 64 位补码处理（int32 负值规则）。"""
+    """
+    编码 protobuf varint；负数按 64 位补码处理（int32 负值规则）。
+    """
     value &= (1 << 64) - 1
     out = bytearray()
     while True:
@@ -75,7 +79,9 @@ def _encode_varint(value: int) -> bytes:
 
 
 def _decode_varint(data: bytes, pos: int) -> Tuple[int, int]:
-    """从 ``pos`` 解码一个 varint，返回 (值, 下一个位置)。"""
+    """
+    从 ``pos`` 解码一个 varint，返回 (值, 下一个位置)。
+    """
     result = 0
     shift = 0
     while True:
@@ -92,18 +98,24 @@ def _decode_varint(data: bytes, pos: int) -> Tuple[int, int]:
 
 
 def _to_int32(value: int) -> int:
-    """把 varint 解码结果还原为有符号 int32。"""
+    """
+    把 varint 解码结果还原为有符号 int32。
+    """
     value &= 0xFFFFFFFF
     return value - (1 << 32) if value >= 1 << 31 else value
 
 
 def _encode_bytes_field(number: int, value: bytes) -> bytes:
-    """编码 length-delimited 字段。"""
+    """
+    编码带长度前缀的 Protobuf 字节字段。
+    """
     return _encode_varint(number << 3 | 2) + _encode_varint(len(value)) + value
 
 
 def _iter_fields(data: bytes) -> Iterator[Tuple[int, int, Union[int, bytes]]]:
-    """遍历 protobuf 消息字段，产出 (字段号, wire type, 值)；未知的定长字段按类型跳过。"""
+    """
+    遍历 Protobuf 消息，依次产生字段号、编码类型和值；不使用的定长字段按类型跳过。
+    """
     pos = 0
     while pos < len(data):
         key, pos = _decode_varint(data, pos)
@@ -128,31 +140,49 @@ def _iter_fields(data: bytes) -> Iterator[Tuple[int, int, Union[int, bytes]]]:
 @dataclass
 class Frame:
     """
-    pbbp2.Frame（proto2）。
+    飞书长连接使用的 pbbp2.Frame 协议帧。
 
-    SeqID/LogID/service/method 为 required 字段，编码时总是写出；其余 optional 字段为 None
-    时不写出，以便应答帧原样保留服务端下发的字段。
+    序列号、日志号、服务号与方法类型编码时总是写出，其余可选字段为 None 时省略。
+
+    :param seq_id: 帧序列号，对应协议的无符号 64 位 SeqID，默认 0
+    :param log_id: 旧版日志标识，对应无符号 64 位 LogID，默认 0
+    :param service: 连接地址中 service_id 对应的服务号，默认 0
+    :param method: 帧类型；0 为控制帧，1 为数据帧
+    :param headers: 有序键值头列表，例如 type、message_id、sum 与 seq
+    :param payload_encoding: 负载编码；None 表示未提供，当前服务端通常不下发
+    :param payload_type: 负载类型；None 表示未提供，当前服务端通常不下发
+    :param payload: 事件 JSON、心跳配置或应答 JSON 的字节；None 时不写出
+    :param log_id_new: 服务端链路追踪标识，应答时原样回传；None 表示未提供
     """
 
-    seq_id: int = 0  # SeqID，uint64
-    log_id: int = 0  # LogID，uint64
-    service: int = 0  # service，int32，取自连接地址的 service_id
-    method: int = 0  # method，int32，0 为 CONTROL，1 为 DATA
-    headers: List[Tuple[str, str]] = field(default_factory=list)  # 有序键值头，如 type/message_id/sum/seq
-    payload_encoding: Optional[str] = None  # payload_encoding，负载编码，服务端当前不下发
-    payload_type: Optional[str] = None  # payload_type，负载类型，服务端当前不下发
-    payload: Optional[bytes] = None  # payload，事件 JSON、pong 配置或应答 JSON
-    log_id_new: Optional[str] = None  # LogIDNew，服务端链路追踪 ID，应答时原样回传
+    seq_id: int = 0
+    log_id: int = 0
+    service: int = 0
+    method: int = 0
+    headers: List[Tuple[str, str]] = field(default_factory=list)
+    payload_encoding: Optional[str] = None
+    payload_type: Optional[str] = None
+    payload: Optional[bytes] = None
+    log_id_new: Optional[str] = None
 
     def header(self, key: str) -> Optional[str]:
-        """返回首个同名头的值。"""
+        """
+        读取首个同名头字段，不修改帧内容。
+
+        :param key: 要查找的头字段名
+        :return: 首个匹配值；没有匹配字段时返回 None
+        """
         for name, value in self.headers:
             if name == key:
                 return value
         return None
 
     def encode(self) -> bytes:
-        """序列化为 protobuf 二进制。"""
+        """
+        按字段号将帧编码为 Protobuf 二进制，省略值为 None 的可选字段。
+
+        :return: 可发送给飞书长连接服务的协议帧字节
+        """
         out = bytearray()
         for number, scalar in ((1, self.seq_id), (2, self.log_id), (3, self.service), (4, self.method)):
             out += _encode_varint(number << 3) + _encode_varint(scalar)
@@ -170,7 +200,13 @@ class Frame:
 
     @classmethod
     def decode(cls, data: bytes) -> "Frame":
-        """从 protobuf 二进制解析帧。"""
+        """
+        从 Protobuf 二进制解析帧，跳过不认识的字段。
+
+        :param data: 完整协议帧的字节
+        :return: 解析后的帧；缺失字段保留类默认值
+        :raises ValueError: 字节流被截断或字段采用不支持的编码类型
+        """
         frame = cls()
         for number, wire_type, value in _iter_fields(data):
             if wire_type == 0 and isinstance(value, int):
@@ -200,20 +236,31 @@ class Frame:
         return frame
 
 
-# ---------------------------------------------------------------- 长连接客户端
+# 长连接客户端
 
 
 @dataclass
 class _ClientConfig:
-    """服务端下发的重连与心跳配置，单位为秒；默认值同 lark-oapi。"""
+    """
+    服务端下发的重连与心跳配置，默认值与 lark-oapi 保持一致。
 
-    reconnect_count: int = -1  # 连续重连次数上限，负数表示不限
-    reconnect_interval: int = 120  # 两次重连尝试之间的间隔
-    reconnect_nonce: int = 30  # 首次重连前的随机抖动上限
-    ping_interval: int = 120  # 心跳间隔
+    :param reconnect_count: 连续重连次数上限，默认 -1 表示不限次数
+    :param reconnect_interval: 两次重连尝试之间的间隔，单位为秒，默认 120
+    :param reconnect_nonce: 首次重连前随机抖动的上限，单位为秒，默认 30
+    :param ping_interval: 心跳间隔，单位为秒，默认 120
+    """
+
+    reconnect_count: int = -1
+    reconnect_interval: int = 120
+    reconnect_nonce: int = 30
+    ping_interval: int = 120
 
     def update(self, conf: JsonDict) -> None:
-        """合并服务端 ClientConfig，缺失字段保持原值。"""
+        """
+        合并服务端 ClientConfig 中的整数配置，缺失或非整数值保持原值。
+
+        :param conf: 使用服务端字段名的配置对象，例如 ReconnectCount 和 PingInterval
+        """
         for attr, key in (
                 ("reconnect_count", "ReconnectCount"),
                 ("reconnect_interval", "ReconnectInterval"),
@@ -240,11 +287,13 @@ class FeishuLongConnection:
             name: str = "feishu",
     ):
         """
-        :param app_id: 自建应用 App ID
-        :param app_secret: 自建应用 App Secret
-        :param on_event: 事件处理回调，在长连接线程内同步调用
-        :param domain: 开放平台域名
-        :param name: 渠道配置名，仅用于日志
+        保存飞书应用凭据和事件处理器，初始化连接状态但不开始连接。
+
+        :param app_id: 自建应用的公开标识
+        :param app_secret: 自建应用的密钥
+        :param on_event: 在长连接线程中同步执行的事件处理回调
+        :param domain: 飞书开放平台地址，移除末尾斜杠后使用
+        :param name: 渠道配置名称，仅用于日志
         """
         self._app_id = app_id
         self._app_secret = app_secret
@@ -260,10 +309,12 @@ class FeishuLongConnection:
         # 最近一次连接是否建立成功；run() 据此把「连上后断开」与「连接失败」区分开。
         self._connected = False
 
-    # ------------------------------------------------------------ 生命周期
+    # 生命周期
 
     def run(self) -> None:
-        """连接并处理事件直到 ``stop()``；断线后按服务端配置抖动重连，致命错误时退出。"""
+        """
+        连接并处理事件直到 ``stop()``；断线后按服务端配置抖动重连，致命错误时退出。
+        """
         # 连续连接失败次数；一次成功建立的连接断开后重新从抖动重连开始，与 SDK 每轮 _reconnect 一致。
         failures = 0
         while not self._stop_event.is_set():
@@ -293,7 +344,9 @@ class FeishuLongConnection:
                 return
 
     def stop(self) -> None:
-        """请求停止，并中断正在阻塞的连接或接收。"""
+        """
+        请求停止，并中断正在阻塞的连接或接收。
+        """
         self._stop_event.set()
         with self._ws_lock:
             ws = self._ws
@@ -304,10 +357,12 @@ class FeishuLongConnection:
             except Exception as err:
                 logger.debug(f"中断飞书长连接失败：{err}")
 
-    # ------------------------------------------------------------ 连接
+    # 连接
 
     def _fetch_endpoint(self) -> str:
-        """以应用凭据换取 WebSocket 地址，并应用服务端下发的客户端配置。"""
+        """
+        以应用凭据换取 WebSocket 地址，并应用服务端下发的客户端配置。
+        """
         response = RequestUtils(
             headers={"locale": "zh", "Content-Type": "application/json"},
             timeout=_CONNECT_TIMEOUT_SECONDS,
@@ -336,7 +391,9 @@ class FeishuLongConnection:
 
     @staticmethod
     def _raise_for_handshake(err: websocket.WebSocketBadStatusException) -> None:
-        """按握手响应头区分致命失败（无权限、连接数超限）与可重试失败。"""
+        """
+        按握手响应头区分致命失败（无权限、连接数超限）与可重试失败。
+        """
         headers = {str(k).lower(): v for k, v in (err.resp_headers or {}).items()}
         status = headers.get("handshake-status")
         message = headers.get("handshake-msg")
@@ -351,7 +408,9 @@ class FeishuLongConnection:
         raise ConnectionError(f"长连接握手失败：code={code}, msg={message}")
 
     def _run_once(self) -> None:
-        """建立一次连接并收发帧，连接关闭或出错时抛出异常返回。"""
+        """
+        建立一次连接并收发帧，连接关闭或出错时抛出异常返回。
+        """
         url = self._fetch_endpoint()
         query = parse_qs(urlparse(url).query)
         conn_id = (query.get("device_id") or [""])[0]
@@ -390,7 +449,9 @@ class FeishuLongConnection:
             logger.info("飞书长连接 %s 已断开：conn_id=%s", self._name, conn_id)
 
     def _serve(self, ws: websocket.WebSocket, service_id: int) -> None:
-        """收发循环：recv 以距下次心跳的时间为超时，超时即发送 ping；长时间无入站帧时判定断线。"""
+        """
+        收发循环：recv 以距下次心跳的时间为超时，超时即发送 ping；长时间无入站帧时判定断线。
+        """
         next_ping = time.monotonic()
         last_received = next_ping
         while not self._stop_event.is_set():
@@ -416,10 +477,12 @@ class FeishuLongConnection:
             if reply is not None:
                 ws.send(reply, opcode=websocket.ABNF.OPCODE_BINARY)
 
-    # ------------------------------------------------------------ 帧处理
+    # 帧处理
 
     def _handle_frame(self, data: bytes) -> Optional[bytes]:
-        """处理一帧，返回需要回写的应答帧；解析或处理失败只记录日志，不中断连接。"""
+        """
+        处理一帧，返回需要回写的应答帧；解析或处理失败只记录日志，不中断连接。
+        """
         try:
             frame = Frame.decode(data)
             if frame.method == _FRAME_CONTROL:
@@ -432,14 +495,18 @@ class FeishuLongConnection:
         return None
 
     def _handle_control_frame(self, frame: Frame) -> None:
-        """pong 帧可能携带新的客户端配置。"""
+        """
+        pong 帧可能携带新的客户端配置。
+        """
         if frame.header("type") == "pong" and frame.payload:
             conf = json.loads(frame.payload.decode("utf-8"))
             if isinstance(conf, dict):
                 self._config.update(conf)
 
     def _combine(self, message_id: str, total: int, seq: int, part: bytes) -> Optional[bytes]:
-        """缓存分包，全部到齐时返回拼接后的负载；过期未齐的分包被丢弃。"""
+        """
+        缓存分包，全部到齐时返回拼接后的负载；过期未齐的分包被丢弃。
+        """
         now = time.monotonic()
         for key in [k for k, (expires, _) in self._fragments.items() if expires < now]:
             del self._fragments[key]
@@ -454,7 +521,9 @@ class FeishuLongConnection:
         return b"".join(item for item in parts if item is not None)
 
     def _handle_data_frame(self, frame: Frame) -> Optional[bytes]:
-        """分发事件帧并构造应答帧；card 类型帧与 lark-oapi 一致不处理也不应答。"""
+        """
+        分发事件帧并构造应答帧；card 类型帧与 lark-oapi 一致不处理也不应答。
+        """
         message_type = frame.header("type")
         payload = frame.payload or b""
         total = int(frame.header("sum") or 1)

@@ -1,8 +1,9 @@
-"""3.0.12 consolidate committed plugin package declarations.
+"""
+3.0.12 将已提交插件包的声明整合为版本化快照。
 
-Revision ID: 5f2a9c1e7b4d
-Revises: a6c8e2f4b1d3
-Create Date: 2026-08-26
+版本标识： 5f2a9c1e7b4d
+前置版本： a6c8e2f4b1d3
+创建时间： 2026-08-26
 """
 
 from collections.abc import Mapping
@@ -15,6 +16,7 @@ down_revision = "a6c8e2f4b1d3"
 branch_labels = None
 depends_on = None
 
+# 升级后移除、降级时从声明快照恢复的旧插件固定声明列。
 _LEGACY_COLUMNS = {
     "system_version",
     "supports_v3",
@@ -23,7 +25,9 @@ _LEGACY_COLUMNS = {
 
 
 def _column_names() -> set[str]:
-    """返回当前插件身份表字段集合。"""
+    """
+    返回当前插件身份表字段集合。
+    """
     inspector = sa.inspect(op.get_bind())
     if "pluginidentity" not in inspector.get_table_names():
         return set()
@@ -34,7 +38,9 @@ def _column_names() -> set[str]:
 
 
 def _legacy_snapshot(row: Mapping[str, object]) -> dict[str, object] | None:
-    """把旧固定声明列保守回填为仅供展示的版本化快照。"""
+    """
+    把旧固定声明列保守回填为仅供展示的版本化快照。
+    """
     if row["payload_source_type"] == "unknown":
         return None
     manifest: dict[str, object] = {}
@@ -56,7 +62,9 @@ def _legacy_snapshot(row: Mapping[str, object]) -> dict[str, object] | None:
 
 
 def _backfill_declared_metadata() -> None:
-    """只为仍有旧载荷事实且尚无快照的身份生成保守声明。"""
+    """
+    只为仍有旧载荷事实且尚无快照的身份生成保守声明。
+    """
     identity = sa.table(
         "pluginidentity",
         sa.column("id", sa.Integer()),
@@ -85,7 +93,9 @@ def _backfill_declared_metadata() -> None:
 
 
 def _legacy_values(value: object) -> dict[str, object]:
-    """从版本化快照恢复旧版可表达的三个固定声明字段。"""
+    """
+    从版本化快照恢复旧版可表达的三个固定声明字段。
+    """
     if not isinstance(value, Mapping) or value.get("schema_version") != 1:
         return {
             "system_version": None,
@@ -117,7 +127,9 @@ def _legacy_values(value: object) -> dict[str, object]:
 
 
 def _restore_legacy_columns() -> None:
-    """在降级前把当前快照投影回旧版固定声明列。"""
+    """
+    在降级前把当前快照投影回旧版固定声明列。
+    """
     identity = sa.table(
         "pluginidentity",
         sa.column("id", sa.Integer()),
@@ -139,7 +151,9 @@ def _restore_legacy_columns() -> None:
 
 
 def upgrade() -> None:
-    """新增声明快照、离线回填并移除会随 package 扩张的固定列。"""
+    """
+    新增声明快照、离线回填并移除会随插件包声明扩展的固定列。
+    """
     columns = _column_names()
     if not columns:
         return
@@ -165,7 +179,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """恢复旧版固定声明列，并删除版本化声明快照。"""
+    """
+    恢复旧版固定声明列，并删除版本化声明快照。
+    """
     columns = _column_names()
     if not columns or "declared_metadata" not in columns:
         return

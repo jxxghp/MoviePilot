@@ -1,3 +1,7 @@
+"""
+验证插件接口的状态查询、配置与生命周期委托。
+"""
+
 import asyncio
 from collections.abc import Callable
 from contextlib import asynccontextmanager, nullcontext
@@ -57,7 +61,9 @@ def _plugin_identity(
     source_type: TrustedPluginSourceType = TrustedPluginSourceType.THIRD_PARTY,
     source_key: str = SOURCE_KEY,
 ) -> PluginIdentity:
-    """构造绑定到测试仓库的插件身份。"""
+    """
+    构造绑定到测试仓库的插件身份。
+    """
     has_payload = metadata is not None
     return PluginIdentity(
         plugin_id=plugin_id,
@@ -88,7 +94,9 @@ def _plugin_identity(
 
 
 def _catalog_query(plugin_manager: MagicMock, persistence: MagicMock) -> PluginCatalogQuery:
-    """用运行态和身份端口替身构造插件目录查询。"""
+    """
+    用运行态和身份端口替身构造插件目录查询。
+    """
     return PluginCatalogQuery(
         installed_plugins=plugin_manager.get_installed_plugins,
         local_plugins=plugin_manager.get_local_plugins,
@@ -101,7 +109,9 @@ def _catalog_query(plugin_manager: MagicMock, persistence: MagicMock) -> PluginC
 
 
 def test_update_candidates_report_source_and_binding_relationship():
-    """市场更新候选应标明仓库类型，并仅把当前绑定仓库视为可直接更新。"""
+    """
+    市场更新候选应标明仓库类型，并仅把当前绑定仓库视为可直接更新。
+    """
     plugins = [
         schemas.Plugin(
             id="OfficialBound",
@@ -174,7 +184,9 @@ def test_update_candidates_report_source_and_binding_relationship():
 
 
 def test_bound_repository_update_precedes_a_higher_alternative():
-    """绑定仓库存在更新时只提示可信更新，不受其他仓库更高版本影响。"""
+    """
+    绑定仓库存在更新时只提示可信更新，不受其他仓库更高版本影响。
+    """
     bound_update = schemas.Plugin(
         id="DemoPlugin",
         plugin_version="2.0.0",
@@ -212,7 +224,9 @@ def test_bound_repository_update_precedes_a_higher_alternative():
 def test_catalog_excludes_alternative_update_when_bound_source_has_no_update(
     state, bound_version,
 ):
-    """绑定源版本持平、较低或缺失时，其他仓库不能产生市场更新条目。"""
+    """
+    绑定源版本持平、较低或缺失时，其他仓库不能产生市场更新条目。
+    """
     installed = schemas.Plugin(
         id="DemoPlugin", plugin_version="1.0.0", installed=True,
     )
@@ -260,7 +274,9 @@ def test_catalog_excludes_alternative_update_when_bound_source_has_no_update(
 
 @pytest.mark.parametrize("has_identity", [False, True])
 def test_unbound_plugin_keeps_market_candidate_for_source_selection(has_identity):
-    """尚未绑定来源的插件仍能发现市场候选，供用户显式选择来源。"""
+    """
+    尚未绑定来源的插件仍能发现市场候选，供用户显式选择来源。
+    """
     candidate = schemas.Plugin(
         id="DemoPlugin", plugin_version="2.0.0", repo_url=SOURCE_URL, has_update=True,
     )
@@ -286,7 +302,9 @@ def test_unbound_plugin_keeps_market_candidate_for_source_selection(has_identity
 
 
 def test_market_endpoint_reads_source_preserving_candidates_for_bound_update():
-    """市场接口必须在全局版本合并前保留绑定仓库候选。"""
+    """
+    市场接口必须在全局版本合并前保留绑定仓库候选。
+    """
     installed = schemas.Plugin(
         id="DemoPlugin",
         plugin_version="1.0.0",
@@ -343,7 +361,9 @@ def test_market_endpoint_reads_source_preserving_candidates_for_bound_update():
 
 
 def test_all_plugins_explicit_page_count_overrides_legacy_max_results() -> None:
-    """插件列表显式 page/count 应分页，并优先于显式 max_results 限量。"""
+    """
+    插件列表显式 page/count 应分页，并优先于显式 max_results 限量。
+    """
     catalog = MagicMock()
     catalog.query = AsyncMock(
         return_value=[schemas.Plugin(id=f"Plugin{index}", plugin_version="1.0.0") for index in range(1, 4)]
@@ -371,7 +391,9 @@ def test_all_plugins_explicit_page_count_overrides_legacy_max_results() -> None:
 
 
 def test_all_plugins_without_pagination_or_limit_returns_complete_catalog() -> None:
-    """插件列表省略分页和限量参数时应返回完整目录。"""
+    """
+    插件列表省略分页和限量参数时应返回完整目录。
+    """
     catalog = MagicMock()
     catalog.query = AsyncMock(
         return_value=[schemas.Plugin(id=f"Plugin{index}", plugin_version="1.0.0") for index in range(1, 52)]
@@ -398,14 +420,18 @@ def test_all_plugins_without_pagination_or_limit_returns_complete_catalog() -> N
 
 
 def _persistence(identity: PluginIdentity) -> MagicMock:
-    """构造只暴露身份读取合同的异步持久化替身。"""
+    """
+    构造只暴露身份读取合同的异步持久化替身。
+    """
     persistence = MagicMock()
     persistence.get_identity = AsyncMock(return_value=identity)
     return persistence
 
 
 def _no_clone_source_plugin_id(plugin_id: str) -> str:
-    """未建分身时的源身份归一：任何 ID 都是它自己的源插件。"""
+    """
+    未建分身时的源身份归一：任何 ID 都是它自己的源插件。
+    """
     return plugin_id
 
 
@@ -416,7 +442,9 @@ def _release_service(
     plugin_helper: MagicMock | None = None,
     source_plugin_id: Callable[[str], str] = _no_clone_source_plugin_id,
 ) -> PluginReleaseService:
-    """用端口替身构造与启动组合根等价的 Release 查询服务。"""
+    """
+    用端口替身构造与启动组合根等价的 Release 查询服务。
+    """
     if persistence is None:
         persistence = MagicMock()
         persistence.get_identity = AsyncMock(return_value=None)
@@ -441,7 +469,9 @@ def _release_service(
 
 
 def test_plugin_release_service_reset_isolates_lifespans(monkeypatch):
-    """停机清理后不得继续复用上一 lifespan 的 Release 端口。"""
+    """
+    停机清理后不得继续复用上一 lifespan 的 Release 端口。
+    """
     manager = MagicMock()
     service = _release_service(manager)
     monkeypatch.setattr(release_module, "_release_service", service)
@@ -492,7 +522,9 @@ def test_plugin_history_merges_remote_metadata():
 
 
 def test_plugin_history_uses_payload_source_when_local_candidate_also_exists():
-    """在线运行载荷不得被同 ID 的本地仓库历史覆盖。"""
+    """
+    在线运行载荷不得被同 ID 的本地仓库历史覆盖。
+    """
     installed_plugin = schemas.Plugin(
         id="DemoPlugin",
         plugin_name="Demo Plugin",
@@ -531,7 +563,9 @@ def test_plugin_history_uses_payload_source_when_local_candidate_also_exists():
 
 
 def test_plugin_history_uses_local_metadata_for_local_payload():
-    """本地运行载荷继续读取同一本地仓库的历史。"""
+    """
+    本地运行载荷继续读取同一本地仓库的历史。
+    """
     installed_plugin = schemas.Plugin(
         id="DemoPlugin",
         plugin_name="Demo Plugin",
@@ -570,7 +604,9 @@ def test_plugin_history_uses_local_metadata_for_local_payload():
 
 
 def test_plugin_history_falls_back_to_backward_compatible_package():
-    """已绑定来源的插件在当前索引缺失时仍读取向后兼容代际的历史。"""
+    """
+    已绑定来源的插件在当前索引缺失时仍读取向后兼容代际的历史。
+    """
     installed_plugin = schemas.Plugin(
         id="DemoPlugin",
         plugin_name="Demo Plugin",
@@ -604,7 +640,9 @@ def test_plugin_history_falls_back_to_backward_compatible_package():
 
 
 def test_runtime_status_reports_pending_and_terminal_counts():
-    """插件页摘要区分后台收敛、准备态和终态失败。"""
+    """
+    插件页摘要区分后台收敛、准备态和终态失败。
+    """
     plugin_manager = MagicMock()
     plugin_manager.get_plugin_runtime_statuses.return_value = {
         "SourcePending": PluginRuntimeStatus.SOURCE_MISSING,
@@ -640,7 +678,9 @@ def test_runtime_status_reports_pending_and_terminal_counts():
 
 
 def test_reload_endpoint_reports_load_failure(monkeypatch):
-    """插件重载失败时接口返回失败，并委托应用服务维护注册一致性。"""
+    """
+    插件重载失败时接口返回失败，并委托应用服务维护注册一致性。
+    """
     reload_runtime = MagicMock(return_value=PluginRuntimeStatus.LOAD_FAILED)
     monkeypatch.setattr(plugin_endpoint, "reload_plugin_runtime", reload_runtime)
 
@@ -652,7 +692,9 @@ def test_reload_endpoint_reports_load_failure(monkeypatch):
 
 
 def test_reload_endpoint_uses_post_for_process_side_effect():
-    """插件进程内重载只允许通过 POST 暴露。"""
+    """
+    插件进程内重载只允许通过 POST 暴露。
+    """
     reload_routes = [
         route for route in plugin_endpoint.router.routes if getattr(route, "path", None) == "/reload/{plugin_id}"
     ]
@@ -662,7 +704,9 @@ def test_reload_endpoint_uses_post_for_process_side_effect():
 
 
 def test_plugin_capabilities_return_only_safe_runtime_metadata(monkeypatch):
-    """插件能力接口不得暴露插件自由定义的数据、函数或定时参数。"""
+    """
+    插件能力接口不得暴露插件自由定义的数据、函数或定时参数。
+    """
     plugin_manager = MagicMock()
     plugin_manager.get_plugin_commands.return_value = [
         {
@@ -735,7 +779,9 @@ def test_plugin_capabilities_return_only_safe_runtime_metadata(monkeypatch):
 
 
 def test_plugin_data_summary_endpoint_never_returns_persisted_values(monkeypatch):
-    """插件数据摘要接口只返回键级诊断元数据。"""
+    """
+    插件数据摘要接口只返回键级诊断元数据。
+    """
     repository = MagicMock()
     repository.list = AsyncMock(
         return_value={
@@ -834,7 +880,9 @@ def test_plugin_history_uses_bound_repo_without_refreshing_all_markets():
 
 
 def test_plugin_history_uses_declared_metadata_when_bound_market_is_unavailable():
-    """加载失败且绑定市场不可用时，详情仍返回已提交载荷的展示信息。"""
+    """
+    加载失败且绑定市场不可用时，详情仍返回已提交载荷的展示信息。
+    """
     installed_plugin = schemas.Plugin(
         id="DemoPlugin",
         plugin_name="DemoPlugin",
@@ -1169,7 +1217,9 @@ def test_sync_plugin_market_from_wiki_merges_and_deduplicates_repos():
 
     @asynccontextmanager
     async def rule_group_mutation():
-        """提供本用例不会进入的规则组事务替身。"""
+        """
+        提供本用例不会进入的规则组事务替身。
+        """
         yield SimpleNamespace()
 
     from app.startup.composition.system import compose_system_service
@@ -1231,7 +1281,9 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
     plugin_manager.delete_plugin_data.side_effect = delete_data
 
     def publish_reset(plugin_id):
-        """记录重置前事件，验证应用用例保留补偿时序。"""
+        """
+        记录重置前事件，验证应用用例保留补偿时序。
+        """
         calls.append(
             (
                 "event",
@@ -1295,7 +1347,9 @@ def test_delete_plugin_config_can_force_delete_after_plugin_is_stopped():
 
 
 def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monkeypatch):
-    """实例 URL 保持独立，但静态内容直接读取共享的源插件目录。"""
+    """
+    实例 URL 保持独立，但静态内容直接读取共享的源插件目录。
+    """
     source_file = tmp_path / "app/plugins/demoplugin/dist/remoteEntry.js"
     source_file.parent.mkdir(parents=True)
     source_file.write_text("export default 'shared'", encoding="utf-8")
@@ -1311,7 +1365,9 @@ def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monk
     response = asyncio.run(plugin_static_file("DemoPluginwork", "dist/remoteEntry.js", None))
 
     async def read_body() -> bytes:
-        """读取流式响应的全部测试内容。"""
+        """
+        读取流式响应的全部测试内容。
+        """
         return b"".join([chunk async for chunk in response.body_iterator])
 
     assert asyncio.run(read_body()) == b"export default 'shared'"
@@ -1321,7 +1377,9 @@ def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monk
 
 
 def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
-    """卸载虚拟实例只清理实例状态，不触碰源插件安装清单或目录。"""
+    """
+    卸载虚拟实例只清理实例状态，不触碰源插件安装清单或目录。
+    """
     plugin_manager = MagicMock()
     plugin_manager.get_plugin_instance.return_value = PluginInstance(
         instance_id="DemoPluginwork",
@@ -1357,7 +1415,9 @@ def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
 
 
 def test_uninstall_clone_delegates_physical_removal_to_package_owner(monkeypatch):
-    """HTTP 分身卸载不得自行拼接路径或直接删除目录。"""
+    """
+    HTTP 分身卸载不得自行拼接路径或直接删除目录。
+    """
     plugin_manager = MagicMock()
     plugin_manager.get_plugin_instance.return_value = None
     plugin_manager.get_plugin_source_instances.return_value = []
@@ -1379,7 +1439,9 @@ def test_uninstall_clone_delegates_physical_removal_to_package_owner(monkeypatch
 
 
 def test_sealed_http_uninstall_rejects_before_first_side_effect(monkeypatch):
-    """HTTP 卸载在封口后明确失败，且不读取或写入插件持久化状态。"""
+    """
+    HTTP 卸载在封口后明确失败，且不读取或写入插件持久化状态。
+    """
     admission = PluginMutationAdmission()
     admission.seal()
     plugin_manager = MagicMock()
@@ -1407,7 +1469,9 @@ def test_sealed_http_uninstall_rejects_before_first_side_effect(monkeypatch):
 
 
 def test_sealed_http_clone_rejects_before_runtime_and_registration(monkeypatch):
-    """HTTP 分身事务未获 admission 时不创建实例、不刷新注册或文件夹。"""
+    """
+    HTTP 分身事务未获 admission 时不创建实例、不刷新注册或文件夹。
+    """
     admission = PluginMutationAdmission()
     admission.seal()
     plugin_manager = MagicMock()
@@ -1432,7 +1496,9 @@ def test_sealed_http_clone_rejects_before_runtime_and_registration(monkeypatch):
 
 
 def test_sealed_http_folder_update_rejects_before_config_access(monkeypatch):
-    """插件文件夹写入口在封口后不读取或改写持久化配置。"""
+    """
+    插件文件夹写入口在封口后不读取或改写持久化配置。
+    """
     admission = PluginMutationAdmission()
     admission.seal()
     plugin_manager = MagicMock()
@@ -1455,7 +1521,9 @@ def test_sealed_http_folder_update_rejects_before_config_access(monkeypatch):
 
 
 def test_plugin_folder_incremental_endpoints_delegate_structured_payloads(monkeypatch):
-    """插件文件夹增量 HTTP 入口应保留字段存在性并委托单目标用例。"""
+    """
+    插件文件夹增量 HTTP 入口应保留字段存在性并委托单目标用例。
+    """
     service = MagicMock()
     service.update_folder = AsyncMock(return_value=SimpleNamespace(success=True, message=""))
     service.update_plugins = AsyncMock(return_value=SimpleNamespace(success=True, message=""))
@@ -1510,7 +1578,9 @@ def test_plugin_folder_incremental_endpoints_delegate_structured_payloads(monkey
 
 
 def test_plugin_folder_member_endpoint_keeps_legacy_array_request(monkeypatch):
-    """旧客户端发送裸插件数组时仍应按无条件替换语义工作。"""
+    """
+    旧客户端发送裸插件数组时仍应按无条件替换语义工作。
+    """
     service = MagicMock()
     service.update_plugins = AsyncMock(return_value=SimpleNamespace(success=True, message=""))
     monkeypatch.setattr(
@@ -1553,12 +1623,16 @@ def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():
 
 
 def _clone_source_plugin_id(plugin_id: str) -> str:
-    """把测试用分身 ID 归一到源插件，其余 ID 保持原值。"""
+    """
+    把测试用分身 ID 归一到源插件，其余 ID 保持原值。
+    """
     return "DemoPlugin" if plugin_id == "DemoPluginwork" else plugin_id
 
 
 def test_plugin_history_resolves_clone_id_to_its_source_plugin():
-    """分身查更新说明必须归一到源插件，否则安装清单里查不到而报 404。"""
+    """
+    分身查更新说明必须归一到源插件，否则安装清单里查不到而报 404。
+    """
     installed_plugin = schemas.Plugin(
         id="DemoPlugin",
         plugin_name="Demo Plugin",
@@ -1596,7 +1670,9 @@ def test_plugin_history_resolves_clone_id_to_its_source_plugin():
 
 
 def test_plugin_releases_resolves_clone_id_to_its_source_plugin():
-    """分身查 Release 必须归一到源插件，否则市场索引与本地版本一并落空。"""
+    """
+    分身查 Release 必须归一到源插件，否则市场索引与本地版本一并落空。
+    """
     market_plugin = schemas.Plugin(
         id="DemoPlugin",
         plugin_version="1.2.3",

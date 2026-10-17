@@ -1,4 +1,6 @@
-"""插件事件订阅与发布接口。"""
+"""
+插件事件订阅与发布接口。
+"""
 
 from app.runtime.event.snapshot import EventPayloadSnapshot, snapshot_event_data
 from app.runtime.events import Event, EventManager, eventmanager

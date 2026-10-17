@@ -25,6 +25,7 @@ def execute_dml(db: Session, statement: Executable,
     ``Session.execute`` 的类型标注一律是 ``Result``，只有运行期真正拿到的
     ``CursorResult`` 才带 ``rowcount``——2.0 只为 ``Connection.execute`` 加了
     ``CursorResult`` 重载。这里把转换收口一次，免得每个模型各写一遍 cast。
+
     :param db: 数据库会话
     :param statement: delete()/update() 等 DML 语句
     :param execution_options: 执行选项；不传即沿用 SQLAlchemy 默认的会话同步策略
@@ -71,18 +72,24 @@ class Base(DeclarativeBase):  # type: ignore[misc]  # SQLAlchemy 无 py.typed �
     id: Mapped[int]
 
     def create(self, db: Session) -> None:
-        """在调用方同步事务中暂存当前模型。"""
+        """
+        在调用方同步事务中暂存当前模型。
+        """
         db.add(self)
 
     async def async_create(self, db: AsyncSession) -> Self:
-        """在调用方异步事务中暂存当前模型并刷新主键。"""
+        """
+        在调用方异步事务中暂存当前模型并刷新主键。
+        """
         db.add(self)
         await db.flush()
         return self
 
     @classmethod
     def get(cls, db: Session, rid: int) -> Optional[Self]:
-        """在调用方同步会话中按主键查询当前模型。"""
+        """
+        在调用方同步会话中按主键查询当前模型。
+        """
         return cast(
             Optional[Self],
             db.execute(select(cls).where(and_(cls.id == rid))).scalars().first(),
@@ -90,12 +97,16 @@ class Base(DeclarativeBase):  # type: ignore[misc]  # SQLAlchemy 无 py.typed �
 
     @classmethod
     async def async_get(cls, db: AsyncSession, rid: int) -> Optional[Self]:
-        """在调用方异步会话中按主键查询当前模型。"""
+        """
+        在调用方异步会话中按主键查询当前模型。
+        """
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         return cast(Optional[Self], result.scalars().first())
 
     def update(self, db: Session, payload: dict[str, Any]) -> None:
-        """在调用方同步事务中更新当前模型字段。"""
+        """
+        在调用方同步事务中更新当前模型字段。
+        """
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
@@ -106,7 +117,9 @@ class Base(DeclarativeBase):  # type: ignore[misc]  # SQLAlchemy 无 py.typed �
         db: AsyncSession,
         payload: dict[str, Any],
     ) -> None:
-        """在调用方异步事务中更新当前模型字段。"""
+        """
+        在调用方异步事务中更新当前模型字段。
+        """
         for key, value in payload.items():
             setattr(self, key, value)
         if inspect(self).detached:
@@ -114,12 +127,16 @@ class Base(DeclarativeBase):  # type: ignore[misc]  # SQLAlchemy 无 py.typed �
 
     @classmethod
     def delete(cls, db: Session, rid: Any) -> None:
-        """在调用方同步事务中按主键删除当前模型。"""
+        """
+        在调用方同步事务中按主键删除当前模型。
+        """
         db.execute(delete(cls).where(and_(cls.id == rid)))
 
     @classmethod
     async def async_delete(cls, db: AsyncSession, rid: Any) -> None:
-        """在调用方异步事务中按主键删除当前模型。"""
+        """
+        在调用方异步事务中按主键删除当前模型。
+        """
         result = await db.execute(select(cls).where(and_(cls.id == rid)))
         user = result.scalars().first()
         if user:
@@ -127,27 +144,37 @@ class Base(DeclarativeBase):  # type: ignore[misc]  # SQLAlchemy 无 py.typed �
 
     @classmethod
     def truncate(cls, db: Session) -> None:
-        """在调用方同步事务中清空当前模型表。"""
+        """
+        在调用方同步事务中清空当前模型表。
+        """
         db.execute(delete(cls))
 
     @classmethod
     async def async_truncate(cls, db: AsyncSession) -> None:
-        """在调用方异步事务中清空当前模型表。"""
+        """
+        在调用方异步事务中清空当前模型表。
+        """
         await db.execute(delete(cls))
 
     @classmethod
     def list(cls, db: Session) -> List[Self]:
-        """在调用方同步会话中查询当前模型的全部记录。"""
+        """
+        在调用方同步会话中查询当前模型的全部记录。
+        """
         return list(db.execute(select(cls)).scalars().all())
 
     @classmethod
     async def async_list(cls, db: AsyncSession) -> List[Self]:
-        """在调用方异步会话中查询当前模型的全部记录。"""
+        """
+        在调用方异步会话中查询当前模型的全部记录。
+        """
         result = await db.execute(select(cls))
         return list(result.scalars().all())
 
     def to_dict(self) -> dict[str, Any]:
-        """把当前模型的映射列转换为字典。"""
+        """
+        把当前模型的映射列转换为字典。
+        """
         return {c.name: getattr(self, c.name, None) for c in self.__table__.columns}  # noqa
 
     @declared_attr.directive  # type: ignore[misc]  # SQLAlchemy decorator 缺少类型信息
@@ -164,11 +191,15 @@ class DbOper:
     """
 
     def __init__(self, db: Optional[Union[Session, AsyncSession]] = None):
-        """保存调用方会话；无会话调用由组合根事务执行器承接。"""
+        """
+        保存调用方会话；无会话调用由组合根事务执行器承接。
+        """
         self._db = db
 
     def _execute_sync_write(self, operation: Callable[[Session], T]) -> T:
-        """在当前同步会话暂存，或委托组合根创建事务。"""
+        """
+        在当前同步会话暂存，或委托组合根创建事务。
+        """
         if self._db is None or isinstance(self._db, AsyncSession):
             # 旧调用可能在同一 Oper 上混用同步/异步方法；跨会话类型时使用匹配的
             # 独立事务，不能把 AsyncSession 交给同步 SQLAlchemy API。
@@ -176,7 +207,9 @@ class DbOper:
         return operation(self._db)
 
     def _execute_sync_query(self, operation: Callable[[Session], T]) -> T:
-        """在当前同步会话查询，或委托组合根创建一次性会话。"""
+        """
+        在当前同步会话查询，或委托组合根创建一次性会话。
+        """
         if self._db is None or isinstance(self._db, AsyncSession):
             return run_sync_transaction(operation)
         return operation(self._db)
@@ -185,7 +218,9 @@ class DbOper:
         self,
         operation: Callable[[AsyncSession], Awaitable[T]],
     ) -> T:
-        """在当前异步会话暂存，或委托组合根创建事务。"""
+        """
+        在当前异步会话暂存，或委托组合根创建事务。
+        """
         if self._db is None or isinstance(self._db, Session):
             # 同步会话不会被错误传入异步模型写入，而是由组合根另开匹配的异步事务。
             return await run_async_transaction(operation)
@@ -195,24 +230,34 @@ class DbOper:
         self,
         operation: Callable[[AsyncSession], Awaitable[T]],
     ) -> T:
-        """在当前异步会话查询，或委托组合根创建一次性会话。"""
+        """
+        在当前异步会话查询，或委托组合根创建一次性会话。
+        """
         if self._db is None or isinstance(self._db, Session):
             return await run_async_transaction(operation)
         return await operation(self._db)
 
     def _stage_create(self, model: TModel) -> TModel:
-        """在调用方或组合根持有的同步事务中暂存新模型。"""
+        """
+        在调用方或组合根持有的同步事务中暂存新模型。
+        """
         def stage(session: Session) -> TModel:
-            """把模型加入当前同步会话。"""
+            """
+            把模型加入当前同步会话。
+            """
             session.add(model)
             return model
 
         return self._execute_sync_write(stage)
 
     async def _stage_async_create(self, model: TModel) -> TModel:
-        """在显式异步事务中暂存新模型并刷新主键。"""
+        """
+        在显式异步事务中暂存新模型并刷新主键。
+        """
         async def stage(session: AsyncSession) -> TModel:
-            """把模型加入当前异步会话并刷新。"""
+            """
+            把模型加入当前异步会话并刷新。
+            """
             session.add(model)
             await session.flush()
             return model
@@ -220,9 +265,13 @@ class DbOper:
         return await self._execute_async_write(stage)
 
     def _stage_update(self, model: TModel, payload: dict[str, Any]) -> TModel:
-        """在显式同步事务中更新模型字段，必要时重新附加游离对象。"""
+        """
+        在显式同步事务中更新模型字段，必要时重新附加游离对象。
+        """
         def stage(session: Session) -> TModel:
-            """应用字段并把游离模型重新加入会话。"""
+            """
+            应用字段并把游离模型重新加入会话。
+            """
             for key, value in payload.items():
                 setattr(model, key, value)
             model_state = inspect(model, raiseerr=False)
@@ -237,9 +286,13 @@ class DbOper:
         model: TModel,
         payload: dict[str, Any],
     ) -> TModel:
-        """在显式异步事务中更新模型字段，必要时重新附加游离对象。"""
+        """
+        在显式异步事务中更新模型字段，必要时重新附加游离对象。
+        """
         async def stage(session: AsyncSession) -> TModel:
-            """应用字段并把游离模型重新加入会话。"""
+            """
+            应用字段并把游离模型重新加入会话。
+            """
             for key, value in payload.items():
                 setattr(model, key, value)
             model_state = inspect(model, raiseerr=False)
@@ -250,7 +303,9 @@ class DbOper:
         return await self._execute_async_write(stage)
 
     def _stage_delete(self, model_type: type[Base], rid: Any) -> None:
-        """在显式同步事务中按主键删除模型。"""
+        """
+        在显式同步事务中按主键删除模型。
+        """
         self._execute_sync_write(
             lambda session: session.execute(
                 delete(model_type).where(model_type.id == rid)
@@ -258,23 +313,33 @@ class DbOper:
         )
 
     async def _stage_async_delete(self, model_type: type[Base], rid: Any) -> None:
-        """在显式异步事务中按主键删除模型。"""
+        """
+        在显式异步事务中按主键删除模型。
+        """
         async def stage(session: AsyncSession) -> None:
-            """执行当前异步事务内的按主键删除。"""
+            """
+            执行当前异步事务内的按主键删除。
+            """
             await session.execute(delete(model_type).where(model_type.id == rid))
 
         await self._execute_async_write(stage)
 
     def _stage_truncate(self, model_type: type[Base]) -> None:
-        """在显式同步事务中删除模型表的全部记录。"""
+        """
+        在显式同步事务中删除模型表的全部记录。
+        """
         self._execute_sync_write(
             lambda session: session.execute(delete(model_type))
         )
 
     async def _stage_async_truncate(self, model_type: type[Base]) -> None:
-        """在显式异步事务中删除模型表的全部记录。"""
+        """
+        在显式异步事务中删除模型表的全部记录。
+        """
         async def stage(session: AsyncSession) -> None:
-            """执行当前异步事务内的全表删除。"""
+            """
+            执行当前异步事务内的全表删除。
+            """
             await session.execute(delete(model_type))
 
         await self._execute_async_write(stage)

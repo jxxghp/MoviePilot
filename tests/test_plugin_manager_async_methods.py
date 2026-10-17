@@ -1,4 +1,6 @@
-"""插件管理器异步方法的执行边界回归。"""
+"""
+插件管理器异步方法的执行边界回归。
+"""
 
 from types import SimpleNamespace
 from typing import Iterator
@@ -7,12 +9,16 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.foundation.singleton import Singleton
-from app.sdk.plugin import PluginManager
+
+# 插件 SDK 在运行时动态导出管理器，此导入验证公开入口的异步合同。
+from app.sdk.plugin import PluginManager  # pylint: disable=no-name-in-module
 
 
 @pytest.fixture
 def plugin_manager() -> Iterator[PluginManager]:
-    """构造隔离的插件管理器实例。"""
+    """
+    构造隔离的插件管理器实例。
+    """
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
     manager = PluginManager()
     yield manager
@@ -24,7 +30,9 @@ async def test_async_run_plugin_method_offloads_sync_plugin_method(
     plugin_manager: PluginManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """异步入口不得在事件循环内直接执行同步插件方法。"""
+    """
+    异步入口不得在事件循环内直接执行同步插件方法。
+    """
     calls: list[tuple[str, int]] = []
 
     def sync_method(value: int) -> int:
@@ -52,7 +60,9 @@ async def test_async_run_plugin_method_keeps_async_plugin_method_on_loop(
     plugin_manager: PluginManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """原生协程插件方法继续直接等待，不额外占用同步 worker。"""
+    """
+    原生协程插件方法继续直接等待，不额外占用同步 worker。
+    """
     async def async_method(value: int) -> int:
         return value + 1
 

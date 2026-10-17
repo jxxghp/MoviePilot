@@ -1,18 +1,9 @@
 """
-订阅写入应用用例。
+订阅新增、批量新增及媒体字段到持久化字段的转换。
 
-本模块把 MediaInfo / MusicInfo 翻译成一行订阅，是订阅表的唯一业务写入口。翻译此前
-长在 SubscribeOper.add 上，但取标题、选海报尺寸、判音乐实体、决定哪几个字段构成一条
-订阅的身份，都是订阅业务的规则而非数据访问——Oper 只该收敛查询，领域对象不该出现在
-它的入参里。搬上来之后 SubscribeOper 收到的是纯粹的持久化字典，与
-app/application/history/ 里整理历史的写入路径同构。
-
-留在 Oper 的是列类型强转与建库时间戳：那几步是为 PostgreSQL 的严格类型检查和订阅表
-自己的列类型而存在的，跟着列走比跟着调用方走更不容易漂。
-
-字段映射错了不会报错，只会让订阅静静地记错——而搜索、洗版、完成判定、去重全都读这
-张表。同步与异步是两份逐字复制的实现，改一条漏一条就是真实缺陷，故翻译与身份构造由
-下方 _translate 单点承担，两条链路只在「怎么查、怎么写」上分叉。
+同步与异步入口共享媒体身份和字段映射，数据端口只接收明确的持久化值。
+新增命令负责事务提交与回滚，并在同一事务内暂存事件、通知和统计投递意图；
+外部副作用在业务提交后执行，失败不会撤销已经提交的订阅。
 """
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -48,45 +39,77 @@ INCOMPLETE_IDENTITY = (0, "未识别到媒体信息，请检查媒体来源和�
 
 
 class SubscriptionOutboxStager(Protocol):
-    """同步订阅事务暂存 durable intent 的最小端口。"""
+    """
+    同步订阅事务暂存持久投递意图 的最小端口。
+    """
 
     def stage(self, intent: OutboxIntent, now: datetime) -> None:
-        """把意图加入当前业务事务。"""
+        """
+        把意图加入当前业务事务。
+
+        只暂存投递意图，不自行提交事务，也不在事务内执行外部副作用。
+
+        :param intent: 与订阅业务变更一起持久化的副作用投递意图
+        :param now: 暂存意图时使用的当前时间
+        """
 
 
 class AsyncSubscriptionOutboxStager(Protocol):
-    """异步订阅事务暂存 durable intent 的最小端口。"""
+    """
+    异步订阅事务暂存持久投递意图 的最小端口。
+    """
 
     async def stage(self, intent: OutboxIntent, now: datetime) -> None:
-        """把意图加入当前异步业务事务。"""
+        """
+        把意图加入当前异步业务事务。
+
+        只暂存投递意图，不自行提交事务，也不在事务内执行外部副作用。
+
+        :param intent: 与订阅业务变更一起持久化的副作用投递意图
+        :param now: 暂存意图时使用的当前时间
+        """
 
 
 class UnitOfWork(Protocol):
-    """同步订阅新增命令使用的最小事务端口。"""
+    """
+    同步订阅新增命令使用的最小事务端口。
+    """
 
     def commit(self) -> None:
-        """提交当前逻辑操作。"""
+        """
+        提交当前逻辑操作。
+        """
         ...
 
     def rollback(self) -> None:
-        """回滚当前逻辑操作。"""
+        """
+        回滚当前逻辑操作。
+        """
         ...
 
 
 class AsyncUnitOfWork(Protocol):
-    """异步订阅新增命令使用的最小事务端口。"""
+    """
+    异步订阅新增命令使用的最小事务端口。
+    """
 
     async def commit(self) -> None:
-        """提交当前逻辑操作。"""
+        """
+        提交当前逻辑操作。
+        """
         ...
 
     async def rollback(self) -> None:
-        """回滚当前逻辑操作。"""
+        """
+        回滚当前逻辑操作。
+        """
         ...
 
 
 class CreateSubscriptionCommand:
-    """暂存并提交一条同步订阅，重复请求保持历史返回且不产生提交。"""
+    """
+    暂存并提交一条同步订阅，重复请求保持历史返回且不产生提交。
+    """
 
     def __init__(
         self,
@@ -94,7 +117,9 @@ class CreateSubscriptionCommand:
         unit_of_work: UnitOfWork,
         outbox: SubscriptionOutboxStager | None = None,
     ) -> None:
-        """注入无提交仓储和事务所有者。"""
+        """
+        注入无提交仓储和事务所有者。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
         self._outbox = outbox
@@ -108,7 +133,9 @@ class CreateSubscriptionCommand:
         notification: Mapping[str, JsonData] | None = None,
         occurrence_id: Optional[str] = None,
     ) -> Tuple[int, str]:
-        """执行同步新增；事务失败回滚，提交后副作用失败不反向回滚。"""
+        """
+        执行同步新增；事务失败回滚，提交后副作用失败不反向回滚。
+        """
         try:
             staged = self._repository.stage_add(identity, payload, username)
             if staged.created:
@@ -132,7 +159,9 @@ class CreateSubscriptionCommand:
 
 
 class AsyncCreateSubscriptionCommand:
-    """暂存并提交一条异步订阅，事务成功后才把结果交给副作用调用方。"""
+    """
+    暂存并提交一条异步订阅，事务成功后才把结果交给副作用调用方。
+    """
 
     def __init__(
         self,
@@ -140,7 +169,9 @@ class AsyncCreateSubscriptionCommand:
         unit_of_work: AsyncUnitOfWork,
         outbox: AsyncSubscriptionOutboxStager | None = None,
     ) -> None:
-        """注入无提交异步仓储和事务所有者。"""
+        """
+        注入无提交异步仓储和事务所有者。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
         self._outbox = outbox
@@ -154,7 +185,9 @@ class AsyncCreateSubscriptionCommand:
         notification: Mapping[str, JsonData] | None = None,
         occurrence_id: Optional[str] = None,
     ) -> Tuple[int, str]:
-        """执行异步新增；事务失败回滚，提交后副作用失败不反向回滚。"""
+        """
+        执行异步新增；事务失败回滚，提交后副作用失败不反向回滚。
+        """
         try:
             staged = await self._repository.async_stage_add(
                 identity,
@@ -183,7 +216,16 @@ class AsyncCreateSubscriptionCommand:
 
 @dataclass(frozen=True, slots=True)
 class SubscriptionCreateRequest:
-    """批量新增中的一条订阅写入请求。"""
+    """
+    批量新增中的一条订阅写入请求。
+
+    :param identity: 用于查重与绑定来源的完整媒体身份
+    :param payload: 经过字段白名单约束的订阅写入值
+    :param username: 订阅所属的本地用户名；None 表示未绑定用户
+    :param notification: 提交后通知所需的稳定字段；None 表示不附加通知意图
+    :param after_commit: 事务提交后执行的兼容回调；None 表示无附加回调
+    :param occurrence_id: 本次创建事实的唯一标识，默认自动生成，用于事件幂等键
+    """
 
     identity: SubscriptionIdentity
     payload: SubscriptionPatch
@@ -200,22 +242,33 @@ SubscriptionBatchAfterCommitEffect = Callable[
 
 
 class SubscriptionBatchWritePort(Protocol):
-    """Servarr 等批量入口使用的原子异步订阅写端口。"""
+    """
+    Servarr 等批量入口使用的原子异步订阅写端口。
+    """
 
     async def async_add(
         self,
         requests: Sequence[SubscriptionCreateRequest],
     ) -> tuple[SubscriptionWriteResult, ...]:
-        """在一个事务内新增全部订阅并返回逐条结果。"""
+        """
+        在一个事务内新增全部订阅并返回逐条结果。
+
+        :param requests: 同一事务内依次新增的订阅请求，结果顺序与输入一致
+        :return: 逐条新增或查重结果；事务内任一步骤失败时整体回滚
+        """
         ...
 
 
 class SubscriptionBatchWriteError(RuntimeError):
-    """批量中的任一订阅无法落库时触发整批回滚。"""
+    """
+    批量中的任一订阅无法落库时触发整批回滚。
+    """
 
 
 class AsyncCreateSubscriptionBatchCommand:
-    """在一个异步 UoW 内暂存多条订阅及各自 durable intents。"""
+    """
+    在一个异步 UoW 内暂存多条订阅及各自持久投递意图。
+    """
 
     def __init__(
         self,
@@ -223,7 +276,9 @@ class AsyncCreateSubscriptionBatchCommand:
         unit_of_work: AsyncUnitOfWork,
         outbox: AsyncSubscriptionOutboxStager,
     ) -> None:
-        """注入共享 Session 的 staging port、事务所有者和 outbox。"""
+        """
+        注入共享 Session 的暂存端口、事务所有者和 outbox。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
         self._outbox = outbox
@@ -233,7 +288,9 @@ class AsyncCreateSubscriptionBatchCommand:
         requests: Sequence[SubscriptionCreateRequest],
         after_commit: Optional[SubscriptionBatchAfterCommitEffect] = None,
     ) -> tuple[SubscriptionWriteResult, ...]:
-        """全部暂存成功后提交一次，失败则回滚且不执行外部副作用。"""
+        """
+        全部暂存成功后提交一次，失败则回滚且不执行外部副作用。
+        """
         if not requests:
             return ()
         staged_results: list[SubscriptionWriteResult] = []
@@ -280,7 +337,9 @@ def _subscribe_added_intents(
     *,
     occurrence_id: Optional[str] = None,
 ) -> tuple[OutboxIntent, ...]:
-    """构造订阅新增事件、通知与外部统计的同事务 durable intents。"""
+    """
+    构造订阅新增事件、通知与外部统计的同事务持久投递意图。
+    """
     resolved_occurrence_id = occurrence_id or uuid4().hex
     event_key = subscription_added_event_key(
         subscribe_id,
@@ -348,6 +407,7 @@ def _music_entity(mediainfo: MediaInfo | MusicInfo) -> Optional[str]:
 
     影视订阅带着 music_type 会被音乐去重逻辑当成音乐实体，造成串号。查重身份与写入
     字段都取这一个值，避免两处各算一遍后悄悄分叉。
+
     :param mediainfo: 识别结果
     :return: 音乐实体类型，非音乐媒体为 None
     """
@@ -427,7 +487,9 @@ def build_subscription_create_request(
     occurrence_id: Optional[str] = None,
     **kwargs: JsonData,
 ) -> Optional[SubscriptionCreateRequest]:
-    """把统一订阅字段映射冻结为一条可参与原子批量写入的请求。"""
+    """
+    把统一订阅字段映射冻结为一条可参与原子批量写入的请求。
+    """
     translated = _translate(mediainfo, kwargs)
     if translated is None:
         return None

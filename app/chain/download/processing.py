@@ -1,4 +1,6 @@
-"""历史提交后的通知与附加处理 owner。"""
+"""
+历史提交后的通知与附加处理 owner。
+"""
 
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +26,9 @@ from app.schemas.types import (
 
 
 class DownloadProcessingOwner(_DownloadOwnerBase):
-    """历史提交后的通知与附加处理 owner。"""
+    """
+    历史提交后的通知与附加处理 owner。
+    """
 
     def _build_download_notification(
         self,
@@ -38,7 +42,9 @@ class DownloadProcessingOwner(_DownloadOwnerBase):
         username: str | None,
         download_episodes: str | None,
     ) -> Optional[Message]:
-        """提交前冻结下载通知，供即时路径与 durable 恢复共用。"""
+        """
+        提交前冻结下载通知，供即时路径与 durable 恢复共用。
+        """
         return MessageTemplateHelper.render(
             message=Message(
                 channel=channel,

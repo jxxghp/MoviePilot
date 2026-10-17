@@ -1,3 +1,7 @@
+"""
+验证大语言模型提供方的传输配置和客户端构造。
+"""
+
 import asyncio
 from types import SimpleNamespace
 
@@ -11,7 +15,9 @@ from app.agent.llm.provider import LLMProviderManager
 def test_provider_builds_secure_requestutils_without_environment_proxy(
     monkeypatch,
 ) -> None:
-    """LLM 普通 HTTP 应走统一异步客户端并保持显式 TLS 与代理策略。"""
+    """
+    LLM 普通 HTTP 应走统一异步客户端并保持显式 TLS 与代理策略。
+    """
     settings = {
         "LLM_USE_PROXY": True,
         "PROXY_HOST": "http://proxy.example:7890",
@@ -32,7 +38,9 @@ def test_provider_builds_secure_requestutils_without_environment_proxy(
 
 
 def test_provider_delegates_sdk_http_client_creation(monkeypatch) -> None:
-    """第三方 SDK transport 必须由统一网络适配器工厂构造。"""
+    """
+    第三方 SDK transport 必须由统一网络适配器工厂构造。
+    """
     marker = object()
     captured = {}
     monkeypatch.setattr(
@@ -45,7 +53,9 @@ def test_provider_delegates_sdk_http_client_creation(monkeypatch) -> None:
     )
 
     def create_sdk_client(**kwargs):
-        """记录 SDK 客户端构造参数。"""
+        """
+        记录 SDK 客户端构造参数。
+        """
         captured.update(kwargs)
         return marker
 
@@ -68,14 +78,20 @@ def test_provider_delegates_sdk_http_client_creation(monkeypatch) -> None:
 def test_google_model_client_uses_adapter_args_and_closes_both_clients(
     monkeypatch,
 ) -> None:
-    """Google 模型目录必须复用统一 transport 参数并释放同步、异步 client。"""
+    """
+    Google 模型目录必须复用统一 transport 参数并释放同步、异步 client。
+    """
     captured = {}
 
     class FakeAsyncModels:
-        """返回固定 Google 模型目录。"""
+        """
+        返回固定 Google 模型目录。
+        """
 
         async def list(self):
-            """返回只含一个可生成内容模型的响应。"""
+            """
+            返回只含一个可生成内容模型的响应。
+            """
             return SimpleNamespace(
                 page=[
                     SimpleNamespace(
@@ -87,29 +103,41 @@ def test_google_model_client_uses_adapter_args_and_closes_both_clients(
             )
 
     class FakeAsyncClient:
-        """记录 Google 异步 client 的关闭次数。"""
+        """
+        记录 Google 异步 client 的关闭次数。
+        """
 
         def __init__(self) -> None:
-            """初始化模型端点与关闭计数。"""
+            """
+            初始化模型端点与关闭计数。
+            """
             self.models = FakeAsyncModels()
             self.close_count = 0
 
         async def aclose(self) -> None:
-            """记录异步 client 关闭。"""
+            """
+            记录异步 client 关闭。
+            """
             self.close_count += 1
 
     class FakeClient:
-        """记录 Google SDK 构造参数与同步 client 关闭次数。"""
+        """
+        记录 Google SDK 构造参数与同步 client 关闭次数。
+        """
 
         def __init__(self, **kwargs) -> None:
-            """保存 SDK 参数并创建对应异步 client。"""
+            """
+            保存 SDK 参数并创建对应异步 client。
+            """
             captured.update(kwargs)
             self.aio = FakeAsyncClient()
             self.close_count = 0
             captured["client"] = self
 
         def close(self) -> None:
-            """记录同步 client 关闭。"""
+            """
+            记录同步 client 关闭。
+            """
             self.close_count += 1
 
     monkeypatch.setattr(genai, "Client", FakeClient)
@@ -124,7 +152,9 @@ def test_google_model_client_uses_adapter_args_and_closes_both_clients(
     manager = object.__new__(LLMProviderManager)
 
     async def fake_models_dev_model(*_args, **_kwargs):
-        """避免测试访问外部 models.dev。"""
+        """
+        避免测试访问外部 models.dev。
+        """
         return {}
 
     manager._models_dev_model = fake_models_dev_model

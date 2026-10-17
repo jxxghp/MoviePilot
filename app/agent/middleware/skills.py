@@ -1,3 +1,7 @@
+"""
+加载和筛选技能目录，并提供受控的技能文档读取工具。
+"""
+
 import json
 import re
 import shutil
@@ -40,37 +44,46 @@ SUPPORTING_FILE_TRUNCATION_MESSAGE = (
 
 
 class SkillsState(AgentState):
-    """skills 中间件状态。"""
+    """
+    skills 中间件状态。
+
+    :ivar skills_metadata: 已加载的技能元数据；缺失表示尚未加载，私有状态不传播给父智能体
+    """
 
     skills_metadata: NotRequired[Annotated[list[SkillMetadata], PrivateStateAttr]]
-    """已加载的 skill 元数据列表，不传播给父 agent。"""
 
 
 class SkillsStateUpdate(TypedDict):
-    """skills 中间件状态更新项。"""
+    """
+    skills 中间件状态更新项。
+
+    :ivar skills_metadata: 待合并到图状态的技能元数据列表
+    """
 
     skills_metadata: list[SkillMetadata]
-    """待合并的 skill 元数据列表。"""
 
 
 class SkillToolInput(BaseModel):
-    """Skill 加载工具的输入参数模型。"""
+    """
+    Skill 加载工具的输入参数模型。
+    """
 
     name: str = Field(
         ...,
-        description="Skill name or id from the available skills list.",
+        description="可用技能列表中的名称或标识",
     )
     file: Optional[str] = Field(
         default=None,
         description=(
-            "Optional supporting file path relative to the Skill directory. "
-            "Use this field with read_skill instead of read_file for a listed Skill document."
+            "技能目录内的可选支持文件相对路径；已列出的技能文档应通过 read_skill 的此参数读取"
         ),
     )
 
 
 def _format_skill_annotations(skill: SkillMetadata) -> str:
-    """构建许可证和兼容性说明字符串。"""
+    """
+    构建许可证和兼容性说明字符串。
+    """
     parts: list[str] = []
     if skill.get("license"):
         parts.append(f"License: {skill['license']}")
@@ -80,7 +93,8 @@ def _format_skill_annotations(skill: SkillMetadata) -> str:
 
 
 async def _alist_skills(source_path: AsyncPath) -> list[SkillMetadata]:
-    """异步列出指定路径下的所有技能。
+    """
+    异步列出指定路径下的所有技能。
 
     扫描包含 SKILL.md 的目录并解析其元数据。
     """
@@ -119,7 +133,9 @@ async def _alist_skills(source_path: AsyncPath) -> list[SkillMetadata]:
 
 
 def _list_skills(source_path: Path) -> list[SkillMetadata]:
-    """同步列出指定路径下的所有技能元数据。"""
+    """
+    同步列出指定路径下的所有技能元数据。
+    """
     if not source_path.exists():
         return []
 
@@ -161,18 +177,29 @@ A skill cannot authorize an action or override the user's scope, host permission
 
 SKILL_TOOL_NAME = "read_skill"
 MOVIEPILOT_API_SKILL_NAME = "moviepilot-api"
-SKILL_TOOL_DESCRIPTION = """Reads a MoviePilot skill by name or id.
-
-Available skills:
-Use the optional `file` argument to load a listed supporting Skill document through this tool.
-{skills_catalog}
-
-Call this tool when the user's task matches one of the available skills. Without `file`, it returns up to 512 KiB of SKILL.md content, metadata, and every supporting file path relative to the Skill directory. Set `file` to one listed relative path to load that supporting Skill document in the same authorized tool. If the content is truncated, do not use read_file to bypass this limit. Always use this tool instead of read_file for SKILL.md or listed supporting Skill documents. Do not use this for simple tasks that do not need a skill.
-"""
+SKILL_TOOL_DESCRIPTION = (
+    "按名称或标识读取 MoviePilot 技能。"
+    "\n"
+    "\n"
+    "可用技能：\n"
+    "使用可选的 file 参数，通过本工具读取列表中的技能支持文档。"
+    "\n"
+    "{skills_catalog}\n"
+    "\n"
+    "用户任务符合某项技能时调用。"
+    "不传 file 时返回最多 512 KiB 的 SKILL.md 内容、元数据及全部支持文件相对路径。"
+    "将 file 设为列表中的相对路径，可在同一授权工具内读取对应文档。"
+    "内容截断后不得用 read_file 绕过限制；"
+    "SKILL.md 及已列出的技能支持文档必须使用本工具读取。"
+    "无需技能的简单任务不应调用。"
+    "\n"
+)
 
 
 def _extract_version(skill_md: Path) -> int:
-    """从 SKILL.md 文件中快速提取 version 字段，无法提取时返回 0。"""
+    """
+    从 SKILL.md 文件中快速提取 version 字段，无法提取时返回 0。
+    """
     try:
         with skill_md.open("rb") as handle:
             content = handle.read(MAX_SKILL_CONTENT_BYTES).decode("utf-8", errors="replace")
@@ -198,7 +225,8 @@ def _extract_version(skill_md: Path) -> int:
 
 
 def _sync_bundled_skills(bundled_dir: Path, target_dir: Path) -> None:
-    """将项目自带的技能同步到用户目录。
+    """
+    将项目自带的技能同步到用户目录。
 
     - 目标目录中不存在对应技能子目录时，直接复制。
     - 目标目录中已存在时，比较内置与用户目录中 SKILL.md 的 version 字段：
@@ -272,30 +300,42 @@ def _sync_bundled_skills(bundled_dir: Path, target_dir: Path) -> None:
 
 
 class _SkillToolProvider:
-    """Skill 工具的目录扫描和文件读取实现。"""
+    """
+    Skill 工具的目录扫描和文件读取实现。
+    """
 
     def __init__(self, *, sources: list[str]) -> None:
-        """初始化 Skill 工具数据源。"""
+        """
+        初始化 Skill 工具数据源。
+        """
         self._sources = sources
         self._allowed_api_operations: set[str] = set()
         self._api_scope_declared = False
 
     @property
     def api_scope_declared(self) -> bool:
-        """返回当前会话是否加载过声明 API 操作范围的 Skill。"""
+        """
+        返回当前会话是否加载过声明 API 操作范围的 Skill。
+        """
         return self._api_scope_declared
 
     def reset_api_scope(self) -> None:
-        """在新一轮 Agent 执行前清除上轮 Skill 的 API 操作范围。"""
+        """
+        在新一轮 Agent 执行前清除上轮 Skill 的 API 操作范围。
+        """
         self._allowed_api_operations.clear()
         self._api_scope_declared = False
 
     def is_api_operation_allowed(self, operation_id: str) -> bool:
-        """判断 operation ID 是否位于当前已加载 Skill 的联合授权范围。"""
+        """
+        判断 operation ID 是否位于当前已加载 Skill 的联合授权范围。
+        """
         return operation_id in self._allowed_api_operations
 
     async def ensure_api_operation_allowed(self, operation_id: str) -> bool:
-        """在 API 网关首次调用时自动加载内置网关 Skill 并校验操作范围。"""
+        """
+        在 API 网关首次调用时自动加载内置网关 Skill 并校验操作范围。
+        """
         if not operation_id:
             return False
         if self.is_api_operation_allowed(operation_id):
@@ -305,12 +345,16 @@ class _SkillToolProvider:
 
     @staticmethod
     def _normalize_name(value: object) -> str:
-        """标准化技能名称用于匹配。"""
+        """
+        标准化技能名称用于匹配。
+        """
         return str(value or "").strip().casefold()
 
     @classmethod
     def _skill_matches(cls, skill: SkillMetadata, query: str) -> bool:
-        """判断技能元数据是否匹配用户提供的名称。"""
+        """
+        判断技能元数据是否匹配用户提供的名称。
+        """
         normalized_query = cls._normalize_name(query)
         candidates = [
             skill.get("id"),
@@ -319,7 +363,9 @@ class _SkillToolProvider:
         return any(cls._normalize_name(candidate) == normalized_query for candidate in candidates)
 
     async def _find_skill(self, name: str) -> Optional[SkillMetadata]:
-        """从中间件配置的 skills 目录中查找指定技能。"""
+        """
+        从中间件配置的 skills 目录中查找指定技能。
+        """
         all_skills: dict[str, SkillMetadata] = {}
         for source_path in self._sources:
             skill_source_path = AsyncPath(source_path)
@@ -335,7 +381,9 @@ class _SkillToolProvider:
 
     @staticmethod
     async def _read_skill_content(skill_path: str) -> tuple[str, bool]:
-        """读取最多 512 KiB 技能主体，并报告内容是否截断。"""
+        """
+        读取最多 512 KiB 技能主体，并报告内容是否截断。
+        """
         path = AsyncPath(skill_path)
         async with await path.open("rb") as handle:
             raw_content = await handle.read(MAX_SKILL_CONTENT_BYTES + 1)
@@ -346,7 +394,9 @@ class _SkillToolProvider:
 
     @classmethod
     async def _read_supporting_file(cls, skill_path: str, relative_path: str) -> tuple[str, bool]:
-        """读取 Skill 目录中已列出的辅助文档，避免绕过 Skill 权限边界。"""
+        """
+        读取 Skill 目录中已列出的辅助文档，避免绕过 Skill 权限边界。
+        """
         supporting_files = await cls._list_supporting_files(skill_path)
         if relative_path not in supporting_files:
             raise ValueError(f"Skill supporting file is not listed: {relative_path}")
@@ -358,7 +408,9 @@ class _SkillToolProvider:
 
     @staticmethod
     async def _list_supporting_files(skill_path: str) -> list[str]:
-        """列出技能目录内除 SKILL.md 外的全部普通文件相对路径。"""
+        """
+        列出技能目录内除 SKILL.md 外的全部普通文件相对路径。
+        """
         skill_file = AsyncPath(skill_path)
         skill_root = skill_file.parent
         root_path = Path(str(skill_root))
@@ -372,7 +424,9 @@ class _SkillToolProvider:
         return sorted(supporting_files, key=str.casefold)
 
     async def load_skill(self, name: str, file: Optional[str] = None) -> str:
-        """加载指定 Skill 主体或一个已列出的辅助文档并返回 JSON 字符串。"""
+        """
+        加载指定 Skill 主体或一个已列出的辅助文档并返回 JSON 字符串。
+        """
         logger.info(f"加载 Skill: name={sanitize_for_host(name)}")
         try:
             skill = await self._find_skill(name)
@@ -430,14 +484,17 @@ class _SkillToolProvider:
 
 
 def _format_skill_tool_catalog(skills: list[SkillMetadata]) -> str:
-    """渲染 Skill 工具描述中的可用技能目录。"""
+    """
+    渲染 Skill 工具描述中的可用技能目录。
+    """
     if not skills:
         return "(No skills are currently available.)"
     return "\n".join(f"- {skill['id']}: {skill['name']} - {skill['description']}" for skill in skills)
 
 
 class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # noqa
-    """加载并向系统提示词注入 Agent Skill 的中间件。
+    """
+    加载并向系统提示词注入 Agent Skill 的中间件。
 
     按源顺序加载 Skill，后加载的会覆盖重名的。
     启动时自动将项目内置技能（bundled_skills_dir）同步到用户技能目录。
@@ -452,7 +509,8 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         bundled_skills_dir: str | None = None,
         stream_handler: Optional[Any] = None,
     ) -> None:
-        """初始化 Skill 中间件。
+        """
+        初始化 Skill 中间件。
 
         Parameters
         ----------
@@ -484,7 +542,9 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         ]
 
     def _sync_bundled_skills(self) -> None:
-        """将项目内置 Skill 同步到首个用户技能目录。"""
+        """
+        将项目内置 Skill 同步到首个用户技能目录。
+        """
         if not self.bundled_skills_dir or not self.sources:
             return
         bundled = Path(self.bundled_skills_dir)
@@ -495,7 +555,9 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
             logger.warning(f"同步内置技能失败: {summarize_error(e)}")
 
     def _load_skills_metadata(self) -> list[SkillMetadata]:
-        """同步加载当前配置目录中的 Skill 元数据。"""
+        """
+        同步加载当前配置目录中的 Skill 元数据。
+        """
         self._sync_bundled_skills()
         all_skills: dict[str, SkillMetadata] = {}
         for source_path in self.sources:
@@ -504,14 +566,18 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         return list(all_skills.values())
 
     def _refresh_skill_tool_description(self, skills: list[SkillMetadata]) -> None:
-        """刷新 read_skill 工具描述中的可用技能目录。"""
+        """
+        刷新 read_skill 工具描述中的可用技能目录。
+        """
         if not self.tools:
             return
         self.tools[0].description = SKILL_TOOL_DESCRIPTION.format(skills_catalog=_format_skill_tool_catalog(skills))
 
     @staticmethod
     def _format_skills_list(skills: list[SkillMetadata]) -> str:
-        """生成精简发现目录；操作白名单保留在元数据中供宿主执行校验。"""
+        """
+        生成精简发现目录；操作白名单保留在元数据中供宿主执行校验。
+        """
         if not skills:
             return "(No skills available yet.)"
 
@@ -528,7 +594,9 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         return "\n".join(lines)
 
     def modify_request(self, request: ModelRequest[ContextT]) -> ModelRequest[ContextT]:
-        """将技能文档注入模型请求的系统消息中。"""
+        """
+        将技能文档注入模型请求的系统消息中。
+        """
         skills_metadata = request.state.get("skills_metadata", [])  # noqa
         skills_list = self._format_skills_list(skills_metadata)
 
@@ -540,10 +608,12 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
 
         return request.override(system_message=new_system_message)
 
+    # 框架允许此钩子返回局部状态更新，静态基类签名尚未表达这种返回类型。
     async def abefore_agent(  # noqa
         self, state: SkillsState, runtime: Runtime, config: RunnableConfig
     ) -> SkillsStateUpdate | None:  # ty: ignore[invalid-method-override]
-        """在 Agent 执行前异步加载技能元数据。
+        """
+        在 Agent 执行前异步加载技能元数据。
 
         首次加载时，会先将内置技能同步到用户目录（如不存在）。
         """
@@ -571,7 +641,9 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         request: ModelRequest[ContextT],
         handler: Callable[[ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]],
     ) -> ModelResponse[ResponseT]:
-        """在模型调用时注入技能文档。"""
+        """
+        在模型调用时注入技能文档。
+        """
         modified_request = self.modify_request(request)
         return await handler(modified_request)
 
@@ -580,7 +652,9 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在 read_skill 工具执行时输出当前模式对应的执行信息。"""
+        """
+        在 read_skill 工具执行时输出当前模式对应的执行信息。
+        """
         tool = request.tool
         tool_name = getattr(tool, "name", None)
         tool_call = request.tool_call or {}

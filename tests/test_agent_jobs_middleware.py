@@ -1,3 +1,7 @@
+"""
+验证任务中间件的活跃任务过滤、目录排序和损坏文本处理。
+"""
+
 import anyio
 from anyio import Path as AsyncPath
 
@@ -5,7 +9,9 @@ from app.agent.middleware.jobs import _alist_jobs, filter_active_jobs
 
 
 def test_filter_active_jobs_only_keeps_pending_and_in_progress():
-    """筛选任务时只保留待执行和执行中的任务。"""
+    """
+    筛选任务时只保留待执行和执行中的任务。
+    """
     jobs_metadata = [
         {
             "id": "pending-job",
@@ -51,7 +57,9 @@ def test_filter_active_jobs_only_keeps_pending_and_in_progress():
 
 
 def test_alist_jobs_sorts_job_directories_by_name(tmp_path):
-    """加载任务元数据时按任务目录名稳定排序。"""
+    """
+    加载任务元数据时按任务目录名稳定排序。
+    """
     for job_id in ("z-job", "a-job", "m-job"):
         job_dir = tmp_path / job_id
         job_dir.mkdir()
@@ -73,7 +81,9 @@ status: pending
 
 
 def test_alist_jobs_tolerates_invalid_utf8_bytes(tmp_path):
-    """加载任务元数据时非法 UTF-8 字节不应中断整个 Agent。"""
+    """
+    加载任务元数据时非法 UTF-8 字节不应中断整个 Agent。
+    """
     job_dir = tmp_path / "broken-job"
     job_dir.mkdir()
     (job_dir / "JOB.md").write_bytes(

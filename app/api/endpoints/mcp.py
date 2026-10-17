@@ -1,3 +1,7 @@
+"""
+提供 MCP 工具发现、调用以及流式会话的 HTTP 接入。
+"""
+
 from typing import Annotated, Any, Dict, List, Union
 
 from fastapi import Depends, HTTPException, Request
@@ -27,7 +31,8 @@ router = ResponseAPIRouter()
 
 # MCP 协议版本
 MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2024-11-05"]
-MCP_PROTOCOL_VERSION = MCP_PROTOCOL_VERSIONS[0]  # 默认使用最新版本
+# 默认使用最新版本
+MCP_PROTOCOL_VERSION = MCP_PROTOCOL_VERSIONS[0]
 # MCP 经 API_TOKEN / X-API-KEY 认证后是管理员级集成入口；隐藏工具只收敛暴露面，不构成权限边界。
 MCP_HIDDEN_TOOLS = {
     "execute_command",
@@ -67,14 +72,18 @@ def list_exposed_tools() -> List[ToolDefinition]:
 
 
 def resolve_schema_mode(request: Request) -> str:
-    """读取客户端的 schema 模式；未声明或取值不支持时保持默认 full。"""
+    """
+    读取客户端的 schema 模式；未声明或取值不支持时保持默认 full。
+    """
     raw = request.headers.get(MCP_SCHEMA_MODE_HEADER) or ""
     mode = raw.strip().lower()
     return mode if mode in MCP_SCHEMA_MODES else MCP_SCHEMA_MODE_FULL
 
 
 def list_client_tools(schema_mode: str = MCP_SCHEMA_MODE_FULL) -> List[ToolDefinition]:
-    """按客户端 schema 模式返回工具；compact 模式下投影超出客户端阈值的 schema。"""
+    """
+    按客户端 schema 模式返回工具；compact 模式下投影超出客户端阈值的 schema。
+    """
     tools = list_exposed_tools()
     if schema_mode != MCP_SCHEMA_MODE_COMPACT:
         return tools
@@ -126,7 +135,9 @@ async def _dispatch_jsonrpc_method(
     request_id: Union[str, int, None],
     schema_mode: str = MCP_SCHEMA_MODE_FULL,
 ) -> Union[JSONResponse, Response]:
-    """分派一个已经通过基础格式校验的 MCP JSON-RPC 方法。"""
+    """
+    分派一个已经通过基础格式校验的 MCP JSON-RPC 方法。
+    """
     if method == "initialize":
         result = await handle_initialize(params)
         return JSONResponse(content=create_jsonrpc_response(request_id, result))
@@ -234,7 +245,8 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
         "protocolVersion": negotiated_version,
         "capabilities": {
             "tools": {
-                "listChanged": False  # 暂不支持工具列表变更通知
+                # 暂不支持工具列表变更通知
+                "listChanged": False
             },
             "logging": {},
         },
@@ -311,9 +323,7 @@ async def delete_mcp_session(
     return Response(status_code=204)
 
 
-# ==================== HTTP 工具管理端点 ====================
-
-
+# HTTP 工具管理端点
 @router.get(
     "/tools",
     summary="列出所有可用工具",
@@ -352,10 +362,11 @@ async def list_tools(_: Annotated[str, Depends(verify_apikey)], page: Compatible
 )
 async def call_tool(request: _SchemaToolCallRequest, _: Annotated[Union[str, None], Depends(verify_apikey)] = None) -> Any:
     """
-    调用指定的工具
+    调用对外开放的指定工具。
 
-    Returns:
-        工具执行结果
+    :param request: 工具名称和对应参数
+    :param _: 已通过 API Key 校验的依赖结果
+    :return: 工具执行结果；工具不可见、不存在或执行异常时返回失败响应
     """
     try:
         if request.tool_name in MCP_HIDDEN_TOOLS:
@@ -379,10 +390,12 @@ async def call_tool(request: _SchemaToolCallRequest, _: Annotated[Union[str, Non
 )
 async def get_tool_info(tool_name: str, _: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
-    获取指定工具的详细信息
+    获取对外开放工具的详细信息。
 
-    Returns:
-        工具的详细信息，包括名称、描述和参数定义
+    :param tool_name: 工具登记名称
+    :param _: 已验证的 API Key
+    :return: 工具名称、中文描述和输入 Schema
+    :raises HTTPException: 工具不存在时为 404，读取失败时为 500
     """
     try:
         # 获取所有工具
@@ -412,10 +425,12 @@ async def get_tool_info(tool_name: str, _: Annotated[str, Depends(verify_apikey)
 )
 async def get_tool_schema(tool_name: str, _: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
-    获取指定工具的参数Schema（JSON Schema格式）
+    读取对外开放工具的输入 JSON Schema。
 
-    Returns:
-        工具的JSON Schema定义
+    :param tool_name: 工具登记名称
+    :param _: 已验证的 API Key
+    :return: 工具输入 Schema
+    :raises HTTPException: 工具不存在时为 404，读取失败时为 500
     """
     try:
         # 获取所有工具

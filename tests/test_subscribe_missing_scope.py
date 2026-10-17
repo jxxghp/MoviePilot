@@ -1,4 +1,6 @@
-"""订阅缺集范围不能被下载候选的类型或季号扩大。"""
+"""
+订阅缺集范围不能被下载候选的类型或季号扩大。
+"""
 
 from dataclasses import replace
 from types import SimpleNamespace
@@ -21,7 +23,9 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.fixture
 def scope(monkeypatch):
-    """保留真实缺集计算，只隔离媒体库查询和订阅持久化。"""
+    """
+    保留真实缺集计算，只隔离媒体库查询和订阅持久化。
+    """
     subscribe = SubscriptionSnapshot(
         id=7,
         name="仙逆",
@@ -60,7 +64,9 @@ def scope(monkeypatch):
 
 @pytest.mark.parametrize("candidate_type", [MediaType.TV, MediaType.MOVIE, MediaType.UNKNOWN, None])
 def test_missing_scope_uses_tv_subscription_with_untyped_season(scope, candidate_type):
-    """无季号候选即使误识别类型，也只能返回订阅季内未下载的目标集。"""
+    """
+    无季号候选即使误识别类型，也只能返回订阅季内未下载的目标集。
+    """
     meta = MetaInfo("Renegade Immortal 2023")
     meta.type = candidate_type
 
@@ -82,7 +88,9 @@ def test_missing_scope_uses_tv_subscription_with_untyped_season(scope, candidate
 
 @pytest.mark.parametrize("season", [0, 2])
 def test_missing_scope_uses_subscription_season_for_multiseason_candidate(scope, season):
-    """多季候选不能带入其他季，特别季 S00 也必须保留目标季身份。"""
+    """
+    多季候选不能带入其他季，特别季 S00 也必须保留目标季身份。
+    """
     subscribe = replace(scope.subscribe, season=season, start_episode=3, total_episode=10, note=[3])
     meta = MetaInfo("Renegade Immortal S01-S03")
 
@@ -100,7 +108,9 @@ def test_missing_scope_uses_subscription_season_for_multiseason_candidate(scope,
 
 
 def test_missing_scope_materializes_full_season_after_start_episode(scope):
-    """整季未入库时，开始集数之后的需求必须成为显式集数，不能保持整季标记。"""
+    """
+    整季未入库时，开始集数之后的需求必须成为显式集数，不能保持整季标记。
+    """
     scope.download._media_exists_with_server_cache.return_value = None
     subscribe = replace(scope.subscribe, note=[])
 
@@ -115,7 +125,9 @@ def test_missing_scope_materializes_full_season_after_start_episode(scope):
 
 
 def test_missing_scope_finishes_only_when_subscription_range_is_satisfied(scope):
-    """下载历史已覆盖目标范围时，应清空裁剪结果而不是返回更早的库内缺集。"""
+    """
+    下载历史已覆盖目标范围时，应清空裁剪结果而不是返回更早的库内缺集。
+    """
     subscribe = replace(scope.subscribe, note=list(range(159, 201)))
 
     satisfied, missing = scope.chain.resolve_subscribe_missing(
@@ -128,7 +140,9 @@ def test_missing_scope_finishes_only_when_subscription_range_is_satisfied(scope)
 
 @pytest.mark.parametrize("accept_downloaded", [False, True])
 def test_missing_scope_preserves_episode_best_version_targets(scope, accept_downloaded):
-    """候选误识别类型时，分集洗版仍按订阅范围和各集优先级计算缺口。"""
+    """
+    候选误识别类型时，分集洗版仍按订阅范围和各集优先级计算缺口。
+    """
     subscribe = replace(
         scope.subscribe, best_version=1,
         episode_priority={"159": 100, "160": 80},
@@ -147,7 +161,9 @@ def test_missing_scope_preserves_episode_best_version_targets(scope, accept_down
 
 
 def test_missing_scope_preserves_full_best_version_coverage(scope):
-    """整季洗版仍要求完整覆盖订阅目标范围，不能因候选类型丢失完整覆盖标记。"""
+    """
+    整季洗版仍要求完整覆盖订阅目标范围，不能因候选类型丢失完整覆盖标记。
+    """
     subscribe = replace(scope.subscribe, best_version=1, best_version_full=1, current_priority=80)
 
     satisfied, missing = scope.chain.resolve_subscribe_missing(
@@ -166,7 +182,9 @@ def test_missing_scope_preserves_full_best_version_coverage(scope):
 @pytest.mark.parametrize("pack_end", [140, 165])
 @pytest.mark.parametrize("note", [[], [159, 160]])
 def test_policy_recheck_keeps_scope_through_batch_file_selection(scope, monkeypatch, pack_end, note):
-    """下载前重算后，旧合集被跳过；跨越开始集的合集只向下载器提交缺失文件。"""
+    """
+    下载前重算后，旧合集被跳过；跨越开始集的合集只向下载器提交缺失文件。
+    """
     subscribe = replace(scope.subscribe, note=note)
     scope.chain.subscription_repository.get.return_value = subscribe
     meta = MetaInfo("Renegade Immortal 2023 Complete 2160p WEB-DL H265 AAC-UBWEB")

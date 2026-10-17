@@ -1,3 +1,7 @@
+"""
+验证整理队列服务的任务投影和查询。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -20,7 +24,9 @@ from tests.test_transfer_job_manager import make_task, make_transfer_chain
 
 
 def _planning_input(path: str = "/tmp/demo.mkv") -> TransferPlanningInput:
-    """构造队列准入测试要求的显式版本化输入。"""
+    """
+    构造队列准入测试要求的显式版本化输入。
+    """
     return TransferPlanningInput(
         source_fileitem={
             "storage": "local",
@@ -34,7 +40,9 @@ def _planning_input(path: str = "/tmp/demo.mkv") -> TransferPlanningInput:
 
 
 def _service(**overrides):
-    """构造可观测整理队列服务及其默认依赖。"""
+    """
+    构造可观测整理队列服务及其默认依赖。
+    """
     dependencies = {
         "register_task": Mock(return_value=True),
         "admit_task": Mock(return_value=TransferAdmission(
@@ -58,7 +66,9 @@ def _service(**overrides):
 
 
 def test_transfer_queue_service_put_preserves_registration_order():
-    """入队必须先登记视图和 durable admission，再登记批次并写队列。"""
+    """
+    入队必须先登记视图和 durable admission，再登记批次并写队列。
+    """
     calls = []
     service, _ = _service(
         register_task=lambda _task: calls.append("register") or True,
@@ -82,7 +92,9 @@ def test_transfer_queue_service_put_preserves_registration_order():
 
 
 def test_transfer_queue_service_rejects_duplicate_without_side_effects():
-    """作业视图拒绝重复任务后不得继续产生队列副作用。"""
+    """
+    作业视图拒绝重复任务后不得继续产生队列副作用。
+    """
     service, dependencies = _service(register_task=Mock(return_value=False))
 
     assert service.put(make_task(1), Mock()) is False
@@ -92,7 +104,9 @@ def test_transfer_queue_service_rejects_duplicate_without_side_effects():
 
 
 def test_transfer_queue_service_blocks_enqueue_when_admission_fails():
-    """持久化失败必须撤销作业视图，不能继续加入内存队列。"""
+    """
+    持久化失败必须撤销作业视图，不能继续加入内存队列。
+    """
     service, dependencies = _service(
         admit_task=Mock(side_effect=RuntimeError("db locked")),
     )
@@ -107,7 +121,9 @@ def test_transfer_queue_service_blocks_enqueue_when_admission_fails():
 
 
 def test_transfer_queue_service_keeps_admission_when_enqueue_fails():
-    """内存入队失败必须记录原因并清理视图，durable admission 由仓储保留。"""
+    """
+    内存入队失败必须记录原因并清理视图，durable admission 由仓储保留。
+    """
     error = RuntimeError("queue closed")
     service, dependencies = _service(
         enqueue=Mock(side_effect=error),
@@ -122,7 +138,9 @@ def test_transfer_queue_service_keeps_admission_when_enqueue_fails():
 
 
 def test_transfer_queue_service_cleans_up_when_batch_registration_fails():
-    """准入后的批次登记异常也必须留痕并撤销作业视图。"""
+    """
+    准入后的批次登记异常也必须留痕并撤销作业视图。
+    """
     error = RuntimeError("batch registration failed")
     service, dependencies = _service(
         before_enqueue=Mock(side_effect=error),
@@ -138,7 +156,9 @@ def test_transfer_queue_service_cleans_up_when_batch_registration_fails():
 
 
 def test_transfer_queue_service_commits_admission_before_failed_enqueue(tmp_path):
-    """真实仓储已提交后即使内存入队失败，任务也必须带原因留待恢复。"""
+    """
+    真实仓储已提交后即使内存入队失败，任务也必须带原因留待恢复。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'durable-admission.db'}")
     TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
@@ -173,7 +193,9 @@ def test_transfer_queue_service_commits_admission_before_failed_enqueue(tmp_path
 
 
 def test_transfer_queue_service_lists_and_removes_through_ports():
-    """队列查询先清理失活任务，移除操作只委托作业视图。"""
+    """
+    队列查询先清理失活任务，移除操作只委托作业视图。
+    """
     service, dependencies = _service()
     fileitem = FileItem(storage="local", path="/tmp/demo.mkv", type="file")
 
@@ -186,7 +208,9 @@ def test_transfer_queue_service_lists_and_removes_through_ports():
 
 
 def test_transfer_queue_target_directory_returns_none_without_transfer_info():
-    """没有整理结果时目标目录应保持为空，避免恢复流程误用旧路径。"""
+    """
+    没有整理结果时目标目录应保持为空，避免恢复流程误用旧路径。
+    """
     assert TransferQueueOwner._TransferChain__get_transfer_target_dir_path(None, None) is None
 
 
@@ -197,7 +221,9 @@ def test_transfer_queue_target_directory_returns_none_without_transfer_info():
 ])
 @pytest.mark.parametrize("background", [True, False])
 def test_do_transfer_reports_durable_admission_failure(failure, manual, expected, background):
-    """背景整理准入失败必须返回批次失败，不能伪装成重复任务成功。"""
+    """
+    背景整理准入失败必须返回批次失败，不能伪装成重复任务成功。
+    """
     chain = make_transfer_chain()
     fileitem = make_task(1).fileitem
     chain._TransferChain__get_trans_fileitems = lambda _item, **_kwargs: [

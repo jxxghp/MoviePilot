@@ -1,3 +1,7 @@
+"""
+验证 Agent 模型选择事件、令牌用量指标和执行结束后的用量广播。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -11,43 +15,59 @@ from app.schemas.types import ChainEventType, EventType
 
 
 class _FakeGraphState:
-    """提供 LangGraph get_state 测试替身。"""
+    """
+    提供 LangGraph get_state 测试替身。
+    """
 
     def __init__(self, messages):
         self.values = {"messages": messages}
 
 
 class _FakeAgent:
-    """提供非流式 Agent 执行测试替身。"""
+    """
+    提供非流式 Agent 执行测试替身。
+    """
 
     def __init__(self, messages):
         self._messages = messages
 
     async def ainvoke(self, _payload, config=None):
-        """模拟成功完成 Agent 调用。"""
+        """
+        模拟成功完成 Agent 调用。
+        """
         return None
 
     def get_state(self, _config):
-        """返回测试消息状态。"""
+        """
+        返回测试消息状态。
+        """
         return _FakeGraphState(self._messages)
 
 
 class _FakeFailingAgent(_FakeAgent):
-    """提供失败 Agent 执行测试替身。"""
+    """
+    提供失败 Agent 执行测试替身。
+    """
 
     async def ainvoke(self, _payload, config=None):
-        """模拟 Agent 调用失败。"""
+        """
+        模拟 Agent 调用失败。
+        """
         raise RuntimeError("llm failed")
 
 
 def test_initialize_llm_uses_chain_event_selection(monkeypatch) -> None:
-    """Agent 初始化 LLM 时应优先使用链式事件返回的供应商配置。"""
+    """
+    Agent 初始化 LLM 时应优先使用链式事件返回的供应商配置。
+    """
     monkeypatch.setattr(settings, "LLM_THINKING_LEVEL", "xhigh")
     agent = MoviePilotAgent(session_id="agent-tokens-test", user_id="user-1")
     fake_llm = object()
 
     async def select_provider(event_type, event_data):
-        """模拟 Agent Tokens 插件写入供应商配置。"""
+        """
+        模拟 Agent Tokens 插件写入供应商配置。
+        """
         assert event_type == ChainEventType.AgentLLMProvider
         event_data.provider = "openai"
         event_data.base_url = "https://tokens.example.com/v1"
@@ -95,7 +115,9 @@ def test_initialize_llm_uses_chain_event_selection(monkeypatch) -> None:
 
 
 def test_record_usage_emits_low_cardinality_token_metrics() -> None:
-    """Token 指标只暴露归一供应商类别与输入输出方向。"""
+    """
+    Token 指标只暴露归一供应商类别与输入输出方向。
+    """
     agent = MoviePilotAgent(session_id="usage-metrics", user_id="user-1")
     agent._llm_provider_selection = {"provider": "private-provider-name"}
 
@@ -125,7 +147,9 @@ def test_record_usage_emits_low_cardinality_token_metrics() -> None:
 
 
 def test_execute_agent_broadcasts_usage_on_success() -> None:
-    """Agent 执行成功后应广播聚合 token 用量事件。"""
+    """
+    Agent 执行成功后应广播聚合 token 用量事件。
+    """
     agent = MoviePilotAgent(session_id="usage-success", user_id="user-1")
     agent._should_stream = lambda: False
     agent.stream_handler = SimpleNamespace(
@@ -134,7 +158,9 @@ def test_execute_agent_broadcasts_usage_on_success() -> None:
     agent.send_agent_message = AsyncMock()
 
     async def create_agent(_streaming=False, streaming=False):
-        """模拟创建 Agent 时完成供应商选择和用量统计。"""
+        """
+        模拟创建 Agent 时完成供应商选择和用量统计。
+        """
         agent._llm_provider_selection = {
             "selected_provider_id": "provider-1",
             "selected_provider_name": "Free Provider",
@@ -182,7 +208,9 @@ def test_execute_agent_broadcasts_usage_on_success() -> None:
 
 
 def test_execute_agent_broadcasts_usage_on_failure() -> None:
-    """Agent 执行失败后仍应广播用量事件。"""
+    """
+    Agent 执行失败后仍应广播用量事件。
+    """
     agent = MoviePilotAgent(session_id="usage-failure", user_id="user-1")
     agent._should_stream = lambda: False
     agent.stream_handler = SimpleNamespace(
@@ -191,7 +219,9 @@ def test_execute_agent_broadcasts_usage_on_failure() -> None:
     agent.send_agent_message = AsyncMock()
 
     async def create_agent(_streaming=False, streaming=False):
-        """模拟创建 Agent 时已选中供应商但执行失败。"""
+        """
+        模拟创建 Agent 时已选中供应商但执行失败。
+        """
         agent._llm_provider_selection = {
             "selected_provider_id": "provider-2",
             "selected_provider_name": "Backup Provider",

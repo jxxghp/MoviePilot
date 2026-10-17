@@ -1,4 +1,6 @@
-"""渐进式 mypy 门禁配置与可执行性测试。"""
+"""
+渐进式 mypy 门禁配置与可执行性测试。
+"""
 
 import configparser
 import subprocess
@@ -10,7 +12,9 @@ MYPY_CONFIG = PROJECT_ROOT / "mypy.ini"
 
 
 def test_mypy_gate_has_explicit_strict_scope_without_global_ignore() -> None:
-    """门禁必须列出治理文件，且不能用 app 级 ignore_errors 消音。"""
+    """
+    门禁必须列出治理文件，且不能用 app 级 ignore_errors 消音。
+    """
     parser = configparser.ConfigParser()
     parser.read(MYPY_CONFIG, encoding="utf-8")
     settings = parser["mypy"]
@@ -47,7 +51,9 @@ def test_mypy_gate_has_explicit_strict_scope_without_global_ignore() -> None:
 
 
 def test_mypy_governed_scope_passes() -> None:
-    """使用锁定到开发依赖的 mypy 执行当前严格文件清单。"""
+    """
+    使用锁定到开发依赖的 mypy 执行当前严格文件清单。
+    """
     result = subprocess.run(
         [sys.executable, "-m", "mypy", "--config-file", "mypy.ini"],
         cwd=PROJECT_ROOT,

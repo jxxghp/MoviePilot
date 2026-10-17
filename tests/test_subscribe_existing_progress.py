@@ -1,4 +1,6 @@
-"""手动下载后，订阅检查应把部分入库事实同步到卡片进度。"""
+"""
+手动下载后，订阅检查应把部分入库事实同步到卡片进度。
+"""
 
 from contextlib import contextmanager
 from dataclasses import replace
@@ -25,7 +27,9 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.fixture
 def progress_scope(monkeypatch):
-    """保留缺集计算和进度派生，仅隔离媒体库与持久化边界。"""
+    """
+    保留缺集计算和进度派生，仅隔离媒体库与持久化边界。
+    """
     subscribe = SubscriptionSnapshot(
         id=6966, name="Doctor X", type=MediaType.TV.value,
         media_source=MediaSource.TMDB, media_id="6966", season=1,
@@ -48,7 +52,9 @@ def progress_scope(monkeypatch):
     state = SimpleNamespace(subscribe=subscribe, media=media, chain=chain, download=download)
 
     def apply_update(current, fields, **_kwargs):
-        """保存派生快照，供重复检查读取同一持久化状态。"""
+        """
+        保存派生快照，供重复检查读取同一持久化状态。
+        """
         state.subscribe = replace(current, **fields)
         return state.subscribe
 
@@ -57,7 +63,9 @@ def progress_scope(monkeypatch):
 
 
 def _check(scope):
-    """使用当前订阅快照执行真实的现存媒体检查。"""
+    """
+    使用当前订阅快照执行真实的现存媒体检查。
+    """
     return scope.chain.check_and_handle_existing_media(
         subscribe=scope.subscribe, meta=build_subscribe_meta(scope.subscribe),
         mediainfo=scope.media, mediakey="tmdb:6966",
@@ -65,7 +73,9 @@ def _check(scope):
 
 
 def test_partial_library_updates_stale_card_progress(progress_scope):
-    """前两集已入库且 note 只含第一集时，卡片应从 1/12 校正为 2/12。"""
+    """
+    前两集已入库且 note 只含第一集时，卡片应从 1/12 校正为 2/12。
+    """
     for _ in range(2):
         completed, missing = _check(progress_scope)
         assert not completed
@@ -77,7 +87,9 @@ def test_partial_library_updates_stale_card_progress(progress_scope):
 
 
 def test_partial_library_respects_start_and_downloaded_facts(progress_scope):
-    """进度复用订阅范围和已下载事实，不重复计数或包含其他季。"""
+    """
+    进度复用订阅范围和已下载事实，不重复计数或包含其他季。
+    """
     progress_scope.subscribe = replace(progress_scope.subscribe, start_episode=3, note=[3, 5])
     progress_scope.download._media_exists_with_server_cache.return_value = ExistMediaInfo(
         seasons={1: [1, 2, 3, 4, 4], 2: list(range(1, 13))}
@@ -92,7 +104,9 @@ def test_partial_library_respects_start_and_downloaded_facts(progress_scope):
 
 
 def test_failed_missing_query_preserves_progress(progress_scope):
-    """无法取得缺集事实时，不能把未知状态当成全部完成。"""
+    """
+    无法取得缺集事实时，不能把未知状态当成全部完成。
+    """
     progress_scope.chain.resolve_subscribe_missing = Mock(return_value=(False, {}))
 
     completed, missing = _check(progress_scope)
@@ -105,7 +119,9 @@ def test_failed_missing_query_preserves_progress(progress_scope):
 
 
 def test_best_version_check_preserves_quality_progress(progress_scope):
-    """洗版订阅继续按下载质量事实处理，不用部分入库覆盖其进度。"""
+    """
+    洗版订阅继续按下载质量事实处理，不用部分入库覆盖其进度。
+    """
     progress_scope.subscribe = replace(
         progress_scope.subscribe, best_version=1, episode_priority={"1": 80},
     )
@@ -121,7 +137,9 @@ def test_best_version_check_preserves_quality_progress(progress_scope):
 
 
 def test_complete_library_keeps_completion_path(progress_scope):
-    """整季入库仍交给原有完成流程，避免在检查入口重复结算。"""
+    """
+    整季入库仍交给原有完成流程，避免在检查入口重复结算。
+    """
     progress_scope.download._media_exists_with_server_cache.return_value = ExistMediaInfo(
         seasons={1: list(range(1, 13))}
     )
@@ -136,7 +154,9 @@ def test_complete_library_keeps_completion_path(progress_scope):
 
 
 def test_partial_progress_persists_without_overwriting_extra_fields(progress_scope, db):
-    """真实订阅写入只更新缺失集数，保留数据库中较新的附加字段。"""
+    """
+    真实订阅写入只更新缺失集数，保留数据库中较新的附加字段。
+    """
     db.watermark(Subscribe, OutboxMessage)
     row = db.add(Subscribe(
         name="Doctor X", type=MediaType.TV.value,
@@ -151,7 +171,9 @@ def test_partial_progress_persists_without_overwriting_extra_fields(progress_sco
 
     @contextmanager
     def mutation_scope():
-        """用真实短事务和 outbox 保存进度并捕获修改事件。"""
+        """
+        用真实短事务和 outbox 保存进度并捕获修改事件。
+        """
         with SessionFactory() as session:
             yield SyncSubscriptionMutationService(
                 repository=SessionSubscriptionRepository(session),

@@ -1,3 +1,7 @@
+"""
+验证 Agent 会话队列、取消、延迟清理和共享资源关闭顺序。
+"""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
@@ -7,6 +11,8 @@ import app.agent.orchestrator as agent_module
 from app.adapters.system import resource as resource_module
 from app.adapters.system.resource import configure_resource_version_provider
 from app.agent.memory import MemoryManager
+
+# 此兼容入口通过惰性属性提供管理器符号，Pylint 无法静态解析。
 from app.agent.orchestrator import (  # pylint: disable=no-name-in-module
     AGENT_SESSION_QUEUE_MAX_SIZE,
     AgentManager,
@@ -26,7 +32,8 @@ from app.startup.initializers import modules as modules_initializer
 
 @pytest.fixture(autouse=True)
 def restore_resource_version_provider():
-    """还原进程级的站点资源版本读取器。
+    """
+    还原进程级的站点资源版本读取器。
 
     本文件有用例把 ``SitesHelper`` 桩成 MagicMock 后去跑真实的 ``init_modules``，
     而组合根会把那个桩对象捕获进 ``_resource_version_provider`` 这个进程级闭包里。
@@ -41,7 +48,9 @@ def restore_resource_version_provider():
 
 @pytest.mark.anyio
 async def test_web_agent_background_tasks_are_cancelled_and_drained() -> None:
-    """Web Agent 任务关闭后不得继续占用循环或提交晚到的快照。"""
+    """
+    Web Agent 任务关闭后不得继续占用循环或提交晚到的快照。
+    """
     started = asyncio.Event()
     finished = asyncio.Event()
 
@@ -63,7 +72,9 @@ async def test_web_agent_background_tasks_are_cancelled_and_drained() -> None:
 
 @pytest.mark.anyio
 async def test_web_agent_shutdown_timeout_does_not_cancel_task_cleanup() -> None:
-    """关闭超时时保留仍在执行取消收尾的 Web Agent 任务。"""
+    """
+    关闭超时时保留仍在执行取消收尾的 Web Agent 任务。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
 
@@ -91,7 +102,9 @@ async def test_web_agent_shutdown_timeout_does_not_cancel_task_cleanup() -> None
 
 @pytest.mark.anyio
 async def test_agent_entrypoint_initializes_on_calling_loop(monkeypatch) -> None:
-    """Agent 启动入口必须在应用主循环完成初始化。"""
+    """
+    Agent 启动入口必须在应用主循环完成初始化。
+    """
     current_loop = asyncio.get_running_loop()
     initialized_loops = []
     manager = AsyncMock()
@@ -115,7 +128,9 @@ async def test_agent_entrypoint_initializes_on_calling_loop(monkeypatch) -> None
 
 @pytest.mark.anyio
 async def test_agent_manager_background_tasks_share_owner_loop(monkeypatch) -> None:
-    """长期清理任务必须在同一循环创建、复用并完成关闭。"""
+    """
+    长期清理任务必须在同一循环创建、复用并完成关闭。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     current_loop = asyncio.get_running_loop()
@@ -147,7 +162,9 @@ async def test_agent_manager_background_tasks_share_owner_loop(monkeypatch) -> N
 async def test_agent_entrypoint_reuses_tasks_and_closes_idempotently(
     monkeypatch,
 ) -> None:
-    """全局启停入口重复调用时必须复用任务并安全收口。"""
+    """
+    全局启停入口重复调用时必须复用任务并安全收口。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     initializer = agent_initializer.AgentInitializer()
@@ -176,7 +193,9 @@ async def test_agent_entrypoint_reuses_tasks_and_closes_idempotently(
 async def test_agent_initialization_failure_does_not_stop_module_startup(
     monkeypatch,
 ) -> None:
-    """Agent 初始化异常只关闭该能力，基础模块仍继续完成启动。"""
+    """
+    Agent 初始化异常只关闭该能力，基础模块仍继续完成启动。
+    """
     manager = AsyncMock()
     manager.initialize.side_effect = RuntimeError("agent init failed")
     _patch_agent_settings(monkeypatch, True)
@@ -240,7 +259,9 @@ async def test_agent_initialization_failure_does_not_stop_module_startup(
 
 @pytest.mark.anyio
 async def test_disabled_agent_does_not_create_background_tasks(monkeypatch) -> None:
-    """Agent 未启用时启动入口不得创建运行时任务。"""
+    """
+    Agent 未启用时启动入口不得创建运行时任务。
+    """
     manager = AsyncMock()
     _patch_agent_settings(monkeypatch, False)
     monkeypatch.setattr(agent_initializer, "agent_manager", manager)
@@ -258,7 +279,9 @@ async def test_disabled_agent_does_not_create_background_tasks(monkeypatch) -> N
 async def test_agent_manager_acceptance_gate_rejects_stale_references(
     monkeypatch,
 ) -> None:
-    """未启动和关闭后的 manager 引用不得创建队列、worker 或 Agent。"""
+    """
+    未启动和关闭后的 manager 引用不得创建队列、worker 或 Agent。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
 
@@ -289,7 +312,9 @@ async def test_agent_manager_acceptance_gate_rejects_stale_references(
 async def test_agent_manager_rejects_messages_when_session_queue_is_full(
     monkeypatch,
 ) -> None:
-    """会话达到待处理容量后应立即拒绝，不得在生命周期锁内无限等待。"""
+    """
+    会话达到待处理容量后应立即拒绝，不得在生命周期锁内无限等待。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     started = asyncio.Event()
@@ -345,7 +370,9 @@ async def test_agent_manager_rejects_messages_when_session_queue_is_full(
 
 @pytest.mark.anyio
 async def test_agent_manager_records_queue_wait_time(monkeypatch) -> None:
-    """任务开始执行后应保留最近一次排队等待的可观测值。"""
+    """
+    任务开始执行后应保留最近一次排队等待的可观测值。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     started = asyncio.Event()
@@ -376,7 +403,9 @@ async def test_agent_manager_records_queue_wait_time(monkeypatch) -> None:
 async def test_agent_manager_rejects_new_messages_while_worker_shutdown_is_pending(
     monkeypatch,
 ) -> None:
-    """worker 未在关停上限内收敛时，同一会话必须保持停止态。"""
+    """
+    worker 未在关停上限内收敛时，同一会话必须保持停止态。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     manager._shutdown_timeout = 0.01
@@ -427,7 +456,9 @@ async def test_agent_manager_rejects_new_messages_while_worker_shutdown_is_pendi
 async def test_clear_session_defers_agent_cleanup_until_worker_finishes(
     monkeypatch,
 ) -> None:
-    """clear_session 超时期间不得清理仍被 worker 使用的 Agent 和记忆。"""
+    """
+    clear_session 超时期间不得清理仍被 worker 使用的 Agent 和记忆。
+    """
     memory_manager = MemoryManager()
     memory_manager.clear_memory = MagicMock()
     manager = AgentManager(memory=memory_manager)
@@ -437,10 +468,16 @@ async def test_clear_session_defers_agent_cleanup_until_worker_finishes(
     cleanup_called = asyncio.Event()
 
     class BlockingAgent:
+        """
+        通过事件控制消息处理与清理的 Agent 替身。
+        """
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
 
         async def process(self, _message, **_kwargs):
+            """
+            通知测试消息处理已开始，并停留在可控等待点。
+            """
             started.set()
             try:
                 await asyncio.Event().wait()
@@ -448,9 +485,15 @@ async def test_clear_session_defers_agent_cleanup_until_worker_finishes(
                 await release.wait()
 
         async def cleanup(self):
+            """
+            通知测试观察者已进入 Agent 清理流程。
+            """
             cleanup_called.set()
 
         def get_session_status(self):
+            """
+            返回空会话状态，使测试聚焦任务与资源生命周期。
+            """
             return {}
 
     await manager.initialize()
@@ -488,7 +531,9 @@ async def test_clear_session_defers_agent_cleanup_until_worker_finishes(
 async def test_close_defers_shared_agent_teardown_after_worker_timeout(
     monkeypatch,
 ) -> None:
-    """管理器关闭超时后，旧 worker 收敛前不得拆除共享 Agent 资源。"""
+    """
+    管理器关闭超时后，旧 worker 收敛前不得拆除共享 Agent 资源。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     manager._shutdown_timeout = 0.01
@@ -497,10 +542,16 @@ async def test_close_defers_shared_agent_teardown_after_worker_timeout(
     cleanup_called = asyncio.Event()
 
     class BlockingAgent:
+        """
+        通过事件控制消息处理与清理的 Agent 替身。
+        """
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
 
         async def process(self, _message, **_kwargs):
+            """
+            通知测试消息处理已开始，并停留在可控等待点。
+            """
             started.set()
             try:
                 await asyncio.Event().wait()
@@ -508,6 +559,9 @@ async def test_close_defers_shared_agent_teardown_after_worker_timeout(
                 await release.wait()
 
         async def cleanup(self):
+            """
+            通知测试观察者已进入 Agent 清理流程。
+            """
             cleanup_called.set()
 
     await manager.initialize()
@@ -544,24 +598,34 @@ async def test_close_defers_shared_agent_teardown_after_worker_timeout(
 async def test_close_retains_agent_until_detached_subagent_converges(
     monkeypatch,
 ) -> None:
-    """Agent cleanup 返回 False 时 manager 必须保留 agent 和共享记忆 owner。"""
+    """
+    Agent cleanup 返回 False 时 manager 必须保留 agent 和共享记忆 owner。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
 
     class PendingSubagentOwner:
-        """首次清理未收敛、第二次清理成功的最小 Agent 替身。"""
+        """
+        首次清理未收敛、第二次清理成功的最小 Agent 替身。
+        """
 
         def __init__(self) -> None:
-            """初始化封口计数与可重试清理结果。"""
+            """
+            初始化封口计数与可重试清理结果。
+            """
             self.seal_count = 0
             self.cleanup_results = iter((False, True))
 
         def begin_shutdown(self) -> None:
-            """记录 manager 在首个 await 前封住了子代理提交。"""
+            """
+            记录 manager 在首个 await 前封住了子代理提交。
+            """
             self.seal_count += 1
 
         async def cleanup(self) -> bool:
-            """按测试序列返回 detached owner 的收敛状态。"""
+            """
+            按测试序列返回 detached owner 的收敛状态。
+            """
             return next(self.cleanup_results)
 
     owner = PendingSubagentOwner()
@@ -583,7 +647,9 @@ async def test_close_retains_agent_until_detached_subagent_converges(
 async def test_agent_manager_close_serializes_racing_enqueue_and_clear(
     monkeypatch,
 ) -> None:
-    """关闭、临时会话清理和迟到请求必须串行收口且只清理一次。"""
+    """
+    关闭、临时会话清理和迟到请求必须串行收口且只清理一次。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     started = asyncio.Event()
@@ -593,17 +659,25 @@ async def test_agent_manager_close_serializes_racing_enqueue_and_clear(
     cleanup_calls = []
 
     class BlockingAgent:
-        """用于放大 close 与请求级 clear 竞态窗口。"""
+        """
+        用于放大 close 与请求级 clear 竞态窗口。
+        """
 
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
             created.append(self)
 
         async def process(self, _message, **_kwargs):
+            """
+            通知测试消息处理已开始，并停留在可控等待点。
+            """
             started.set()
             await asyncio.Event().wait()
 
         async def cleanup(self):
+            """
+            等待测试释放清理事件，记录当前 Agent 的清理调用。
+            """
             cleanup_calls.append(self)
             cleanup_started.set()
             await release_cleanup.wait()
@@ -644,7 +718,9 @@ async def test_agent_manager_close_serializes_racing_enqueue_and_clear(
 
 @pytest.mark.anyio
 async def test_clear_session_settles_current_and_queued_waiters(monkeypatch) -> None:
-    """清空会话必须同时结束正在执行和尚未执行的等待请求。"""
+    """
+    清空会话必须同时结束正在执行和尚未执行的等待请求。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     started = asyncio.Event()
@@ -692,7 +768,9 @@ async def test_clear_session_settles_current_and_queued_waiters(monkeypatch) -> 
 async def test_background_prompt_is_owned_and_cancelled_by_manager_close(
     monkeypatch,
 ) -> None:
-    """后台 prompt 必须进入 manager worker，关闭时同步结束且不残留临时会话。"""
+    """
+    后台 prompt 必须进入 manager worker，关闭时同步结束且不残留临时会话。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     started = asyncio.Event()
@@ -723,7 +801,9 @@ async def test_background_prompt_is_owned_and_cancelled_by_manager_close(
 
 @pytest.mark.anyio
 async def test_stop_current_task_handles_worker_cancelled_before_first_run() -> None:
-    """worker 尚未首次运行时停止也必须完成收口。"""
+    """
+    worker 尚未首次运行时停止也必须完成收口。
+    """
     manager = AgentManager()
     session_id = "stop-before-worker-start"
     worker = None
@@ -756,7 +836,9 @@ async def test_stop_current_task_handles_worker_cancelled_before_first_run() -> 
 async def test_clear_session_cancellation_does_not_stick_cleanup_pending(
     monkeypatch,
 ) -> None:
-    """clear_session 被调用方取消后必须能重试或已转交延迟清理。"""
+    """
+    clear_session 被调用方取消后必须能重试或已转交延迟清理。
+    """
     memory_manager = MemoryManager()
     memory_manager.clear_memory = MagicMock()
     manager = AgentManager(memory=memory_manager)
@@ -768,10 +850,16 @@ async def test_clear_session_cancellation_does_not_stick_cleanup_pending(
     clear_request = None
 
     class BlockingAgent:
+        """
+        通过事件控制消息处理与清理的 Agent 替身。
+        """
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
 
         async def process(self, _message, **_kwargs):
+            """
+            通知测试消息处理已开始，并停留在可控等待点。
+            """
             started.set()
             try:
                 await asyncio.Event().wait()
@@ -781,9 +869,15 @@ async def test_clear_session_cancellation_does_not_stick_cleanup_pending(
                 raise
 
         async def cleanup(self):
+            """
+            模拟资源已全部清理，返回 True。
+            """
             return True
 
         def get_session_status(self):
+            """
+            返回空会话状态，使测试聚焦任务与资源生命周期。
+            """
             return {}
 
     await manager.initialize()
@@ -856,7 +950,9 @@ async def test_clear_session_cancellation_does_not_stick_cleanup_pending(
 async def test_session_worker_restarts_after_idle_timeout_races_with_full_enqueue(
     monkeypatch,
 ) -> None:
-    """空闲退出与满队列入队交错时必须保留会话消费者。"""
+    """
+    空闲退出与满队列入队交错时必须保留会话消费者。
+    """
     memory_manager = MemoryManager()
     manager = AgentManager(memory=memory_manager)
     session_id = "idle-timeout-full-queue"
@@ -902,6 +998,9 @@ async def test_session_worker_restarts_after_idle_timeout_races_with_full_enqueu
         release_timeout.set()
 
         async def all_messages_processed() -> None:
+            """
+            等待原消息和所有已排队消息被消费，不设置额外超时。
+            """
             while len(processed) < AGENT_SESSION_QUEUE_MAX_SIZE + 1:
                 await asyncio.sleep(0)
 
@@ -921,7 +1020,9 @@ async def test_session_worker_restarts_after_idle_timeout_races_with_full_enqueu
 
 
 def _patch_agent_settings(monkeypatch, enabled: bool) -> None:
-    """注入 Agent 启动测试所需的只读配置。"""
+    """
+    注入 Agent 启动测试所需的只读配置。
+    """
     monkeypatch.setattr(
         agent_initializer,
         "get_runtime_setting",

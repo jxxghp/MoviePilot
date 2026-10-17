@@ -1,3 +1,7 @@
+"""
+验证UNIT3D 站点响应的种子字段解析。
+"""
+
 # -*- coding: utf-8 -*-
 from app.modules.indexer.parser.unit3d import Unit3dSiteUserInfo
 
@@ -12,7 +16,9 @@ USER_BASE_HTML = """
 
 
 def _build_parser() -> Unit3dSiteUserInfo:
-    """构造一个用于测试的 Unit3D 解析器。"""
+    """
+    构造一个用于测试的 Unit3D 解析器。
+    """
     return Unit3dSiteUserInfo(
         site_name="莫妮卡",
         url="https://udm.example/",
@@ -23,7 +29,9 @@ def _build_parser() -> Unit3dSiteUserInfo:
 
 
 def test_unit3d_user_name_is_used_as_valid_userid() -> None:
-    """解析用户设置链接后，应允许详情页和做种页继续请求。"""
+    """
+    解析用户设置链接后，应允许详情页和做种页继续请求。
+    """
     parser = _build_parser()
 
     parser._parse_user_base_info(USER_BASE_HTML)
@@ -37,7 +45,9 @@ def test_unit3d_user_name_is_used_as_valid_userid() -> None:
 
 
 def test_unit3d_user_bonus_transaction_link():
-    """魔力值交易入口仅解析当前用户，忽略其他用户链接。"""
+    """
+    魔力值交易入口仅解析当前用户，忽略其他用户链接。
+    """
     parser = _build_parser()
     parser._parse_user_base_info('''<a href="/users/monica/settings">设置</a>
         <a href="/users/other/bonus/transactions/create">999</a>
@@ -46,7 +56,9 @@ def test_unit3d_user_bonus_transaction_link():
 
 
 def test_unit3d_earnings_link_has_priority():
-    """保留标准 earnings 入口的解析优先级。"""
+    """
+    保留标准 earnings 入口的解析优先级。
+    """
     parser = _build_parser()
     parser._parse_user_base_info(USER_BASE_HTML +
                                 '<a href="/users/monica/bonus/transactions/create">999</a>')

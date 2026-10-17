@@ -1,3 +1,7 @@
+"""
+存储模块的文件查询、操作与路径访问编排。
+"""
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
@@ -54,6 +58,7 @@ class StorageChain(ChainBase):
     def download_file(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
         """
         下载文件
+
         :param fileitem: 文件项
         :param path: 本地保存路径
         """
@@ -63,6 +68,7 @@ class StorageChain(ChainBase):
                     new_name: Optional[str] = None) -> Optional[_SchemaFileItem]:
         """
         上传文件
+
         :param fileitem: 保存目录项
         :param path: 本地文件路径
         :param new_name: 新文件名
@@ -104,7 +110,9 @@ class StorageChain(ChainBase):
             storage: str,
             path: Path,
     ) -> Optional[_SchemaFileItem]:
-        """严格查询文件项：确认不存在返回空，provider 或 I/O 失败直接抛出。"""
+        """
+        严格查询文件项：确认不存在返回空，能力提供方 或 I/O 失败直接抛出。
+        """
         return cast(
             Optional[_SchemaFileItem],
             self.run_module_strict(
@@ -125,6 +133,7 @@ class StorageChain(ChainBase):
                          previous_snapshot: Optional[Dict[str, Dict]] = None) -> Optional[Dict[str, Dict]]:
         """
         快照存储
+
         :param storage: 存储类型
         :param path: 路径
         :param last_snapshot_time: 上次快照时间，用于增量快照
@@ -170,7 +179,6 @@ class StorageChain(ChainBase):
             logger.warn(f"【{fileitem.storage}】{fileitem.path} 根目录或一级目录不允许删除")
             return False
         if fileitem.type == "dir":
-            # 本身是目录
             if self.is_bluray_folder(fileitem):
                 logger.warn(f"正在删除蓝光原盘目录：【{fileitem.storage}】{fileitem.path}")
                 if not self.delete_file(fileitem):
@@ -178,13 +186,11 @@ class StorageChain(ChainBase):
                     return False
 
         elif delete_self:
-            # 本身是文件，需要删除文件
             logger.warn(f"正在删除文件【{fileitem.storage}】{fileitem.path}")
             if not self.delete_file(fileitem):
                 logger.warn(f"【{fileitem.storage}】{fileitem.path} 删除失败")
                 return False
 
-        # 检查和删除上级空目录
         dir_item = fileitem if fileitem.type == "dir" else self.get_parent_item(fileitem)
         if not dir_item:
             logger.warn(f"【{fileitem.storage}】{fileitem.path} 上级目录不存在")
@@ -206,7 +212,6 @@ class StorageChain(ChainBase):
                 logger.debug(f"【{dir_item.storage}】{dir_item.path} 存在媒体文件，不删除")
                 break
 
-            # 删除空目录并继续处理父目录
             logger.warn(f"【{dir_item.storage}】{dir_item.path} 不存在其它媒体文件，正在删除空目录")
             if not self.delete_file(dir_item):
                 logger.warn(f"【{dir_item.storage}】{dir_item.path} 删除失败")

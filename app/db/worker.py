@@ -1,4 +1,6 @@
-"""同步数据库短事务的异步执行器。"""
+"""
+同步数据库短事务的异步执行器。
+"""
 
 from __future__ import annotations
 
@@ -25,7 +27,16 @@ DATABASE_WORKER_CAPACITY = 32
 
 @dataclass(frozen=True, slots=True)
 class DatabaseWorkerStats:
-    """数据库执行器当前的容量和任务数量。"""
+    """
+    数据库执行器当前的容量和任务数量快照。
+
+    :param max_workers: 最大工作线程数
+    :param capacity: 包含排队和运行中任务的总容量上限
+    :param queued: 当前等待线程执行的任务数
+    :param running: 当前正在工作线程内执行的任务数
+    :param rejected: 执行器累计因过载拒绝的任务数
+    :param closing: 是否已经开始关闭，不再接受新任务
+    """
 
     max_workers: int
     capacity: int
@@ -37,14 +48,21 @@ class DatabaseWorkerStats:
 
 @dataclass(slots=True)
 class _WorkItem:
-    """记录一个任务的排队时间和执行状态。"""
+    """
+    记录一个数据库短事务的排队和开始执行时间。
+
+    :param submitted_at: 任务提交时的单调时钟读数，单位为秒
+    :param started_at: 工作线程开始执行的单调时钟读数；None 表示尚未开始
+    """
 
     submitted_at: float
     started_at: float | None = None
 
 
 class DatabaseWorker:
-    """以有限线程和队列执行不能原生异步化的数据库短事务。"""
+    """
+    以有限线程和队列执行不能原生异步化的数据库短事务。
+    """
 
     def __init__(
         self,
@@ -52,7 +70,9 @@ class DatabaseWorker:
         max_workers: int = DATABASE_WORKER_MAX_WORKERS,
         capacity: int = DATABASE_WORKER_CAPACITY,
     ) -> None:
-        """保存容量配置，线程只在显式启动后创建。"""
+        """
+        保存容量配置，线程只在显式启动后创建。
+        """
         if max_workers < 1:
             raise ValueError("数据库 worker 线程数必须大于 0")
         if capacity < max_workers:
@@ -73,7 +93,9 @@ class DatabaseWorker:
         self._closing = False
 
     async def start(self) -> None:
-        """绑定当前事件循环并准备专属线程池。"""
+        """
+        绑定当前事件循环并准备专属线程池。
+        """
         if self._executor is not None:
             if self._loop is not asyncio.get_running_loop():
                 raise RuntimeError("数据库 worker 不能跨事件循环复用")
@@ -87,7 +109,9 @@ class DatabaseWorker:
         self._record_depth()
 
     def snapshot(self) -> DatabaseWorkerStats:
-        """返回无需访问任务对象的低基数运行快照。"""
+        """
+        返回无需访问任务对象的低基数运行快照。
+        """
         with self._state_lock:
             return DatabaseWorkerStats(
                 max_workers=self._max_workers,
@@ -99,7 +123,9 @@ class DatabaseWorker:
             )
 
     async def run(self, operation: Callable[[], T]) -> T:
-        """执行短事务；结果发布和取消返回均晚于容量回收，取消仍等待已开始事务收口。"""
+        """
+        执行短事务；结果发布和取消返回均晚于容量回收，取消仍等待已开始事务收口。
+        """
         loop = asyncio.get_running_loop()
         executor = self._executor
         if executor is None or self._loop is not loop or self._closing:
@@ -124,7 +150,7 @@ class DatabaseWorker:
             self._record_depth()
             raise
 
-        # 不能直接 wrap native Future：其结果转发可能先于完成记账，晚注册回调还会立即执行。
+        # 不能直接包装原始 Future：其结果转发可能先于完成记账，晚注册回调还会立即执行。
         wrapped: asyncio.Future[object] = loop.create_future()
         with self._state_lock:
             self._futures[future] = (wrapped, item)
@@ -148,7 +174,9 @@ class DatabaseWorker:
         context_run: Callable[..., T],
         operation: Callable[[], T],
     ) -> T:
-        """在线程中标记任务开始并保留提交时的上下文。"""
+        """
+        在线程中标记任务开始并保留提交时的上下文。
+        """
         item.started_at = time.perf_counter()
         loop = self._loop
         if loop is not None:
@@ -159,7 +187,9 @@ class DatabaseWorker:
         return context_run(operation)
 
     def _mark_running(self, item: _WorkItem) -> None:
-        """把任务从排队状态移入运行状态。"""
+        """
+        把任务从排队状态移入运行状态。
+        """
         with self._state_lock:
             self._queued -= 1
             self._running += 1
@@ -172,7 +202,9 @@ class DatabaseWorker:
         future: Future[object],
         item: _WorkItem,
     ) -> None:
-        """把线程完成通知安全地回投到所属事件循环。"""
+        """
+        把线程完成通知安全地回投到所属事件循环。
+        """
         loop = self._loop
         if loop is None:
             return
@@ -182,7 +214,9 @@ class DatabaseWorker:
             pass
 
     def _complete(self, future: Future[object], item: _WorkItem) -> None:
-        """先释放 admission，再发布最终结果；同一事件循环回调保证调用方观察顺序。"""
+        """
+        先释放 admission，再发布最终结果；同一事件循环回调保证调用方观察顺序。
+        """
         with self._state_lock:
             wrapped, _ = self._futures.pop(future)
             if future.running() or future.done() and not future.cancelled():
@@ -200,7 +234,9 @@ class DatabaseWorker:
 
     @staticmethod
     def _publish_result(future: Future[object], wrapped: asyncio.Future[object]) -> str:
-        """保留原 wrap_future 的取消和异常翻译合同，不调用 asyncio 私有实现。"""
+        """
+        保留原 wrap_future 的取消和异常翻译合同，不调用 asyncio 私有实现。
+        """
         if future.cancelled():
             wrapped.cancel()
             return "cancelled"
@@ -225,7 +261,9 @@ class DatabaseWorker:
         *,
         interruptible: bool = False,
     ) -> None:
-        """等待线程内事务结束，并按调用场景决定是否响应外层取消。"""
+        """
+        等待线程内事务结束，并按调用场景决定是否响应外层取消。
+        """
         while not future.done():
             try:
                 await asyncio.shield(future)
@@ -237,7 +275,9 @@ class DatabaseWorker:
                 break
 
     async def shutdown(self) -> None:
-        """拒绝新任务，取消排队任务并等待运行中事务结束。"""
+        """
+        拒绝新任务，取消排队任务并等待运行中事务结束。
+        """
         executor = self._executor
         if executor is None:
             return
@@ -259,7 +299,9 @@ class DatabaseWorker:
         self._record_depth()
 
     def _record_depth(self) -> None:
-        """以状态变化量记录队列和运行中的任务数量。"""
+        """
+        以状态变化量记录队列和运行中的任务数量。
+        """
         stats = self.snapshot()
         queued_delta = stats.queued - self._reported_queued
         running_delta = stats.running - self._reported_running

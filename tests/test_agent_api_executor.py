@@ -1,3 +1,7 @@
+"""
+验证 Agent API 执行器的本地调用、结果投影和分页总量语义。
+"""
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -36,7 +40,9 @@ def test_executor_requests_local_listener_independently_of_public_domain(
     port: int,
     base_url: str,
 ) -> None:
-    """配置对外反代域名后，API 仍须按本机监听地址和端口发送且绕过环境代理。"""
+    """
+    配置对外反代域名后，API 仍须按本机监听地址和端口发送且绕过环境代理。
+    """
     runtime_settings = {"APP_DOMAIN": app_domain, "HOST": host, "PORT": port}
     response = SimpleNamespace(
         status_code=200,
@@ -71,7 +77,9 @@ def test_executor_requests_local_listener_independently_of_public_domain(
 
 
 def _execute_with_headers(headers: dict[str, str]) -> tuple[dict, AsyncMock]:
-    """用内存 HTTP 响应执行一次固定 API operation。"""
+    """
+    用内存 HTTP 响应执行一次固定 API operation。
+    """
     response = SimpleNamespace(
         status_code=200,
         headers=headers,
@@ -96,7 +104,9 @@ def _execute_with_headers(headers: dict[str, str]) -> tuple[dict, AsyncMock]:
 
 
 def test_executor_exposes_exact_collection_total_when_api_reports_it() -> None:
-    """Agent 结果应把精确数量响应头变成可直接读取的集合元数据。"""
+    """
+    Agent 结果应把精确数量响应头变成可直接读取的集合元数据。
+    """
     result, close = _execute_with_headers(
         {
             "X-Result-Count": "20",
@@ -117,7 +127,9 @@ def test_executor_exposes_exact_collection_total_when_api_reports_it() -> None:
 
 
 def test_executor_does_not_invent_total_for_upstream_window() -> None:
-    """外部接口未报告总数时，Agent 元数据只能包含当前窗口数量。"""
+    """
+    外部接口未报告总数时，Agent 元数据只能包含当前窗口数量。
+    """
     result, close = _execute_with_headers(
         {
             "X-Result-Count": "20",
@@ -136,7 +148,9 @@ def test_executor_does_not_invent_total_for_upstream_window() -> None:
 
 
 def test_executor_keeps_non_collection_payload_unchanged_without_headers() -> None:
-    """非列表 API 未返回数量头时必须保持既有输出形状。"""
+    """
+    非列表 API 未返回数量头时必须保持既有输出形状。
+    """
     result, close = _execute_with_headers({})
 
     assert result == {"success": True, "message": "", "data": [{"id": 1}]}
@@ -149,7 +163,9 @@ def _execute_and_get_request_timeout(
     path_params: Optional[dict] = None,
     query: Optional[dict] = None,
 ) -> float:
-    """执行一个内存 API 请求并返回构造 HTTP 客户端时采用的超时。"""
+    """
+    执行一个内存 API 请求并返回构造 HTTP 客户端时采用的超时。
+    """
     response = SimpleNamespace(
         status_code=200,
         headers={},
@@ -177,7 +193,9 @@ def _execute_and_get_request_timeout(
 
 
 def test_executor_extends_request_timeout_only_for_search_torrents() -> None:
-    """慢速种子搜索允许等待 290 秒，其它 operation 保持原有 30 秒。"""
+    """
+    慢速种子搜索允许等待 290 秒，其它 operation 保持原有 30 秒。
+    """
     assert _execute_and_get_request_timeout(
         "search.torrents",
         path_params={"media_id": "1423191"},
@@ -191,7 +209,9 @@ def test_executor_extends_request_timeout_only_for_search_torrents() -> None:
 
 
 def test_manager_default_session_id_is_http_header_compatible() -> None:
-    """HTTP API 工具管理器生成的默认会话标识必须是可发送的字符串。"""
+    """
+    HTTP API 工具管理器生成的默认会话标识必须是可发送的字符串。
+    """
     manager = MoviePilotToolsManager(user_id="1")
     executor = MoviePilotApiExecutor(
         context=ApiExecutionContext(
@@ -212,7 +232,9 @@ def test_manager_default_session_id_is_http_header_compatible() -> None:
 
 
 def test_executor_keeps_collection_total_visible_in_truncated_tool_preview() -> None:
-    """列表内容过大时，精确总数必须位于截断预览开头供 Agent 直接使用。"""
+    """
+    列表内容过大时，精确总数必须位于截断预览开头供 Agent 直接使用。
+    """
     response = SimpleNamespace(
         status_code=200,
         headers={"X-Result-Count": "200", "X-Total-Count": "357"},
@@ -252,7 +274,9 @@ def test_executor_keeps_collection_total_visible_in_truncated_tool_preview() -> 
 
 
 def test_executor_serializes_channel_and_source_headers_as_ascii() -> None:
-    """中文通知渠道和来源必须以 ASCII 形式发送到 Agent API。"""
+    """
+    中文通知渠道和来源必须以 ASCII 形式发送到 Agent API。
+    """
     request_factory = MagicMock(return_value=SimpleNamespace(request=AsyncMock()))
     executor = MoviePilotApiExecutor(
         context=ApiExecutionContext(

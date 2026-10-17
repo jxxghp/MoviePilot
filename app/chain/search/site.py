@@ -1,4 +1,6 @@
-"""搜索站点配置清理 owner。"""
+"""
+删除站点后的搜索范围配置清理。
+"""
 
 from app.application.configuration import (
     get_configured_system_config,
@@ -11,7 +13,9 @@ from app.schemas.types import (
 
 
 class SearchSiteOwner(_SearchOwnerBase):
-    """搜索站点配置清理 owner。"""
+    """
+    删除站点后的搜索范围配置清理。
+    """
 
     def _remove_site(self, event: Event) -> None:
         """
@@ -24,10 +28,8 @@ class SearchSiteOwner(_SearchOwnerBase):
         if not site_id:
             return
         if site_id == "*":
-            # 清空搜索站点
             get_configured_system_config().set(SystemConfigKey.IndexerSites, [])
             return
-        # 从选中的rss站点中移除
         selected_sites = get_configured_system_config().get(SystemConfigKey.IndexerSites) or []
         if site_id in selected_sites:
             selected_sites.remove(site_id)

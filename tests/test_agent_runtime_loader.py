@@ -1,3 +1,7 @@
+"""
+验证 Agent 能力发现与首次加载相互隔离，并发首次使用只初始化一次。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +25,9 @@ from app.runtime.capabilities.model import (
 
 @pytest.fixture
 def runtime_loader(monkeypatch):
-    """为每个用例提供未构建、未关闭的 Agent Capability Runtime。"""
+    """
+    为每个用例提供未构建、未关闭的 Agent Capability Runtime。
+    """
     from app.agent import loader as module
 
     monkeypatch.setattr(module, "_agent_runtime", None)
@@ -41,10 +47,14 @@ def runtime_loader(monkeypatch):
 
 
 class _FakeManager:
-    """记录异步 service 生命周期，并支持测试控制初始化时序。"""
+    """
+    记录异步 service 生命周期，并支持测试控制初始化时序。
+    """
 
     def __init__(self) -> None:
-        """初始化可观察的生命周期计数和并发控制状态。"""
+        """
+        初始化可观察的生命周期计数和并发控制状态。
+        """
         self.initialize_calls = 0
         self.close_calls = 0
         self.fail_initialize = False
@@ -53,7 +63,9 @@ class _FakeManager:
         self.close_converged: bool | None = None
 
     async def initialize(self) -> None:
-        """按测试设定等待屏障或抛错，模拟可控制的初始化时序。"""
+        """
+        按测试设定等待屏障或抛错，模拟可控制的初始化时序。
+        """
         self.initialize_calls += 1
         if self.initialize_entered is not None:
             self.initialize_entered.set()
@@ -63,7 +75,9 @@ class _FakeManager:
             raise RuntimeError("service initialization failed")
 
     async def close(self) -> bool | None:
-        """记录关闭次数并返回当前测试指定的收敛结果。"""
+        """
+        记录关闭次数并返回当前测试指定的收敛结果。
+        """
         self.close_calls += 1
         return self.close_converged
 
@@ -73,7 +87,9 @@ async def test_shutdown_retains_nonconverged_agent_service_for_retry(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """Manager 返回未收敛时 Runtime 必须保留 owner，后续关闭可继续等待。"""
+    """
+    Manager 返回未收敛时 Runtime 必须保留 owner，后续关闭可继续等待。
+    """
     manager = _FakeManager()
     manager.close_converged = False
     modules = _fake_agent_modules(manager)
@@ -106,19 +122,27 @@ async def test_shutdown_propagates_runtime_wide_convergence(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """Agent 关闭不得用单个 service 快照覆盖 Runtime 的整体结果。"""
+    """
+    Agent 关闭不得用单个 service 快照覆盖 Runtime 的整体结果。
+    """
 
     class RuntimeWithIndependentShutdownResult:
-        """模拟其它 Agent 能力失败而 service 已停止的 Runtime。"""
+        """
+        模拟其它 Agent 能力失败而 service 已停止的 Runtime。
+        """
 
         async def shutdown_async(self, *, reason: str) -> bool:
-            """记录关闭原因并返回 Runtime 级未收敛。"""
+            """
+            记录关闭原因并返回 Runtime 级未收敛。
+            """
             assert reason == "application_shutdown"
             return False
 
         @staticmethod
         def snapshot(_capability_id: str) -> types.SimpleNamespace:
-            """提供旧实现读取的已停止 service 快照。"""
+            """
+            提供旧实现读取的已停止 service 快照。
+            """
             return types.SimpleNamespace(lifecycle=CapabilityLifecycleState.STOPPED)
 
     runtime = RuntimeWithIndependentShutdownResult()
@@ -128,7 +152,9 @@ async def test_shutdown_propagates_runtime_wide_convergence(
 
 
 def _fake_agent_modules(manager: object | None = None) -> dict[str, types.ModuleType]:
-    """构造包含 canonical 符号的模块替身，隔离真实 Agent 服务初始化。"""
+    """
+    构造包含 canonical 符号的模块替身，隔离真实 Agent 服务初始化。
+    """
     manager_module = types.ModuleType("app.agent.manager")
     manager_module.agent_manager = manager if manager is not None else object()
     orchestrator = types.ModuleType("app.agent.orchestrator")
@@ -146,7 +172,9 @@ def test_registry_discovery_does_not_import_agent_implementation(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """声明发现只能读取 TOML，不得导入 Agent、LLM 或工具实现。"""
+    """
+    声明发现只能读取 TOML，不得导入 Agent、LLM 或工具实现。
+    """
     imported = []
     monkeypatch.setattr(
         "app.agent.capabilities.adapter.importlib.import_module",
@@ -165,7 +193,9 @@ def test_registry_discovery_does_not_import_agent_implementation(
 
 
 def test_agent_capability_entrypoints_resolve_canonical_symbols(runtime_loader) -> None:
-    """entrypoint 必须命中 canonical 模块的物理符号，Compat 惰性映射不满足强校验。"""
+    """
+    entrypoint 必须命中 canonical 模块的物理符号，Compat 惰性映射不满足强校验。
+    """
     runtime = runtime_loader._ensure_runtime()
     for spec in runtime.list_specs():
         module_name, symbol_name = spec.entrypoint.split(":", maxsplit=1)
@@ -179,14 +209,18 @@ def test_concurrent_manager_first_use_is_single_flight(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """并发首用必须只导入一次并向全部调用者发布同一 canonical 对象。"""
+    """
+    并发首用必须只导入一次并向全部调用者发布同一 canonical 对象。
+    """
     modules = _fake_agent_modules()
     import_calls = []
     import_entered = threading.Event()
     import_release = threading.Event()
 
     def import_module(name: str):
-        """挂起首次导入，验证并发请求只会加载一个服务 owner。"""
+        """
+        挂起首次导入，验证并发请求只会加载一个服务 owner。
+        """
         import_calls.append(name)
         import_entered.set()
         assert import_release.wait(timeout=5)
@@ -221,12 +255,16 @@ def test_tool_factory_has_independent_first_use_entrypoint(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """工具工厂可独立首用，不需要先解析完整 Agent 编排模块。"""
+    """
+    工具工厂可独立首用，不需要先解析完整 Agent 编排模块。
+    """
     modules = _fake_agent_modules()
     import_calls = []
 
     def import_module(name: str):
-        """登记当前能力的模块替身，避免触发真实服务的导入和初始化。"""
+        """
+        登记当前能力的模块替身，避免触发真实服务的导入和初始化。
+        """
         import_calls.append(name)
         monkeypatch.setitem(sys.modules, name, modules[name])
         return modules[name]
@@ -249,7 +287,9 @@ def test_materialization_query_does_not_construct_runtime(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """只读物化查询在 Runtime 未构建时必须直接返回 False。"""
+    """
+    只读物化查询在 Runtime 未构建时必须直接返回 False。
+    """
     build_calls = []
     monkeypatch.setattr(
         runtime_loader,
@@ -267,7 +307,9 @@ async def test_service_first_and_entrypoint_first_share_canonical_identity(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """资源轴和兼容物化轴无论谁先解析，都必须共享 canonical manager。"""
+    """
+    资源轴和兼容物化轴无论谁先解析，都必须共享 canonical manager。
+    """
     manager = _FakeManager()
     modules = _fake_agent_modules(manager)
     monkeypatch.setattr(
@@ -276,7 +318,9 @@ async def test_service_first_and_entrypoint_first_share_canonical_identity(
     )
 
     def import_module(name: str):
-        """登记当前能力的模块替身，避免触发真实服务的导入和初始化。"""
+        """
+        登记当前能力的模块替身，避免触发真实服务的导入和初始化。
+        """
         monkeypatch.setitem(sys.modules, name, modules[name])
         return modules[name]
 
@@ -315,7 +359,9 @@ async def test_entrypoint_first_then_service_initializes_same_manager_once(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """兼容 getter 先物化时不初始化，随后 service 只初始化同一对象一次。"""
+    """
+    兼容 getter 先物化时不初始化，随后 service 只初始化同一对象一次。
+    """
     manager = _FakeManager()
     modules = _fake_agent_modules(manager)
     monkeypatch.setattr(
@@ -324,7 +370,9 @@ async def test_entrypoint_first_then_service_initializes_same_manager_once(
     )
 
     def import_module(name: str):
-        """登记当前能力的模块替身，避免触发真实服务的导入和初始化。"""
+        """
+        登记当前能力的模块替身，避免触发真实服务的导入和初始化。
+        """
         monkeypatch.setitem(sys.modules, name, modules[name])
         return modules[name]
 
@@ -345,7 +393,9 @@ async def test_concurrent_service_first_use_initializes_once(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """并发 service 首启只能 initialize 一次并发布同一实例。"""
+    """
+    并发 service 首启只能 initialize 一次并发布同一实例。
+    """
     manager = _FakeManager()
     manager.initialize_entered = asyncio.Event()
     manager.initialize_release = asyncio.Event()
@@ -380,7 +430,9 @@ async def test_concurrent_service_and_entrypoint_first_use_share_identity(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """两个 spec 并发首解析时也只能引用同一个 canonical manager。"""
+    """
+    两个 spec 并发首解析时也只能引用同一个 canonical manager。
+    """
     manager = _FakeManager()
     modules = _fake_agent_modules(manager)
     import_barrier = threading.Barrier(2)
@@ -391,7 +443,9 @@ async def test_concurrent_service_and_entrypoint_first_use_share_identity(
     )
 
     def import_module(name: str):
-        """在共享屏障处等待，验证不同能力的导入不会互相串行阻塞。"""
+        """
+        在共享屏障处等待，验证不同能力的导入不会互相串行阻塞。
+        """
         import_calls.append(name)
         import_barrier.wait(timeout=5)
         monkeypatch.setitem(sys.modules, name, modules[name])
@@ -422,7 +476,9 @@ async def test_service_failure_is_not_published_and_requires_retry(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """初始化失败必须清理候选、保持不可见，并要求显式 retry。"""
+    """
+    初始化失败必须清理候选、保持不可见，并要求显式 retry。
+    """
     manager = _FakeManager()
     manager.fail_initialize = True
     modules = _fake_agent_modules(manager)
@@ -458,7 +514,9 @@ async def test_shutdown_racing_service_first_use_fails_closed(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """关闭与 service 首启竞争时不得发布对象，并须清理已初始化候选。"""
+    """
+    关闭与 service 首启竞争时不得发布对象，并须清理已初始化候选。
+    """
     manager = _FakeManager()
     manager.initialize_entered = asyncio.Event()
     manager.initialize_release = asyncio.Event()
@@ -497,7 +555,9 @@ async def test_disabled_service_reconcile_stays_unmaterialized(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """selector 为 false 时协调结果为空且不得导入 orchestrator。"""
+    """
+    selector 为 false 时协调结果为空且不得导入 orchestrator。
+    """
     imported = []
     monkeypatch.setattr(
         "app.agent.capabilities.adapter.settings.AI_AGENT_ENABLE",
@@ -521,7 +581,9 @@ async def test_empty_shutdown_does_not_import_agent_or_tools(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """空载关闭只解析 data-only manifests，不导入编排器或工具实现。"""
+    """
+    空载关闭只解析 data-only manifests，不导入编排器或工具实现。
+    """
     imported = []
     monkeypatch.setattr(
         "app.agent.capabilities.adapter.importlib.import_module",
@@ -540,7 +602,9 @@ async def test_disable_reconcile_waits_for_concurrent_service_start(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """关闭配置与首启竞争时必须等待启动并最终撤销实例。"""
+    """
+    关闭配置与首启竞争时必须等待启动并最终撤销实例。
+    """
     manager = _FakeManager()
     manager.initialize_entered = asyncio.Event()
     manager.initialize_release = asyncio.Event()
@@ -584,7 +648,9 @@ async def test_config_reconcile_hot_switches_service_generations(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """watch 命中的配置切换应停止并重启同一 canonical service。"""
+    """
+    watch 命中的配置切换应停止并重启同一 canonical service。
+    """
     manager = _FakeManager()
     modules = _fake_agent_modules(manager)
     monkeypatch.setattr(
@@ -659,7 +725,9 @@ async def test_config_reconcile_after_shutdown_cannot_restart_service(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """Runtime 关闭后即使 selector 再次为 true，配置协调也必须拒绝重启。"""
+    """
+    Runtime 关闭后即使 selector 再次为 true，配置协调也必须拒绝重启。
+    """
     manager = _FakeManager()
     modules = _fake_agent_modules(manager)
     monkeypatch.setattr(
@@ -692,7 +760,9 @@ async def test_real_agent_manager_can_restart_across_config_generations(
     runtime_loader,
     monkeypatch,
 ) -> None:
-    """真实 AgentManager 在配置热切换后必须重新建立运行代际。"""
+    """
+    真实 AgentManager 在配置热切换后必须重新建立运行代际。
+    """
     manager_module = importlib.import_module("app.agent.manager")
     memory_module = importlib.import_module("app.agent.memory")
 
@@ -700,7 +770,9 @@ async def test_real_agent_manager_can_restart_across_config_generations(
     memory_events = []
 
     async def close_memory() -> None:
-        """记录记忆存储关闭顺序，核对生命周期退出的先后关系。"""
+        """
+        记录记忆存储关闭顺序，核对生命周期退出的先后关系。
+        """
         memory_events.append("close")
 
     monkeypatch.setattr(

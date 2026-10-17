@@ -1,3 +1,7 @@
+"""
+验证模块归属、兼容导入路径及分层依赖的架构约束。
+"""
+
 import ast
 import json
 from functools import lru_cache
@@ -213,7 +217,9 @@ FORBIDDEN_IMPORT_PREFIXES = {
 
 
 def _legacy_imports(path: Path) -> set[str]:
-    """提取源码中的静态和常量动态旧路径导入。"""
+    """
+    提取源码中的静态和常量动态旧路径导入。
+    """
     tree = _parse_source(path)
     imports: set[str] = set()
     for node in _walk_module(tree):
@@ -233,7 +239,9 @@ def _legacy_imports(path: Path) -> set[str]:
 
 
 def _attribute_parts(node: ast.Attribute) -> list[str]:
-    """将静态属性访问还原为从根名称开始的完整路径片段。"""
+    """
+    将静态属性访问还原为从根名称开始的完整路径片段。
+    """
     parts = [node.attr]
     value = node.value
     while isinstance(value, ast.Attribute):
@@ -246,7 +254,9 @@ def _attribute_parts(node: ast.Attribute) -> list[str]:
 
 
 def _compat_symbol_references(tree: ast.AST) -> set[tuple[int, str]]:
-    """收集显式导入或静态属性访问命中的兼容符号。"""
+    """
+    收集显式导入或静态属性访问命中的兼容符号。
+    """
     compatibility_symbols = {
         (module_name, symbol_name) for module_name, symbols in SYMBOL_ALIASES.items() for symbol_name in symbols
     }
@@ -283,7 +293,9 @@ def _compat_symbol_references(tree: ast.AST) -> set[tuple[int, str]]:
 
 
 def _class_annotations(path: Path, class_name: str) -> dict[str, str]:
-    """返回指定类的源码级字段注解。"""
+    """
+    返回指定类的源码级字段注解。
+    """
     tree = _parse_source(path)
     class_node = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == class_name)
     return {
@@ -294,7 +306,9 @@ def _class_annotations(path: Path, class_name: str) -> dict[str, str]:
 
 
 def test_legacy_roots_contain_no_python_sources():
-    """旧目录只能作为运行时虚拟包存在，仓库中不得重新出现源码。"""
+    """
+    旧目录只能作为运行时虚拟包存在，仓库中不得重新出现源码。
+    """
     leftovers = sorted(
         str(path.relative_to(PROJECT_ROOT))
         for root_name in ("core", "helper", "utils")
@@ -304,19 +318,25 @@ def test_legacy_roots_contain_no_python_sources():
 
 
 def test_legacy_source_directories_do_not_exist():
-    """core/helper/utils 物理目录应完全退役，旧导入只由虚拟兼容包解析。"""
+    """
+    core/helper/utils 物理目录应完全退役，旧导入只由虚拟兼容包解析。
+    """
     leftovers = [root_name for root_name in ("core", "helper", "utils") if (APP_ROOT / root_name).exists()]
     assert leftovers == []
 
 
 def test_retired_canonical_filenames_do_not_return():
-    """能力包应使用包内语境明确的短文件名，避免再次出现冗余角色后缀。"""
+    """
+    能力包应使用包内语境明确的短文件名，避免再次出现冗余角色后缀。
+    """
     leftovers = [relative_path for relative_path in RETIRED_CANONICAL_FILES if (PROJECT_ROOT / relative_path).exists()]
     assert leftovers == []
 
 
 def test_agent_manager_uses_focused_owner_modules_and_precise_facade():
-    """AgentManager 必须保持薄门面，编排器不得重新聚合 Manager 实现。"""
+    """
+    AgentManager 必须保持薄门面，编排器不得重新聚合 Manager 实现。
+    """
     owner_paths = {
         "manager": APP_ROOT / "agent" / "manager.py",
         "session": APP_ROOT / "agent" / "session.py",
@@ -355,7 +375,9 @@ def test_agent_manager_uses_focused_owner_modules_and_precise_facade():
 
 
 def test_mcp_schema_projection_has_one_pure_owner() -> None:
-    """MCP schema 投影使用单词 owner，且不引入运行时或端点依赖。"""
+    """
+    MCP schema 投影使用单词 owner，且不引入运行时或端点依赖。
+    """
     owner = APP_ROOT / "agent" / "tools" / "projection.py"
     assert owner.is_file()
     assert not (owner.parent / "schema_budget.py").exists()
@@ -368,7 +390,9 @@ def test_mcp_schema_projection_has_one_pure_owner() -> None:
 
 
 def test_runtime_dependencies_use_same_named_single_word_package() -> None:
-    """运行依赖能力必须使用同名包，且宿主直接依赖单一职责子模块。"""
+    """
+    运行依赖能力必须使用同名包，且宿主直接依赖单一职责子模块。
+    """
     package = APP_ROOT / "runtime" / "dependencies"
     assert {path.name for path in package.glob("*.py")} == {
         "__init__.py",
@@ -402,7 +426,9 @@ def test_runtime_dependencies_use_same_named_single_word_package() -> None:
 
 
 def test_domain_classification_is_a_pure_direct_import_package() -> None:
-    """分类领域包根仅承载文档，且实现不得依赖配置、持久化或具体来源。"""
+    """
+    分类领域包根仅承载文档，且实现不得依赖配置、持久化或具体来源。
+    """
     package = APP_ROOT / "domain" / "classification"
     assert {path.name for path in package.glob("*.py")} == {
         "__init__.py",
@@ -463,7 +489,9 @@ def test_domain_classification_is_a_pure_direct_import_package() -> None:
 
 
 def test_application_classification_uses_same_named_package() -> None:
-    """分类应用能力必须归入同名包，包根不得重复导出内部实现。"""
+    """
+    分类应用能力必须归入同名包，包根不得重复导出内部实现。
+    """
     package = APP_ROOT / "application" / "classification"
     assert {path.name for path in package.glob("*.py")} == {
         "__init__.py",
@@ -488,7 +516,9 @@ def test_application_classification_uses_same_named_package() -> None:
 
 
 def test_application_torrent_uses_same_named_single_word_package() -> None:
-    """种子应用能力必须归入同名包，包根不得重复导出内部实现。"""
+    """
+    种子应用能力必须归入同名包，包根不得重复导出内部实现。
+    """
     package = APP_ROOT / "application" / "torrent"
     assert {path.name for path in package.glob("*.py")} == {
         "__init__.py",
@@ -515,7 +545,9 @@ def test_application_torrent_uses_same_named_single_word_package() -> None:
 
 
 def test_host_module_package_roots_only_export_capability_entrypoints() -> None:
-    """宿主模块包根只公开 capability entrypoint，内部 owner 必须直达子模块。"""
+    """
+    宿主模块包根只公开 capability entrypoint，内部 owner 必须直达子模块。
+    """
     base_path = APP_ROOT / "modules" / "_base" / "__init__.py"
     base_tree = ast.parse(base_path.read_text(encoding="utf-8"), filename=str(base_path))
     assert ast.get_docstring(base_tree)
@@ -546,7 +578,9 @@ def test_host_module_package_roots_only_export_capability_entrypoints() -> None:
 
 
 def test_domain_media_projection_uses_single_word_owner_package() -> None:
-    """媒体来源投影必须由单词 owner 完整承接，canonical 模型只保留薄委托。"""
+    """
+    媒体来源投影必须由单词 owner 完整承接，canonical 模型只保留薄委托。
+    """
     package = APP_ROOT / "domain" / "projection"
     assert {path.name for path in package.glob("*.py")} == {
         "__init__.py",
@@ -618,7 +652,9 @@ def test_domain_media_projection_uses_single_word_owner_package() -> None:
 
 
 def test_workflow_query_contract_returns_only_typed_snapshots():
-    """工作流正式查询端口不得退化为 Any 或 ORM 返回值。"""
+    """
+    工作流正式查询端口不得退化为 Any 或 ORM 返回值。
+    """
     path = APP_ROOT / "application" / "workflow.py"
     tree = _parse_source(path)
     query_classes = {
@@ -647,7 +683,9 @@ def test_workflow_query_contract_returns_only_typed_snapshots():
 
 
 def test_workflow_query_consumers_do_not_reach_raw_oper():
-    """API、Agent、共享服务和运行时管理器只消费统一快照查询服务。"""
+    """
+    API、Agent、共享服务和运行时管理器只消费统一快照查询服务。
+    """
     consumer_paths = (
         "app/api/dependencies/workflow.py",
         "app/application/server/share.py",
@@ -672,7 +710,9 @@ def test_workflow_query_consumers_do_not_reach_raw_oper():
 
 
 def test_workflow_query_adapter_owns_projection_sessions():
-    """唯一查询适配器必须在自有同步和异步 Session 内投影快照。"""
+    """
+    唯一查询适配器必须在自有同步和异步 Session 内投影快照。
+    """
     path = APP_ROOT / "db" / "adapters" / "workflow.py"
     source = path.read_text(encoding="utf-8")
 
@@ -683,7 +723,9 @@ def test_workflow_query_adapter_owns_projection_sessions():
 
 
 def test_workflow_execution_chain_uses_single_application_owned_port():
-    """工作流 Chain 写端必须只使用 Application owner 的唯一配置入口。"""
+    """
+    工作流 Chain 写端必须只使用 Application owner 的唯一配置入口。
+    """
     contract_path = APP_ROOT / "application" / "workflow.py"
     contract_tree = ast.parse(
         contract_path.read_text(encoding="utf-8"),
@@ -716,7 +758,9 @@ def test_workflow_execution_chain_uses_single_application_owned_port():
 
 
 def test_chain_runtime_context_owns_typed_repository_instances():
-    """Chain 数据能力必须作为明确类型的实例字段进入运行时上下文。"""
+    """
+    Chain 数据能力必须作为明确类型的实例字段进入运行时上下文。
+    """
     annotations = _class_annotations(
         APP_ROOT / "application" / "chain" / "context.py",
         "ChainRuntimeContext",
@@ -751,7 +795,9 @@ def test_chain_runtime_context_owns_typed_repository_instances():
 
 
 def test_startup_composes_typed_chain_and_agent_data_contexts():
-    """组合根必须一次性构造 Chain 与 Agent 的类型化数据上下文。"""
+    """
+    组合根必须一次性构造 Chain 与 Agent 的类型化数据上下文。
+    """
     context_specs = {
         "ChainRuntimeContext": (
             APP_ROOT / "application" / "chain" / "context.py",
@@ -819,7 +865,9 @@ def test_startup_composes_typed_chain_and_agent_data_contexts():
 
 
 def test_download_history_ports_are_typed_detached_and_canonically_injected():
-    """下载历史宿主调用面只能消费冻结快照和显式事务 adapter。"""
+    """
+    下载历史宿主调用面只能消费冻结快照和显式事务 adapter。
+    """
     history_path = APP_ROOT / "application" / "history" / "__init__.py"
     history_tree = ast.parse(
         history_path.read_text(encoding="utf-8"),
@@ -890,7 +938,9 @@ def test_download_history_ports_are_typed_detached_and_canonically_injected():
 
 
 def test_user_configuration_uses_typed_transactional_adapter():
-    """用户配置宿主入口只消费类型化端口，旧 Oper 写入口仅承担兼容 ABI。"""
+    """
+    用户配置宿主入口只消费类型化端口，旧 Oper 写入口仅承担兼容 ABI。
+    """
     application_path = APP_ROOT / "application" / "security" / "userconfig.py"
     application_source = application_path.read_text(encoding="utf-8")
     application_tree = ast.parse(application_source, filename=str(application_path))
@@ -929,7 +979,9 @@ def test_user_configuration_uses_typed_transactional_adapter():
 
 
 def test_modules_initializer_delegates_configuration_and_database_composition():
-    """模块初始化器只编排配置与数据库组合 API，不再内联其构造细节。"""
+    """
+    模块初始化器只编排配置与数据库组合 API，不再内联其构造细节。
+    """
     initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     configuration_source = (APP_ROOT / "startup" / "composition" / "configuration.py").read_text(encoding="utf-8")
     database_source = (APP_ROOT / "startup" / "composition" / "database.py").read_text(encoding="utf-8")
@@ -972,7 +1024,9 @@ def test_modules_initializer_delegates_configuration_and_database_composition():
 
 
 def test_modules_initializer_delegates_network_composition():
-    """模块初始化器只调用网络组合 API，不再内联具体 Adapter 组装。"""
+    """
+    模块初始化器只调用网络组合 API，不再内联具体 Adapter 组装。
+    """
     initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     network_source = (APP_ROOT / "startup" / "composition" / "network.py").read_text(encoding="utf-8")
 
@@ -991,7 +1045,9 @@ def test_modules_initializer_delegates_network_composition():
 
 
 def test_modules_initializer_delegates_outbox_composition():
-    """模块初始化器只发布 Outbox dispatcher，不再内联 handler 与存储装配。"""
+    """
+    模块初始化器只发布 Outbox dispatcher，不再内联 handler 与存储装配。
+    """
     initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     composition_source = (APP_ROOT / "startup" / "composition" / "outbox.py").read_text(encoding="utf-8")
     package_source = (APP_ROOT / "startup" / "composition" / "__init__.py").read_text(encoding="utf-8")
@@ -1011,7 +1067,9 @@ def test_modules_initializer_delegates_outbox_composition():
 
 
 def test_modules_initializer_delegates_server_service_composition():
-    """中心服务对象图只由单词型 composition owner 构造，initializer 仅保留调用顺序。"""
+    """
+    中心服务对象图只由单词型 composition owner 构造，initializer 仅保留调用顺序。
+    """
     initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     composition_path = APP_ROOT / "startup" / "composition" / "server.py"
     composition_source = composition_path.read_text(encoding="utf-8")
@@ -1036,7 +1094,9 @@ def test_modules_initializer_delegates_server_service_composition():
 
 
 def test_modules_initializer_delegates_agent_composition():
-    """模块初始化器只编排 Agent composition，不再内联数据与任务构造。"""
+    """
+    模块初始化器只编排 Agent composition，不再内联数据与任务构造。
+    """
     initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     agent_source = (APP_ROOT / "startup" / "composition" / "agent.py").read_text(encoding="utf-8")
     runtime_source = (APP_ROOT / "startup" / "composition" / "runtime.py").read_text(encoding="utf-8")
@@ -1064,7 +1124,9 @@ def test_modules_initializer_delegates_agent_composition():
 
 
 def test_runtime_composition_is_the_sole_host_and_domain_runtime_owner():
-    """HostRuntime、领域 Runtime 与 ApiData 投影只能由单词型 runtime owner 构造。"""
+    """
+    HostRuntime、领域 Runtime 与 ApiData 投影只能由单词型 runtime owner 构造。
+    """
     initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     runtime_path = APP_ROOT / "startup" / "composition" / "runtime.py"
     runtime_source = runtime_path.read_text(encoding="utf-8")
@@ -1130,7 +1192,9 @@ def test_runtime_composition_is_the_sole_host_and_domain_runtime_owner():
 
 
 def test_modules_initializer_delegates_chain_composition():
-    """Chain 上下文、壁纸与旧整理命令只由单词型 composition owner 装配。"""
+    """
+    Chain 上下文、壁纸与旧整理命令只由单词型 composition owner 装配。
+    """
     initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8")
     composition_path = APP_ROOT / "startup" / "composition" / "chain.py"
     composition_source = composition_path.read_text(encoding="utf-8")
@@ -1186,7 +1250,9 @@ def test_modules_initializer_delegates_chain_composition():
 
 
 def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
-    """工作流旧写入口只能存在于 SDK Legacy facade。"""
+    """
+    工作流旧写入口只能存在于 SDK Legacy facade。
+    """
     oper_path = APP_ROOT / "db" / "oper" / "workflow.py"
     oper_tree = ast.parse(
         oper_path.read_text(encoding="utf-8"),
@@ -1202,7 +1268,9 @@ def test_canonical_workflow_oper_has_no_legacy_writer_or_duplicate_exports():
 
 
 def test_agent_data_ports_do_not_duplicate_workflow_query_capability():
-    """Agent 显式数据上下文不得重复拥有工作流查询能力。"""
+    """
+    Agent 显式数据上下文不得重复拥有工作流查询能力。
+    """
     annotations = _class_annotations(
         APP_ROOT / "application" / "agent.py",
         "AgentDataContext",
@@ -1213,7 +1281,9 @@ def test_agent_data_ports_do_not_duplicate_workflow_query_capability():
 
 
 def test_host_uses_canonical_workflow_manager_name():
-    """宿主代码不得继续定义或导入旧 WorkFlowManager 拼写。"""
+    """
+    宿主代码不得继续定义或导入旧 WorkFlowManager 拼写。
+    """
     violations = []
     for path in APP_ROOT.rglob("*.py"):
         relative_path = path.relative_to(APP_ROOT)
@@ -1226,7 +1296,9 @@ def test_host_uses_canonical_workflow_manager_name():
 
 
 def test_plugin_route_refresh_is_imported_from_its_application_owner():
-    """插件路由刷新只有 Application 一个拥有者，端点之间不得互相取用它。"""
+    """
+    插件路由刷新只有 Application 一个拥有者，端点之间不得互相取用它。
+    """
     owner = "app.application.plugin.routes"
     violations: dict[str, str] = {}
     for path in APP_ROOT.rglob("*.py"):
@@ -1246,7 +1318,9 @@ def test_plugin_route_refresh_is_imported_from_its_application_owner():
 
 
 def test_startup_root_contains_only_composition_packages():
-    """组合根顶层只保留稳定分区，禁止再次堆叠扁平实现文件。"""
+    """
+    组合根顶层只保留稳定分区，禁止再次堆叠扁平实现文件。
+    """
     startup_root = APP_ROOT / "startup"
     root_modules = sorted(path.name for path in startup_root.glob("*.py"))
     python_packages = sorted(path.name for path in startup_root.iterdir() if path.is_dir() and any(path.rglob("*.py")))
@@ -1256,7 +1330,9 @@ def test_startup_root_contains_only_composition_packages():
 
 
 def test_retired_canonical_roots_contain_no_python_sources():
-    """已收敛的新增目录不得再次以顶级 Python 包形式出现。"""
+    """
+    已收敛的新增目录不得再次以顶级 Python 包形式出现。
+    """
     leftovers = sorted(
         str(path.relative_to(PROJECT_ROOT))
         for root_name in RETIRED_CANONICAL_ROOTS
@@ -1266,7 +1342,9 @@ def test_retired_canonical_roots_contain_no_python_sources():
 
 
 def test_host_code_does_not_import_legacy_roots():
-    """除插件和兼容层外，宿主代码必须使用 canonical 路径。"""
+    """
+    除插件和兼容层外，宿主代码必须使用 canonical 路径。
+    """
     violations: dict[str, set[str]] = {}
     for path in APP_ROOT.rglob("*.py"):
         relative = path.relative_to(APP_ROOT)
@@ -1282,7 +1360,9 @@ def test_host_code_does_not_import_legacy_roots():
 
 
 def test_compat_symbol_scanner_covers_static_import_shapes() -> None:
-    """兼容符号扫描必须覆盖显式导入、模块别名和完整属性链。"""
+    """
+    兼容符号扫描必须覆盖显式导入、模块别名和完整属性链。
+    """
     tree = ast.parse(
         """
 from app.schemas import TransferTask
@@ -1304,7 +1384,9 @@ transfer_package.TransferQueue
 
 
 def test_host_code_does_not_use_compat_symbol_aliases() -> None:
-    """宿主必须导入 canonical 符号，不得反向消费插件兼容覆盖。"""
+    """
+    宿主必须导入 canonical 符号，不得反向消费插件兼容覆盖。
+    """
     violations: list[str] = []
     for path in APP_ROOT.rglob("*.py"):
         relative = path.relative_to(APP_ROOT)
@@ -1323,7 +1405,9 @@ def test_host_code_does_not_use_compat_symbol_aliases() -> None:
 
 
 def test_host_code_uses_explicit_runtime_facade_getters():
-    """宿主消费者必须显式调用 getter，不得把兼容 Facade 当作新代码入口。"""
+    """
+    宿主消费者必须显式调用 getter，不得把兼容 Facade 当作新代码入口。
+    """
     forbidden_imports = {
         "app.application.module": {"ModuleManager"},
         "app.application.scheduling": {"Scheduler"},
@@ -1365,7 +1449,9 @@ def test_host_code_uses_explicit_runtime_facade_getters():
 
 
 def test_user_chain_and_agent_ports_are_typed_and_orm_free():
-    """用户 Chain、Agent 与宿主模块只能消费 Application 用户端口。"""
+    """
+    用户 Chain、Agent 与宿主模块只能消费 Application 用户端口。
+    """
     chain_annotations = _class_annotations(
         APP_ROOT / "application" / "chain" / "context.py",
         "ChainRuntimeContext",
@@ -1397,7 +1483,9 @@ def test_user_chain_and_agent_ports_are_typed_and_orm_free():
 
 
 def test_startup_injects_user_adapter_instead_of_raw_oper():
-    """启动组合根不得把无会话 UserOper 注入宿主查询调用面。"""
+    """
+    启动组合根不得把无会话 UserOper 注入宿主查询调用面。
+    """
     initializer_source = (APP_ROOT / "startup" / "initializers" / "modules.py").read_text(encoding="utf-8-sig")
     database_source = (APP_ROOT / "startup" / "composition" / "database.py").read_text(encoding="utf-8-sig")
     chain_source = (APP_ROOT / "startup" / "composition" / "chain.py").read_text(encoding="utf-8-sig")
@@ -1414,7 +1502,9 @@ def test_startup_injects_user_adapter_instead_of_raw_oper():
 
 
 def test_transfer_pending_oper_import_is_confined_to_database_boundary():
-    """宿主仅允许事务适配器和兼容导出直接导入整理待处理 Oper。"""
+    """
+    宿主仅允许事务适配器和兼容导出直接导入整理待处理 Oper。
+    """
     allowed_paths = {
         "app/db/adapters/transfer/admission.py",
         "app/db/adapters/chain.py",
@@ -1444,7 +1534,9 @@ def test_transfer_pending_oper_import_is_confined_to_database_boundary():
 
 
 def test_startup_injects_transactional_transfer_admission_repository():
-    """启动组合根必须向 Chain 注入事务型整理准入仓储。"""
+    """
+    启动组合根必须向 Chain 注入事务型整理准入仓储。
+    """
     path = APP_ROOT / "startup" / "composition" / "chain.py"
     tree = _parse_source(path)
     imports_repository = any(
@@ -1469,7 +1561,9 @@ def test_startup_injects_transactional_transfer_admission_repository():
 
 
 def test_transfer_admission_chain_context_field_is_typed():
-    """整理准入仓储必须以明确 Protocol 注入 Chain 上下文。"""
+    """
+    整理准入仓储必须以明确 Protocol 注入 Chain 上下文。
+    """
     annotations = _class_annotations(
         APP_ROOT / "application" / "chain" / "context.py",
         "ChainRuntimeContext",
@@ -1479,7 +1573,9 @@ def test_transfer_admission_chain_context_field_is_typed():
 
 
 def test_scheduler_does_not_depend_on_database_implementation():
-    """Scheduler 只能消费应用端口，不得重新直连 app.db 实现。"""
+    """
+    Scheduler 只能消费应用端口，不得重新直连 app.db 实现。
+    """
     dependencies = set().union(
         *(
             module_dependencies
@@ -1493,7 +1589,9 @@ def test_scheduler_does_not_depend_on_database_implementation():
 
 
 def test_monitor_dispatcher_uses_explicit_history_port_getter():
-    """监控分发器不得把兼容 TransferHistoryPort 伪装成数据库 Oper。"""
+    """
+    监控分发器不得把兼容 TransferHistoryPort 伪装成数据库 Oper。
+    """
     path = APP_ROOT / "monitor" / "dispatcher.py"
     tree = _parse_source(path)
     violations = [
@@ -1508,7 +1606,9 @@ def test_monitor_dispatcher_uses_explicit_history_port_getter():
 
 
 def test_canonical_service_config_consumers_use_application_directory():
-    """Chain、API、Scheduler 与 Agent 不得绕过命名应用目录读取服务配置。"""
+    """
+    Chain、API、Scheduler 与 Agent 不得绕过命名应用目录读取服务配置。
+    """
     paths = [
         APP_ROOT / "chain" / "_messaging.py",
         APP_ROOT / "chain" / "mediaserver.py",
@@ -1536,7 +1636,9 @@ def test_canonical_service_config_consumers_use_application_directory():
 
 
 def test_plugin_components_do_not_reexport_legacy_abi_names():
-    """插件组件只在 manager owner 定义 PluginManager，不得复制旧 ABI。"""
+    """
+    插件组件只在 manager owner 定义 PluginManager，不得复制旧 ABI。
+    """
     violations: list[str] = []
     manager_path = APP_ROOT / "runtime" / "extensions" / "plugin" / "manager.py"
     for root in PLUGIN_COMPONENT_ROOTS:
@@ -1571,7 +1673,9 @@ def test_plugin_components_do_not_reexport_legacy_abi_names():
 
 
 def test_host_code_uses_precise_schema_modules():
-    """宿主不得重新依赖 schema 聚合入口或星号导出。"""
+    """
+    宿主不得重新依赖 schema 聚合入口或星号导出。
+    """
     violations: list[str] = []
     for path in APP_ROOT.rglob("*.py"):
         relative = path.relative_to(APP_ROOT)
@@ -1590,7 +1694,9 @@ def test_host_code_uses_precise_schema_modules():
 
 
 def test_database_internals_do_not_import_db_facades():
-    """DB 子模块必须依赖具体实现文件，不得回流到包级兼容入口。"""
+    """
+    DB 子模块必须依赖具体实现文件，不得回流到包级兼容入口。
+    """
     violations: list[str] = []
     for path in (APP_ROOT / "db").rglob("*.py"):
         if path.name == "__init__.py":
@@ -1604,7 +1710,9 @@ def test_database_internals_do_not_import_db_facades():
 
 
 def test_database_opers_use_dboper_transaction_dispatchers():
-    """Oper 不得绕过 DbOper 的统一 Session 类型分派直接调用事务 runner。"""
+    """
+    Oper 不得绕过 DbOper 的统一 Session 类型分派直接调用事务 runner。
+    """
     runner_names = {"run_sync_transaction", "run_async_transaction"}
     violations: list[str] = []
     for path in (APP_ROOT / "db" / "oper").rglob("*.py"):
@@ -1621,7 +1729,9 @@ def test_database_opers_use_dboper_transaction_dispatchers():
 
 
 def test_models_and_base_require_explicit_database_sessions():
-    """Model/Base 不得装饰事务，且所有 db 参数必须由调用方显式传入。"""
+    """
+    Model/Base 不得装饰事务，且所有 db 参数必须由调用方显式传入。
+    """
     decorator_names = {
         "db_query",
         "db_update",
@@ -1670,7 +1780,9 @@ def test_models_and_base_require_explicit_database_sessions():
 
 
 def test_plugin_sdk_does_not_import_or_export_host_models():
-    """插件 SDK 不得暴露 ORM Model，只有精确旧 ABI 门面可在内部访问。"""
+    """
+    插件 SDK 不得暴露 ORM Model，只有精确旧 ABI 门面可在内部访问。
+    """
     internal_compat_imports = {
         ("app/sdk/_legacy/transferpending.py", "app.db.models.transferpending"),
     }
@@ -1690,7 +1802,9 @@ def test_plugin_sdk_does_not_import_or_export_host_models():
 
 
 def test_entry_layers_do_not_import_database_implementations():
-    """API、应用、编排、Agent、监控、模块和 Runtime 只能经端口访问持久化。"""
+    """
+    API、应用、编排、Agent、监控、模块和 Runtime 只能经端口访问持久化。
+    """
     graph = _build_module_graph()
     layer_roots = (
         "app.api",
@@ -1712,7 +1826,9 @@ def test_entry_layers_do_not_import_database_implementations():
 
 
 def test_migrated_modules_are_not_in_import_cycles():
-    """任何 canonical 迁移模块都不得进入完整应用依赖图的环。"""
+    """
+    任何 canonical 迁移模块都不得进入完整应用依赖图的环。
+    """
     modules = _discover_modules()
     known_modules = set(modules)
     graph = {name: _resolve_imports(name, path, known_modules) for name, path in modules.items()}
@@ -1725,7 +1841,9 @@ def test_migrated_modules_are_not_in_import_cycles():
 
 
 def test_canonical_layers_do_not_depend_on_sdk_or_compat():
-    """canonical 实现层不得反向依赖面向插件的 SDK 或兼容层。"""
+    """
+    canonical 实现层不得反向依赖面向插件的 SDK 或兼容层。
+    """
     violations: dict[str, set[str]] = {}
     modules = _discover_modules()
     known_modules = set(modules)
@@ -1744,7 +1862,9 @@ def test_canonical_layers_do_not_depend_on_sdk_or_compat():
 
 
 def test_capability_packages_do_not_import_forbidden_upper_layers():
-    """新能力包只能依赖明确允许的下层或同层协作包。"""
+    """
+    新能力包只能依赖明确允许的下层或同层协作包。
+    """
     modules = _discover_modules()
     known_modules = set(modules)
     violations: dict[str, set[str]] = {}
@@ -1765,7 +1885,9 @@ def test_capability_packages_do_not_import_forbidden_upper_layers():
 
 
 def test_application_does_not_import_transport_frameworks():
-    """应用层不得依赖 FastAPI、Starlette 或宿主 HTTP 适配器。"""
+    """
+    应用层不得依赖 FastAPI、Starlette 或宿主 HTTP 适配器。
+    """
     violations: dict[str, set[str]] = {}
     for path in (APP_ROOT / "application").rglob("*.py"):
         tree = _parse_source(path)
@@ -1787,7 +1909,9 @@ def test_application_does_not_import_transport_frameworks():
 
 
 def test_site_domain_uses_foundation_dom_boundary():
-    """站点领域规则应依赖 DOM 原语，不得重新耦合聚合字符串工具。"""
+    """
+    站点领域规则应依赖 DOM 原语，不得重新耦合聚合字符串工具。
+    """
     modules = _discover_modules()
     dependencies = _resolve_imports(
         "app.domain.site",
@@ -1799,7 +1923,9 @@ def test_site_domain_uses_foundation_dom_boundary():
 
 
 def test_host_code_does_not_use_string_utils_facade():
-    """聚合 StringUtils 只服务插件兼容，宿主实现必须使用拆分后的能力。"""
+    """
+    聚合 StringUtils 只服务插件兼容，宿主实现必须使用拆分后的能力。
+    """
     violations: list[str] = []
     for path in APP_ROOT.rglob("*.py"):
         relative = path.relative_to(APP_ROOT)
@@ -1812,7 +1938,9 @@ def test_host_code_does_not_use_string_utils_facade():
 
 
 def test_host_code_does_not_import_chain_plugin_abi_roots() -> None:
-    """Subscribe/Transfer 包根只服务插件 ABI，宿主必须直接导入规范 Facade。"""
+    """
+    Subscribe/Transfer 包根只服务插件 ABI，宿主必须直接导入规范 Facade。
+    """
     compatibility_roots = {"app.chain.subscribe", "app.chain.transfer"}
     violations: list[str] = []
     for path in APP_ROOT.rglob("*.py"):
@@ -1834,7 +1962,9 @@ def test_host_code_does_not_import_chain_plugin_abi_roots() -> None:
 
 
 def test_runtime_log_is_a_dependency_leaf():
-    """底层可引用运行时日志，但日志模块本身不得反向导入应用模块。"""
+    """
+    底层可引用运行时日志，但日志模块本身不得反向导入应用模块。
+    """
     modules = _discover_modules()
     dependencies = _resolve_imports(
         "app.runtime.log",
@@ -1845,7 +1975,9 @@ def test_runtime_log_is_a_dependency_leaf():
 
 
 def test_foundation_does_not_emit_runtime_logs():
-    """基础机制不打印或初始化日志系统，运行期诊断由上层调用方负责。"""
+    """
+    基础机制不打印或初始化日志系统，运行期诊断由上层调用方负责。
+    """
     violations: list[str] = []
     for path in (APP_ROOT / "foundation").rglob("*.py"):
         tree = _parse_source(path)
@@ -1866,7 +1998,9 @@ def test_foundation_does_not_emit_runtime_logs():
 
 
 def test_cache_contract_does_not_import_concrete_adapters():
-    """运行时缓存契约和内存机制不得反向导入具体缓存适配器。"""
+    """
+    运行时缓存契约和内存机制不得反向导入具体缓存适配器。
+    """
     modules = _discover_modules()
     dependencies = _resolve_imports(
         "app.runtime.cache",
@@ -1877,7 +2011,9 @@ def test_cache_contract_does_not_import_concrete_adapters():
 
 
 def test_passkey_application_does_not_select_cache_backend():
-    """PassKey 用例只消费原子缓存端口，不得识别 Redis 或后端类型。"""
+    """
+    PassKey 用例只消费原子缓存端口，不得识别 Redis 或后端类型。
+    """
     modules = _discover_modules()
     path = modules["app.application.security.passkey"]
     dependencies = _resolve_imports(
@@ -1893,7 +2029,9 @@ def test_passkey_application_does_not_select_cache_backend():
 
 
 def test_startup_explicitly_configures_passkey_challenge_cache():
-    """PassKey challenge 缓存必须由启动组合根显式装配。"""
+    """
+    PassKey challenge 缓存必须由启动组合根显式装配。
+    """
     path = APP_ROOT / "startup" / "composition" / "security.py"
     tree = _parse_source(path)
     configured = any(
@@ -1907,7 +2045,9 @@ def test_startup_explicitly_configures_passkey_challenge_cache():
 
 
 def test_resource_adapter_does_not_restart_process():
-    """资源下载安装适配器不得反向调用进程重启能力。"""
+    """
+    资源下载安装适配器不得反向调用进程重启能力。
+    """
     modules = _discover_modules()
     dependencies = _resolve_imports(
         "app.adapters.system.resource",
@@ -1918,7 +2058,8 @@ def test_resource_adapter_does_not_restart_process():
 
 
 def test_modules_do_not_import_other_modules_or_chain():
-    """模块之间以及模块对链层的直接依赖被禁止，跨模块编排归链层。
+    """
+    模块之间以及模块对链层的直接依赖被禁止，跨模块编排归链层。
 
     `app.modules._base` 是模块共享样板基类包（模块发现会跳过），不视为业务模块。
     """
@@ -1942,7 +2083,9 @@ def test_modules_do_not_import_other_modules_or_chain():
 
 
 def test_entrypoints_do_not_import_module_internals():
-    """入口层不得穿透导入具体模块实现，应经由链层或应用服务。"""
+    """
+    入口层不得穿透导入具体模块实现，应经由链层或应用服务。
+    """
     modules = _discover_modules()
     known_modules = set(modules)
     entrypoint_roots = ("app.api", "app.agent", "app.monitor", "app.workflow", "app.doctor")
@@ -1958,7 +2101,9 @@ def test_entrypoints_do_not_import_module_internals():
 
 
 def test_chain_does_not_import_downloader_sdks():
-    """链层不得引入下载器后端协议类型，避免后端细节泄漏到编排层。"""
+    """
+    链层不得引入下载器后端协议类型，避免后端细节泄漏到编排层。
+    """
     forbidden_sdks = {"qbittorrentapi", "transmission_rpc"}
     violations: list[str] = []
     for path in (APP_ROOT / "chain").rglob("*.py"):
@@ -1976,7 +2121,8 @@ def test_chain_does_not_import_downloader_sdks():
 
 
 def test_chain_does_not_import_module_internals():
-    """链层与模块只能通过 run_module 方法名契约互联，禁止直接导入模块实现。
+    """
+    链层与模块只能通过 run_module 方法名契约互联，禁止直接导入模块实现。
 
     模块内容必须封闭在模块内部，链层不显式指定具体模块的类、异常或常量，
     这样模块才是可插拔的。
@@ -1996,7 +2142,8 @@ def test_chain_does_not_import_module_internals():
 
 @lru_cache(maxsize=1)
 def _build_module_graph() -> dict[str, set[str]]:
-    """构建非插件模块的完整静态依赖图，供既有包治理断言复用。
+    """
+    构建非插件模块的完整静态依赖图，供既有包治理断言复用。
 
     纯静态 AST 分析无副作用，结果可安全缓存；多断言共享一次解析。
     """
@@ -2006,7 +2153,9 @@ def _build_module_graph() -> dict[str, set[str]]:
 
 
 def _load_dependency_policy() -> dict:
-    """读取人工审查的依赖语义 policy；生成基线不得改写该文件。"""
+    """
+    读取人工审查的依赖语义 policy；生成基线不得改写该文件。
+    """
     return json.loads(DEPENDENCY_POLICY_PATH.read_text(encoding="utf-8"))
 
 
@@ -2014,7 +2163,9 @@ def _scc_policy_violations(
     graph: dict[str, set[str]],
     entries: list[dict],
 ) -> tuple[list[list[str]], list[list[str]]]:
-    """返回未审查 SCC 与已经失效但未清理的 policy SCC。"""
+    """
+    返回未审查 SCC 与已经失效但未清理的 policy SCC。
+    """
     actual = {tuple(component) for component in _strongly_connected_components(graph)}
     reviewed = {tuple(entry["modules"]) for entry in entries}
     return (
@@ -2024,7 +2175,9 @@ def _scc_policy_violations(
 
 
 def test_complete_host_sccs_match_reviewed_policy() -> None:
-    """完整宿主图的每个 SCC 都必须精确匹配人工 policy，且不得保留陈旧项。"""
+    """
+    完整宿主图的每个 SCC 都必须精确匹配人工 policy，且不得保留陈旧项。
+    """
     policy = _load_dependency_policy()
     entries = policy["allowed_sccs"]
 
@@ -2054,7 +2207,9 @@ def test_complete_host_sccs_match_reviewed_policy() -> None:
 
 
 def test_scc_policy_rejects_unreviewed_cycles_in_every_host_root() -> None:
-    """API、Chain、Module 与 Startup 内的新环都必须落入未审查集合。"""
+    """
+    API、Chain、Module 与 Startup 内的新环都必须落入未审查集合。
+    """
     for root in ("app.api", "app.chain", "app.modules", "app.startup"):
         first = f"{root}.first"
         second = f"{root}.second"
@@ -2067,7 +2222,9 @@ def test_scc_policy_rejects_unreviewed_cycles_in_every_host_root() -> None:
 
 
 def test_scc_policy_rejects_changed_or_stale_membership() -> None:
-    """已知 SCC 缩小、扩大或消失后必须同步审查 policy，不能静默放行。"""
+    """
+    已知 SCC 缩小、扩大或消失后必须同步审查 policy，不能静默放行。
+    """
     entries = [{"modules": ["app.chain.first", "app.chain.second", "app.chain.third"]}]
     unreviewed, stale = _scc_policy_violations(
         {
@@ -2082,7 +2239,9 @@ def test_scc_policy_rejects_changed_or_stale_membership() -> None:
 
 
 def test_contained_vendor_scc_may_have_one_way_outbound_dependency() -> None:
-    """vendor SCC 的普通单向向下依赖不应把包外模块误纳入 containment。"""
+    """
+    vendor SCC 的普通单向向下依赖不应把包外模块误纳入 containment。
+    """
     first = "app.modules.themoviedb.first"
     second = "app.modules.themoviedb.second"
     domain = "app.domain.media"
@@ -2096,12 +2255,16 @@ def test_contained_vendor_scc_may_have_one_way_outbound_dependency() -> None:
 
 
 def test_host_dependency_graph_excludes_plugin_copies() -> None:
-    """`app/plugins/**` 是运行时副本，不能进入宿主模块或 SCC 图。"""
+    """
+    `app/plugins/**` 是运行时副本，不能进入宿主模块或 SCC 图。
+    """
     assert all(not module.startswith("app.plugins") for module in _discover_modules())
 
 
 def test_chain_does_not_import_agent_implementation():
-    """编排层不得反向依赖 Agent 实现，跨域编排经 application 门面。"""
+    """
+    编排层不得反向依赖 Agent 实现，跨域编排经 application 门面。
+    """
     violations: dict[str, set[str]] = {}
     for module_name, dependencies in _build_module_graph().items():
         if not module_name.startswith("app.chain"):
@@ -2113,13 +2276,17 @@ def test_chain_does_not_import_agent_implementation():
 
 
 def test_agent_application_facade_does_not_import_agent_implementation():
-    """Agent application 门面只能接收组合根注入，不能反向解析具体实现。"""
+    """
+    Agent application 门面只能接收组合根注入，不能反向解析具体实现。
+    """
     dependencies = _build_module_graph()["app.application.agent"]
     assert {dependency for dependency in dependencies if dependency.startswith("app.agent")} == set()
 
 
 def test_host_consumers_get_agent_manager_through_application_facade():
-    """宿主消费者不得绕过 Application 门面直接定位 Agent manager。"""
+    """
+    宿主消费者不得绕过 Application 门面直接定位 Agent manager。
+    """
     forbidden = {"get_agent_manager", "get_running_agent_manager"}
     violations: dict[str, set[str]] = {}
     for module_name, path in _discover_modules().items():
@@ -2139,7 +2306,9 @@ def test_host_consumers_get_agent_manager_through_application_facade():
 
 
 def test_agent_package_roots_do_not_duplicate_implementation_exports():
-    """Agent 与 LLM 包根不得实现动态转发，旧符号只能由精确 Compat 路由承接。"""
+    """
+    Agent 与 LLM 包根不得实现动态转发，旧符号只能由精确 Compat 路由承接。
+    """
     for relative_path in ("app/agent/__init__.py", "app/agent/llm/__init__.py"):
         path = PROJECT_ROOT / relative_path
         tree = _parse_source(path)
@@ -2162,7 +2331,9 @@ def test_agent_package_roots_do_not_duplicate_implementation_exports():
 
 
 def test_host_code_imports_agent_and_llm_symbols_from_owner_modules():
-    """宿主不得消费 Agent 包根兼容符号，避免包根再次成为第二公开面。"""
+    """
+    宿主不得消费 Agent 包根兼容符号，避免包根再次成为第二公开面。
+    """
     violations: dict[str, set[str]] = {}
     for module_name, path in _discover_modules().items():
         tree = _parse_source(path)
@@ -2178,7 +2349,9 @@ def test_host_code_imports_agent_and_llm_symbols_from_owner_modules():
 
 
 def test_host_consumers_resolve_llm_provider_runtime_through_gateway():
-    """宿主不得绕过 gateway 或 LLM 公共导出穿透 provider 实现。"""
+    """
+    宿主不得绕过 gateway 或 LLM 公共导出穿透 provider 实现。
+    """
     violations: dict[str, set[str]] = {}
     graph = _build_module_graph()
     for module_name, path in _discover_modules().items():
@@ -2201,7 +2374,9 @@ def test_host_consumers_resolve_llm_provider_runtime_through_gateway():
 
 
 def test_host_consumers_use_agent_audio_capability_application_port():
-    """宿主消费者不得绕过 Application 门面直连 Agent 音频实现。"""
+    """
+    宿主消费者不得绕过 Application 门面直连 Agent 音频实现。
+    """
     violations: dict[str, set[str]] = {}
     for module_name, path in _discover_modules().items():
         if module_name.startswith(("app.agent", "app.startup")):
@@ -2220,7 +2395,9 @@ def test_host_consumers_use_agent_audio_capability_application_port():
 
 
 def test_application_services_do_not_resolve_event_manager_singleton():
-    """Application 服务必须接收事件端口，不得自行定位进程级事件单例。"""
+    """
+    Application 服务必须接收事件端口，不得自行定位进程级事件单例。
+    """
     violations = {
         module_name: dependencies & {"app.runtime.events"}
         for module_name, dependencies in _build_module_graph().items()
@@ -2230,7 +2407,9 @@ def test_application_services_do_not_resolve_event_manager_singleton():
 
 
 def test_http_endpoints_do_not_register_process_event_listeners():
-    """HTTP 端点不得拥有进程级事件监听器，监听装配必须留在 startup。"""
+    """
+    HTTP 端点不得拥有进程级事件监听器，监听装配必须留在 startup。
+    """
     facts = _collect_current_event_facts()
     callers = {item["caller"] for item in facts["consumers"]}
 
@@ -2238,7 +2417,8 @@ def test_http_endpoints_do_not_register_process_event_listeners():
 
 
 def test_agent_tools_do_not_import_entrypoint_internals():
-    """Agent 工具不得穿透导入 HTTP 端点、调度器与命令注册表内部实现。
+    """
+    Agent 工具不得穿透导入 HTTP 端点、调度器与命令注册表内部实现。
 
     工具对进程级状态的读写必须收敛到 application 门面，
     否则 agent 层与入口层互相穿透会形成不可测试的循环。
@@ -2258,7 +2438,9 @@ def test_agent_tools_do_not_import_entrypoint_internals():
 
 
 def test_modules_read_deployment_settings_through_runtime_port():
-    """宿主 Module 不得绕过 runtime 配置端口直接依赖 Settings 实例。"""
+    """
+    宿主 Module 不得绕过 runtime 配置端口直接依赖 Settings 实例。
+    """
     violations: list[str] = []
     for path in (APP_ROOT / "modules").rglob("*.py"):
         tree = _parse_source(path)
@@ -2273,7 +2455,9 @@ def test_modules_read_deployment_settings_through_runtime_port():
 
 
 def test_runtime_implementation_does_not_use_legacy_settings_proxy():
-    """runtime 实现只能使用只读配置端口，不得重新引入迁移期代理对象。"""
+    """
+    runtime 实现只能使用只读配置端口，不得重新引入迁移期代理对象。
+    """
     violations: list[str] = []
     for path in (APP_ROOT / "runtime").rglob("*.py"):
         if path == APP_ROOT / "runtime" / "settings.py":
@@ -2292,7 +2476,9 @@ def test_runtime_implementation_does_not_use_legacy_settings_proxy():
 
 
 def test_deprecated_settings_proxy_imports_are_zero():
-    """宿主代码不得导入已删除的 Settings 兼容代理。"""
+    """
+    宿主代码不得导入已删除的 Settings 兼容代理。
+    """
     limits = {
         "adapters": 0,
         "agent": 0,
@@ -2330,7 +2516,9 @@ def test_deprecated_settings_proxy_imports_are_zero():
 
 
 def test_global_settings_imports_stay_within_compatibility_baseline():
-    """真实 Settings 对象只能保留在已知迁移点和插件 SDK，不得产生新宿主调用。"""
+    """
+    真实 Settings 对象只能保留在已知迁移点和插件 SDK，不得产生新宿主调用。
+    """
     allowed = {
         "app/sdk/config.py",
         "app/startup/initializers/modules.py",
@@ -2354,7 +2542,9 @@ def test_global_settings_imports_stay_within_compatibility_baseline():
 
 
 def test_api_does_not_import_factory():
-    """装配器（factory）只允许 app.main 使用，HTTP 端点不得回引。"""
+    """
+    装配器（factory）只允许 app.main 使用，HTTP 端点不得回引。
+    """
     violations: dict[str, set[str]] = {}
     for module_name, dependencies in _build_module_graph().items():
         if not module_name.startswith("app.api"):
@@ -2366,7 +2556,9 @@ def test_api_does_not_import_factory():
 
 
 def test_web_agent_non_transport_state_stays_in_application():
-    """Agent 端点不得重新拥有附件、音频、投影或会话写入实现。"""
+    """
+    Agent 端点不得重新拥有附件、音频、投影或会话写入实现。
+    """
     endpoint_path = APP_ROOT / "api" / "endpoints" / "agent.py"
     application_path = APP_ROOT / "application" / "messaging" / "agent.py"
     endpoint_tree = ast.parse(
@@ -2418,7 +2610,9 @@ def test_web_agent_non_transport_state_stays_in_application():
 
 
 def test_plugin_market_use_cases_stay_in_application():
-    """Plugin 端点不得重新组合市场 Adapter 或拥有目录投影实现。"""
+    """
+    Plugin 端点不得重新组合市场 Adapter 或拥有目录投影实现。
+    """
     endpoint_path = APP_ROOT / "api" / "endpoints" / "plugin.py"
     endpoint_tree = ast.parse(
         endpoint_path.read_text(encoding="utf-8-sig"),
@@ -2445,7 +2639,9 @@ def test_plugin_market_use_cases_stay_in_application():
 
 
 def test_system_nettest_is_owned_by_application_service():
-    """System API 不得重新拥有网络目标目录、安全准入或具体传输组装。"""
+    """
+    System API 不得重新拥有网络目标目录、安全准入或具体传输组装。
+    """
     endpoint_path = APP_ROOT / "api" / "endpoints" / "system.py"
     endpoint_tree = ast.parse(
         endpoint_path.read_text(encoding="utf-8-sig"),
@@ -2489,7 +2685,9 @@ def test_system_nettest_is_owned_by_application_service():
 
 
 def test_plugin_market_construction_is_owned_by_startup_composition():
-    """插件 initializer 只能消费组合根创建的市场依赖，禁止隐式构造第二套 owner。"""
+    """
+    插件 initializer 只能消费组合根创建的市场依赖，禁止隐式构造第二套 owner。
+    """
     initializer_path = APP_ROOT / "startup" / "initializers" / "plugins.py"
     initializer_tree = ast.parse(
         initializer_path.read_text(encoding="utf-8-sig"),
@@ -2530,7 +2728,9 @@ def test_plugin_market_construction_is_owned_by_startup_composition():
 
 
 def test_plugin_market_transport_is_process_shared_across_compat_and_composition():
-    """兼容门面和组合根不得物化两套插件市场传输 owner。"""
+    """
+    兼容门面和组合根不得物化两套插件市场传输 owner。
+    """
     from app.adapters.external.market import _plugin_market_transport
     from app.adapters.external.plugin.client import PluginMarketTransport
 
@@ -2538,7 +2738,9 @@ def test_plugin_market_transport_is_process_shared_across_compat_and_composition
 
 
 def test_plugin_runtime_owners_are_shared_with_compat_facade():
-    """兼容门面必须消费组合根发布的健康检查与依赖安装 owner。"""
+    """
+    兼容门面必须消费组合根发布的健康检查与依赖安装 owner。
+    """
     from app.adapters.external.market import (
         _plugin_dependency_owner,
         _plugin_runtime_health_owner,
@@ -2549,7 +2751,9 @@ def test_plugin_runtime_owners_are_shared_with_compat_facade():
     health = object()
     dependency = object()
     configure_plugin_runtime_owners(
+        # 只验证依赖所有者的对象身份，用占位对象隔离真实资源构造。
         health=health,  # type: ignore[arg-type]
+        # 只验证依赖所有者的对象身份，用占位对象隔离真实资源构造。
         dependency=dependency,  # type: ignore[arg-type]
     )
     try:
@@ -2560,7 +2764,9 @@ def test_plugin_runtime_owners_are_shared_with_compat_facade():
 
 
 def test_domain_initializer_delegates_construction_to_composition():
-    """领域 initializer 只负责生命周期调用，不得直接构造 Adapter 或领域服务。"""
+    """
+    领域 initializer 只负责生命周期调用，不得直接构造 Adapter 或领域服务。
+    """
     initializer_path = APP_ROOT / "startup" / "initializers" / "domain.py"
     initializer_tree = ast.parse(
         initializer_path.read_text(encoding="utf-8-sig"),
@@ -2587,7 +2793,9 @@ def test_domain_initializer_delegates_construction_to_composition():
 
 
 def test_network_initializer_delegates_construction_to_composition():
-    """网络 initializer 只保留生命周期入口，不得重新拥有具体技术适配器。"""
+    """
+    网络 initializer 只保留生命周期入口，不得重新拥有具体技术适配器。
+    """
     initializer_path = APP_ROOT / "startup" / "initializers" / "network.py"
     initializer_tree = ast.parse(
         initializer_path.read_text(encoding="utf-8-sig"),
@@ -2617,7 +2825,9 @@ def test_network_initializer_delegates_construction_to_composition():
 
 
 def test_site_initializer_delegates_construction_to_composition():
-    """站点 initializer 只保留生命周期入口，不得重新拥有具体技术适配器。"""
+    """
+    站点 initializer 只保留生命周期入口，不得重新拥有具体技术适配器。
+    """
     initializer_path = APP_ROOT / "startup" / "initializers" / "site.py"
     initializer_tree = ast.parse(
         initializer_path.read_text(encoding="utf-8-sig"),
@@ -2647,7 +2857,9 @@ def test_site_initializer_delegates_construction_to_composition():
 
 
 def test_chain_initializer_delegates_construction_to_composition():
-    """Chain initializer 只保留生命周期入口，不得重新拥有外部技术适配器。"""
+    """
+    Chain initializer 只保留生命周期入口，不得重新拥有外部技术适配器。
+    """
     initializer_path = APP_ROOT / "startup" / "initializers" / "chain.py"
     initializer_tree = ast.parse(
         initializer_path.read_text(encoding="utf-8-sig"),
@@ -2677,7 +2889,9 @@ def test_chain_initializer_delegates_construction_to_composition():
 
 
 def test_cache_initializer_delegates_construction_to_composition():
-    """缓存 initializer 只保留启动入口，不得直接登记具体缓存 Adapter。"""
+    """
+    缓存 initializer 只保留启动入口，不得直接登记具体缓存 Adapter。
+    """
     initializer_path = APP_ROOT / "startup" / "initializers" / "cache.py"
     initializer_tree = ast.parse(
         initializer_path.read_text(encoding="utf-8-sig"),
@@ -2692,7 +2906,9 @@ def test_cache_initializer_delegates_construction_to_composition():
 
 
 def test_resource_initializer_delegates_construction_to_composition():
-    """资源 initializer 只保留生命周期入口，不得构造托管资源 Adapter。"""
+    """
+    资源 initializer 只保留生命周期入口，不得构造托管资源 Adapter。
+    """
     initializer_path = APP_ROOT / "startup" / "initializers" / "resources.py"
     initializer_tree = ast.parse(
         initializer_path.read_text(encoding="utf-8-sig"),
@@ -2714,7 +2930,9 @@ def test_resource_initializer_delegates_construction_to_composition():
 
 
 def test_modules_initializer_consumes_doh_and_workflow_composition():
-    """模块 initializer 不得直接构造 DoH 或事务型工作流执行 Adapter。"""
+    """
+    模块 initializer 不得直接构造 DoH 或事务型工作流执行 Adapter。
+    """
     initializer_path = APP_ROOT / "startup" / "initializers" / "modules.py"
     initializer_tree = ast.parse(
         initializer_path.read_text(encoding="utf-8-sig"),
@@ -2733,7 +2951,9 @@ def test_modules_initializer_consumes_doh_and_workflow_composition():
 
 
 def test_system_api_business_orchestration_is_owned_by_application_service():
-    """System API 只保留传输映射，不得重新拥有日志、设置或更新实现。"""
+    """
+    System API 只保留传输映射，不得重新拥有日志、设置或更新实现。
+    """
     endpoint_path = APP_ROOT / "api" / "endpoints" / "system.py"
     endpoint_tree = ast.parse(
         endpoint_path.read_text(encoding="utf-8-sig"),
@@ -2795,7 +3015,8 @@ PROCESS_LEVEL_ROOTS = (
 
 
 def test_process_level_packages_are_not_mutually_cyclic():
-    """进程级根包之间不得形成跨包强连通分量。
+    """
+    进程级根包之间不得形成跨包强连通分量。
 
     允许的环只存在于：单一包内部（modules 模块内、db 内、schemas 包内、
     agent 子域内、doctor 内）。跨根包的环意味着入口层、编排层与 Agent 层

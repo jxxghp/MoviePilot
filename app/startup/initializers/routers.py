@@ -1,3 +1,7 @@
+"""
+汇总并注册应用的 API 路由。
+"""
+
 from fastapi import FastAPI
 
 

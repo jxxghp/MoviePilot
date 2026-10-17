@@ -1,3 +1,7 @@
+"""
+验证整理预览对真实文件操作的隔离。
+"""
+
 from pathlib import Path
 
 from app.domain.context import MediaInfo
@@ -13,22 +17,46 @@ class GuardedStorage:
     用于验证预览模式不会访问可能有副作用的存储整理接口。
     """
 
-    def get_folder(self, path: Path):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def get_folder(self, path: Path):  # pragma: no cover
+        """
+        拒绝创建或读取目标目录，检测预览阶段越界访问存储。
+        """
         raise AssertionError(f"预览不应创建或获取目标目录：{path}")
 
-    def get_item(self, path: Path):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def get_item(self, path: Path):  # pragma: no cover
+        """
+        拒绝探测目标文件，保证预览只计算目标路径。
+        """
         raise AssertionError(f"预览不应探测目标文件：{path}")
 
-    def copy(self, *args, **kwargs):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def copy(self, *args, **kwargs):  # pragma: no cover
+        """
+        拒绝复制操作，防止预览产生真实文件写入。
+        """
         raise AssertionError("预览不应复制文件")
 
-    def move(self, *args, **kwargs):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def move(self, *args, **kwargs):  # pragma: no cover
+        """
+        拒绝移动操作，防止预览改变源文件位置。
+        """
         raise AssertionError("预览不应移动文件")
 
-    def rename(self, *args, **kwargs):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def rename(self, *args, **kwargs):  # pragma: no cover
+        """
+        拒绝重命名操作，防止预览修改现有文件。
+        """
         raise AssertionError("预览不应重命名文件")
 
-    def delete(self, *args, **kwargs):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def delete(self, *args, **kwargs):  # pragma: no cover
+        """
+        拒绝删除操作，防止预览清理任何文件。
+        """
         raise AssertionError("预览不应删除文件")
 
 
@@ -50,6 +78,9 @@ def _build_meta(
 
 
 def test_cloud_storage_preview_only_calculates_target_path():
+    """
+    网盘整理预览只计算目标路径，不访问或修改目标存储。
+    """
     fileitem = FileItem(
         storage="alist",
         path="/downloads/Test.Show.S01E01.mkv",
@@ -106,6 +137,9 @@ def test_cloud_storage_preview_only_calculates_target_path():
 
 
 def test_local_storage_preview_skips_target_conflict_checks(tmp_path):
+    """
+    本地整理预览跳过目标冲突探测，保持路径计算无写入副作用。
+    """
     source_file = tmp_path / "downloads" / "Test.Show.S01E02.mkv"
     source_file.parent.mkdir(parents=True)
     source_file.write_bytes(b"test video")
@@ -223,6 +257,9 @@ def _build_bluray_dir_preview(
 
 
 def test_tv_bluray_dir_preview_preserves_disk_folder_from_meta_part():
+    """
+    电视剧蓝光目录预览从元数据分段信息保留光盘子目录。
+    """
     transferinfo = _build_bluray_dir_preview(
         source_name="Breaking Bad Season 2 - Disk 1",
         media_type=MediaType.TV,
@@ -237,6 +274,9 @@ def test_tv_bluray_dir_preview_preserves_disk_folder_from_meta_part():
 
 
 def test_tv_bluray_dir_preview_preserves_disc_folder_from_source_name():
+    """
+    元数据没有光盘编号时，从源目录名提取并保留光盘子目录。
+    """
     transferinfo = _build_bluray_dir_preview(
         source_name="BREAKING_BAD_S01D01",
         media_type=MediaType.TV,
@@ -248,6 +288,9 @@ def test_tv_bluray_dir_preview_preserves_disc_folder_from_source_name():
 
 
 def test_tv_bluray_dir_preview_falls_back_to_source_name_without_disc_number():
+    """
+    无法识别光盘编号时保留源目录名，避免丢失蓝光目录层级。
+    """
     source_name = "Breaking Bad Season 3 Bonus Disc"
     transferinfo = _build_bluray_dir_preview(
         source_name=source_name,
@@ -260,6 +303,9 @@ def test_tv_bluray_dir_preview_falls_back_to_source_name_without_disc_number():
 
 
 def test_movie_bluray_dir_preview_keeps_movie_root_layout():
+    """
+    电影蓝光目录直接落在电影根目录，不额外创建光盘层级。
+    """
     transferinfo = _build_bluray_dir_preview(
         source_name="Test Movie Disc 1",
         media_type=MediaType.MOVIE,

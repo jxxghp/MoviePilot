@@ -1,3 +1,7 @@
+"""
+验证飞书渠道的消息解析、长连接、卡片流式更新和媒体发送。
+"""
+
 import json
 import tempfile
 import threading
@@ -14,18 +18,31 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
+# 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.agent.callback import StreamingHandler  # noqa: E402
+
+# 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.modules.feishu.feishu import Feishu  # noqa: E402
+
+# 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.modules.feishu.module import FeishuModule  # noqa: E402
+
+# 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.modules.feishu.openapi import FeishuOpenApi, FeishuResponse  # noqa: E402
+
+# 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.schemas.message import (  # noqa: E402
     Message,
     MessageResponse,
 )
+
+# 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.schemas.notification import (  # noqa: E402
     ChannelCapability,
     ChannelCapabilityManager,
 )
+
+# 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.schemas.types import MessageType, NotificationChannel  # noqa: E402
 
 # 返回 FeishuResponse 的 OpenAPI 方法；桩默认返回失败，用例须显式声明期望成功的调用。
@@ -50,17 +67,23 @@ _STREAM_METADATA_TEMPLATE = {
 
 
 def _ok(**data) -> FeishuResponse:
-    """构造开放平台成功响应。"""
+    """
+    构造开放平台成功响应。
+    """
     return FeishuResponse(code=0, msg="success", data=data, log_id="log_test")
 
 
 def _message_ok(message_id="om_test", chat_id="oc_test", msg_type="interactive") -> FeishuResponse:
-    """构造发送/回复消息接口的成功响应。"""
+    """
+    构造发送/回复消息接口的成功响应。
+    """
     return _ok(message_id=message_id, chat_id=chat_id, msg_type=msg_type)
 
 
 def _build_api() -> MagicMock:
-    """构造按 FeishuOpenApi 契约约束的桩，所有 JSON 接口默认返回失败。"""
+    """
+    构造按 FeishuOpenApi 契约约束的桩，所有 JSON 接口默认返回失败。
+    """
     api = MagicMock(spec=FeishuOpenApi)
     for method in _JSON_API_METHODS:
         getattr(api, method).return_value = FeishuResponse(code=99999, msg="未设置桩响应")
@@ -68,7 +91,9 @@ def _build_api() -> MagicMock:
 
 
 def _build_client(**kwargs) -> Feishu:
-    """构造不会启动长连接、OpenAPI 为桩的飞书客户端。"""
+    """
+    构造不会启动长连接、OpenAPI 为桩的飞书客户端。
+    """
     with (
         patch.object(Feishu, "_build_api_client", return_value=_build_api()),
         patch.object(Feishu, "_start_ws_client"),
@@ -83,28 +108,38 @@ def _build_client(**kwargs) -> Feishu:
 
 @pytest.fixture
 def client() -> Feishu:
-    """默认飞书客户端。"""
+    """
+    默认飞书客户端。
+    """
     return _build_client()
 
 
 @pytest.fixture
 def api(client: Feishu) -> MagicMock:
-    """客户端持有的 OpenAPI 桩。"""
+    """
+    客户端持有的 OpenAPI 桩。
+    """
     return client._api_client
 
 
 def _sent_content(call) -> dict:
-    """解析一次 create_message / reply_message 调用中的消息内容 JSON。"""
+    """
+    解析一次 create_message / reply_message 调用中的消息内容 JSON。
+    """
     return json.loads(call.kwargs["content"])
 
 
 def _stream_metadata(**overrides) -> dict:
-    """构造流式卡片 metadata，每个用例独立一份，避免共享可变状态。"""
+    """
+    构造流式卡片 metadata，每个用例独立一份，避免共享可变状态。
+    """
     return {"feishu_streaming": {**_STREAM_METADATA_TEMPLATE, **overrides}}
 
 
 def _image_response(content: bytes = b"png-bytes", content_type: str = "image/png") -> MagicMock:
-    """构造远程图片下载响应。"""
+    """
+    构造远程图片下载响应。
+    """
     response = MagicMock()
     response.content = content
     response.headers = {"Content-Type": content_type}
@@ -112,7 +147,9 @@ def _image_response(content: bytes = b"png-bytes", content_type: str = "image/pn
 
 
 def _event(event_type: str, event: dict) -> bytes:
-    """构造长连接收到的 2.0 版事件报文。"""
+    """
+    构造长连接收到的 2.0 版事件报文。
+    """
     return json.dumps(
         {"schema": "2.0", "header": {"event_type": event_type, "event_id": "ev_test"}, "event": event},
         ensure_ascii=False,
@@ -120,7 +157,9 @@ def _event(event_type: str, event: dict) -> bytes:
 
 
 def _message_event(message: dict, open_id: str = "ou_user_evt", user_id=None) -> dict:
-    """构造 im.message.receive_v1 事件体。"""
+    """
+    构造 im.message.receive_v1 事件体。
+    """
     return {
         "sender": {"sender_id": {"open_id": open_id, "user_id": user_id}},
         "message": message,
@@ -131,6 +170,9 @@ def _message_event(message: dict, open_id: str = "ou_user_evt", user_id=None) ->
 
 
 def test_parse_message_returns_callback_message(client):
+    """
+    卡片回调解析为带渠道、用户及回调数据的统一消息。
+    """
     with patch(
         "app.modules.feishu.feishu.get_configured_user_channel_lookup",
         return_value=lambda **_bindings: None,
@@ -158,6 +200,9 @@ def test_parse_message_returns_callback_message(client):
 
 
 def test_extract_card_callback_data_supports_new_and_legacy_values():
+    """
+    卡片回调数据提取兼容新字段、旧字段和直接字符串。
+    """
     assert Feishu._extract_card_callback_data({"callback_data": "approve"}) == "approve"
     assert Feishu._extract_card_callback_data({"value": "legacy"}) == "legacy"
     assert Feishu._extract_card_callback_data("direct") == "direct"
@@ -165,6 +210,9 @@ def test_extract_card_callback_data_supports_new_and_legacy_values():
 
 
 def test_parse_message_blocks_non_admin_command():
+    """
+    非管理员发出的管理命令不会进入消息处理。
+    """
     client = _build_client(FEISHU_ADMINS="ou_admin")
 
     with (
@@ -197,6 +245,9 @@ def test_parse_message_blocks_non_admin_command():
 
 
 def test_parse_message_maps_feishu_ids_to_moviepilot_username(client):
+    """
+    飞书稳定用户标识映射到绑定的 MoviePilot 用户名。
+    """
     get_name = MagicMock(return_value="moviepilot-user")
     with patch(
         "app.modules.feishu.feishu.get_configured_user_channel_lookup",
@@ -224,6 +275,9 @@ def test_parse_message_maps_feishu_ids_to_moviepilot_username(client):
 
 
 def test_parse_message_supports_image_and_file_payloads(client):
+    """
+    消息解析保留图片和通用文件的飞书资源引用。
+    """
     with patch(
         "app.modules.feishu.feishu.get_configured_user_channel_lookup",
         return_value=lambda **_bindings: None,
@@ -257,7 +311,9 @@ def test_parse_message_supports_image_and_file_payloads(client):
 
 
 def test_event_handlers_cover_common_im_and_card_events(client):
-    """长连接需要应答的 IM 与卡片事件都应有处理函数，避免飞书按未处理事件重推。"""
+    """
+    长连接需要应答的 IM 与卡片事件都应有处理函数，避免飞书按未处理事件重推。
+    """
     handlers = client._event_handlers()
 
     assert set(handlers) >= {
@@ -273,6 +329,9 @@ def test_event_handlers_cover_common_im_and_card_events(client):
 
 
 def test_dispatch_event_forwards_received_message_to_message_chain(client):
+    """
+    收到飞书消息事件后，将规范化载荷交给消息链。
+    """
     event = _message_event(
         {
             "message_id": "om_text_evt",
@@ -302,7 +361,9 @@ def test_dispatch_event_forwards_received_message_to_message_chain(client):
 
 
 def test_dispatch_card_action_returns_toast_and_forwards_callback(client):
-    """卡片回调必须同步返回 toast（由长连接编码进应答帧），并转发 callback_data。"""
+    """
+    卡片回调必须同步返回 toast（由长连接编码进应答帧），并转发 callback_data。
+    """
     event = {
         "operator": {"open_id": None, "user_id": "u_operator"},
         "action": {"value": {"callback_data": "/subscribe 1"}, "name": "btn"},
@@ -335,7 +396,9 @@ def test_dispatch_card_action_returns_toast_and_forwards_callback(client):
     ],
 )
 def test_dispatch_event_ignores_informational_and_unknown_events(client, event_type, event):
-    """已读、表情、撤回等通知类事件与未知事件只记录日志，不进入消息链也不产生应答数据。"""
+    """
+    已读、表情、撤回等通知类事件与未知事件只记录日志，不进入消息链也不产生应答数据。
+    """
     with patch.object(client, "_forward_to_message_chain") as forward:
         result = client._dispatch_event(_event(event_type, event))
 
@@ -344,6 +407,9 @@ def test_dispatch_event_ignores_informational_and_unknown_events(client, event_t
 
 
 def test_on_message_wraps_feishu_image_ref_with_message_id(client):
+    """
+    图片引用包含原消息标识，供资源下载接口定位。
+    """
     event = _message_event(
         {
             "message_id": "om_img_evt",
@@ -362,6 +428,9 @@ def test_on_message_wraps_feishu_image_ref_with_message_id(client):
 
 
 def test_on_message_wraps_feishu_audio_ref_with_message_id(client):
+    """
+    音频引用包含原消息标识、文件标识和名称。
+    """
     event = _message_event(
         {
             "message_id": "om_audio_evt",
@@ -383,12 +452,16 @@ def test_on_message_wraps_feishu_audio_ref_with_message_id(client):
 
 
 class _BlockingLongConnection:
-    """替身长连接：run() 阻塞到 stop()，不访问网络；可配置为忽略 stop 模拟卡死线程。"""
+    """
+    替身长连接：run() 阻塞到 stop()，不访问网络；可配置为忽略 stop 模拟卡死线程。
+    """
 
     instances = []
 
     def __init__(self, app_id, app_secret, on_event, domain, name, honor_stop=True):
-        """记录构造参数，供用例核对客户端传入的配置与事件回调。"""
+        """
+        记录构造参数，供用例核对客户端传入的配置与事件回调。
+        """
         self.app_id = app_id
         self.app_secret = app_secret
         self.on_event = on_event
@@ -401,12 +474,16 @@ class _BlockingLongConnection:
         _BlockingLongConnection.instances.append(self)
 
     def run(self) -> None:
-        """阻塞直到被释放。"""
+        """
+        阻塞直到被释放。
+        """
         self.running.set()
         self.release.wait(timeout=10)
 
     def stop(self) -> None:
-        """记录停止请求，按配置决定是否让 run() 返回。"""
+        """
+        记录停止请求，按配置决定是否让 run() 返回。
+        """
         self.stop_calls += 1
         if self.honor_stop:
             self.release.set()
@@ -414,7 +491,9 @@ class _BlockingLongConnection:
 
 @pytest.fixture
 def long_connection_factory():
-    """把 Feishu 使用的 FeishuLongConnection 替换为阻塞替身，结束时释放所有线程。"""
+    """
+    把 Feishu 使用的 FeishuLongConnection 替换为阻塞替身，结束时释放所有线程。
+    """
     _BlockingLongConnection.instances = []
     options = {"honor_stop": True}
 
@@ -428,7 +507,9 @@ def long_connection_factory():
 
 
 def _start_client() -> Feishu:
-    """构造会真实启动长连接线程的客户端（长连接为替身，OpenAPI 为桩）。"""
+    """
+    构造会真实启动长连接线程的客户端（长连接为替身，OpenAPI 为桩）。
+    """
     with patch.object(Feishu, "_build_api_client", return_value=_build_api()):
         return Feishu(
             FEISHU_APP_ID="cli_test_app_id",
@@ -438,6 +519,9 @@ def _start_client() -> Feishu:
 
 
 def test_start_ws_client_runs_long_connection_in_background_thread(long_connection_factory):
+    """
+    启动长连接时在独立后台线程运行，并公开就绪状态。
+    """
     client = _start_client()
     connection = _BlockingLongConnection.instances[0]
 
@@ -461,6 +545,9 @@ def test_start_ws_client_runs_long_connection_in_background_thread(long_connecti
 
 
 def test_stop_stops_long_connection_joins_thread_and_closes_api(long_connection_factory):
+    """
+    停止时关闭长连接，等待线程结束并释放接口客户端。
+    """
     client = _start_client()
     connection = _BlockingLongConnection.instances[0]
     assert connection.running.wait(timeout=2)
@@ -475,6 +562,9 @@ def test_stop_stops_long_connection_joins_thread_and_closes_api(long_connection_
 
 
 def test_stop_returns_false_when_thread_exceeds_join_budget(long_connection_factory):
+    """
+    停止等待超过线程回收预算时返回 False，保留未结束状态。
+    """
     long_connection_factory["honor_stop"] = False
     client = _start_client()
     client._ws_join_timeout_seconds = 0.05
@@ -491,6 +581,9 @@ def test_stop_returns_false_when_thread_exceeds_join_budget(long_connection_fact
 
 
 def test_run_ws_client_marks_ready_only_while_running(client):
+    """
+    长连接仅在实际运行期间公开就绪状态。
+    """
     observed = []
     client._ws_client = MagicMock()
     client._ws_client.run.side_effect = lambda: observed.append(client.get_state())
@@ -502,6 +595,9 @@ def test_run_ws_client_marks_ready_only_while_running(client):
 
 
 def test_run_ws_client_swallows_long_connection_error(client):
+    """
+    长连接运行异常不向外传播，结束后清除就绪状态。
+    """
     client._ws_client = MagicMock()
     client._ws_client.run.side_effect = RuntimeError("fatal")
 
@@ -514,6 +610,9 @@ def test_run_ws_client_swallows_long_connection_error(client):
 
 
 def test_send_notification_uses_direct_card_content(client, api):
+    """
+    普通通知直接发送卡片正文，不增加多余包装层。
+    """
     api.create_message.return_value = _message_ok()
 
     result = client.send_notification(
@@ -546,6 +645,9 @@ def test_send_notification_uses_direct_card_content(client, api):
 
 
 def test_send_notification_returns_failure_when_api_rejects(client, api):
+    """
+    飞书接口拒绝通知时返回失败结果。
+    """
     api.create_message.return_value = FeishuResponse(code=230002, msg="bot not in chat")
 
     result = client.send_notification(Message(title="标题", text="正文"), userid="ou_user_3")
@@ -554,6 +656,9 @@ def test_send_notification_returns_failure_when_api_rejects(client, api):
 
 
 def test_send_notification_keeps_markdown_images_for_normal_card(client, api):
+    """
+    普通卡片保留正文中的 Markdown 图片语法。
+    """
     api.create_message.return_value = _message_ok()
 
     result = client.send_notification(
@@ -570,6 +675,9 @@ def test_send_notification_keeps_markdown_images_for_normal_card(client, api):
 
 
 def test_send_notification_embeds_remote_image_in_card(client, api):
+    """
+    远程图片下载上传后嵌入卡片，并清理临时文件。
+    """
     uploaded = {}
 
     def _upload_image(file_path: Path):
@@ -614,6 +722,9 @@ def test_send_notification_embeds_remote_image_in_card(client, api):
 
 
 def test_send_notification_supports_user_id_target(client, api):
+    """
+    通知接收目标支持飞书 user_id 标识类型。
+    """
     api.create_message.return_value = _message_ok()
 
     client.send_notification(
@@ -628,6 +739,9 @@ def test_send_notification_supports_user_id_target(client, api):
 
 
 def test_edit_message_uses_patch_api_for_cards(client, api):
+    """
+    普通卡片编辑通过消息更新接口提交完整卡片正文。
+    """
     api.patch_message.return_value = _ok()
 
     success = client.edit_message(
@@ -654,6 +768,9 @@ def test_edit_message_uses_patch_api_for_cards(client, api):
 
 
 def test_send_notification_replies_when_original_message_id_is_present(client, api):
+    """
+    存在原消息标识时，通过回复接口发送通知卡片。
+    """
     api.reply_message.return_value = _message_ok(message_id="om_reply")
 
     result = client.send_notification(
@@ -674,6 +791,9 @@ def test_send_notification_replies_when_original_message_id_is_present(client, a
 
 
 def test_message_reaction_create_and_delete_use_official_api(client, api):
+    """
+    消息表情的添加与删除使用飞书官方接口。
+    """
     api.create_message_reaction.return_value = _ok(reaction_id="reaction_1")
     api.delete_message_reaction.return_value = _ok()
 
@@ -687,6 +807,9 @@ def test_message_reaction_create_and_delete_use_official_api(client, api):
 
 
 def test_message_reaction_failures_return_empty_results(client, api):
+    """
+    消息表情操作失败时分别返回空标识或失败状态。
+    """
     api.create_message_reaction.return_value = FeishuResponse(code=231001, msg="denied")
     api.delete_message_reaction.return_value = FeishuResponse(code=231001, msg="denied")
 
@@ -698,6 +821,9 @@ def test_message_reaction_failures_return_empty_results(client, api):
 
 
 def test_send_notification_uses_streaming_card_for_agent_text(client, api):
+    """
+    Agent 文本通知创建流式卡片并返回后续更新所需元数据。
+    """
     api.create_card.return_value = _ok(card_id="card_stream")
     api.create_message.return_value = _message_ok(message_id="om_stream", chat_id="oc_stream")
 
@@ -720,6 +846,9 @@ def test_send_notification_uses_streaming_card_for_agent_text(client, api):
 
 
 def test_streaming_card_not_sent_when_card_creation_fails(client, api):
+    """
+    流式卡片创建失败时不继续发送消息。
+    """
     api.create_card.return_value = FeishuResponse(code=200740, msg="invalid card")
 
     result = client.send_notification(
@@ -732,6 +861,9 @@ def test_streaming_card_not_sent_when_card_creation_fails(client, api):
 
 
 def test_streaming_card_sends_markdown_images_separately(client, api):
+    """
+    流式卡片将 Markdown 图片独立发送，正文保留可读替代文本。
+    """
     api.create_card.return_value = _ok(card_id="card_stream")
     api.create_message.return_value = _message_ok(message_id="om_stream", chat_id="oc_stream")
     api.upload_image.return_value = _ok(image_key="img_v2_stream")
@@ -762,6 +894,9 @@ def test_streaming_card_sends_markdown_images_separately(client, api):
 
 
 def test_streaming_card_sends_notification_image_separately(client, api):
+    """
+    流式通知的附带图片独立发送，并记录已发送地址。
+    """
     api.create_card.return_value = _ok(card_id="card_stream")
     api.create_message.return_value = _message_ok(message_id="om_stream", chat_id="oc_stream")
     api.upload_image.return_value = _ok(image_key="img_v2_agent_image")
@@ -788,6 +923,9 @@ def test_streaming_card_sends_notification_image_separately(client, api):
 
 
 def test_send_notification_replies_with_streaming_card_for_agent_text(client, api):
+    """
+    Agent 回复通过回复接口引用已创建的流式卡片。
+    """
     api.create_card.return_value = _ok(card_id="card_stream")
     api.reply_message.return_value = _message_ok(message_id="om_reply", chat_id="oc_stream")
 
@@ -807,6 +945,9 @@ def test_send_notification_replies_with_streaming_card_for_agent_text(client, ap
 
 
 def test_edit_replied_streaming_card_uses_first_increment_sequence(client, api):
+    """
+    回复流式卡片的首次内容更新使用递增序号 1。
+    """
     api.update_card_element_content.return_value = _ok()
     metadata = _stream_metadata(sent_image_urls=["https://example.com/poster.jpg"])
 
@@ -819,6 +960,9 @@ def test_edit_replied_streaming_card_uses_first_increment_sequence(client, api):
 
 
 def test_edit_message_uses_cardkit_content_for_streaming_card(client, api):
+    """
+    流式卡片编辑通过 CardKit 更新正文元素。
+    """
     api.update_card_element_content.return_value = _ok()
 
     success = client.edit_message(
@@ -839,7 +983,9 @@ def test_edit_message_uses_cardkit_content_for_streaming_card(client, api):
 
 
 def test_edit_streaming_card_sequence_keeps_increasing_after_failed_update(client, api, monkeypatch):
-    """某次流式更新失败后，下一次仍须使用更大的 sequence，否则会被 CardKit 持续拒绝。"""
+    """
+    某次流式更新失败后，下一次仍须使用更大的 sequence，否则会被 CardKit 持续拒绝。
+    """
     api.update_card_element_content.side_effect = [
         FeishuResponse(code=-1, msg="timeout"),
         _ok(),
@@ -862,7 +1008,9 @@ def test_edit_streaming_card_sequence_keeps_increasing_after_failed_update(clien
 
 @pytest.mark.parametrize("code", [200850, 300309])
 def test_edit_streaming_card_reopens_and_retries_with_shared_sequence(client, api, code):
-    """超过十分钟后的关闭错误应在同一卡片重开，每次请求使用新序号和 UUID。"""
+    """
+    超过十分钟后的关闭错误应在同一卡片重开，每次请求使用新序号和 UUID。
+    """
     api.update_card_element_content.side_effect = [
         FeishuResponse(code=code, msg="streaming mode is closed"), _ok(), _ok(),
     ]
@@ -888,7 +1036,9 @@ def test_edit_streaming_card_reopens_and_retries_with_shared_sequence(client, ap
 
 
 def test_edit_streaming_card_can_recover_on_later_expiration(client, api):
-    """同一次长会话再次到期后仍可重开，收尾序号大于全部恢复请求。"""
+    """
+    同一次长会话再次到期后仍可重开，收尾序号大于全部恢复请求。
+    """
     closed = FeishuResponse(code=300309, msg="closed")
     api.update_card_element_content.side_effect = [closed, _ok(), closed, _ok()]
     api.update_card_settings.return_value = _ok()
@@ -904,7 +1054,9 @@ def test_edit_streaming_card_can_recover_on_later_expiration(client, api):
 
 @pytest.mark.parametrize("failure", ["settings", "content", "ordinary", "exception"])
 def test_edit_streaming_card_failure_backs_off_and_recovers(client, api, monkeypatch, failure):
-    """恢复失败或普通请求失败后，高频刷新不出站；到期重试最新文本并清除退避。"""
+    """
+    恢复失败或普通请求失败后，高频刷新不出站；到期重试最新文本并清除退避。
+    """
     clock = [100.0]
     monkeypatch.setattr("app.modules.feishu.feishu.time.monotonic", lambda: clock[0])
     closed = FeishuResponse(code=300309, msg="closed")
@@ -944,7 +1096,9 @@ def test_edit_streaming_card_failure_backs_off_and_recovers(client, api, monkeyp
 
 
 def test_edit_streaming_card_backoff_is_capped_and_card_local(client, api, monkeypatch):
-    """持续失败的重试间隔递增到一分钟，不影响其他卡片。"""
+    """
+    持续失败的重试间隔递增到一分钟，不影响其他卡片。
+    """
     clock = [0.0]
     monkeypatch.setattr("app.modules.feishu.feishu.time.monotonic", lambda: clock[0])
     api.update_card_element_content.return_value = FeishuResponse(code=-1, msg="timeout")
@@ -970,7 +1124,9 @@ def test_edit_streaming_card_backoff_is_capped_and_card_local(client, api, monke
 @pytest.mark.asyncio
 @pytest.mark.parametrize("recover", [False, True])
 async def test_agent_flush_preserves_unsent_text_during_feishu_backoff(client, api, monkeypatch, recover):
-    """真实刷新链保留失败文本和共享序号；收尾只在全部送达后报告成功。"""
+    """
+    真实刷新链保留失败文本和共享序号；收尾只在全部送达后报告成功。
+    """
     clock = [100.0]
     monkeypatch.setattr("app.modules.feishu.feishu.time.monotonic", lambda: clock[0])
     api.update_card_element_content.return_value = FeishuResponse(code=300309, msg="closed")
@@ -1017,6 +1173,9 @@ async def test_agent_flush_preserves_unsent_text_during_feishu_backoff(client, a
 
 
 def test_edit_streaming_card_removes_markdown_image_syntax(client, api):
+    """
+    流式内容更新移除 Markdown 图片语法，保留图片替代文本。
+    """
     api.update_card_element_content.return_value = _ok()
 
     success = client.edit_message(
@@ -1031,6 +1190,9 @@ def test_edit_streaming_card_removes_markdown_image_syntax(client, api):
 
 
 def test_edit_streaming_card_keeps_normal_markdown_links(client, api):
+    """
+    流式内容更新保留普通 Markdown 链接。
+    """
     api.update_card_element_content.return_value = _ok()
 
     success = client.edit_message(
@@ -1047,6 +1209,9 @@ def test_edit_streaming_card_keeps_normal_markdown_links(client, api):
 
 
 def test_edit_streaming_card_hides_incomplete_markdown_image(client, api):
+    """
+    尚未生成完整的 Markdown 图片链接不在卡片正文展示。
+    """
     api.update_card_element_content.return_value = _ok()
 
     success = client.edit_message(
@@ -1063,6 +1228,9 @@ def test_edit_streaming_card_hides_incomplete_markdown_image(client, api):
 
 
 def test_edit_streaming_card_hides_incomplete_markdown_image_alt_text(client, api):
+    """
+    尚未生成完整的图片替代文本同样暂不展示。
+    """
     api.update_card_element_content.return_value = _ok()
 
     success = client.edit_message(
@@ -1079,6 +1247,9 @@ def test_edit_streaming_card_hides_incomplete_markdown_image_alt_text(client, ap
 
 
 def test_edit_streaming_card_sends_completed_markdown_image_once(client, api):
+    """
+    分块输出补齐的图片只发送一次，后续更新不重复上传。
+    """
     api.update_card_element_content.return_value = _ok()
     api.create_message.return_value = _message_ok(message_id="om_img", chat_id="oc_stream")
     api.upload_image.return_value = _ok(image_key="img_v2_stream_edit")
@@ -1111,6 +1282,9 @@ def test_edit_streaming_card_sends_completed_markdown_image_once(client, api):
 
 
 def test_edit_streaming_card_skips_non_image_markdown_target(client, api):
+    """
+    Markdown 图片目标并非有效图片时不记录为已发送图片。
+    """
     api.update_card_element_content.return_value = _ok()
     metadata = _stream_metadata(sent_image_urls=[])
 
@@ -1130,6 +1304,9 @@ def test_edit_streaming_card_skips_non_image_markdown_target(client, api):
 
 
 def test_close_streaming_card_updates_card_settings(client, api):
+    """
+    关闭流式卡片时更新设置以退出流式模式。
+    """
     api.update_card_settings.return_value = _ok()
 
     success = client.close_streaming_card(card_id="card_stream", sequence=3)
@@ -1142,6 +1319,9 @@ def test_close_streaming_card_updates_card_settings(client, api):
 
 
 def test_close_streaming_card_reports_failure(client, api):
+    """
+    流式卡片关闭失败时向调用方返回 False。
+    """
     api.update_card_settings.return_value = FeishuResponse(code=300309, msg="sequence")
 
     assert client.close_streaming_card(card_id="card_stream", sequence=3) is False
@@ -1151,6 +1331,9 @@ def test_close_streaming_card_reports_failure(client, api):
 
 
 def test_feishu_channel_capabilities_enable_images_and_files():
+    """
+    飞书渠道声明支持图片与文件发送能力。
+    """
     assert ChannelCapabilityManager.supports_capability(
         NotificationChannel.Feishu,
         ChannelCapability.IMAGES,
@@ -1162,6 +1345,9 @@ def test_feishu_channel_capabilities_enable_images_and_files():
 
 
 def test_send_file_uploads_image_then_sends_mixed_card(client, api):
+    """
+    图片文件上传后以包含图片及说明的卡片发送。
+    """
     api.upload_image.return_value = _ok(image_key="img_v2_uploaded")
     api.create_message.return_value = _message_ok(message_id="om_image")
 
@@ -1190,6 +1376,9 @@ def test_send_file_uploads_image_then_sends_mixed_card(client, api):
 
 
 def test_send_file_keeps_non_image_file_message_and_caption(client, api):
+    """
+    非图片文件按文件消息发送，并保留标题和说明。
+    """
     api.upload_file.return_value = _ok(file_key="file_doc")
     api.create_message.return_value = _message_ok(message_id="om_file")
 
@@ -1222,6 +1411,9 @@ def test_send_file_keeps_non_image_file_message_and_caption(client, api):
 
 
 def test_send_file_fails_without_sending_when_upload_rejected(client, api):
+    """
+    文件上传被拒绝时返回失败，不再发送消息。
+    """
     api.upload_file.return_value = FeishuResponse(code=234001, msg="too large")
 
     with tempfile.NamedTemporaryFile(suffix=".pdf") as fp:
@@ -1235,6 +1427,9 @@ def test_send_file_fails_without_sending_when_upload_rejected(client, api):
 
 
 def test_send_voice_uploads_audio_file_and_optionally_sends_caption(client, api):
+    """
+    语音文件上传后按音频消息发送，并按需发送说明。
+    """
     api.upload_file.return_value = _ok(file_key="file_audio")
     api.create_message.return_value = _message_ok(message_id="om_audio")
 
@@ -1258,6 +1453,9 @@ def test_send_voice_uploads_audio_file_and_optionally_sends_caption(client, api)
 
 
 def test_download_helpers_return_bytes_and_metadata(client, api):
+    """
+    图片、文件与消息资源下载返回字节内容、名称和媒体类型。
+    """
     api.download_image.return_value = (b"image-bytes", "poster.png", "image/png")
     api.download_file.return_value = (b"file-bytes", "report.txt", "text/plain")
     api.download_message_resource.return_value = (b"resource-bytes", "voice.opus", "audio/ogg")
@@ -1275,6 +1473,9 @@ def test_download_helpers_return_bytes_and_metadata(client, api):
 
 
 def test_download_helpers_skip_api_for_missing_keys(client, api):
+    """
+    资源标识缺失时直接返回空结果，不调用飞书接口。
+    """
     assert client.download_image_bytes("") is None
     assert client.download_file_bytes("") is None
     assert client.download_message_resource_bytes("", "file_test", "audio") is None
@@ -1287,7 +1488,9 @@ def test_download_helpers_skip_api_for_missing_keys(client, api):
 
 
 def test_send_notification_broadcasts_to_remembered_chats_without_target(client, api):
-    """无显式目标且未配置默认目标时，应回退向最近互动过的会话发送。"""
+    """
+    无显式目标且未配置默认目标时，应回退向最近互动过的会话发送。
+    """
     api.create_message.return_value = _message_ok()
     client._user_chat_mapping = {
         "ou_user_a": "oc_group_a",
@@ -1307,7 +1510,9 @@ def test_send_notification_broadcasts_to_remembered_chats_without_target(client,
 
 
 def test_send_without_target_raises_config_hint_when_nothing_available(client, api):
-    """既无目标又无历史互动时，应报出含配置指引的明确错误。"""
+    """
+    既无目标又无历史互动时，应报出含配置指引的明确错误。
+    """
     api.create_message.return_value = _message_ok()
 
     with pytest.raises(ValueError) as exc_info:
@@ -1322,6 +1527,9 @@ def test_send_without_target_raises_config_hint_when_nothing_available(client, a
 
 
 def test_module_send_direct_message_prefers_open_id_target():
+    """
+    模块直接发送消息时优先使用 open_id 目标。
+    """
     module = FeishuModule()
     module._channel = NotificationChannel.Feishu
     conf = SimpleNamespace(name="feishu-main")
@@ -1359,7 +1567,9 @@ def test_module_send_direct_message_prefers_open_id_target():
 
 
 def test_module_plain_direct_message_uses_literal_text_transport():
-    """纯文本直发不得进入会解释密钥字符的 Markdown 卡片路径。"""
+    """
+    纯文本直发不得进入会解释密钥字符的 Markdown 卡片路径。
+    """
     module = FeishuModule()
     module._channel = NotificationChannel.Feishu
     conf = SimpleNamespace(name="feishu-main")
@@ -1399,6 +1609,9 @@ def test_module_plain_direct_message_uses_literal_text_transport():
 
 
 def test_module_download_helpers_delegate_to_client():
+    """
+    模块下载入口委托飞书客户端，并转换为所需字节或数据 URL。
+    """
     module = FeishuModule()
     client = MagicMock()
     client.download_image_bytes.return_value = (b"image", "poster.png", "image/png")
@@ -1432,6 +1645,9 @@ def test_module_download_helpers_delegate_to_client():
 
 
 def test_module_message_reaction_helpers_delegate_to_client():
+    """
+    模块消息表情入口委托对应客户端操作。
+    """
     module = FeishuModule()
     client = MagicMock()
     client.add_message_reaction.return_value = "reaction_2"
@@ -1449,6 +1665,9 @@ def test_module_message_reaction_helpers_delegate_to_client():
 
 
 def test_module_processing_status_uses_reaction_helpers():
+    """
+    处理中状态通过表情入口创建和移除，并保存表情标识。
+    """
     module = FeishuModule()
     module._channel = NotificationChannel.Feishu
 
@@ -1486,6 +1705,9 @@ def test_module_processing_status_uses_reaction_helpers():
 
 
 def test_module_finalize_message_closes_streaming_card():
+    """
+    消息完成入口使用元数据关闭对应流式卡片。
+    """
     module = FeishuModule()
     module._channel = NotificationChannel.Feishu
     client = MagicMock()
@@ -1511,6 +1733,9 @@ def test_module_finalize_message_closes_streaming_card():
 
 
 def test_module_post_message_prefers_file_and_voice_paths():
+    """
+    模块发送入口优先按文件或语音载荷选择专用发送路径。
+    """
     module = FeishuModule()
     conf = SimpleNamespace(name="feishu-main")
     client = MagicMock()
@@ -1541,6 +1766,9 @@ def test_module_post_message_prefers_file_and_voice_paths():
 
 
 def test_module_post_message_sends_image_card_before_file_attachment():
+    """
+    通知含图片和附件时先发送图片卡片，再发送不重复说明的附件。
+    """
     module = FeishuModule()
     conf = SimpleNamespace(name="feishu-main")
     client = MagicMock()
@@ -1571,6 +1799,9 @@ def test_module_post_message_sends_image_card_before_file_attachment():
 
 
 def test_module_send_direct_message_sends_image_card_before_file_attachment():
+    """
+    直接消息含图片和附件时先发送卡片，并返回卡片消息标识。
+    """
     module = FeishuModule()
     module._channel = NotificationChannel.Feishu
     conf = SimpleNamespace(name="feishu-main")
@@ -1607,6 +1838,9 @@ def test_module_send_direct_message_sends_image_card_before_file_attachment():
 
 
 def test_module_post_message_passes_original_message_id_for_reply():
+    """
+    模块将原消息标识传给客户端，保留回复语义。
+    """
     module = FeishuModule()
     conf = SimpleNamespace(name="feishu-main")
     client = MagicMock()
@@ -1631,7 +1865,9 @@ def test_module_post_message_passes_original_message_id_for_reply():
 
 
 def test_module_resolve_message_target_prefers_original_chat_id():
-    """群聊@回复必须优先发回原会话，而不是按 open_id 发到私聊。"""
+    """
+    群聊@回复必须优先发回原会话，而不是按 open_id 发到私聊。
+    """
     userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
         Message(userid="ou_user", original_chat_id="oc_group")
     )
@@ -1654,7 +1890,9 @@ def test_module_resolve_message_target_prefers_original_chat_id():
 
 
 def test_module_private_delivery_ignores_original_group_chat():
-    """私聊投递只保留用户身份，并让客户端按已记录 ID 类型发送。"""
+    """
+    私聊投递只保留用户身份，并让客户端按已记录 ID 类型发送。
+    """
     userid, chat_id, receive_id_type = FeishuModule._resolve_message_target(
         Message(
             userid="user_target",
@@ -1669,7 +1907,9 @@ def test_module_private_delivery_ignores_original_group_chat():
 
 
 def test_module_post_message_replies_to_original_chat_for_group_message():
-    """携带原会话上下文的回复应定向到原会话（群聊）。"""
+    """
+    携带原会话上下文的回复应定向到原会话（群聊）。
+    """
     module = FeishuModule()
     conf = SimpleNamespace(name="feishu-main")
     client = MagicMock()

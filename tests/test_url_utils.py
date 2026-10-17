@@ -1,3 +1,7 @@
+"""
+验证URL 解析、拼接和规范化规则。
+"""
+
 import pytest
 
 from app.foundation.url import UrlUtils, url_matches_trusted_hosts
@@ -12,6 +16,9 @@ from app.foundation.url import UrlUtils, url_matches_trusted_hosts
      "https://example.com:-1/rss", "http://[::1/rss"],
 )
 def test_normalize_http_url_rejects_invalid_input(url):
+    """
+    严格 HTTP 地址归一化拒绝缺少协议或其他不合法输入。
+    """
     assert UrlUtils.normalize_http_url(url) is None
 
 
@@ -22,11 +29,17 @@ def test_normalize_http_url_rejects_invalid_input(url):
      "http://[::1]:8080/rss", "https://example.com/a%20b?key=a%2Fb&x=1&x=2#item"],
 )
 def test_normalize_http_url_preserves_address_except_outer_whitespace(url):
+    """
+    有效 HTTP 地址只移除首尾空白，保留地址本身的内容。
+    """
     assert UrlUtils.normalize_http_url(f" \t{url}\r\n") == url
     assert UrlUtils.normalize_http_url(url) == url
 
 
 def test_standardize_base_url_keeps_permissive_contract():
+    """
+    基础地址补全保留宽松契约，与严格 HTTP 地址校验区分。
+    """
     assert UrlUtils.standardize_base_url("example.com") == "http://example.com/"
     assert UrlUtils.normalize_http_url("example.com") is None
 
@@ -42,5 +55,7 @@ def test_standardize_base_url_keeps_permissive_contract():
     ],
 )
 def test_url_matches_trusted_hosts_requires_exact_http_host(url, trusted_hosts, expected):
-    """受信主机匹配只放行 HTTP(S) 且端口或主机名精确命中的地址。"""
+    """
+    受信主机匹配只放行 HTTP(S) 且端口或主机名精确命中的地址。
+    """
     assert url_matches_trusted_hosts(url, trusted_hosts) is expected

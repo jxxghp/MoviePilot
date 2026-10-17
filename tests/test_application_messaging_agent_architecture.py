@@ -1,4 +1,6 @@
-"""Agent 消息应用层职责拆分门禁。"""
+"""
+Agent 消息应用层职责拆分门禁。
+"""
 
 import ast
 import importlib
@@ -15,7 +17,9 @@ WEB_AGENT_STREAM_PATH = WEB_AGENT_ROOT / "stream.py"
 
 
 def _top_level_owners(path: Path) -> set[str]:
-    """返回模块顶层定义的类和函数名称。"""
+    """
+    返回模块顶层定义的类和函数名称。
+    """
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     return {
         node.name
@@ -25,7 +29,9 @@ def _top_level_owners(path: Path) -> set[str]:
 
 
 def test_agent_interaction_has_one_canonical_owner() -> None:
-    """Agent 选择交互只能在独立模块实现，根模块不再暴露重复入口。"""
+    """
+    Agent 选择交互只能在独立模块实现，根模块不再暴露重复入口。
+    """
     names = {
         "AgentInteractionManager",
         "AgentInteractionOption",
@@ -43,7 +49,9 @@ def test_agent_interaction_has_one_canonical_owner() -> None:
 
 
 def test_channel_admin_has_one_canonical_owner() -> None:
-    """渠道管理员匹配只能在权限模块实现，根 Agent 模块不再暴露重复入口。"""
+    """
+    渠道管理员匹配只能在权限模块实现，根 Agent 模块不再暴露重复入口。
+    """
     names = {
         "matches_channel_admin",
         "register_channel_admin_resolver",
@@ -58,7 +66,9 @@ def test_channel_admin_has_one_canonical_owner() -> None:
 
 
 def test_web_agent_event_bridge_has_one_canonical_owner() -> None:
-    """WebAgent 通知与编辑桥接只能在独立模块实现，根 Agent 模块不再暴露重复入口。"""
+    """
+    WebAgent 通知与编辑桥接只能在独立模块实现，根 Agent 模块不再暴露重复入口。
+    """
     names = {
         "attach_web_agent_edit_queue",
         "attach_web_agent_message_queue",
@@ -81,7 +91,9 @@ def test_web_agent_event_bridge_has_one_canonical_owner() -> None:
 
 
 def test_web_agent_modules_share_one_subpackage() -> None:
-    """同前缀 WebAgent 实现集中在子包，根目录不得保留平级门面。"""
+    """
+    同前缀 WebAgent 实现集中在子包，根目录不得保留平级门面。
+    """
     names = {
         "WebAgentStreamDependencies",
         "build_agent_web_agent_stream",

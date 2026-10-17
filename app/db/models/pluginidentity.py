@@ -1,4 +1,6 @@
-"""已安装物理插件来源身份模型。"""
+"""
+已安装物理插件来源身份模型。
+"""
 
 from typing import Any, Optional
 
@@ -9,7 +11,9 @@ from app.db.base import Base, get_id_column
 
 
 class PluginIdentity(Base):
-    """持久化一份大小写无关、可条件更新的物理插件来源身份。"""
+    """
+    持久化一份大小写无关、可条件更新的物理插件来源身份。
+    """
 
     id = get_id_column()
     plugin_id: Mapped[str] = mapped_column(String(128), nullable=False)

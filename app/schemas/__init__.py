@@ -1,4 +1,5 @@
-"""Schema 根包的惰性兼容导出入口。
+"""
+Schema 根包的惰性兼容导出入口。
 
 公开符号清单由 ``scripts/schema/exports.py`` 从各 schema 子模块生成。
 旧的 ``app.schemas.X`` 与 ``from app.schemas import X`` 路径保持不变，但仅在首次
@@ -12,7 +13,9 @@ from app.schemas.exports import SCHEMA_EXPORTS as _SCHEMA_EXPORTS
 
 
 def __getattr__(name: str) -> _Any:
-    """按生成清单惰性解析并缓存 schema 公开符号。"""
+    """
+    按生成清单惰性解析并缓存 schema 公开符号。
+    """
     contract = _SCHEMA_EXPORTS.get(name)
     if contract is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -23,7 +26,9 @@ def __getattr__(name: str) -> _Any:
 
 
 def __dir__() -> list[str]:
-    """返回兼容公开面，供 IDE、文档与交互式检查使用。"""
+    """
+    返回兼容公开面，供 IDE、文档与交互式检查使用。
+    """
     return sorted({*globals(), *_SCHEMA_EXPORTS})
 
 

@@ -1,4 +1,6 @@
-"""Bangumi 详情到统一媒体字段的纯投影规则。"""
+"""
+Bangumi 详情到统一媒体字段的纯投影规则。
+"""
 
 from __future__ import annotations
 
@@ -13,13 +15,17 @@ MOVIE_PLATFORMS = frozenset({"movie", "电影", "剧场版"})
 
 
 def resolve_media_type(info: Mapping[str, Any]) -> MediaType:
-    """根据 Bangumi 媒介平台返回标准媒体类型。"""
+    """
+    根据 Bangumi 媒介平台返回标准媒体类型。
+    """
     platform = str(info.get("platform") or "").strip().casefold()
     return MediaType.MOVIE if platform in MOVIE_PLATFORMS else MediaType.TV
 
 
 def _aliases(info: Mapping[str, Any]) -> list[Any]:
-    """从 Bangumi infobox 中读取稳定顺序的别名。"""
+    """
+    从 Bangumi infobox 中读取稳定顺序的别名。
+    """
     infobox = info.get("infobox")
     if not isinstance(infobox, list):
         return []
@@ -33,7 +39,9 @@ def _aliases(info: Mapping[str, Any]) -> list[Any]:
 
 
 def _companies_directors(info: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """从 Bangumi infobox 中提取制作公司和导演。"""
+    """
+    从 Bangumi infobox 中提取制作公司和导演。
+    """
     companies: list[dict[str, Any]] = []
     directors: list[dict[str, Any]] = []
     infobox = info.get("infobox")
@@ -56,7 +64,9 @@ def project(
     current: Mapping[str, Any],
     info: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """将只读 Bangumi 详情投影为统一媒体字段，不修改输入。"""
+    """
+    将只读 Bangumi 详情投影为统一媒体字段，不修改输入。
+    """
     if not info:
         return {}
     builder = ProjectionBuilder(current)

@@ -1,3 +1,7 @@
+"""
+验证默认插件市场索引的生成与兼容格式。
+"""
+
 import ast
 import subprocess
 import sys
@@ -132,7 +136,9 @@ def test_generate_plugin_market_default_requires_official_repo(
 def test_generate_plugin_market_default_runs_without_project_dependencies(
     tmp_path: Path,
 ) -> None:
-    """发版脚本在禁用 site-packages 时仍应能独立生成默认配置。"""
+    """
+    发版脚本在禁用 site-packages 时仍应能独立生成默认配置。
+    """
     wiki_file = tmp_path / "plugin.md"
     wiki_file.write_text(
         f"""
@@ -171,7 +177,9 @@ def test_generate_plugin_market_default_runs_without_project_dependencies(
 
 
 def test_release_workflows_use_canonical_config_path() -> None:
-    """正式版和 Beta 发版流程必须修改并暂存 canonical 配置文件。"""
+    """
+    正式版和 Beta 发版流程必须修改并暂存 canonical 配置文件。
+    """
     build_workflow = (
         ROOT_DIR / ".github" / "workflows" / "build-v3.yml"
     ).read_text(encoding="utf-8")

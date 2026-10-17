@@ -1,4 +1,6 @@
-"""Navidrome 媒体服务器模块。"""
+"""
+Navidrome 媒体服务器模块。
+"""
 
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
@@ -19,10 +21,14 @@ from app.schemas.types import ChainEventType, MediaServerType, MediaType, Module
 
 
 class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
-    """将 Navidrome 接入 MoviePilot 媒体服务器统一接口。"""
+    """
+    将 Navidrome 接入 MoviePilot 媒体服务器统一接口。
+    """
 
     def init_module(self) -> None:
-        """读取配置并初始化启用的 Navidrome 实例。"""
+        """
+        读取配置并初始化启用的 Navidrome 实例。
+        """
         super().init_service(
             service_name=Navidrome.__name__.lower(),
             service_type=lambda conf: Navidrome(**conf.config, sync_libraries=conf.sync_libraries),
@@ -30,40 +36,58 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
 
     @staticmethod
     def get_name() -> str:
-        """返回模块显示名称。"""
+        """
+        返回模块显示名称。
+        """
         return "Navidrome"
 
     @staticmethod
     def get_type() -> ModuleType:
-        """返回模块类型。"""
+        """
+        返回模块类型。
+        """
         return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:
-        """返回媒体服务器子类型。"""
+        """
+        返回媒体服务器子类型。
+        """
         return MediaServerType.Navidrome
 
     @staticmethod
     def get_priority() -> int:
-        """返回模块优先级。"""
+        """
+        返回模块优先级。
+        """
         return 7
 
     def stop(self) -> None:
-        """释放 Navidrome 模块资源。"""
+        """
+        保留模块停止入口；本实现没有需要主动释放的额外资源。
+        """
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
-        """Navidrome 与其它媒体服务器一致，由服务配置控制启用，无需系统开关。"""
+        """
+        Navidrome 与其它媒体服务器一致，由服务配置控制启用，无需系统开关。
+        """
         return None
 
     def scheduler_job(self) -> None:
-        """定时检查 Navidrome 连接状态并尝试重连。"""
+        """
+        定时检查 Navidrome 连接状态并尝试重连。
+        """
         for name, server in self.get_instances().items():
             if server.is_inactive():
                 logger.info(f"Navidrome {name} 服务器连接断开，尝试重连 ...")
                 server.reconnect()
 
     def test(self) -> Optional[Tuple[bool, str]]:
-        """测试所有已启用 Navidrome 配置的连通性。"""
+        """
+        逐个验证启用的 Navidrome 实例。
+
+        :return: 全部通过时返回 True 和空说明；首个失败时返回 False 和原因；无实例时返回 None
+        """
         if not self.get_instances():
             return None
         for name, server in self.get_instances().items():
@@ -76,7 +100,15 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
     def user_authenticate(
         self, credentials: AuthCredentials, service_name: Optional[str] = None
     ) -> Optional[AuthCredentials]:
-        """使用 Navidrome 用户凭据完成辅助认证。"""
+        """
+        使用 Navidrome 用户凭据完成辅助认证。
+
+        每次尝试前发送认证拦截事件；拦截器取消的实例不会发起登录验证。
+
+        :param credentials: 密码授权凭据；验证成功会原地填充渠道、服务名和令牌
+        :param service_name: 优先验证的实例名称；未指定或名称无效时依次尝试所有实例
+        :return: 验证成功时返回修改后的原凭据；授权类型不支持、全部被拦截或验证失败时返回 None
+        """
         if not credentials or credentials.grant_type != "password":
             return None
         servers: list[tuple[Optional[str], Optional[Navidrome]]] = (
@@ -109,7 +141,14 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
     def media_exists(
         self, mediainfo: MediaInfo, itemid: Optional[str] = None, server: Optional[str] = None
     ) -> Optional[_SchemaExistMediaInfo]:
-        """判断音乐是否已存在于 Navidrome 音乐库。"""
+        """
+        按条目标识或音乐名称检查媒体是否已入库。
+
+        :param mediainfo: 待匹配的媒体信息，仅处理音乐
+        :param itemid: 可选专辑标识，优先查询；不匹配时继续按名称搜索
+        :param server: 媒体服务器配置名称；省略时汇总本类型全部实例
+        :return: 首个匹配项的服务器和条目标识；非音乐或未找到匹配项时返回 None
+        """
         if mediainfo.type != MediaType.MUSIC:
             return None
         servers: list[tuple[Optional[str], Optional[Navidrome]]] = (
@@ -140,7 +179,12 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         return None
 
     def media_statistic(self, server: Optional[str] = None) -> Optional[List[_SchemaStatistic]]:
-        """返回 Navidrome 音乐数量统计。"""
+        """
+        汇总可用 Navidrome 实例的音乐和用户数量。
+
+        :param server: 媒体服务器配置名称；省略时汇总本类型全部实例
+        :return: 统计列表；无适用实例时返回空列表，用户数量仅表示当前凭据是否有效
+        """
         servers = [self.get_instance(server)] if server else list(self.get_instances().values())
         result: List[_SchemaStatistic] = []
         for service in servers:
@@ -154,7 +198,14 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
     def mediaserver_librarys(
         self, server: str, username: Optional[str] = None, hidden: Optional[bool] = False
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
-        """返回 Navidrome 的虚拟音乐库。"""
+        """
+        查询实例提供的虚拟音乐库。
+
+        :param server: 媒体服务器配置名称
+        :param username: 为统一媒体服务器接口保留，当前使用实例配置用户
+        :param hidden: 是否隐藏未被同步配置选中的音乐库
+        :return: 库列表；实例不存在时返回 None
+        """
         service = self.get_instance(server)
         return service.get_librarys(hidden=hidden) if service else None
 
@@ -162,33 +213,72 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
     ) -> Optional[Generator]:
-        """获取 Navidrome 专辑条目。"""
+        """
+        返回虚拟音乐库的专辑迭代器。
+
+        :param server: 媒体服务器配置名称
+        :param library_id: 统一接口的库标识，Navidrome 只有一个虚拟音乐库，当前不使用
+        :param start_index: 专辑列表起始索引，默认 0
+        :param limit: 最多返回条目数，-1 或 None 表示返回剩余全部条目
+        :return: 专辑生成器；实例不存在时返回 None，实际查询在迭代时执行
+        """
         service = self.get_instance(server)
         return service.get_items(start_index, limit) if service else None
 
     def mediaserver_items_count(self, server: str, library_id: Union[str, int]) -> Optional[int]:
-        """获取 Navidrome 音乐库条目数量。"""
+        """
+        查询音乐库的专辑数量。
+
+        :param server: 媒体服务器配置名称
+        :param library_id: 虚拟音乐库标识，客户端不依此值筛选
+        :return: 专辑数量；实例不存在时返回 None
+        """
         service = self.get_instance(server)
         return service.get_items_count(str(library_id)) if service else None
 
     def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[_SchemaMediaServerItem]:
-        """获取 Navidrome 专辑详情。"""
+        """
+        查询 Navidrome 专辑详情。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: Navidrome 条目标识
+        :return: 统一专辑模型；实例不存在、专辑不存在或请求失败时返回 None
+        """
         service = self.get_instance(server)
         return service.get_iteminfo(item_id) if service else None
 
     def mediaserver_tv_episodes(self, server: str, item_id: Union[str, int]) -> List[_SchemaMediaServerSeasonInfo]:
-        """音乐服务器没有剧集信息，返回空列表。"""
+        """
+        为统一接口提供空剧集结果；纯音乐服务没有季集信息。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: Navidrome 条目标识
+        :return: 始终返回空列表
+        """
         return []
 
     def mediaserver_playing(
         self, server: str, count: Optional[int] = 20, username: Optional[str] = None
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
-        """获取 Navidrome 当前播放条目。"""
+        """
+        查询服务端当前正在播放的音乐条目。
+
+        :param server: 媒体服务器配置名称
+        :param count: 最多返回条目数，默认 20
+        :param username: 为统一媒体服务器接口保留，当前使用实例配置用户
+        :return: 播放条目列表；实例不存在时返回 None，服务端请求失败时返回空列表
+        """
         service = self.get_instance(server)
         return service.get_resume(count) if service else None
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
-        """生成 Navidrome 音频流地址。"""
+        """
+        构造 Navidrome 音频流地址。
+
+        :param server: 媒体服务器配置名称
+        :param item_id: Navidrome 条目标识
+        :return: 带鉴权参数的播放 URL；实例或服务地址不存在时返回 None
+        """
         service = self.get_instance(server)
         return service.get_play_url(str(item_id)) if service else None
 
@@ -196,7 +286,14 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         self, server: Optional[str] = None, count: Optional[int] = 20,
         username: Optional[str] = None,
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
-        """获取 Navidrome 最近新增专辑。"""
+        """
+        查询指定实例最近新增的专辑。
+
+        :param server: 服务器配置名称，省略时选择默认实例
+        :param count: 最多返回条目数，默认 20
+        :param username: 为统一媒体服务器接口保留，当前使用实例配置用户
+        :return: 最近新增专辑列表；实例不存在时返回 None
+        """
         service = self.get_instance(server)
         return service.get_latest(count) if service else None
 
@@ -204,7 +301,15 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         self, server: Optional[str] = None, count: Optional[int] = 10,
         username: Optional[str] = None, remote: Optional[bool] = False,
     ) -> List[str]:
-        """仅返回电影、电视剧壁纸；纯音乐服务不提供登录壁纸。"""
+        """
+        按统一壁纸规则筛选最新媒体图片。
+
+        :param server: 服务器配置名称，省略时选择默认实例
+        :param count: 最多查询的最新条目数，默认 10
+        :param username: 为统一媒体服务器接口保留，当前使用实例配置用户
+        :param remote: 兼容统一接口的远程图片选项，当前不使用
+        :return: 仅保留电影与电视剧图片；正常 Navidrome 音乐条目会全部被排除，返回空列表
+        """
         return [
             item.image
             for item in (self.mediaserver_latest(server, count, username) or [])

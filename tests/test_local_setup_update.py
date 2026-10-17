@@ -1,4 +1,6 @@
-"""本地 CLI 更新遇到源码改动时的确认与清理测试。"""
+"""
+本地 CLI 更新遇到源码改动时的确认与清理测试。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,9 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 
 
 def load_local_setup_module():
-    """加载独立的本地安装脚本模块，避免共享全局配置。"""
+    """
+    加载独立的本地安装脚本模块，避免共享全局配置。
+    """
     module_name = f"moviepilot_local_setup_update_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, MODULE_PATH)
     assert spec is not None and spec.loader is not None
@@ -23,7 +27,9 @@ def load_local_setup_module():
 
 
 def test_dirty_update_clears_tracked_changes_after_confirmation(monkeypatch):
-    """确认清理后应重置已跟踪源码改动，供后续 Git 更新继续。"""
+    """
+    确认清理后应重置已跟踪源码改动，供后续 Git 更新继续。
+    """
     module = load_local_setup_module()
     prompts: list[tuple[str, bool]] = []
     commands: list[list[str]] = []
@@ -51,7 +57,9 @@ def test_dirty_update_clears_tracked_changes_after_confirmation(monkeypatch):
 
 
 def test_dirty_update_stops_when_local_change_cleanup_is_rejected(monkeypatch):
-    """拒绝清理时应取消更新且不执行任何 Git 写操作。"""
+    """
+    拒绝清理时应取消更新且不执行任何 Git 写操作。
+    """
     module = load_local_setup_module()
     commands: list[list[str]] = []
     monkeypatch.setattr(module, "_git_output", lambda *_args: " M app/example.py\n")
@@ -69,13 +77,17 @@ def test_dirty_update_stops_when_local_change_cleanup_is_rejected(monkeypatch):
 
 
 def test_dirty_update_stops_without_an_interactive_input(monkeypatch):
-    """没有可用输入时应取消更新，而不是默认清除源码改动。"""
+    """
+    没有可用输入时应取消更新，而不是默认清除源码改动。
+    """
     module = load_local_setup_module()
     commands: list[list[str]] = []
     monkeypatch.setattr(module, "_git_output", lambda *_args: " M app/example.py\n")
 
     def raise_eof(*_args, **_kwargs):
-        """模拟没有可用终端输入。"""
+        """
+        模拟没有可用终端输入。
+        """
         raise EOFError
 
     monkeypatch.setattr(module, "_prompt_yes_no", raise_eof)
@@ -93,13 +105,17 @@ def test_dirty_update_stops_without_an_interactive_input(monkeypatch):
 
 @pytest.fixture
 def moved_tag_repository(tmp_path):
-    """用临时本地仓库模拟远端重建同名标签，不访问外部网络。"""
+    """
+    用临时本地仓库模拟远端重建同名标签，不访问外部网络。
+    """
     remote = tmp_path / "remote"
     checkout = tmp_path / "checkout"
     remote.mkdir()
 
     def git(path, *args):
-        """隔离 Git 身份和签名配置，执行测试仓库操作。"""
+        """
+        隔离 Git 身份和签名配置，执行测试仓库操作。
+        """
         return subprocess.check_output(
             ["git", "-c", "user.name=CLI Test", "-c", "user.email=cli@example.test",
              "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-C", str(path), *args],
@@ -119,7 +135,9 @@ def moved_tag_repository(tmp_path):
 
 @pytest.mark.parametrize("ref", ["latest", "v3", "v3.1.0"])
 def test_update_overwrites_moved_remote_tag(monkeypatch, moved_tag_repository, ref):
-    """同名标签随远端更新，同时保留远端没有的本地标签。"""
+    """
+    同名标签随远端更新，同时保留远端没有的本地标签。
+    """
     checkout, git, old_sha, new_sha = moved_tag_repository
     module = load_local_setup_module()
     monkeypatch.setattr(module, "ROOT", checkout)
@@ -132,7 +150,9 @@ def test_update_overwrites_moved_remote_tag(monkeypatch, moved_tag_repository, r
 
 
 def test_update_moved_tag_does_not_reset_diverged_branch(monkeypatch, moved_tag_repository):
-    """强制同步标签不得覆盖分叉分支上的本地提交。"""
+    """
+    强制同步标签不得覆盖分叉分支上的本地提交。
+    """
     checkout, git, _, new_sha = moved_tag_repository
     git(checkout, "commit", "--allow-empty", "-m", "local work")
     local_sha = git(checkout, "rev-parse", "HEAD")
@@ -147,7 +167,9 @@ def test_update_moved_tag_does_not_reset_diverged_branch(monkeypatch, moved_tag_
 
 
 def test_offline_update_preserves_local_tag(monkeypatch, moved_tag_repository):
-    """离线更新只使用已验证的本地标签，即使远端已更换标签。"""
+    """
+    离线更新只使用已验证的本地标签，即使远端已更换标签。
+    """
     checkout, git, old_sha, _ = moved_tag_repository
     git(checkout, "remote", "remove", "origin")
     module = load_local_setup_module()

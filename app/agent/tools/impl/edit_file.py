@@ -1,4 +1,6 @@
-"""文件精确编辑工具。"""
+"""
+文件精确编辑工具。
+"""
 
 import json
 from pathlib import Path
@@ -18,55 +20,66 @@ from app.runtime.log import logger
 
 
 class EditFileInput(BaseModel):
-    """文件编辑工具的输入参数模型。"""
+    """
+    文件编辑工具的输入参数模型。
+    """
 
-    file_path: str = Field(..., description="The absolute path of the file to edit")
+    file_path: str = Field(
+        ...,
+        description="待编辑文件的绝对路径",
+    )
     old_text: str = Field(
         ...,
-        description=(
-            "The exact old text to replace. It must be non-empty and uniquely "
-            "identify one location unless replace_all is true."
-        ),
+        description="需要精确替换的非空旧文本；除非 replace_all=True，否则必须唯一定位一处",
     )
-    new_text: str = Field(..., description="The new text to replace with")
+    new_text: str = Field(
+        ...,
+        description="用于替换的新文本；空字符串表示删除",
+    )
     replace_all: bool = Field(
         False,
-        description=(
-            "Replace every exact match. Keep false for normal code edits so an "
-            "ambiguous match fails instead of changing multiple locations."
-        ),
+        description="是否替换全部精确匹配，默认 False，使有歧义的普通代码编辑失败而非改动多处",
     )
     expected_sha256: Optional[str] = Field(
         None,
-        pattern=r"^[0-9a-fA-F]{64}$",
-        description=(
-            "Optional SHA-256 returned by read_file(include_metadata=true). The "
-            "edit fails if the file changed after it was read."
-        ),
+        pattern="^[0-9a-fA-F]{64}$",
+        description="read_file(include_metadata=true) 返回的可选 SHA-256；文件自读取后变化时拒绝修改",
     )
 
 
 class EditFileTool(MoviePilotTool):
-    """使用精确文本匹配安全编辑本地文件。"""
+    """
+    使用精确文本匹配安全编辑本地文件。
+    """
 
-    name: str = "edit_file"
-    tags: list[str] = [
-        ToolTag.Write,
-        ToolTag.File,
-    ]
-    description: str = (
-        "Edit an existing local text file using an exact text match. By default "
-        "the match must occur exactly once; use replace_all only for intentional "
-        "bulk replacement. old_text cannot be empty, and new files must be "
-        "created with write_file. Supports an optional SHA-256 conflict check. "
-        "When one logical change spans multiple files or needs to add or delete "
-        "files, use apply_patch instead. Non-admin users can only edit files "
-        "inside the MoviePilot Agent config directory."
+    name: str = Field(
+        default="edit_file",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = EditFileInput
+    tags: list[str] = Field(
+        default=[ToolTag.Write, ToolTag.File],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default=(
+            "精确匹配旧文本并编辑已有本地文本文件。"
+            "默认要求只匹配一处，仅在有意批量替换时使用 replace_all。"
+            "old_text 不得为空，新文件须用 write_file 创建。"
+            "支持可选 SHA-256 冲突检查。"
+            "同一逻辑变更跨多个文件或需要新增、删除文件时使用 apply_patch。"
+            "非管理员只能编辑 MoviePilot Agent 配置目录内的文件。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=EditFileInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """根据参数生成友好的提示消息"""
+        """
+        根据参数生成友好的提示消息
+        """
         file_path = kwargs.get("file_path", "")
         file_name = Path(file_path).name if file_path else "未知文件"
         return f"编辑文件: {file_name}"
@@ -80,7 +93,9 @@ class EditFileTool(MoviePilotTool):
         expected_sha256: Optional[str] = None,
         **kwargs,
     ) -> str:
-        """校验精确匹配和可选文件版本后，以原子方式写入编辑结果。"""
+        """
+        校验精确匹配和可选文件版本后，以原子方式写入编辑结果。
+        """
         logger.info(f"执行工具: {self.name}, 参数: file_path={file_path}")
 
         try:

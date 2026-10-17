@@ -1,4 +1,5 @@
-"""数据库包的惰性兼容导出入口。
+"""
+数据库包的惰性兼容导出入口。
 
 具体实现位于 ``base``、``decorators``、``engine`` 与 ``session``。包入口只维护
 公开符号到所有者模块的映射，避免数据库子模块为了导入同包实现而回流到一个会主动
@@ -39,7 +40,9 @@ _EXPORTS = {
 
 
 def __getattr__(name: str) -> Any:
-    """按需解析旧数据库导出，并缓存到包命名空间。"""
+    """
+    按需解析旧数据库导出，并缓存到包命名空间。
+    """
     if name == "Engine":
         return getattr(import_module("app.db.engine"), "get_engine")()
     elif name == "AsyncEngine":
@@ -57,7 +60,9 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    """向交互式工具暴露兼容符号，同时保持实现模块惰性。"""
+    """
+    向交互式工具暴露兼容符号，同时保持实现模块惰性。
+    """
     return sorted({*globals(), *_EXPORTS, "Engine", "AsyncEngine"})
 
 

@@ -1,4 +1,6 @@
-"""Scheduler 职责 owner 的静态组合宿主合同。"""
+"""
+Scheduler 职责 owner 的静态组合宿主合同。
+"""
 
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -8,7 +10,9 @@ if TYPE_CHECKING:
     from app.scheduler.services import SchedulerServices
 
     class _SchedulerOwnerHost:
-        """声明 Scheduler Facade 提供给各职责 owner 的共享状态与入口。"""
+        """
+        声明 Scheduler Facade 提供给各职责 owner 的共享状态与入口。
+        """
 
         _agent_task_interruptions_reconciled: bool
         _agent_tasks: AgentTaskRepository | None
@@ -71,6 +75,8 @@ if TYPE_CHECKING:
         user_auth: Callable[..., Any]
 
     class _SchedulerOwnerBase(_SchedulerOwnerHost):
-        """仅向静态检查器暴露完整的 Scheduler 组合宿主合同。"""
+        """
+        仅向静态检查器暴露完整的 Scheduler 组合宿主合同。
+        """
 else:
     _SchedulerOwnerBase = object

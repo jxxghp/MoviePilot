@@ -1,4 +1,6 @@
-"""本地进程状态记录及跨平台子进程参数的兼容回归。"""
+"""
+本地进程状态记录及跨平台子进程参数的兼容回归。
+"""
 
 import json
 import os
@@ -21,7 +23,9 @@ from app.runtime.state import SystemHelper
 def test_runtime_identity_checks_creation_time(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, created_at: object, expected: bool
 ) -> None:
-    """创建时间可缺省或使用数字字符串；损坏记录不能冒充当前受管进程。"""
+    """
+    创建时间可缺省或使用数字字符串；损坏记录不能冒充当前受管进程。
+    """
     state_path = tmp_path / "runtime.json"
     state_path.write_text(json.dumps({"pid": os.getpid(), "create_time": created_at}), encoding="utf-8")
     monkeypatch.setattr(SystemHelper, "_SystemHelper__local_backend_runtime_file", state_path)
@@ -34,7 +38,9 @@ def test_runtime_identity_checks_creation_time(
 def test_invalid_process_identity_is_rejected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pid: object
 ) -> None:
-    """不可转换的 PID 和空 PID 均不建立受管进程身份。"""
+    """
+    不可转换的 PID 和空 PID 均不建立受管进程身份。
+    """
     state_path = tmp_path / "runtime.json"
     state_path.write_text(json.dumps({"pid": pid}), encoding="utf-8")
     monkeypatch.setattr(SystemHelper, "_SystemHelper__local_backend_runtime_file", state_path)
@@ -47,7 +53,9 @@ def test_invalid_process_identity_is_rejected(
 def test_detached_process_flags_match_platform(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, platform: str, entrypoint: str
 ) -> None:
-    """模拟平台并截获启动参数，验证 Windows 分离标志和 Unix 新会话保持一致。"""
+    """
+    模拟平台并截获启动参数，验证 Windows 分离标志和 Unix 新会话保持一致。
+    """
     for attribute, name in (
         ("_SystemHelper__local_restart_log_file", "restart.log"),
         ("_SystemHelper__prepared_update_manifest", "install.json"),

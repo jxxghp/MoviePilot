@@ -1,95 +1,109 @@
+"""
+资源过滤规则、规则组及调整请求的数据结构。
+"""
+
 from typing import Optional
 
 from pydantic import BaseModel
+from pydantic import Field as _Field
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class CustomRule(BaseModel):  # type: ignore[misc]
     """
-    自定义规则项
+    自定义规则项。
     """
 
-    # 规则ID
-    id: Optional[str] = None
-    # 名称
-    name: Optional[str] = None
-    # 包含
-    include: Optional[str] = None
-    # 排除
-    exclude: Optional[str] = None
-    # 大小范围（MB）
-    size_range: Optional[str] = None
-    # 最少做种人数
-    seeders: Optional[str] = None
-    # 发布时间
-    publish_time: Optional[str] = None
+    id: Optional[str] = _Field(default=None, description="规则ID")
+    name: Optional[str] = _Field(default=None, description="名称")
+    include: Optional[str] = _Field(default=None, description="包含")
+    exclude: Optional[str] = _Field(default=None, description="排除")
+    size_range: Optional[str] = _Field(default=None, description="单集平均文件大小范围，单位为 MiB；a-b、>a、<a 均包含边界，空值不限制")
+    seeders: Optional[str] = _Field(default=None, description="最少做种人数")
+    publish_time: Optional[str] = _Field(default=None, description="距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class FilterRuleGroup(BaseModel):  # type: ignore[misc]
     """
-    过滤规则组
+    过滤规则组。
     """
 
-    # 名称
-    name: Optional[str] = None
-    # 规则串
-    rule_string: Optional[str] = None
-    # 适用媒体类型 None-全部 电影/电视剧/音乐
-    media_type: Optional[str] = None
-    # 适用媒体类别 None-全部 对应二级分类
-    category: Optional[str] = None
+    name: Optional[str] = _Field(default=None, description="名称")
+    rule_string: Optional[str] = _Field(default=None, description="规则串")
+    media_type: Optional[str] = _Field(default=None, description="适用媒体类型 None-全部 电影/电视剧/音乐")
+    category: Optional[str] = _Field(default=None, description="适用媒体类别 None-全部 对应二级分类")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class CustomFilterRuleCreateRequest(BaseModel):  # type: ignore[misc]
-    """新增自定义过滤规则请求。"""
+    """
+    新增自定义过滤规则请求。
+    """
 
-    rule_id: str
-    name: str
-    include: Optional[str] = None
-    exclude: Optional[str] = None
-    size_range: Optional[str] = None
-    seeders: Optional[str] = None
-    publish_time: Optional[str] = None
+    rule_id: str = _Field(description="新建过滤规则的唯一标识")
+    name: str = _Field(description="显示名称")
+    include: Optional[str] = _Field(default=None, description="包含")
+    exclude: Optional[str] = _Field(default=None, description="排除")
+    size_range: Optional[str] = _Field(default=None, description="单集平均文件大小范围，单位为 MiB；a-b、>a、<a 均包含边界，空值不限制")
+    seeders: Optional[str] = _Field(default=None, description="允许的最少做种人数")
+    publish_time: Optional[str] = _Field(default=None, description="距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class CustomFilterRuleUpdateRequest(BaseModel):  # type: ignore[misc]
-    """更新自定义过滤规则请求。"""
+    """
+    更新自定义过滤规则请求。
+    """
 
-    new_rule_id: Optional[str] = None
-    name: Optional[str] = None
-    include: Optional[str] = None
-    exclude: Optional[str] = None
-    size_range: Optional[str] = None
-    seeders: Optional[str] = None
-    publish_time: Optional[str] = None
+    new_rule_id: Optional[str] = _Field(default=None, description="修改后的规则标识")
+    name: Optional[str] = _Field(default=None, description="显示名称")
+    include: Optional[str] = _Field(default=None, description="包含")
+    exclude: Optional[str] = _Field(default=None, description="排除")
+    size_range: Optional[str] = _Field(default=None, description="单集平均文件大小范围，单位为 MiB；a-b、>a、<a 均包含边界，空值不限制")
+    seeders: Optional[str] = _Field(default=None, description="允许的最少做种人数")
+    publish_time: Optional[str] = _Field(default=None, description="距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class CustomFilterRuleReorderRequest(BaseModel):  # type: ignore[misc]
-    """调整自定义过滤规则顺序请求。"""
+    """
+    调整自定义过滤规则顺序请求。
+    """
 
-    rule_ids: list[str]
-    expected_rule_ids: Optional[list[str]] = None
+    rule_ids: list[str] = _Field(description="调整后的规则标识顺序")
+    expected_rule_ids: Optional[list[str]] = _Field(default=None, description="调整前预期的规则标识顺序")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class FilterRuleGroupCreateRequest(BaseModel):  # type: ignore[misc]
-    """新增过滤规则组请求。"""
+    """
+    新增过滤规则组请求。
+    """
 
-    name: str
-    rule_string: str
-    media_type: Optional[str] = None
-    category: Optional[str] = None
+    name: str = _Field(description="显示名称")
+    rule_string: str = _Field(description="规则串")
+    media_type: Optional[str] = _Field(default=None, description="适用媒体类型")
+    category: Optional[str] = _Field(default=None, description="媒体分类")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class FilterRuleGroupUpdateRequest(BaseModel):  # type: ignore[misc]
-    """更新过滤规则组请求。"""
+    """
+    更新过滤规则组请求。
+    """
 
-    new_name: Optional[str] = None
-    rule_string: Optional[str] = None
-    media_type: Optional[str] = None
-    category: Optional[str] = None
+    new_name: Optional[str] = _Field(default=None, description="修改后的名称")
+    rule_string: Optional[str] = _Field(default=None, description="规则串")
+    media_type: Optional[str] = _Field(default=None, description="适用媒体类型")
+    category: Optional[str] = _Field(default=None, description="媒体分类")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class FilterRuleGroupReorderRequest(BaseModel):  # type: ignore[misc]
-    """调整过滤规则组顺序请求。"""
+    """
+    调整过滤规则组顺序请求。
+    """
 
-    group_names: list[str]
-    expected_group_names: Optional[list[str]] = None
+    group_names: list[str] = _Field(description="调整后的规则组顺序")
+    expected_group_names: Optional[list[str]] = _Field(default=None, description="调整前预期的规则组顺序，用于检测并发修改")

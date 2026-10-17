@@ -1,3 +1,7 @@
+"""
+验证字幕搜索来源、候选处理与响应。
+"""
+
 import pytest
 
 from app.adapters.system import rust as rust_accel
@@ -25,7 +29,9 @@ AUDIENCES_SUBTITLE_HTML = """
 
 
 def test_explicit_special_season_zero_overrides_recognized_season():
-    """精确搜索中显式季 0 必须优先于跨源识别返回的其它季号。"""
+    """
+    精确搜索中显式季 0 必须优先于跨源识别返回的其它季号。
+    """
     assert _resolve_media_season(explicit_season=0, recognized_season=1) == 0
     assert _resolve_media_season(explicit_season=None, recognized_season=1) == 1
 

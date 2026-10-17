@@ -1,4 +1,6 @@
-"""离线配置 CLI 的运行时端口契约测试。"""
+"""
+离线配置 CLI 的运行时端口契约测试。
+"""
 
 import pytest
 from click.testing import CliRunner
@@ -9,7 +11,9 @@ from app import cli as cli_module
 def test_config_get_works_without_web_lifespan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """配置读取必须使用启动前可用的 runtime 端口，不能依赖 Web 组合根。"""
+    """
+    配置读取必须使用启动前可用的 runtime 端口，不能依赖 Web 组合根。
+    """
     monkeypatch.setattr(cli_module, "has_runtime_setting", lambda _key: True)
     monkeypatch.setattr(
         cli_module,
@@ -29,11 +33,15 @@ def test_config_get_works_without_web_lifespan(
 def test_config_set_works_without_web_lifespan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """配置写入必须走离线可用的 runtime 更新端口。"""
+    """
+    配置写入必须走离线可用的 runtime 更新端口。
+    """
     updates: list[tuple[str, str]] = []
 
     def update_setting(key: str, value: str) -> tuple[bool, str]:
-        """记录离线配置写入。"""
+        """
+        记录离线配置写入。
+        """
         updates.append((key, value))
         return True, ""
 

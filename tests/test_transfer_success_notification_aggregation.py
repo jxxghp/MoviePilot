@@ -1,4 +1,6 @@
-"""成功通知按明确批次或静默窗口聚合，且不改变逐文件结算副作用。"""
+"""
+成功通知按明确批次或静默窗口聚合，且不改变逐文件结算副作用。
+"""
 
 from dataclasses import replace
 from pathlib import Path
@@ -30,38 +32,52 @@ from tests.test_transfer_sync_extra_files import make_transfer_chain
 
 
 class _Loop:
-    """记录静默窗口而不创建真实后台任务。"""
+    """
+    记录静默窗口而不创建真实后台任务。
+    """
 
     def __init__(self):
-        """初始化可手动触发的定时回调。"""
+        """
+        初始化可手动触发的定时回调。
+        """
         self.timers = []
         self.now = 0
 
     def call_soon_threadsafe(self, callback, *args):
-        """同步登记事件循环回调。"""
+        """
+        同步登记事件循环回调。
+        """
         callback(*args)
 
     def call_later(self, delay, callback, *args):
-        """保存定时器并提供可取消的句柄。"""
+        """
+        保存定时器并提供可取消的句柄。
+        """
         timer = SimpleNamespace(callback=callback, args=args, cancel=Mock(), deadline=self.now + delay)
         self.timers.append(timer)
         return timer
 
     def advance(self, seconds):
-        """推进虚拟时间，只触发已到期且未取消的定时器。"""
+        """
+        推进虚拟时间，只触发已到期且未取消的定时器。
+        """
         self.now += seconds
         for timer in list(self.timers):
             if timer.deadline <= self.now and not timer.cancel.called:
                 timer.callback(*timer.args)
 
     def flush(self):
-        """按登记顺序触发定时器，包含已取消回调以验证代际保护。"""
+        """
+        按登记顺序触发定时器，包含已取消回调以验证代际保护。
+        """
         for timer in self.timers:
             timer.callback(*timer.args)
 
 
 def _task(number=1, *, batch="batch", username="tester", download_hash="hash"):
-    """构造同一专辑内具有不同录音身份的分轨整理任务。"""
+    """
+    构造同一专辑内具有不同录音身份的分轨整理任务。
+    """
     return TransferTask(
         fileitem=FileItem(storage="local", path=f"/downloads/Album/{number}.flac", name=f"{number}.flac", extension="flac", type="file", size=100),
         meta=MetaMusic(title=f"Track {number}", album="Album", track_number=number),
@@ -73,7 +89,9 @@ def _task(number=1, *, batch="batch", username="tester", download_hash="hash"):
 
 
 def _result(number=1):
-    """提供包含真实目标路径的成功结果。"""
+    """
+    提供包含真实目标路径的成功结果。
+    """
     path = f"/library/Album/{number}.flac"
     return TransferInfo(
         target_item=FileItem(storage="local", path=path, type="file"),
@@ -84,7 +102,9 @@ def _result(number=1):
 
 @pytest.fixture
 def chain():
-    """构造没有线程、数据库和真实消息通道的通知宿主。"""
+    """
+    构造没有线程、数据库和真实消息通道的通知宿主。
+    """
     owner = object.__new__(TransferChain)
     owner.runtime_config = ChainRuntimeConfig(media_extensions=(".flac", ".mkv"), history_url="https://example.test/history")
     owner.success_notification_aggregator = TransferNotificationAggregator[TransferSuccessNotification]()
@@ -99,13 +119,17 @@ def chain():
 
 
 def test_success_notification_aggregation_defaults_on():
-    """成功侧默认值与失败侧一致。"""
+    """
+    成功侧默认值与失败侧一致。
+    """
     assert ConfigModel.model_fields["TRANSFER_SUCCESS_NOTIFICATION_AGGREGATION"].default is True
 
 
 @pytest.mark.parametrize("change", ["username", "download_hash", "downloader", "destination", "storage"])
 def test_success_group_isolates_source_destination_and_user(change):
-    """不同用户、种子、下载器、目标或存储不能混入同一通知。"""
+    """
+    不同用户、种子、下载器、目标或存储不能混入同一通知。
+    """
     first, second = _task(), _task(2)
     result = _result()
     modified = _result(2)
@@ -119,7 +143,9 @@ def test_success_group_isolates_source_destination_and_user(change):
 
 
 def test_all_74_slow_tracks_wait_for_batch_and_send_once(chain):
-    """曲目间隔超过静默窗也不拆批，统计真实文件并以专辑名发送。"""
+    """
+    曲目间隔超过静默窗也不拆批，统计真实文件并以专辑名发送。
+    """
     tasks = [_task(number) for number in range(1, 75)]
     for task in tasks:
         chain._register_scrape_batch_task(task)
@@ -144,7 +170,9 @@ def test_all_74_slow_tracks_wait_for_batch_and_send_once(chain):
 
 
 def test_single_file_batch_is_immediate_and_keeps_template(chain):
-    """一个文件的明确批次结束即发，保留用户模板和无批量按钮行为。"""
+    """
+    一个文件的明确批次结束即发，保留用户模板和无批量按钮行为。
+    """
     task = _task()
     chain._register_scrape_batch_task(task)
     chain._close_scrape_batch("batch")
@@ -157,7 +185,9 @@ def test_single_file_batch_is_immediate_and_keeps_template(chain):
 
 
 def test_closed_batch_is_required_even_if_work_finishes_while_enumerating(chain):
-    """目录枚举期间先完成的曲目要等登记结束，防止过早发送。"""
+    """
+    目录枚举期间先完成的曲目要等登记结束，防止过早发送。
+    """
     task = _task()
     chain._register_scrape_batch_task(task)
     chain.queue_successful_transfer_notification(task, _result())
@@ -168,7 +198,9 @@ def test_closed_batch_is_required_even_if_work_finishes_while_enumerating(chain)
 
 
 def test_unbatched_events_use_quiet_window_and_deduplicate_paths(chain, monkeypatch):
-    """没有明确批次的外部任务使用静默窗，相同目标不会重复累计。"""
+    """
+    没有明确批次的外部任务使用静默窗，相同目标不会重复累计。
+    """
     loop = _Loop()
     monkeypatch.setattr(main_loop_registry, "require", lambda: loop)
     for number in [1, 2, 1]:
@@ -182,7 +214,9 @@ def test_unbatched_events_use_quiet_window_and_deduplicate_paths(chain, monkeypa
 
 @pytest.mark.parametrize("manual,source_type", [(False, "file"), (True, "file"), (False, "dir")])
 def test_single_file_workflow_notification_policy(chain, monkeypatch, manual, source_type):
-    """真实工作流仅为自动文件入口启用静默窗，目录与手动单文件仍在批次结束即发。"""
+    """
+    真实工作流仅为自动文件入口启用静默窗，目录与手动单文件仍在批次结束即发。
+    """
     owner = make_transfer_chain()
     owner.runtime_config = chain.runtime_config
     owner.success_notification_aggregator = chain.success_notification_aggregator
@@ -196,7 +230,9 @@ def test_single_file_workflow_notification_policy(chain, monkeypatch, manual, so
     queued = []
 
     def enqueue(task):
-        """保留真实批次登记，只隔离后台线程与文件执行。"""
+        """
+        保留真实批次登记，只隔离后台线程与文件执行。
+        """
         owner._register_scrape_batch_task(task)
         queued.append(task)
         return True
@@ -220,7 +256,9 @@ def test_single_file_workflow_notification_policy(chain, monkeypatch, manual, so
 
 
 def test_monitor_episode_batches_merge_after_last_completion(chain, monkeypatch):
-    """13 个间隔十秒的单文件批次只在末集静默三十秒后发一条季集汇总。"""
+    """
+    13 个间隔十秒的单文件批次只在末集静默三十秒后发一条季集汇总。
+    """
     loop = _Loop()
     monkeypatch.setattr(type(main_loop_registry), "current", property(lambda _self: loop))
     batch_ids = []
@@ -252,7 +290,9 @@ def test_monitor_episode_batches_merge_after_last_completion(chain, monkeypatch)
 
 @pytest.mark.parametrize("monitor_first", [False, True])
 def test_monitor_window_survives_overlapping_explicit_batch(monitor_first):
-    """重叠批次两种完成顺序都保留静默窗，旧定时器不得越过新批次等待。"""
+    """
+    重叠批次两种完成顺序都保留静默窗，旧定时器不得越过新批次等待。
+    """
     loop = _Loop()
     aggregator = TransferNotificationAggregator[str]()
     callback = Mock()
@@ -282,7 +322,9 @@ def test_monitor_window_survives_overlapping_explicit_batch(monitor_first):
 
 
 def test_monitor_timer_failure_falls_back_without_losing_notification():
-    """批次释放时循环停止要立即发送，关闭时不再重复发送。"""
+    """
+    批次释放时循环停止要立即发送，关闭时不再重复发送。
+    """
     loop = Mock()
     loop.call_soon_threadsafe.side_effect = RuntimeError("loop closed")
     aggregator = TransferNotificationAggregator[str]()
@@ -295,7 +337,9 @@ def test_monitor_timer_failure_falls_back_without_losing_notification():
 
 
 def test_overlapping_batches_wait_for_both_and_shutdown_flushes_once(chain):
-    """同组重叠批次不会互相提前刷新；关闭发送剩余快照且重复关闭幂等。"""
+    """
+    同组重叠批次不会互相提前刷新；关闭发送剩余快照且重复关闭幂等。
+    """
     for number, batch in [(1, "a"), (2, "b")]:
         chain.queue_successful_transfer_notification(_task(number, batch=batch), _result(number))
     chain.success_notification_aggregator.release_batch("a")
@@ -309,7 +353,9 @@ def test_overlapping_batches_wait_for_both_and_shutdown_flushes_once(chain):
 
 @pytest.mark.parametrize("notify,manual,background", [(False, False, True), (True, True, False)])
 def test_disabled_or_foreground_manual_notifications_remain_silent(chain, notify, manual, background):
-    """关闭通知及前台手动整理不进入缓冲。"""
+    """
+    关闭通知及前台手动整理不进入缓冲。
+    """
     task = _task()
     task.manual, task.background = manual, background
     result = _result()
@@ -321,7 +367,9 @@ def test_disabled_or_foreground_manual_notifications_remain_silent(chain, notify
 
 @pytest.mark.parametrize("media_type", [MediaType.MOVIE, MediaType.TV, MediaType.MUSIC])
 def test_global_disabled_keeps_legacy_notifications(chain, media_type):
-    """全局关闭时成功任务不进入新的缓冲，由原有作业通知负责发送。"""
+    """
+    全局关闭时成功任务不进入新的缓冲，由原有作业通知负责发送。
+    """
     chain.runtime_config = replace(chain.runtime_config, transfer_success_notification_aggregation=False)
     task = _task()
     if media_type != MediaType.MUSIC:
@@ -333,7 +381,9 @@ def test_global_disabled_keeps_legacy_notifications(chain, media_type):
 
 
 def test_movie_batch_uses_same_success_aggregation(chain):
-    """电影同样在批次结束后汇总成功文件，并保持入库消息类型。"""
+    """
+    电影同样在批次结束后汇总成功文件，并保持入库消息类型。
+    """
     for number in [1, 2]:
         task = _task(number)
         task.meta = MetaInfo("Movie 2026")
@@ -350,7 +400,9 @@ def test_movie_batch_uses_same_success_aggregation(chain):
 
 
 def test_television_batch_retains_season_episode_range(chain):
-    """影视汇总保留季集范围，不把不同季混合。"""
+    """
+    影视汇总保留季集范围，不把不同季混合。
+    """
     for number in [1, 2]:
         task = _task(number)
         task.meta = MetaInfo(f"Show S01E{number:02d}")
@@ -363,7 +415,9 @@ def test_television_batch_retains_season_episode_range(chain):
 
 
 def test_mixed_outcomes_preserve_each_history_event_and_only_count_success(chain, monkeypatch):
-    """批次成败混合时逐任务持久化和事件不变，成功汇总只计已入库文件。"""
+    """
+    批次成败混合时逐任务持久化和事件不变，成功汇总只计已入库文件。
+    """
     chain.jobview = JobManager()
     chain._success_target_files = {}
     chain.transfer_history_repository = Mock()
@@ -411,7 +465,9 @@ def test_mixed_outcomes_preserve_each_history_event_and_only_count_success(chain
 
 
 def test_old_callback_cannot_flush_recreated_group():
-    """已刷新的组重新创建后，旧代回调不得发送新组快照。"""
+    """
+    已刷新的组重新创建后，旧代回调不得发送新组快照。
+    """
     loop = _Loop()
     aggregator = TransferNotificationAggregator[str]()
     callback = Mock()
@@ -430,7 +486,9 @@ def test_old_callback_cannot_flush_recreated_group():
 @pytest.mark.parametrize("file_count", [1, 3])
 @pytest.mark.parametrize("debounce", [False, True])
 def test_success_notifications_render_configured_template(chain, monkeypatch, media_type, file_count, debounce):
-    """单文件与汇总通知经真实入口和模板引擎渲染，隔离配置、历史和渠道边界。"""
+    """
+    单文件与汇总通知经真实入口和模板引擎渲染，隔离配置、历史和渠道边界。
+    """
     template = """{
         'title': '自定义 {{ title_year }}{% if track_number %} #{{ track_number }}{% endif %}'
                  '{% if season_episode %} {{ season_episode }}{% endif %}',

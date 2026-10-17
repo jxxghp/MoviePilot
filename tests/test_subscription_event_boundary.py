@@ -1,4 +1,6 @@
-"""订阅删除快照进入宿主事件总线时的容器兼容合同。"""
+"""
+订阅删除快照进入宿主事件总线时的容器兼容合同。
+"""
 
 from types import MappingProxyType
 from unittest.mock import AsyncMock
@@ -13,7 +15,9 @@ from app.schemas.types import EventType
 @pytest.mark.asyncio
 @pytest.mark.parametrize("frozen", [False, True])
 async def test_deleted_event_preserves_existing_dictionary_identity(monkeypatch, frozen):
-    """普通字典和领域冻结字典保持身份及原有只读语义。"""
+    """
+    普通字典和领域冻结字典保持身份及原有只读语义。
+    """
     payload = {"id": 7, "name": "订阅", "filters": {"quality": ["1080p"]}}
     if frozen:
         payload = SubscribeDeletionCandidate(7, None, payload).event_payload
@@ -31,7 +35,9 @@ async def test_deleted_event_preserves_existing_dictionary_identity(monkeypatch,
 
 @pytest.mark.asyncio
 async def test_deleted_event_accepts_read_only_mapping_without_mutating_source(monkeypatch):
-    """只读 Mapping 在边界转换为字典，保留字段与嵌套对象。"""
+    """
+    只读 Mapping 在边界转换为字典，保留字段与嵌套对象。
+    """
     nested = {"quality": ["1080p"]}
     source = {"id": 7, "filters": nested}
     payload = MappingProxyType(source)
@@ -52,7 +58,9 @@ async def test_deleted_event_accepts_read_only_mapping_without_mutating_source(m
 @pytest.mark.asyncio
 @pytest.mark.parametrize("read_only", [False, True])
 async def test_deleted_event_preserves_publish_failure(monkeypatch, read_only):
-    """事件发送失败原样向上传播，供既有 outbox 重试逻辑处理。"""
+    """
+    事件发送失败原样向上传播，供既有 outbox 重试逻辑处理。
+    """
     payload = {"id": 7}
     if read_only:
         payload = MappingProxyType(payload)

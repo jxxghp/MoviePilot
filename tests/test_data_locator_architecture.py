@@ -1,4 +1,6 @@
-"""Chain 与 Agent 数据依赖显式注入的架构门禁。"""
+"""
+Chain 与 Agent 数据依赖显式注入的架构门禁。
+"""
 
 import ast
 from pathlib import Path
@@ -42,7 +44,9 @@ RETIRED_GETTERS = {
 
 
 def _canonical_paths() -> list[Path]:
-    """返回排除插件副本与兼容实现后的宿主 Python 文件。"""
+    """
+    返回排除插件副本与兼容实现后的宿主 Python 文件。
+    """
     return [
         path
         for path in sorted(APP_ROOT.rglob("*.py"))
@@ -53,7 +57,9 @@ def _canonical_paths() -> list[Path]:
 
 
 def _class_fields(path: Path, class_name: str) -> dict[str, str]:
-    """读取指定数据上下文的源码级字段注解。"""
+    """
+    读取指定数据上下文的源码级字段注解。
+    """
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     class_node = next(
         node
@@ -69,7 +75,9 @@ def _class_fields(path: Path, class_name: str) -> dict[str, str]:
 
 
 def test_retired_data_locator_modules_and_getters_cannot_return() -> None:
-    """Canonical 宿主不得复活全局数据注册表、导入或动态 getter 调用。"""
+    """
+    Canonical 宿主不得复活全局数据注册表、导入或动态 getter 调用。
+    """
     assert not (APP_ROOT / "application" / "agentdata.py").exists()
     assert not (APP_ROOT / "application" / "chain" / "data.py").exists()
 
@@ -100,7 +108,9 @@ def test_retired_data_locator_modules_and_getters_cannot_return() -> None:
 
 
 def test_internal_data_locators_do_not_gain_sdk_or_compat_abi() -> None:
-    """被删除的宿主注册表没有插件合同，不得转存到 SDK 或 Compat。"""
+    """
+    被删除的宿主注册表没有插件合同，不得转存到 SDK 或 Compat。
+    """
     compatibility_source = (
         APP_ROOT / "runtime" / "compat" / "manifest.py"
     ).read_text(encoding="utf-8-sig")
@@ -114,7 +124,9 @@ def test_internal_data_locators_do_not_gain_sdk_or_compat_abi() -> None:
 
 
 def test_injected_data_contexts_use_owned_typed_ports() -> None:
-    """Chain 与 Agent 的持久化字段必须由明确 Port 注解拥有，不得用 Any 遮蔽。"""
+    """
+    Chain 与 Agent 的持久化字段必须由明确 Port 注解拥有，不得用 Any 遮蔽。
+    """
     chain_fields = _class_fields(
         APP_ROOT / "application" / "chain" / "context.py",
         "ChainRuntimeContext",

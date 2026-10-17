@@ -1,3 +1,7 @@
+"""
+验证数据清理的批处理报告、进度通知和部分失败处理。
+"""
+
 import ast
 from contextlib import nullcontext
 from datetime import datetime
@@ -12,10 +16,14 @@ from app.scheduler.chain import SchedulerChain
 
 
 class FakeCleanupRepository:
-    """记录维护用例调用，并可模拟单表失败。"""
+    """
+    记录维护用例调用，并可模拟单表失败。
+    """
 
     def __init__(self, *, failing_table: str | None = None) -> None:
-        """保存故障表名并初始化调用记录。"""
+        """
+        保存故障表名并初始化调用记录。
+        """
         self.failing_table = failing_table
         self.calls: list[str] = []
         self._message_results = iter((2, 1, 0))
@@ -23,23 +31,33 @@ class FakeCleanupRepository:
         self.rollbacks = 0
 
     def session(self):
-        """返回无需真实数据库的上下文。"""
+        """
+        返回无需真实数据库的上下文。
+        """
         return nullcontext(object())
 
     def unit_of_work(self, db):
-        """返回记录提交和回滚次数的测试事务边界。"""
+        """
+        返回记录提交和回滚次数的测试事务边界。
+        """
         return self
 
     def commit(self) -> None:
-        """记录一个成功清理批次。"""
+        """
+        记录一个成功清理批次。
+        """
         self.commits += 1
 
     def rollback(self) -> None:
-        """记录一个失败清理批次。"""
+        """
+        记录一个失败清理批次。
+        """
         self.rollbacks += 1
 
     def _delete(self, name: str) -> int:
-        """记录删除调用并按配置模拟结果或异常。"""
+        """
+        记录删除调用并按配置模拟结果或异常。
+        """
         self.calls.append(name)
         if name == self.failing_table:
             raise RuntimeError("boom")
@@ -48,56 +66,82 @@ class FakeCleanupRepository:
         return 0
 
     def delete_messages(self, db, cutoff: str, limit: int) -> int:
-        """模拟消息删除。"""
+        """
+        模拟消息删除。
+        """
         return self._delete("message")
 
     def delete_download_history(self, db, cutoff: str, limit: int) -> int:
-        """模拟下载历史删除。"""
+        """
+        模拟下载历史删除。
+        """
         return self._delete("downloadhistory")
 
     def delete_download_orphans(self, db, limit: int) -> int:
-        """模拟孤儿文件删除。"""
+        """
+        模拟孤儿文件删除。
+        """
         return self._delete("downloadfiles")
 
     def delete_site_userdata(self, db, cutoff: str, limit: int) -> int:
-        """模拟站点用户数据删除。"""
+        """
+        模拟站点用户数据删除。
+        """
         return self._delete("siteuserdata")
 
     def delete_transfer_history(self, db, cutoff: str, limit: int) -> int:
-        """模拟整理历史删除。"""
+        """
+        模拟整理历史删除。
+        """
         return self._delete("transferhistory")
 
     def delete_download_failures(self, db, cutoff: str, limit: int) -> int:
-        """模拟下载失败记录删除。"""
+        """
+        模拟下载失败记录删除。
+        """
         return self._delete("downloadfailure")
 
     def delete_subscribe_history(self, db, cutoff: str, limit: int) -> int:
-        """模拟订阅历史删除。"""
+        """
+        模拟订阅历史删除。
+        """
         return self._delete("subscribehistory")
 
     def delete_agent_chats(self, db, cutoff: str, limit: int) -> int:
-        """模拟 Agent 会话删除。"""
+        """
+        模拟 Agent 会话删除。
+        """
         return self._delete("agentchat")
 
     def delete_agent_invocations(self, db, cutoff: str, limit: int) -> int:
-        """模拟无会话已确认写工具回执的历史清理。"""
+        """
+        模拟无会话已确认写工具回执的历史清理。
+        """
         return self._delete("agentinvocation")
 
     def delete_agent_task_runs(self, db, cutoff: str, limit: int) -> int:
-        """模拟 Agent 运行历史删除。"""
+        """
+        模拟 Agent 运行历史删除。
+        """
         return self._delete("agenttaskrun")
 
     def delete_outbox_completed(self, db, cutoff: str, limit: int) -> int:
-        """模拟 Outbox 已完成记录删除。"""
+        """
+        模拟 Outbox 已完成记录删除。
+        """
         return self._delete("outbox_completed")
 
     def delete_outbox_dead(self, db, cutoff: str, limit: int) -> int:
-        """模拟 Outbox 死信记录删除。"""
+        """
+        模拟 Outbox 死信记录删除。
+        """
         return self._delete("outbox_dead")
 
 
 def _policy(**overrides) -> CleanupPolicy:
-    """构造所有表默认启用的测试策略。"""
+    """
+    构造所有表默认启用的测试策略。
+    """
     values = {
         "enabled": True,
         "message_days": 1,
@@ -116,7 +160,9 @@ def _policy(**overrides) -> CleanupPolicy:
 
 
 def test_cleanup_service_owns_batching_report_and_progress() -> None:
-    """应用服务应独立完成分批循环、报告和进度语义。"""
+    """
+    应用服务应独立完成分批循环、报告和进度语义。
+    """
     repository = FakeCleanupRepository()
     progress = MagicMock()
     service = DataCleanupService(
@@ -153,7 +199,9 @@ def test_cleanup_service_owns_batching_report_and_progress() -> None:
 
 
 def test_cleanup_service_finishes_other_tables_before_raising_partial_failure() -> None:
-    """单表失败应被汇总，后续表仍继续处理，再按旧契约抛出异常。"""
+    """
+    单表失败应被汇总，后续表仍继续处理，再按旧契约抛出异常。
+    """
     repository = FakeCleanupRepository(failing_table="downloadhistory")
     service = DataCleanupService(
         repository=repository,
@@ -169,7 +217,9 @@ def test_cleanup_service_finishes_other_tables_before_raising_partial_failure() 
 
 
 def test_scheduler_cleanup_is_a_compatibility_delegate() -> None:
-    """旧 SchedulerChain 入口应原样转发参数和返回值。"""
+    """
+    旧 SchedulerChain 入口应原样转发参数和返回值。
+    """
     governance = MagicMock()
     governance.cleanup.return_value = {"enabled": True}
     progress = MagicMock()
@@ -185,7 +235,9 @@ def test_scheduler_cleanup_is_a_compatibility_delegate() -> None:
 
 
 def test_scheduler_does_not_reclaim_database_cleanup_ownership() -> None:
-    """调度模块不得重新导入清理模型或数据库会话。"""
+    """
+    调度模块不得重新导入清理模型或数据库会话。
+    """
     scheduler_root = Path(__file__).parents[1] / "app" / "scheduler"
     trees = [
         ast.parse(path.read_text(encoding="utf-8"))

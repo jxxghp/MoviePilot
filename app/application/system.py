@@ -1,4 +1,6 @@
-"""系统管理 API 的应用用例与外部能力端口。"""
+"""
+系统管理 API 的应用用例与外部能力端口。
+"""
 
 from __future__ import annotations
 
@@ -34,12 +36,19 @@ _DATABASE_BACKUP_SETTING_KEYS = {
 
 
 class LogNotFoundError(FileNotFoundError):
-    """表示请求的日志标识或文件不属于可读取日志集合。"""
+    """
+    表示请求的日志标识或文件不属于可读取日志集合。
+    """
 
 
 @dataclass(frozen=True, slots=True)
 class LogFileData:
-    """日志归档中的稳定文件名与内容。"""
+    """
+    日志归档中的稳定文件名与内容。
+
+    :param name: 日志归档中使用的相对文件名
+    :param content: 日志文件的完整字节内容
+    """
 
     name: str
     content: bytes
@@ -47,7 +56,13 @@ class LogFileData:
 
 @dataclass(frozen=True, slots=True)
 class SystemOperationResult:
-    """系统管理用例返回给传输层的稳定执行结果。"""
+    """
+    系统管理用例返回给传输层的稳定执行结果。
+
+    :param success: 系统操作是否成功或已受理
+    :param message: 可向用户展示的结果或错误说明，None 表示无需额外说明
+    :param data: 操作返回的附加业务数据，None 表示没有附加数据
+    """
 
     success: bool
     message: str | None = None
@@ -56,17 +71,29 @@ class SystemOperationResult:
 
 @dataclass(frozen=True, slots=True)
 class MarketFetchResult:
-    """Wiki 市场清单传输端口返回的状态与仓库列表。"""
+    """
+    Wiki 市场清单传输端口返回的状态与仓库列表。
+
+    :param status_code: Wiki 文档请求的 HTTP 状态码，未获得响应时为 None
+    :param repos: 从 Wiki 文档中解析并规范化的市场仓库地址列表
+    """
 
     status_code: int | None
     repos: list[str]
 
 
 class SystemLogPort(Protocol):
-    """日志文件发现、读取与轮询的异步端口。"""
+    """
+    日志文件发现、读取与轮询的异步端口。
+    """
 
     async def read(self, logfile: str) -> str:
-        """读取一个受准入保护的日志文件。"""
+        """
+        读取一个受准入保护的日志文件。
+
+        :param logfile: 受准入规则约束的日志文件标识，不是任意文件系统路径
+        :return: 日志文件的文本内容
+        """
         ...
 
     async def follow(
@@ -75,108 +102,204 @@ class SystemLogPort(Protocol):
         length: int,
         disconnected: Callable[[], Awaitable[bool]],
     ) -> AsyncIterator[str]:
-        """返回历史尾部及后续新增日志行。"""
+        """
+        返回历史尾部及后续新增日志行。
+
+        :param logfile: 受准入规则约束的日志文件标识
+        :param length: 首次发送的历史尾部行数
+        :param disconnected: 异步判断客户端是否断开，返回 True 时停止继续跟随
+        :return: 先包含历史尾部、随后产生新增日志行的异步迭代器
+        """
         ...
 
     async def collect(self, name: str) -> list[LogFileData]:
-        """读取一个主程序或插件日志归档集合。"""
+        """
+        读取一个主程序或插件日志归档集合。
+
+        :param name: 主程序或插件日志集合的名称
+        :return: 可供归档下载的日志文件名及字节内容列表
+        """
         ...
 
 
 class PluginMarketPort(Protocol):
-    """读取并解析 Wiki 插件市场清单的传输端口。"""
+    """
+    读取并解析 Wiki 插件市场清单的传输端口。
+    """
 
     async def fetch(self, url: str) -> MarketFetchResult:
-        """读取指定 Wiki 文档并返回规范化仓库列表。"""
+        """
+        读取指定 Wiki 文档并返回规范化仓库列表。
+
+        :param url: 待读取的 Wiki 市场清单文档 URL
+        :return: HTTP 状态码及解析后的规范化市场仓库列表
+        """
         ...
 
 
 class ConfigurationEventPort(Protocol):
-    """发布系统配置变更事实的端口。"""
+    """
+    发布系统配置变更事实的端口。
+    """
 
     async def publish(self, key: Any, value: JsonData = None) -> None:
-        """发布已持久化的配置变更，并在返回前完成同步重载处理器。"""
+        """
+        发布已持久化的配置变更，并在返回前完成同步重载处理器。
+
+        :param key: 已提交变更的系统配置键
+        :param value: 已持久化的配置值，None 表示无附加值或值为空
+        """
         ...
 
 
 class ServerInfoPort(Protocol):
-    """MoviePilot Server 查询能力的最小端口。"""
+    """
+    MoviePilot Server 查询能力的最小端口。
+    """
 
     async def user_global(self) -> dict[str, Any]:
-        """返回当前用户的服务端权限投影。"""
+        """
+        返回当前用户的服务端权限投影。
+
+        :return: 当前用户在 MoviePilot Server 上的权限与权益数据
+        """
         ...
 
     async def usage(self) -> dict[str, Any]:
-        """返回匿名安装版本统计。"""
+        """
+        返回匿名安装版本统计。
+
+        :return: MoviePilot Server 提供的匿名安装版本统计数据
+        """
         ...
 
 
 class ReleaseCatalogPort(Protocol):
-    """读取 GitHub Release 目录的传输端口。"""
+    """
+    读取 GitHub Release 目录的传输端口。
+    """
 
     async def list(self) -> list[dict[str, Any]] | None:
-        """返回 Release 列表，读取失败时返回空值。"""
+        """
+        返回 Release 列表，读取失败时返回空值。
+
+        :return: 版本发布条目列表，读取失败时为 None
+        """
         ...
 
 
 class RuntimeFeaturePort(Protocol):
-    """查询本机可选运行能力的端口。"""
+    """
+    查询本机可选运行能力的端口。
+    """
 
     def snapshot(self) -> dict[str, bool]:
-        """返回 Rust 加速等本机能力快照。"""
+        """
+        返回 Rust 加速等本机能力快照。
+
+        :return: 本机可选功能名称到可用状态的映射
+        """
         ...
 
 
 class SystemControlPort(Protocol):
-    """主进程更新和重启控制端口。"""
+    """
+    主进程更新和重启控制端口。
+    """
 
     def can_restart(self) -> bool:
-        """返回当前部署环境是否支持受管重启。"""
+        """
+        返回当前部署环境是否支持受管重启。
+
+        :return: 当前部署支持宿主管理的重启时为 True
+        """
         ...
 
     def restart(self) -> tuple[bool, str]:
-        """请求重启并返回兼容结果。"""
+        """
+        请求重启并返回兼容结果。
+
+        :return: 重启请求是否受理及说明；受理后由宿主生命周期执行重启
+        """
         ...
 
     def upgrade_dev(self) -> tuple[bool, str]:
-        """执行开发分支更新。"""
+        """
+        执行开发分支更新。
+
+        :return: 开发分支更新是否成功及结果说明
+        """
         ...
 
 
 class SystemUpdatePort(Protocol):
-    """后台 Release 更新状态机端口。"""
+    """
+    后台 Release 更新状态机端口。
+    """
 
     def status(self) -> SystemUpdateStatus:
-        """读取当前后台更新状态。"""
+        """
+        读取当前后台更新状态。
+
+        :return: 主程序和资源更新项的当前阶段、版本与下载进度
+        """
         ...
 
     def check(self) -> SystemUpdateStatus:
-        """立即检查正式版本更新。"""
+        """
+        立即检查正式版本更新。
+
+        :return: 主程序和资源更新项的当前阶段、版本与下载进度
+        """
         ...
 
     def download(self, target: SystemUpdateTarget = "application") -> SystemUpdateStatus:
-        """启动指定升级类型的后台下载并返回当前状态。"""
+        """
+        启动指定升级类型的后台下载并返回当前状态。
+
+        :param target: 更新目标：application 为主程序，resources 为资源，all 为全部，默认主程序
+        :return: 启动下载后立即可见的更新状态，后续进度需继续查询
+        """
         ...
 
     def prepare_install(self, target: SystemUpdateTarget = "application") -> tuple[bool, str]:
-        """确认消费指定升级类型的已校验制品。"""
+        """
+        确认消费指定升级类型的已校验制品。
+
+        :param target: 更新目标：application 为主程序，resources 为资源，all 为全部，默认主程序
+        :return: 是否成功准备安装及说明；实际应用制品由后续重启流程完成
+        """
         ...
 
     def cancel_install(self, message: str) -> None:
-        """在重启失败时撤销安装请求。"""
+        """
+        在重启失败时撤销安装请求。
+
+        :param message: 撤销安装请求的原因，供状态展示与排查
+        """
         ...
 
 
 class LlmCapabilityPort(Protocol):
-    """校验 LLM 服务端工具能力的端口。"""
+    """
+    校验 LLM 服务端工具能力的端口。
+    """
 
     def validate(self, env: dict[str, Any], settings: RuntimeSettingsService) -> str | None:
-        """校验本次设置变更是否请求了不可用能力。"""
+        """
+        校验本次设置变更是否请求了不可用能力。
+
+        :param env: 本次请求修改的 LLM 设置字段与新值
+        :param settings: 读取未被本次请求覆盖的现有运行设置
+        :return: 不可用能力的说明；校验通过时为 None
+        """
         ...
 
 
 class SystemService:
-    """集中执行 System API 的日志、设置、市场和进程控制用例。"""
+    """
+    集中执行 System API 的日志、设置、市场和进程控制用例。
+    """
 
     def __init__(
         self,
@@ -197,7 +320,9 @@ class SystemService:
         github_auth: GithubAuthService | None = None,
         github_community: CommunityMedalService | None = None,
     ) -> None:
-        """保存由启动组合根注入的全部外部端口和 GitHub 授权服务。"""
+        """
+        保存由启动组合根注入的全部外部端口和 GitHub 授权服务。
+        """
         self.settings = settings
         self._system_config = system_config
         self._logs = logs
@@ -219,11 +344,15 @@ class SystemService:
         key: Any,
         value: JsonData = None,
     ) -> None:
-        """发布一项已经持久化完成的系统配置变更。"""
+        """
+        发布一项已经持久化完成的系统配置变更。
+        """
         await self._events.publish(key, value)
 
     async def read_log(self, logfile: str) -> str:
-        """读取日志并按旧接口语义倒序返回。"""
+        """
+        读取日志并按旧接口语义倒序返回。
+        """
         text = await self._logs.read(logfile)
         return "\n".join(text.split("\n")[::-1])
 
@@ -233,15 +362,21 @@ class SystemService:
         length: int,
         disconnected: Callable[[], Awaitable[bool]],
     ) -> AsyncIterator[str]:
-        """取得日志轮询数据源，传输层只负责 SSE framing。"""
+        """
+        取得日志轮询数据源，传输层只负责 SSE framing。
+        """
         return await self._logs.follow(logfile, length, disconnected)
 
     async def collect_logs(self, name: str) -> list[LogFileData]:
-        """读取日志归档条目，传输层只负责 ZIP framing。"""
+        """
+        读取日志归档条目，传输层只负责 ZIP framing。
+        """
         return await self._logs.collect(name)
 
     async def update_environment(self, env: dict[str, Any]) -> SystemOperationResult:
-        """校验并执行一批可变部署设置更新。"""
+        """
+        校验并执行一批可变部署设置更新。
+        """
         validation_error = self._llm.validate(env, self.settings)
         if validation_error:
             return SystemOperationResult(False, validation_error)
@@ -271,7 +406,9 @@ class SystemService:
         )
 
     async def sync_plugin_market(self, wiki_url: str | None) -> SystemOperationResult:
-        """读取 Wiki 清单、合并本地仓库并更新运行设置。"""
+        """
+        读取 Wiki 清单、合并本地仓库并更新运行设置。
+        """
         source_url = (wiki_url or PLUGIN_MARKET_WIKI_URL).strip()
         if not self._is_allowed_wiki_url(source_url):
             return SystemOperationResult(False, "不支持的 Wiki 同步地址")
@@ -306,7 +443,9 @@ class SystemService:
         )
 
     async def update_setting(self, key: str, value: JsonData) -> SystemOperationResult:
-        """按配置所有权更新运行设置或持久化系统配置。"""
+        """
+        按配置所有权更新运行设置或持久化系统配置。
+        """
         if self.settings.contains(key):
             success, message = self.settings.update(key, value)
             if success:
@@ -353,30 +492,42 @@ class SystemService:
             return SystemOperationResult(False, str(error))
 
     async def user_global(self) -> dict[str, Any]:
-        """返回 MoviePilot Server 用户权限投影。"""
+        """
+        返回 MoviePilot Server 用户权限投影。
+        """
         return await self._server.user_global()
 
     async def usage(self) -> dict[str, Any]:
-        """返回安装版本统计。"""
+        """
+        返回安装版本统计。
+        """
         return await self._server.usage()
 
     async def releases(self) -> list[dict[str, Any]] | None:
-        """返回 GitHub Release 目录。"""
+        """
+        返回 GitHub Release 目录。
+        """
         return await self._releases.list()
 
     def runtime_features(self) -> dict[str, bool]:
-        """返回本机可选运行能力快照。"""
+        """
+        返回本机可选运行能力快照。
+        """
         return self._features.snapshot()
 
     def restart(self) -> SystemOperationResult:
-        """执行受管重启。"""
+        """
+        执行受管重启。
+        """
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持重启操作！")
         success, message = self._control.restart()
         return SystemOperationResult(success, message)
 
     def upgrade(self, mode: str | None) -> SystemOperationResult:
-        """仅保留兼容的开发分支更新入口。"""
+        """
+        仅保留兼容的开发分支更新入口。
+        """
         if str(mode or "").strip().lower() != "dev":
             return SystemOperationResult(False, "Release 更新请使用 /system/update/check、download 和 install 接口")
         if not self._control.can_restart():
@@ -385,15 +536,21 @@ class SystemService:
         return SystemOperationResult(success, message)
 
     def update_status(self) -> SystemUpdateStatus:
-        """读取后台更新状态。"""
+        """
+        读取后台更新状态。
+        """
         return self._updates.status()
 
     def check_update(self) -> SystemUpdateStatus:
-        """立即检查正式版本更新。"""
+        """
+        立即检查正式版本更新。
+        """
         return self._updates.check()
 
     def download_update(self, target: SystemUpdateTarget = "application") -> SystemOperationResult:
-        """校验环境并启动指定升级类型的后台下载。"""
+        """
+        校验环境并启动指定升级类型的后台下载。
+        """
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持升级操作！")
         status = self._updates.download(target)
@@ -403,7 +560,9 @@ class SystemService:
         return SystemOperationResult(status.state != "failed", status.error, status)
 
     def install_update(self, target: SystemUpdateTarget = "application") -> SystemOperationResult:
-        """确认指定制品并安排 Docker worker 在受管重启前完成替换。"""
+        """
+        确认指定制品并安排 Docker worker 在受管重启前完成替换。
+        """
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持升级操作！")
         prepared, message = self._updates.prepare_install(target)
@@ -416,7 +575,9 @@ class SystemService:
         return SystemOperationResult(True, message)
 
     def _validate_database_backup_config(self, env: dict[str, Any]) -> str | None:
-        """在批量写入前校验数据库备份策略。"""
+        """
+        在批量写入前校验数据库备份策略。
+        """
         if not _DATABASE_BACKUP_SETTING_KEYS.intersection(env):
             return None
         cron = str(env.get("DB_BACKUP_CRON", self.settings.get("DB_BACKUP_CRON")) or "").strip()
@@ -445,7 +606,9 @@ class SystemService:
 
     @staticmethod
     def _is_allowed_wiki_url(wiki_url: str) -> bool:
-        """限制 Wiki 同步到维护者控制的固定文档源。"""
+        """
+        限制 Wiki 同步到维护者控制的固定文档源。
+        """
         parsed = urlparse(wiki_url)
         return (
             parsed.scheme == "https"
@@ -455,12 +618,16 @@ class SystemService:
 
     @staticmethod
     def _split_repos(value: Any) -> list[str]:
-        """拆分并规范化逗号分隔的仓库地址。"""
+        """
+        拆分并规范化逗号分隔的仓库地址。
+        """
         return SystemService._merge_repos([], str(value or "").split(","))
 
     @staticmethod
     def _merge_repos(existing: list[str], incoming: list[str]) -> list[str]:
-        """按来源顺序合并仓库地址并执行大小写不敏感去重。"""
+        """
+        按来源顺序合并仓库地址并执行大小写不敏感去重。
+        """
         merged: list[str] = []
         seen: set[str] = set()
         for repo in (*existing, *incoming):
@@ -473,7 +640,9 @@ class SystemService:
 
     @staticmethod
     def _dict_list(value: JsonData) -> list[dict[str, Any]]:
-        """只保留规则组列表中的字典定义并复制输入。"""
+        """
+        只保留规则组列表中的字典定义并复制输入。
+        """
         if not isinstance(value, list):
             return []
         return [dict(item) for item in value if isinstance(item, dict)]

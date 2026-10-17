@@ -1,8 +1,14 @@
+"""
+验证大语言模型提供方提示的解析与选择。
+"""
+
 from app.agent.llm.provider import LLMProviderManager
 
 
 def test_openai_compatible_provider_api_key_hint_only_describes_credentials() -> None:
-    """通用 OpenAI 兼容入口的 API Key 提示不应混入 Base URL 配置说明。"""
+    """
+    通用 OpenAI 兼容入口的 API Key 提示不应混入 Base URL 配置说明。
+    """
     provider = LLMProviderManager().get_provider("openai")
 
     assert provider.requires_base_url is True

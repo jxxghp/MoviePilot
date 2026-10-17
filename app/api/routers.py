@@ -1,3 +1,7 @@
+"""
+集中登记领域路由的前缀和标签，供 API 入口按需挂载。
+"""
+
 from typing import NamedTuple
 
 from fastapi import APIRouter
@@ -48,11 +52,17 @@ from app.api.endpoints import (
 
 
 class RouterSpec(NamedTuple):
-    """声明一个 v1 端点路由器及其公开路径元数据。"""
+    """
+    声明一个 v1 端点路由器及其公开路径元数据。
 
-    router: APIRouter  # 原始端点路由器
-    prefix: str  # 相对 v1 根路径的前缀
-    tags: tuple[str, ...]  # 追加到端点 OpenAPI 操作的标签
+    :param router: 领域端点原始路由器
+    :param prefix: 相对 v1 根路径的挂载前缀
+    :param tags: 追加到 OpenAPI 操作中的分类标签
+    """
+
+    router: APIRouter
+    prefix: str
+    tags: tuple[str, ...]
 
 
 API_V1_ROUTER_SPECS: tuple[RouterSpec, ...] = (

@@ -1,4 +1,5 @@
-"""统一插件只读查询 SDK 的真实 SQLite 合同测试。
+"""
+统一插件只读查询 SDK 的真实 SQLite 合同测试。
 
 这些用例从真实 SQLAlchemy 表读取，再经查询服务和 ``app.sdk.queries`` 返回，
 因此同时约束筛选、分页、DTO 投影以及异步数据库执行边界。所有数据都由共享的
@@ -41,14 +42,18 @@ TMDB = MediaSource.TMDB.value
 
 
 class _RecordingExecutor:
-    """记录服务是否把异步查询提交到独立执行线程。"""
+    """
+    记录服务是否把异步查询提交到独立执行线程。
+    """
 
     def __init__(self) -> None:
         self.calls = 0
         self.worker_thread_ids: list[int] = []
 
     async def run(self, operation: Callable[[], Any]) -> Any:
-        """在线程中执行同步查询，模拟宿主数据库 worker 的调用合同。"""
+        """
+        在线程中执行同步查询，模拟宿主数据库 worker 的调用合同。
+        """
         self.calls += 1
 
         def invoke() -> Any:
@@ -60,7 +65,9 @@ class _RecordingExecutor:
 
 @pytest.fixture
 def query_sdk(db, monkeypatch):
-    """装配真实数据查询适配器，并把 SDK 绑定到本用例的 SQLite 服务。"""
+    """
+    装配真实数据查询适配器，并把 SDK 绑定到本用例的 SQLite 服务。
+    """
     from app.application import query as data_query_module
     from app.application.query import DataQueryService
     from app.db.adapters.query import SqlAlchemyDataQueryAdapter
@@ -95,7 +102,9 @@ def _subscribe(
     music_type: str | None = None,
     manual_total_episode: int | None = 0,
 ) -> SubscribeModel:
-    """构造隔离用例使用的订阅行。"""
+    """
+    构造隔离用例使用的订阅行。
+    """
     return SubscribeModel(
         name=name,
         type=mtype,
@@ -122,7 +131,9 @@ def _subscribe_history(
     date: str = "2026-08-27 10:00:00",
     music_type: str | None = None,
 ) -> SubscribeHistoryModel:
-    """构造隔离用例使用的订阅完成历史行。"""
+    """
+    构造隔离用例使用的订阅完成历史行。
+    """
     return SubscribeHistoryModel(
         name=name,
         type=mtype,
@@ -151,7 +162,9 @@ def _download_history(
     mtype: str = MediaType.TV.value,
     music_type: str | None = None,
 ) -> DownloadHistoryModel:
-    """构造隔离用例使用的下载历史行。"""
+    """
+    构造隔离用例使用的下载历史行。
+    """
     return DownloadHistoryModel(
         path=path,
         type=mtype,
@@ -184,7 +197,9 @@ def _transfer_history(
     date: str = "2026-08-27 10:00:00",
     mtype: str = MediaType.TV.value,
 ) -> TransferHistoryModel:
-    """构造隔离用例使用的整理历史行。"""
+    """
+    构造隔离用例使用的整理历史行。
+    """
     return TransferHistoryModel(
         src=src,
         src_storage="local",
@@ -204,7 +219,9 @@ def _transfer_history(
 
 
 def _assert_projected_page(page: QueryPage, dto_type: type[Any], model_type: type[Any], row_id: int) -> None:
-    """断言分页结果是稳定 DTO，而不是 ORM 行或延迟加载对象。"""
+    """
+    断言分页结果是稳定 DTO，而不是 ORM 行或延迟加载对象。
+    """
     assert isinstance(page, QueryPage)
     assert page.total == 1
     assert len(page.items) == 1
@@ -216,7 +233,9 @@ def _assert_projected_page(page: QueryPage, dto_type: type[Any], model_type: typ
 
 
 def test_sdk_projects_subscription_and_three_history_domains_to_dtos(db, query_sdk):
-    """订阅、订阅完成历史、下载历史、整理历史均只返回 Pydantic 投影。"""
+    """
+    订阅、订阅完成历史、下载历史、整理历史均只返回 Pydantic 投影。
+    """
     sdk, _executor = query_sdk
     subscribe = db.add(
         _subscribe(
@@ -269,7 +288,9 @@ def test_sdk_projects_subscription_and_three_history_domains_to_dtos(db, query_s
 
 
 def test_sdk_applies_combined_filters_in_each_query_domain(db, query_sdk):
-    """多个筛选条件必须按 AND 组合，不能只应用媒体身份或单个主条件。"""
+    """
+    多个筛选条件必须按 AND 组合，不能只应用媒体身份或单个主条件。
+    """
     sdk, _executor = query_sdk
 
     db.add(
@@ -489,7 +510,9 @@ def test_sdk_applies_combined_filters_in_each_query_domain(db, query_sdk):
 
 
 def test_sdk_pagination_reports_total_and_stable_date_id_order(db, query_sdk):
-    """同日期记录按 ID 打破平局，跨页总数和结果顺序保持稳定。"""
+    """
+    同日期记录按 ID 打破平局，跨页总数和结果顺序保持稳定。
+    """
     sdk, _executor = query_sdk
     rows = db.add(
         _download_history(
@@ -552,7 +575,9 @@ def test_sdk_pagination_reports_total_and_stable_date_id_order(db, query_sdk):
 
 
 def test_structured_text_fields_are_exact_and_text_search_is_explicit(db, query_sdk):
-    """结构化字段保持精确匹配，只有 text 承担转义后的模糊搜索。"""
+    """
+    结构化字段保持精确匹配，只有 text 承担转义后的模糊搜索。
+    """
     sdk, _executor = query_sdk
     db.add(
         _download_history(
@@ -615,7 +640,9 @@ def test_structured_text_fields_are_exact_and_text_search_is_explicit(db, query_
 
 
 def test_snapshots_normalize_legacy_identity_and_transfer_status():
-    """旧半对身份和 NULL 整理状态不得使分页投影失败或产生假成功。"""
+    """
+    旧半对身份和 NULL 整理状态不得使分页投影失败或产生假成功。
+    """
     dirty_transfer = SimpleNamespace(
         id=1,
         media_source=TMDB,
@@ -631,7 +658,9 @@ def test_snapshots_normalize_legacy_identity_and_transfer_status():
 
 
 def test_transfer_failure_filter_includes_legacy_null_status(db, query_sdk):
-    """失败筛选与快照语义一致，包含状态尚未回填的旧整理记录。"""
+    """
+    失败筛选与快照语义一致，包含状态尚未回填的旧整理记录。
+    """
     sdk, _executor = query_sdk
     legacy_row = db.add(
         _transfer_history(
@@ -658,7 +687,9 @@ def test_transfer_failure_filter_includes_legacy_null_status(db, query_sdk):
 
 
 def test_transfer_required_identity_excludes_unparseable_legacy_source(db, query_sdk):
-    """有效身份筛选不得返回随后会被快照降级为空身份的脏来源。"""
+    """
+    有效身份筛选不得返回随后会被快照降级为空身份的脏来源。
+    """
     sdk, _executor = query_sdk
     valid_row = db.add(
         _transfer_history(
@@ -692,7 +723,9 @@ def test_transfer_required_identity_excludes_unparseable_legacy_source(db, query
 
 
 def test_query_snapshots_are_owned_by_the_sdk_contract_module():
-    """公开查询返回值由独立快照定义，不复用宿主写入或 API 响应模型。"""
+    """
+    公开查询返回值由独立快照定义，不复用宿主写入或 API 响应模型。
+    """
     snapshots = (
         SubscriptionSnapshot,
         SubscriptionHistorySnapshot,
@@ -715,7 +748,9 @@ def test_query_snapshots_are_owned_by_the_sdk_contract_module():
     ],
 )
 def test_sdk_rejects_invalid_or_half_media_identity_fail_closed(query_sdk, payload):
-    """媒体身份不完整、空白、零值或未知来源不得退化成全表查询。"""
+    """
+    媒体身份不完整、空白、零值或未知来源不得退化成全表查询。
+    """
     sdk, _executor = query_sdk
 
     with pytest.raises(ValueError):
@@ -723,7 +758,9 @@ def test_sdk_rejects_invalid_or_half_media_identity_fail_closed(query_sdk, paylo
 
 
 def test_sdk_get_returns_none_for_missing_records(query_sdk):
-    """四个查询领域的按 ID 读取在未命中时统一返回 None。"""
+    """
+    四个查询领域的按 ID 读取在未命中时统一返回 None。
+    """
     sdk, _executor = query_sdk
     missing_id = 2_147_483_647
 
@@ -734,7 +771,9 @@ def test_sdk_get_returns_none_for_missing_records(query_sdk):
 
 
 def test_sdk_get_projects_records_and_async_uses_executor(db, query_sdk):
-    """四类 getter 均返回 DTO，异步入口与同步一致且经过数据库 executor。"""
+    """
+    四类 getter 均返回 DTO，异步入口与同步一致且经过数据库 executor。
+    """
     sdk, executor = query_sdk
     subscribe = db.add(_subscribe("Getter subscribe", media_id="getter-subscription"))
     subscribe_history = db.add(
@@ -802,7 +841,9 @@ def test_sdk_get_projects_records_and_async_uses_executor(db, query_sdk):
 
 
 def test_sdk_sync_async_semantics_match_and_async_uses_executor(db, query_sdk):
-    """四个查询门面的异步结果与同步一致，并交给 executor 线程。"""
+    """
+    四个查询门面的异步结果与同步一致，并交给 executor 线程。
+    """
     sdk, executor = query_sdk
     subscribe = db.add(_subscribe("订阅同步异步", media_id="async-subscription"))
     subscribe_history = db.add(
@@ -881,7 +922,9 @@ def test_sdk_sync_async_semantics_match_and_async_uses_executor(db, query_sdk):
 
 
 def test_sdk_public_exports_do_not_leak_persistence_implementation(query_sdk):
-    """SDK 的机器可读公开合同只允许 DTO、筛选模型和查询函数。"""
+    """
+    SDK 的机器可读公开合同只允许 DTO、筛选模型和查询函数。
+    """
     sdk, _executor = query_sdk
     forbidden_tokens = ("session", "oper", "provider", "configure")
     forbidden_modules = (
@@ -910,7 +953,9 @@ def test_sdk_public_exports_do_not_leak_persistence_implementation(query_sdk):
 
 
 def test_query_tests_use_local_sqlite_backend(query_sdk):
-    """查询 focused tests 固定在隔离 SQLite 上，不依赖外部数据库或网络。"""
+    """
+    查询 focused tests 固定在隔离 SQLite 上，不依赖外部数据库或网络。
+    """
     from app.db.engine import get_engine
 
     engine = get_engine()

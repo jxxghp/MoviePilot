@@ -1,3 +1,7 @@
+"""
+订阅列表、进度展示与订阅动作的渠道交互。
+"""
+
 import re
 from typing import Any, Callable, List, Optional, Protocol, Tuple, Union
 
@@ -23,7 +27,9 @@ subscribe_interaction_manager = SlashInteractionManager()
 
 
 def _format_subscribe_progress(subscribe: SubscriptionSnapshot) -> str:
-    """构造订阅的季和进度说明，专辑按累计曲目数展示。"""
+    """
+    构造订阅的季和进度说明，专辑按累计曲目数展示。
+    """
     if subscribe.type == MediaType.MOVIE.value:
         return "电影"
     if (
@@ -51,15 +57,28 @@ class SubscribeInteractionActions(Protocol):
     """
 
     def refresh(self) -> Any:
-        """执行订阅刷新。"""
+        """
+        执行订阅刷新。
+
+        :return: 业务动作的原始返回值；消息交互层仅触发动作，不依赖该返回值
+        """
         ...
 
     def check(self) -> Any:
-        """执行订阅元数据检查。"""
+        """
+        执行订阅元数据检查。
+
+        :return: 业务动作的原始返回值；消息交互层仅触发动作，不依赖该返回值
+        """
         ...
 
     def search(self, **kwargs: Any) -> Any:
-        """按消息入口参数执行订阅搜索。"""
+        """
+        按消息入口参数执行订阅搜索。
+
+        :param kwargs: 订阅搜索条件；当前交互传入 sid 或 state，并以 manual=True 标记手动搜索
+        :return: 业务动作的原始返回值；消息交互层不解析该结果
+        """
         ...
 
 
@@ -218,7 +237,9 @@ class SubscribeInteractionHandler:
             username: str,
             text: str,
     ) -> bool:
-        """处理 /subscribes 文本交互并保持消息链公开 ABI。"""
+        """
+        处理 /subscribes 文本交互并保持消息链公开 ABI。
+        """
         return self._handle_text_interaction(channel, source, userid, username, text)
 
     def _handle_text_interaction(
@@ -563,7 +584,9 @@ class SubscribeInteractionHandler:
 
     @staticmethod
     def _format_subscribe_progress(subscribe: SubscriptionSnapshot) -> str:
-        """构造订阅的季和进度说明。"""
+        """
+        构造订阅的季和进度说明。
+        """
         return _format_subscribe_progress(subscribe)
 
     @staticmethod

@@ -1,4 +1,6 @@
-"""把旧整理历史 Oper 的业务写入方法转交给应用服务。"""
+"""
+把旧整理历史 Oper 的业务写入方法转交给应用服务。
+"""
 
 from typing import Any, Optional, cast
 
@@ -24,14 +26,20 @@ from app.schemas.transfer import TransferInfo
 
 
 class _LegacyTransferHistoryStager:
-    """把旧 Oper 写入口适配到 Application 类型化暂存合同。"""
+    """
+    把旧 Oper 写入口适配到 Application 类型化暂存合同。
+    """
 
     def __init__(self, owner: "TransferHistoryOper") -> None:
-        """保存兼容 Oper。"""
+        """
+        保存兼容 Oper。
+        """
         self._owner = owner
 
     def replace(self, history: TransferHistoryWrite) -> TransferHistorySnapshot:
-        """把类型化写入转回旧 add_force ABI。"""
+        """
+        把类型化写入转回旧 add_force ABI。
+        """
         return cast(
             TransferHistorySnapshot,
             self._owner.add_force(**history.to_payload()),
@@ -39,7 +47,9 @@ class _LegacyTransferHistoryStager:
 
 
 class TransferHistoryOper(CanonicalTransferHistoryOper):
-    """继承新的查询接口，并保留旧的成功/失败历史写入方法。"""
+    """
+    继承新的查询接口，并保留旧的成功/失败历史写入方法。
+    """
 
     def add_success(
             self,
@@ -97,7 +107,9 @@ class TransferHistoryOper(CanonicalTransferHistoryOper):
         self,
         **kwargs,
     ) -> Optional[TransferHistorySnapshot]:
-        """按旧动态字段签名替换同源历史，并返回脱离 Session 的快照。"""
+        """
+        按旧动态字段签名替换同源历史，并返回脱离 Session 的快照。
+        """
         payload = dict(kwargs)
         payload.pop("date", None)
         repository: TransferHistoryReplacePort

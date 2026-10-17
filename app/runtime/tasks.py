@@ -1,4 +1,6 @@
-"""进程内后台任务登记与生命周期收口。"""
+"""
+进程内后台任务登记与生命周期收口。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,13 @@ from typing import Any, Callable
 
 @dataclass(frozen=True, slots=True)
 class TaskRecord:
-    """记录一个后台任务的所有者，便于关停阶段按责任域收口。"""
+    """
+    记录一个后台任务的所有者，便于关停阶段按责任域收口。
+
+    :param owner: 负责取消和回收任务的责任域标识
+    :param task: 登记到当前事件循环的后台任务
+    :param cancel_on_shutdown: 关闭责任域时是否向任务发送取消请求
+    """
 
     owner: str
     task: asyncio.Task[Any]
@@ -22,17 +30,26 @@ class TaskRecord:
 
 @dataclass(slots=True)
 class _ThreadsafeSubmission:
-    """持有跨线程提交从排队到真实 Task 发布之间的生命周期。"""
+    """
+    持有跨线程提交从排队到真实 Task 发布之间的生命周期。
+
+    :param coroutine: 等待跨线程提交的原始协程，未发布任务时由提交方负责关闭
+    :param task: 已在目标循环创建的任务；尚未发布时为 None
+    """
 
     coroutine: Coroutine[Any, Any, Any]
     task: asyncio.Task[Any] | None = None
 
 
 class TaskRegistry:
-    """管理由宿主创建的进程内后台任务，并提供统一取消与等待入口。"""
+    """
+    管理由宿主创建的进程内后台任务，并提供统一取消与等待入口。
+    """
 
     def __init__(self) -> None:
-        """初始化空任务登记表。"""
+        """
+        初始化空任务登记表。
+        """
         self._records: dict[asyncio.Task[Any], TaskRecord] = {}
         self._shutdown_cancel_requested: set[asyncio.Task[Any]] = set()
         self._shutdown_timeout_reported: set[asyncio.Task[Any]] = set()
@@ -44,7 +61,9 @@ class TaskRegistry:
 
     @property
     def records(self) -> tuple[TaskRecord, ...]:
-        """返回当前仍未完成的任务快照。"""
+        """
+        返回当前仍未完成的任务快照。
+        """
         return tuple(
             record for record in self._records.values() if not record.task.done()
         )
@@ -56,7 +75,9 @@ class TaskRegistry:
         owner: str,
         cancel_on_shutdown: bool = True,
     ) -> asyncio.Task[Any]:
-        """创建并登记后台任务，任务完成后自动从登记表移除。"""
+        """
+        创建并登记后台任务，任务完成后自动从登记表移除。
+        """
         if not self._accepting:
             coroutine.close()
             raise RuntimeError("后台任务登记器正在关闭，不能再创建新任务")
@@ -75,7 +96,9 @@ class TaskRegistry:
         owner: str,
         **kwargs: Any,
     ) -> asyncio.Task[Any]:
-        """在线程池执行同步后台函数并登记其异步生命周期。"""
+        """
+        在线程池执行同步后台函数并登记其异步生命周期。
+        """
         return self.create(
             asyncio.to_thread(partial(function, *args, **kwargs)),
             owner=owner,
@@ -90,12 +113,16 @@ class TaskRegistry:
         owner: str,
         cancel_on_shutdown: bool = True,
     ) -> concurrent.futures.Future[Any]:
-        """从宿主线程提交协程，并持有排队阶段直至发布真实 Task。"""
+        """
+        从宿主线程提交协程，并持有排队阶段直至发布真实 Task。
+        """
         completion: concurrent.futures.Future[Any] = concurrent.futures.Future()
         submission = _ThreadsafeSubmission(coroutine=coroutine)
 
         def mirror_completion(task: asyncio.Task[Any]) -> None:
-            """把登记任务的真实终态镜像给跨线程调用方。"""
+            """
+            把登记任务的真实终态镜像给跨线程调用方。
+            """
             if completion.done():
                 return
             try:
@@ -112,7 +139,9 @@ class TaskRegistry:
                 return
 
         def submit_on_loop() -> None:
-            """在目标循环内把 pending submission 原子移交给真实 Task。"""
+            """
+            在目标循环内把 pending submission 原子移交给真实 Task。
+            """
             close_coroutine = False
             task: asyncio.Task[Any] | None = None
             error: Exception | None = None
@@ -162,7 +191,9 @@ class TaskRegistry:
         def cancel_registered_task(
             submitted: concurrent.futures.Future[Any],
         ) -> None:
-            """调用方取消 completion 时，把取消请求转交目标循环中的真实任务。"""
+            """
+            调用方取消 completion 时，把取消请求转交目标循环中的真实任务。
+            """
             if not submitted.cancelled():
                 return
             close_coroutine = False
@@ -207,7 +238,9 @@ class TaskRegistry:
         owner: str,
         cancel_on_shutdown: bool = True,
     ) -> asyncio.Task[Any]:
-        """登记已有任务并绑定责任域。"""
+        """
+        登记已有任务并绑定责任域。
+        """
         if not self._accepting:
             task.cancel()
             raise RuntimeError("后台任务登记器正在关闭，不能再登记新任务")
@@ -221,7 +254,9 @@ class TaskRegistry:
         return task
 
     def _discard(self, task: asyncio.Task[Any]) -> None:
-        """移除已结束任务，并把未处理异常交给事件循环统一报告。"""
+        """
+        移除已结束任务，并把未处理异常交给事件循环统一报告。
+        """
         record = self._records.pop(task, None)
         self._shutdown_cancel_requested.discard(task)
         self._shutdown_timeout_reported.discard(task)
@@ -239,7 +274,9 @@ class TaskRegistry:
             )
 
     async def shutdown(self, *, timeout_seconds: float = 10.0) -> bool:
-        """停止接收并有限等待存量任务，返回全部 owner 是否真实收敛。"""
+        """
+        停止接收并有限等待存量任务，返回全部 owner 是否真实收敛。
+        """
         with self._state_lock:
             self._accepting = False
             pending_submissions = tuple(self._threadsafe_submissions.items())
@@ -285,11 +322,15 @@ _runtime_registry: TaskRegistry | None = None
 
 
 def configure_task_registry(registry: TaskRegistry | None) -> None:
-    """由启动组合根发布当前 lifespan 的任务登记器。"""
+    """
+    由启动组合根发布当前 lifespan 的任务登记器。
+    """
     global _runtime_registry
     _runtime_registry = registry
 
 
 def get_task_registry() -> TaskRegistry:
-    """返回当前宿主任务登记器，未启动完整 lifespan 时保留测试兼容回退。"""
+    """
+    返回当前宿主任务登记器，未启动完整 lifespan 时保留测试兼容回退。
+    """
     return _runtime_registry or _default_registry

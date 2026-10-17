@@ -70,7 +70,9 @@ def test_get_async_db_yields_session_from_scope(monkeypatch):
     used = []
 
     class _Scope:
-        """会话作用域替身，记录进入与退出。"""
+        """
+        会话作用域替身，记录进入与退出。
+        """
 
         async def __aenter__(self):
             used.append("enter")
@@ -94,13 +96,17 @@ def test_get_async_db_yields_session_from_scope(monkeypatch):
 
 
 def test_scoped_sessions_are_not_shared_across_worker_threads(monkeypatch):
-    """同步入口必须为并行工作线程提供不同 Session 实例。"""
+    """
+    同步入口必须为并行工作线程提供不同 Session 实例。
+    """
     registry = scoped_session(sessionmaker())
     barrier = threading.Barrier(2)
     monkeypatch.setattr(session_module, "_scoped_session", registry)
 
     def open_in_thread() -> int:
-        """在线程内持有会话直到另一个线程也完成解析。"""
+        """
+        在线程内持有会话直到另一个线程也完成解析。
+        """
         session = session_module.ScopedSession()
         try:
             barrier.wait(timeout=5)
@@ -115,22 +121,32 @@ def test_scoped_sessions_are_not_shared_across_worker_threads(monkeypatch):
 
 
 def test_async_session_scopes_are_not_shared_across_tasks(monkeypatch):
-    """并发异步任务必须各自创建和关闭 AsyncSession 作用域。"""
+    """
+    并发异步任务必须各自创建和关闭 AsyncSession 作用域。
+    """
     created: list[object] = []
 
     class FakeAsyncSession:
-        """记录每次作用域构造的独立异步会话替身。"""
+        """
+        记录每次作用域构造的独立异步会话替身。
+        """
 
         def __init__(self, **_kwargs) -> None:
-            """创建可由异步上下文管理器返回的唯一实例。"""
+            """
+            创建可由异步上下文管理器返回的唯一实例。
+            """
             created.append(self)
 
         async def __aenter__(self):
-            """返回当前会话实例。"""
+            """
+            返回当前会话实例。
+            """
             return self
 
         async def __aexit__(self, *_exc) -> bool:
-            """模拟正常释放且不吞掉异常。"""
+            """
+            模拟正常释放且不吞掉异常。
+            """
             return False
 
     monkeypatch.setattr(
@@ -141,13 +157,17 @@ def test_async_session_scopes_are_not_shared_across_tasks(monkeypatch):
     monkeypatch.setattr(session_module, "AsyncSession", FakeAsyncSession)
 
     async def open_in_task() -> int:
-        """进入一个任务私有的异步会话作用域。"""
+        """
+        进入一个任务私有的异步会话作用域。
+        """
         async with session_module.async_session_scope() as session:
             await asyncio.sleep(0)
             return id(session)
 
     async def run() -> list[int]:
-        """并发执行两个会话作用域。"""
+        """
+        并发执行两个会话作用域。
+        """
         return await asyncio.gather(open_in_task(), open_in_task())
 
     session_ids = asyncio.run(run())
@@ -246,7 +266,8 @@ def test_close_database_releases_remaining_engines_after_global_failure(monkeypa
     session_module._pooled_async_engines.clear()
     session_module._pooled_async_engines.update({1: pooled})
 
-    asyncio.run(session_module.close_database())  # 不抛异常
+    # 单个引擎关闭失败不应向外传播异常
+    asyncio.run(session_module.close_database())
 
     # 出错的那个也得真被尝试过，排在它后面的一个都不能少
     sync_engine.dispose.assert_called_once()

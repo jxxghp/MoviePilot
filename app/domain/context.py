@@ -1,5 +1,5 @@
 """
-聚合媒体、音乐、种子和字幕的领域上下文与序列化契约。
+聚合媒体、音乐、种子和字幕的领域上下文、序列化契约及来源元数据投影入口。
 """
 
 import re
@@ -9,9 +9,16 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Self, Set, Union
 
+# 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
 import yaml  # type: ignore[import-untyped]
+
+# 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
 from yaml.constructor import ConstructorError  # type: ignore[import-untyped]
+
+# 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
 from yaml.events import AliasEvent  # type: ignore[import-untyped]
+
+# 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
 from yaml.nodes import MappingNode  # type: ignore[import-untyped]
 
 from app.domain.meta.metabase import MetaBase
@@ -37,13 +44,18 @@ from app.schemas.types import (
 )
 
 
+# PyYAML 缺少类型元数据，继承 SafeLoader 时保留现有基类检查豁免。
 class _LyricsfileSafeLoader(yaml.SafeLoader):  # type: ignore[misc]
-    """在 SafeLoader 基础上拒绝 Lyricsfile 规范禁止的重复映射键。"""
+    """
+    在 SafeLoader 基础上拒绝 Lyricsfile 规范禁止的重复映射键。
+    """
 
     def construct_mapping(
         self, node: MappingNode, deep: bool = False
     ) -> dict[Any, Any]:
-        """构造映射并在解析阶段拒绝重复键。"""
+        """
+        构造映射并在解析阶段拒绝重复键。
+        """
         if not isinstance(node, MappingNode):
             raise ConstructorError(None, None, "Lyricsfile 映射节点无效", node.start_mark)
         keys = set()
@@ -64,7 +76,9 @@ class _LyricsfileSafeLoader(yaml.SafeLoader):  # type: ignore[misc]
 def configure_tmdb_image_url_builder(
     builder: Callable[[str], Optional[str]],
 ) -> None:
-    """兼容旧入口，将 TMDB 图片地址构造器交给来源投影 owner。"""
+    """
+    兼容旧入口，将 TMDB 图片地址构造器交给来源投影 owner。
+    """
     from app.domain.projection.tmdb import configure_image_url_builder
 
     configure_image_url_builder(builder)
@@ -74,7 +88,9 @@ def _project_tmdb(
     state: Mapping[str, Any],
     info: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """按需加载 TMDB 投影 owner，避免领域上下文冷导入全部来源实现。"""
+    """
+    按需加载 TMDB 投影 owner，避免领域上下文冷导入全部来源实现。
+    """
     from app.domain.projection.tmdb import project
 
     return project(state, info)
@@ -84,7 +100,9 @@ def _project_douban(
     state: Mapping[str, Any],
     info: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """按需加载豆瓣投影 owner，避免领域上下文冷导入全部来源实现。"""
+    """
+    按需加载豆瓣投影 owner，避免领域上下文冷导入全部来源实现。
+    """
     from app.domain.projection.douban import project
 
     return project(state, info)
@@ -94,7 +112,9 @@ def _project_bangumi(
     state: Mapping[str, Any],
     info: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """按需加载 Bangumi 投影 owner，避免领域上下文冷导入全部来源实现。"""
+    """
+    按需加载 Bangumi 投影 owner，避免领域上下文冷导入全部来源实现。
+    """
     from app.domain.projection.bangumi import project
 
     return project(state, info)
@@ -104,21 +124,27 @@ def _project_anilist(
     state: Mapping[str, Any],
     info: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """按需加载 AniList 投影 owner，避免领域上下文冷导入全部来源实现。"""
+    """
+    按需加载 AniList 投影 owner，避免领域上下文冷导入全部来源实现。
+    """
     from app.domain.projection.anilist import project
 
     return project(state, info)
 
 
 def _validate_music_type(value: object) -> None:
-    """校验音乐模型类型字段，仅接受音乐或空值。"""
+    """
+    校验音乐模型类型字段，仅接受音乐或空值。
+    """
     if value in {None, MediaType.MUSIC, MediaType.MUSIC.value, "music"}:
         return
     raise ValueError(f"不支持的音乐媒体类型：{value}")
 
 
 def _music_string_list(value: object) -> list[str]:
-    """将音乐标签原始值归一为非空字符串列表，兼容单值、列表与逗号分隔。"""
+    """
+    将音乐标签原始值归一为非空字符串列表，兼容单值、列表与逗号分隔。
+    """
     if value is None:
         return []
     if isinstance(value, str):
@@ -129,7 +155,9 @@ def _music_string_list(value: object) -> list[str]:
 
 
 def _music_aligned_list(value: object) -> list[str]:
-    """保留原始位置的字符串列表，用于与艺术家名称按下标对应的 ID 列表。"""
+    """
+    保留原始位置的字符串列表，用于与艺术家名称按下标对应的 ID 列表。
+    """
     if value is None:
         return []
     if isinstance(value, (list, tuple)):
@@ -138,7 +166,9 @@ def _music_aligned_list(value: object) -> list[str]:
 
 
 def _music_optional_int(value: object) -> int | None:
-    """将音乐技术参数安全转换为整数，空值与非数字返回 None。"""
+    """
+    将音乐技术参数安全转换为整数，空值与非数字返回 None。
+    """
     if value in {None, ""}:
         return None
     try:
@@ -148,7 +178,9 @@ def _music_optional_int(value: object) -> int | None:
 
 
 def _music_optional_float(value: object) -> float:
-    """将音乐评分安全转换为浮点数，空值与异常返回 0.0。"""
+    """
+    将音乐评分安全转换为浮点数，空值与异常返回 0.0。
+    """
     if value in {None, ""}:
         return 0.0
     try:
@@ -158,19 +190,25 @@ def _music_optional_float(value: object) -> float:
 
 
 def _music_year_of(release_date: object) -> int | None:
-    """从 MusicBrainz 可变精度日期（YYYY / YYYY-MM / YYYY-MM-DD）提取年份。"""
+    """
+    从 MusicBrainz 可变精度日期（YYYY / YYYY-MM / YYYY-MM-DD）提取年份。
+    """
     text = str(release_date or "")[:4]
     return int(text) if text.isdigit() else None
 
 
 def _music_init_values(model: type, data: dict[str, Any]) -> dict[str, Any]:
-    """按 dataclass 可初始化字段过滤字典，避免传入非法构造参数。"""
+    """
+    按 dataclass 可初始化字段过滤字典，避免传入非法构造参数。
+    """
     init_names = {item.name for item in fields(model) if item.init}
     return {key: value for key, value in data.items() if key in init_names}
 
 
 def _classification_result(value: object) -> ClassificationResult | None:
-    """将分类结果字典恢复为独立模型，避免领域对象共享可变标签列表。"""
+    """
+    将分类结果字典恢复为独立模型，避免领域对象共享可变标签列表。
+    """
     if value is None:
         return None
     if isinstance(value, ClassificationResult):
@@ -184,12 +222,16 @@ def _classification_result(value: object) -> ClassificationResult | None:
 
 
 def _classification_payload(value: ClassificationResult | None) -> dict[str, Any] | None:
-    """把分类结果转换为可持久化字典。"""
+    """
+    把分类结果转换为可持久化字典。
+    """
     return value.model_dump(mode="json") if value else None
 
 
 def _music_category_tokens(value: object) -> list[str]:
-    """拆分并规范化音乐来源分类文本，供旧载荷语义判定。"""
+    """
+    拆分并规范化音乐来源分类文本，供旧载荷语义判定。
+    """
     return [
         re.sub(r"[\s_-]+", " ", part).strip().casefold()
         for part in re.split(r"[/\|,;、，]+", str(value or ""))
@@ -206,7 +248,8 @@ def _legacy_music_category_is_metadata(
     tags: object = None,
     classification: ClassificationResult | None = None,
 ) -> bool:
-    """判断旧音乐 category 是否是来源描述，而不是人工库分类。
+    """
+    判断旧音乐 category 是否是来源描述，而不是人工库分类。
 
     旧音乐模型曾把专辑类型、流派写入 category，同时订阅人工分类也可能
     覆盖同一字段。优先用分类结果确认库分类；其余仅在文本能由标准音乐
@@ -282,7 +325,9 @@ def _resolve_music_categories(
     tags: object = None,
     classification: ClassificationResult | None = None,
 ) -> tuple[str, str]:
-    """解析新旧音乐分类字段，新字段存在时禁止来源描述升级为库分类。"""
+    """
+    解析新旧音乐分类字段，新字段存在时禁止来源描述升级为库分类。
+    """
     compatible = str(category or "").strip()
     library = str(library_category or "").strip()
     metadata = str(metadata_category or "").strip()
@@ -304,7 +349,19 @@ def _resolve_music_categories(
 
 @dataclass
 class MusicLyrics:
-    """标准化单曲歌词候选，保留来源匹配度和 Lyricsfile 原始内容。"""
+    """
+    标准化单曲歌词候选，保留来源匹配度和 Lyricsfile 原始内容。
+
+    :param provider: 歌词提供方名称
+    :param provider_id: 提供方内的歌词或曲目标识；未提供时为 None
+    :param instrumental: 是否明确标记为纯音乐
+    :param plain_lyrics: 不含时间轴的歌词；未提供时为 None
+    :param synced_lyrics: 带时间轴的歌词；未提供时为 None
+    :param lyricsfile: 保留提供方的 Lyricsfile 原始内容
+    :param language: 歌词语言；未知时为 None
+    :param match_score: 与目标曲目的匹配得分，用于候选排序
+    :param provider_priority: 提供方排序优先级，用于同分候选选择
+    """
 
     provider: str
     provider_id: str | None = None
@@ -322,7 +379,9 @@ class MusicLyrics:
     _lyricsfile_max_depth = 20
 
     def __post_init__(self) -> None:
-        """补全 Lyricsfile 中可安全降级为 LRC 或纯文本的内容。"""
+        """
+        补全 Lyricsfile 中可安全降级为 LRC 或纯文本的内容。
+        """
         if not self.lyricsfile:
             return
         parsed = self._parse_lyricsfile(self.lyricsfile)
@@ -345,12 +404,16 @@ class MusicLyrics:
 
     @property
     def content(self) -> str | None:
-        """优先返回同步歌词，不存在时回退到纯文本歌词。"""
+        """
+        优先返回同步歌词，不存在时回退到纯文本歌词。
+        """
         return self.synced_lyrics or self.plain_lyrics
 
     @property
     def extension(self) -> str | None:
-        """根据歌词内容返回适合播放器扫描的旁挂文件扩展名。"""
+        """
+        根据歌词内容返回适合播放器扫描的旁挂文件扩展名。
+        """
         if self.synced_lyrics:
             return ".lrc"
         if self.plain_lyrics:
@@ -359,7 +422,9 @@ class MusicLyrics:
 
     @property
     def quality_rank(self) -> int:
-        """返回可比较的歌词质量等级，逐字同步高于逐行同步和纯文本。"""
+        """
+        返回可比较的歌词质量等级，逐字同步高于逐行同步和纯文本。
+        """
         if self.lyricsfile and self._lyricsfile_has_words(self.lyricsfile):
             return 4
         if self.synced_lyrics:
@@ -372,7 +437,9 @@ class MusicLyrics:
 
     @property
     def identity_key(self) -> tuple[str, str, str]:
-        """构造候选去重键，兼容未提供来源 ID 的插件结果。"""
+        """
+        构造候选去重键，兼容未提供来源 ID 的插件结果。
+        """
         return (
             self.provider.casefold(),
             self.provider_id or "",
@@ -381,7 +448,9 @@ class MusicLyrics:
 
     @classmethod
     def _parse_lyricsfile(cls, content: str) -> dict[str, Any] | None:
-        """安全解析受大小和行数约束的 Lyricsfile YAML，并拒绝锚点别名。"""
+        """
+        安全解析受大小和行数约束的 Lyricsfile YAML，并拒绝锚点别名。
+        """
         if len(content.encode("utf-8")) > cls._lyricsfile_max_bytes:
             return None
         try:
@@ -403,7 +472,9 @@ class MusicLyrics:
 
     @classmethod
     def _lyricsfile_structure_is_valid(cls, payload: dict[str, Any]) -> bool:
-        """校验 Lyricsfile 1.0 的必需元数据、歌词形状和毫秒时间范围。"""
+        """
+        校验 Lyricsfile 1.0 的必需元数据、歌词形状和毫秒时间范围。
+        """
         metadata = payload.get("metadata")
         if not isinstance(metadata, dict):
             return False
@@ -423,7 +494,9 @@ class MusicLyrics:
 
     @classmethod
     def _lyricsfile_line_is_valid(cls, line: Any) -> bool:
-        """校验单行与逐字时间戳，拒绝布尔值伪装整数和倒序区间。"""
+        """
+        校验单行与逐字时间戳，拒绝布尔值伪装整数和倒序区间。
+        """
         if not isinstance(line, dict) or not isinstance(line.get("text"), str):
             return False
         start = line.get("start_ms")
@@ -456,7 +529,9 @@ class MusicLyrics:
 
     @classmethod
     def _lyricsfile_value_is_safe(cls, value: Any, depth: int = 0, count: Optional[list[int]] = None) -> bool:
-        """限制 YAML 解析后的类型、深度和节点数，避免外部文档消耗过量资源。"""
+        """
+        限制 YAML 解析后的类型、深度和节点数，避免外部文档消耗过量资源。
+        """
         if depth > cls._lyricsfile_max_depth:
             return False
         counter = count if count is not None else [0]
@@ -477,7 +552,9 @@ class MusicLyrics:
 
     @classmethod
     def _lyricsfile_has_words(cls, content: str) -> bool:
-        """判断 Lyricsfile 是否包含逐字时间轴。"""
+        """
+        判断 Lyricsfile 是否包含逐字时间轴。
+        """
         payload = cls._parse_lyricsfile(content)
         return bool(
             payload
@@ -489,13 +566,17 @@ class MusicLyrics:
 
     @staticmethod
     def _optional_text(value: Any) -> str | None:
-        """把可选标量规范化为非空文本。"""
+        """
+        把可选标量规范化为非空文本。
+        """
         text = str(value or "").strip()
         return text or None
 
     @classmethod
     def _lyricsfile_to_plain(cls, payload: dict[str, Any]) -> str | None:
-        """从 Lyricsfile plain 或时间行生成播放器可读纯文本。"""
+        """
+        从 Lyricsfile plain 或时间行生成播放器可读纯文本。
+        """
         plain = cls._optional_text(payload.get("plain"))
         if plain:
             return plain
@@ -516,7 +597,9 @@ class MusicLyrics:
 
     @classmethod
     def _lyricsfile_to_lrc(cls, payload: dict[str, Any]) -> str | None:
-        """把 Lyricsfile 行级毫秒时间轴转换为通用 LRC。"""
+        """
+        把 Lyricsfile 行级毫秒时间轴转换为通用 LRC。
+        """
         output = []
         for line in payload.get("lines") or []:
             if not isinstance(line, dict):
@@ -541,7 +624,9 @@ class MusicLyrics:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """从模块或插件返回字典恢复标准歌词对象。"""
+        """
+        从模块或插件返回字典恢复标准歌词对象。
+        """
         values = _music_init_values(cls, data)
         values["provider"] = str(values.get("provider") or "")
         values["provider_id"] = (
@@ -555,28 +640,82 @@ class MusicLyrics:
 
 @dataclass
 class MusicInfo:
-    """标准化音乐元数据信息。"""
+    """
+    标准化音乐元数据信息。
+
+    :ivar type: 固定为音乐媒体类型，不接受初始化参数
+    :param media_source: 媒体主身份的数据来源，与 media_id 配对使用
+    :param media_id: 当前来源的原生媒体标识，与 media_source 配对使用
+    :param music_type: 音乐实体类型，默认表示单曲录音
+    :param title: 音乐实体的标题；未知时为 None
+    :param artists: 参与署名的艺术家名称，保留来源顺序
+    :param artist_ids: 艺术家标准 ID，顺序与 artists 一致，供详情页关联跳转
+    :param album: 曲目所属专辑名称；未知时为 None
+    :param album_artist: 专辑层级的艺术家署名；未知时为 None
+    :param album_id: 所属专辑的 MusicBrainz 发行组标识
+    :param musicbrainz_release_id: 发行、发行组和发行曲目身份独立于 Recording 主身份，不能相互代用
+    :param musicbrainz_release_group_id: MusicBrainz 发行组标识，用于关联同一专辑的不同版本
+    :param musicbrainz_release_track_id: MusicBrainz 发行版本中的曲目标识，不等同于录音标识
+    :param album_type: 专辑主类型：Album、EP、Single 等
+    :param secondary_types: 专辑副类型：Live、Compilation、Soundtrack 等
+    :param year: 展示或匹配使用的年份；未知时为 None
+    :param original_year: 作品最早发行年份；未知时为 None
+    :param release_year: 当前发行版本的年份；未知时为 None
+    :param release_date: 来源提供的发行日期文本；未知时为 None
+    :param release_status: 发行状态，例如正式发行或宣传版本；未知时为 None
+    :param disc_number: 曲目所属碟号；未知时为 None
+    :param track_number: 曲目在所属碟中的序号；未知时为 None
+    :param total_tracks: 所属发行版本的曲目总数；未知时为 None
+    :param total_discs: 发行版本的总碟数；未知时为 None
+    :param duration: 曲目时长，单位为秒
+    :param isrc: 国际标准录音代码；未知时为 None
+    :param cover_url: 封面图片链接；未提供封面时为 None
+    :param lyrics: 曲目的歌词文本；尚未获取时为 None
+    :param version: 曲目的版本说明，例如现场版或混音版
+    :param audio_format: 音频编码或容器格式；未知时为 None
+    :param audio_lossless: 是否为无损音频；未知时为 None
+    :param bit_depth: 音频采样位深，单位为位
+    :param sample_rate: 音频采样率，单位为赫兹
+    :param bitrate: 音频码率，单位为比特每秒
+    :param category: 兼容字段，过渡期始终与 library_category 同步
+    :param library_category: 自动分类或人工覆盖后的媒体库相对目录分类
+    :param metadata_category: 数据源提供的专辑类型、流派等描述性分类
+    :param classification: 分类规则的判定结果；未执行分类时为 None
+    :param classification_facts: 插件来源提交的受控扩展分类事实，统一收口时由宿主注册表校验
+    :param genres: 来源提供的音乐流派名称列表
+    :param tags: 来源提供的音乐标签列表
+    :param artist_country: 艺术家所属国家；未知时为 None
+    :param names: 可用于搜索匹配的名称列表
+    :param title_aliases: 来源提供的同一实体别名及展示转换前的原文，不混入所属专辑或无关联艺术家
+    :param album_aliases: 所属专辑的别名，不混入曲目或艺术家别名
+    :param artist_aliases: 参与艺术家的别名，不混入无关联艺术家名称
+    :param detail_link: 来源站点的详情页链接；未知时为 None
+    :param listen_count: 来源记录的收听次数；未知时为 None
+    :param raw_data: 来源返回的原始元数据，供来源特有字段读取
+    :param field_sources: 字段名到元数据来源的映射，用于保留合并后的来源依据
+    :param composers: 古典角色独立于发行署名；乐器/声部映射保留演奏者的具体职责
+    :param conductors: 指挥姓名列表，与专辑发行署名独立
+    :param orchestras: 参与演奏的乐团名称列表
+    :param performers: 乐器或声部到演奏者姓名列表的映射
+    :param music_layout: 音乐整理采用的目录布局；尚未确定时为 None
+    :param organization_error: 音乐整理准入失败的原因；未失败时为 None
+    :cvar recognize_cache_hit: 本地识别缓存命中标记，不参与序列化，默认 False
+    """
 
     type: MediaType = field(default=MediaType.MUSIC, init=False)
     media_source: MediaSource | None = None
     media_id: str | None = None
-    # 音乐实体类型，用于区分单曲、专辑和艺术家三类可浏览对象
     music_type: str = MUSIC_ENTITY_RECORDING
     title: str | None = None
     artists: list[str] = field(default_factory=list)
-    # 艺术家标准 ID，顺序与 artists 一致，供详情页关联跳转
     artist_ids: list[str] = field(default_factory=list)
     album: str | None = None
     album_artist: str | None = None
-    # 所属专辑标准 ID（MusicBrainz Release Group）
     album_id: str | None = None
-    # 发行、发行组和发行曲目身份独立于 Recording 主身份，不能相互代用。
     musicbrainz_release_id: str | None = field(default=None, kw_only=True)
     musicbrainz_release_group_id: str | None = field(default=None, kw_only=True)
     musicbrainz_release_track_id: str | None = field(default=None, kw_only=True)
-    # 专辑主类型：Album、EP、Single 等
     album_type: str | None = None
-    # 专辑副类型：Live、Compilation、Soundtrack 等
     secondary_types: list[str] = field(default_factory=list)
     year: int | None = None
     original_year: int | None = field(default=None, kw_only=True)
@@ -597,20 +736,15 @@ class MusicInfo:
     bit_depth: int | None = None
     sample_rate: int | None = None
     bitrate: int | None = None
-    # 兼容字段，过渡期始终与 library_category 同步
     category: str = ""
-    # 自动分类或人工覆盖后的媒体库相对目录分类
     library_category: str = ""
-    # 数据源提供的专辑类型、流派等描述性分类
     metadata_category: str = ""
     classification: ClassificationResult | None = None
-    # 插件来源提交的受控扩展分类事实，统一收口时由宿主注册表校验
     classification_facts: dict[str, ClassificationFactValue] = field(default_factory=dict)
     genres: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     artist_country: str | None = None
     names: list[str] = field(default_factory=list)
-    # 来源提供的同一实体别名及展示转换前的原文，不混入所属专辑或无关联艺术家。
     title_aliases: list[str] = field(default_factory=list)
     album_aliases: list[str] = field(default_factory=list)
     artist_aliases: list[str] = field(default_factory=list)
@@ -618,7 +752,6 @@ class MusicInfo:
     listen_count: int | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)
     field_sources: dict[str, str] = field(default_factory=dict, kw_only=True)
-    # 古典角色独立于发行署名；乐器/声部映射保留演奏者的具体职责。
     composers: list[str] = field(default_factory=list, kw_only=True)
     conductors: list[str] = field(default_factory=list, kw_only=True)
     orchestras: list[str] = field(default_factory=list, kw_only=True)
@@ -630,7 +763,9 @@ class MusicInfo:
     recognize_cache_hit = False
 
     def __setstate__(self, state: dict[str, Any]) -> None:
-        """恢复旧版本音乐缓存时补齐新增别名字段，避免列表字段被缺失属性兜底为 None。"""
+        """
+        恢复旧版本音乐缓存时补齐新增别名字段，避免列表字段被缺失属性兜底为 None。
+        """
         self.__dict__.update(state)
         self.__dict__.update(music_credit_values(state))
         for name in ("title_aliases", "album_aliases", "artist_aliases"):
@@ -638,7 +773,9 @@ class MusicInfo:
         self.__dict__.setdefault("field_sources", {})
 
     def __post_init__(self) -> None:
-        """规范化媒体身份，并兼容拆分旧音乐分类字段。"""
+        """
+        规范化媒体身份，并兼容拆分旧音乐分类字段。
+        """
         self.field_sources = dict(self.field_sources or {})
         self.__dict__.update(music_credit_values(self))
         self.year = self.year if self.year is not None else self.release_year or self.original_year
@@ -661,7 +798,9 @@ class MusicInfo:
         self.__dict__["_category_semantics_ready"] = True
 
     def __setattr__(self, name: str, value: Any) -> None:
-        """兼容旧调用方直接写 category，并在初始化后同步库分类字段。"""
+        """
+        兼容旧调用方直接写 category，并在初始化后同步库分类字段。
+        """
         if (
             name in {"category", "library_category"}
             and self.__dict__.get("_category_semantics_ready")
@@ -673,7 +812,8 @@ class MusicInfo:
         self.__dict__[name] = value
 
     def __getattr__(self, name: str) -> None:
-        """影视专用字段兜底返回 None：音乐模型不存在这些字段，避免下游逐点安全访问。
+        """
+        影视专用字段兜底返回 None：音乐模型不存在这些字段，避免下游逐点安全访问。
 
         兼容影视媒体共享的通用读写路径（通知、整理、历史等），任何缺失字段按
         空值处理；真实字段仍由类定义接管，不受影响。dunder 特殊方法除外——
@@ -686,90 +826,124 @@ class MusicInfo:
 
     @property
     def artist(self) -> str:
-        """返回兼容现有展示组件的艺术家文本。"""
+        """
+        返回兼容现有展示组件的艺术家文本。
+        """
         return " / ".join(self.artists)
 
     @property
     def audio_quality(self) -> str | None:
-        """返回 hires、lossless 或 lossy 音质等级。"""
+        """
+        返回 hires、lossless 或 lossy 音质等级。
+        """
         return audio_quality_tier(
             self.audio_format, self.audio_lossless, self.bit_depth, self.sample_rate, self.bitrate
         )
 
     @property
     def audio_quality_score(self) -> int:
-        """返回音乐订阅洗版使用的音质优先级。"""
+        """
+        返回音乐订阅洗版使用的音质优先级。
+        """
         return audio_quality_score(
             self.audio_format, self.audio_lossless, self.bit_depth, self.sample_rate, self.bitrate
         )
 
     @property
     def audio_specs(self) -> str | None:
-        """返回识别结果和通知使用的格式化音频参数。"""
+        """
+        返回识别结果和通知使用的格式化音频参数。
+        """
         return format_audio_quality(
             self.audio_format, self.audio_lossless, self.bit_depth, self.sample_rate, self.bitrate
         )
 
     @property
     def episode_group(self) -> None:
-        """音乐没有剧集组，兼容现有下载历史字段。"""
+        """
+        音乐没有剧集组，兼容现有下载历史字段。
+        """
         return None
 
     @property
     def season(self) -> None:
-        """音乐没有季信息，兼容失败冷却和目录逻辑。"""
+        """
+        音乐没有季信息，兼容失败冷却和目录逻辑。
+        """
         return None
 
     @property
     def vote_average(self) -> float:
-        """音乐当前没有评分字段，兼容订阅统计与持久化。"""
+        """
+        音乐当前没有评分字段，兼容订阅统计与持久化。
+        """
         return 0.0
 
     @property
     def overview(self) -> str:
-        """返回兼容订阅描述字段的音乐摘要。"""
+        """
+        返回兼容订阅描述字段的音乐摘要。
+        """
         parts = [self.artist, self.album, self.version]
         return " · ".join(part for part in parts if part)
 
     @property
     def title_year(self) -> str:
-        """返回包含年份的展示标题。"""
+        """
+        返回包含年份的展示标题。
+        """
         if not self.title:
             return ""
         return f"{self.title} ({self.year})" if self.year else self.title
 
     @property
     def poster_path(self) -> str | None:
-        """返回兼容现有媒体卡片的封面地址。"""
+        """
+        返回兼容现有媒体卡片的封面地址。
+        """
         return self.cover_url
 
     @property
     def backdrop_path(self) -> str | None:
-        """返回兼容现有下载卡片的背景地址。"""
+        """
+        返回兼容现有下载卡片的背景地址。
+        """
         return self.cover_url
 
     def get_message_image(self, default: bool | None = None) -> str | None:
-        """返回通知消息使用的音乐封面。"""
+        """
+        返回通知消息使用的音乐封面。
+        """
         return self.cover_url
 
     def get_poster_image(self, default: bool | None = None) -> str | None:
-        """返回海报位使用的音乐封面。"""
+        """
+        返回海报位使用的音乐封面。
+        """
         return self.cover_url
 
     def get_backdrop_image(self, default: bool = False) -> str | None:
-        """返回背景图位使用的音乐封面。"""
+        """
+        返回背景图位使用的音乐封面。
+        """
         return self.cover_url
 
     def set_library_category(self, category: str | None) -> None:
-        """设置媒体库分类，并同步过渡期兼容 category 字段。"""
+        """
+        设置媒体库分类，并同步过渡期兼容 category 字段。
+        """
         self.library_category = category or ""
 
     def clear(self) -> None:
-        """清理不参与队列展示和持久化的上游原始响应。"""
+        """
+        清理不参与队列展示和持久化的上游原始响应。
+        """
         self.raw_data = {}
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为统一媒体身份的 Context 外层字典。"""
+        """
+        转换为统一媒体身份的 Context 外层字典。
+        """
         payload = asdict(self)
         payload["classification"] = _classification_payload(self.classification)
         payload["category"] = self.library_category
@@ -796,7 +970,9 @@ class MusicInfo:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """从字典恢复标准化音乐元数据。"""
+        """
+        从字典恢复标准化音乐元数据。
+        """
         _validate_music_type(data.get("type"))
         values = _music_init_values(cls, data)
         values["classification"] = _classification_result(values.get("classification"))
@@ -855,7 +1031,9 @@ class MusicInfo:
 
     @classmethod
     def from_meta(cls, meta: MetaMusic) -> Self:
-        """将文件名和音频标签解析结果转换为无远端依赖的标准音乐信息。"""
+        """
+        将文件名和音频标签解析结果转换为无远端依赖的标准音乐信息。
+        """
         return cls(
             **music_credit_values(meta),
             media_source=normalize_media_source(meta.media_source),
@@ -894,7 +1072,19 @@ class MusicInfo:
 
 @dataclass
 class MusicRelease:
-    """音乐专辑下的单个发行版本（MusicBrainz Release）。"""
+    """
+    音乐专辑下的单个发行版本（MusicBrainz Release）。
+
+    :param media_id: MusicBrainz 具体发行版本标识
+    :param title: 当前发行版本的标题
+    :param date: 发行日期文本；未知时为 None
+    :param country: 来源提供的国家代码；未知时为 None
+    :param status: 发行状态，例如正式发行或宣传版本
+    :param packaging: 实体发行的包装形式
+    :param formats: 各介质的格式名称列表
+    :param track_count: 当前发行版本的总曲目数；未知时为 None
+    :param cover_url: 封面图片链接；未提供封面时为 None
+    """
 
     media_id: str | None = None
     title: str | None = None
@@ -908,18 +1098,24 @@ class MusicRelease:
 
     @property
     def year(self) -> int | None:
-        """返回发行版本年份。"""
+        """
+        返回发行版本年份。
+        """
         return _music_year_of(self.date)
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为可传输的字典。"""
+        """
+        转换为可传输的字典。
+        """
         payload = asdict(self)
         payload["year"] = self.year
         return payload
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """从字典恢复发行版本信息。"""
+        """
+        从字典恢复发行版本信息。
+        """
         values = _music_init_values(cls, data)
         values["formats"] = _music_string_list(values.get("formats"))
         values["track_count"] = _music_optional_int(values.get("track_count"))
@@ -928,7 +1124,46 @@ class MusicRelease:
 
 @dataclass
 class MusicAlbumInfo:
-    """标准化音乐专辑信息（MusicBrainz Release Group）。"""
+    """
+    标准化音乐专辑信息（MusicBrainz Release Group）。
+
+    :ivar type: 固定为音乐媒体类型，不接受初始化参数
+    :ivar music_type: 固定为专辑实体，不接受初始化参数
+    :param media_source: 媒体主身份的数据来源，与 media_id 配对使用
+    :param media_id: 当前来源的原生媒体标识，与 media_source 配对使用
+    :param musicbrainz_release_id: MusicBrainz 具体发行版本标识，不等同于录音或发行组标识
+    :param musicbrainz_release_group_id: MusicBrainz 发行组标识，用于关联同一专辑的不同版本
+    :param original_year: 作品最早发行年份；未知时为 None
+    :param total_discs: 发行版本的总碟数；未知时为 None
+    :param title: 音乐实体的标题；未知时为 None
+    :param artists: 参与署名的艺术家名称，保留来源顺序
+    :param artist_ids: 艺术家标准标识列表，顺序与 artists 对应
+    :param title_aliases: 当前音乐实体的别名及展示转换前的原名
+    :param artist_aliases: 参与艺术家的别名，不混入无关联艺术家名称
+    :param album_type: 专辑主类型：Album、EP、Single、Broadcast、Other
+    :param secondary_types: 专辑副类型：Live、Compilation、Soundtrack、Remix 等
+    :param library_category: 自动分类或人工覆盖后的媒体库相对目录分类
+    :param metadata_category: 数据源提供的专辑类型和副类型描述
+    :param classification: 分类规则的判定结果；未执行分类时为 None
+    :param classification_facts: 来源提交的扩展分类事实，由宿主字段注册表校验
+    :param release_date: 来源提供的发行日期文本；未知时为 None
+    :param release_status: 发行状态，例如正式发行或宣传版本；未知时为 None
+    :param artist_country: 艺术家所属国家；未知时为 None
+    :param cover_url: 封面图片链接；未提供封面时为 None
+    :param genres: 来源提供的音乐流派名称列表
+    :param tags: 来源提供的音乐标签列表
+    :param rating: 来源给出的评分，默认 0 表示尚无评分
+    :param rating_votes: 参与评分的人数；未知时为 None
+    :param detail_link: 来源站点的详情页链接；未知时为 None
+    :param tracks: 专辑的曲目详情，保留来源顺序
+    :param releases: 同一发行组下的发行版本列表
+    :param raw_data: 来源返回的原始元数据，供来源特有字段读取
+    :param field_sources: 字段名到元数据来源的映射，用于保留合并后的来源依据
+    :param composers: 古典角色独立于发行署名；乐器/声部映射保留演奏者的具体职责
+    :param conductors: 指挥姓名列表，与专辑发行署名独立
+    :param orchestras: 参与演奏的乐团名称列表
+    :param performers: 乐器或声部到演奏者姓名列表的映射
+    """
 
     type: MediaType = field(default=MediaType.MUSIC, init=False)
     music_type: str = field(default=MUSIC_ENTITY_ALBUM, init=False)
@@ -943,13 +1178,9 @@ class MusicAlbumInfo:
     artist_ids: list[str] = field(default_factory=list)
     title_aliases: list[str] = field(default_factory=list)
     artist_aliases: list[str] = field(default_factory=list)
-    # 专辑主类型：Album、EP、Single、Broadcast、Other
     album_type: str | None = None
-    # 专辑副类型：Live、Compilation、Soundtrack、Remix 等
     secondary_types: list[str] = field(default_factory=list)
-    # 自动分类或人工覆盖后的媒体库相对目录分类
     library_category: str = ""
-    # 数据源提供的专辑类型和副类型描述
     metadata_category: str = ""
     classification: ClassificationResult | None = None
     classification_facts: dict[str, ClassificationFactValue] = field(default_factory=dict)
@@ -962,20 +1193,19 @@ class MusicAlbumInfo:
     rating: float = 0.0
     rating_votes: int | None = None
     detail_link: str | None = None
-    # 专辑内的音乐，按碟号和音轨号排序
     tracks: list[MusicInfo] = field(default_factory=list)
-    # 同一专辑下的其它发行版本
     releases: list[MusicRelease] = field(default_factory=list)
     raw_data: dict[str, Any] = field(default_factory=dict)
     field_sources: dict[str, str] = field(default_factory=dict, kw_only=True)
-    # 古典角色独立于发行署名；乐器/声部映射保留演奏者的具体职责。
     composers: list[str] = field(default_factory=list, kw_only=True)
     conductors: list[str] = field(default_factory=list, kw_only=True)
     orchestras: list[str] = field(default_factory=list, kw_only=True)
     performers: dict[str, list[str]] = field(default_factory=dict, kw_only=True)
 
     def __setstate__(self, state: dict[str, Any]) -> None:
-        """恢复旧版专辑缓存时补齐别名列表，保留既有媒体身份及曲目数据。"""
+        """
+        恢复旧版专辑缓存时补齐别名列表，保留既有媒体身份及曲目数据。
+        """
         self.__dict__.update(state)
         self.__dict__.update(music_credit_values(state))
         for name in ("title_aliases", "artist_aliases"):
@@ -983,7 +1213,9 @@ class MusicAlbumInfo:
         self.__dict__.setdefault("field_sources", {})
 
     def __post_init__(self) -> None:
-        """规范化媒体身份，并补全专辑描述分类和分类结果。"""
+        """
+        规范化媒体身份，并补全专辑描述分类和分类结果。
+        """
         self.field_sources = dict(self.field_sources or {})
         self.__dict__.update(music_credit_values(self))
         self.media_source, self.media_id = resolve_media_identity(media=self)
@@ -997,59 +1229,81 @@ class MusicAlbumInfo:
 
     @property
     def artist(self) -> str:
-        """返回兼容现有展示组件的艺术家文本。"""
+        """
+        返回兼容现有展示组件的艺术家文本。
+        """
         return " / ".join(self.artists)
 
     @property
     def year(self) -> int | None:
-        """返回专辑首次发行年份。"""
+        """
+        返回专辑首次发行年份。
+        """
         return _music_year_of(self.release_date)
 
     @property
     def category(self) -> str:
-        """返回兼容字段，其语义始终等同媒体库分类。"""
+        """
+        返回兼容字段，其语义始终等同媒体库分类。
+        """
         return self.library_category
 
     @category.setter
     def category(self, value: str | None) -> None:
-        """兼容旧调用方直接写 category，并同步媒体库分类。"""
+        """
+        兼容旧调用方直接写 category，并同步媒体库分类。
+        """
         self.set_library_category(value)
 
     def set_library_category(self, category: str | None) -> None:
-        """设置媒体库分类，来源描述分类保持不变。"""
+        """
+        设置媒体库分类，来源描述分类保持不变。
+        """
         self.library_category = str(category or "").strip()
 
     @property
     def track_count(self) -> int:
-        """返回专辑内已解析的音乐数量。"""
+        """
+        返回专辑内已解析的音乐数量。
+        """
         return len(self.tracks)
 
     @property
     def duration(self) -> int | None:
-        """返回专辑内所有音乐时长之和。"""
+        """
+        返回专辑内所有音乐时长之和。
+        """
         durations = [track.duration for track in self.tracks if track.duration]
         return sum(durations) if durations else None
 
     @property
     def title_year(self) -> str:
-        """返回包含年份的专辑展示标题。"""
+        """
+        返回包含年份的专辑展示标题。
+        """
         if not self.title:
             return ""
         return f"{self.title} ({self.year})" if self.year else self.title
 
     @property
     def poster_path(self) -> str | None:
-        """返回兼容现有媒体卡片的封面地址。"""
+        """
+        返回兼容现有媒体卡片的封面地址。
+        """
         return self.cover_url
 
     @property
     def backdrop_path(self) -> str | None:
-        """返回兼容现有详情页背景的封面地址。"""
+        """
+        返回兼容现有详情页背景的封面地址。
+        """
         return self.cover_url
 
     @property
     def overview(self) -> str:
-        """返回专辑摘要，供卡片和通知复用。"""
+        """
+        返回专辑摘要，供卡片和通知复用。
+        """
         parts = [
             self.artist,
             self.metadata_category,
@@ -1059,7 +1313,9 @@ class MusicAlbumInfo:
         return " · ".join(part for part in parts if part)
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为兼容前端 MediaInfo 结构的字典。"""
+        """
+        转换为兼容前端 MediaInfo 结构的字典。
+        """
         payload = {
             key: value
             for key, value in asdict(self).items()
@@ -1093,7 +1349,9 @@ class MusicAlbumInfo:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """从字典恢复标准化专辑信息。"""
+        """
+        从字典恢复标准化专辑信息。
+        """
         _validate_music_type(data.get("type"))
         values = _music_init_values(cls, data)
         values["classification"] = _classification_result(values.get("classification"))
@@ -1139,7 +1397,9 @@ class MusicAlbumInfo:
         return cls(**values)
 
     def to_music_info(self) -> MusicInfo:
-        """转换为专辑卡片使用的音乐信息，供列表接口统一返回。"""
+        """
+        转换为专辑卡片使用的音乐信息，供列表接口统一返回。
+        """
         return MusicInfo(
             **music_credit_values(self),
             media_source=self.media_source,
@@ -1181,7 +1441,37 @@ class MusicAlbumInfo:
 
 @dataclass
 class MusicArtistInfo:
-    """标准化音乐艺术家信息（MusicBrainz Artist）。"""
+    """
+    标准化音乐艺术家信息（MusicBrainz Artist）。
+
+    :ivar type: 固定为音乐媒体类型，不接受初始化参数
+    :ivar music_type: 固定为艺术家实体，不接受初始化参数
+    :param media_source: 媒体主身份的数据来源，与 media_id 配对使用
+    :param media_id: 当前来源的原生媒体标识，与 media_source 配对使用
+    :param name: 艺术家的展示名称；未知时为 None
+    :param sort_name: 来源提供的艺术家排序名称；未知时为 None
+    :param disambiguation: MusicBrainz 消歧义说明，同名艺术家依靠该字段区分
+    :param artist_type: 艺术家类型：Person、Group、Orchestra、Choir、Character、Other
+    :param gender: 艺术家的性别描述；未知时为 None
+    :param country: 来源提供的国家代码；未知时为 None
+    :param area: 艺术家所属地区名称；未知时为 None
+    :param begin_date: 艺术家的出生或成立日期文本
+    :param end_date: 艺术家的逝世或解散日期文本
+    :param ended: 来源是否明确标记艺术家活动已结束
+    :param genres: 来源提供的音乐流派名称列表
+    :param tags: 来源提供的音乐标签列表
+    :param aliases: 艺术家的别名列表
+    :param library_category: 自动分类或人工覆盖后的媒体库相对目录分类
+    :param metadata_category: 数据源提供的艺术家类型等描述性分类
+    :param classification: 分类规则的判定结果；未执行分类时为 None
+    :param classification_facts: 来源提交的扩展分类事实，由宿主字段注册表校验
+    :param relation: 关联艺术家场景下的关系文本，例如乐队成员、子团体
+    :param image_url: 艺术家的展示图片链接
+    :param detail_link: 来源站点的详情页链接；未知时为 None
+    :param external_links: 外部站点链接，键为关系类型，值为地址
+    :param album_count: 来源记录的专辑数量；未知时为 None
+    :param raw_data: 来源返回的原始元数据，供来源特有字段读取
+    """
 
     type: MediaType = field(default=MediaType.MUSIC, init=False)
     music_type: str = field(default=MUSIC_ENTITY_ARTIST, init=False)
@@ -1189,9 +1479,7 @@ class MusicArtistInfo:
     media_id: str | None = None
     name: str | None = None
     sort_name: str | None = None
-    # MusicBrainz 消歧义说明，同名艺术家依靠该字段区分
     disambiguation: str | None = None
-    # 艺术家类型：Person、Group、Orchestra、Choir、Character、Other
     artist_type: str | None = None
     gender: str | None = None
     country: str | None = None
@@ -1202,23 +1490,21 @@ class MusicArtistInfo:
     genres: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     aliases: list[str] = field(default_factory=list)
-    # 自动分类或人工覆盖后的媒体库相对目录分类
     library_category: str = ""
-    # 数据源提供的艺术家类型等描述性分类
     metadata_category: str = ""
     classification: ClassificationResult | None = None
     classification_facts: dict[str, ClassificationFactValue] = field(default_factory=dict)
-    # 关联艺术家场景下的关系文本，例如乐队成员、子团体
     relation: str | None = None
     image_url: str | None = None
     detail_link: str | None = None
-    # 外部站点链接，键为关系类型，值为地址
     external_links: dict[str, str] = field(default_factory=dict)
     album_count: int | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """规范化媒体身份，并拆分艺术家描述分类与媒体库分类。"""
+        """
+        规范化媒体身份，并拆分艺术家描述分类与媒体库分类。
+        """
         self.media_source, self.media_id = resolve_media_identity(media=self)
         self.library_category = str(self.library_category or "").strip()
         self.metadata_category = str(
@@ -1228,26 +1514,36 @@ class MusicArtistInfo:
 
     @property
     def category(self) -> str:
-        """返回兼容字段，其语义始终等同媒体库分类。"""
+        """
+        返回兼容字段，其语义始终等同媒体库分类。
+        """
         return self.library_category
 
     @category.setter
     def category(self, value: str | None) -> None:
-        """兼容旧调用方直接写 category，并同步媒体库分类。"""
+        """
+        兼容旧调用方直接写 category，并同步媒体库分类。
+        """
         self.set_library_category(value)
 
     def set_library_category(self, category: str | None) -> None:
-        """设置媒体库分类，来源艺术家类型保持不变。"""
+        """
+        设置媒体库分类，来源艺术家类型保持不变。
+        """
         self.library_category = str(category or "").strip()
 
     @property
     def title(self) -> str | None:
-        """返回兼容通用媒体展示组件的标题。"""
+        """
+        返回兼容通用媒体展示组件的标题。
+        """
         return self.name
 
     @property
     def life_span(self) -> str:
-        """返回艺术家活跃时间区间文本。"""
+        """
+        返回艺术家活跃时间区间文本。
+        """
         if not self.begin_date and not self.end_date:
             return ""
         end = self.end_date or ("" if self.ended else "…")
@@ -1255,7 +1551,9 @@ class MusicArtistInfo:
 
     @property
     def overview(self) -> str:
-        """返回艺术家摘要，供卡片和详情页复用。"""
+        """
+        返回艺术家摘要，供卡片和详情页复用。
+        """
         parts = [
             self.artist_type,
             self.disambiguation,
@@ -1267,11 +1565,15 @@ class MusicArtistInfo:
 
     @property
     def poster_path(self) -> str | None:
-        """返回兼容现有卡片的艺术家图片地址。"""
+        """
+        返回兼容现有卡片的艺术家图片地址。
+        """
         return self.image_url
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为可传输的字典。"""
+        """
+        转换为可传输的字典。
+        """
         payload = {key: value for key, value in asdict(self).items() if key != "type"}
         payload["classification"] = _classification_payload(self.classification)
         payload.update(
@@ -1292,7 +1594,9 @@ class MusicArtistInfo:
         return payload
 
     def to_music_info(self) -> MusicInfo:
-        """转换为统一搜索列表使用的音乐信息，但不赋予下载或订阅语义。"""
+        """
+        转换为统一搜索列表使用的音乐信息，但不赋予下载或订阅语义。
+        """
         return MusicInfo(
             media_source=self.media_source,
             media_id=self.media_id,
@@ -1315,7 +1619,9 @@ class MusicArtistInfo:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """从字典恢复标准化艺术家信息。"""
+        """
+        从字典恢复标准化艺术家信息。
+        """
         _validate_music_type(data.get("type"))
         values = _music_init_values(cls, data)
         values["classification"] = _classification_result(values.get("classification"))
@@ -1344,29 +1650,29 @@ class TorrentInfo:
     """
     种子搜索结果信息。
 
-    :param site: 站点ID
+    :param site: 站点配置标识
     :param site_name: 站点名称
-    :param site_cookie: 站点Cookie
-    :param site_ua: 站点UA
+    :param site_cookie: 访问站点所需的 Cookie
+    :param site_ua: 访问站点使用的 User-Agent
     :param site_proxy: 站点是否使用代理
     :param site_order: 站点优先级
-    :param site_downloader: 站点下载器
+    :param site_downloader: 站点指定的下载器名称
     :param title: 种子名称
     :param description: 种子副标题
-    :param media_source: 种子页面声明的媒体身份
-    :param media_id: 当前来源的原生媒体标识；缺失时为空
+    :param media_source: 种子页面声明的媒体身份来源
+    :param media_id: 种子页面声明的来源原生媒体标识
     :param enclosure: 种子链接
     :param page_url: 详情页面
-    :param size: 种子大小
-    :param seeders: 做种者
-    :param peers: 下载者
-    :param grabs: 完成者
+    :param size: 种子内容大小，单位为字节
+    :param seeders: 当前做种人数
+    :param peers: 当前下载人数
+    :param grabs: 累计完成下载次数
     :param pubdate: 发布时间
-    :param date_elapsed: 已过时间
+    :param date_elapsed: 来源提供的距发布时间的可读文本
     :param freedate: 免费截止时间
-    :param uploadvolumefactor: 上传因子
-    :param downloadvolumefactor: 下载因子
-    :param hit_and_run: HR
+    :param uploadvolumefactor: 上传流量计费倍率；未知时为 None
+    :param downloadvolumefactor: 下载流量计费倍率；0 表示免费，未知时为 None
+    :param hit_and_run: 是否受到站点下载后保种规则约束
     :param labels: 种子标签
     :param pri_order: 种子优先级
     :param category: 种子分类 电影/电视剧/音乐
@@ -1415,7 +1721,7 @@ class TorrentInfo:
 
     def __get_properties(self) -> list[str]:
         """
-        获取属性列表
+        获取属性列表。
         """
         property_names = []
         for member_name in dir(self.__class__):
@@ -1426,7 +1732,9 @@ class TorrentInfo:
 
     def from_dict(self, data: dict[str, Any]) -> None:
         """
-        从字典中初始化
+        将字典字段写入当前种子对象，跳过只读属性后规范化媒体身份。
+
+        :param data: 待恢复的字段字典，未知字段保留为动态属性
         """
         properties = self.__get_properties()
         for key, value in data.items():
@@ -1438,7 +1746,11 @@ class TorrentInfo:
     @staticmethod
     def get_free_string(upload_volume_factor: float, download_volume_factor: float) -> str:
         """
-        计算促销类型
+        将上传与下载计费倍率转换为站点促销标签。
+
+        :param upload_volume_factor: 上传流量计费倍率
+        :param download_volume_factor: 下载流量计费倍率，0 表示免费下载
+        :return: 既有倍率组合对应的标签；空值或未收录组合返回“未知”
         """
         if upload_volume_factor is None or download_volume_factor is None:
             return "未知"
@@ -1461,14 +1773,14 @@ class TorrentInfo:
     @property
     def volume_factor(self) -> str:
         """
-        返回促销信息
+        返回促销信息。
         """
         return self.get_free_string(self.uploadvolumefactor, self.downloadvolumefactor)
 
     @property
     def freedate_diff(self) -> str:
         """
-        返回免费剩余时间
+        返回免费剩余时间。
         """
         if not self.freedate:
             return ""
@@ -1476,7 +1788,7 @@ class TorrentInfo:
 
     def pub_minutes(self) -> float:
         """
-        返回发布时间距离当前时间的分钟数
+        返回发布时间距离当前时间的分钟数。
         """
         if not self.pubdate:
             return 0
@@ -1490,7 +1802,7 @@ class TorrentInfo:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        返回字典
+        返回字典。
         """
         dicts = vars(self).copy()
         dicts["media_source"] = (
@@ -1510,10 +1822,10 @@ class SubtitleInfo:
     """
     字幕搜索结果信息。
 
-    :param site: 站点ID
+    :param site: 站点配置标识
     :param site_name: 站点名称
-    :param site_cookie: 站点Cookie
-    :param site_ua: 站点UA
+    :param site_cookie: 访问站点所需的 Cookie
+    :param site_ua: 访问站点使用的 User-Agent
     :param site_proxy: 站点是否使用代理
     :param site_order: 站点优先级
     :param title: 字幕标题
@@ -1522,14 +1834,14 @@ class SubtitleInfo:
     :param page_url: 详情页面
     :param language: 语言
     :param language_icon: 语言图标
-    :param size: 字幕大小
+    :param size: 字幕文件大小，单位为字节
     :param pubdate: 发布时间
-    :param date_elapsed: 已过时间
+    :param date_elapsed: 来源提供的距发布时间的可读文本
     :param grabs: 点击/下载次数
     :param uploader: 上传者
     :param report_url: 举报页面
-    :param torrent_id: 种子ID
-    :param subtitle_id: 字幕ID
+    :param torrent_id: 关联种子的站点内标识
+    :param subtitle_id: 字幕的站点内标识
     :param file_name: 下载文件名
     """
 
@@ -1578,7 +1890,9 @@ class SubtitleInfo:
 
     def from_dict(self, data: dict[str, Any]) -> None:
         """
-        从字典中初始化。
+        将字典字段写入当前种子对象，跳过只读属性后规范化媒体身份。
+
+        :param data: 待恢复的字段字典，未知字段保留为动态属性
         """
         for key, value in data.items():
             setattr(self, key, value)
@@ -1599,7 +1913,7 @@ class SubtitleInfo:
 @dataclass
 class MediaInfo:
     """
-    统一媒体信息，负责聚合各元数据源的标准字段
+    统一媒体信息，负责聚合各元数据源的标准字段。
 
     :param media_source: 媒体主身份来源
     :param media_id: 当前数据源原生 ID
@@ -1612,21 +1926,21 @@ class MediaInfo:
     :param sg_title: 新加坡标题
     :param year: 年份
     :param season: 季
-    :param tmdb_id: 数据源返回的辅助 ID，仅作为元数据输出，不参与通用身份传递或持久化
-    :param imdb_id: IMDb 辅助标识，不作为主身份
-    :param tvdb_id: TVDB 辅助标识，不作为主身份
-    :param tvdb_slug: TVDB 可读路径标识
-    :param douban_id: 豆瓣辅助标识，不作为主身份
-    :param bangumi_id: Bangumi 辅助标识，不作为主身份
-    :param anilist_id: AniList 辅助标识，不作为主身份
-    :param anidb_id: AniDB 辅助标识，不作为主身份
+    :param tmdb_id: 来源返回的 TMDB 辅助标识，不参与通用身份传递或持久化
+    :param imdb_id: 来源返回的 IMDb 辅助标识
+    :param tvdb_id: 来源返回的 TVDB 辅助标识
+    :param tvdb_slug: TVDB 详情页的可读路径标识
+    :param douban_id: 来源返回的豆瓣辅助标识
+    :param bangumi_id: 来源返回的 Bangumi 辅助标识
+    :param anilist_id: 来源返回的 AniList 辅助标识
+    :param anidb_id: 来源返回的 AniDB 辅助标识
     :param collection_id: 合集ID
     :param original_language: 媒体原语种
     :param original_title: 媒体原发行标题
     :param release_date: 媒体发行日期
     :param backdrop_path: 背景图片
     :param poster_path: 海报图片
-    :param logo_path: LOGO
+    :param logo_path: 媒体标志图片地址
     :param vote_average: 评分
     :param overview: 描述
     :param genre_ids: 风格ID
@@ -1637,17 +1951,17 @@ class MediaInfo:
     :param category: 兼容字段，过渡期始终与 library_category 同步
     :param library_category: 自动分类或人工覆盖后的媒体库相对目录分类
     :param metadata_category: 数据源提供的描述性分类
-    :param classification: 分类规则计算及人工覆盖的结果
+    :param classification: 分类规则计算及人工覆盖的结果；未执行分类时为 None
     :param classification_facts: 插件来源提交的受控扩展分类事实，统一收口时由宿主注册表校验
-    :param tmdb_info: TMDB 原始响应
-    :param douban_info: 豆瓣 原始响应
-    :param bangumi_info: Bangumi 原始响应
-    :param anilist_info: AniList 原始响应
+    :param tmdb_info: TMDB 原始详情，用于来源字段投影
+    :param douban_info: 豆瓣原始详情，用于来源字段投影
+    :param bangumi_info: Bangumi 原始详情，用于来源字段投影
+    :param anilist_info: AniList 原始详情，用于来源字段投影
     :param directors: 导演
     :param actors: 演员
     :param adult: 是否成人内容
     :param created_by: 创建人
-    :param episode_run_time: 集时长
+    :param episode_run_time: 来源提供的单集时长列表，单位为分钟
     :param genres: 风格
     :param first_air_date: 首播日期
     :param homepage: 首页
@@ -1666,11 +1980,12 @@ class MediaInfo:
     :param tagline: 标签
     :param vote_count: 评价数量
     :param popularity: 流行度
-    :param runtime: 时长
+    :param runtime: 影片时长，单位为分钟
     :param next_episode_to_air: 下一集
     :param content_rating: 内容分级
     :param episode_groups: 全部剧集组
     :param episode_group: 剧集组
+    :cvar recognize_cache_hit: 本地识别缓存命中标记，不参与序列化，默认 False
     """
 
     # 内部标记：是否命中本地识别缓存，不参与序列化
@@ -1751,7 +2066,6 @@ class MediaInfo:
         规范化媒体来源、来源投影和新旧分类字段。
         """
         self.media_source, self.media_id = resolve_media_identity(media=self)
-        # 设置媒体信息
         if self.tmdb_info:
             self.set_tmdb_info(self.tmdb_info)
         if self.douban_info:
@@ -1788,7 +2102,7 @@ class MediaInfo:
 
     def __get_properties(self) -> list[str]:
         """
-        获取属性列表
+        获取属性列表。
         """
         property_names = []
         for member_name in dir(self.__class__):
@@ -1799,7 +2113,9 @@ class MediaInfo:
 
     def from_dict(self, data: dict[str, Any]) -> None:
         """
-        从字典中初始化
+        将字典字段写入当前种子对象，跳过只读属性后规范化媒体身份。
+
+        :param data: 待恢复的字段字典，未知字段保留为动态属性
         """
         properties = self.__get_properties()
         for key, value in data.items():
@@ -1915,7 +2231,9 @@ class MediaInfo:
     @property
     def detail_link(self) -> str:
         """
-        TMDB媒体详情页地址
+        返回当前媒体主身份对应的来源详情页地址。
+
+        :return: 来源详情页地址；来源或标识不受支持时返回空字符串
         """
         if self.media_source == MediaSource.TMDB and self.media_id:
             if self.type == MediaType.MOVIE:
@@ -1937,7 +2255,7 @@ class MediaInfo:
     @property
     def stars(self) -> str:
         """
-        返回评分星星个数
+        返回评分星星个数。
         """
         if not self.vote_average:
             return ""
@@ -1954,7 +2272,7 @@ class MediaInfo:
 
     def get_backdrop_image(self, default: bool = False):
         """
-        返回背景图片地址
+        返回背景图片地址。
         """
         if self.backdrop_path:
             return self.backdrop_path.replace("original", "w500")
@@ -1962,7 +2280,7 @@ class MediaInfo:
 
     def get_message_image(self, default: Optional[bool] = None):
         """
-        返回消息图片地址
+        返回消息图片地址。
         """
         if self.backdrop_path:
             return self.backdrop_path.replace("original", "w500")
@@ -1970,7 +2288,7 @@ class MediaInfo:
 
     def get_poster_image(self, default: Optional[bool] = None):
         """
-        返回海报图片地址
+        返回海报图片地址。
         """
         if self.poster_path:
             return self.poster_path.replace("original", "w500")
@@ -1978,9 +2296,10 @@ class MediaInfo:
 
     def get_overview_string(self, max_len: Optional[int] = 140):
         """
-        返回带限定长度的简介信息
-        :param max_len: 内容长度
-        :return:
+        按指定长度截取媒体简介。
+
+        :param max_len: 简介显示长度预算，默认 140，截断时为省略标记预留位置
+        :return: 去除首尾空白后的简介，超长时截取并附加省略标记；None 按字符串转换
         """
         overview = str(self.overview).strip()
         placeholder = ' ...'
@@ -1990,7 +2309,7 @@ class MediaInfo:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        返回字典
+        返回字典。
         """
         dicts = vars(self).copy()
         dicts.pop("_category_semantics_ready", None)
@@ -2015,7 +2334,7 @@ class MediaInfo:
 
     def clear(self) -> None:
         """
-        去除多余数据，减小体积
+        去除多余数据，减小体积。
         """
         self.tmdb_info = {}
         self.douban_info = {}
@@ -2038,22 +2357,22 @@ class MediaInfo:
 @dataclass
 class Context:
     """
-    上下文对象
+    聚合候选资源的识别信息、匹配依据和下载选择结果。
 
     :param meta_info: 识别信息
     :param media_info: 媒体信息
     :param torrent_info: 种子信息
     :param media_recognize_fail_count: 媒体识别失败次数
-    :param resource_source: 候选资源来源：rss、spider、search、unknown。
-    :param match_source: 候选匹配来源：MediaSource 枚举值、title、unknown。
-    :param candidate_recognized: 候选自身是否已经识别出有效媒体 ID。
-    :param media_info_is_target: 当前 media_info 是否为目标媒体回填，而不是候选自身识别结果。
-    :param match_status: 音乐资源的匹配等级及原因；待确认项不得绑定目标媒体身份。
-    :param match_reason: 音乐候选匹配或待确认的原因
-    :param allowed_episodes: 调用方对本候选允许下载的剧集集合，None 表示不限制，空集合表示拒绝交付任何集。
-    :param selected_episodes: 下载链实际提交的剧集集合；None 表示尚未执行下载选择。
-    :param confirmed_full_coverage: 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源。
-    :param music_track_keys: 下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度。
+    :param resource_source: 候选资源来源：rss、spider、search、unknown
+    :param match_source: 候选匹配来源：MediaSource 枚举值、title、unknown
+    :param candidate_recognized: 候选自身是否已经识别出有效媒体 ID
+    :param media_info_is_target: 当前 media_info 是否为目标媒体回填，而不是候选自身识别结果
+    :param match_status: 音乐匹配等级；待人工确认的候选不得绑定目标媒体身份
+    :param match_reason: 音乐匹配结论的依据；尚未匹配时为 None
+    :param allowed_episodes: 调用方对本候选允许下载的剧集集合，None 表示不限制，空集合表示拒绝交付任何集
+    :param selected_episodes: 下载链实际提交的剧集集合；None 表示尚未执行下载选择
+    :param confirmed_full_coverage: 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源
+    :param music_track_keys: 下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度
     """
 
     meta_info: Optional[MetaBase] = None
@@ -2073,7 +2392,7 @@ class Context:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        转换为字典
+        转换为字典。
         """
         return {
             "meta_info": self.meta_info.to_dict() if self.meta_info else None,

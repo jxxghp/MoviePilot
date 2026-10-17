@@ -1,3 +1,7 @@
+"""
+提供下载与整理历史查询、清理确认和整理恢复接口。
+"""
+
 import asyncio
 import time
 from collections.abc import Coroutine
@@ -66,7 +70,9 @@ router = ResponseAPIRouter()
 
 
 def normalize_history_ids(history_ids: list[int]) -> list[int]:
-    """对输入的历史记录 ID 列表进行规范化处理，去除重复项并保持原有顺序。"""
+    """
+    对输入的历史记录 ID 列表进行规范化处理，去除重复项并保持原有顺序。
+    """
     normalized_ids: list[int] = []
     for history_id in history_ids:
         if history_id not in normalized_ids:
@@ -81,7 +87,9 @@ def _request_durable_transfer_retry(
     requested_by: str,
     repository: TransferExecutionRepository,
 ) -> TransferRetryRequestResult:
-    """把 durable 历史重试交给唯一持久调度器，不在请求线程执行整理。"""
+    """
+    把 durable 历史重试交给唯一持久调度器，不在请求线程执行整理。
+    """
     return TransferExecutionCommand(repository).request_retry(
         task_id=task_id,
         reason=f"AI REST 请求重试整理历史 #{history_id}",
@@ -92,7 +100,9 @@ def _request_durable_transfer_retry(
 def _format_retry_rejections(
     rejections: list[tuple[int, TransferRetryRequestResult]],
 ) -> str:
-    """把批量整理重试拒绝原因格式化为前端可直接理解的提示。"""
+    """
+    把批量整理重试拒绝原因格式化为前端可直接理解的提示。
+    """
     from app.runtime.errors import public_error_message
 
     return "；".join(
@@ -104,7 +114,9 @@ def _format_retry_rejections(
 def _partition_durable_histories(
     histories: list[_SchemaTransferHistory],
 ) -> tuple[list[_SchemaTransferHistory], list[_SchemaTransferHistory]]:
-    """按是否绑定持久任务回执分离 durable 与旧整理历史。"""
+    """
+    按是否绑定持久任务回执分离 durable 与旧整理历史。
+    """
     return (
         [history for history in histories if history.transfer_task_id],
         [history for history in histories if not history.transfer_task_id],
@@ -115,7 +127,9 @@ async def _request_batch_durable_retries(
     histories: list[_SchemaTransferHistory],
     repository: TransferExecutionRepository,
 ) -> tuple[int, list[tuple[int, TransferRetryRequestResult]]]:
-    """逐任务登记 durable 重试并保留每条拒绝的稳定状态。"""
+    """
+    逐任务登记 durable 重试并保留每条拒绝的稳定状态。
+    """
     accepted_count = 0
     rejections: list[tuple[int, TransferRetryRequestResult]] = []
     for history in histories:
@@ -138,7 +152,9 @@ def _durable_retry_messages(
     accepted_count: int,
     rejections: list[tuple[int, TransferRetryRequestResult]],
 ) -> list[str]:
-    """构造 durable 批量登记结果消息，供纯 durable 和混合请求复用。"""
+    """
+    构造 durable 批量登记结果消息，供纯 durable 和混合请求复用。
+    """
     messages: list[str] = []
     if accepted_count:
         messages.append(f"已提交 {accepted_count} 个整理任务，后台将自动处理")
@@ -155,7 +171,9 @@ async def _complete_durable_retry_batch(
     execution_repository: TransferExecutionRepository | None = None,
     task_registry: TaskRegistry | None = None,
 ) -> Any:
-    """完成纯 durable 批量响应；存在拒绝时不伪造成功进度。"""
+    """
+    完成纯 durable 批量响应；存在拒绝时不伪造成功进度。
+    """
     message = "；".join(messages)
     if rejections:
         return _SchemaResponse(success=False, message=message)
@@ -185,7 +203,9 @@ async def _complete_durable_retry_progress(
     execution_repository: TransferExecutionRepository | None = None,
     task_registry: TaskRegistry | None = None,
 ) -> None:
-    """写入 durable 重试进度，并在提供任务依赖时等待真实终态再收口。"""
+    """
+    写入 durable 重试进度，并在提供任务依赖时等待真实终态再收口。
+    """
     progress = AsyncProgressHelper(progress_key)
     await progress.start()
     if not execution_repository or not task_ids or not task_registry:
@@ -212,7 +232,9 @@ async def _complete_durable_retry_progress(
     )
 
     async def watcher() -> None:
-        """轮询 durable 任务和历史回执，直到成功、失败或人工复核终态。"""
+        """
+        轮询 durable 任务和历史回执，直到成功、失败或人工复核终态。
+        """
         pending_task_ids = set(task_ids)
         task_history_ids = dict(zip(task_ids, history_ids))
         terminal: dict[str, dict[str, object]] = {}
@@ -316,10 +338,14 @@ def _build_progress_output_callback(
     *,
     submit: Callable[[Coroutine[Any, Any, Any]], object],
 ) -> Callable[[str], None]:
-    """构造同步 Agent 输出回调，并把异步进度更新登记到宿主任务生命周期。"""
+    """
+    构造同步 Agent 输出回调，并把异步进度更新登记到宿主任务生命周期。
+    """
 
     def update_output(text: str) -> None:
-        """非阻塞提交一条进度更新，避免同步回调等待缓存 I/O。"""
+        """
+        非阻塞提交一条进度更新，避免同步回调等待缓存 I/O。
+        """
         submit(progress.update(text=text, data=data))
 
     return update_output
@@ -331,7 +357,9 @@ def _start_ai_redo_task(
     progress_key: str,
     task_registry: TaskRegistry | None = None,
 ) -> None:
-    """在后台任务中启动单条 AI 重新整理任务，并通过异步进度辅助类实时更新进度。"""
+    """
+    在后台任务中启动单条 AI 重新整理任务，并通过异步进度辅助类实时更新进度。
+    """
     registry = resolve_background_task_registry(task_registry)
     progress = AsyncProgressHelper(progress_key)
     update_output = _build_progress_output_callback(
@@ -345,7 +373,9 @@ def _start_ai_redo_task(
     )
 
     async def runner():
-        """执行已登记的后台整理重试并更新进度，保证异常也能收口。"""
+        """
+        执行已登记的后台整理重试并更新进度，保证异常也能收口。
+        """
         try:
             await progress.start()
             await progress.update(
@@ -390,7 +420,9 @@ def _start_batch_ai_redo_task(
     progress_key: str,
     task_registry: TaskRegistry | None = None,
 ) -> None:
-    """在后台任务中启动批量 AI 重新整理任务，并通过异步进度辅助类实时更新进度。"""
+    """
+    在后台任务中启动批量 AI 重新整理任务，并通过异步进度辅助类实时更新进度。
+    """
     registry = resolve_background_task_registry(task_registry)
     progress = AsyncProgressHelper(progress_key)
     update_output = _build_progress_output_callback(
@@ -404,7 +436,9 @@ def _start_batch_ai_redo_task(
     )
 
     async def runner():
-        """执行已登记的后台整理重试并更新进度，保证异常也能收口。"""
+        """
+        执行已登记的后台整理重试并更新进度，保证异常也能收口。
+        """
         try:
             await progress.start()
             await progress.update(
@@ -450,7 +484,9 @@ def _submit_legacy_batch_ai_redo(
     messages: list[str],
     task_registry: TaskRegistry,
 ) -> _SchemaResponse[_SchemaBatchProgressKeyData]:
-    """提交旧整理历史给 Agent，并构造批量进度兼容响应。"""
+    """
+    提交旧整理历史给 Agent，并构造批量进度兼容响应。
+    """
     legacy_history_ids = [history.id for history in histories]
     progress_key = f"ai_redo_transfer_batch_{int(time.time() * 1000)}"
     _start_batch_ai_redo_task(
@@ -537,7 +573,9 @@ async def transfer_history(
 def _clear_transfer_history(
     command: TransferHistoryMutationCommand,
 ) -> _SchemaResponse[None]:
-    """执行旧整理历史清理，并统一构造兼容响应。"""
+    """
+    执行旧整理历史清理，并统一构造兼容响应。
+    """
     result = command.truncate()
     return _SchemaResponse(success=result.success, message=result.message)
 
@@ -551,7 +589,9 @@ def clear_transfer_history(
     command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
     _: object = Depends(get_current_active_superuser),
 ) -> Any:
-    """清空没有持久任务回执的旧整理记录，不删除任何文件。"""
+    """
+    清空没有持久任务回执的旧整理记录，不删除任何文件。
+    """
     return _clear_transfer_history(command)
 
 
@@ -593,7 +633,9 @@ def resolve_transfer_cleanup(
     command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
     _: object = Depends(get_current_active_manage_user),
 ) -> Any:
-    """确认用户已在下载器中人工完成清理，并关闭该历史的清理失败提示。"""
+    """
+    确认用户已在下载器中人工完成清理，并关闭该历史的清理失败提示。
+    """
     result = command.resolve_cleanup(history_id)
     return _SchemaResponse(success=result.success, message=result.message)
 
@@ -602,7 +644,9 @@ async def _get_discard_transfer_history(
     history_id: int,
     query: HistoryQueryService = Depends(get_history_query_service),
 ) -> Optional[_SchemaTransferHistory]:
-    """异步加载历史 DTO，随后由 FastAPI 工作线程执行同步原子清理。"""
+    """
+    异步加载历史 DTO，随后由 FastAPI 工作线程执行同步原子清理。
+    """
     return await query.get_transfer(history_id)
 
 
@@ -618,7 +662,9 @@ def discard_corrupt_transfer_history(
     execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
     _: object = Depends(get_current_active_manage_user),
 ) -> Any:
-    """清理无活动租约的损坏 durable 任务，保留历史供重新生成计划。"""
+    """
+    清理无活动租约的损坏 durable 任务，保留历史供重新生成计划。
+    """
     if not history:
         return _SchemaResponse(success=False, message="整理记录不存在")
     if not history.transfer_task_id:
@@ -782,5 +828,7 @@ def empty_transfer_history(
     command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
     _: object = Depends(get_current_active_superuser),
 ) -> Any:
-    """兼容旧客户端的清空入口；新调用应使用 DELETE /transfer/all。"""
+    """
+    兼容旧客户端的清空入口；新调用应使用 DELETE /transfer/all。
+    """
     return _clear_transfer_history(command)

@@ -1,7 +1,10 @@
-"""feedback-issue 目标仓库路由测试。"""
+"""
+feedback-issue 目标仓库路由测试。
+"""
 
 from __future__ import annotations
 
+import importlib
 import sys
 import tempfile
 from pathlib import Path
@@ -13,32 +16,39 @@ from app.runtime.config import settings
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "skills" / "feedback-issue" / "scripts"
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-
-import feedback_issue_common as common  # noqa: E402
-import prepare_feedback_issue as prepare_script  # noqa: E402
-import submit_feedback_issue as submit_script  # noqa: E402
+# 只在导入独立 Skill 脚本时扩展搜索路径，避免影响后续测试的模块解析。
+with patch.object(sys, "path", [str(SCRIPT_DIR), *sys.path]):
+    common = importlib.import_module("feedback_issue_common")
+    prepare_script = importlib.import_module("prepare_feedback_issue")
+    submit_script = importlib.import_module("submit_feedback_issue")
 
 
 class _FakeResponse:
-    """提交脚本使用的最小响应替身。"""
+    """
+    提交脚本使用的最小响应替身。
+    """
 
     def __init__(self, status_code: int, payload: dict | None = None):
-        """保存响应状态码和 JSON 数据。"""
+        """
+        保存响应状态码和 JSON 数据。
+        """
         self.status_code = status_code
         self._payload = payload or {}
         self.headers = {}
         self.text = ""
 
     def json(self) -> dict:
-        """返回预设 JSON 数据。"""
+        """
+        返回预设 JSON 数据。
+        """
         return self._payload
 
 
 @pytest.fixture
 def isolated_feedback_runtime():
-    """隔离 feedback-issue 脚本运行目录和 GitHub Token。"""
+    """
+    隔离 feedback-issue 脚本运行目录和 GitHub Token。
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         config_backup = settings.CONFIG_DIR
         token_backup = settings.GITHUB_TOKEN
@@ -54,7 +64,9 @@ def isolated_feedback_runtime():
 
 @pytest.fixture
 def diagnostics_file(isolated_feedback_runtime) -> Path:
-    """创建一份可复用的脚本诊断文件。"""
+    """
+    创建一份可复用的脚本诊断文件。
+    """
     file_path = common.runtime_file("diagnostics", ".json")
     common.write_json_file(
         file_path,
@@ -78,7 +90,9 @@ def diagnostics_file(isolated_feedback_runtime) -> Path:
 
 
 def _valid_plugin_draft(diagnostics_file: Path, target_repo: str = "owner/MoviePilot-Plugins") -> dict:
-    """构造一份插件问题草稿。"""
+    """
+    构造一份插件问题草稿。
+    """
     return {
         "title": "[错误报告]: 插件定时任务执行时报错退出",
         "version": "v2.12.2",
@@ -105,7 +119,9 @@ def _valid_plugin_draft(diagnostics_file: Path, target_repo: str = "owner/MovieP
 
 
 def _valid_feature_draft(diagnostics_file: Path) -> dict:
-    """构造一份功能请求草稿。"""
+    """
+    构造一份功能请求草稿。
+    """
     return {
         "title": "[功能请求]: 支持按插件来源仓库批量筛选",
         "version": "v2.12.2",
@@ -128,7 +144,9 @@ def _valid_feature_draft(diagnostics_file: Path) -> dict:
 
 
 def test_plugin_issue_requires_non_main_target_repo(diagnostics_file):
-    """插件问题没有指定插件仓库时应拒绝，避免误投主仓库。"""
+    """
+    插件问题没有指定插件仓库时应拒绝，避免误投主仓库。
+    """
     draft = _valid_plugin_draft(diagnostics_file, target_repo=common.FEEDBACK_REPO)
     draft_file = common.runtime_file("draft", ".json")
     common.write_json_file(draft_file, draft)
@@ -141,7 +159,9 @@ def test_plugin_issue_requires_non_main_target_repo(diagnostics_file):
 
 
 def test_plugin_prefill_url_targets_plugin_repository(diagnostics_file):
-    """插件问题的手动预填链接应指向插件仓库。"""
+    """
+    插件问题的手动预填链接应指向插件仓库。
+    """
     draft_file = common.runtime_file("draft", ".json")
     common.write_json_file(draft_file, _valid_plugin_draft(diagnostics_file))
     prepared = prepare_script.prepare_issue(draft_file)
@@ -155,7 +175,9 @@ def test_plugin_prefill_url_targets_plugin_repository(diagnostics_file):
 
 
 def test_plugin_api_submit_targets_plugin_repository(diagnostics_file):
-    """自动提交插件问题时 GitHub API 应调用插件仓库地址。"""
+    """
+    自动提交插件问题时 GitHub API 应调用插件仓库地址。
+    """
     settings.GITHUB_TOKEN = "ghp_test_token"
     draft_file = common.runtime_file("draft", ".json")
     common.write_json_file(draft_file, _valid_plugin_draft(diagnostics_file))
@@ -180,7 +202,9 @@ def test_plugin_api_submit_targets_plugin_repository(diagnostics_file):
 
 
 def test_feature_request_uses_feature_label(diagnostics_file):
-    """功能请求自动提交时应使用 feature request 标签而不是 bug。"""
+    """
+    功能请求自动提交时应使用 feature request 标签而不是 bug。
+    """
     settings.GITHUB_TOKEN = "ghp_test_token"
     draft_file = common.runtime_file("draft", ".json")
     common.write_json_file(draft_file, _valid_feature_draft(diagnostics_file))
@@ -204,7 +228,9 @@ def test_feature_request_uses_feature_label(diagnostics_file):
 
 @pytest.mark.parametrize("issue_type", ["主程序运行问题", "功能请求"])
 def test_cli_environment_survives_preview_and_submission(diagnostics_file, issue_type):
-    """CLI 草稿通过预览、提交校验及模拟 GitHub API，不在中途被环境枚举拒绝。"""
+    """
+    CLI 草稿通过预览、提交校验及模拟 GitHub API，不在中途被环境枚举拒绝。
+    """
     settings.GITHUB_TOKEN = "ghp_test_token"
     draft = _valid_feature_draft(diagnostics_file)
     if issue_type == "主程序运行问题":

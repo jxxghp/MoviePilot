@@ -1,4 +1,6 @@
-"""MoviePilot 子代理中间件适配。"""
+"""
+MoviePilot 子代理中间件适配。
+"""
 
 import asyncio
 import json
@@ -87,20 +89,19 @@ Rules:
 </subagents>"""
 
 SUBAGENT_TASK_DESCRIPTION = (
-    "Delegate an isolated MoviePilot investigation or planning task to a built-in "
-    "subagent. The subagent result is private context for the main agent and must "
-    "not be forwarded verbatim to the user."
+    "将独立的 MoviePilot 调查或规划任务交给内置子智能体。"
+    "子智能体结果仅作为主智能体的私有上下文，不得原样转发给用户。"
 )
 
 SUBAGENT_CONTROL_DESCRIPTION = (
-    "Start and manage multiple MoviePilot subagent tasks asynchronously. "
-    "Use action=start with tasks=[{description}] to launch a batch "
-    "and get task IDs immediately. Use action=status to inspect tasks, action=wait "
-    "to wait for all or any task result, action=update with task_id and a new description "
-    "to replace a running task after bounded cancellation, action=cancel to stop running tasks, and "
-    "action=run to launch a bounded batch and wait in one call. Use action=pipeline "
-    "to run tasks sequentially while passing each result as private context to the "
-    "next task."
+    "异步启动和管理多个 MoviePilot 子任务。"
+    "使用 action=start 和 tasks=[{description}] 启动批次并立即取得任务标识。"
+    "action=status 查看状态；"
+    "action=wait 等待全部或任一结果；"
+    "action=update 携带 task_id 和新 description，在有界取消后替换任务；"
+    "action=cancel 停止任务；"
+    "action=run 在一次调用中启动并等待有界批次。"
+    "action=pipeline 顺序执行任务，并把每步结果作为下一步的私有上下文。"
 )
 
 SUBAGENT_BASE_PROMPT = """You are a silent subagent working for the MoviePilot main agent.
@@ -116,7 +117,9 @@ Requirements:
 
 
 def _default_subagent_policy_context(tools: list[BaseTool]) -> ToolPolicyContext:
-    """从已注入工具继承会话归属，确保独立构造的子图也经过宿主策略。"""
+    """
+    从已注入工具继承会话归属，确保独立构造的子图也经过宿主策略。
+    """
     for tool in tools:
         session_id = getattr(tool, "_session_id", None)
         user_id = getattr(tool, "_user_id", None)
@@ -147,7 +150,15 @@ def _default_subagent_policy_context(tools: list[BaseTool]) -> ToolPolicyContext
 
 @dataclass(frozen=True)
 class _SubAgentProfile:
-    """子代理运行时定义。"""
+    """
+    子代理运行时定义。
+
+    :param name: 内置子智能体的可调用名称
+    :param description: 子智能体职责和适用任务摘要
+    :param prompt: 创建子智能体时注入的基础提示词
+    :param include_tags: 可进入子智能体工具目录的标签集合
+    :param exclude_tags: 必须排除的工具标签集合
+    """
 
     name: str
     description: str
@@ -157,68 +168,84 @@ class _SubAgentProfile:
 
 
 class _TaskToolInput(BaseModel):
-    """子代理任务工具输入。"""
+    """
+    子代理任务工具输入。
+    """
 
-    description: str = Field(..., description="Complete task description for the subagent")
+    description: str = Field(..., description="需要子智能体处理的完整任务描述")
     terminal_sessions: list[SubAgentTerminalGrant] = Field(
         default_factory=list,
-        description="Explicit parent terminal sessions shared with this child for read-only inspection.",
+        description="明确共享给此子智能体的父任务终端，仅用于只读检查",
     )
 
 
 class _SubAgentTaskSpec(BaseModel):
-    """异步子代理任务定义。"""
+    """
+    异步子代理任务定义。
+    """
 
-    description: str = Field(..., description="Complete task description for the subagent")
+    description: str = Field(..., description="需要子智能体处理的完整任务描述")
     terminal_sessions: list[SubAgentTerminalGrant] = Field(
         default_factory=list,
-        description="Explicit parent terminal grants for this task only; siblings inherit no grants.",
+        description="仅对当前任务生效的父终端授权；同批其他任务不继承",
     )
 
 
 class _SubAgentControlInput(BaseModel):
-    """异步子代理管控工具输入。"""
+    """
+    异步子代理管控工具输入。
+    """
 
     action: Literal["start", "status", "wait", "cancel", "update", "run", "pipeline"] = Field(
         default="start",
-        description="Task action: start, status, wait, cancel, update, run, or pipeline.",
+        description="任务动作：start、status、wait、cancel、update、run 或 pipeline，默认 start",
     )
     description: Optional[str] = Field(
         default=None,
-        description="Single task description for action=start or action=run.",
+        description="action=start 或 action=run 时的单任务描述",
     )
     terminal_sessions: list[SubAgentTerminalGrant] = Field(
         default_factory=list,
-        description="Terminal grants for a single description; with tasks, set grants separately in each task spec.",
+        description="单任务 description 使用的终端授权；使用 tasks 时须在各任务内分别指定",
     )
     tasks: Optional[list[_SubAgentTaskSpec]] = Field(
         default=None,
-        description="Batch task specs for action=start or action=run.",
+        description="action=start 或 action=run 时的批量任务定义，也用于 pipeline 的顺序步骤",
     )
     task_ids: Optional[list[str]] = Field(
         default=None,
-        description="Task IDs returned by action=start. Empty means all known tasks.",
+        description="action=start 返回的任务标识；空列表表示所有已知任务",
     )
     task_id: Optional[str] = Field(
         default=None,
-        description="Single task ID for status, wait, cancel, or update.",
+        description="status、wait、cancel 或 update 使用的单个任务标识",
     )
     wait_mode: Literal["all", "any"] = Field(
         default="all",
-        description="For action=wait or action=run: wait for all selected tasks or any one task.",
+        description="action=wait 或 action=run 的等待方式：all 等待全部，any 等待任一任务",
     )
     timeout_ms: Optional[int] = Field(
         default=SUBAGENT_DEFAULT_WAIT_TIMEOUT_MS,
         description=(
-            "Maximum wait time in milliseconds for action=wait, action=run, "
-            "or each action=pipeline step."
+            "action=wait、action=run 或 pipeline 每一步的最长等待毫秒数，默认 60000"
         ),
     )
 
 
 @dataclass
 class _SubAgentRuntimeTask:
-    """运行中的异步子代理任务记录。"""
+    """
+    运行中的异步子代理任务记录。
+
+    :param task_id: 宿主分配的子任务唯一标识
+    :param description: 派发给子智能体的完整任务描述
+    :param subagent_type: 执行该任务的内置子智能体类型
+    :param task: 负责执行子任务的异步任务对象
+    :param created_at: 任务登记创建的时间
+    :param started_at: 实际开始执行的时间；排队期间为 None
+    :param finished_at: 任务完成或取消后的结束时间；尚未结束时为 None
+    :param terminal_sessions: 仅对本子任务生效的父终端只读授权列表，其他子任务不继承
+    """
 
     task_id: str
     description: str
@@ -231,7 +258,9 @@ class _SubAgentRuntimeTask:
 
 
 def is_subagent_stream_metadata(metadata: Any) -> bool:
-    """判断流式 token 元数据是否来自子代理。"""
+    """
+    判断流式 token 元数据是否来自子代理。
+    """
     if not isinstance(metadata, dict):
         return False
 
@@ -259,7 +288,9 @@ def is_subagent_stream_metadata(metadata: Any) -> bool:
 def builtin_subagent_names(
     runtime_signature: Optional[tuple[tuple[str, int, int], ...]] = None,
 ) -> frozenset[str]:
-    """返回内置子代理名称集合。"""
+    """
+    返回内置子代理名称集合。
+    """
     runtime_signature = runtime_signature or agent_runtime_manager.current_signature()
     return _cached_builtin_subagent_names(runtime_signature)
 
@@ -268,7 +299,9 @@ def builtin_subagent_names(
 def _cached_builtin_subagent_names(
     runtime_signature: tuple[tuple[str, int, int], ...],
 ) -> frozenset[str]:
-    """按运行时签名缓存内置子代理名称集合。"""
+    """
+    按运行时签名缓存内置子代理名称集合。
+    """
     return frozenset(
         profile.name
         for profile in _builtin_subagent_profiles(runtime_signature)
@@ -278,7 +311,9 @@ def _cached_builtin_subagent_names(
 def _builtin_subagent_profiles(
     runtime_signature: Optional[tuple[tuple[str, int, int], ...]] = None,
 ) -> tuple[_SubAgentProfile, ...]:
-    """从运行时配置目录加载 MoviePilot 子代理定义。"""
+    """
+    从运行时配置目录加载 MoviePilot 子代理定义。
+    """
     runtime_signature = runtime_signature or agent_runtime_manager.current_signature()
     return _cached_builtin_subagent_profiles(runtime_signature)
 
@@ -286,7 +321,9 @@ def _builtin_subagent_profiles(
 def _default_subagent_profiles(
     runtime_signature: Optional[tuple[tuple[str, int, int], ...]] = None,
 ) -> tuple[_SubAgentProfile, ...]:
-    """返回生产主 Agent 默认可见的通用子代理目录。"""
+    """
+    返回生产主 Agent 默认可见的通用子代理目录。
+    """
     profiles = tuple(
         profile
         for profile in _builtin_subagent_profiles(runtime_signature)
@@ -301,7 +338,9 @@ def _default_subagent_profiles(
 def _cached_builtin_subagent_profiles(
     runtime_signature: tuple[tuple[str, int, int], ...],
 ) -> tuple[_SubAgentProfile, ...]:
-    """按运行时签名缓存 MoviePilot 子代理定义。"""
+    """
+    按运行时签名缓存 MoviePilot 子代理定义。
+    """
     definitions = agent_runtime_manager.list_subagents()
     profiles = tuple(
         _profile_from_runtime_definition(definition)
@@ -319,7 +358,9 @@ _builtin_subagent_profiles.cache_clear = _cached_builtin_subagent_profiles.cache
 def _profile_from_runtime_definition(
     definition: SubAgentDefinition,
 ) -> _SubAgentProfile:
-    """把运行时子代理定义转换为中间件可用的 profile。"""
+    """
+    把运行时子代理定义转换为中间件可用的 profile。
+    """
     prompt_parts = [SUBAGENT_BASE_PROMPT]
     if definition.text.strip():
         prompt_parts.append(definition.text.strip())
@@ -333,7 +374,9 @@ def _profile_from_runtime_definition(
 
 
 def _tool_tag_values(tool: BaseTool) -> set[str]:
-    """读取工具实例上的标签集合。"""
+    """
+    读取工具实例上的标签集合。
+    """
     tags = getattr(tool, "tags", None) or []
     if isinstance(tags, str):
         return {tags}
@@ -341,7 +384,9 @@ def _tool_tag_values(tool: BaseTool) -> set[str]:
 
 
 def _select_tools(tools: list[BaseTool], profile: _SubAgentProfile) -> list[BaseTool]:
-    """根据工具标签筛选子代理可用工具。"""
+    """
+    根据工具标签筛选子代理可用工具。
+    """
     selected_tools = []
     for tool in tools:
         tags = _tool_tag_values(tool)
@@ -355,14 +400,18 @@ def _select_tools(tools: list[BaseTool], profile: _SubAgentProfile) -> list[Base
 
 
 def _format_subagent_catalog(profiles: tuple[_SubAgentProfile, ...]) -> str:
-    """渲染子代理目录供任务工具描述使用。"""
+    """
+    渲染子代理目录供任务工具描述使用。
+    """
     return "\n".join(
         f"- {profile.name}: {profile.description}" for profile in profiles
     )
 
 
 def _extract_final_text(result: Any) -> str:
-    """从子代理执行结果中提取最后一条 AI 文本。"""
+    """
+    从子代理执行结果中提取最后一条 AI 文本。
+    """
     if isinstance(result, dict):
         messages = result.get("messages") or []
     else:
@@ -378,7 +427,9 @@ def _extract_final_text(result: Any) -> str:
 
 
 def _clip_text(text: Any, max_chars: int) -> tuple[str, bool]:
-    """裁剪过长文本，返回文本和是否被裁剪。"""
+    """
+    裁剪过长文本，返回文本和是否被裁剪。
+    """
     normalized = "" if text is None else str(text)
     if len(normalized) <= max_chars:
         return normalized, False
@@ -386,14 +437,18 @@ def _clip_text(text: Any, max_chars: int) -> tuple[str, bool]:
 
 
 def _format_datetime(value: Optional[datetime]) -> Optional[str]:
-    """格式化任务时间。"""
+    """
+    格式化任务时间。
+    """
     if not value:
         return None
     return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _extract_tool_call_args(request: ToolCallRequest) -> dict[str, Any]:
-    """提取工具调用参数，并规整为字典。"""
+    """
+    提取工具调用参数，并规整为字典。
+    """
     tool_call = request.tool_call or {}
     tool_args = tool_call.get("args") or {}
     if not isinstance(tool_args, dict):
@@ -407,7 +462,9 @@ def _record_subagent_tool_call(
     tool_name: str,
     tool_args: dict[str, Any],
 ) -> str:
-    """按当前详细模式展示或汇总子代理工具调用。"""
+    """
+    按当前详细模式展示或汇总子代理工具调用。
+    """
     if not stream_handler or not getattr(stream_handler, "is_streaming", False):
         return ""
     safe_args = sanitize_for_host(tool_args)
@@ -425,7 +482,9 @@ def _record_subagent_tool_call(
 
 
 class _SubAgentAgentProvider:
-    """子代理图懒加载与执行器。"""
+    """
+    子代理图懒加载与执行器。
+    """
 
     def __init__(
         self,
@@ -437,7 +496,9 @@ class _SubAgentAgentProvider:
         policy_context: Optional[ToolPolicyContext] = None,
         catalog: Optional[ToolCatalogSnapshot] = None,
     ) -> None:
-        """初始化子代理执行器。"""
+        """
+        初始化子代理执行器。
+        """
         self._model = model
         self._profiles = {profile.name: profile for profile in profiles}
         self._tools = tools
@@ -449,11 +510,15 @@ class _SubAgentAgentProvider:
         self._default_agent_name = "general-purpose"
 
     def _resolve_profile(self, _agent_name: Optional[str] = None) -> _SubAgentProfile:
-        """解析唯一的通用子代理。"""
+        """
+        解析唯一的通用子代理。
+        """
         return self._profiles[self._default_agent_name]
 
     def get_agent(self, agent_name: Optional[str] = None) -> tuple[str, Any]:
-        """懒加载唯一通用子代理图。"""
+        """
+        懒加载唯一通用子代理图。
+        """
         profile = self._resolve_profile(agent_name)
         cached_agent = self._agents.get(profile.name)
         if cached_agent:
@@ -500,7 +565,9 @@ class _SubAgentAgentProvider:
         task_id: Optional[str] = None,
         terminal_sessions: Optional[list[SubAgentTerminalGrant]] = None,
     ) -> str:
-        """调用通用子代理并只返回供主代理读取的结果。"""
+        """
+        调用通用子代理并只返回供主代理读取的结果。
+        """
         del subagent_type
         agent_name, agent = self.get_agent()
         thread_suffix = task_id or uuid.uuid4().hex
@@ -546,7 +613,9 @@ class _SubAgentAgentProvider:
 
 
 class MoviePilotSubAgentMiddleware(AgentMiddleware):
-    """MoviePilot 本地子代理中间件兜底实现。"""
+    """
+    MoviePilot 本地子代理中间件兜底实现。
+    """
 
     def __init__(
         self,
@@ -561,7 +630,9 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         policy_context: Optional[ToolPolicyContext] = None,
         catalog: Optional[ToolCatalogSnapshot] = None,
     ) -> None:
-        """初始化同步子代理中间件。"""
+        """
+        初始化同步子代理中间件。
+        """
         self.system_prompt = system_prompt
         self.stream_handler = stream_handler
         self._provider = _SubAgentAgentProvider(
@@ -577,7 +648,7 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
                 coroutine=self._run_task,
                 name=SUBAGENT_TASK_TOOL_NAME,
                 description=(
-                    f"{task_description}\n\nAvailable subagents:\n"
+                    f"{task_description}\n\n可用子智能体：\n"
                     f"{_format_subagent_catalog(profiles)}"
                 ),
                 args_schema=_TaskToolInput,
@@ -585,7 +656,9 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         ]
 
     def _get_agent(self, agent_name: str) -> Any:
-        """懒加载指定名称的子代理图。"""
+        """
+        懒加载指定名称的子代理图。
+        """
         return self._provider.get_agent(agent_name)[1]
 
     async def _run_task(
@@ -593,7 +666,9 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         description: str,
         terminal_sessions: Optional[list[SubAgentTerminalGrant]] = None,
     ) -> str:
-        """调用通用子代理并只返回供主代理读取的结果。"""
+        """
+        调用通用子代理并只返回供主代理读取的结果。
+        """
         return await self._provider.run_task(
             description=description,
             terminal_sessions=terminal_sessions,
@@ -606,7 +681,9 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
             [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
         ],
     ) -> ModelResponse[ResponseT]:
-        """在主代理模型调用前注入子代理使用说明。"""
+        """
+        在主代理模型调用前注入子代理使用说明。
+        """
         new_system_message = append_to_system_message(
             request.system_message,
             self.system_prompt,
@@ -618,7 +695,9 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在 task 子代理工具执行时输出当前模式对应的执行信息。"""
+        """
+        在 task 子代理工具执行时输出当前模式对应的执行信息。
+        """
         tool = request.tool
         tool_name = getattr(tool, "name", None)
         if tool_name != SUBAGENT_TASK_TOOL_NAME:
@@ -655,7 +734,9 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
 
 
 class SubAgentTaskControlMiddleware(AgentMiddleware):
-    """提供异步子代理任务调度工具的中间件。"""
+    """
+    提供异步子代理任务调度工具的中间件。
+    """
 
     def __init__(
         self,
@@ -669,7 +750,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         policy_context: Optional[ToolPolicyContext] = None,
         catalog: Optional[ToolCatalogSnapshot] = None,
     ) -> None:
-        """初始化异步子代理调度中间件。"""
+        """
+        初始化异步子代理调度中间件。
+        """
         self.stream_handler = stream_handler
         self._provider = _SubAgentAgentProvider(
             model=model,
@@ -688,7 +771,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 coroutine=self._control_task,
                 name=SUBAGENT_CONTROL_TOOL_NAME,
                 description=(
-                    f"{task_description}\n\nAvailable subagents:\n"
+                    f"{task_description}\n\n可用子智能体：\n"
                     f"{_format_subagent_catalog(profiles)}"
                 ),
                 args_schema=_SubAgentControlInput,
@@ -697,7 +780,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
 
     @staticmethod
     def _json_response(payload: dict[str, Any]) -> str:
-        """将工具响应序列化为稳定 JSON，并为失败提供模型恢复路径。"""
+        """
+        将工具响应序列化为稳定 JSON，并为失败提供模型恢复路径。
+        """
         normalized = dict(payload)
         if normalized.get("success") is False:
             normalized.setdefault("execution_outcome", "failed")
@@ -709,14 +794,18 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
 
     @staticmethod
     def _normalize_timeout_ms(timeout_ms: Optional[int]) -> int:
-        """规范化等待超时时间。"""
+        """
+        规范化等待超时时间。
+        """
         if timeout_ms is None:
             return SUBAGENT_DEFAULT_WAIT_TIMEOUT_MS
         return max(0, min(int(timeout_ms), SUBAGENT_MAX_WAIT_TIMEOUT_MS))
 
     @staticmethod
     def _task_status(record: _SubAgentRuntimeTask) -> str:
-        """读取任务当前状态。"""
+        """
+        读取任务当前状态。
+        """
         task = record.task
         if task.cancelled():
             return "cancelled"
@@ -728,7 +817,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
 
     @staticmethod
     def _task_output(record: _SubAgentRuntimeTask) -> dict[str, Any]:
-        """格式化单个任务状态和结果。"""
+        """
+        格式化单个任务状态和结果。
+        """
         description, description_truncated = _clip_text(
             record.description,
             SUBAGENT_DESCRIPTION_MAX_CHARS,
@@ -774,7 +865,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         task_id: Optional[str] = None,
         active_only: bool = False,
     ) -> tuple[list[_SubAgentRuntimeTask], list[str]]:
-        """根据任务 ID 选择记录。"""
+        """
+        根据任务 ID 选择记录。
+        """
         selected_ids = []
         if task_id:
             selected_ids.append(task_id)
@@ -806,7 +899,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         tasks: Optional[list[_SubAgentTaskSpec]],
         terminal_sessions: Optional[list[SubAgentTerminalGrant]] = None,
     ) -> tuple[list[_SubAgentTaskSpec], Optional[str]]:
-        """规范化单任务和批量任务输入。"""
+        """
+        规范化单任务和批量任务输入。
+        """
         if tasks and terminal_sessions:
             return [], "批量或管道任务请在每个 tasks 条目中单独声明 terminal_sessions。"
         specs = []
@@ -838,7 +933,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         return specs, None
 
     async def _execute_managed_task(self, record: _SubAgentRuntimeTask) -> str:
-        """执行受调度器管理的子代理任务。"""
+        """
+        执行受调度器管理的子代理任务。
+        """
         async with self._semaphore:
             record.started_at = datetime.now()
             logger.info(
@@ -871,7 +968,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 raise
 
     def _mark_task_finished(self, task_id: str, task: asyncio.Task) -> None:
-        """记录任务完成时间并取出异常避免未读取告警。"""
+        """
+        记录任务完成时间并取出异常避免未读取告警。
+        """
         cancel_requested = getattr(self, "_close_cancel_requested", None)
         if cancel_requested is not None:
             cancel_requested.discard(task)
@@ -886,7 +985,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             return
 
     def _start_tasks(self, specs: list[_SubAgentTaskSpec]) -> list[_SubAgentRuntimeTask]:
-        """启动一批异步子代理任务。"""
+        """
+        启动一批异步子代理任务。
+        """
         records = []
         for spec in specs:
             task_id = f"subagent-{uuid.uuid4().hex[:12]}"
@@ -924,7 +1025,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         wait_mode: str,
         timeout_ms: Optional[int],
     ) -> None:
-        """按等待模式等待一组任务完成。"""
+        """
+        按等待模式等待一组任务完成。
+        """
         pending_tasks = [record.task for record in records if not record.task.done()]
         if not pending_tasks:
             if records:
@@ -963,7 +1066,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         *,
         cancel_requested: Optional[set[asyncio.Task]] = None,
     ) -> list[_SubAgentRuntimeTask]:
-        """取消一组任务，并返回等待上限内仍未收敛的记录。"""
+        """
+        取消一组任务，并返回等待上限内仍未收敛的记录。
+        """
         cancellable_tasks = [
             record.task for record in records if not record.task.done()
         ]
@@ -1000,7 +1105,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         description: str,
         terminal_sessions: Optional[list[SubAgentTerminalGrant]],
     ) -> tuple[bool, Optional[str]]:
-        """有界取消旧任务后复用 task_id 启动更新后的子代理任务。"""
+        """
+        有界取消旧任务后复用 task_id 启动更新后的子代理任务。
+        """
         if not record.task.done():
             pending = await self._cancel_records([record])
             if pending:
@@ -1018,20 +1125,28 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
     def _task_finished_callback(
         self, task_id: str,
     ) -> Callable[[asyncio.Task[Any]], None]:
-        """返回带稳定 task_id 的完成回调，供任务更新复用。"""
+        """
+        返回带稳定 task_id 的完成回调，供任务更新复用。
+        """
         return lambda finished_task: self._mark_task_finished(task_id, finished_task)
 
     def seal(self) -> None:
-        """封住新的 detached 子代理提交，既有任务继续由记录表持有。"""
+        """
+        封住新的 detached 子代理提交，既有任务继续由记录表持有。
+        """
         self._accepting_tasks = False
 
     async def close(self) -> bool:
-        """有限等待 detached 子代理；超时保留记录并返回 False。"""
+        """
+        有限等待 detached 子代理；超时保留记录并返回 False。
+        """
         self.seal()
         return await self._drain_tasks()
 
     async def _drain_tasks(self) -> bool:
-        """清理本轮子任务，正常收敛后允许缓存图继续处理下一轮。"""
+        """
+        清理本轮子任务，正常收敛后允许缓存图继续处理下一轮。
+        """
         if not hasattr(self, "_close_cancel_requested"):
             self._close_cancel_requested = set()
         unfinished_records = [
@@ -1063,7 +1178,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         description: str,
         previous_results: list[tuple[_SubAgentRuntimeTask, str]],
     ) -> str:
-        """追加上游子代理结果，生成当前管道步骤的任务描述。"""
+        """
+        追加上游子代理结果，生成当前管道步骤的任务描述。
+        """
         normalized_description = description.strip()
         if not previous_results:
             return normalized_description
@@ -1100,7 +1217,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         record: _SubAgentRuntimeTask,
         description: str,
     ) -> str:
-        """执行单个管道步骤，保留原始步骤描述用于状态展示。"""
+        """
+        执行单个管道步骤，保留原始步骤描述用于状态展示。
+        """
         async with self._semaphore:
             record.started_at = datetime.now()
             logger.info(
@@ -1136,7 +1255,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
     def _create_pipeline_record(
             spec: _SubAgentTaskSpec,
     ) -> _SubAgentRuntimeTask:
-        """创建一个管道步骤记录。"""
+        """
+        创建一个管道步骤记录。
+        """
         task_id = f"subagent-{uuid.uuid4().hex[:12]}"
         return _SubAgentRuntimeTask(
             task_id=task_id,
@@ -1152,7 +1273,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         record: _SubAgentRuntimeTask,
         task: asyncio.Task,
     ) -> None:
-        """登记管道步骤任务，复用统一的状态和异常收口逻辑。"""
+        """
+        登记管道步骤任务，复用统一的状态和异常收口逻辑。
+        """
         record.task = task
         task.add_done_callback(
             lambda finished_task, finished_task_id=record.task_id: self._mark_task_finished(
@@ -1167,7 +1290,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         specs: list[_SubAgentTaskSpec],
         timeout_ms: Optional[int],
     ) -> tuple[list[_SubAgentRuntimeTask], Optional[str]]:
-        """按顺序执行管道任务，并把每一步结果传给下一步。"""
+        """
+        按顺序执行管道任务，并把每一步结果传给下一步。
+        """
         normalized_timeout_ms = self._normalize_timeout_ms(timeout_ms)
         if normalized_timeout_ms <= 0:
             return [], "管道任务需要大于 0 的等待时间。"
@@ -1232,7 +1357,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         timeout_ms: Optional[int] = SUBAGENT_DEFAULT_WAIT_TIMEOUT_MS,
         terminal_sessions: Optional[list[SubAgentTerminalGrant]] = None,
     ) -> str:
-        """管理异步子代理任务。"""
+        """
+        管理异步子代理任务。
+        """
         logger.info(f"收到子代理管控操作: action={action}")
         if action == "update":
             if not task_id or not description or not description.strip():
@@ -1340,7 +1467,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         return self._json_response(response)
 
     async def aafter_agent(self, state: Any, runtime: Any) -> None:
-        """本轮结束时回收子任务；永久关闭只由会话生命周期触发。"""
+        """
+        本轮结束时回收子任务；永久关闭只由会话生命周期触发。
+        """
         await self._drain_tasks()
 
     async def awrap_tool_call(
@@ -1348,7 +1477,9 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在 subagent_task 子代理工具执行时输出当前模式对应的执行信息。"""
+        """
+        在 subagent_task 子代理工具执行时输出当前模式对应的执行信息。
+        """
         tool = request.tool
         tool_name = getattr(tool, "name", None)
         if tool_name != SUBAGENT_CONTROL_TOOL_NAME:
@@ -1397,7 +1528,9 @@ def create_subagent_middlewares(
     policy_context: Optional[ToolPolicyContext] = None,
     catalog: Optional[ToolCatalogSnapshot] = None,
 ) -> tuple[list[AgentMiddleware], list[BaseTool]]:
-    """创建子代理中间件列表和任务工具列表。"""
+    """
+    创建子代理中间件列表和任务工具列表。
+    """
     runtime_signature = agent_runtime_manager.current_signature()
     profiles = _default_subagent_profiles(runtime_signature)
     subagent_middleware = MoviePilotSubAgentMiddleware(

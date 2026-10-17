@@ -1,3 +1,7 @@
+"""
+验证模型目录、显式配置和能力管理器对图片输入支持的判定。
+"""
+
 from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -14,7 +18,9 @@ from app.schemas.types import NotificationChannel
 
 @pytest.fixture
 def stub_llm_model_catalog(monkeypatch):
-    """打桩 models.dev 目录查询边界，离线文件随仓库保持为空，不依赖真实目录数据。"""
+    """
+    打桩 models.dev 目录查询边界，离线文件随仓库保持为空，不依赖真实目录数据。
+    """
     catalog = {
         ("minimax", "MiniMax-M2.7"): {
             "modalities": {"input": ["text"], "output": ["text"]},
@@ -28,7 +34,9 @@ def stub_llm_model_catalog(monkeypatch):
     }
 
     def fake_resolve(self, provider_id, model_id, base_url=None, base_url_preset_id=None):
-        """按 provider 与模型标识返回目录元数据，未知模型返回 None。"""
+        """
+        按 provider 与模型标识返回目录元数据，未知模型返回 None。
+        """
         return catalog.get((provider_id, model_id))
 
     monkeypatch.setattr(
@@ -39,7 +47,9 @@ def stub_llm_model_catalog(monkeypatch):
 def test_llm_supports_image_input_uses_model_catalog_text_only(
         monkeypatch, stub_llm_model_catalog
 ):
-    """内置目录明确为纯文本模型时，应自动关闭图片输入。"""
+    """
+    内置目录明确为纯文本模型时，应自动关闭图片输入。
+    """
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
 
     assert not LLMHelper.supports_image_input(
@@ -51,7 +61,9 @@ def test_llm_supports_image_input_uses_model_catalog_text_only(
 def test_llm_supports_image_input_keeps_known_vision_model(
         monkeypatch, stub_llm_model_catalog
 ):
-    """内置目录明确为视觉模型时，应允许图片输入。"""
+    """
+    内置目录明确为视觉模型时，应允许图片输入。
+    """
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
 
     assert LLMHelper.supports_image_input(
@@ -61,7 +73,9 @@ def test_llm_supports_image_input_keeps_known_vision_model(
 
 
 def test_llm_supports_image_input_keeps_unknown_model_override(monkeypatch):
-    """未知自定义模型保持用户开关语义，避免误伤私有视觉模型。"""
+    """
+    未知自定义模型保持用户开关语义，避免误伤私有视觉模型。
+    """
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
 
     assert LLMHelper.supports_image_input(
@@ -71,7 +85,9 @@ def test_llm_supports_image_input_keeps_unknown_model_override(monkeypatch):
 
 
 def test_agent_capability_manager_delegates_image_support():
-    """Agent 能力管理器应复用统一的模型图片能力判断。"""
+    """
+    Agent 能力管理器应复用统一的模型图片能力判断。
+    """
     with patch.object(LLMHelper, "supports_image_input", return_value=False) as supports:
         assert not AgentCapabilityManager.supports_image_input()
 
@@ -85,7 +101,9 @@ def test_agent_capability_manager_delegates_image_support():
 def test_handle_ai_message_routes_images_by_catalog_capability(
         monkeypatch, stub_llm_model_catalog, provider, model, supports_images
 ):
-    """目录视觉模型接收图片输入，纯文本模型保留文件附件降级。"""
+    """
+    目录视觉模型接收图片输入，纯文本模型保留文件附件降级。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -153,7 +171,9 @@ def test_handle_ai_message_routes_images_by_catalog_capability(
 
 
 def test_unsupported_image_error_recognizes_vlm_text_only_message():
-    """兼容端点返回 not a VLM 时，应识别为图片输入能力错误。"""
+    """
+    兼容端点返回 not a VLM 时，应识别为图片输入能力错误。
+    """
     error = Exception(
         "Error code: 400 - {'code': 20041, 'message': "
         "'The model is not a VLM (Vision Language Model). "

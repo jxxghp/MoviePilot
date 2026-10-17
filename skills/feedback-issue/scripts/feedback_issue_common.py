@@ -1,4 +1,6 @@
-"""feedback-issue skill 脚本共享逻辑。"""
+"""
+feedback-issue 技能脚本共享逻辑。
+"""
 
 from __future__ import annotations
 
@@ -15,7 +17,9 @@ from urllib.parse import quote, urlparse
 
 
 def _find_repo_root() -> Path:
-    """从当前工作目录和脚本路径向上查找 MoviePilot 仓库根目录。"""
+    """
+    从当前工作目录和脚本路径向上查找 MoviePilot 仓库根目录。
+    """
     script_path = Path(__file__).resolve()
     candidates = []
     configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
@@ -36,11 +40,14 @@ REPO_ROOT = _find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# 先定位项目并补充导入路径，随后读取本机运行配置。
 from app.runtime.config import settings  # noqa: E402
 
 
 def github_headers_for_repo(repo: str) -> dict[str, str]:
-    """按仓库专属配置、全局设置和运行环境顺序解析 Issue 提交 Token。"""
+    """
+    按仓库专属配置、全局设置和运行环境顺序解析 Issue 提交 Token。
+    """
     try:
         headers = dict(settings.REPO_GITHUB_HEADERS(repo=repo))
     except Exception:
@@ -183,20 +190,26 @@ _SENSITIVE_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
 
 
 def feedback_runtime_dir() -> Path:
-    """返回 feedback-issue 脚本使用的运行时目录并确保存在。"""
+    """
+    返回 feedback-issue 脚本使用的运行时目录并确保存在。
+    """
     runtime_dir = settings.TEMP_PATH / "feedback-issue"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     return runtime_dir
 
 
 def runtime_file(prefix: str, suffix: str) -> Path:
-    """在运行时目录下生成一个随机文件路径。"""
+    """
+    在运行时目录下生成一个随机文件路径。
+    """
     safe_prefix = re.sub(r"[^a-zA-Z0-9_-]+", "-", prefix).strip("-") or "feedback"
     return feedback_runtime_dir() / f"{safe_prefix}-{uuid.uuid4().hex[:12]}{suffix}"
 
 
 def ensure_runtime_file(path: str | Path) -> Path:
-    """校验脚本间传递的文件必须位于 feedback-issue 运行时目录内。"""
+    """
+    校验脚本间传递的文件必须位于 feedback-issue 运行时目录内。
+    """
     candidate = Path(path).expanduser().resolve()
     runtime_dir = feedback_runtime_dir().resolve()
     if not candidate.is_relative_to(runtime_dir):
@@ -205,7 +218,9 @@ def ensure_runtime_file(path: str | Path) -> Path:
 
 
 def read_json_file(path: str | Path) -> dict[str, Any]:
-    """读取 JSON 文件并确保顶层对象是 dict。"""
+    """
+    读取 JSON 文件并确保顶层对象是 dict。
+    """
     json_path = Path(path).expanduser()
     data = json.loads(json_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -214,7 +229,9 @@ def read_json_file(path: str | Path) -> dict[str, Any]:
 
 
 def write_json_file(path: str | Path, payload: dict[str, Any]) -> Path:
-    """把 JSON 对象写入文件并返回实际路径。"""
+    """
+    把 JSON 对象写入文件并返回实际路径。
+    """
     json_path = Path(path)
     json_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(
@@ -225,7 +242,9 @@ def write_json_file(path: str | Path, payload: dict[str, Any]) -> Path:
 
 
 def validate_enum(value: str, allowed: tuple[str, ...], field_name: str) -> Optional[str]:
-    """校验枚举字段，返回错误信息；通过时返回 None。"""
+    """
+    校验枚举字段，返回错误信息；通过时返回 None。
+    """
     if value not in allowed:
         return (
             f"{field_name} 必须是以下之一：{', '.join(allowed)}；"
@@ -235,7 +254,9 @@ def validate_enum(value: str, allowed: tuple[str, ...], field_name: str) -> Opti
 
 
 def normalize_target_repo(target_repo: Optional[str]) -> str:
-    """把目标仓库规范化为 GitHub 的 owner/repo 形式。"""
+    """
+    把目标仓库规范化为 GitHub 的 owner/repo 形式。
+    """
     repo = (target_repo or FEEDBACK_REPO).strip()
     if not repo:
         return FEEDBACK_REPO
@@ -254,17 +275,23 @@ def normalize_target_repo(target_repo: Optional[str]) -> str:
 
 
 def issue_api_url(target_repo: Optional[str]) -> str:
-    """返回指定仓库的 GitHub Issues API 地址。"""
+    """
+    返回指定仓库的 GitHub Issues API 地址。
+    """
     return f"https://api.github.com/repos/{normalize_target_repo(target_repo)}/issues"
 
 
 def issue_new_url(target_repo: Optional[str]) -> str:
-    """返回指定仓库的新建 Issue 页面地址。"""
+    """
+    返回指定仓库的新建 Issue 页面地址。
+    """
     return f"https://github.com/{normalize_target_repo(target_repo)}/issues/new"
 
 
 def validate_target_repo_for_issue(issue_type: str, target_repo: str) -> Optional[str]:
-    """校验 Issue 类型与目标仓库是否匹配，避免插件问题误投主仓库。"""
+    """
+    校验 Issue 类型与目标仓库是否匹配，避免插件问题误投主仓库。
+    """
     if issue_type == "插件问题" and target_repo == FEEDBACK_REPO:
         return (
             "issue_type 为「插件问题」时必须把 target_repo 设置为插件所属 GitHub 仓库，"
@@ -274,7 +301,9 @@ def validate_target_repo_for_issue(issue_type: str, target_repo: str) -> Optiona
 
 
 def issue_labels(issue_type: str, target_repo: Optional[str]) -> list[str]:
-    """返回提交 Issue 时应使用的标签列表。"""
+    """
+    返回提交 Issue 时应使用的标签列表。
+    """
     if issue_type == FEATURE_ISSUE_TYPE:
         return ["feature request"]
     if normalize_target_repo(target_repo) == FEEDBACK_REPO:
@@ -283,7 +312,9 @@ def issue_labels(issue_type: str, target_repo: Optional[str]) -> list[str]:
 
 
 def redact_logs(raw: str) -> str:
-    """对日志文本做统一脱敏，覆盖常见 token、Cookie、PII 和本机路径。"""
+    """
+    对日志文本做统一脱敏，覆盖常见令牌、Cookie、个人身份信息和本机路径。
+    """
     out = raw
     for pattern, replacement in _SENSITIVE_PATTERNS:
         out = pattern.sub(replacement, out)
@@ -291,14 +322,18 @@ def redact_logs(raw: str) -> str:
 
 
 def truncate(text: str, limit: int, marker: str = "\n...（已截断）") -> str:
-    """按字符数截断文本并附加截断标记。"""
+    """
+    按字符数截断文本并附加截断标记。
+    """
     if not text or len(text) <= limit:
         return text
     return text[: max(0, limit - len(marker))] + marker
 
 
 def sanitize_logs(logs: Optional[str], limit: int) -> str:
-    """清洗日志：去空白、脱敏并按指定长度截断。"""
+    """
+    清洗日志：去空白、脱敏并按指定长度截断。
+    """
     if not logs or not logs.strip():
         return ""
     return truncate(redact_logs(logs.strip()), limit)
@@ -313,7 +348,9 @@ def build_issue_body(
     logs: Optional[str],
     target_repo: Optional[str] = None,
 ) -> str:
-    """构造与上游 bug_report.yml 表单渲染接近的 Issue Markdown 正文。"""
+    """
+    构造与上游 bug_report.yml 表单渲染接近的 Issue Markdown 正文。
+    """
     repo = normalize_target_repo(target_repo)
     log_block = sanitize_logs(logs, MAX_LOGS_CHARS) or "会话中未捕获到相关后端日志。"
     if issue_type == FEATURE_ISSUE_TYPE:
@@ -362,7 +399,9 @@ def build_prefill_url(
     logs: Optional[str],
     target_repo: Optional[str] = None,
 ) -> str:
-    """生成 GitHub Issue Forms 预填 URL，供无 token 或 API 失败时手动提交。"""
+    """
+    生成 GitHub Issue Forms 预填 URL，供无令牌或 API 失败时手动提交。
+    """
     repo = normalize_target_repo(target_repo)
     labels = issue_labels(issue_type, repo)
     if repo != FEEDBACK_REPO or issue_type == FEATURE_ISSUE_TYPE:
@@ -401,7 +440,9 @@ def build_prefill_url(
 
 
 def _safe_count(value: Any) -> int:
-    """把不可信的诊断计数字段转换为非负整数。"""
+    """
+    把不可信的诊断计数字段转换为非负整数。
+    """
     try:
         return max(int(value or 0), 0)
     except (TypeError, ValueError):
@@ -409,7 +450,9 @@ def _safe_count(value: Any) -> int:
 
 
 def format_doctor_summary(doctor: Optional[dict[str, Any]]) -> str:
-    """把 doctor JSON 报告压缩成适合 Issue 和预览展示的摘要。"""
+    """
+    把 doctor JSON 报告压缩成适合 Issue 和预览展示的摘要。
+    """
     if not isinstance(doctor, dict):
         return "未收集到 doctor 报告。"
     if not doctor.get("success"):
@@ -503,7 +546,9 @@ def format_doctor_summary(doctor: Optional[dict[str, Any]]) -> str:
 
 
 def format_log_selection(selection: Optional[dict[str, Any]]) -> str:
-    """把日志筛选依据格式化为便于用户确认的摘要。"""
+    """
+    把日志筛选依据格式化为便于用户确认的摘要。
+    """
     if not isinstance(selection, dict):
         return "未记录日志筛选依据。"
 
@@ -540,7 +585,9 @@ def format_log_selection(selection: Optional[dict[str, Any]]) -> str:
 
 
 def classify_failure(status_code: Optional[int], headers: Optional[dict] = None) -> str:
-    """把 GitHub API HTTP 状态码映射成脚本输出的稳定失败原因。"""
+    """
+    把 GitHub API HTTP 状态码映射成脚本输出的稳定失败原因。
+    """
     headers = headers or {}
     if status_code == 401:
         return "no_permission"
@@ -561,7 +608,9 @@ def classify_failure(status_code: Optional[int], headers: Optional[dict] = None)
 
 
 def safe_response_dict(response: Any) -> dict[str, Any]:
-    """安全解析 HTTP 响应 JSON，非 dict 或解析失败时返回空 dict。"""
+    """
+    安全解析 HTTP 响应 JSON，非 dict 或解析失败时返回空 dict。
+    """
     try:
         data = response.json()
     except Exception:
@@ -579,7 +628,9 @@ def check_content_quality(
     logs: Optional[str] = None,
     issue_type: str = "主程序运行问题",
 ) -> Optional[str]:
-    """检查 Issue 内容质量，拦截测试、占位、乱码和结构缺失的提交。"""
+    """
+    检查 Issue 内容质量，拦截测试、占位、乱码和结构缺失的提交。
+    """
     original_stripped = (original_user_request or "").strip()
     if not original_stripped:
         return (
@@ -655,12 +706,16 @@ def check_content_quality(
 
 
 def normalize_username(username: Optional[str]) -> str:
-    """归一化用户名，作为脚本级提交频率限制的桶 key。"""
+    """
+    归一化用户名，作为脚本级提交频率限制的桶 key。
+    """
     return (username or "").strip().lower()
 
 
 def load_submission_state() -> dict[str, Any]:
-    """读取脚本持久化的短期提交状态。"""
+    """
+    读取脚本持久化的短期提交状态。
+    """
     state_file = feedback_runtime_dir() / "submission-state.json"
     if not state_file.exists():
         return {"recent_submissions": {}, "user_submissions": {}}
@@ -674,7 +729,9 @@ def load_submission_state() -> dict[str, Any]:
 
 
 def save_submission_state(state: dict[str, Any]) -> None:
-    """写回脚本持久化的短期提交状态。"""
+    """
+    写回脚本持久化的短期提交状态。
+    """
     write_json_file(feedback_runtime_dir() / "submission-state.json", state)
 
 
@@ -684,7 +741,9 @@ def check_recent_duplicate(
     state: dict[str, Any],
     target_repo: Optional[str] = None,
 ) -> Optional[str]:
-    """检查 60 秒内是否提交过同 title + body 的内容。"""
+    """
+    检查 60 秒内是否提交过同 title + body 的内容。
+    """
     now = time.time()
     recent = state.setdefault("recent_submissions", {})
     for key, ts in list(recent.items()):
@@ -703,14 +762,18 @@ def record_submission(
     state: dict[str, Any],
     target_repo: Optional[str] = None,
 ) -> None:
-    """记录一次提交内容摘要，供短时间去重使用。"""
+    """
+    记录一次提交内容摘要，供短时间去重使用。
+    """
     repo = normalize_target_repo(target_repo)
     key = hashlib.sha256(f"{repo}\x00{title}\x00{body}".encode("utf-8", errors="replace")).hexdigest()
     state.setdefault("recent_submissions", {})[key] = time.time()
 
 
 def evict_user_submissions_if_needed(state: dict[str, Any]) -> None:
-    """限制用户提交状态桶数量，避免运行时文件无限增长。"""
+    """
+    限制用户提交状态桶数量，避免运行时文件无限增长。
+    """
     buckets = state.setdefault("user_submissions", {})
     if len(buckets) <= MAX_USER_SUBMISSIONS_BUCKETS:
         return
@@ -724,7 +787,9 @@ def evict_user_submissions_if_needed(state: dict[str, Any]) -> None:
 
 
 def check_user_rate_limit(username: str, state: dict[str, Any]) -> Optional[str]:
-    """检查单用户 30 分钟冷却和 24 小时提交配额。"""
+    """
+    检查单用户 30 分钟冷却和 24 小时提交配额。
+    """
     key = normalize_username(username)
     if not key:
         return "无法识别调用用户身份，rate limit 拒绝以防误用。"
@@ -757,7 +822,9 @@ def check_user_rate_limit(username: str, state: dict[str, Any]) -> Optional[str]
 
 
 def record_user_submission(username: str, state: dict[str, Any]) -> None:
-    """记录一次用户级提交时间戳，供冷却和配额检查使用。"""
+    """
+    记录一次用户级提交时间戳，供冷却和配额检查使用。
+    """
     key = normalize_username(username)
     if not key:
         return
@@ -766,7 +833,9 @@ def record_user_submission(username: str, state: dict[str, Any]) -> None:
 
 
 def load_diagnostics_logs(diagnostics_file: str | Path) -> tuple[str, dict[str, Any]]:
-    """读取诊断文件中的日志正文并返回日志与诊断元数据。"""
+    """
+    读取诊断文件中的日志正文并返回日志与诊断元数据。
+    """
     path = ensure_runtime_file(diagnostics_file)
     data = read_json_file(path)
     logs = sanitize_logs(str(data.get("logs") or ""), MAX_LOGS_CHARS)
@@ -774,5 +843,7 @@ def load_diagnostics_logs(diagnostics_file: str | Path) -> tuple[str, dict[str, 
 
 
 def result_payload(**fields: Any) -> str:
-    """把脚本结果格式化为 Agent 容易解析的 JSON 字符串。"""
+    """
+    把脚本结果格式化为 Agent 容易解析的 JSON 字符串。
+    """
     return json.dumps(fields, ensure_ascii=False, indent=2)

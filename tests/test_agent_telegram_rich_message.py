@@ -1,4 +1,6 @@
-"""Agent Telegram Rich Message 契约测试。"""
+"""
+Agent Telegram Rich Message 契约测试。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, patch
@@ -11,7 +13,9 @@ from app.schemas.types import NotificationChannel
 
 
 def test_send_message_input_accepts_rich_message_only() -> None:
-    """Rich Message 本身应能构成完整的工具载荷。"""
+    """
+    Rich Message 本身应能构成完整的工具载荷。
+    """
     payload = SendMessageInput(rich_message="# 结果\n\n- 成功")
 
     assert payload.message is None
@@ -19,7 +23,9 @@ def test_send_message_input_accepts_rich_message_only() -> None:
 
 
 def test_send_message_tool_keeps_plain_fallback_for_rich_message() -> None:
-    """工具应同时保留跨渠道文本回退和 Telegram Rich Markdown。"""
+    """
+    工具应同时保留跨渠道文本回退和 Telegram Rich Markdown。
+    """
 
     async def _run():
         tool = SendMessageTool(session_id="session-1", user_id="10001")
@@ -46,7 +52,9 @@ def test_send_message_tool_keeps_plain_fallback_for_rich_message() -> None:
 
 
 def test_agent_prompt_prefers_rich_message_only_for_telegram() -> None:
-    """仅 Telegram 会话应收到 Rich Message 优先提示。"""
+    """
+    仅 Telegram 会话应收到 Rich Message 优先提示。
+    """
     telegram_prompt = prompt_manager.get_agent_prompt(
         channel=NotificationChannel.Telegram.value
     )
@@ -60,7 +68,9 @@ def test_agent_prompt_prefers_rich_message_only_for_telegram() -> None:
 
 
 def test_agent_direct_telegram_reply_uses_rich_message() -> None:
-    """Agent 常规 Telegram 回复也应自动携带 Rich Markdown。"""
+    """
+    Agent 常规 Telegram 回复也应自动携带 Rich Markdown。
+    """
 
     async def _run():
         agent = MoviePilotAgent(session_id="telegram-session", user_id="10001")

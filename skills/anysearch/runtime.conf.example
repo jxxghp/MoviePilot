@@ -1,4 +1,4 @@
-# AnySearch Runtime Configuration
-# Auto-generated during installation. Do not edit manually unless necessary.
+# AnySearch 运行环境配置示例
+# 安装时按探测结果生成 runtime.conf；仅在需要修正运行环境时手动修改。
 Runtime: <detected_runtime>
 Command: <detected_command>

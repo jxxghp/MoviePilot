@@ -1,3 +1,7 @@
+"""
+登记命令服务与启动期执行入口。
+"""
+
 from concurrent.futures import Future
 from typing import Any
 
@@ -6,12 +10,16 @@ from app.command import Command
 
 
 def configure_command_runtime() -> None:
-    """在命令生命周期启动阶段登记 concrete Command。"""
+    """
+    在命令生命周期启动阶段登记 concrete Command。
+    """
     register_command_class(Command)
 
 
 def reset_command_runtime() -> None:
-    """清除 concrete Command 登记，支持重复 lifespan。"""
+    """
+    清除 concrete Command 登记，支持重复 lifespan。
+    """
     reset_command_class()
 
 
@@ -35,5 +43,7 @@ def restart_command() -> Future[Any]:
 
 
 def stop_command() -> None:
-    """释放命令 provider；Command 实例本身没有独立关闭资源。"""
+    """
+    释放命令 provider；Command 实例本身没有独立关闭资源。
+    """
     reset_command_runtime()

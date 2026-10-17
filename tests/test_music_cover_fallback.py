@@ -1,4 +1,6 @@
-"""音乐封面随附加文件整理及在线失败后的本地图片回退回归。"""
+"""
+音乐封面随附加文件整理及在线失败后的本地图片回退回归。
+"""
 
 import os
 import shutil
@@ -29,7 +31,9 @@ from tests.test_transfer_sync_extra_files import bind_empty_history_repositories
 
 
 def _tagged_audio(directory, name="01.flac", album="Album"):
-    """用真实标签建立可离线整理的音轨和唯一发行证据。"""
+    """
+    用真实标签建立可离线整理的音轨和唯一发行证据。
+    """
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / name
     shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", path)
@@ -40,7 +44,9 @@ def _tagged_audio(directory, name="01.flac", album="Album"):
 
 
 def _planner(chain, item, sync=True, mtype=MediaType.MUSIC):
-    """构造真实候选规划器，保留同目录匹配与附加文件开关。"""
+    """
+    构造真实候选规划器，保留同目录匹配与附加文件开关。
+    """
     return _TransferCandidatePlanner(
         chain, meta=None, season=None, formater=None, batch_mtype=mtype, mediainfo=None,
         continue_callback=None, has_episode_format_template=False, transfer_exclude_words=[],
@@ -52,7 +58,9 @@ def _planner(chain, item, sync=True, mtype=MediaType.MUSIC):
 @pytest.mark.parametrize("sync", [False, True])
 @pytest.mark.parametrize("mtype", [None, MediaType.MUSIC])
 def test_music_cover_enters_directory_and_single_transfer_only_when_sync_enabled(tmp_path, monkeypatch, single, sync, mtype):
-    """目录与单音轨使用相同附加文件开关，图片继承音轨身份并且只规划一次。"""
+    """
+    目录与单音轨使用相同附加文件开关，图片继承音轨身份并且只规划一次。
+    """
     path = _tagged_audio(tmp_path / "source")
     cover = make_fileitem(str(path.parent / "COVER.JPG"))
     audio = make_fileitem(str(path))
@@ -74,7 +82,9 @@ def test_music_cover_enters_directory_and_single_transfer_only_when_sync_enabled
 
 
 def test_music_cover_does_not_borrow_identity_from_different_albums_or_video(tmp_path):
-    """同目录多发行存在歧义时不关联封面，影视批次也不会吸收图片。"""
+    """
+    同目录多发行存在歧义时不关联封面，影视批次也不会吸收图片。
+    """
     first = make_fileitem(str(_tagged_audio(tmp_path / "source", "01.flac", "First")))
     second = make_fileitem(str(_tagged_audio(tmp_path / "source", "02.flac", "Second")))
     cover = make_fileitem(str(tmp_path / "source/cover.jpg"))
@@ -90,7 +100,9 @@ def test_music_cover_does_not_borrow_identity_from_different_albums_or_video(tmp
 @pytest.mark.parametrize("mtype", [None, MediaType.MUSIC])
 @pytest.mark.parametrize("enabled", [False, True])
 def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, single, mtype, enabled):
-    """公开整理入口遵守全局开关，开启时封面复用主音轨身份而不单独在线识别。"""
+    """
+    公开整理入口遵守全局开关，开启时封面复用主音轨身份而不单独在线识别。
+    """
     monkeypatch.setattr(settings, "MUSIC_LOCAL_COVER_ENABLE", enabled)
     audio = _tagged_audio(tmp_path / "source")
     cover = audio.parent / "cover.jpg"
@@ -117,7 +129,9 @@ def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, s
     tasks = []
 
     def preview(task, **_kwargs):
-        """检查完整请求给规划执行器传入的主文件和封面上下文。"""
+        """
+        检查完整请求给规划执行器传入的主文件和封面上下文。
+        """
         tasks.append(task)
         return TransferInfo(success=True, fileitem=task.fileitem, target_item=task.fileitem)
 
@@ -136,7 +150,9 @@ def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, s
 @pytest.mark.parametrize("mode", ["copy", "link", "move"])
 @pytest.mark.parametrize("rename", [False, True])
 def test_music_cover_real_storage_transfer_preserves_filename_and_album_root(tmp_path, monkeypatch, mode, rename):
-    """封面沿用真实复制/硬链接/移动执行及覆盖策略，重命名时不进入碟片子目录。"""
+    """
+    封面沿用真实复制/硬链接/移动执行及覆盖策略，重命名时不进入碟片子目录。
+    """
     source = tmp_path / "source"
     source.mkdir()
     path = source / "COVER.JPG"
@@ -172,7 +188,9 @@ def test_music_cover_real_storage_transfer_preserves_filename_and_album_root(tmp
 @pytest.mark.parametrize("existing", [False, True])
 @pytest.mark.parametrize("enabled", [False, True])
 def test_music_scrape_uses_online_first_then_valid_local_cover_without_changing_seed(tmp_path, monkeypatch, online, policy, existing, enabled):
-    """真实 FLAC 验证开关仅控制本地回退，不改变在线刮削、既有封面策略和种子。"""
+    """
+    真实 FLAC 验证开关仅控制本地回退，不改变在线刮削、既有封面策略和种子。
+    """
     monkeypatch.setattr(settings, "MUSIC_LOCAL_COVER_ENABLE", enabled)
     source = _tagged_audio(tmp_path / "source")
     existing_path = tmp_path / "existing.png"
@@ -223,7 +241,9 @@ def test_music_scrape_uses_online_first_then_valid_local_cover_without_changing_
 
 
 def test_disabled_local_cover_does_not_read_storage(monkeypatch):
-    """关闭本地封面时不列目录或下载图片，避免触发远端存储访问。"""
+    """
+    关闭本地封面时不列目录或下载图片，避免触发远端存储访问。
+    """
     monkeypatch.setattr(settings, "MUSIC_LOCAL_COVER_ENABLE", False)
     chain = object.__new__(ScrapingChain)
     chain.storagechain = Mock()
@@ -232,7 +252,9 @@ def test_disabled_local_cover_does_not_read_storage(monkeypatch):
 
 
 def test_local_cover_setting_default_and_contract():
-    """全局开关默认开启并通过设置目录公开可写的音乐布尔配置。"""
+    """
+    全局开关默认开启并通过设置目录公开可写的音乐布尔配置。
+    """
     assert ConfigModel.model_fields["MUSIC_LOCAL_COVER_ENABLE"].default is True
     spec = ALL_SETTING_SPECS["MUSIC_LOCAL_COVER_ENABLE"]
     assert spec.group == "music"
@@ -241,7 +263,9 @@ def test_local_cover_setting_default_and_contract():
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_local_cover_setting_persists_without_changing_patterns(tmp_path, monkeypatch, enabled):
-    """开关可保存并重新加载，切换后仍保留用户的封面文件名匹配规则。"""
+    """
+    开关可保存并重新加载，切换后仍保留用户的封面文件名匹配规则。
+    """
     env_path = tmp_path / "app.env"
     env_path.touch()
     monkeypatch.delenv("MUSIC_LOCAL_COVER_ENABLE", raising=False)
@@ -257,7 +281,9 @@ def test_local_cover_setting_persists_without_changing_patterns(tmp_path, monkey
 
 @pytest.mark.parametrize("remote", [False, True])
 def test_local_cover_reader_supports_storage_paths_and_album_root(tmp_path, remote):
-    """碟片音轨从专辑根读取归档封面，远端路径只通过存储下载读取。"""
+    """
+    碟片音轨从专辑根读取归档封面，远端路径只通过存储下载读取。
+    """
     picture_path = tmp_path / "cover.png"
     Image.new("RGB", (2, 2), "blue").save(picture_path)
     storage = "cloud" if remote else "local"
@@ -277,7 +303,9 @@ def test_local_cover_reader_supports_storage_paths_and_album_root(tmp_path, remo
 
 
 def test_music_cover_patterns_are_case_insensitive_and_reject_non_images(monkeypatch):
-    """通配配置可扩展文件名，但不能把文本或隐藏文件当作音乐封面。"""
+    """
+    通配配置可扩展文件名，但不能把文本或隐藏文件当作音乐封面。
+    """
     monkeypatch.setattr(settings, "MUSIC_COVER_FILE_PATTERNS", "Artwork.*,*.PNG")
     chain = make_transfer_chain()
     assert chain._is_music_cover_file(make_fileitem("/music/ARTWORK.JPEG"))

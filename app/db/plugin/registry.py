@@ -1,4 +1,6 @@
-"""插件数据库注册表：按插件标识管理句柄的建立、建表与释放。"""
+"""
+插件数据库注册表：按插件标识管理句柄的建立、建表与释放。
+"""
 
 from __future__ import annotations
 
@@ -38,7 +40,9 @@ _handles: dict[str, PluginDatabaseHandle] = {}
 
 
 def _is_postgresql() -> bool:
-    """判断宿主当前是否使用 PostgreSQL。"""
+    """
+    判断宿主当前是否使用 PostgreSQL。
+    """
     db_type: str = get_runtime_setting("DB_TYPE")
     return db_type.lower() == "postgresql"
 
@@ -52,12 +56,15 @@ def _search_path_setter(schema: str) -> Callable[[Connection], None]:
     ``public``。解析根只放插件自己的 schema，不留 ``public`` 兜底：留了兜底，插件 schema
     里不存在的表名会继续解析到宿主同名表，一条未限定的 ``DELETE`` 就能改到宿主数据。
     ``SET LOCAL`` 的作用域随事务结束，不会经连接池把插件的解析根泄漏给宿主或其它插件。
+
     :param schema: 插件 schema 名
     :return: 绑定该 schema 的 ``begin`` 事件监听器
     """
 
     def _apply_search_path(connection: Connection) -> None:
-        """在事务开始时把该连接的未限定标识符解析根切到插件 schema。"""
+        """
+        在事务开始时把该连接的未限定标识符解析根切到插件 schema。
+        """
         connection.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')
 
     return _apply_search_path
@@ -70,6 +77,7 @@ def _build_handle(plugin_id: str) -> PluginDatabaseHandle:
     SQLite 每插件一个独立库文件，句柄独占引擎；PostgreSQL 复用宿主引擎并按
     ``schema_translate_map`` 派生出限定单一 schema 的外观，句柄不拥有该引擎，并在派生
     引擎上按事务限定 ``search_path``，让未限定的原生 SQL 同样落在插件自己的 schema。
+
     :param plugin_id: 插件标识
     :return: 新建的数据库句柄
     """
@@ -122,6 +130,7 @@ def _close_handle(handle: PluginDatabaseHandle) -> None:
     线程局部会话各自扣着一条连接，不先归还就 dispose，会让已经被移出注册表的句柄仍然
     握着文件描述符。两步都是收尾操作，任一步失败只记日志：一个插件的连接池故障不得让
     宿主引擎与其余插件的释放整体失败。
+
     :param handle: 数据库句柄
     """
     try:
@@ -141,6 +150,7 @@ def get_database(plugin_id: str) -> PluginDatabaseHandle:
     不要求插件先声明模型：只打算执行原生 SQL 的插件同样可以直接取会话。PostgreSQL 下
     句柄的会话与连接在每个事务开始时把 ``search_path`` 限定到插件 schema，未限定的原生
     SQL 因此同样解析到插件自己的表。
+
     :param plugin_id: 插件标识
     :return: 数据库句柄
     """
@@ -155,6 +165,7 @@ def get_database(plugin_id: str) -> PluginDatabaseHandle:
 def _create_declared_tables(handle: PluginDatabaseHandle, models: Sequence[type]) -> None:
     """
     按声明的模型建表，只创建插件显式列出的表。
+
     :param handle: 数据库句柄
     :param models: 插件声明的模型类
     """
@@ -179,6 +190,7 @@ def ensure_database(
 
     两者都未声明时不建立句柄、不产生任何库文件——绝大多数插件不使用自有库，不该因为
     宿主统一调用了本函数就凭空多出一个空库和一个空目录。
+
     :param plugin_id: 插件标识
     :param models: 插件声明的模型类
     :param migrations: 插件声明的 Alembic 迁移目录
@@ -208,7 +220,9 @@ def ensure_database(
 
 
 def database_handles() -> tuple[PluginDatabaseHandle, ...]:
-    """返回当前已建立的插件数据库句柄快照。"""
+    """
+    返回当前已建立的插件数据库句柄快照。
+    """
     with _lock:
         return tuple(_handles.values())
 
@@ -220,6 +234,7 @@ def release_database(plugin_id: str) -> None:
     只 dispose 句柄自己拥有的引擎；PostgreSQL 下句柄只是宿主引擎的外观，这里不会、
     也不能触碰宿主连接池。关连接与摘句柄在同一把锁内完成，句柄一旦离开注册表就不会再
     被任何线程取到一个正在关闭的连接池。
+
     :param plugin_id: 插件标识
     """
     with _lock:
@@ -229,7 +244,9 @@ def release_database(plugin_id: str) -> None:
 
 
 def release_all_databases() -> None:
-    """释放全部插件的数据库连接，供进程关停使用。"""
+    """
+    释放全部插件的数据库连接，供进程关停使用。
+    """
     with _lock:
         plugin_ids = list(_handles)
     for plugin_id in plugin_ids:
@@ -242,6 +259,7 @@ def release_all_databases() -> None:
 def _drop_schema(plugin_id: str, schema: str) -> None:
     """
     丢弃插件的 PostgreSQL schema。
+
     :param plugin_id: 插件标识
     :param schema: schema 名
     """
@@ -255,6 +273,7 @@ def _drop_schema(plugin_id: str, schema: str) -> None:
 def _remove_storage(plugin_id: str, handle: PluginDatabaseHandle | None) -> None:
     """
     删除插件数据库的持久载体：SQLite 删库文件与边车，PostgreSQL 丢弃 schema。
+
     :param plugin_id: 插件标识
     :param handle: 已释放的句柄，为空时按插件标识重新推导载体位置
     """
@@ -287,6 +306,7 @@ def destroy_database(plugin_id: str) -> None:
     与删载体全程持同一把锁，销毁与同一插件的句柄重建因此互斥，删除不会落到并发建出来的
     新句柄头上。失败只记日志：删除数据是一次收尾操作，把文件系统或数据库的清理故障升级
     成异常，只会让已经删掉的宿主数据与仍然存在的插件库停在不一致的中间态。
+
     :param plugin_id: 插件标识
     """
     with _lock:

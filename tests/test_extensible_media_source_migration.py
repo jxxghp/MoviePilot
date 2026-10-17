@@ -1,4 +1,6 @@
-"""插件扩展媒体来源数据库迁移测试。"""
+"""
+插件扩展媒体来源数据库迁移测试。
+"""
 
 import importlib
 
@@ -9,12 +11,16 @@ from alembic.operations import Operations
 
 
 def _operations(connection: sa.Connection) -> Operations:
-    """为内存 SQLite 连接构造 Alembic 操作对象。"""
+    """
+    为内存 SQLite 连接构造 Alembic 操作对象。
+    """
     return Operations(MigrationContext.configure(connection))
 
 
 def _create_fixed_constraint_table(connection: sa.Connection) -> None:
-    """创建模拟已执行旧固定白名单 revision 的订阅表。"""
+    """
+    创建模拟已执行旧固定白名单 revision 的订阅表。
+    """
     metadata = sa.MetaData()
     sa.Table(
         "subscribe",
@@ -33,7 +39,9 @@ def _create_fixed_constraint_table(connection: sa.Connection) -> None:
 
 
 def test_upgrade_replaces_fixed_source_whitelist(monkeypatch) -> None:
-    """升级后应保留原数据、允许插件来源并继续拒绝非法身份。"""
+    """
+    升级后应保留原数据、允许插件来源并继续拒绝非法身份。
+    """
     migration = importlib.import_module(
         "database.versions.b3d7e9f1a2c4_3_0_5"
     )

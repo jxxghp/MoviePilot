@@ -40,7 +40,9 @@ _EXPECTED_RESOLUTIONS = {
 
 
 def test_canonical_modules_do_not_define_legacy_names():
-    """canonical 模块自身不得保留旧名物理别名，旧名只能来自兼容映射。"""
+    """
+    canonical 模块自身不得保留旧名物理别名，旧名只能来自兼容映射。
+    """
     types_module = importlib.import_module("app.schemas.types")
     message_module = importlib.import_module("app.schemas.message")
 
@@ -58,7 +60,9 @@ def test_canonical_modules_do_not_define_legacy_names():
 
 
 def test_manifest_registers_all_legacy_message_notification_symbols():
-    """映射表必须登记全部旧名，且目标指向当前 canonical 符号。"""
+    """
+    映射表必须登记全部旧名，且目标指向当前 canonical 符号。
+    """
     for (module_name, legacy_name), canonical in _EXPECTED_RESOLUTIONS.items():
         alias = SYMBOL_ALIASES[module_name][legacy_name]
         target = getattr(importlib.import_module(alias.target_module), alias.target_name)
@@ -66,14 +70,18 @@ def test_manifest_registers_all_legacy_message_notification_symbols():
 
 
 def test_legacy_symbol_imports_resolve_through_compat_hook():
-    """插件旧导入路径应经兼容钩子解析到 canonical 对象。"""
+    """
+    插件旧导入路径应经兼容钩子解析到 canonical 对象。
+    """
     for (module_name, legacy_name), canonical in _EXPECTED_RESOLUTIONS.items():
         module = importlib.import_module(module_name)
         assert getattr(module, legacy_name) is canonical, (module_name, legacy_name)
 
 
 def test_schemas_package_level_legacy_imports_resolve():
-    """from app.schemas import 旧名 的插件写法应继续可用。"""
+    """
+    from app.schemas import 旧名 的插件写法应继续可用。
+    """
     schemas_package = importlib.import_module("app.schemas")
 
     assert schemas_package.MessageChannel is NotificationChannel
@@ -85,7 +93,9 @@ def test_schemas_package_level_legacy_imports_resolve():
 
 
 def test_legacy_from_import_statement_works():
-    """from ... import 语句形式的旧导入应正常执行。"""
+    """
+    from ... import 语句形式的旧导入应正常执行。
+    """
     scope: dict = {}
     exec(
         "from app.schemas import Notification, MessageChannel, NotificationType\n"
@@ -102,7 +112,9 @@ def test_legacy_from_import_statement_works():
 
 
 def test_legacy_and_canonical_instances_interchangeable():
-    """旧名构造的实例应与 canonical 类型互相兼容（同一类对象）。"""
+    """
+    旧名构造的实例应与 canonical 类型互相兼容（同一类对象）。
+    """
     legacy_message = importlib.import_module("app.schemas").Notification(title="t")
 
     assert isinstance(legacy_message, Message)

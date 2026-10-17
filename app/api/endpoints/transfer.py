@@ -1,3 +1,7 @@
+"""
+提供文件整理任务查询、执行、重试和控制接口。
+"""
+
 import re
 from pathlib import Path
 from typing import Annotated, Any, List, Literal, Optional, cast
@@ -60,7 +64,9 @@ router = ResponseAPIRouter()
 
 
 def _public_transfer_message(message: Optional[object]) -> Optional[str]:
-    """把整理链返回的错误转换为前端可直接展示的文案。"""
+    """
+    把整理链返回的错误转换为前端可直接展示的文案。
+    """
     if message is None or not str(message).strip():
         return None
     from app.runtime.errors import public_error_message
@@ -69,7 +75,9 @@ def _public_transfer_message(message: Optional[object]) -> Optional[str]:
 
 
 def _public_transfer_result(data: dict[str, Any]) -> dict[str, Any]:
-    """裁剪整理结果中的错误字段，保留预览数据的原有结构。"""
+    """
+    裁剪整理结果中的错误字段，保留预览数据的原有结构。
+    """
     from app.application.transfer.feedback import classify_transfer_failure
 
     result = dict(data)
@@ -99,7 +107,9 @@ def _public_transfer_result(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_failure_preview_item(file_item: FileItem, message: Optional[str]) -> dict:
-    """构造手动整理预览失败项。"""
+    """
+    构造手动整理预览失败项。
+    """
     from app.application.transfer.feedback import classify_transfer_failure
 
     feedback = classify_transfer_failure(message)
@@ -133,7 +143,9 @@ def _format_manual_transfer_failure(
     source_path: Optional[str],
     target_path: Optional[str] = None,
 ) -> str:
-    """把手动整理失败转换为包含路径、阶段和下一步动作的用户提示。"""
+    """
+    把手动整理失败转换为包含路径、阶段和下一步动作的用户提示。
+    """
     from app.application.transfer.feedback import format_transfer_failure_message
 
     public_message = _public_transfer_message(message) or "整理失败"
@@ -145,7 +157,9 @@ def _format_manual_transfer_failure(
 
 
 def _merge_transfer_messages(messages: List[str]) -> str:
-    """合并手动整理批量预览提示信息，并统一转换错误文案。"""
+    """
+    合并手动整理批量预览提示信息，并统一转换错误文案。
+    """
     valid_messages = [
         public_message
         for msg in messages
@@ -163,7 +177,9 @@ def _merge_transfer_messages(messages: List[str]) -> str:
 def _manual_submission_items(
     fileitem: FileItem, success: bool, result: object, target_path: Optional[Path],
 ) -> list[_SchemaManualTransferSubmissionItem]:
-    """映射真实执行回执，旧返回值最多确认接收，不能推断入库完成。"""
+    """
+    映射真实执行回执，旧返回值最多确认接收，不能推断入库完成。
+    """
     if isinstance(result, dict):
         items = _public_transfer_result(result).get("items")
         if isinstance(items, list):
@@ -180,7 +196,9 @@ def _manual_submission_items(
 def _manual_submission_response(
     success: bool, items: list[_SchemaManualTransferSubmissionItem],
 ) -> Any:
-    """保留部分成功文件，并继续为旧客户端提供包含失败路径的总提示。"""
+    """
+    保留部分成功文件，并继续为旧客户端提供包含失败路径的总提示。
+    """
     errors = [
         _format_manual_transfer_failure(
             message=item.message, source_path=item.source,
@@ -196,7 +214,9 @@ def _manual_submission_response(
 
 
 def _is_music_file_batch(fileitems: List[FileItem]) -> bool:
-    """判断显式选中项是否为可按专辑识别的多音轨批次。"""
+    """
+    判断显式选中项是否为可按专辑识别的多音轨批次。
+    """
     if len(fileitems) < 2 or any(fileitem.type != "file" for fileitem in fileitems):
         return False
     audio_extensions = set(get_api_runtime_config_snapshot().audio_extensions)
@@ -212,7 +232,9 @@ def _selected_music_fileitems(
     explicitly_selected: bool,
     media_type: Optional[MediaType],
 ) -> Optional[List[FileItem]]:
-    """仅在用户明确选择音乐类型时，将显式多选音轨作为专辑批次处理。"""
+    """
+    仅在用户明确选择音乐类型时，将显式多选音轨作为专辑批次处理。
+    """
     if not explicitly_selected or media_type != MediaType.MUSIC:
         return None
     if not _is_music_file_batch(fileitems):
@@ -248,7 +270,9 @@ def _selected_music_fileitems(
 
 
 def _manual_review_actor(current_user: object) -> str:
-    """按名称、用户名和用户 ID 的稳定顺序提取人工复核操作者。"""
+    """
+    按名称、用户名和用户 ID 的稳定顺序提取人工复核操作者。
+    """
     for attribute in ("name", "username", "id"):
         value = getattr(current_user, attribute, None)
         if value is not None and str(value).strip():
@@ -262,7 +286,9 @@ def _manual_review_actor(current_user: object) -> str:
 def _manual_review_task_data(
     task: TransferManualReviewTaskView,
 ) -> _SchemaTransferManualReviewTaskData:
-    """把 Application 人工复核投影映射为严格公开响应。"""
+    """
+    把 Application 人工复核投影映射为严格公开响应。
+    """
     return cast(
         _SchemaTransferManualReviewTaskData,
         _SchemaTransferManualReviewTaskData.model_validate({
@@ -301,7 +327,9 @@ def list_transfer_manual_reviews(
         get_transfer_execution_repository
     ),
 ) -> Any:
-    """分页返回待复核或已判定等待 durable 恢复的任务。"""
+    """
+    分页返回待复核或已判定等待 durable 恢复的任务。
+    """
     del current_user
     result = TransferManualReviewQuery(repository).list(
         state=TransferExecutionState(state_filter),
@@ -331,7 +359,9 @@ def get_transfer_manual_review(
         get_transfer_execution_repository
     ),
 ) -> Any:
-    """按任务标识返回严格裁剪的人工复核详情。"""
+    """
+    按任务标识返回严格裁剪的人工复核详情。
+    """
     del current_user
     task = TransferManualReviewQuery(repository).get(task_id=task_id)
     if task is None:
@@ -355,7 +385,9 @@ def resolve_transfer_manual_review(
         get_transfer_execution_repository
     ),
 ) -> Any:
-    """提交无租约人工判定，并返回不含 attempt 与 lease 的公开状态。"""
+    """
+    提交无租约人工判定，并返回不含 attempt 与 lease 的公开状态。
+    """
     result = (
         TransferStepResult(payload=dict(review.result_payload))
         if review.result_payload is not None
@@ -398,6 +430,7 @@ def query_name(
 ) -> Any:
     """
     查询整理后的名称
+
     :param path: 文件路径
     :param filetype: 文件类型
     :param _: Token校验
@@ -424,7 +457,7 @@ def query_name(
         if media_path:
             new_name = media_path.name
         else:
-            # fallback
+            # 模板未提供媒体根目录时，沿用已有父目录层级推导名称。
             parents = Path(new_path).parents
             if len(parents) > 2:
                 new_name = parents[1].name
@@ -439,6 +472,7 @@ def query_name(
 async def query_queue(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询整理队列
+
     :param _: Token校验
     """
     return TransferChain().get_queue_tasks()
@@ -454,7 +488,9 @@ async def query_queue_page(
     page: int = Query(1, ge=1),
     count: int = Query(100, ge=1, le=COLLECTION_MAX_PAGE_SIZE),
 ) -> _SchemaTransferQueuePageData:
-    """返回前端所需的有限整理队列窗口，避免序列化完整云盘目录树。"""
+    """
+    返回前端所需的有限整理队列窗口，避免序列化完整云盘目录树。
+    """
     items, total = TransferChain().get_queue_tasks_page(page, count)
     return _SchemaTransferQueuePageData(
         items=items,
@@ -472,6 +508,7 @@ async def remove_queue(
 ) -> Any:
     """
     查询整理队列
+
     :param fileitem: 文件项
     :param _: Token校验
     """
@@ -699,7 +736,9 @@ def _route_manual_transfer(
     background: Optional[bool],
     history_query: TransferHistoryLookupService,
 ) -> Any:
-    """执行历史恢复、批量预览与 TransferChain 兼容编排。"""
+    """
+    执行历史恢复、批量预览与 TransferChain 兼容编排。
+    """
     if not transer_item.logids:
         return _execute_manual_transfer(
             transer_item=transer_item,
@@ -742,7 +781,9 @@ def _execute_manual_transfer(
     downloader: Optional[str] = None,
     download_hash: Optional[str] = None,
 ) -> Any:
-    """执行已还原源文件项的手动整理兼容编排。"""
+    """
+    执行已还原源文件项的手动整理兼容编排。
+    """
     src_fileitems: List[FileItem] = []
     cleanup_dest_fileitem: Optional[FileItem] = None
     target_path = Path(transer_item.target_path) if transer_item.target_path else None
@@ -799,7 +840,9 @@ def _execute_manual_transfer(
             )
 
     def _resolve_music_type(file_item: FileItem) -> Optional[str]:
-        """为未显式指定实体的旧客户端按源项类型补全音乐命名空间。"""
+        """
+        为未显式指定实体的旧客户端按源项类型补全音乐命名空间。
+        """
         if mtype != MediaType.MUSIC or transer_item.music_type:
             return transer_item.music_type
         return (
@@ -994,6 +1037,7 @@ def recommend_episode_format(
 ) -> Any:
     """
     根据目录样本推荐集数定位模板
+
     :param recommend_item: 推荐请求
     :param _: Token校验
     """

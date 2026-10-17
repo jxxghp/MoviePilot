@@ -1,3 +1,7 @@
+"""
+按存储快照轮询文件变化并分发整理任务。
+"""
+
 import traceback
 from pathlib import Path, PurePosixPath
 from threading import Lock
@@ -231,7 +235,7 @@ class RemotePoller:
             new_snapshot = StorageChain().snapshot_storage(
                 storage=storage,
                 path=mon_path,
-                last_snapshot_time=0  # 全量扫描，不使用增量
+                last_snapshot_time=0
             )
 
             if new_snapshot is None:

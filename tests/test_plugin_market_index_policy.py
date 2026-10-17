@@ -1,4 +1,6 @@
-"""插件市场索引同步与异步策略一致性测试。"""
+"""
+插件市场索引同步与异步策略一致性测试。
+"""
 
 import asyncio
 import json
@@ -24,12 +26,16 @@ ASYNC_INDEX_REQUEST = "_PluginMarketTransport__async_request_plugin_index_with_f
 
 
 def test_plugin_index_request_timeout_is_bounded() -> None:
-    """插件索引故障应在有限时间内返回，不能沿用一分钟等待。"""
+    """
+    插件索引故障应在有限时间内返回，不能沿用一分钟等待。
+    """
     assert PLUGIN_INDEX_REQUEST_TIMEOUT == 15
 
 
 def test_plugin_market_repo_config_is_normalized_once() -> None:
-    """市场配置的空白、尾斜杠和重复仓库不能制造重复读取任务。"""
+    """
+    市场配置的空白、尾斜杠和重复仓库不能制造重复读取任务。
+    """
     assert split_plugin_market_repo_urls(
         " https://github.com/Example/Plugins.git/ ,"
         "https://github.com/example/plugins,"
@@ -43,7 +49,9 @@ def test_plugin_market_repo_config_is_normalized_once() -> None:
 def test_github_request_strategies_do_not_retry_direct_when_proxy_is_configured(
     monkeypatch,
 ) -> None:
-    """显式代理失败后不得绕过同一出口策略再等待一次直连超时。"""
+    """
+    显式代理失败后不得绕过同一出口策略再等待一次直连超时。
+    """
     settings = {
         "GITHUB_PROXY": None,
         "PROXY_HOST": "http://proxy:7891",
@@ -64,7 +72,9 @@ def test_github_request_strategies_do_not_retry_direct_when_proxy_is_configured(
 def test_github_request_strategies_use_direct_without_configured_proxy(
     monkeypatch,
 ) -> None:
-    """未配置代理时仍保留直连出口。"""
+    """
+    未配置代理时仍保留直连出口。
+    """
     monkeypatch.setattr(
         "app.adapters.external.plugin.client.get_runtime_setting",
         lambda _key: None,
@@ -78,12 +88,16 @@ def test_github_request_strategies_use_direct_without_configured_proxy(
 
 
 def test_request_error_formatter_keeps_type_for_blank_exception() -> None:
-    """无消息异常也必须给运行日志留下可诊断类型。"""
+    """
+    无消息异常也必须给运行日志留下可诊断类型。
+    """
     assert _format_request_error(TimeoutError()) == "TimeoutError"
 
 
 class _SyncStreamResponse:
-    """提供 requests 流式响应所需的最小测试契约。"""
+    """
+    提供 requests 流式响应所需的最小测试契约。
+    """
 
     def __init__(self, content: bytes, content_length: str | None = None) -> None:
         self.status_code = 200
@@ -93,12 +107,20 @@ class _SyncStreamResponse:
         self._content = content
 
     def iter_content(self, chunk_size: int):
+        """
+        按请求的字节块大小迭代索引内容，模拟同步流式响应。
+
+        :param chunk_size: 每个内容块的最大字节数
+        :yields: 本次读取的索引字节块
+        """
         for offset in range(0, len(self._content), chunk_size):
             yield self._content[offset:offset + chunk_size]
 
 
 class _AsyncStreamResponse:
-    """提供 httpx 流式响应所需的最小测试契约。"""
+    """
+    提供 httpx 流式响应所需的最小测试契约。
+    """
 
     def __init__(self, content: bytes, content_length: str | None = None) -> None:
         self.status_code = 200
@@ -108,20 +130,34 @@ class _AsyncStreamResponse:
         self._content = content
 
     async def aiter_bytes(self, chunk_size: int):
+        """
+        按请求的字节块大小异步迭代索引内容，模拟异步流式响应。
+
+        :param chunk_size: 每个内容块的最大字节数
+        :yields: 本次读取的索引字节块
+        """
         for offset in range(0, len(self._content), chunk_size):
             yield self._content[offset:offset + chunk_size]
 
 
 def test_plugin_index_request_uses_sync_stream_transport(monkeypatch) -> None:
-    """同步索引专用请求必须进入流式传输，不能预先加载完整响应体。"""
+    """
+    同步索引专用请求必须进入流式传输，不能预先加载完整响应体。
+    """
     calls: list[tuple[dict, str, bool]] = []
 
     class FakeRequestUtils:
+        """
+        记录同步索引请求并返回固定流响应，避免真实网络调用。
+        """
         def __init__(self, **kwargs) -> None:
             self._kwargs = kwargs
 
         @contextmanager
         def get_stream(self, url: str, raise_exception: bool):
+            """
+            记录同步索引请求的地址与异常策略，返回固定索引流。
+            """
             calls.append((self._kwargs, url, raise_exception))
             yield _SyncStreamResponse(b'{"DemoPlugin":{"version":"1.0.0"}}')
 
@@ -142,15 +178,23 @@ def test_plugin_index_request_uses_sync_stream_transport(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_plugin_index_request_uses_async_stream_transport(monkeypatch) -> None:
-    """异步索引专用请求与同步入口使用相同的流式资源边界。"""
+    """
+    异步索引专用请求与同步入口使用相同的流式资源边界。
+    """
     calls: list[tuple[dict, str, bool]] = []
 
     class FakeAsyncRequestUtils:
+        """
+        记录异步索引请求并返回固定流响应，避免真实网络调用。
+        """
         def __init__(self, **kwargs) -> None:
             self._kwargs = kwargs
 
         @asynccontextmanager
         async def get_stream(self, url: str, raise_exception: bool):
+            """
+            记录异步索引请求的地址与异常策略，返回固定索引流。
+            """
             calls.append((self._kwargs, url, raise_exception))
             yield _AsyncStreamResponse(b'{"DemoPlugin":{"version":"1.0.0"}}')
 
@@ -173,7 +217,9 @@ async def test_plugin_index_request_uses_async_stream_transport(monkeypatch) -> 
 async def test_sync_and_async_plugin_indexes_share_request_and_result(
     monkeypatch,
 ) -> None:
-    """同步与异步索引读取必须使用同一请求计划并返回相同三态结果。"""
+    """
+    同步与异步索引读取必须使用同一请求计划并返回相同三态结果。
+    """
     helper = PluginMarketTransport()
     repo_url = "https://github.com/policy-owner/policy-repository"
     response = (200, '{"DemoPlugin": {"version": "1.2.3"}}')
@@ -181,12 +227,16 @@ async def test_sync_and_async_plugin_indexes_share_request_and_result(
     async_requests: list[tuple[str, dict]] = []
 
     def sync_request(url: str, *, headers: dict):
-        """记录同步入口收到的 URL 与请求头。"""
+        """
+        记录同步入口收到的 URL 与请求头。
+        """
         sync_requests.append((url, headers))
         return response
 
     async def async_request(url: str, *, headers: dict):
-        """记录异步入口收到的 URL 与请求头。"""
+        """
+        记录异步入口收到的 URL 与请求头。
+        """
         async_requests.append((url, headers))
         return response
 
@@ -220,7 +270,9 @@ async def test_sync_and_async_plugin_indexes_share_request_and_result(
 
 @pytest.mark.asyncio
 async def test_market_read_warms_source_inventory_cache(monkeypatch) -> None:
-    """市场目录成功读取后，来源库存不得再次请求同一仓库代际。"""
+    """
+    市场目录成功读取后，来源库存不得再次请求同一仓库代际。
+    """
     helper = PluginMarketTransport()
     repo_url = "https://github.com/policy-owner/shared-index-cache"
     requests = 0
@@ -247,7 +299,9 @@ async def test_market_read_warms_source_inventory_cache(monkeypatch) -> None:
 def test_sync_force_refresh_bypasses_index_cache(
     monkeypatch,
 ) -> None:
-    """同步强刷必须绕过唯一索引缓存。"""
+    """
+    同步强刷必须绕过唯一索引缓存。
+    """
     helper = PluginMarketTransport()
     client = PluginMarketClient(helper)
     repo_url = "https://github.com/policy-owner/sync-force-refresh"
@@ -285,7 +339,9 @@ def test_sync_force_refresh_bypasses_index_cache(
 async def test_async_force_refresh_bypasses_index_cache(
     monkeypatch,
 ) -> None:
-    """异步强刷必须绕过唯一索引缓存。"""
+    """
+    异步强刷必须绕过唯一索引缓存。
+    """
     helper = PluginMarketTransport()
     client = PluginMarketClient(helper)
     repo_url = "https://github.com/policy-owner/async-force-refresh"
@@ -321,7 +377,9 @@ async def test_async_force_refresh_bypasses_index_cache(
 
 @pytest.mark.asyncio
 async def test_absent_plugin_generation_is_cached(monkeypatch) -> None:
-    """明确不存在的代际是稳定事实，后续来源检查不得重复请求。"""
+    """
+    明确不存在的代际是稳定事实，后续来源检查不得重复请求。
+    """
     helper = PluginMarketTransport()
     repo_url = "https://github.com/policy-owner/absent-index-cache"
     requests = 0
@@ -349,7 +407,9 @@ async def test_absent_plugin_generation_is_cached(monkeypatch) -> None:
 async def test_index_cache_retains_multi_market_generation_working_set(
     monkeypatch,
 ) -> None:
-    """数十个市场的多代索引不能因缓存容量不足立即重复出站。"""
+    """
+    数十个市场的多代索引不能因缓存容量不足立即重复出站。
+    """
     helper = PluginMarketTransport()
     requests = 0
 
@@ -379,7 +439,9 @@ async def test_index_cache_retains_multi_market_generation_working_set(
 
 @pytest.mark.parametrize("content_length", [None, str(PLUGIN_INDEX_MAX_BYTES)])
 def test_sync_plugin_index_stream_accepts_exact_byte_limit(content_length) -> None:
-    """同步索引以解压后实际字节计数，恰好达到上限仍可读取。"""
+    """
+    同步索引以解压后实际字节计数，恰好达到上限仍可读取。
+    """
     content = b"x" * PLUGIN_INDEX_MAX_BYTES
     response = _SyncStreamResponse(content, content_length)
 
@@ -393,7 +455,9 @@ def test_sync_plugin_index_stream_accepts_exact_byte_limit(content_length) -> No
 
 @pytest.mark.parametrize("content_length", [None, "invalid", str(PLUGIN_INDEX_MAX_BYTES)])
 def test_sync_plugin_index_stream_rejects_actual_byte_overflow(content_length) -> None:
-    """缺失、伪造或偏小的声明长度都不能绕过同步实际读取上限。"""
+    """
+    缺失、伪造或偏小的声明长度都不能绕过同步实际读取上限。
+    """
     response = _SyncStreamResponse(
         b"x" * (PLUGIN_INDEX_MAX_BYTES + 1),
         content_length,
@@ -406,7 +470,9 @@ def test_sync_plugin_index_stream_rejects_actual_byte_overflow(content_length) -
 
 
 def test_sync_plugin_index_stream_rejects_declared_byte_overflow() -> None:
-    """可信声明已超限时无需读取响应体。"""
+    """
+    可信声明已超限时无需读取响应体。
+    """
     response = _SyncStreamResponse(
         b"",
         str(PLUGIN_INDEX_MAX_BYTES + 1),
@@ -421,7 +487,9 @@ def test_sync_plugin_index_stream_rejects_declared_byte_overflow() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("content_length", [None, str(PLUGIN_INDEX_MAX_BYTES)])
 async def test_async_plugin_index_stream_accepts_exact_byte_limit(content_length) -> None:
-    """异步索引与同步入口共享恰好达到上限时仍成功的合同。"""
+    """
+    异步索引与同步入口共享恰好达到上限时仍成功的合同。
+    """
     response = _AsyncStreamResponse(
         b"x" * PLUGIN_INDEX_MAX_BYTES,
         content_length,
@@ -438,7 +506,9 @@ async def test_async_plugin_index_stream_accepts_exact_byte_limit(content_length
 @pytest.mark.asyncio
 @pytest.mark.parametrize("content_length", [None, "invalid", str(PLUGIN_INDEX_MAX_BYTES)])
 async def test_async_plugin_index_stream_rejects_actual_byte_overflow(content_length) -> None:
-    """异步流式读取同样不能被缺失或不可信的声明长度绕过。"""
+    """
+    异步流式读取同样不能被缺失或不可信的声明长度绕过。
+    """
     response = _AsyncStreamResponse(
         b"x" * (PLUGIN_INDEX_MAX_BYTES + 1),
         content_length,
@@ -458,7 +528,9 @@ async def test_async_plugin_index_stream_rejects_actual_byte_overflow(content_le
     ],
 )
 def test_plugin_index_entry_count_boundary(entry_count: int, accepted: bool) -> None:
-    """索引条目总数采用含上限边界，超出后整仓读取失败。"""
+    """
+    索引条目总数采用含上限边界，超出后整仓读取失败。
+    """
     content = json.dumps(
         {
             f"Plugin{index}": {"version": "1.0.0"}
@@ -499,7 +571,9 @@ def test_plugin_index_accepts_bom_and_wrapped_entries(
     content: str,
     expected: dict,
 ) -> None:
-    """插件索引应兼容 UTF-8 BOM 与 plugins 数组包装格式。"""
+    """
+    插件索引应兼容 UTF-8 BOM 与 plugins 数组包装格式。
+    """
     assert (
         PluginMarketTransport()._resolve_plugin_index_response(200, content)
         == expected
@@ -507,7 +581,9 @@ def test_plugin_index_accepts_bom_and_wrapped_entries(
 
 
 def test_plugin_index_isolates_bad_entries_and_preserves_unknown_fields() -> None:
-    """决策字段非法只隔离该条目，展示字段降级且未知字段保持前向兼容。"""
+    """
+    决策字段非法只隔离该条目，展示字段降级且未知字段保持前向兼容。
+    """
     history = {str(index): "change" for index in range(513)}
     content = json.dumps(
         {
@@ -552,7 +628,9 @@ def test_plugin_index_isolates_bad_entries_and_preserves_unknown_fields() -> Non
 
 
 def test_plugin_index_parse_error_does_not_log_response_payload(monkeypatch) -> None:
-    """解析失败日志不得回显可能包含凭据或超长内容的原始响应。"""
+    """
+    解析失败日志不得回显可能包含凭据或超长内容的原始响应。
+    """
     messages: list[str] = []
     monkeypatch.setattr(
         "app.adapters.external.plugin.client.logger.warning",
@@ -570,7 +648,9 @@ def test_plugin_index_parse_error_does_not_log_response_payload(monkeypatch) -> 
 
 
 def test_plugin_index_rejects_excessive_json_nesting() -> None:
-    """深度异常的 JSON 必须形成读取失败，不能把解析器异常泄漏到市场调用方。"""
+    """
+    深度异常的 JSON 必须形成读取失败，不能把解析器异常泄漏到市场调用方。
+    """
     content = '{"DemoPlugin":{"version":"1.0.0","future":' + "[" * 2000
     content += "0" + "]" * 2000 + "}}"
 
@@ -580,7 +660,9 @@ def test_plugin_index_rejects_excessive_json_nesting() -> None:
 
 
 def test_local_plugin_index_rejects_oversize_and_invalid_files(tmp_path) -> None:
-    """已存在的本地索引超限或非法时必须失败，不能形成部分成功库存。"""
+    """
+    已存在的本地索引超限或非法时必须失败，不能形成部分成功库存。
+    """
     package_file = tmp_path / "package.v3.json"
     package_file.write_bytes(b"x" * (PLUGIN_INDEX_MAX_BYTES + 1))
 
@@ -617,7 +699,9 @@ def test_plugin_index_response_preserves_status_contract(
     content: str,
     expected: dict | None,
 ) -> None:
-    """统一响应解析必须保留 404 空索引、失败和有效字典的既有区别。"""
+    """
+    统一响应解析必须保留 404 空索引、失败和有效字典的既有区别。
+    """
     result = PluginMarketTransport()._resolve_plugin_index_response(status_code, content)
 
     assert result == expected
@@ -636,7 +720,9 @@ def test_plugin_index_result_preserves_read_state(
     content: str,
     expected: dict | None,
 ) -> None:
-    """只读入口以值和 None 区分真实索引与确定不存在。"""
+    """
+    只读入口以值和 None 区分真实索引与确定不存在。
+    """
     helper = PluginMarketTransport()
     repo_url = f"https://github.com/policy-owner/policy-repository-{status_code}"
 
@@ -664,7 +750,9 @@ def test_plugin_index_result_raises_for_unusable_reads(
     content: str,
     message: str,
 ) -> None:
-    """不可判定读取必须抛错，由应用库存统一记录失败事实。"""
+    """
+    不可判定读取必须抛错，由应用库存统一记录失败事实。
+    """
     helper = PluginMarketTransport()
 
     def request(_url: str, *, headers: dict):
@@ -681,7 +769,9 @@ def test_plugin_index_result_raises_for_unusable_reads(
 
 
 def test_invalid_plugin_index_is_not_cached(monkeypatch) -> None:
-    """非法索引每次都应重新读取，避免失败载荷占用正常缓存周期。"""
+    """
+    非法索引每次都应重新读取，避免失败载荷占用正常缓存周期。
+    """
     helper = PluginMarketTransport()
     requests = 0
 
@@ -705,7 +795,9 @@ def test_invalid_plugin_index_is_not_cached(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> None:
-    """异步只读入口也必须保留 404 不存在事实。"""
+    """
+    异步只读入口也必须保留 404 不存在事实。
+    """
     helper = PluginMarketTransport()
 
     async def request(_url: str, *, headers: dict):
@@ -730,7 +822,9 @@ async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> 
 async def test_async_plugin_index_failure_is_not_reported_as_background_task_error(
     monkeypatch,
 ) -> None:
-    """异步索引失败交给市场调用方处理，不应再被任务登记器重复上报。"""
+    """
+    异步索引失败交给市场调用方处理，不应再被任务登记器重复上报。
+    """
     helper = PluginMarketTransport()
     registry = TaskRegistry()
     reports: list[dict[str, object]] = []
@@ -764,7 +858,9 @@ async def test_async_plugin_index_failure_is_not_reported_as_background_task_err
 
 @pytest.mark.asyncio
 async def test_async_plugin_index_requests_are_single_flight(monkeypatch) -> None:
-    """同一仓库和代际的并发索引读取只能产生一次出站请求。"""
+    """
+    同一仓库和代际的并发索引读取只能产生一次出站请求。
+    """
     helper = PluginMarketTransport()
     repo_url = "https://github.com/single-flight-owner/single-flight-repo"
     started = asyncio.Event()
@@ -803,7 +899,9 @@ async def test_async_plugin_index_requests_are_single_flight(monkeypatch) -> Non
 
 @pytest.mark.asyncio
 async def test_async_plugin_index_requests_share_process_gate(monkeypatch) -> None:
-    """不同目录刷新入口也必须受同一个进程级索引请求闸门约束。"""
+    """
+    不同目录刷新入口也必须受同一个进程级索引请求闸门约束。
+    """
     helper = PluginMarketTransport()
     monkeypatch.setattr(
         plugin_client_module,
@@ -847,7 +945,9 @@ async def test_async_plugin_index_requests_share_process_gate(monkeypatch) -> No
 
 
 def test_plugin_index_result_propagates_adapter_exception(monkeypatch) -> None:
-    """请求异常必须传播给应用库存统一转换为失败事实。"""
+    """
+    请求异常必须传播给应用库存统一转换为失败事实。
+    """
     helper = PluginMarketTransport()
 
     def request(_url: str, *, headers: dict):
@@ -864,11 +964,19 @@ def test_plugin_index_result_propagates_adapter_exception(monkeypatch) -> None:
 
 
 def test_plugin_market_client_exposes_index_result_port() -> None:
-    """市场客户端应原样转发索引读取结果并保留只读边界。"""
+    """
+    市场客户端应原样转发索引读取结果并保留只读边界。
+    """
     expected = {"DemoPlugin": {"version": "1.2.3"}}
 
     class FakeHelper:
+        """
+        提供固定插件索引结果，隔离市场查询与状态消费。
+        """
         def get_plugin_index_result(self, repo_url: str, package_version: str | None):
+            """
+            返回预设的索引结果对象，检查客户端是否保留端口结果。
+            """
             return expected
 
     client = PluginMarketClient(FakeHelper())

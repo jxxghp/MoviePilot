@@ -23,28 +23,38 @@ from app.runtime.settings import get_runtime_setting
 
 
 def _database_backend_label() -> str:
-    """把数据库类型收敛为有限的观测标签。"""
+    """
+    把数据库类型收敛为有限的观测标签。
+    """
     return "postgresql" if get_runtime_setting("DB_TYPE").lower() == "postgresql" else "sqlite"
 
 
 def _sync_postgresql_driver() -> Optional[str]:
-    """free-threaded 解释器使用不会重新启用 GIL 的 psycopg 驱动。"""
+    """
+    free-threaded 解释器使用不会重新启用 GIL 的 psycopg 驱动。
+    """
     return "psycopg" if is_free_threaded_runtime() else None
 
 
 def _register_database_pool_metrics(engine: SyncEngine) -> None:
-    """在 SQLAlchemy 池 checkout/checkin 边界维护当前借出连接数。"""
+    """
+    在 SQLAlchemy 池 checkout/checkin 边界维护当前借出连接数。
+    """
     if not isinstance(engine.pool, Pool):
         # 引擎构建单测允许注入不具备 PoolEvents 的轻量替身。
         return
     backend = _database_backend_label()
 
     def record_checkout(*_args: object) -> None:
-        """连接借出后增加当前使用量。"""
+        """
+        连接借出后增加当前使用量。
+        """
         record_metric("db.pool.checked_out", 1, backend=backend)
 
     def record_checkin(*_args: object) -> None:
-        """连接归还后减少当前使用量。"""
+        """
+        连接归还后减少当前使用量。
+        """
         record_metric("db.pool.checked_out", -1, backend=backend)
 
     event.listen(engine.pool, "checkout", record_checkout)
@@ -52,13 +62,17 @@ def _register_database_pool_metrics(engine: SyncEngine) -> None:
 
 
 def _register_sqlite_foreign_keys(engine: SyncEngine) -> None:
-    """为每条 SQLite 连接启用模型声明的级联和引用完整性约束。"""
+    """
+    为每条 SQLite 连接启用模型声明的级联和引用完整性约束。
+    """
 
     def enable_foreign_keys(
         dbapi_connection: Any,
         _connection_record: Any,
     ) -> None:
-        """在连接进入池前启用 SQLite 外键检查。"""
+        """
+        在连接进入池前启用 SQLite 外键检查。
+        """
         cursor = dbapi_connection.cursor()
         try:
             cursor.execute("PRAGMA foreign_keys=ON")
@@ -74,6 +88,7 @@ def _async_pool_kwargs(pooled: bool) -> dict[str, object]:
 
     池化时不指定 poolclass：SQLAlchemy 会自动选用异步适配的
     AsyncAdaptedQueuePool，显式传入同步的 QueuePool 反而会出错。
+
     :param pooled: 是否启用连接池
     :return: 传给 create_async_engine 的池参数
     """
@@ -92,6 +107,7 @@ def apply_sqlite_journal_mode(engine: SyncEngine) -> Any:
 
     journal_mode 是库文件级的持久属性，每个库文件都要有人设置一次。宿主库与插件自有库
     共用这一段，不会出现「宿主是 WAL、插件库是 DELETE」的分裂行为。
+
     :param engine: 同步引擎
     :return: 生效的 journal_mode
     """
@@ -106,6 +122,7 @@ def build_sqlite_engine(url: str) -> SyncEngine:
 
     连接超时、驱动级参数、连接池、外键约束、错误日志与池指标在这里收口，宿主库与插件
     自有库因此共享同一套连接语义，不会因为落在不同文件而出现两种行为。
+
     :param url: SQLite 连接串
     :return: 同步引擎
     """
@@ -152,6 +169,7 @@ def build_sqlite_engine(url: str) -> SyncEngine:
 def _get_database_engine(is_async: bool = False, pooled: bool = False) -> SyncEngine | SaAsyncEngine:
     """
     获取数据库连接参数并设置WAL模式
+
     :param is_async: 是否创建异步引擎，True - 异步引擎, False - 同步引擎
     :param pooled: 异步引擎是否启用连接池，仅对常驻事件循环使用
     :return: 返回对应的数据库引擎
@@ -301,6 +319,7 @@ _async_engine: Optional[SaAsyncEngine] = None
 def get_engine() -> SyncEngine:
     """
     获取同步数据库引擎，首次调用时创建。
+
     :return: 同步引擎
     """
     global _sync_engine
@@ -315,6 +334,7 @@ def get_engine() -> SyncEngine:
 def get_global_async_engine() -> SaAsyncEngine:
     """
     获取未池化的全局异步引擎，供非常驻事件循环回退使用，首次调用时创建。
+
     :return: 异步引擎
     """
     global _async_engine
@@ -334,6 +354,7 @@ def peek_sync_engine() -> Optional[SyncEngine]:
     取锁而不是裸读槽位：另一个线程可能正卡在创建里，裸读会看到 None、把那个引擎漏掉，
     取锁则会等它建完。注意这只是把竞态窗口**缩小**，并没有消除——在 peek 返回之后才
     开始创建的引擎照样漏。真要杜绝得让关停之后的创建直接失败，那是另一层面的改动。
+
     :return: 同步引擎或 None
     """
     with _sync_engine_lock:
@@ -343,6 +364,7 @@ def peek_sync_engine() -> Optional[SyncEngine]:
 def peek_async_engine() -> Optional[SaAsyncEngine]:
     """
     取已创建的全局异步引擎，未创建时返回 None——不触发创建。
+
     :return: 异步引擎或 None
     """
     with _async_engine_lock:
@@ -366,6 +388,7 @@ def connection_budget() -> Dict[str, int]:
     连接池是进程级的：多 worker 部署时每个进程各持一份，因此合计要乘上 worker 数。
     只报单进程用量会让多 worker 在启动校验里一路绿灯，实际第一个 worker 还没起完
     就顶穿了 max_connections。
+
     :return: 单进程各项上限、worker 数与合计
     """
     if get_runtime_setting("DB_TYPE").lower() == "postgresql":
@@ -405,6 +428,7 @@ def check_connection_budget() -> bool:
 
     只对 PostgreSQL 生效：SQLite 没有服务端连接上限，其压力体现为 WAL 写争用而非
     连接耗尽。用真实的 max_connections 而不是猜测值——部署方可能已经调过它。
+
     :return: 是否在额度之内
     """
     budget = connection_budget()

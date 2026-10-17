@@ -1,4 +1,6 @@
-"""宿主 Module 的渐进式集成质量清单。"""
+"""
+宿主 Module 的渐进式集成质量清单。
+"""
 
 from __future__ import annotations
 
@@ -7,15 +9,27 @@ from enum import StrEnum
 
 
 class ModuleQualityLevel(StrEnum):
-    """描述模块当前接受的质量门禁等级。"""
+    """
+    描述模块当前接受的质量门禁等级。
+    """
 
+    # 保留历史实现，按已登记豁免约束维护
     LEGACY = "legacy"
+    # 已依据登记规则完成质量评估
     ASSESSED = "assessed"
 
 
 @dataclass(frozen=True, slots=True)
 class ModuleQualityProfile:
-    """记录一个模块已验证规则、维护者和精确豁免原因。"""
+    """
+    记录一个模块已验证规则、维护者和精确豁免原因。
+
+    :param module: 被评估的模块名称
+    :param level: 当前接受的质量门禁等级
+    :param owner: 负责维护评估结论的责任方
+    :param verified_rules: 已经验证符合的规则标识集合
+    :param exemption_reason: 精确豁免原因；没有豁免时为 None
+    """
 
     module: str
     level: ModuleQualityLevel
@@ -153,7 +167,9 @@ MODULE_QUALITY_PROFILES.update({
 
 
 def get_module_quality_profile(module: str) -> ModuleQualityProfile:
-    """返回显式 profile；未迁移模块以带原因的 legacy 视图呈现。"""
+    """
+    返回显式 profile；未迁移模块以带原因的 legacy 视图呈现。
+    """
     return MODULE_QUALITY_PROFILES.get(
         module,
         ModuleQualityProfile(

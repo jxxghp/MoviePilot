@@ -1,3 +1,7 @@
+"""
+提供跨媒体来源的发现和筛选选项接口。
+"""
+
 from typing import Any, List, Optional
 
 from fastapi import Depends

@@ -143,116 +143,116 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 
 | action | Purpose and argument summary |
 | :--- | :--- |
-| `activity.backdrops` | Read recent provider backdrop images.; arguments: `limit`, `remote` |
-| `activity.latest` | Read recently added provider items.; arguments: `limit`, `username` |
-| `activity.resume` | Read in-progress/resumable provider items.; arguments: `limit`, `username` |
-| `capabilities.list` | List supported media-server actions and their complete argument contracts.; arguments: `action_name` |
-| `instances.list` | List configured media-server instances without connection secrets.; no arguments |
-| `items.count` | Count items below one library or parent.; arguments: `parent` |
-| `items.detail` | Read one provider item by native ID.; arguments: `item_id*` |
-| `items.list` | Page items below one library or parent.; arguments: `parent`, `offset`, `limit` |
-| `items.movies.search` | Search provider-native movie items by title and optional year.; arguments: `title*`, `year` |
-| `items.music.search` | Search provider-native music by title, artist, or album.; arguments: `title`, `artist`, `album` |
-| `items.season_episodes` | Read native episode coverage for one series and optional season.; arguments: `item_id`, `title`, `year`, `season` |
-| `libraries.list` | List visible provider libraries.; arguments: `hidden`, `username` |
-| `library.scan` | Trigger a provider library scan.; arguments: `scan_mode` |
-| `metadata.refresh` | Refresh provider metadata for mapped items.; arguments: `items*` |
-| `playback.sessions` | Read active playback sessions.; no arguments |
-| `playback.url` | Build the provider play URL for one item.; arguments: `item_id*` |
-| `server.statistics` | Read media counts and provider statistics.; no arguments |
-| `server.user.library_folders` | Read the current user's visible library folders.; no arguments |
-| `server.users.count` | Read provider user count.; no arguments |
+| `activity.backdrops` | 读取服务近期媒体的背景图。; arguments: `limit`, `remote` |
+| `activity.latest` | 读取服务最近添加的媒体条目。; arguments: `limit`, `username` |
+| `activity.resume` | 读取服务中正在观看或可继续播放的媒体条目。; arguments: `limit`, `username` |
+| `capabilities.list` | 列出支持的媒体服务器动作及完整参数契约。; arguments: `action_name` |
+| `instances.list` | 列出已配置的媒体服务器实例，不返回连接凭据。; no arguments |
+| `items.count` | 统计指定媒体库或父条目下的内容数量。; arguments: `parent` |
+| `items.detail` | 按服务原生标识读取单个媒体条目。; arguments: `item_id*` |
+| `items.list` | 分页读取指定媒体库或父条目下的内容。; arguments: `parent`, `offset`, `limit` |
+| `items.movies.search` | 按标题及可选年份搜索服务中的电影条目。; arguments: `title*`, `year` |
+| `items.music.search` | 按标题、艺术家或专辑搜索服务中的音乐。; arguments: `title`, `artist`, `album` |
+| `items.season_episodes` | 读取指定剧集及可选季的现有分集信息。; arguments: `item_id`, `title`, `year`, `season` |
+| `libraries.list` | 列出可见媒体库。; arguments: `hidden`, `username` |
+| `library.scan` | 触发媒体库扫描。; arguments: `scan_mode` |
+| `metadata.refresh` | 刷新匹配条目的服务端元数据。; arguments: `items*` |
+| `playback.sessions` | 读取正在进行的播放会话。; no arguments |
+| `playback.url` | 生成单个条目的服务播放链接。; arguments: `item_id*` |
+| `server.statistics` | 读取媒体数量及服务统计。; no arguments |
+| `server.user.library_folders` | 读取当前用户可见的媒体库目录。; no arguments |
+| `server.users.count` | 读取服务用户数量。; no arguments |
 
 ### `activity.backdrops`
-Read recent provider backdrop images. Effect: `safe_read`. Providers: `ugreen, trimemedia, mediavault`.
-- `limit` (integer; default `50`): Number of items to return, from 1 to 200.
-- `remote` (boolean; default `False`): Return provider URLs that are remotely accessible.
+读取服务近期媒体的背景图。 Effect: `safe_read`. Providers: `ugreen, trimemedia, mediavault`.
+- `limit` (integer; default `50`): 返回条目数量，范围为 1 至 200。
+- `remote` (boolean; default `False`): 是否返回可远程访问的服务 URL。
 
 ### `activity.latest`
-Read recently added provider items. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
-- `limit` (integer; default `50`): Number of items to return, from 1 to 200.
-- `username` (string): Read for this username; supported by Emby, Jellyfin, and ZSpace.
+读取服务最近添加的媒体条目。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+- `limit` (integer; default `50`): 返回条目数量，范围为 1 至 200。
+- `username` (string): 按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。
 
 ### `activity.resume`
-Read in-progress/resumable provider items. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
-- `limit` (integer; default `50`): Number of items to return, from 1 to 200.
-- `username` (string): Read for this username; supported by Emby, Jellyfin, and ZSpace.
+读取服务中正在观看或可继续播放的媒体条目。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+- `limit` (integer; default `50`): 返回条目数量，范围为 1 至 200。
+- `username` (string): 按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。
 
 ### `capabilities.list`
-List supported media-server actions and their complete argument contracts. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
-- `action_name` (string): Optional exact action name used to return one capability contract.
+列出支持的媒体服务器动作及完整参数契约。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+- `action_name` (string): 可选的精确动作名称，填写时只返回该动作的能力契约。
 
 ### `instances.list`
-List configured media-server instances without connection secrets. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+列出已配置的媒体服务器实例，不返回连接凭据。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `arguments`: `{}`
 
 ### `items.count`
-Count items below one library or parent. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
-- `parent` (string|integer): Library or parent item ID; Navidrome may omit it and use music.
-- Rule: parent is required except for Navidrome, which defaults to music.
+统计指定媒体库或父条目下的内容数量。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+- `parent` (string|integer): 媒体库或父条目标识；Navidrome 可省略并使用 music。
+- Rule: 除 Navidrome 外必须提供 parent；Navidrome 默认使用 music。
 
 ### `items.detail`
-Read one provider item by native ID. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
-- `item_id*` (string): Provider-native item ID returned by the selected media server.
+按服务原生标识读取单个媒体条目。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+- `item_id*` (string): 所选媒体服务器返回的原生条目标识。
 
 ### `items.list`
-Page items below one library or parent. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
-- `parent` (string|integer): Library or parent item ID; Navidrome may omit it and use music.
-- `offset` (integer; default `0`): Zero-based list offset.
-- `limit` (integer; default `50`): Number of items to return, from 1 to 200.
-- Rule: parent is required except for Navidrome, which ignores it.
+分页读取指定媒体库或父条目下的内容。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+- `parent` (string|integer): 媒体库或父条目标识；Navidrome 可省略并使用 music。
+- `offset` (integer; default `0`): 列表偏移量，从 0 开始。
+- `limit` (integer; default `50`): 返回条目数量，范围为 1 至 200。
+- Rule: 除 Navidrome 外必须提供 parent；Navidrome 忽略该参数。
 
 ### `items.movies.search`
-Search provider-native movie items by title and optional year. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, mediavault`.
-- `title*` (string): Movie title.
-- `year` (string|integer): Optional release year.
+按标题及可选年份搜索服务中的电影条目。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, mediavault`.
+- `title*` (string): 电影标题。
+- `year` (string|integer): 可选的发行年份。
 
 ### `items.music.search`
-Search provider-native music by title, artist, or album. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, navidrome`.
-- `title` (string): Track, album, or music-item title.
-- `artist` (string): Artist name.
-- `album` (string): Album name; provide title, artist, or album.
+按标题、艺术家或专辑搜索服务中的音乐。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, navidrome`.
+- `title` (string): 曲目、专辑或音乐条目标题。
+- `artist` (string): 艺术家名称。
+- `album` (string): 专辑名称；须提供 title、artist 或 album。
 - Rule: Provide at least one of title, artist, and album.
 
 ### `items.season_episodes`
-Read native episode coverage for one series and optional season. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, mediavault`.
-- `item_id` (string): Provider-native item ID returned by the selected media server.
-- `title` (string): Series title; provide it or item_id.
-- `year` (string|integer): Optional premiere year.
-- `season` (integer): Optional season number.
+读取指定剧集及可选季的现有分集信息。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, mediavault`.
+- `item_id` (string): 所选媒体服务器返回的原生条目标识。
+- `title` (string): 剧集标题；须提供本字段或 item_id。
+- `year` (string|integer): 可选的首播年份。
+- `season` (integer): 可选的季编号。
 - Rule: Provide at least one of item_id and title.
 
 ### `libraries.list`
-List visible provider libraries. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
-- `hidden` (boolean; default `False`): Return only libraries configured for synchronization.
-- `username` (string): Read libraries visible to this username; supported by Emby, Jellyfin, and ZSpace.
+列出可见媒体库。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+- `hidden` (boolean; default `False`): 只返回已配置为同步的媒体库。
+- `username` (string): 读取该用户名可见的媒体库；Emby、Jellyfin 和 ZSpace 支持。
 
 ### `library.scan`
-Trigger a provider library scan. Effect: `external_side_effect`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
-- `scan_mode` (string|integer): UGREEN-native scan mode; omit it for every other provider.
+触发媒体库扫描。 Effect: `external_side_effect`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+- `scan_mode` (string|integer): UGREEN 原生扫描模式；其他服务必须省略。
 
 ### `metadata.refresh`
-Refresh provider metadata for mapped items. Effect: `external_side_effect`. Providers: `emby, plex, zspace, ugreen, trimemedia`.
-- `items*` (object[]): Items to refresh. Each item supports title:string, year:string|integer, type using the exact MoviePilot media-type value, category:string, and target_path:string.
+刷新匹配条目的服务端元数据。 Effect: `external_side_effect`. Providers: `emby, plex, zspace, ugreen, trimemedia`.
+- `items*` (object[]): 待刷新的条目。每项支持 title 字符串、year 字符串或整数、type 精确 MoviePilot 媒体类型值、category 字符串及 target_path 字符串。
 
 ### `playback.sessions`
-Read active playback sessions. Effect: `safe_read`. Providers: `emby, jellyfin, plex`.
+读取正在进行的播放会话。 Effect: `safe_read`. Providers: `emby, jellyfin, plex`.
 - `arguments`: `{}`
 
 ### `playback.url`
-Build the provider play URL for one item. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
-- `item_id*` (string): Provider-native item ID returned by the selected media server.
+生成单个条目的服务播放链接。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+- `item_id*` (string): 所选媒体服务器返回的原生条目标识。
 
 ### `server.statistics`
-Read media counts and provider statistics. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
+读取媒体数量及服务统计。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `arguments`: `{}`
 
 ### `server.user.library_folders`
-Read the current user's visible library folders. Effect: `safe_read`. Providers: `emby, jellyfin, zspace`.
+读取当前用户可见的媒体库目录。 Effect: `safe_read`. Providers: `emby, jellyfin, zspace`.
 - `arguments`: `{}`
 
 ### `server.users.count`
-Read provider user count. Effect: `safe_read`. Providers: `emby, jellyfin, zspace, ugreen, trimemedia, navidrome, mediavault`.
+读取服务用户数量。 Effect: `safe_read`. Providers: `emby, jellyfin, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `arguments`: `{}`
 
 ## Safety And Verification

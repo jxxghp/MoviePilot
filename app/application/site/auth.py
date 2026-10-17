@@ -1,4 +1,6 @@
-"""站点认证参数的宿主边界规范化。"""
+"""
+站点认证参数的宿主边界规范化。
+"""
 
 from __future__ import annotations
 
@@ -9,7 +11,12 @@ from app.schemas.common import JsonData
 
 
 class _SiteAuthConfig(TypedDict):
-    """认证资源公共入口接受的站点配置形状。"""
+    """
+    认证资源公共入口接受的站点配置形状。
+
+    :ivar site: 认证资源清单中的站点标识
+    :ivar params: 已按资源契约规范化的认证参数映射
+    """
 
     site: str
     params: dict[str, JsonData]
@@ -20,7 +27,8 @@ def normalize_site_auth_params(
     params: Optional[Mapping[str, JsonData]],
     auth_sites: Mapping[str, JsonData],
 ) -> dict[str, JsonData]:
-    """把站点字段名规范化为认证资源使用的站点前缀键名。
+    """
+    把站点字段名规范化为认证资源使用的站点前缀键名。
 
     认证资源的公共认证入口按 ``SITE_PARAMETER`` 读取参数，但旧版 API、
     CLI 配置和外部调用方可能提交资源清单中的原始字段名。保留未知字段，
@@ -54,7 +62,9 @@ def normalize_site_auth_config(
     auth_config: Optional[Mapping[str, JsonData]],
     auth_sites: Mapping[str, JsonData],
 ) -> Optional[_SiteAuthConfig]:
-    """规范化持久化的站点认证配置，兼容旧字段名。"""
+    """
+    规范化持久化的站点认证配置，兼容旧字段名。
+    """
     if not auth_config:
         return None
 

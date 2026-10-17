@@ -1,3 +1,7 @@
+"""
+验证 Agent 消息路由、会话清理和渠道交互优先级。
+"""
+
 import asyncio
 from concurrent.futures import Future
 from dataclasses import replace
@@ -27,26 +31,34 @@ from app.schemas.types import EventType, MessageType, NotificationChannel
 
 
 def _clear_messages() -> None:
-    """清空消息表，隔离 Agent 消息路由测试数据。"""
+    """
+    清空消息表，隔离 Agent 消息路由测试数据。
+    """
     with SessionFactory() as db:
         db.query(Message).delete()
         db.commit()
 
 
 def _running_loop_stub() -> Mock:
-    """提供满足主程序生命周期合同的事件循环替身。"""
+    """
+    提供满足主程序生命周期合同的事件循环替身。
+    """
     return Mock(
         **{"is_running.return_value": True, "is_closed.return_value": False}
     )
 
 
 def test_agent_session_clear_uses_owned_threadsafe_submission():
-    """Agent 会话清理应登记稳定 owner，纳入宿主关停收口。"""
+    """
+    Agent 会话清理应登记稳定 owner，纳入宿主关停收口。
+    """
     loop = _running_loop_stub()
     manager = Mock(clear_session=AsyncMock())
 
     def submit(coroutine, **_kwargs):
-        """关闭测试协程，避免替身提交留下未等待警告。"""
+        """
+        关闭测试协程，避免替身提交留下未等待警告。
+        """
         coroutine.close()
         return Future()
 
@@ -67,7 +79,9 @@ def test_agent_session_clear_uses_owned_threadsafe_submission():
 
 
 def test_agent_session_clear_handles_closed_task_registry():
-    """宿主已停止接收任务时，同步消息清理链应记录拒绝而不是泄漏协程。"""
+    """
+    宿主已停止接收任务时，同步消息清理链应记录拒绝而不是泄漏协程。
+    """
     registry = TaskRegistry()
     asyncio.run(registry.shutdown(timeout_seconds=0.01))
     manager = Mock(clear_session=AsyncMock())
@@ -86,7 +100,9 @@ def test_agent_session_clear_handles_closed_task_registry():
 
 
 def test_remote_session_clear_reuses_owned_clear_scheduler():
-    """远程清理命令应复用唯一 Agent 会话清理入口。"""
+    """
+    远程清理命令应复用唯一 Agent 会话清理入口。
+    """
     chain = MessageChain()
     session_service = Mock()
     session_service.clear.return_value = "session-1"
@@ -109,7 +125,9 @@ def test_remote_session_clear_reuses_owned_clear_scheduler():
 
 
 def test_explicit_ai_message_bypasses_pending_media_interaction():
-    """显式 /ai 消息应绕过误触发的媒体交互状态并回到 Agent 会话。"""
+    """
+    显式 /ai 消息应绕过误触发的媒体交互状态并回到 Agent 会话。
+    """
     chain = MessageChain()
     media_interaction_manager.clear()
     media_interaction_manager.create_or_replace(
@@ -144,7 +162,9 @@ def test_explicit_ai_message_bypasses_pending_media_interaction():
 
 
 def test_explicit_ai_message_is_not_recorded_to_message_history():
-    """显式 /ai 消息不登记到数据库或实时消息队列。"""
+    """
+    显式 /ai 消息不登记到数据库或实时消息队列。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
@@ -172,7 +192,9 @@ def test_explicit_ai_message_is_not_recorded_to_message_history():
 
 
 def test_agent_queue_full_is_reported_to_the_originating_channel():
-    """消息队列满时应消费 Future 异常并向原渠道返回可重试提示。"""
+    """
+    消息队列满时应消费 Future 异常并向原渠道返回可重试提示。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
@@ -208,7 +230,9 @@ def test_agent_queue_full_is_reported_to_the_originating_channel():
 
 
 def test_message_chain_passes_stable_channel_admin_principal_to_agent():
-    """消息链应将渠道适配器生成的管理员事实传给 Agent。"""
+    """
+    消息链应将渠道适配器生成的管理员事实传给 Agent。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
@@ -234,7 +258,9 @@ def test_message_chain_passes_stable_channel_admin_principal_to_agent():
 
 
 def test_message_chain_does_not_trust_channel_display_username():
-    """消息链应保留适配器给出的明确非管理员结论。"""
+    """
+    消息链应保留适配器给出的明确非管理员结论。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
@@ -260,7 +286,9 @@ def test_message_chain_does_not_trust_channel_display_username():
 
 
 def test_message_chain_uses_same_admin_contract_for_slack():
-    """管理员事实透传应复用于其他消息渠道，而不是 Telegram 特判。"""
+    """
+    管理员事实透传应复用于其他消息渠道，而不是 Telegram 特判。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     manager = Mock(process_message=AsyncMock())
@@ -286,7 +314,9 @@ def test_message_chain_uses_same_admin_contract_for_slack():
 
 
 def test_ask_user_choice_message_is_not_recorded_to_message_history():
-    """Agent 询问用户意图工具发送的按钮消息不登记到消息表。"""
+    """
+    Agent 询问用户意图工具发送的按钮消息不登记到消息表。
+    """
     _clear_messages()
     tool = AskUserChoiceTool(session_id="session-choice", user_id="10001")
     tool.set_message_attr(
@@ -325,7 +355,9 @@ def test_ask_user_choice_message_is_not_recorded_to_message_history():
 
 
 def test_agent_final_reply_disables_notification_history():
-    """Agent 最终回复发往渠道时不保存通知历史。"""
+    """
+    Agent 最终回复发往渠道时不保存通知历史。
+    """
     agent = MoviePilotAgent(
         session_id="session-agent-reply",
         user_id="10001",
@@ -346,7 +378,9 @@ def test_agent_final_reply_disables_notification_history():
 
 
 def test_send_message_tool_disables_notification_history():
-    """Agent 主动发消息工具发送的通知不保存通知历史。"""
+    """
+    Agent 主动发消息工具发送的通知不保存通知历史。
+    """
     tool = SendMessageTool(session_id="session-send-message", user_id="10001")
     tool.set_message_attr(
         channel=NotificationChannel.Telegram.value,
@@ -368,7 +402,9 @@ def test_send_message_tool_disables_notification_history():
 
 
 def test_agent_choice_callback_is_not_recorded_to_message_history():
-    """Agent 按钮选择回传不登记到数据库或实时消息队列。"""
+    """
+    Agent 按钮选择回传不登记到数据库或实时消息队列。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     request = agent_interaction_manager.create_request(
@@ -420,7 +456,9 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
 
 
 def test_learning_commands_bypass_traditional_interactions():
-    """个人学习命令必须进入 Agent 原文入口，不能被传统管理员命令或旧交互吞掉。"""
+    """
+    个人学习命令必须进入 Agent 原文入口，不能被传统管理员命令或旧交互吞掉。
+    """
     chain = MessageChain()
     with patch.object(chain, '_record_user_message'), patch.object(chain, '_handle_ai_message', return_value=True) as handle, patch.object(
         chain.eventmanager, 'send_event'

@@ -1,4 +1,6 @@
-"""媒体分类语义在 REST Schema 边界的兼容测试。"""
+"""
+媒体分类语义在 REST Schema 边界的兼容测试。
+"""
 
 import pytest
 from pydantic import ValidationError
@@ -13,7 +15,9 @@ from app.schemas.music import MusicAlbumInfo, MusicInfo
 
 
 def _classification_result() -> ClassificationResult:
-    """构造可用于序列化往返的最小分类结果。"""
+    """
+    构造可用于序列化往返的最小分类结果。
+    """
     selection = ClassificationSelection(
         category_id="music.live",
         category_path=["现场专辑"],
@@ -30,7 +34,9 @@ def _classification_result() -> ClassificationResult:
 
 
 def test_video_legacy_category_is_promoted_to_library_category() -> None:
-    """旧影视客户端只提交 category 时应无损迁移为媒体库分类。"""
+    """
+    旧影视客户端只提交 category 时应无损迁移为媒体库分类。
+    """
     media = MediaInfo.model_validate(
         {
             "type": "电影",
@@ -44,7 +50,9 @@ def test_video_legacy_category_is_promoted_to_library_category() -> None:
 
 
 def test_music_legacy_category_is_migrated_to_metadata_only() -> None:
-    """旧音乐来源 category 不得被误认成媒体库目录分类。"""
+    """
+    旧音乐来源 category 不得被误认成媒体库目录分类。
+    """
     music = MusicInfo.model_validate(
         {
             "type": "音乐",
@@ -58,7 +66,9 @@ def test_music_legacy_category_is_migrated_to_metadata_only() -> None:
 
 
 def test_music_explicit_new_categories_keep_compatibility_field_on_library() -> None:
-    """新音乐载荷中兼容 category 始终跟随 library_category。"""
+    """
+    新音乐载荷中兼容 category 始终跟随 library_category。
+    """
     music = MusicInfo.model_validate(
         {
             "type": "音乐",
@@ -74,7 +84,9 @@ def test_music_explicit_new_categories_keep_compatibility_field_on_library() -> 
 
 
 def test_music_album_schema_uses_the_same_category_contract() -> None:
-    """专辑 DTO 与单曲 DTO 必须采用相同的分类字段语义。"""
+    """
+    专辑 DTO 与单曲 DTO 必须采用相同的分类字段语义。
+    """
     album = MusicAlbumInfo.model_validate(
         {
             "type": "音乐",
@@ -88,7 +100,9 @@ def test_music_album_schema_uses_the_same_category_contract() -> None:
 
 
 def test_classification_snapshot_round_trip_remains_strongly_typed() -> None:
-    """分类快照经过 JSON 往返后仍应恢复为 ClassificationResult。"""
+    """
+    分类快照经过 JSON 往返后仍应恢复为 ClassificationResult。
+    """
     music = MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -107,7 +121,9 @@ def test_classification_snapshot_round_trip_remains_strongly_typed() -> None:
 
 
 def test_legacy_policy_defaults_to_primary_only_enrichment_mode() -> None:
-    """旧策略载荷缺少新字段时必须保持零跨源调用的兼容默认值。"""
+    """
+    旧策略载荷缺少新字段时必须保持零跨源调用的兼容默认值。
+    """
     policy = ClassificationPolicy.model_validate(
         {
             "schema_version": 2,
@@ -123,7 +139,9 @@ def test_legacy_policy_defaults_to_primary_only_enrichment_mode() -> None:
 
 
 def test_policy_rejects_unknown_enrichment_mode() -> None:
-    """未知补充模式必须在持久化和执行前由严格 schema 拒绝。"""
+    """
+    未知补充模式必须在持久化和执行前由严格 schema 拒绝。
+    """
     with pytest.raises(ValidationError):
         ClassificationPolicy.model_validate(
             {

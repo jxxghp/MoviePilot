@@ -1,4 +1,6 @@
-"""外部 MCP tools/list 的 schema 预算投影（compact opt-in）测试。"""
+"""
+外部 MCP tools/list 的 schema 预算投影（compact opt-in）测试。
+"""
 
 import asyncio
 import json
@@ -24,13 +26,17 @@ from app.api.endpoints import mcp
 
 
 class OversizedSchemaTool(MoviePilotTool):
-    """测试用超大 MCP schema 工具。"""
+    """
+    测试用超大 MCP schema 工具。
+    """
 
     name: str = "oversized_schema_tool"
     description: str = "测试用超大 MCP schema 工具"
 
     def get_mcp_input_schema(self) -> dict[str, Any]:
-        """返回超出客户端压缩阈值的根级 oneOf 合同。"""
+        """
+        返回超出客户端压缩阈值的根级 oneOf 合同。
+        """
         actions = [f"action.{index}" for index in range(40)]
         return {
             "type": "object",
@@ -49,22 +55,30 @@ class OversizedSchemaTool(MoviePilotTool):
         }
 
     async def run(self, **kwargs) -> str:
-        """返回固定测试结果。"""
+        """
+        返回固定测试结果。
+        """
         return "ok"
 
 
 def _receive_with_body(body: bytes) -> Callable[[], Awaitable[dict[str, Any]]]:
-    """构造只投递一次请求体的 receive 通道。"""
+    """
+    构造只投递一次请求体的 receive 通道。
+    """
 
     async def receive() -> dict[str, Any]:
-        """向测试请求提供预设的完整请求体。"""
+        """
+        向测试请求提供预设的完整请求体。
+        """
         return {"type": "http.request", "body": body, "more_body": False}
 
     return receive
 
 
 def _request(headers: Optional[list[tuple[bytes, bytes]]] = None, body: bytes = b"") -> Request:
-    """构造测试用 HTTP 请求。"""
+    """
+    构造测试用 HTTP 请求。
+    """
     return Request(
         {
             "type": "http",
@@ -78,20 +92,26 @@ def _request(headers: Optional[list[tuple[bytes, bytes]]] = None, body: bytes = 
 
 
 def _manager_with(tool: MoviePilotTool) -> MoviePilotToolsManager:
-    """构造只包含指定工具的隔离 MCP 工具管理器。"""
+    """
+    构造只包含指定工具的隔离 MCP 工具管理器。
+    """
     manager = MoviePilotToolsManager(session_id="schema-budget-test", user_id="api_user")
     manager.tools = [tool]
     return manager
 
 
 def _api_schema() -> dict[str, Any]:
-    """读取运行时生成的 moviepilot_api 完整输入合同。"""
+    """
+    读取运行时生成的 moviepilot_api 完整输入合同。
+    """
     schema_path = Path(__file__).parents[1] / "app/agent/policy/resources/api_mcp_schema.json"
     return json.loads(schema_path.read_text(encoding="utf-8"))
 
 
 def test_oversized_schema_is_projected_to_object_contract() -> None:
-    """超出阈值的 schema 必须投影为可被严格客户端接受的顶层对象合同。"""
+    """
+    超出阈值的 schema 必须投影为可被严格客户端接受的顶层对象合同。
+    """
     schema = OversizedSchemaTool(session_id="session", user_id="api_user").get_mcp_input_schema()
     assert not schema_within_client_budget(schema)
 
@@ -107,7 +127,9 @@ def test_oversized_schema_is_projected_to_object_contract() -> None:
 
 
 def test_schema_within_budget_is_returned_untouched() -> None:
-    """阈值内的 schema 不得被投影，保持既有完整合同。"""
+    """
+    阈值内的 schema 不得被投影，保持既有完整合同。
+    """
     schema = {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
     assert schema_within_client_budget(schema)
 
@@ -118,7 +140,9 @@ def test_schema_within_budget_is_returned_untouched() -> None:
 
 
 def test_moviepilot_api_projection_keeps_discovery_and_cleans_branch_descriptions() -> None:
-    """moviepilot_api 投影后保留 operation 枚举，且不再残留指向已删除分支的说明。"""
+    """
+    moviepilot_api 投影后保留 operation 枚举，且不再残留指向已删除分支的说明。
+    """
     schema = _api_schema()
     assert not schema_within_client_budget(schema)
 
@@ -138,7 +162,9 @@ def test_moviepilot_api_projection_keeps_discovery_and_cleans_branch_description
 
 
 def test_projection_does_not_leave_dangling_definition_refs() -> None:
-    """定义表和组合分支随投影删除后，指向它们的本地引用必须一并去掉，只保留兄弟信息。"""
+    """
+    定义表和组合分支随投影删除后，指向它们的本地引用必须一并去掉，只保留兄弟信息。
+    """
     schema = {
         "type": "object",
         "properties": {
@@ -166,7 +192,9 @@ def test_projection_does_not_leave_dangling_definition_refs() -> None:
 
 
 def test_projection_adds_missing_root_object_type() -> None:
-    """根节点缺少 ``type`` 时补 ``type: object``，已声明的根类型不被改写。"""
+    """
+    根节点缺少 ``type`` 时补 ``type: object``，已声明的根类型不被改写。
+    """
     without_type = {"properties": {"payload": {"type": "string"}}}
     projected = project_schema_for_budget(without_type)
     assert projected["type"] == "object"
@@ -178,7 +206,9 @@ def test_projection_adds_missing_root_object_type() -> None:
 
 @pytest.mark.parametrize("keyword", ["patternProperties", "dependentSchemas", "dependencies"])
 def test_projection_cleans_nested_schema_maps_without_changing_field_names(keyword: str) -> None:
-    """schema 映射中的分支要清理，但同名业务字段与默认值必须原样保留。"""
+    """
+    schema 映射中的分支要清理，但同名业务字段与默认值必须原样保留。
+    """
     schema = {
         "type": "object",
         keyword: {"oneOf": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
@@ -198,7 +228,9 @@ def test_projection_cleans_nested_schema_maps_without_changing_field_names(keywo
 
 
 def test_projection_removes_nested_and_escaped_definition_refs() -> None:
-    """清理嵌套定义的前向引用，并正确区分 JSON Pointer 转义与合法同名属性。"""
+    """
+    清理嵌套定义的前向引用，并正确区分 JSON Pointer 转义与合法同名属性。
+    """
     schema = {
         "type": "object",
         "properties": {
@@ -222,7 +254,9 @@ def test_projection_removes_nested_and_escaped_definition_refs() -> None:
 
 @pytest.mark.parametrize("keyword", ["prefixItems", "items", "additionalItems", "additionalProperties"])
 def test_projection_cleans_compositions_in_subschemas(keyword: str) -> None:
-    """数组元素及附加属性子 schema 中的组合关键字也不能残留。"""
+    """
+    数组元素及附加属性子 schema 中的组合关键字也不能残留。
+    """
     child = {"allOf": [{"type": "string"}]}
     schema = {"type": "object", keyword: [child] if keyword == "prefixItems" else child}
 
@@ -232,7 +266,9 @@ def test_projection_cleans_compositions_in_subschemas(keyword: str) -> None:
 
 
 def test_handle_tools_list_keeps_full_moviepilot_api_one_of_by_default(monkeypatch) -> None:
-    """handle_tools_list 默认返回完整 oneOf；compact 模式才投影。"""
+    """
+    handle_tools_list 默认返回完整 oneOf；compact 模式才投影。
+    """
     manager = _manager_with(MoviePilotApiTool(session_id="session", user_id="api_user"))
     monkeypatch.setattr(mcp, "moviepilot_tool_manager", manager)
 
@@ -249,7 +285,9 @@ def test_handle_tools_list_keeps_full_moviepilot_api_one_of_by_default(monkeypat
 
 
 def test_tools_list_compact_mode_projects_oversized_tools(monkeypatch) -> None:
-    """compact 模式通过 handle_tools_list 投影超大 schema，默认模式完整返回。"""
+    """
+    compact 模式通过 handle_tools_list 投影超大 schema，默认模式完整返回。
+    """
     manager = _manager_with(OversizedSchemaTool(session_id="session", user_id="api_user"))
     monkeypatch.setattr(mcp, "moviepilot_tool_manager", manager)
 
@@ -264,7 +302,9 @@ def test_tools_list_compact_mode_projects_oversized_tools(monkeypatch) -> None:
 
 
 def test_jsonrpc_tools_list_honours_compact_header(monkeypatch) -> None:
-    """JSON-RPC tools/list 仅在显式 compact 请求头下投影，未知取值与其它方法不受影响。"""
+    """
+    JSON-RPC tools/list 仅在显式 compact 请求头下投影，未知取值与其它方法不受影响。
+    """
     manager = _manager_with(OversizedSchemaTool(session_id="session", user_id="api_user"))
     monkeypatch.setattr(mcp, "moviepilot_tool_manager", manager)
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode("utf-8")
@@ -319,7 +359,9 @@ def test_jsonrpc_tools_list_honours_compact_header(monkeypatch) -> None:
 
 
 def test_rest_tool_list_always_returns_full_contract(monkeypatch) -> None:
-    """三个 REST 工具端点不受客户端 schema 模式影响，始终返回完整合同。"""
+    """
+    三个 REST 工具端点不受客户端 schema 模式影响，始终返回完整合同。
+    """
     manager = _manager_with(OversizedSchemaTool(session_id="session", user_id="api_user"))
     monkeypatch.setattr(mcp, "moviepilot_tool_manager", manager)
 
@@ -338,7 +380,9 @@ def test_rest_tool_list_always_returns_full_contract(monkeypatch) -> None:
 
 
 def test_resolve_schema_mode_defaults_to_full() -> None:
-    """schema 模式读取请求头，未知或缺失取值回落到 full。"""
+    """
+    schema 模式读取请求头，未知或缺失取值回落到 full。
+    """
     assert mcp.resolve_schema_mode(_request([(b"x-mcp-schema-mode", b"compact")])) == "compact"
     assert mcp.resolve_schema_mode(_request([(b"x-mcp-schema-mode", b" COMPACT ")])) == "compact"
     assert mcp.resolve_schema_mode(_request([(b"x-mcp-schema-mode", b"full")])) == "full"

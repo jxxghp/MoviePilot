@@ -1,4 +1,6 @@
-"""下载器与媒体服务器第三方 API Skill 测试。"""
+"""
+下载器与媒体服务器第三方 API Skill 测试。
+"""
 
 import importlib.util
 import json
@@ -15,7 +17,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_script(name: str, relative_path: str) -> ModuleType:
-    """按文件路径加载带连字符 Skill 中的脚本模块。"""
+    """
+    按文件路径加载带连字符 Skill 中的脚本模块。
+    """
     path = PROJECT_ROOT / relative_path
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec and spec.loader
@@ -27,7 +31,9 @@ def _load_script(name: str, relative_path: str) -> ModuleType:
 
 @pytest.fixture
 def downloader_module() -> ModuleType:
-    """加载下载器 Skill 脚本。"""
+    """
+    加载下载器 Skill 脚本。
+    """
     return _load_script(
         "moviepilot_downloader_skill",
         "skills/downloader-operation/scripts/mp-downloader.py",
@@ -36,7 +42,9 @@ def downloader_module() -> ModuleType:
 
 @pytest.fixture
 def mediaserver_module() -> ModuleType:
-    """加载媒体服务器 Skill 脚本。"""
+    """
+    加载媒体服务器 Skill 脚本。
+    """
     return _load_script(
         "moviepilot_mediaserver_skill",
         "skills/mediaserver-operation/scripts/mp-mediaserver.py",
@@ -44,7 +52,9 @@ def mediaserver_module() -> ModuleType:
 
 
 def _downloader_config(provider: str = "qbittorrent") -> SimpleNamespace:
-    """构造包含私有配置但仅供脚本内部消费的下载器配置。"""
+    """
+    构造包含私有配置但仅供脚本内部消费的下载器配置。
+    """
     return SimpleNamespace(
         name="main",
         type=provider,
@@ -60,7 +70,9 @@ def _downloader_config(provider: str = "qbittorrent") -> SimpleNamespace:
 
 
 def _mediaserver_config(provider: str = "emby") -> SimpleNamespace:
-    """构造包含私有配置但仅供脚本内部消费的媒体服务器配置。"""
+    """
+    构造包含私有配置但仅供脚本内部消费的媒体服务器配置。
+    """
     return SimpleNamespace(
         name="living-room",
         type=provider,
@@ -74,7 +86,9 @@ def test_downloader_load_configs_bootstraps_runtime_service_reader(
     downloader_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """独立脚本必须用自有短会话加载快照，再读取下载器服务配置。"""
+    """
+    独立脚本必须用自有短会话加载快照，再读取下载器服务配置。
+    """
     import app.db.oper.systemconfig as systemconfig_module
     import app.db.session as session_module
     import app.runtime.extensions.service as service_module
@@ -104,7 +118,9 @@ def test_mediaserver_load_configs_bootstraps_runtime_service_reader(
     mediaserver_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """独立脚本必须用自有短会话加载快照，再读取媒体服务器服务配置。"""
+    """
+    独立脚本必须用自有短会话加载快照，再读取媒体服务器服务配置。
+    """
     import app.db.oper.systemconfig as systemconfig_module
     import app.db.session as session_module
     import app.runtime.extensions.service as service_module
@@ -141,7 +157,9 @@ def test_service_operation_script_loads_configs_without_lifespan(
     relative_path: str,
     instances_key: str,
 ) -> None:
-    """独立 CLI 子进程未启动 lifespan 时也应能从隔离数据库读取配置。"""
+    """
+    独立 CLI 子进程未启动 lifespan 时也应能从隔离数据库读取配置。
+    """
     result = subprocess.run(
         [sys.executable, str(PROJECT_ROOT / relative_path), "instances"],
         cwd=PROJECT_ROOT,
@@ -168,7 +186,9 @@ def test_service_operation_script_loads_configs_without_lifespan(
 def test_copied_service_skill_uses_runtime_root(
     relative_path: str, tmp_path: Path
 ) -> None:
-    """配置目录中的技能副本应通过运行时根目录导入 MoviePilot。"""
+    """
+    配置目录中的技能副本应通过运行时根目录导入 MoviePilot。
+    """
     copied_script = tmp_path / Path(relative_path).name
     copied_script.write_bytes((PROJECT_ROOT / relative_path).read_bytes())
     result = subprocess.run(
@@ -187,7 +207,9 @@ def test_copied_service_skill_uses_runtime_root(
 
 
 def test_copied_downloader_reports_missing_runtime_root(tmp_path: Path) -> None:
-    """缺少程序根目录时应返回可执行的定位提示和真实错误类型。"""
+    """
+    缺少程序根目录时应返回可执行的定位提示和真实错误类型。
+    """
     copied_script = tmp_path / "mp-downloader.py"
     copied_script.write_bytes(
         (PROJECT_ROOT / "skills/downloader-operation/scripts/mp-downloader.py").read_bytes()
@@ -213,7 +235,9 @@ def test_downloader_instances_and_capabilities_do_not_expose_credentials(
     downloader_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """实例发现与能力发现不得输出连接参数或凭据。"""
+    """
+    实例发现与能力发现不得输出连接参数或凭据。
+    """
     monkeypatch.setattr(
         downloader_module,
         "_load_configs",
@@ -241,7 +265,9 @@ def test_downloader_instances_and_capabilities_do_not_expose_credentials(
 def test_downloader_capability_exposes_complete_action_arguments(
     downloader_module: ModuleType,
 ) -> None:
-    """单 action 能力查询应直接返回类型、必填性、默认值和枚举。"""
+    """
+    单 action 能力查询应直接返回类型、必填性、默认值和枚举。
+    """
     result = downloader_module.list_capabilities(None, "tasks.queue.move")
 
     assert len(result["actions"]) == 1
@@ -252,17 +278,19 @@ def test_downloader_capability_exposes_complete_action_arguments(
         "name": "position",
         "type": "string",
         "required": True,
-        "description": "Target queue position.",
+        "description": "目标队列位置。",
         "enum": ["top", "up", "down", "bottom"],
     }
-    assert action["argument_rules"] == ["Provide exactly one of task_id and task_ids."]
+    assert action["argument_rules"] == ["task_id 和 task_ids 必须且只能提供一项。"]
 
 
 def test_downloader_argument_validation_reports_all_errors_before_config_load(
     downloader_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """下载器调用应一次返回全部可检测参数错误，且不连接配置或 provider。"""
+    """
+    下载器调用应一次返回全部可检测参数错误，且不连接配置或 provider。
+    """
     load_configs = MagicMock()
     monkeypatch.setattr(downloader_module, "_load_configs", load_configs)
 
@@ -289,7 +317,9 @@ def test_downloader_ambiguous_instance_error_lists_reusable_names(
     downloader_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """实例歧义应直接返回可重试名称，避免额外 instances 探测。"""
+    """
+    实例歧义应直接返回可重试名称，避免额外 instances 探测。
+    """
     first = _downloader_config()
     first.name = "main"
     first.default = False
@@ -306,7 +336,9 @@ def test_downloader_call_uses_default_instance_without_discovery(
     downloader_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """省略 client 时应在同一次调用中选择默认实例并执行。"""
+    """
+    省略 client 时应在同一次调用中选择默认实例并执行。
+    """
     config = _downloader_config()
     client = MagicMock()
     client.get_torrents.return_value = ([], False)
@@ -324,7 +356,9 @@ def test_downloader_task_list_is_paged_and_normalized(
     downloader_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """任务查询应使用统一分页，并清理结果中的凭据字段。"""
+    """
+    任务查询应使用统一分页，并清理结果中的凭据字段。
+    """
     config = _downloader_config()
     client = MagicMock()
     client.get_torrents.return_value = (
@@ -356,7 +390,9 @@ def test_downloader_rejects_provider_incompatible_action(
     downloader_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """provider 未声明的 action 必须在连接前拒绝。"""
+    """
+    provider 未声明的 action 必须在连接前拒绝。
+    """
     monkeypatch.setattr(
         downloader_module,
         "_load_configs",
@@ -374,7 +410,9 @@ def test_downloader_rejects_provider_incompatible_action(
 def test_downloader_queue_move_uses_fixed_provider_sdk_methods(
     downloader_module: ModuleType,
 ) -> None:
-    """队列动作只能映射到审核过的 provider SDK 方法。"""
+    """
+    队列动作只能映射到审核过的 provider SDK 方法。
+    """
     qbc = MagicMock()
     client = SimpleNamespace(qbc=qbc)
 
@@ -389,7 +427,9 @@ def test_downloader_queue_move_uses_fixed_provider_sdk_methods(
 def test_downloader_file_selection_uses_normalized_provider_methods(
     downloader_module: ModuleType,
 ) -> None:
-    """文件选择应归一为 wanted/unwanted，且不能执行任意 SDK 方法。"""
+    """
+    文件选择应归一为 wanted/unwanted，且不能执行任意 SDK 方法。
+    """
     client = MagicMock()
 
     assert downloader_module._set_file_selection(
@@ -409,7 +449,9 @@ def test_provider_projection_removes_nested_authentication_fields(
     downloader_module: ModuleType,
     mediaserver_module: ModuleType,
 ) -> None:
-    """第三方返回值中的变体凭据字段也必须被投影层移除。"""
+    """
+    第三方返回值中的变体凭据字段也必须被投影层移除。
+    """
     payload = {
         "name": "safe",
         "access_token": "drop",
@@ -430,7 +472,9 @@ def test_mediaserver_capabilities_are_provider_specific(
     mediaserver_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """能力发现应隐藏配置并过滤 provider 不支持的动作。"""
+    """
+    能力发现应隐藏配置并过滤 provider 不支持的动作。
+    """
     monkeypatch.setattr(
         mediaserver_module,
         "_load_configs",
@@ -452,7 +496,9 @@ def test_mediaserver_capabilities_are_provider_specific(
 def test_mediaserver_capability_exposes_nested_refresh_contract(
     mediaserver_module: ModuleType,
 ) -> None:
-    """媒体服务器能力查询应直接描述嵌套刷新条目字段。"""
+    """
+    媒体服务器能力查询应直接描述嵌套刷新条目字段。
+    """
     result = mediaserver_module.list_capabilities(None, "metadata.refresh")
 
     action = result["actions"][0]
@@ -463,8 +509,7 @@ def test_mediaserver_capability_exposes_nested_refresh_contract(
             "type": "object[]",
             "required": True,
             "description": (
-                "Items to refresh. Each item supports title:string, year:string|integer, "
-                "type using the exact MoviePilot media-type value, category:string, and target_path:string."
+                "待刷新的条目。每项支持 title 字符串、year 字符串或整数、type 精确 MoviePilot 媒体类型值、category 字符串及 target_path 字符串。"
             ),
         }
     ]
@@ -474,7 +519,9 @@ def test_mediaserver_argument_validation_reports_nested_errors_before_config_loa
     mediaserver_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """媒体服务器调用应一次返回顶层及嵌套参数错误，且不读取实例配置。"""
+    """
+    媒体服务器调用应一次返回顶层及嵌套参数错误，且不读取实例配置。
+    """
     load_configs = MagicMock()
     monkeypatch.setattr(mediaserver_module, "_load_configs", load_configs)
 
@@ -500,7 +547,9 @@ def test_mediaserver_ambiguous_instance_error_lists_reusable_names(
     mediaserver_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """媒体服务器歧义应直接返回可重试名称，避免额外 instances 探测。"""
+    """
+    媒体服务器歧义应直接返回可重试名称，避免额外 instances 探测。
+    """
     first = _mediaserver_config()
     first.name = "living-room"
     second = _mediaserver_config("plex")
@@ -515,7 +564,9 @@ def test_mediaserver_call_uses_only_instance_without_discovery(
     mediaserver_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """省略 server 时应在同一次调用中选择唯一实例并执行。"""
+    """
+    省略 server 时应在同一次调用中选择唯一实例并执行。
+    """
     config = _mediaserver_config()
     client = MagicMock()
     client.get_medias_count.return_value = {"movie": 12}
@@ -533,7 +584,9 @@ def test_mediaserver_items_and_scan_use_fixed_public_methods(
     mediaserver_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """媒体条目查询和扫描应调用固定 client 方法并返回统一 envelope。"""
+    """
+    媒体条目查询和扫描应调用固定 client 方法并返回统一 envelope。
+    """
     config = _mediaserver_config("emby")
     client = MagicMock()
     client.get_items.return_value = [SimpleNamespace(item_id="1", title="Movie")]
@@ -565,7 +618,9 @@ def test_mediaserver_items_and_scan_use_fixed_public_methods(
 def test_mediaserver_native_search_and_episode_coverage_use_public_methods(
     mediaserver_module: ModuleType,
 ) -> None:
-    """原生搜索和剧集覆盖必须落到已审核的 provider 公共方法。"""
+    """
+    原生搜索和剧集覆盖必须落到已审核的 provider 公共方法。
+    """
     client = MagicMock()
     client.get_music.return_value = [{"title": "Track"}]
     episode_call = MagicMock(return_value=("series", {1: [1, 2]}))
@@ -576,7 +631,9 @@ def test_mediaserver_native_search_and_episode_coverage_use_public_methods(
         year=None,
         season=None,
     ):
-        """提供带真实签名的 provider 测试替身。"""
+        """
+        提供带真实签名的 provider 测试替身。
+        """
         return episode_call(
             item_id=item_id,
             title=title,
@@ -612,7 +669,9 @@ def test_mediaserver_native_search_and_episode_coverage_use_public_methods(
 
 
 def test_skill_docs_forbid_arbitrary_network_and_preserve_high_level_workflows() -> None:
-    """Skill 文档必须明确任意网络出口和高层业务边界。"""
+    """
+    Skill 文档必须明确任意网络出口和高层业务边界。
+    """
     downloader = (PROJECT_ROOT / "skills/downloader-operation/SKILL.md").read_text(encoding="utf-8")
     mediaserver = (PROJECT_ROOT / "skills/mediaserver-operation/SKILL.md").read_text(encoding="utf-8")
 
@@ -630,7 +689,9 @@ def test_service_operation_skill_docs_cover_every_action_and_argument(
     downloader_module: ModuleType,
     mediaserver_module: ModuleType,
 ) -> None:
-    """Agent 加载 Skill 后应能直接看到每个 action 的功能和全部参数名。"""
+    """
+    Agent 加载 Skill 后应能直接看到每个 action 的功能和全部参数名。
+    """
     pairs = (
         (
             downloader_module.ACTIONS,

@@ -1,4 +1,6 @@
-"""钉钉自定义机器人通知渠道测试。"""
+"""
+钉钉自定义机器人通知渠道测试。
+"""
 
 import base64
 import hashlib
@@ -15,14 +17,18 @@ from app.schemas.types import MessageType, NotificationChannel
 
 
 def _response(payload: dict, status_code: int = 200) -> Mock:
-    """构造带关闭能力的 requests.Response 测试替身。"""
+    """
+    构造带关闭能力的 requests.Response 测试替身。
+    """
     response = Mock(status_code=status_code)
     response.json.return_value = payload
     return response
 
 
 def test_signed_webhook_preserves_access_token_and_uses_official_signature() -> None:
-    """签名应使用毫秒时间戳、换行分隔串和 HMAC-SHA256。"""
+    """
+    签名应使用毫秒时间戳、换行分隔串和 HMAC-SHA256。
+    """
     client = DingTalk(
         DINGTALK_WEBHOOK="https://oapi.dingtalk.com/robot/send?access_token=token",
         DINGTALK_SECRET="SEC-test",
@@ -46,7 +52,9 @@ def test_signed_webhook_preserves_access_token_and_uses_official_signature() -> 
 
 
 def test_send_msg_posts_markdown_and_accepts_dingtalk_success() -> None:
-    """普通通知应保留标题、正文、图片和详情链接并检查 errcode。"""
+    """
+    普通通知应保留标题、正文、图片和详情链接并检查 errcode。
+    """
     client = DingTalk(
         DINGTALK_WEBHOOK="https://oapi.dingtalk.com/robot/send?access_token=token"
     )
@@ -74,7 +82,9 @@ def test_send_msg_posts_markdown_and_accepts_dingtalk_success() -> None:
 
 
 def test_send_msg_rejects_http_and_business_failures() -> None:
-    """HTTP 失败或钉钉业务错误都不能被误判为发送成功。"""
+    """
+    HTTP 失败或钉钉业务错误都不能被误判为发送成功。
+    """
     client = DingTalk(
         DINGTALK_WEBHOOK="https://oapi.dingtalk.com/robot/send?access_token=token"
     )
@@ -89,7 +99,9 @@ def test_send_msg_rejects_http_and_business_failures() -> None:
 
 
 def test_module_routes_matching_notifications_to_dingtalk_client(monkeypatch) -> None:
-    """模块应沿通知来源和消息类型契约向对应钉钉实例发送。"""
+    """
+    模块应沿通知来源和消息类型契约向对应钉钉实例发送。
+    """
     module = DingTalkModule()
     module._channel = NotificationChannel.DingTalk
     client = Mock()
@@ -112,7 +124,9 @@ def test_module_routes_matching_notifications_to_dingtalk_client(monkeypatch) ->
 
 
 def test_module_skips_unsupported_command_registration(monkeypatch) -> None:
-    """钉钉机器人不支持命令 API 时应跳过基类命令注册流程。"""
+    """
+    钉钉机器人不支持命令 API 时应跳过基类命令注册流程。
+    """
     module = DingTalkModule()
     config = SimpleNamespace(name="家庭群", config={})
     get_instance = Mock()
@@ -125,7 +139,9 @@ def test_module_skips_unsupported_command_registration(monkeypatch) -> None:
 
 
 def test_dingtalk_channel_declares_markdown_image_and_link_capabilities() -> None:
-    """能力表应允许通用消息层保留钉钉支持的富文本字段。"""
+    """
+    能力表应允许通用消息层保留钉钉支持的富文本字段。
+    """
     for capability in (
         ChannelCapability.MARKDOWN,
         ChannelCapability.IMAGES,

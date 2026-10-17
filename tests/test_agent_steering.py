@@ -1,4 +1,6 @@
-"""运行中 Agent 消息排队、真实 HumanMessage 注入及身份隔离测试。"""
+"""
+运行中 Agent 消息排队、真实 HumanMessage 注入及身份隔离测试。
+"""
 
 import asyncio
 import json
@@ -20,7 +22,9 @@ from app.schemas.types import NotificationChannel, ReplyMode
 
 @pytest.mark.asyncio
 async def test_steering_message_is_injected_as_real_human_message() -> None:
-    """下一次模型调用应在图状态中看到真实 HumanMessage，而不是提示词拼接。"""
+    """
+    下一次模型调用应在图状态中看到真实 HumanMessage，而不是提示词拼接。
+    """
     inbox = SteeringInbox("session", "user")
     await inbox.begin_run()
     queued = await inbox.enqueue(user_id="user", text="补充要求")
@@ -51,7 +55,9 @@ async def test_steering_message_is_injected_as_real_human_message() -> None:
 
 @pytest.mark.asyncio
 async def test_steering_does_not_break_unresolved_tool_call_pairing() -> None:
-    """未交付工具调用所在的状态边界不应插入用户消息。"""
+    """
+    未交付工具调用所在的状态边界不应插入用户消息。
+    """
     inbox = SteeringInbox("session", "user")
     await inbox.begin_run()
     assert await inbox.enqueue(user_id="user", text="稍等") is not None
@@ -60,7 +66,9 @@ async def test_steering_does_not_break_unresolved_tool_call_pairing() -> None:
     seen_messages = []
 
     async def handler(request):
-        """记录未注入的模型请求，模拟下游模型处理。"""
+        """
+        记录未注入的模型请求，模拟下游模型处理。
+        """
         seen_messages.extend(request.messages)
         return ModelResponse(result=[AIMessage(content="继续执行工具")])
 
@@ -90,40 +98,56 @@ async def test_steering_does_not_break_unresolved_tool_call_pairing() -> None:
 
 @pytest.mark.asyncio
 async def test_owner_routes_matching_user_message_to_active_steering_inbox() -> None:
-    """活动会话只接受同一用户的补充消息，其他用户回退到普通入口。"""
+    """
+    活动会话只接受同一用户的补充消息，其他用户回退到普通入口。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     processed_messages: list[str] = []
 
     class BlockingAgent:
-        """模拟持久会话 Agent，暴露运行边界供 owner 测试。"""
+        """
+        模拟持久会话 Agent，暴露运行边界供 owner 测试。
+        """
 
         def __init__(self, **kwargs):
-            """保存宿主注入字段。"""
+            """
+            保存宿主注入字段。
+            """
             self.__dict__.update(kwargs)
             self.user_id = str(kwargs["user_id"])
 
         def set_output_callback(self, callback):
-            """兼容会话 owner 的输出回调更新。"""
+            """
+            兼容会话 owner 的输出回调更新。
+            """
             self.output_callback = callback
 
         def set_protected_output_callback(self, callback):
-            """兼容会话 owner 的敏感输出回调更新。"""
+            """
+            兼容会话 owner 的敏感输出回调更新。
+            """
             self.protected_output_callback = callback
 
         def get_session_status(self):
-            """返回 owner 状态合并所需的最小快照。"""
+            """
+            返回 owner 状态合并所需的最小快照。
+            """
             return {"model": "fake", "is_processing": True}
 
         async def process(self, message, **kwargs):
-            """阻塞到测试释放，模拟长时间模型运行。"""
+            """
+            阻塞到测试释放，模拟长时间模型运行。
+            """
             processed_messages.append(message)
             started.set()
             await release.wait()
             return message
 
         async def cleanup(self):
-            """报告测试 Agent 已收敛。"""
+            """
+            报告测试 Agent 已收敛。
+            """
             return True
 
     owner = AgentSessionOwner()
@@ -163,7 +187,9 @@ async def test_owner_routes_matching_user_message_to_active_steering_inbox() -> 
 
 @pytest.mark.asyncio
 async def test_steering_finish_boundary_returns_pending_messages_once() -> None:
-    """运行收尾与入队共享锁时，未注入消息只能被交给下一轮一次。"""
+    """
+    运行收尾与入队共享锁时，未注入消息只能被交给下一轮一次。
+    """
     inbox = SteeringInbox("session", "user")
     await inbox.begin_run()
     message = await inbox.enqueue(user_id="user", text="收尾前到达")
@@ -177,7 +203,9 @@ async def test_steering_finish_boundary_returns_pending_messages_once() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("channel", [NotificationChannel.Telegram, NotificationChannel.Feishu, NotificationChannel.Wechat])
 async def test_channel_followup_enters_running_graph_without_starting_another_task(monkeypatch, channel) -> None:
-    """真实会话入口应把连续补充消息注入当前图，并仅在消费时切分渠道回复。"""
+    """
+    真实会话入口应把连续补充消息注入当前图，并仅在消费时切分渠道回复。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     results = []
@@ -186,20 +214,28 @@ async def test_channel_followup_enters_running_graph_without_starting_another_ta
     monkeypatch.setattr("app.agent.session._async_finish_processing_status", AsyncMock())
 
     class ChannelAgent:
-        """使用真实 steering 中间件，隔离模型与消息渠道的测试 Agent。"""
+        """
+        使用真实 steering 中间件，隔离模型与消息渠道的测试 Agent。
+        """
 
         def __init__(self, **kwargs):
-            """接收会话上下文并记录消息切分调用。"""
+            """
+            接收会话上下文并记录消息切分调用。
+            """
             self.__dict__.update(kwargs)
             self.stream_handler = Mock()
             self._tool_context = {"user_reply_sent": True}
 
         def start_steering_reply(self, original_message_id=None):
-            """复用生产回复切分，验证补充输入解除前段主动回复的抑制状态。"""
+            """
+            复用生产回复切分，验证补充输入解除前段主动回复的抑制状态。
+            """
             MoviePilotAgent.start_steering_reply(self, original_message_id)
 
         async def process(self, message, **_kwargs):
-            """暂停当前任务，让补充输入在下一次真实模型调用前进入 inbox。"""
+            """
+            暂停当前任务，让补充输入在下一次真实模型调用前进入 inbox。
+            """
             processed.append(message)
             started.set()
             await release.wait()
@@ -267,7 +303,9 @@ async def test_channel_followup_enters_running_graph_without_starting_another_ta
     {"allow_message_tools": False}, {"scheduled_run_id": "scheduled"},
 ])
 async def test_channel_steering_preserves_identity_and_independent_task_boundaries(changed) -> None:
-    """其它用户、聊天、渠道、权限或独立调用不得进入已有渠道任务的上下文。"""
+    """
+    其它用户、聊天、渠道、权限或独立调用不得进入已有渠道任务的上下文。
+    """
     context = {
         "session_id": "session", "user_id": "user", "channel": NotificationChannel.Telegram.value,
         "source": "bot", "original_chat_id": "chat", "is_channel_admin": True,
@@ -288,7 +326,9 @@ async def test_channel_steering_preserves_identity_and_independent_task_boundari
 @pytest.mark.asyncio
 @pytest.mark.parametrize("running", [True, False])
 async def test_channel_steering_falls_back_to_queue_when_full_or_finished(running) -> None:
-    """inbox 满或运行已收尾时，补充消息仍进入普通队列且只保留一次。"""
+    """
+    inbox 满或运行已收尾时，补充消息仍进入普通队列且只保留一次。
+    """
     context = {
         "session_id": "session", "user_id": "user", "channel": NotificationChannel.Telegram.value,
         "source": "bot",

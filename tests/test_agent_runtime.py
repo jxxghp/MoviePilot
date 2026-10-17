@@ -1,4 +1,6 @@
-"""Agent 运行时配置与已废弃活动目录的 pytest 回归。"""
+"""
+Agent 运行时配置与已废弃活动目录的 pytest 回归。
+"""
 
 import os
 import shutil
@@ -16,7 +18,9 @@ from app.agent.runtime import AgentRuntimeManager
 
 @pytest.fixture
 def context(tmp_path):
-    """为每项测试创建独立运行目录及配置管理器工厂。"""
+    """
+    为每项测试创建独立运行目录及配置管理器工厂。
+    """
     agent_root = tmp_path / "agent"
     defaults_root = Path(__file__).resolve().parents[1] / "app" / "agent" / "defaults"
     return SimpleNamespace(temp_root=tmp_path, agent_root=agent_root, defaults_root=defaults_root,
@@ -25,7 +29,9 @@ def context(tmp_path):
 
 @pytest.fixture
 def signature_manager(context):
-    """签名测试使用临时配置与默认模板，避免改动仓库内置文件。"""
+    """
+    签名测试使用临时配置与默认模板，避免改动仓库内置文件。
+    """
     defaults_root = context.temp_root / 'defaults'
     shutil.copytree(context.defaults_root, defaults_root)
     manager = AgentRuntimeManager(agent_root_dir=context.agent_root, bundled_defaults_dir=defaults_root)
@@ -34,7 +40,9 @@ def signature_manager(context):
 
 
 def test_signature_ignores_history_wal_lifecycle(signature_manager, monkeypatch):
-    """历史库及 WAL 边车的创建、写入和删除不应改变配置签名。"""
+    """
+    历史库及 WAL 边车的创建、写入和删除不应改变配置签名。
+    """
     manager = signature_manager
     monkeypatch.setattr(manager, '_signature_check_interval', 0)
     config = manager.load_runtime_config()
@@ -62,7 +70,9 @@ def test_signature_ignores_history_wal_lifecycle(signature_manager, monkeypatch)
 
 
 def test_signature_does_not_traverse_history_directory(signature_manager, monkeypatch):
-    """历史目录应在递归前排除，避免扫描持续增长且并发变化的用户数据。"""
+    """
+    历史目录应在递归前排除，避免扫描持续增长且并发变化的用户数据。
+    """
     manager = signature_manager
     signature = manager._build_signature()
     history_root = manager.runtime_dir / 'history'
@@ -70,7 +80,9 @@ def test_signature_does_not_traverse_history_directory(signature_manager, monkey
     original_scandir = os.scandir
 
     def guarded_scandir(path):
-        """以文件系统边界断言扫描器没有进入历史目录。"""
+        """
+        以文件系统边界断言扫描器没有进入历史目录。
+        """
         assert not Path(path).is_relative_to(history_root)
         return original_scandir(path)
 
@@ -80,7 +92,9 @@ def test_signature_does_not_traverse_history_directory(signature_manager, monkey
 
 @pytest.mark.parametrize('root_name', ['runtime_dir', 'bundled_defaults_dir'])
 def test_signature_tolerates_file_removed_after_type_check(signature_manager, monkeypatch, root_name):
-    """确定性复现文件类型检查成功、读取元数据前文件被并发删除的竞态。"""
+    """
+    确定性复现文件类型检查成功、读取元数据前文件被并发删除的竞态。
+    """
     manager = signature_manager
     signature = manager._build_signature()
     transient = getattr(manager, root_name) / 'transient.md'
@@ -89,7 +103,9 @@ def test_signature_tolerates_file_removed_after_type_check(signature_manager, mo
     removed = []
 
     def remove_after_type_check(path):
-        """在扫描器确认文件类型后删除文件，复现 Issue 中的消失时序。"""
+        """
+        在扫描器确认文件类型后删除文件，复现 Issue 中的消失时序。
+        """
         result = original_is_file(path)
         if path == transient and result:
             path.unlink()
@@ -109,7 +125,9 @@ def test_signature_tolerates_file_removed_after_type_check(signature_manager, mo
     'extra/history/context.md',
 ])
 def test_signature_tracks_configuration_changes(signature_manager, root_name, relative_path):
-    """排除历史数据库后，人格、子代理和任意额外上下文仍参与增改删检测。"""
+    """
+    排除历史数据库后，人格、子代理和任意额外上下文仍参与增改删检测。
+    """
     manager = signature_manager
     path = getattr(manager, root_name) / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,7 +144,9 @@ def test_signature_tracks_configuration_changes(signature_manager, root_name, re
 
 
 def test_default_root_uses_runtime_settings_service(context):
-    """未显式传入目录时，管理器应读取组合根提供的配置目录。"""
+    """
+    未显式传入目录时，管理器应读取组合根提供的配置目录。
+    """
     config_root = context.temp_root / 'configured'
     service = SimpleNamespace(get=lambda key: config_root if key == 'CONFIG_PATH' else None)
     with patch('app.agent.runtime.get_runtime_settings', return_value=service):
@@ -135,7 +155,9 @@ def test_default_root_uses_runtime_settings_service(context):
 
 
 def test_load_runtime_config_syncs_defaults_and_parses_sections(context):
-    """验证运行时配置、人格选择及原有目录行为。"""
+    """
+    验证运行时配置、人格选择及原有目录行为。
+    """
     manager = context._manager()
     runtime_config = manager.load_runtime_config()
     assert runtime_config.active_persona == 'default'
@@ -149,7 +171,9 @@ def test_load_runtime_config_syncs_defaults_and_parses_sections(context):
 
 
 def test_legacy_root_markdown_is_migrated_to_memory_directory(context):
-    """验证运行时配置、人格选择及原有目录行为。"""
+    """
+    验证运行时配置、人格选择及原有目录行为。
+    """
     context.agent_root.mkdir(parents=True, exist_ok=True)
     legacy_memory = context.agent_root / 'MEMORY.md'
     legacy_memory.write_text('# Legacy Memory\n', encoding='utf-8')
@@ -164,7 +188,9 @@ def test_legacy_root_markdown_is_migrated_to_memory_directory(context):
 
 
 def test_obsolete_runtime_files_are_deleted_instead_of_migrated(context):
-    """验证运行时配置、人格选择及原有目录行为。"""
+    """
+    验证运行时配置、人格选择及原有目录行为。
+    """
     context.agent_root.mkdir(parents=True, exist_ok=True)
     obsolete_root = context.agent_root / 'USER_PREFERENCES.md'
     obsolete_root.write_text('# Obsolete\n', encoding='utf-8')
@@ -183,7 +209,9 @@ def test_obsolete_runtime_files_are_deleted_instead_of_migrated(context):
 
 
 def test_activity_history_is_preserved_without_creating_new_logs(context):
-    """旧活动历史保持原地，运行时不再创建新活动目录。"""
+    """
+    旧活动历史保持原地，运行时不再创建新活动目录。
+    """
     old_activity = context.agent_root / 'activity'
     old_activity.mkdir(parents=True, exist_ok=True)
     old_log = old_activity / '2026-06-18.md'
@@ -196,7 +224,9 @@ def test_activity_history_is_preserved_without_creating_new_logs(context):
 
 
 def test_render_prompt_sections_uses_active_persona(context):
-    """验证运行时配置、人格选择及原有目录行为。"""
+    """
+    验证运行时配置、人格选择及原有目录行为。
+    """
     manager = context._manager()
     runtime_config = manager.load_runtime_config()
     sections = runtime_config.render_prompt_sections()
@@ -209,7 +239,9 @@ def test_render_prompt_sections_uses_active_persona(context):
 
 
 def test_set_active_persona_supports_id_and_alias(context):
-    """验证运行时配置、人格选择及原有目录行为。"""
+    """
+    验证运行时配置、人格选择及原有目录行为。
+    """
     manager = context._manager()
     manager.load_runtime_config()
     guide_config = manager.set_active_persona('guide')
@@ -221,7 +253,9 @@ def test_set_active_persona_supports_id_and_alias(context):
 
 
 def test_invalid_user_runtime_config_falls_back_to_bundled_defaults(context):
-    """验证运行时配置、人格选择及原有目录行为。"""
+    """
+    验证运行时配置、人格选择及原有目录行为。
+    """
     manager = context._manager()
     manager.ensure_layout()
     invalid_current = context.agent_root / 'runtime' / 'CURRENT_PERSONA.md'
@@ -234,7 +268,9 @@ def test_invalid_user_runtime_config_falls_back_to_bundled_defaults(context):
 
 
 def test_deprecated_phrase_warning_is_reported(context):
-    """验证运行时配置、人格选择及原有目录行为。"""
+    """
+    验证运行时配置、人格选择及原有目录行为。
+    """
     context.agent_root.mkdir(parents=True, exist_ok=True)
     runtime_root = context.agent_root / 'runtime'
     shutil.copytree(context.defaults_root, runtime_root)

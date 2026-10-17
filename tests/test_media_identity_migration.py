@@ -1,3 +1,7 @@
+"""
+验证规范媒体身份字段的新增及存量身份幂等迁移。
+"""
+
 import importlib
 
 import sqlalchemy as sa
@@ -6,7 +10,9 @@ from alembic.operations import Operations
 
 
 def _create_legacy_tables(connection) -> dict[str, sa.Table]:
-    """创建执行 2.2.14 迁移前的最小历史表结构。"""
+    """
+    创建执行 2.2.14 迁移前的最小历史表结构。
+    """
     metadata = sa.MetaData()
     common_identity_columns = (
         sa.Column("tmdbid", sa.Integer()),
@@ -56,7 +62,9 @@ def _create_legacy_tables(connection) -> dict[str, sa.Table]:
 
 
 def test_media_identity_migration_adds_fields_and_backfills_rows(monkeypatch) -> None:
-    """迁移应补齐五张表的媒体 ID 字段并幂等迁移存量身份。"""
+    """
+    迁移应补齐五张表的媒体 ID 字段并幂等迁移存量身份。
+    """
     migration = importlib.import_module(
         "database.versions.f7b2d5c9a301_2_2_14"
     )

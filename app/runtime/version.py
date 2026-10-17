@@ -1,4 +1,6 @@
-"""当前 MoviePilot 部署的产品版本读取入口。"""
+"""
+当前 MoviePilot 部署的产品版本读取入口。
+"""
 
 from pathlib import Path
 
@@ -10,12 +12,16 @@ from version import FRONTEND_VERSION as _FRONTEND_VERSION
 
 
 def get_app_version() -> str:
-    """返回当前后端构建的发布版本。"""
+    """
+    返回当前后端构建的发布版本。
+    """
     return str(_APP_VERSION)
 
 
 def _read_version_file(path: Path) -> str | None:
-    """读取版本文件，文件缺失、内容为空或读取失败时返回空值。"""
+    """
+    读取版本文件，文件缺失、内容为空或读取失败时返回空值。
+    """
     try:
         version = path.read_text(encoding="utf-8", errors="replace").strip()
         return version or None
@@ -26,7 +32,9 @@ def _read_version_file(path: Path) -> str | None:
 
 
 def get_frontend_version(*, fallback_to_declared: bool = True) -> str | None:
-    """返回当前部署的前端资源版本，并可关闭发布声明回退。"""
+    """
+    返回当前部署的前端资源版本，并可关闭发布声明回退。
+    """
     if is_frozen() and is_windows():
         version_file = (
             Path(get_runtime_setting('CONFIG_PATH')).parent

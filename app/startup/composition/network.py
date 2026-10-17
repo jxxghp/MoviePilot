@@ -1,4 +1,6 @@
-"""网络应用端口的宿主组合根。"""
+"""
+网络应用端口的宿主组合根。
+"""
 
 import asyncio
 from collections.abc import Mapping
@@ -61,7 +63,9 @@ from app.runtime.log import logger
 
 
 class _NetworkTestTransportAdapter:
-    """把通用异步 HTTP 与 WebSocket Adapter 收窄为网络探测端口。"""
+    """
+    把通用异步 HTTP 与 WebSocket Adapter 收窄为网络探测端口。
+    """
 
     async def get(
         self,
@@ -71,7 +75,9 @@ class _NetworkTestTransportAdapter:
         headers: Optional[Mapping[str, str]] = None,
         user_agent: Optional[str] = None,
     ) -> Optional[NetworkTestResponse]:
-        """使用固定超时、证书校验和手动重定向策略请求目标。"""
+        """
+        使用固定超时、证书校验和手动重定向策略请求目标。
+        """
         response = await AsyncRequestUtils(
             proxies=proxy,
             headers=dict(headers) if headers else None,
@@ -92,7 +98,9 @@ class _NetworkTestTransportAdapter:
         user_agent: Optional[str] = None,
         json_body: Optional[Mapping[str, Any]] = None,
     ) -> Optional[NetworkTestResponse]:
-        """按请求规则发送 HTTP 请求并保持证书校验与重定向关闭。"""
+        """
+        按请求规则发送 HTTP 请求并保持证书校验与重定向关闭。
+        """
         if method.upper() == "GET":
             return await self.get(
                 url,
@@ -130,10 +138,14 @@ class _NetworkTestTransportAdapter:
         user_agent: Optional[str] = None,
         timeout: float = 10,
     ) -> bool:
-        """执行一次不跟随重定向的 WSS 握手，并在线路建立后关闭连接。"""
+        """
+        执行一次不跟随重定向的 WSS 握手，并在线路建立后关闭连接。
+        """
 
         def connect() -> bool:
-            """同步建立 WebSocket 握手，供 asyncio.to_thread 调用。"""
+            """
+            同步建立 WebSocket 握手，供 asyncio.to_thread 调用。
+            """
             import websocket
 
             connection = None
@@ -162,12 +174,16 @@ class _NetworkTestTransportAdapter:
 
 
 def _read_network_test_setting(key: str, default: Any = None) -> Any:
-    """延迟读取已由组合根发布的部署设置，避免装配阶段提前取值。"""
+    """
+    延迟读取已由组合根发布的部署设置，避免装配阶段提前取值。
+    """
     return get_runtime_settings().get(key, default)
 
 
 def _list_enabled_network_module_ids() -> tuple[str, ...]:
-    """按模块运行时的当前配置投影网络相关的已启用宿主模块。"""
+    """
+    按模块运行时的当前配置投影网络相关的已启用宿主模块。
+    """
     from app.application.module import get_module_manager
 
     return tuple(spec.id for spec in get_module_manager().list_enabled_specs())
@@ -175,37 +191,54 @@ def _list_enabled_network_module_ids() -> tuple[str, ...]:
 
 @dataclass(frozen=True, slots=True)
 class _ImageResponseAdapter:
-    """保留图片响应能力，并暴露没有合并的 Set-Cookie 头供标准 CookieJar 使用。"""
+    """
+    保留图片响应能力，并暴露没有合并的 Set-Cookie 头供标准 CookieJar 使用。
+
+    :param response: 实际网络响应，在适配器关闭时释放
+    :param set_cookie_headers: 服务端原始 Set-Cookie 响应头，保留重复项
+    """
 
     response: Any
     set_cookie_headers: tuple[str, ...]
 
     @property
     def status_code(self) -> int:
-        """返回底层响应状态码。"""
+        """
+        返回底层响应状态码。
+        """
         return int(self.response.status_code)
 
     @property
     def content(self) -> bytes:
-        """返回底层响应的完整内容。"""
+        """
+        返回底层响应的完整内容。
+        """
         return cast(bytes, self.response.content)
 
     @property
     def headers(self) -> Mapping[str, str]:
-        """返回通用响应头，重复 Cookie 头由独立字段保留。"""
+        """
+        返回通用响应头，重复 Cookie 头由独立字段保留。
+        """
         return cast(Mapping[str, str], self.response.headers)
 
     def json(self) -> Any:
-        """保持壁纸 JSON 查询使用的原始解析能力。"""
+        """
+        保持壁纸 JSON 查询使用的原始解析能力。
+        """
         return self.response.json()
 
 
 class _ImageTransportAdapter:
-    """把通用 HTTP Adapter 收窄为图片应用服务的 GET 端口。"""
+    """
+    把通用 HTTP Adapter 收窄为图片应用服务的 GET 端口。
+    """
 
     @staticmethod
     def _adapt_response(response: Any) -> Optional[ImageResponsePort]:
-        """从 requests/httpx 的原始头中提取多个 Set-Cookie，不按逗号拆分到期时间。"""
+        """
+        从 requests/httpx 的原始头中提取多个 Set-Cookie，不按逗号拆分到期时间。
+        """
         if response is None:
             return None
         raw_headers = getattr(getattr(response, "raw", None), "headers", None)
@@ -225,7 +258,9 @@ class _ImageTransportAdapter:
         *,
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
-        """同步创建短生命周期请求对象并返回响应。"""
+        """
+        同步创建短生命周期请求对象并返回响应。
+        """
         request_options = dict(options)
         allow_redirects = request_options.pop("allow_redirects", True)
         cookie_header = request_options.pop("cookie_header", None)
@@ -241,7 +276,9 @@ class _ImageTransportAdapter:
         *,
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
-        """异步创建短生命周期请求对象并返回响应。"""
+        """
+        异步创建短生命周期请求对象并返回响应。
+        """
         request_options = dict(options)
         allow_redirects = request_options.pop("allow_redirects", True)
         cookie_header = request_options.pop("cookie_header", None)
@@ -253,17 +290,23 @@ class _ImageTransportAdapter:
 
 
 class _InternalAddressAdapter:
-    """把通用地址判断收窄为图片代理决策端口。"""
+    """
+    把通用地址判断收窄为图片代理决策端口。
+    """
 
     @staticmethod
     def is_internal(url: str) -> bool:
-        """委托通用 IP 工具判断 URL 是否指向内部地址。"""
+        """
+        委托通用 IP 工具判断 URL 是否指向内部地址。
+        """
         probe = cast(Callable[[str], bool], IpUtils.is_internal)
         return bool(probe(url))
 
 
 class _MessageIngressAdapter:
-    """通过通用 HTTP Adapter 投递本地消息并负责释放响应。"""
+    """
+    通过通用 HTTP Adapter 投递本地消息并负责释放响应。
+    """
 
     def post(
         self,
@@ -273,7 +316,9 @@ class _MessageIngressAdapter:
         headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
-        """同步投递消息，关闭响应后返回状态码。"""
+        """
+        同步投递消息，关闭响应后返回状态码。
+        """
         response = RequestUtils(
             timeout=timeout,  # type: ignore[arg-type]
             headers=dict(headers),
@@ -299,7 +344,9 @@ class _MessageIngressAdapter:
         headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
-        """异步投递消息，关闭响应后返回状态码。"""
+        """
+        异步投递消息，关闭响应后返回状态码。
+        """
         response = await AsyncRequestUtils(
             timeout=timeout,  # type: ignore[arg-type]
             headers=dict(headers),
@@ -319,7 +366,9 @@ class _MessageIngressAdapter:
 
 
 class _DownloadHttpAdapter:
-    """把 RequestUtils 收窄为下载链同步 HTTP 端口。"""
+    """
+    把 RequestUtils 收窄为下载链同步 HTTP 端口。
+    """
 
     @staticmethod
     def _request(
@@ -330,7 +379,9 @@ class _DownloadHttpAdapter:
         proxies: Optional[dict[str, str]],
         timeout: Optional[int],
     ) -> RequestUtils:
-        """按下载链传入的代理、认证与超时参数构造一次请求。"""
+        """
+        按下载链传入的代理、认证与超时参数构造一次请求。
+        """
         options: dict[str, Any] = {
             "cookies": cookies,
             "ua": ua,
@@ -352,7 +403,9 @@ class _DownloadHttpAdapter:
         params: Optional[dict[str, Any]] = None,
         raise_exception: bool = False,
     ) -> Optional[DownloadResponsePort]:
-        """发送下载链 GET 请求并原样保留响应三态。"""
+        """
+        发送下载链 GET 请求并原样保留响应三态。
+        """
         request = self._request(cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout)
         kwargs: dict[str, Any] = {"raise_exception": raise_exception}
         if params is not None:
@@ -371,7 +424,9 @@ class _DownloadHttpAdapter:
         timeout: Optional[int] = None,
         params: Optional[dict[str, Any]] = None,
     ) -> Optional[DownloadResponsePort]:
-        """发送下载链 POST 请求并原样保留响应三态。"""
+        """
+        发送下载链 POST 请求并原样保留响应三态。
+        """
         request = self._request(cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout)
         kwargs: dict[str, Any] = {}
         if params is not None:
@@ -381,7 +436,9 @@ class _DownloadHttpAdapter:
 
 
 class _DownloadArchiveAdapter:
-    """把 SystemUtils 收窄为下载链字幕归档端口。"""
+    """
+    把 SystemUtils 收窄为下载链字幕归档端口。
+    """
 
     def unpack(
         self,
@@ -390,25 +447,35 @@ class _DownloadArchiveAdapter:
         *,
         archive_format: Optional[str],
     ) -> None:
-        """使用宿主统一归档实现解压字幕文件。"""
+        """
+        使用宿主统一归档实现解压字幕文件。
+        """
         SystemUtils.unpack_archive(archive_file, extract_dir, archive_format=archive_format)
 
     def list_files(self, directory: Path, extensions: tuple[str, ...]) -> list[Path]:
-        """使用宿主统一文件扫描实现列出字幕文件。"""
+        """
+        使用宿主统一文件扫描实现列出字幕文件。
+        """
         return SystemUtils.list_files(directory, list(extensions))
 
 
 class _MessageHttpAdapter:
-    """把 RequestUtils 收窄为消息附件同步 GET 端口。"""
+    """
+    把 RequestUtils 收窄为消息附件同步 GET 端口。
+    """
 
     def get(self, url: str, *, timeout: int) -> Optional[MessageResponsePort]:
-        """按消息链固定超时读取附件响应。"""
+        """
+        按消息链固定超时读取附件响应。
+        """
         response = RequestUtils(timeout=timeout).get_res(url)
         return cast(Optional[MessageResponsePort], response)
 
 
 class _ScrapingHttpAdapter:
-    """把 RequestUtils 收窄为刮削链普通与流式 GET 端口。"""
+    """
+    把 RequestUtils 收窄为刮削链普通与流式 GET 端口。
+    """
 
     def get(
         self,
@@ -418,7 +485,9 @@ class _ScrapingHttpAdapter:
         ua: str,
         timeout: int,
     ) -> Optional[ScrapingResponsePort]:
-        """读取需要完整载荷的音乐封面响应。"""
+        """
+        读取需要完整载荷的音乐封面响应。
+        """
         options: dict[str, Any] = {
             "proxies": proxies,
             "ua": ua,
@@ -435,7 +504,9 @@ class _ScrapingHttpAdapter:
         proxies: Optional[dict[str, str]],
         ua: str,
     ) -> ScrapingStreamResponsePort:
-        """打开由刮削链上下文关闭的流式图片响应。"""
+        """
+        打开由刮削链上下文关闭的流式图片响应。
+        """
         options: dict[str, Any] = {
             "proxies": proxies,
             "ua": ua,
@@ -446,7 +517,9 @@ class _ScrapingHttpAdapter:
 
 
 class _SystemHttpAdapter:
-    """把 RequestUtils 收窄为系统链发布版本 GET 端口。"""
+    """
+    把 RequestUtils 收窄为系统链发布版本 GET 端口。
+    """
 
     def get(
         self,
@@ -455,22 +528,30 @@ class _SystemHttpAdapter:
         proxies: Optional[dict[str, str]],
         headers: Mapping[str, str],
     ) -> Optional[SystemResponsePort]:
-        """按系统配置的代理与 GitHub 请求头读取发布列表。"""
+        """
+        按系统配置的代理与 GitHub 请求头读取发布列表。
+        """
         options: dict[str, Any] = {"proxies": proxies, "headers": dict(headers)}
         response = RequestUtils(**options).get_res(url)
         return cast(Optional[SystemResponsePort], response)
 
 
 class _SystemEnvironmentAdapter:
-    """把 SystemUtils 收窄为系统链容器环境判断端口。"""
+    """
+    把 SystemUtils 收窄为系统链容器环境判断端口。
+    """
 
     def is_docker(self) -> bool:
-        """返回宿主统一环境探针的 Docker 判断。"""
+        """
+        返回宿主统一环境探针的 Docker 判断。
+        """
         return bool(SystemUtils.is_docker())
 
 
 def configure_application_network_ports() -> None:
-    """装配网络探测、图片读取、内部地址判断和消息回环传输端口。"""
+    """
+    装配网络探测、图片读取、内部地址判断和消息回环传输端口。
+    """
     network_test_transport: NetworkTestTransport = _NetworkTestTransportAdapter()
     image_transport: ImageTransport = _ImageTransportAdapter()
     internal_address: InternalAddressPort = _InternalAddressAdapter()
@@ -491,14 +572,18 @@ def configure_application_network_ports() -> None:
 
 
 def reset_application_network_ports() -> None:
-    """按发布逆序撤销消息回环、图片与网络探测应用端口。"""
+    """
+    按发布逆序撤销消息回环、图片与网络探测应用端口。
+    """
     reset_message_ingress_port()
     reset_image_ports()
     reset_network_test_service()
 
 
 def configure_chain_network_composition() -> None:
-    """原子装配四个 Chain 的同步网络与系统技术端口。"""
+    """
+    原子装配四个 Chain 的同步网络与系统技术端口。
+    """
     reset_chain_network_composition()
     try:
         configure_download_ports(
@@ -517,7 +602,9 @@ def configure_chain_network_composition() -> None:
 
 
 def reset_chain_network_composition() -> None:
-    """清除四个 Chain 的技术端口，支持重复 lifespan 与失败回滚。"""
+    """
+    清除四个 Chain 的技术端口，支持重复 lifespan 与失败回滚。
+    """
     reset_system_ports()
     reset_scraping_http_port()
     reset_message_http_port()
@@ -525,17 +612,23 @@ def reset_chain_network_composition() -> None:
 
 
 def configure_doh_composition() -> None:
-    """由组合根物化进程唯一的 DoH 技术 Adapter。"""
+    """
+    由组合根物化进程唯一的 DoH 技术 Adapter。
+    """
     DohHelper()
 
 
 def get_existing_doh_composition() -> object | None:
-    """返回已由组合根物化的 DoH Adapter，不触发资源创建。"""
+    """
+    返回已由组合根物化的 DoH Adapter，不触发资源创建。
+    """
     return cast(Optional[DohHelper], DohHelper.get_existing_instance())
 
 
 def stop_doh_composition() -> bool:
-    """关闭已存在的 DoH Adapter，停机阶段不得反向物化实例。"""
+    """
+    关闭已存在的 DoH Adapter，停机阶段不得反向物化实例。
+    """
     helper = DohHelper.get_existing_instance()
     if helper is None:
         return True

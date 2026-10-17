@@ -1,4 +1,6 @@
-"""Agent 图缓存行为测试。"""
+"""
+Agent 图缓存行为测试。
+"""
 
 from contextlib import ExitStack
 from datetime import datetime, timedelta
@@ -28,13 +30,17 @@ from app.schemas.agent import AgentMcpServerConfig
 
 @pytest.fixture
 def anyio_backend():
-    """使用 asyncio 后端运行 anyio 异步测试。"""
+    """
+    使用 asyncio 后端运行 anyio 异步测试。
+    """
     return "asyncio"
 
 
 @pytest.mark.parametrize("with_invocations", [False, True])
 def test_internal_graph_tools_do_not_enter_external_mcp_catalog(with_invocations):
-    """内部计划、结果续读和回执查询只属于会话图，不进入 HTTP/MCP 工具目录。"""
+    """
+    内部计划、结果续读和回执查询只属于会话图，不进入 HTTP/MCP 工具目录。
+    """
     data = SimpleNamespace(invocations=object()) if with_invocations else None
     with (
         patch("app.agent.tools.factory._get_plugin_agent_tools", return_value=[]),
@@ -54,32 +60,46 @@ def test_internal_graph_tools_do_not_enter_external_mcp_catalog(with_invocations
 
 
 class _FakeGraphState:
-    """提供 LangGraph get_state 测试替身。"""
+    """
+    提供 LangGraph get_state 测试替身。
+    """
 
     def __init__(self, messages):
-        """保存测试消息状态。"""
+        """
+        保存测试消息状态。
+        """
         self.values = {"messages": messages}
 
 
 class _CapturingAgent:
-    """捕获传入消息的非流式 Agent 测试替身。"""
+    """
+    捕获传入消息的非流式 Agent 测试替身。
+    """
 
     def __init__(self):
-        """初始化捕获容器。"""
+        """
+        初始化捕获容器。
+        """
         self.payload = None
 
     async def ainvoke(self, payload, config=None):
-        """记录 Agent 调用输入。"""
+        """
+        记录 Agent 调用输入。
+        """
         self.payload = payload
 
     def get_state(self, _config):
-        """返回包含最终 AI 回复的图状态。"""
+        """
+        返回包含最终 AI 回复的图状态。
+        """
         return _FakeGraphState([AIMessage(content="ok")])
 
 
 @pytest.mark.anyio
 async def test_create_agent_reuses_cached_graph_when_signature_matches():
-    """构造签名一致时应直接复用已编译 Agent 图。"""
+    """
+    构造签名一致时应直接复用已编译 Agent 图。
+    """
     cached_graph = object()
     catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     agent = MoviePilotAgent(session_id="cache-hit", user_id="user-1")
@@ -120,7 +140,9 @@ async def test_create_agent_reuses_cached_graph_when_signature_matches():
 
 @pytest.mark.anyio
 async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
-    """目录仍在 freshness 窗口内时，缓存命中不得重建工具或访问 MCP。"""
+    """
+    目录仍在 freshness 窗口内时，缓存命中不得重建工具或访问 MCP。
+    """
     cached_graph = object()
     catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     agent = MoviePilotAgent(session_id="catalog-cache-hit", user_id="user-1")
@@ -168,7 +190,9 @@ async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
 
 @pytest.mark.anyio
 async def test_expired_unchanged_catalog_renews_freshness() -> None:
-    """过期目录复核后若签名未变，应续期缓存而不是每轮重复 discovery。"""
+    """
+    过期目录复核后若签名未变，应续期缓存而不是每轮重复 discovery。
+    """
     cached_graph = object()
     catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     expired_at = datetime.now() - timedelta(minutes=5)
@@ -267,7 +291,9 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
 
 @pytest.mark.anyio
 async def test_create_agent_cancellation_closes_temporary_subagent_middleware() -> None:
-    """构图取消时必须释放尚未被缓存接管的子代理控制器。"""
+    """
+    构图取消时必须释放尚未被缓存接管的子代理控制器。
+    """
     catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     fake_llm = SimpleNamespace(
         _llm_type="openai-chat",
@@ -281,7 +307,9 @@ async def test_create_agent_cancellation_closes_temporary_subagent_middleware() 
     agent = MoviePilotAgent(session_id="cancel-create", user_id="user-1")
 
     async def _wait_for_signature(*_args, **_kwargs):
-        """在模型和临时中间件创建后暂停，验证构图取消的清理顺序。"""
+        """
+        在模型和临时中间件创建后暂停，验证构图取消的清理顺序。
+        """
         signature_started.set()
         await __import__("asyncio").Future()
 
@@ -366,7 +394,9 @@ async def test_create_agent_cancellation_closes_temporary_subagent_middleware() 
 
 @pytest.mark.anyio
 async def test_agent_bundle_signature_changes_with_temperature(monkeypatch) -> None:
-    """温度配置变化时应使会话内 Agent 图缓存失效。"""
+    """
+    温度配置变化时应使会话内 Agent 图缓存失效。
+    """
     agent = MoviePilotAgent(session_id="temperature-change", user_id="user-1")
     runtime_config = {
         "provider": "openai",
@@ -395,7 +425,9 @@ async def test_agent_bundle_signature_changes_with_temperature(monkeypatch) -> N
 
 @pytest.mark.anyio
 async def test_agent_bundle_signature_changes_with_context_cap(monkeypatch) -> None:
-    """有效窗口配置变化时应使会话内 Agent 图缓存失效。"""
+    """
+    有效窗口配置变化时应使会话内 Agent 图缓存失效。
+    """
     agent = MoviePilotAgent(session_id="context-cap-change", user_id="user-1")
     runtime_config = {
         "provider": "openai",
@@ -419,7 +451,9 @@ async def test_agent_bundle_signature_changes_with_context_cap(monkeypatch) -> N
 
 @pytest.mark.anyio
 async def test_agent_bundle_signature_changes_with_tool_catalog() -> None:
-    """工具目录 revision 必须参与会话内 Agent 图缓存签名。"""
+    """
+    工具目录 revision 必须参与会话内 Agent 图缓存签名。
+    """
     agent = MoviePilotAgent(session_id="tool-revision", user_id="user-1")
     runtime_config = {"provider": "openai", "model": "gpt-test"}
     first_catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=1, factory_revision="factory-v1")
@@ -449,7 +483,9 @@ async def test_agent_bundle_signature_changes_with_tool_catalog() -> None:
 async def test_graph_rejects_mcp_and_skill_name_collisions(
     max_tools: int,
 ) -> None:
-    """主图和子图都必须在编译前拒绝同名 MCP/Skill 身份。"""
+    """
+    主图和子图都必须在编译前拒绝同名 MCP/Skill 身份。
+    """
     servers = [
         AgentMcpServerConfig(
             id=server_id,
@@ -634,7 +670,9 @@ async def test_graph_rejects_mcp_and_skill_name_collisions(
 
 @pytest.mark.anyio
 async def test_execute_agent_sends_only_latest_message_on_cache_hit():
-    """缓存命中时只把本轮新消息交给 LangGraph，避免重复提交历史。"""
+    """
+    缓存命中时只把本轮新消息交给 LangGraph，避免重复提交历史。
+    """
     fake_graph = _CapturingAgent()
     agent = MoviePilotAgent(session_id="cache-hit", user_id="user-1")
     agent.reply_mode = ReplyMode.CAPTURE_ONLY
@@ -644,7 +682,9 @@ async def test_execute_agent_sends_only_latest_message_on_cache_hit():
     agent.stream_handler = SimpleNamespace(stop_streaming=AsyncMock(return_value=(False, "")))
 
     async def _create_agent(streaming=False):
-        """模拟缓存命中后的 Agent 创建结果。"""
+        """
+        模拟缓存命中后的 Agent 创建结果。
+        """
         agent._last_agent_cache_hit = True
         return fake_graph
 

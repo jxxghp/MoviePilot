@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""
+提供本地安装、初始化、资源更新、自启注册和卸载命令。
+
+脚本按当前配置目录管理运行环境，交互向导只在真实终端收集凭据与选择。
+导入时会解析配置目录并探测可用 Python；命令执行时才进行对应安装或配置操作。
+"""
 
 from __future__ import annotations
 
@@ -33,11 +39,14 @@ PUBLIC_DIR = ROOT / "public"
 RUNTIME_DIR = ROOT / ".runtime"
 NODE_DIR = RUNTIME_DIR / "node"
 INSTALL_ENV_FILE = ROOT / ".moviepilot.env"
+# 运行源码采用 Python 3.14 特性，本地安装不接受更低解释器版本。
 MIN_PYTHON_VERSION = (3, 14)
 SUPPORTED_PYTHON_TEXT = "Python 3.14+"
+# 安装流程要求支持当前锁文件与依赖同步选项的 uv 最低版本。
 MIN_UV_VERSION = (0, 12, 5)
 MIN_UV_VERSION_TEXT = ".".join(str(part) for part in MIN_UV_VERSION)
 
+# 导入时先使用旧目录占位，随后由 configure_config_dir 按优先级统一切换。
 CONFIG_DIR = LEGACY_CONFIG_DIR
 LOG_DIR = CONFIG_DIR / "logs"
 CACHE_DIR = CONFIG_DIR / "cache"
@@ -56,6 +65,7 @@ RESOURCES_MAIN_ZIP = (
     "https://github.com/jxxghp/MoviePilot-Resources/archive/refs/heads/main.zip"
 )
 RESOURCE_VERSION_FLAG = "v3"
+# 提供商目录不可用时仍能提供常用平台的初始化默认值，不代替运行时能力目录。
 LLM_PROVIDER_DEFAULTS = {
     "deepseek": {
         "model": "deepseek-chat",
@@ -124,6 +134,7 @@ LLM_PROVIDER_FALLBACK_CHOICES = {
     "china-telecom": "中国电信",
     "kuaishou-wanqing": "快手万擎",
 }
+# 独立前端服务所需的最小 npm 包清单，用于本地静态页面和后端代理。
 RUNTIME_PACKAGE = {
     "name": "moviepilot-frontend-runtime",
     "private": True,
@@ -136,6 +147,9 @@ RUNTIME_PACKAGE = {
 
 
 def _repo_frontend_version() -> str:
+    """
+    独立加载仓库版本文件，读取与当前后端配套的前端版本。
+    """
     version_file = ROOT / "version.py"
     module_name = f"moviepilot_version_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, version_file)
@@ -150,6 +164,7 @@ def _repo_frontend_version() -> str:
     return frontend_version
 
 
+# 生成给本地 Node 运行时的前端服务源码，兼容普通请求、流式响应与连接升级。
 LOCAL_FRONTEND_SERVICE_SCRIPT = textwrap.dedent(
     """
     const http = require('node:http')
@@ -338,13 +353,16 @@ NOTIFICATION_SWITCH_TYPES = [
     "智能体",
     "其它",
 ]
+# 卸载第二次确认必须逐字输入此标记，普通回车不能确认删除。
 UNINSTALL_CONFIRM_TEXT = "UNINSTALL"
 RESOURCE_FILE_PATTERNS = ("sites*", "user.sites*.bin")
 AUTOSTART_ENV_KEY = "MOVIEPILOT_AUTO_START"
 AUTOSTART_RUNTIME_DIR = RUNTIME_DIR / "startup"
 AUTOSTART_UNIX_LAUNCHER = AUTOSTART_RUNTIME_DIR / "moviepilot-start.sh"
 AUTOSTART_WINDOWS_LAUNCHER = AUTOSTART_RUNTIME_DIR / "moviepilot-start.cmd"
+# 自启命令等待本地服务就绪的最长秒数。
 AUTOSTART_TIMEOUT = 120
+# 用户级 systemd 启动失败后的重试间隔，单位为秒。
 LINUX_SYSTEMD_RESTART_DELAY = 10
 MACOS_LAUNCH_AGENT_LABEL = "org.moviepilot.localcli"
 LINUX_SYSTEMD_UNIT_NAME = "moviepilot-autostart.service"
@@ -361,6 +379,9 @@ def _default_config_dir() -> Path:
 
 
 def _legacy_runtime_config_exists() -> bool:
+    """
+    通过环境文件、数据库或运行目录判断旧配置目录是否包含用户状态。
+    """
     markers = [
         LEGACY_CONFIG_DIR / "app.env",
         LEGACY_CONFIG_DIR / "user.db",
@@ -389,6 +410,9 @@ def _read_install_env_config_dir() -> Optional[Path]:
 
 
 def _set_config_dir(config_dir: Path) -> Path:
+    """
+    统一切换模块内配置派生路径，并同步当前进程的 CONFIG_DIR 环境变量。
+    """
     global CONFIG_DIR, LOG_DIR, CACHE_DIR, TEMP_DIR, COOKIE_DIR, ENV_FILE
 
     CONFIG_DIR = config_dir.expanduser().resolve()
@@ -402,6 +426,9 @@ def _set_config_dir(config_dir: Path) -> Path:
 
 
 def _write_install_env(config_dir: Path) -> None:
+    """
+    把配置目录的绝对路径覆盖写入安装元数据，按 shell 规则转义路径。
+    """
     INSTALL_ENV_FILE.write_text(
         f"CONFIG_DIR={shlex.quote(str(config_dir.expanduser().resolve()))}\n",
         encoding="utf-8",
@@ -409,6 +436,9 @@ def _write_install_env(config_dir: Path) -> None:
 
 
 def _seed_default_config_files(target_dir: Path) -> None:
+    """
+    仅在目标缺失时复制仓库自带分类配置，保留已有用户配置。
+    """
     for name in ("category.yaml",):
         source = LEGACY_CONFIG_DIR / name
         target = target_dir / name
@@ -418,7 +448,9 @@ def _seed_default_config_files(target_dir: Path) -> None:
 
 
 def _migrate_legacy_config_if_needed(target_dir: Path) -> None:
-    """补充目标目录缺失的旧配置，仅在实际复制后提示迁移成功。"""
+    """
+    补充目标目录缺失的旧配置，仅在实际复制后提示迁移成功。
+    """
     target_dir = target_dir.expanduser().resolve()
     if target_dir == LEGACY_CONFIG_DIR.resolve():
         return
@@ -447,6 +479,16 @@ def configure_config_dir(
     persist: bool = False,
     prefer_external: bool = False,
 ) -> Path:
+    """
+    选择本次命令的配置目录，并同步模块路径与 CONFIG_DIR 环境变量。
+
+    优先使用显式路径、环境变量和安装元数据，再选择外部默认目录或旧目录。
+
+    :param explicit: 显式指定的配置目录；为 None 时按既有配置解析
+    :param persist: 是否把选定目录写入仓库安装元数据文件
+    :param prefer_external: 是否优先外部默认目录，并补迁旧目录中目标尚缺失的文件
+    :return: 展开用户目录并解析后的绝对配置路径
+    """
     if explicit:
         config_dir = explicit.expanduser().resolve()
     elif os.getenv("CONFIG_DIR"):
@@ -499,6 +541,9 @@ configure_config_dir()
 
 
 def print_step(message: str) -> None:
+    """
+    以统一前缀输出安装步骤或处理结果。
+    """
     print(f"==> {message}")
 
 
@@ -513,6 +558,11 @@ def _redact_url(value: str) -> str:
 
 
 def redact_command(command: list[str]) -> list[str]:
+    """
+    移除命令参数中 URL 的用户名与密码，返回用于显示的新参数列表。
+
+    支持独立 URL 和 key=URL 形式，不修改原始命令，也不处理普通文本中的秘密值。
+    """
     redacted: list[str] = []
     for item in command:
         value = str(item)
@@ -528,6 +578,13 @@ def redact_command(command: list[str]) -> list[str]:
 
 
 def build_package_install_env() -> dict[str, str]:
+    """
+    构造依赖安装子进程的缓存、镜像和代理环境，不修改父进程环境。
+
+    沿用已有缓存路径；配置 PIP_PROXY 时设置 uv 镜像，配置 PROXY_HOST 时覆盖四种代理键。
+
+    :return: 供安装命令独立使用的完整环境副本
+    """
     env = os.environ.copy()
     package_cache_root = env.get("PACKAGE_CACHE_ROOT", "").strip() or str(CONFIG_DIR / ".cache")
     env.setdefault("PACKAGE_CACHE_ROOT", package_cache_root)
@@ -559,14 +616,31 @@ def run(
 
 
 def capture(command: list[str], cwd: Optional[Path] = None) -> str:
+    """
+    在指定目录执行外部命令，返回去除首尾空白的标准输出。
+
+    :param command: 直接传递给子进程的参数列表，不经 shell 解析
+    :param cwd: 执行目录；为 None 时使用仓库根目录
+    :raises subprocess.CalledProcessError: 命令以非零状态退出
+    """
     return subprocess.check_output(command, cwd=str(cwd or ROOT), text=True).strip()
 
 
 def command_exists(name: str) -> bool:
+    """
+    检查当前 PATH 中能否找到指定命令。
+    """
     return shutil.which(name) is not None
 
 
 def get_python_version(python_bin: str) -> tuple[int, int, int]:
+    """
+    启动指定解释器并读取主、次和补丁版本号。
+
+    :param python_bin: 可执行路径或可从 PATH 解析的解释器命令
+    :return: 用于最低版本比较的三段版本号
+    :raises RuntimeError: 解释器输出不包含完整版本数组
+    """
     version_json = capture(
         [
             python_bin,
@@ -581,6 +655,11 @@ def get_python_version(python_bin: str) -> tuple[int, int, int]:
 
 
 def discover_supported_python() -> Optional[str]:
+    """
+    依次探测版本化命令、当前解释器和通用命令，返回首个满足最低版本的路径。
+
+    :return: 可用解释器路径；没有匹配项时返回 None
+    """
     candidates = [
         f"python3.{minor}" for minor in range(20, MIN_PYTHON_VERSION[1] - 1, -1)
     ]
@@ -613,19 +692,27 @@ DEFAULT_BOOTSTRAP_PYTHON = discover_supported_python() or sys.executable
 
 
 def get_venv_python(venv_dir: Path) -> Path:
+    """
+    按当前平台返回虚拟环境内的解释器路径，不检查文件是否存在。
+    """
     if os.name == "nt":
         return venv_dir / "Scripts" / "python.exe"
     return venv_dir / "bin" / "python"
 
 
 def get_venv_bin_dir(venv_dir: Path) -> Path:
+    """
+    按当前平台返回虚拟环境的可执行目录，不创建目录。
+    """
     if os.name == "nt":
         return venv_dir / "Scripts"
     return venv_dir / "bin"
 
 
 def parse_uv_version(output: str) -> tuple[int, int, int] | None:
-    """从 uv 版本输出中提取稳定版三段版本号。"""
+    """
+    从 uv 版本输出中提取稳定版三段版本号。
+    """
     match = re.match(r"^uv\s+(\d+)\.(\d+)\.(\d+)(?:\s|$)", output.strip())
     if not match:
         return None
@@ -633,7 +720,9 @@ def parse_uv_version(output: str) -> tuple[int, int, int] | None:
 
 
 def require_uv() -> Path:
-    """返回满足仓库最低版本要求的 uv。"""
+    """
+    返回满足仓库最低版本要求的 uv。
+    """
     uv_command = shutil.which("uv")
     if not uv_command:
         raise RuntimeError(
@@ -650,7 +739,9 @@ def require_uv() -> Path:
 
 
 def expose_uv_to_venv(uv_bin: Path, venv_dir: Path) -> Path:
-    """让运行时能从虚拟环境旁定位同一 uv 二进制。"""
+    """
+    让运行时能从虚拟环境旁定位同一 uv 二进制。
+    """
     venv_bin = get_venv_bin_dir(venv_dir)
     runtime_uv = venv_bin / ("uv.exe" if os.name == "nt" else "uv")
     venv_bin.mkdir(parents=True, exist_ok=True)
@@ -666,6 +757,9 @@ def expose_uv_to_venv(uv_bin: Path, venv_dir: Path) -> Path:
 
 
 def ensure_supported_python(python_bin: str) -> None:
+    """
+    确认指定解释器达到本地安装最低版本，版本过低时抛出 RuntimeError。
+    """
     version = get_python_version(python_bin)
     if version < MIN_PYTHON_VERSION:
         raise RuntimeError(
@@ -675,12 +769,17 @@ def ensure_supported_python(python_bin: str) -> None:
 
 
 def resolve_python_path(python_bin: str) -> Path:
-    """解析解释器命令，优先按 PATH 找到实际执行文件。"""
+    """
+    解析解释器命令，优先按 PATH 找到实际执行文件。
+    """
     resolved = shutil.which(python_bin)
     return Path(resolved or python_bin).expanduser().resolve()
 
 
 def ensure_local_dirs() -> None:
+    """
+    创建当前配置和运行目录，并补充尚不存在的默认分类配置。
+    """
     for path in (CONFIG_DIR, LOG_DIR, CACHE_DIR, TEMP_DIR, COOKIE_DIR, RUNTIME_DIR):
         path.mkdir(parents=True, exist_ok=True)
     _seed_default_config_files(CONFIG_DIR)
@@ -701,6 +800,11 @@ def _serialize_env_value(value: Any) -> str:
 
 
 def read_env_value(key: str) -> Optional[str]:
+    """
+    读取 app.env 中首个匹配键，去除首尾空白与引号。
+
+    :return: 配置文本；文件不存在或键缺失时返回 None，不解析变量引用
+    """
     for line in _load_env_lines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in line:
@@ -712,6 +816,12 @@ def read_env_value(key: str) -> Optional[str]:
 
 
 def write_env_value(key: str, value: str) -> None:
+    """
+    替换 app.env 中首个同名配置，缺失时追加，同时保留其他行。
+
+    :param key: 要写入的环境配置键
+    :param value: 按统一序列化规则写入的配置值；写入前会确保本地目录存在
+    """
     ensure_local_dirs()
     lines = _load_env_lines()
     new_line = f"{key}={_serialize_env_value(value)}\n"
@@ -733,11 +843,22 @@ def write_env_value(key: str, value: str) -> None:
 
 
 def write_env_values(values: dict[str, Any]) -> None:
+    """
+    按映射顺序逐项更新 app.env；每项单独写入，不提供跨项原子性。
+    """
     for key, value in values.items():
         write_env_value(key, value)
 
 
 def ensure_api_token(force_token: bool = False, token: Optional[str] = None) -> str:
+    """
+    保留有效令牌，或按显式输入与强制更新选项写入新的 API_TOKEN。
+
+    :param force_token: 未显式传入令牌时，是否替换已有有效令牌
+    :param token: 用户指定的令牌；为 None 时保留或自动生成
+    :return: 最终保存或沿用的令牌
+    :raises ValueError: 显式令牌去除首尾空白后不足 16 个字符
+    """
     ensure_local_dirs()
     current_token = read_env_value("API_TOKEN") or ""
     if token is not None:
@@ -759,6 +880,9 @@ def ensure_api_token(force_token: bool = False, token: Optional[str] = None) -> 
 
 
 def _download_to_stdout(url: str) -> str:
+    """
+    优先通过 curl、其次 wget 读取远程文本；均不可用时报告错误。
+    """
     headers = [
         "-H",
         "Accept: application/vnd.github+json",
@@ -781,6 +905,13 @@ def _download_to_stdout(url: str) -> str:
 
 
 def download_file(url: str, target: Path) -> None:
+    """
+    通过 curl 或 wget 下载文件到目标路径，并创建父目录。
+
+    :param url: 下载地址
+    :param target: 下载输出路径，已有文件会被下载工具覆盖
+    :raises RuntimeError: 两种下载工具均不可用
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
     if command_exists("curl"):
         run(["curl", "-fsSL", url, "-o", str(target)])
@@ -792,6 +923,13 @@ def download_file(url: str, target: Path) -> None:
 
 
 def fetch_json(url: str) -> dict[str, Any]:
+    """
+    获取远程 JSON 对象，并拒绝无效响应及 GitHub 频率限制错误。
+
+    :param url: JSON 接口地址
+    :return: 已解析的对象
+    :raises RuntimeError: 无下载工具、响应无法解析、响应不是对象或包含频率限制错误
+    """
     payload = _download_to_stdout(url)
     try:
         data = json.loads(payload)
@@ -810,6 +948,11 @@ def fetch_json(url: str) -> dict[str, Any]:
 
 
 def extract_archive(archive_path: Path, target_dir: Path) -> None:
+    """
+    将 ZIP 或可识别的 TAR 压缩包解压到目标目录。
+
+    TAR 在 Python 3.12 及以上使用 data 过滤器；压缩包或文件操作错误向调用方传播。
+    """
     target_dir.mkdir(parents=True, exist_ok=True)
     if archive_path.suffix == ".zip":
         with zipfile.ZipFile(archive_path) as zip_file:
@@ -823,6 +966,9 @@ def extract_archive(archive_path: Path, target_dir: Path) -> None:
 
 
 def _remove_path(path: Path) -> None:
+    """
+    删除文件或软链接，目录则递归删除；不存在的路径直接忽略。
+    """
     if not path.exists():
         return
     if path.is_symlink() or path.is_file():
@@ -832,6 +978,9 @@ def _remove_path(path: Path) -> None:
 
 
 def _resolve_frontend_release(frontend_version: str) -> tuple[str, str]:
+    """
+    解析指定或配套的前端版本，返回发行标签及资源下载地址。
+    """
     frontend_version = (frontend_version or "").strip() or _repo_frontend_version()
     if frontend_version == "latest":
         release = fetch_json(FRONTEND_LATEST_API)
@@ -849,6 +998,9 @@ def _resolve_frontend_release(frontend_version: str) -> tuple[str, str]:
 
 
 def _frontend_runtime_ready(frontend_version: str) -> bool:
+    """
+    检查前端运行文件齐全且已安装版本匹配指定标签。
+    """
     version_file = PUBLIC_DIR / "version.txt"
     if not version_file.exists() or not (PUBLIC_DIR / "service.js").exists():
         return False
@@ -871,6 +1023,9 @@ def _write_local_frontend_service_script(target_dir: Path) -> None:
 
 
 def _node_platform() -> tuple[str, str]:
+    """
+    把当前系统和架构映射为 Node 官方发布标识及压缩格式。
+    """
     system_name = platform.system().lower()
     machine = platform.machine().lower()
 
@@ -891,18 +1046,31 @@ def _node_platform() -> tuple[str, str]:
 
 
 def get_node_bin(node_dir: Path = NODE_DIR) -> Path:
+    """
+    按当前平台返回受管 Node 运行时的可执行路径，不检查文件是否存在。
+    """
     if os.name == "nt":
         return node_dir / "node.exe"
     return node_dir / "bin" / "node"
 
 
 def get_npm_bin(node_dir: Path = NODE_DIR) -> Path:
+    """
+    按当前平台返回受管 npm 命令路径，不检查文件是否存在。
+    """
     if os.name == "nt":
         return node_dir / "npm.cmd"
     return node_dir / "bin" / "npm"
 
 
 def install_node_runtime(node_version: str) -> Path:
+    """
+    复用匹配版本的受管 Node，否则下载并替换运行时目录。
+
+    :param node_version: 不带 v 前缀的目标 Node 版本号
+    :return: 已安装的 Node 可执行文件路径
+    :raises RuntimeError: 平台不支持自动安装，或解压后未找到预期运行文件
+    """
     node_bin = get_node_bin()
     if node_bin.exists():
         try:
@@ -944,7 +1112,9 @@ def install_frontend(
     *,
     force: bool = False,
 ) -> dict[str, str]:
-    """安装前端发布包；DEV 更新强制替换同版本重新打包的制品。"""
+    """
+    安装前端发布包；DEV 更新强制替换同版本重新打包的制品。
+    """
     if archive:
         version_tag = (frontend_version or "").strip()
         if not version_tag:
@@ -1015,6 +1185,9 @@ def install_frontend(
 
 
 def local_resource_status() -> bool:
+    """
+    检查当前平台和 Python 版本所需的全部站点资源文件是否存在。
+    """
     platform_tag, machine = _get_platform_tag()
     required_files = _get_runtime_resource_filenames(
         platform_tag,
@@ -1025,6 +1198,14 @@ def local_resource_status() -> bool:
 
 
 def copy_resource_files(source_dir: Path) -> list[str]:
+    """
+    完整验证并替换当前运行时所需资源，随后移除其他版本的站点扩展。
+
+    :param source_dir: 包含 v3 站点数据和匹配原生扩展的资源目录
+    :return: 本次选中并同步的资源文件名
+    :raises FileNotFoundError: 源资源目录不存在
+    :raises RuntimeError: 缺少当前平台与 Python 版本必需的资源
+    """
     if not source_dir.is_dir():
         raise FileNotFoundError(f"资源目录不存在：{source_dir}")
 
@@ -1053,7 +1234,9 @@ def copy_resource_files(source_dir: Path) -> list[str]:
 
 
 def _replace_resource_files(selected: list[Path]) -> None:
-    """完整暂存运行资源，并在替换失败时恢复原目标文件。"""
+    """
+    完整暂存运行资源，并在替换失败时恢复原目标文件。
+    """
     with TemporaryDirectory(prefix=".sites-sync-", dir=SITE_RESOURCE_DIR) as temp_dir:
         transaction_dir = Path(temp_dir)
         staging_dir = transaction_dir / "staging"
@@ -1085,6 +1268,9 @@ def _replace_resource_files(selected: list[Path]) -> None:
 
 
 def _get_platform_tag() -> tuple[str, str]:
+    """
+    归一当前系统与处理器架构，用于匹配站点原生资源文件。
+    """
     system = platform.system().lower()
     machine = platform.machine().lower()
     if system == "darwin":
@@ -1103,6 +1289,9 @@ def _get_platform_tag() -> tuple[str, str]:
 
 
 def _get_python_version_tag() -> str:
+    """
+    生成站点原生扩展文件使用的 Python 主次版本标记。
+    """
     version = sys.version_info
     free_threaded = "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""
     return f"cp{version.major}{version.minor}{free_threaded}"
@@ -1113,7 +1302,9 @@ def _get_runtime_resource_filenames(
     machine: str,
     python_version: str,
 ) -> tuple[str, str]:
-    """返回当前解释器、系统和架构唯一对应的 V3 资源文件名。"""
+    """
+    返回当前解释器、系统和架构唯一对应的 V3 资源文件名。
+    """
     python_tag = python_version.removeprefix("cp")
     data_filename = f"user.sites.{RESOURCE_VERSION_FLAG}.bin"
     if platform_tag == "windows":
@@ -1133,7 +1324,9 @@ def _filter_resources_files(
     machine: str,
     python_version: str,
 ) -> list[Path]:
-    """筛选 V3 资源中与当前 Python 平台匹配的运行文件。"""
+    """
+    筛选 V3 资源中与当前 Python 平台匹配的运行文件。
+    """
     filenames = _get_runtime_resource_filenames(
         platform_tag,
         machine,
@@ -1152,7 +1345,9 @@ def _require_runtime_resource_files(
     machine: str,
     python_version: str,
 ) -> list[Path]:
-    """返回完整运行资源；缺少数据包或原生扩展时拒绝部分同步。"""
+    """
+    返回完整运行资源；缺少数据包或原生扩展时拒绝部分同步。
+    """
     required_names = _get_runtime_resource_filenames(
         platform_tag,
         machine,
@@ -1173,6 +1368,11 @@ def _require_runtime_resource_files(
 
 
 def _download_resources_dir() -> Path:
+    """
+    下载资源包并筛选当前运行平台文件，复制到配置临时目录后返回。
+
+    筛选通过后替换旧暂存目录，使返回路径在下载临时目录回收后仍可读取。
+    """
     with TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         archive_path = temp_path / "resources.zip"
@@ -1217,6 +1417,12 @@ def _download_resources_dir() -> Path:
 def _resolve_local_resource_dir(
     resources_repo: Optional[Path], resource_dir: Optional[Path]
 ) -> Optional[Path]:
+    """
+    优先解析直接资源目录，再检查本地仓库的约定 v3 子目录。
+
+    :return: 已存在的资源目录；两种来源均未指定时返回 None
+    :raises FileNotFoundError: 显式指定的来源没有可用资源目录
+    """
     if resource_dir:
         resolved = resource_dir.expanduser().resolve()
         if resolved.is_dir():
@@ -1240,6 +1446,13 @@ def _resolve_local_resource_dir(
 def install_resources(
     resources_repo: Optional[Path], resource_dir: Optional[Path]
 ) -> list[str]:
+    """
+    优先从指定本地目录安装资源，未指定时下载远程资源包。
+
+    :param resources_repo: 本地资源仓库，可从约定子目录定位 v3 资源
+    :param resource_dir: 直接指定资源目录，优先于 resources_repo
+    :return: 同步至站点资源目录的文件名列表
+    """
     ensure_local_dirs()
     source_dir = _resolve_local_resource_dir(resources_repo, resource_dir)
     if source_dir is None:
@@ -1288,6 +1501,9 @@ def _prompt_text(
     allow_empty: bool = False,
     secret: bool = False,
 ) -> str:
+    """
+    读取去除首尾空白的终端文本，按默认值、秘密输入和空值选项处理。
+    """
     while True:
         suffix = f" [{default}]" if default not in (None, "") and not secret else ""
         prompt = f"{label}{suffix}: "
@@ -1310,6 +1526,9 @@ def _prompt_secret_text(
     allow_empty: bool = False,
     required: bool = False,
 ) -> str:
+    """
+    无回显读取秘密值，留空优先保留已有值；必填且无已有值时继续提示。
+    """
     while True:
         suffix = " [留空保持现有值]" if current_value not in (None, "") else ""
         prompt = f"{label}{suffix}: "
@@ -1327,6 +1546,9 @@ def _prompt_secret_text(
 
 
 def _prompt_yes_no(label: str, default: bool = True) -> bool:
+    """
+    读取确认选择，空输入使用默认值，不识别的输入继续提示。
+    """
     suffix = "Y/n" if default else "y/N"
     while True:
         raw = input(f"{label} [{suffix}]: ").strip().lower()
@@ -1340,6 +1562,9 @@ def _prompt_yes_no(label: str, default: bool = True) -> bool:
 
 
 def _prompt_choice(label: str, choices: dict[str, str], default: str) -> str:
+    """
+    从固定选项读取规范键，忽略大小写、下划线和连字符差异。
+    """
     labels = []
     normalized_map: dict[str, str] = {}
     for key, desc in choices.items():
@@ -1357,6 +1582,9 @@ def _prompt_choice(label: str, choices: dict[str, str], default: str) -> str:
 
 
 def _prompt_provider_choice(label: str, choices: dict[str, str], default: str) -> str:
+    """
+    展示常用提供商并接受合法的自定义标识，未输入时使用默认值。
+    """
     labels = []
     normalized_map: dict[str, str] = {}
     for key, desc in choices.items():
@@ -1385,7 +1613,9 @@ def _prompt_provider_choice(label: str, choices: dict[str, str], default: str) -
 
 
 def _load_llm_provider_module():
-    """确保本地安装脚本可按应用包路径加载 LLM provider。"""
+    """
+    确保本地安装脚本可按应用包路径加载 LLM provider。
+    """
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
@@ -1401,6 +1631,9 @@ def _load_llm_provider_module():
 
 
 def _load_llm_provider_definitions_inner() -> list[dict[str, Any]]:
+    """
+    从当前可加载的提供商管理器读取目录定义。
+    """
     provider_module = _load_llm_provider_module()
     providers = asyncio.run(provider_module.LLMProviderManager().list_providers_async())
     return providers if isinstance(providers, list) else []
@@ -1409,6 +1642,9 @@ def _load_llm_provider_definitions_inner() -> list[dict[str, Any]]:
 def _load_llm_provider_definitions(
     runtime_python: Optional[Path] = None,
 ) -> list[dict[str, Any]]:
+    """
+    先在当前环境读取提供商目录，失败时尝试运行解释器，最终返回空列表供静态选项回退。
+    """
     try:
         return _load_llm_provider_definitions_inner()
     except Exception as exc:
@@ -1445,6 +1681,9 @@ def _load_llm_provider_definitions(
 def _llm_provider_choice_map(
     provider_definitions: list[dict[str, Any]],
 ) -> dict[str, str]:
+    """
+    筛选支持密钥认证的有效提供商；没有可用项时返回内置常用平台。
+    """
     choices: dict[str, str] = {}
     for item in provider_definitions:
         if not isinstance(item, dict):
@@ -1465,6 +1704,9 @@ def _llm_provider_defaults(
     provider: str,
     provider_definitions: list[dict[str, Any]],
 ) -> dict[str, str]:
+    """
+    组合内置模型、提供商地址与预设信息，缺失项再沿用环境配置。
+    """
     normalized_provider = str(provider or "").strip().lower()
     defaults = dict(LLM_PROVIDER_DEFAULTS.get(normalized_provider) or {})
     provider_meta = next(
@@ -1496,6 +1738,9 @@ def _llm_provider_meta(
     provider: str,
     provider_definitions: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """
+    按规范化的提供商标识返回目录元数据副本，缺失时返回空映射。
+    """
     normalized_provider = str(provider or "").strip().lower()
     provider_meta = next(
         (
@@ -1510,6 +1755,9 @@ def _llm_provider_meta(
 
 
 def _load_llm_models_inner(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    根据密钥、地址与预设调用提供商模型目录，沿用可用缓存。
+    """
     provider = str(payload.get("provider") or "").strip().lower()
     if not provider:
         raise RuntimeError("缺少 LLM provider")
@@ -1538,6 +1786,9 @@ def _load_llm_models(
     base_url_preset: Optional[str],
     runtime_python: Optional[Path] = None,
 ) -> list[dict[str, Any]]:
+    """
+    先在当前环境获取模型，失败时切换运行解释器；最终失败返回空列表以允许手动输入。
+    """
     payload = {
         "provider": str(provider or "").strip().lower(),
         "api_key": str(api_key or "").strip(),
@@ -1586,6 +1837,9 @@ def _load_llm_models(
 
 
 def _print_llm_models(models: list[dict[str, Any]], limit: int = 20) -> None:
+    """
+    输出限量模型候选及上下文信息，超出展示数量时提示剩余项。
+    """
     print("可用模型：")
     for index, item in enumerate(models[:limit], start=1):
         if not isinstance(item, dict):
@@ -1613,6 +1867,9 @@ def _print_llm_models(models: list[dict[str, Any]], limit: int = 20) -> None:
 
 
 def _prompt_model_choice(models: list[dict[str, Any]], default: Optional[str] = None) -> str:
+    """
+    允许按候选编号选择模型或直接输入模型名称，空输入沿用默认模型。
+    """
     valid_models = [item for item in models if isinstance(item, dict) and item.get("id")]
     if not valid_models:
         return _prompt_text("LLM 模型名称", default=default)
@@ -1638,6 +1895,9 @@ def _prompt_model_choice(models: list[dict[str, Any]], default: Optional[str] = 
 
 
 def _env_llm_thinking_level_default() -> str:
+    """
+    归一历史思考级别别名，未知值回退为自动选择。
+    """
     value = _normalize_choice(_env_default("LLM_THINKING_LEVEL", ""))
     alias_map = {
         "none": "off",
@@ -1688,6 +1948,9 @@ def _resolve_interactive_config_dir(
 
 
 def _validate_superuser_name(username: str) -> Optional[str]:
+    """
+    检查管理员名称非空、无空白且不超过 64 字符；合法时返回 None。
+    """
     if not username:
         return "超级管理员用户名不能为空。"
     if any(char.isspace() for char in username):
@@ -1698,6 +1961,9 @@ def _validate_superuser_name(username: str) -> Optional[str]:
 
 
 def _validate_superuser_password(password: str) -> Optional[str]:
+    """
+    检查管理员密码长度与字符类别；合法时返回 None，否则返回可展示的错误。
+    """
     if len(password) < 6 or len(password) > 50:
         return "超级管理员密码长度需为 6 到 50 位。"
 
@@ -1719,6 +1985,9 @@ def _collect_superuser_config(
     preset_username: Optional[str] = None,
     preset_password: Optional[str] = None,
 ) -> dict[str, str]:
+    """
+    交互确认管理员用户名与密码，保留有效预填值并返回环境配置。
+    """
     print_step("超级管理员配置")
 
     default_username = (
@@ -1772,6 +2041,9 @@ def _collect_superuser_config(
 
 
 def _collect_path_mapping() -> list[tuple[str, str]]:
+    """
+    交互确认是否配置路径映射；选择启用时收集一组本地路径和下载器路径。
+    """
     if not _prompt_yes_no("是否配置下载器路径映射", default=False):
         return []
 
@@ -1783,7 +2055,9 @@ def _collect_path_mapping() -> list[tuple[str, str]]:
 
 
 def _collect_directory_config() -> dict[str, Any]:
-    """收集下载器内部路径与 MoviePilot 本地媒体库路径。"""
+    """
+    收集下载器内部路径与 MoviePilot 本地媒体库路径。
+    """
     default_download_dir = ROOT.parent / "downloads"
     default_library_dir = ROOT.parent / "media"
 
@@ -1824,6 +2098,9 @@ def _collect_directory_config() -> dict[str, Any]:
 
 
 def _collect_database_config() -> dict[str, Any]:
+    """
+    交互选择数据库并收集连接配置，允许沿用现有数据库设置。
+    """
     print_step("数据库配置")
     current_db_type = _env_default("DB_TYPE", "sqlite").lower()
     if current_db_type not in {"sqlite", "postgresql"}:
@@ -1873,6 +2150,9 @@ def _collect_database_config() -> dict[str, Any]:
 
 
 def _collect_downloader_config() -> Optional[dict[str, Any]]:
+    """
+    交互收集下载器类型、连接与目录配置，允许跳过该服务。
+    """
     print_step("下载器配置")
     downloader_type = _prompt_choice(
         "选择下载器类型",
@@ -1926,6 +2206,9 @@ def _collect_downloader_config() -> Optional[dict[str, Any]]:
 
 
 def _collect_media_server_config() -> Optional[dict[str, Any]]:
+    """
+    交互收集媒体服务器类型和访问凭据，允许跳过该服务。
+    """
     print_step("媒体服务器配置")
     server_type = _prompt_choice(
         "选择媒体服务器类型",
@@ -1987,6 +2270,9 @@ def _collect_media_server_config() -> Optional[dict[str, Any]]:
 
 
 def _collect_notification_config() -> Optional[dict[str, Any]]:
+    """
+    交互收集所选通知渠道参数，允许跳过通知配置。
+    """
     print_step("消息通知配置")
     notification_type = _prompt_choice(
         "选择通知渠道类型",
@@ -2070,6 +2356,9 @@ def _collect_notification_config() -> Optional[dict[str, Any]]:
 def _collect_agent_config(
     runtime_python: Optional[Path] = None,
 ) -> dict[str, Any]:
+    """
+    交互选择智能体提供商、认证、模型与思考参数，并按能力限制候选。
+    """
     print_step("AI Agent 配置")
     enabled = _prompt_yes_no(
         "是否启用 AI 智能体",
@@ -2219,17 +2508,23 @@ def _collect_agent_config(
 
 
 def _empty_site_auth_sync_query(_operation: Any) -> list[Any]:
-    """向导尚未初始化数据库时，将已启用站点查询视为空集。"""
+    """
+    向导尚未初始化数据库时，将已启用站点查询视为空集。
+    """
     return []
 
 
 async def _empty_site_auth_async_query(_operation: Any) -> list[Any]:
-    """提供认证目录查询所需的空异步事务结果。"""
+    """
+    提供认证目录查询所需的空异步事务结果。
+    """
     return []
 
 
 def _load_auth_site_definitions_inner() -> dict[str, Any]:
-    """读取站点认证资源定义，不要求初始化向导先创建业务数据库。"""
+    """
+    读取站点认证资源定义，不要求初始化向导先创建业务数据库。
+    """
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
@@ -2247,6 +2542,7 @@ def _load_auth_site_definitions_inner() -> dict[str, Any]:
         )
 
     try:
+        # 站点扩展由运行资源提供，源码静态检查时不一定已经安装。
         from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 
         auth_sites = SitesHelper().get_authsites() or {}
@@ -2277,6 +2573,9 @@ def _load_auth_site_definitions_inner() -> dict[str, Any]:
 def _load_auth_site_definitions(
     runtime_python: Optional[Path] = None,
 ) -> dict[str, Any]:
+    """
+    读取站点认证字段定义，当前环境失败时尝试运行解释器，最终失败返回空目录。
+    """
     try:
         return _load_auth_site_definitions_inner()
     except Exception as exc:
@@ -2311,6 +2610,9 @@ def _load_auth_site_definitions(
 
 
 def _print_auth_sites(auth_sites: dict[str, Any]) -> None:
+    """
+    输出可配置站点及认证参数，供终端选择站点标识。
+    """
     print("可用认证站点：")
     items = [
         f"{site_key}({site_conf.get('name') or site_key})"
@@ -2327,6 +2629,9 @@ def _print_auth_sites(auth_sites: dict[str, Any]) -> None:
 
 
 def _prompt_auth_param(param_key: str, param_meta: dict[str, Any]) -> Any:
+    """
+    按站点字段元数据选择秘密或普通输入；要求整数的字段在转换成功前持续提示。
+    """
     label = str(param_meta.get("name") or param_key).strip()
     placeholder = str(param_meta.get("placeholder") or "").strip()
     tooltip = str(param_meta.get("tooltip") or "").strip()
@@ -2352,6 +2657,9 @@ def _prompt_auth_param(param_key: str, param_meta: dict[str, Any]) -> Any:
 def _collect_site_auth_config(
     runtime_python: Optional[Path] = None,
 ) -> Optional[dict[str, Any]]:
+    """
+    交互选择站点并收集其认证字段；未选择时不新增站点认证配置。
+    """
     print_step("用户站点认证配置")
     if not _prompt_yes_no("是否配置用户站点认证", default=False):
         return None
@@ -2381,6 +2689,9 @@ def _collect_site_auth_config(
 
 
 def _collect_autostart_config() -> dict[str, Any]:
+    """
+    展示现有注册状态并收集是否启用自启的选择，不在此处注册。
+    """
     print_step("开机自启配置")
     current_status = _autostart_status()
     default_enabled = bool(current_status.get("enabled")) or _env_bool(
@@ -2403,6 +2714,18 @@ def run_setup_wizard(
     preset_superuser: Optional[str] = None,
     preset_superuser_password: Optional[str] = None,
 ) -> dict[str, Any]:
+    """
+    交互收集初始化配置，并立即保存选定的 API_TOKEN。
+
+    其他配置以载荷返回，交由初始化流程写入环境文件或数据库。
+
+    :param force_token: 是否强制重新选择或生成令牌
+    :param runtime_python: 读取服务目录时可回退使用的运行环境解释器
+    :param preset_superuser: 管理员用户名的预填值
+    :param preset_superuser_password: 管理员密码的预填值
+    :return: 环境设置、目录、服务、站点认证和自启选择的配置载荷
+    :raises RuntimeError: 当前输入或输出不是交互式终端
+    """
     if not _is_interactive():
         raise RuntimeError(
             "交互式向导需要在终端中运行，请直接执行 moviepilot setup --wizard 或 moviepilot init --wizard"
@@ -2463,6 +2786,9 @@ def run_setup_wizard(
 
 
 def _merge_named_item(existing_items: list[dict], new_item: dict) -> list[dict]:
+    """
+    按 name 替换已有服务条目，未匹配时追加；返回新的列表。
+    """
     merged = list(existing_items or [])
     new_name = new_item.get("name")
     for index, item in enumerate(merged):
@@ -2474,6 +2800,9 @@ def _merge_named_item(existing_items: list[dict], new_item: dict) -> list[dict]:
 
 
 def _merge_directory_item(existing_items: list[dict], new_item: dict) -> list[dict]:
+    """
+    按名称或下载与媒体库路径替换目录，保留已有优先级；新增目录排在现有最大优先级之后。
+    """
     merged = list(existing_items or [])
     for index, item in enumerate(merged):
         if item.get("name") == new_item.get("name") or (
@@ -2497,6 +2826,9 @@ def _merge_directory_item(existing_items: list[dict], new_item: dict) -> list[di
 
 
 def _merge_notification_switches(existing_items: list[dict]) -> list[dict]:
+    """
+    按通知类型合并已有开关，并补齐缺失的默认开关。
+    """
     merged: dict[str, dict] = {}
     for item in existing_items or []:
         switch_type = str(item.get("type") or "").strip()
@@ -2520,7 +2852,9 @@ def _merge_notification_switches(existing_items: list[dict]) -> list[dict]:
 
 
 def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
-    """应用向导配置并确保本地媒体库路径存在，由下载器管理下载路径。"""
+    """
+    应用向导配置并确保本地媒体库路径存在，由下载器管理下载路径。
+    """
     for directory in config_payload.get("directories") or []:
         library_path = directory.get("library_path")
         if library_path:
@@ -2571,7 +2905,9 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
     system_config.load_snapshot()
 
     def normalize_local_system_config_value(key: object, value: object) -> object:
-        """仅在离线目录写入时加载活动分类策略并执行共享规范化。"""
+        """
+        仅在离线目录写入时加载活动分类策略并执行共享规范化。
+        """
         normalized_key = key.value if isinstance(key, SystemConfigKey) else str(key)
         if normalized_key != SystemConfigKey.Directories.value:
             return value
@@ -2636,6 +2972,8 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
     ):
         try:
             from app.application.site.auth import normalize_site_auth_params
+
+            # 站点扩展由运行资源提供，源码静态检查时不一定已经安装。
             from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 
             sites_helper = SitesHelper()
@@ -2658,6 +2996,9 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
 
 
 def _current_python_matches(target_python: Optional[Path]) -> bool:
+    """
+    按绝对路径比较解释器；未指定目标视为当前环境，不解析软链接。
+    """
     if not target_python:
         return True
     current_python = Path(sys.executable).expanduser()
@@ -2670,6 +3011,11 @@ def _current_python_matches(target_python: Optional[Path]) -> bool:
 
 
 def _ensure_superuser_account_inner() -> None:
+    """
+    校验配置并创建或提升管理员账号；显式密码会更新已有密码。
+
+    新账号缺少密码时生成随机密码并输出，已有账号未指定密码时保留原密码。
+    """
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
@@ -2724,6 +3070,11 @@ def _ensure_superuser_account_inner() -> None:
 
 
 def _prepare_superuser_password_for_bootstrap() -> Optional[str]:
+    """
+    仅在未配置密码且管理员不存在时生成密码，写入内存设置供数据库初始化使用。
+
+    :return: 本次生成的密码；无需生成时返回 None
+    """
     from app.db.oper.user import UserOper
     from app.runtime.config import settings
 
@@ -2744,6 +3095,9 @@ def _prepare_superuser_password_for_bootstrap() -> Optional[str]:
 
 
 def _sync_superuser_account_inner() -> None:
+    """
+    在数据库迁移前准备初始密码，迁移后同步管理员并展示新生成密码。
+    """
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
@@ -2767,6 +3121,11 @@ def _sync_superuser_account_inner() -> None:
 
 
 def sync_superuser_account(runtime_python: Optional[Path] = None) -> None:
+    """
+    准备数据库并同步超级管理员账号，必要时切换到指定运行解释器。
+
+    :param runtime_python: 目标运行解释器；为 None 或匹配当前路径时在当前进程执行
+    """
     if _current_python_matches(runtime_python):
         _sync_superuser_account_inner()
         return
@@ -2784,6 +3143,12 @@ def sync_superuser_account(runtime_python: Optional[Path] = None) -> None:
 def apply_local_system_config(
     config_payload: dict[str, Any], runtime_python: Optional[Path] = None
 ) -> None:
+    """
+    把向导载荷应用到系统配置，必要时经临时 JSON 文件交给运行解释器。
+
+    :param config_payload: 向导收集的目录、服务和站点认证等配置
+    :param runtime_python: 目标运行解释器；为 None 或匹配当前路径时直接执行
+    """
     if _current_python_matches(runtime_python):
         _apply_local_system_config_inner(config_payload)
         return
@@ -2813,6 +3178,9 @@ def _apply_autostart_choice(
     runtime_python: Optional[Path],
     venv_dir: Optional[Path],
 ) -> None:
+    """
+    应用向导的自启选择，未提供有效选择对象时不改动注册。
+    """
     if not isinstance(autostart_payload, dict):
         return
 
@@ -2850,6 +3218,20 @@ def init_local(
     runtime_python: Optional[Path] = None,
     venv_dir: Optional[Path] = None,
 ) -> None:
+    """
+    初始化本地目录、令牌、资源、管理员及可选向导配置。
+
+    :param resources_repo: 本地资源仓库路径；未指定本地来源时允许下载
+    :param resource_dir: 优先使用的直接资源目录
+    :param skip_resources: 是否跳过本次资源安装
+    :param resources_ready: 跳过资源安装时是否提示此前已完成同步
+    :param force_token: 是否更新已有有效 API_TOKEN
+    :param wizard: 是否交互收集完整初始化配置
+    :param superuser: 显式管理员用户名；为空时沿用现有设置
+    :param superuser_password: 显式管理员密码；None 表示不更新，空字符串保留自动生成语义
+    :param runtime_python: 执行数据库和系统配置操作的运行解释器
+    :param venv_dir: 注册自启时用于定位解释器的虚拟环境目录
+    """
     ensure_local_dirs()
 
     wizard_payload: Optional[dict[str, Any]] = None
@@ -2976,7 +3358,9 @@ def install_deps(*, python_bin: str, venv_dir: Path, recreate: bool) -> Path:
 
 
 def install_cjk(venv_python: Path, *, required: bool = True, check: bool = False) -> None:
-    """由目标解释器安装和验收扩展；自动安装失败明确告警，单独补装失败返回错误。"""
+    """
+    由目标解释器安装和验收扩展；自动安装失败明确告警，单独补装失败返回错误。
+    """
     command = [str(venv_python), str(ROOT / "native/fts5_cjk/install.py")]
     if check:
         command.append("--check")
@@ -3013,7 +3397,9 @@ def _startup_platform_name() -> str:
 def _runtime_python_candidates(
     runtime_python: Optional[Path], venv_dir: Optional[Path]
 ) -> list[Path]:
-    """按优先级列出项目专用入口、venv 解释器和外部启动解释器。"""
+    """
+    按优先级列出项目专用入口、venv 解释器和外部启动解释器。
+    """
     candidates: list[Path] = []
     seen: set[str] = set()
 
@@ -3041,7 +3427,9 @@ def _runtime_python_candidates(
 
 
 def _can_run_moviepilot_cli(python_bin: Path) -> bool:
-    """通过 CLI 帮助命令确认解释器可加载项目代码及其运行依赖。"""
+    """
+    通过 CLI 帮助命令确认解释器可加载项目代码及其运行依赖。
+    """
     if not python_bin.exists():
         return False
 
@@ -3058,7 +3446,9 @@ def _can_run_moviepilot_cli(python_bin: Path) -> bool:
 def _resolve_runtime_python_for_startup(
     runtime_python: Optional[Path], venv_dir: Optional[Path]
 ) -> Path:
-    """选择可启动 MoviePilot 的运行环境，否则给出安装依赖提示。"""
+    """
+    选择可启动 MoviePilot 的运行环境，否则给出安装依赖提示。
+    """
     for candidate in _runtime_python_candidates(runtime_python, venv_dir):
         if _can_run_moviepilot_cli(candidate):
             return candidate
@@ -3127,6 +3517,9 @@ def _launcher_paths_for_platform(system_name: Optional[str] = None) -> list[Path
 
 
 def _cleanup_startup_launchers(system_name: Optional[str] = None) -> None:
+    """
+    删除当前平台启动脚本，并仅在专用目录为空时移除目录。
+    """
     for path in _launcher_paths_for_platform(system_name):
         if path.exists():
             _remove_path(path)
@@ -3136,6 +3529,9 @@ def _cleanup_startup_launchers(system_name: Optional[str] = None) -> None:
 
 
 def _write_unix_startup_launcher(config_dir: Path, python_bin: Path) -> Path:
+    """
+    生成传递配置目录和解释器的 Unix 启动脚本，并设置可执行权限。
+    """
     AUTOSTART_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     launcher_content = textwrap.dedent(
         f"""\
@@ -3153,6 +3549,9 @@ def _write_unix_startup_launcher(config_dir: Path, python_bin: Path) -> Path:
 
 
 def _write_windows_startup_launcher(config_dir: Path, python_bin: Path) -> Path:
+    """
+    生成传递配置目录和解释器的 Windows 启动批处理文件。
+    """
     AUTOSTART_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     launcher_content = textwrap.dedent(
         f"""\
@@ -3174,6 +3573,9 @@ def _double_quote(value: Any) -> str:
 
 
 def _run_optional_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+    """
+    收集系统命令的合并输出，不因非零退出状态直接抛错。
+    """
     return subprocess.run(
         command,
         cwd=str(ROOT),
@@ -3192,6 +3594,9 @@ def _last_command_line(result: subprocess.CompletedProcess[str]) -> str:
 
 
 def _linux_linger_enabled() -> Optional[bool]:
+    """
+    查询当前用户是否允许退出登录后继续运行服务；无法确认时返回 None。
+    """
     loginctl_bin = shutil.which("loginctl")
     if not loginctl_bin:
         return None
@@ -3208,6 +3613,11 @@ def _linux_linger_enabled() -> Optional[bool]:
 
 
 def _autostart_status() -> dict[str, Any]:
+    """
+    按注册文件判断当前用户自启配置，并补充 Linux 登录持续运行状态。
+
+    文件存在不保证系统服务已启动或本次加载成功。
+    """
     system_name = platform.system()
     if system_name == "Darwin":
         artifact = _macos_launch_agent_path()
@@ -3252,6 +3662,9 @@ def _autostart_status() -> dict[str, Any]:
 
 
 def _enable_autostart_macos(config_dir: Path, python_bin: Path) -> dict[str, Any]:
+    """
+    生成 LaunchAgent 并尝试加载到当前登录会话，将系统命令失败信息保留在说明中。
+    """
     launcher = _write_unix_startup_launcher(config_dir=config_dir, python_bin=python_bin)
     agent_path = _macos_launch_agent_path()
     agent_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3312,6 +3725,11 @@ def _enable_autostart_macos(config_dir: Path, python_bin: Path) -> dict[str, Any
 def _enable_autostart_linux_systemd(
     config_dir: Path, python_bin: Path
 ) -> Optional[dict[str, Any]]:
+    """
+    创建用户级 systemd 服务；未安装命令或启用失败时返回 None 供图形自启回退。
+
+    启用成功后尝试立即启动，启动失败只记录说明，不撤销注册。
+    """
     systemctl_bin = shutil.which("systemctl")
     if not systemctl_bin:
         return None
@@ -3374,6 +3792,9 @@ def _enable_autostart_linux_systemd(
 
 
 def _enable_autostart_linux_xdg(config_dir: Path, python_bin: Path) -> dict[str, Any]:
+    """
+    写入图形登录自启文件，并清理已有的用户级 systemd 注册文件。
+    """
     launcher = _write_unix_startup_launcher(config_dir=config_dir, python_bin=python_bin)
     desktop_path = _linux_xdg_autostart_path()
     desktop_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3406,6 +3827,9 @@ def _enable_autostart_linux_xdg(config_dir: Path, python_bin: Path) -> dict[str,
 
 
 def _enable_autostart_windows(config_dir: Path, python_bin: Path) -> dict[str, Any]:
+    """
+    在当前用户启动目录生成批处理入口，并记录已启用设置。
+    """
     launcher = _write_windows_startup_launcher(config_dir=config_dir, python_bin=python_bin)
     startup_path = _windows_startup_path()
     startup_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3427,6 +3851,17 @@ def _enable_autostart_windows(config_dir: Path, python_bin: Path) -> dict[str, A
 def enable_autostart(
     *, config_dir: Path, runtime_python: Optional[Path], venv_dir: Optional[Path]
 ) -> dict[str, Any]:
+    """
+    为当前用户注册对应平台的启动入口，并记录配置状态。
+
+    Linux 优先使用用户级 systemd，无法启用时回退图形登录自启。
+
+    :param config_dir: 启动入口传给后端的配置目录
+    :param runtime_python: 显式运行解释器，优先于虚拟环境候选
+    :param venv_dir: 未显式指定解释器时使用的虚拟环境目录
+    :return: 注册方式、生成文件路径和执行说明
+    :raises RuntimeError: 平台不支持注册，或无法找到可用解释器
+    """
     config_dir = config_dir.expanduser().resolve()
     python_bin = _resolve_runtime_python_for_startup(runtime_python, venv_dir)
     system_name = platform.system()
@@ -3444,6 +3879,12 @@ def enable_autostart(
 
 
 def disable_autostart() -> dict[str, Any]:
+    """
+    移除当前平台的自启注册与启动脚本，并把自启设置标记为关闭。
+
+    :return: 包含实际移除路径的结果对象；系统命令失败不会自动中断清理
+    :raises RuntimeError: 当前平台不支持取消自启
+    """
     system_name = platform.system()
     removed_paths: list[Path] = []
 
@@ -3491,6 +3932,9 @@ def disable_autostart() -> dict[str, Any]:
 
 
 def print_autostart_status() -> None:
+    """
+    输出当前用户的自启注册状态及登录会话限制。
+    """
     status = _autostart_status()
     if not status.get("enabled"):
         print_step(f"当前未启用开机自启（{_startup_platform_name()}）")
@@ -3510,6 +3954,9 @@ def print_autostart_status() -> None:
 
 
 def _read_runtime_file(path: Path) -> Optional[dict[str, Any]]:
+    """
+    读取服务运行记录；文件缺失、读取失败或 JSON 无效时返回 None。
+    """
     if not path.exists():
         return None
     try:
@@ -3519,6 +3966,9 @@ def _read_runtime_file(path: Path) -> Optional[dict[str, Any]]:
 
 
 def _pid_exists(pid: int) -> bool:
+    """
+    探测进程是否存在，无权限访问仍视为存在。
+    """
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -3529,6 +3979,9 @@ def _pid_exists(pid: int) -> bool:
 
 
 def _read_process_start_time(pid: int) -> Optional[float]:
+    """
+    从 ps 读取进程启动时间并转换为时间戳，无法查询或解析时返回 None。
+    """
     try:
         output = capture(["ps", "-p", str(pid), "-o", "lstart="])
     except (OSError, subprocess.CalledProcessError):
@@ -3545,6 +3998,11 @@ def _read_process_start_time(pid: int) -> Optional[float]:
 
 
 def _services_running() -> list[str]:
+    """
+    根据运行记录确认服务进程，启动时间相差超过 3 秒时排除复用的进程号。
+
+    任一启动时间不可用时仅依据进程存在性判断。
+    """
     running: list[str] = []
     runtime_files = {
         "backend": TEMP_DIR / "moviepilot.runtime.json",
@@ -3578,6 +4036,9 @@ def _services_running() -> list[str]:
 
 
 def ensure_services_stopped() -> None:
+    """
+    检测当前配置目录记录的本地服务，仍在运行时抛出 RuntimeError。
+    """
     running = _services_running()
     if running:
         raise RuntimeError(
@@ -3587,6 +4048,9 @@ def ensure_services_stopped() -> None:
 
 
 def _stop_managed_services(venv_dir: Path) -> None:
+    """
+    通过目标虚拟环境停止受管服务；环境缺失且仍有服务时拒绝继续。
+    """
     venv_dir = venv_dir.expanduser().resolve()
     venv_python = get_venv_python(venv_dir)
     if venv_python.exists():
@@ -3609,6 +4073,9 @@ def _stop_managed_services(venv_dir: Path) -> None:
 def _collect_cli_link_candidates(
     *, command_path: Optional[str] = None, launch_path: Optional[str] = None
 ) -> list[Path]:
+    """
+    收集显式路径、启动环境和 PATH 中的命令位置，按解析后的目标去重。
+    """
     candidates: list[Path] = []
     seen: set[str] = set()
     raw_candidates = [
@@ -3639,6 +4106,9 @@ def _collect_cli_link_candidates(
 def _remove_cli_symlinks(
     *, command_path: Optional[str] = None, launch_path: Optional[str] = None
 ) -> list[Path]:
+    """
+    仅删除确实指向当前仓库入口的软链接，保留其他安装的命令。
+    """
     removed: list[Path] = []
     script_path = (ROOT / "moviepilot").resolve()
 
@@ -3658,6 +4128,9 @@ def _remove_cli_symlinks(
 
 
 def _remove_runtime_state_files() -> list[Path]:
+    """
+    删除前后端运行记录并返回实际移除的路径。
+    """
     removed: list[Path] = []
     for path in (
         TEMP_DIR / "moviepilot.runtime.json",
@@ -3671,6 +4144,9 @@ def _remove_runtime_state_files() -> list[Path]:
 
 
 def _remove_installed_resource_files() -> list[Path]:
+    """
+    按资源文件模式清理站点资源，跳过目录与已处理路径。
+    """
     removed: list[Path] = []
     seen: set[Path] = set()
     for pattern in RESOURCE_FILE_PATTERNS:
@@ -3684,6 +4160,9 @@ def _remove_installed_resource_files() -> list[Path]:
 
 
 def _remove_config_data(config_dir: Path) -> list[Path]:
+    """
+    递归删除指定配置目录，并返回实际移除路径；由调用方完成用户确认。
+    """
     config_dir = config_dir.expanduser().resolve()
     removed: list[Path] = []
 
@@ -3700,6 +4179,18 @@ def uninstall_local(
     command_path: Optional[str] = None,
     launch_path: Optional[str] = None,
 ) -> dict[str, Any]:
+    """
+    完成交互确认后停止服务并删除本地安装产物，保留源码目录。
+
+    是否删除配置目录由单独的交互选择决定；取消任一次确认均不执行卸载。
+
+    :param venv_dir: 要停止和移除的本地虚拟环境
+    :param config_dir: 用户可选择同时删除的配置目录
+    :param command_path: 用于识别当前仓库命令软链接的候选路径
+    :param launch_path: 启动当前命令时使用的原始路径
+    :return: 取消标记，或删除路径及配置删除结果
+    :raises RuntimeError: 不是交互终端，或无法安全停止仍在运行的服务
+    """
     if not _is_interactive():
         raise RuntimeError("卸载命令需要在交互式终端中运行，以完成两次确认。")
 
@@ -3801,12 +4292,16 @@ def uninstall_local(
 
 
 def _git_output(*args: str) -> str:
-    """读取当前源码仓库的 Git 命令输出。"""
+    """
+    读取当前源码仓库的 Git 命令输出。
+    """
     return capture(["git", *args], cwd=ROOT)
 
 
 def _ensure_git_clean() -> None:
-    """检查源码工作树，并在用户确认后清除已跟踪的本地改动。"""
+    """
+    检查源码工作树，并在用户确认后清除已跟踪的本地改动。
+    """
     status = _git_output("status", "--porcelain", "--untracked-files=no")
     if not status.strip():
         return
@@ -3839,7 +4334,9 @@ def _ensure_git_clean() -> None:
 
 
 def _update_backend_ref(ref: str, *, fetch: bool = True) -> str:
-    """同步后端 Git 引用；在线强制同步标签、分支仅快进，离线不访问网络。"""
+    """
+    同步后端 Git 引用；在线强制同步标签、分支仅快进，离线不访问网络。
+    """
     if not (ROOT / ".git").exists():
         raise RuntimeError("当前目录不是 Git 仓库，无法更新后端代码。")
 
@@ -3874,7 +4371,9 @@ def _update_backend_ref(ref: str, *, fetch: bool = True) -> str:
 
 
 def _dev_update_enabled(args: argparse.Namespace) -> bool:
-    """按命令选项及配置判定 DEV 模式，离线安装不继承 DEV 偏好。"""
+    """
+    按命令选项及配置判定 DEV 模式，离线安装不继承 DEV 偏好。
+    """
     value = os.environ.get("MOVIEPILOT_UPDATE_DEV")
     if value is None:
         value = read_env_value("MOVIEPILOT_UPDATE_DEV") or "false"
@@ -3885,7 +4384,9 @@ def _dev_update_enabled(args: argparse.Namespace) -> bool:
 
 
 def _resolve_update_versions(args: argparse.Namespace) -> tuple[str, Optional[str]]:
-    """更新命令读取 Dev 偏好；显式版本优先，离线安装始终使用已确认制品。"""
+    """
+    更新命令读取 Dev 偏好；显式版本优先，离线安装始终使用已确认制品。
+    """
     dev = _dev_update_enabled(args)
     ref = args.ref
     if not ref:
@@ -3904,7 +4405,9 @@ def update_backend(
     recreate: bool,
     fetch: bool = True,
 ) -> Path:
-    """更新指定后端版本并同步其虚拟环境依赖。"""
+    """
+    更新指定后端版本并同步其虚拟环境依赖。
+    """
     ensure_services_stopped()
     resolved_ref = _update_backend_ref(ref=ref, fetch=fetch)
     venv_python = install_deps(
@@ -3921,6 +4424,15 @@ def handle_startup_command(
     runtime_python: Optional[Path],
     venv_dir: Optional[Path],
 ) -> None:
+    """
+    分发自启状态查询、启用或关闭动作，并输出处理结果。
+
+    :param action: status、enable 或 disable
+    :param config_dir: 启用时传给后端的配置目录
+    :param runtime_python: 启用时优先选择的运行解释器
+    :param venv_dir: 启用时用于查找解释器的虚拟环境目录
+    :raises RuntimeError: 动作名称不受支持，或平台操作无法完成
+    """
     if action == "status":
         print_autostart_status()
         return
@@ -3955,6 +4467,16 @@ def handle_startup_command(
 def run_agent_request(
     *, message: str, session_id: Optional[str], new_session: bool, user_id: str
 ) -> dict[str, str]:
+    """
+    准备数据库并执行一次命令行智能体请求，收集最终流式文本。
+
+    :param message: 发给智能体的用户输入，执行前去除首尾空白
+    :param session_id: 可复用会话标识；为空时自动生成
+    :param new_session: 是否忽略传入标识并新建会话
+    :param user_id: 关联用户标识；为空时使用 cli
+    :return: 实际会话标识与汇总的结果文本
+    :raises RuntimeError: 运行依赖缺失或智能体未启用
+    """
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
@@ -3977,6 +4499,9 @@ def run_agent_request(
         session = f"cli-{uuid.uuid4().hex[:12]}"
 
     async def _run_agent() -> dict[str, str]:
+        """
+        在当前会话执行智能体，抑制主动渠道回复并收集流式输出。
+        """
         agent = MoviePilotAgent(session_id=session, user_id=user_id or "cli")
         agent.suppress_user_reply = True
         await agent.process(message.strip())
@@ -3989,7 +4514,9 @@ def run_agent_request(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """定义本地安装、显式更新和初始化命令的参数。"""
+    """
+    定义本地安装、显式更新和初始化命令的参数。
+    """
     parser = argparse.ArgumentParser(description="MoviePilot 本地安装与初始化工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -4216,7 +4743,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """按选定配置目录执行本地管理命令并返回退出码。"""
+    """
+    按选定配置目录执行本地管理命令并返回退出码。
+    """
     parser = build_parser()
     args = parser.parse_args()
     explicit_config_dir = (

@@ -18,7 +18,9 @@ TMDB = str(MediaSource.TMDB)
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把整理历史表纳入用例级回收。"""
+    """
+    把整理历史表纳入用例级回收。
+    """
     db.watermark(TransferHistory)
 
 
@@ -28,7 +30,9 @@ def _hist(title: str = "片名", src: str = None, dest: str = None,
           year: str = "2026", media_id: str = "6001", seasons: str = None,
           episodes: str = None, date: str = "2026-08-13 10:00:00",
           download_hash: str = None) -> TransferHistory:
-    """构造一条整理历史。"""
+    """
+    构造一条整理历史。
+    """
     return TransferHistory(src=src or f"/downloads/{title}.mkv", src_storage=src_storage,
                            dest=dest or f"/media/{title}.mkv", dest_storage=dest_storage,
                            mode=mode, type=mtype or MediaType.TV.value, title=title,
@@ -308,7 +312,9 @@ def test_list_by_falls_back_to_title_and_year(db):
 @pytest.mark.parametrize("dest", [None, ""])
 @pytest.mark.parametrize("use_identity", [True, False])
 def test_list_by_unknown_movie_path_does_not_match_other_copies(db, dest, use_identity):
-    """电影路径未知时不能按媒体身份或标题年份命中仍在使用的副本。"""
+    """
+    电影路径未知时不能按媒体身份或标题年份命中仍在使用的副本。
+    """
     db.add(_hist("同一电影", mtype=MediaType.MOVIE.value, dest="/media/active.mkv"))
     criteria = {"media_source": MediaSource.TMDB, "media_id": "6001"} if use_identity else {
         "title": "同一电影", "year": "2026",
@@ -320,7 +326,9 @@ def test_list_by_unknown_movie_path_does_not_match_other_copies(db, dest, use_id
 
 
 def test_list_by_all_movie_versions_requires_explicit_opt_in(db):
-    """明确查询全部版本时才可省略电影目标路径，给出路径后仍须精确匹配。"""
+    """
+    明确查询全部版本时才可省略电影目标路径，给出路径后仍须精确匹配。
+    """
     db.add(_hist("4K", mtype=MediaType.MOVIE.value, dest="/media/4k.mkv"),
            _hist("1080", mtype=MediaType.MOVIE.value, dest="/media/1080.mkv"))
     criteria = {"mtype": MediaType.MOVIE.value, "media_source": MediaSource.TMDB,
@@ -333,14 +341,18 @@ def test_list_by_all_movie_versions_requires_explicit_opt_in(db):
 
 
 def test_list_by_title_without_type_or_path_is_not_full_match(db):
-    """缺少类型的标题年份回退查询同样需要显式允许全部版本。"""
+    """
+    缺少类型的标题年份回退查询同样需要显式允许全部版本。
+    """
     db.add(_hist("同一电影", mtype=MediaType.MOVIE.value))
 
     assert TransferHistory.list_by(db.session, title="同一电影", year="2026") == []
 
 
 def test_transferhistory_oper_preserves_movie_path_guard_and_opt_in(db):
-    """插件兼容 Oper 应传递路径保护和显式全版本参数。"""
+    """
+    插件兼容 Oper 应传递路径保护和显式全版本参数。
+    """
     from app.db.oper.transferhistory import TransferHistoryOper
 
     db.add(_hist("同一电影", mtype=MediaType.MOVIE.value, dest="/media/active.mkv"))
@@ -563,7 +575,9 @@ def test_delete_before_is_batched_and_keeps_recent(db):
 
 
 def test_delete_before_preserves_current_failed_task_history(db):
-    """过期维护不得删除当前失败 pending 映射使用的历史。"""
+    """
+    过期维护不得删除当前失败 pending 映射使用的历史。
+    """
     durable = _hist(
         "durable-old",
         src="/data/durable-old.mkv",
@@ -586,7 +600,9 @@ def test_delete_before_preserves_current_failed_task_history(db):
 
 
 def test_upsert_durable_projection_advances_to_new_same_source_task(db):
-    """同源历史只表达最新任务投影，旧任务重放身份由独立回执持有。"""
+    """
+    同源历史只表达最新任务投影，旧任务重放身份由独立回执持有。
+    """
     durable = _hist(
         "old-task",
         src="/data/reused.mkv",

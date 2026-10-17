@@ -1,4 +1,6 @@
-"""系统配置事件发布边界测试。"""
+"""
+系统配置事件发布边界测试。
+"""
 
 from unittest.mock import AsyncMock, Mock
 
@@ -14,7 +16,9 @@ from app.startup.composition import system as system_composition
 async def test_recognition_config_clears_rust_options_before_event_queue(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """识别配置写入返回前必须清缓存，再等待配置重载事件完成。"""
+    """
+    识别配置写入返回前必须清缓存，再等待配置重载事件完成。
+    """
     order: list[str] = []
     clear_cache = Mock(side_effect=lambda: order.append("clear"))
     send_event = AsyncMock(side_effect=lambda **_kwargs: order.append("event"))
@@ -37,7 +41,9 @@ async def test_recognition_config_clears_rust_options_before_event_queue(
 async def test_unrelated_config_does_not_clear_rust_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """无关设置仍发布配置事件，但不得重建 Rust 识别选项。"""
+    """
+    无关设置仍发布配置事件，但不得重建 Rust 识别选项。
+    """
     clear_cache = Mock()
     send_event = AsyncMock()
     monkeypatch.setattr(system_composition, "clear_rust_parse_options_cache", clear_cache)
@@ -53,7 +59,9 @@ async def test_unrelated_config_does_not_clear_rust_options(
 async def test_recognition_config_rebuilds_cached_rust_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """识别词更新事件后，下一次 Rust 解析选项必须读取最新配置。"""
+    """
+    识别词更新事件后，下一次 Rust 解析选项必须读取最新配置。
+    """
     custom_words = ["旧名 => 旧标题"]
     issue_rule = (
         "HNTV.The.Four(?=.*CMCTV) => "

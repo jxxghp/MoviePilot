@@ -1,3 +1,9 @@
+"""
+Agent 会话索引与消息历史的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Any, Optional
 
 from sqlalchemy import JSON, Index, Integer, String, select

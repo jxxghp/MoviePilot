@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+"""
+离线检查依赖安装策略生成的命令、代理和缓存环境。
+
+只构造策略并断言脱敏输出，不安装依赖、不发起网络请求。
+"""
 from __future__ import annotations
 
 import sys
@@ -12,6 +17,13 @@ from app.adapters.system.package import PackageInstallRequest, build_package_ins
 
 
 def sample(name: str, request: PackageInstallRequest) -> None:
+    """
+    检查一个安装场景生成的全部候选策略，并打印脱敏命令。
+
+    :param name: 输出中区分场景的标识
+    :param request: 待验证的安装请求，仅用于构造策略
+    :raises AssertionError: 策略缺失、泄漏凭据或代理与缓存环境不符合预期
+    """
     print(f"## {name}")
     strategies = build_package_install_strategies(request)
     assert strategies, f"{name}: no strategies generated"
@@ -27,6 +39,9 @@ def sample(name: str, request: PackageInstallRequest) -> None:
 
 
 def main() -> None:
+    """
+    验证直连、镜像、代理及本地轮子目录组合，不执行安装命令。
+    """
     root = ROOT
     config_dir = root / "config"
     python_bin = root.parent / ".venv-test" / "bin" / "python"

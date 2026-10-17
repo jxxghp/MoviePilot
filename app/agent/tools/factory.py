@@ -1,3 +1,7 @@
+"""
+构造并缓存内置、插件及 MCP 工具实例，统一注入调用上下文。
+"""
+
 import hashlib
 from typing import Callable, List, Optional, Type
 
@@ -36,7 +40,9 @@ from .catalog import ToolCatalogError, ToolCatalogSnapshot
 
 
 def _get_plugin_agent_tools() -> list[dict]:
-    """读取当前插件工具投影，隔离 Agent 工具工厂与 Runtime 管理器。"""
+    """
+    读取当前插件工具投影，隔离 Agent 工具工厂与 Runtime 管理器。
+    """
     try:
         return get_plugin_manager().get_plugin_agent_tools()
     except RuntimeError as error:
@@ -97,7 +103,9 @@ class MoviePilotToolFactory:
 
     @classmethod
     def catalog_factory_revision(cls) -> str:
-        """返回当前内置工具工厂定义的稳定摘要。"""
+        """
+        返回当前内置工具工厂定义的稳定摘要。
+        """
         identities = (
             f"{tool_class.__module__}.{tool_class.__qualname__}"
             for tool_class in (*cls.BUILTIN_TOOL_CLASSES, *cls.EXTERNAL_SERVICE_TOOL_CLASSES)
@@ -106,7 +114,9 @@ class MoviePilotToolFactory:
 
     @staticmethod
     def _should_enable_choice_tool(channel: Optional[str] = None) -> bool:
-        """只在同时支持按钮与回调的渠道暴露交互选择能力。"""
+        """
+        只在同时支持按钮与回调的渠道暴露交互选择能力。
+        """
         if not channel:
             return False
         try:
@@ -144,7 +154,9 @@ class MoviePilotToolFactory:
 
     @staticmethod
     def _tool_class_name(tool_class: Type[MoviePilotTool]) -> str:
-        """读取工具类的稳定名称，兼容 Pydantic 字段未直接暴露在类对象上的情况。"""
+        """
+        读取工具类的稳定名称，兼容 Pydantic 字段未直接暴露在类对象上的情况。
+        """
         name = getattr(tool_class, "name", None)
         if isinstance(name, str) and name:
             return name
@@ -235,7 +247,9 @@ class MoviePilotToolFactory:
 
     @classmethod
     def create_catalog(cls, **tool_kwargs) -> ToolCatalogSnapshot:
-        """在插件目录稳定窗口内构造一份完整本地工具快照。"""
+        """
+        在插件目录稳定窗口内构造一份完整本地工具快照。
+        """
         try:
             plugin_manager = get_plugin_manager()
         except RuntimeError as error:

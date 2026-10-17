@@ -1,4 +1,6 @@
-"""Scheduler 任务句柄、generation 与 AgentTask reservation 回归。"""
+"""
+Scheduler 任务句柄、generation 与 AgentTask reservation 回归。
+"""
 
 import asyncio
 import gc
@@ -20,42 +22,64 @@ from app.scheduler.registry import ExecutionRegistry
 
 
 class _ProgressStub:
-    """隔离 scheduler 生命周期测试的同步进度后端。"""
+    """
+    隔离 scheduler 生命周期测试的同步进度后端。
+    """
 
     def __init__(self, _key: str) -> None:
-        """接收进度键但不连接外部后端。"""
+        """
+        接收进度键但不连接外部后端。
+        """
 
     def start(self) -> None:
-        """记录进度开始。"""
+        """
+        记录进度开始。
+        """
 
     def update(self, **_kwargs) -> None:
-        """忽略中间进度。"""
+        """
+        忽略中间进度。
+        """
 
     def get(self):
-        """返回空的历史进度。"""
+        """
+        返回空的历史进度。
+        """
         return None
 
 
 class _AsyncProgressStub:
-    """隔离 scheduler 生命周期测试的异步进度后端。"""
+    """
+    隔离 scheduler 生命周期测试的异步进度后端。
+    """
 
     def __init__(self, _key: str) -> None:
-        """接收进度键但不连接外部后端。"""
+        """
+        接收进度键但不连接外部后端。
+        """
 
     async def get(self):
-        """返回空的历史进度。"""
+        """
+        返回空的历史进度。
+        """
         return None
 
     async def update(self, **_kwargs) -> None:
-        """忽略中间进度。"""
+        """
+        忽略中间进度。
+        """
 
     async def end(self, **_kwargs) -> None:
-        """记录终态但不访问外部缓存。"""
+        """
+        记录终态但不访问外部缓存。
+        """
 
 
 @pytest.fixture(autouse=True)
 def isolate_scheduler_main_loop() -> Generator[None, None, None]:
-    """隔离主循环登记，避免前序兼容层假循环改变 Scheduler 投递路径。"""
+    """
+    隔离主循环登记，避免前序兼容层假循环改变 Scheduler 投递路径。
+    """
     previous = main_loop_registry.current
     main_loop_registry.replace_compat(None)
     try:
@@ -68,7 +92,9 @@ def _patch_progress(
         monkeypatch: pytest.MonkeyPatch,
         async_progress: type = _AsyncProgressStub,
 ) -> None:
-    """替换执行启动与进度 owner 各自持有的缓存边界。"""
+    """
+    替换执行启动与进度 owner 各自持有的缓存边界。
+    """
     monkeypatch.setattr(scheduler_execution, "ProgressHelper", _ProgressStub)
     monkeypatch.setattr(scheduler_progress, "ProgressHelper", _ProgressStub)
     monkeypatch.setattr(scheduler_progress, "AsyncProgressHelper", async_progress)
@@ -78,14 +104,18 @@ def _patch_main_loop(
         monkeypatch: pytest.MonkeyPatch,
         loop: asyncio.AbstractEventLoop,
 ) -> None:
-    """让执行与桥接 owner 共享同一个测试事件循环登记。"""
+    """
+    让执行与桥接 owner 共享同一个测试事件循环登记。
+    """
     registry = SimpleNamespace(current=loop)
     monkeypatch.setattr(scheduler_execution, "main_loop_registry", registry)
     monkeypatch.setattr(scheduler_bridge, "main_loop_registry", registry)
 
 
 def _scheduler(job_id: str, func) -> Scheduler:
-    """构造已启动但不拥有 APScheduler 线程的实例。"""
+    """
+    构造已启动但不拥有 APScheduler 线程的实例。
+    """
     scheduler = object.__new__(Scheduler)
     scheduler._scheduler = None
     scheduler._event = threading.Event()
@@ -106,7 +136,9 @@ def _scheduler(job_id: str, func) -> Scheduler:
 
 
 def test_internal_loop_submission_requires_job_owner() -> None:
-    """Scheduler 内部协程桥接不得再提供省略 job owner 的游离提交分支。"""
+    """
+    Scheduler 内部协程桥接不得再提供省略 job owner 的游离提交分支。
+    """
     parameter = inspect.signature(Scheduler._submit_to_loop).parameters["job_id"]
 
     assert parameter.default is inspect.Parameter.empty
@@ -115,7 +147,9 @@ def test_internal_loop_submission_requires_job_owner() -> None:
 
 @pytest.mark.anyio
 async def test_stop_async_cancels_and_awaits_scheduler_owned_job(monkeypatch) -> None:
-    """关闭后已投递协程必须取消并完成收尾，不得遗留 owner 句柄。"""
+    """
+    关闭后已投递协程必须取消并完成收尾，不得遗留 owner 句柄。
+    """
     started = asyncio.Event()
     cleaned = asyncio.Event()
 
@@ -146,13 +180,20 @@ async def test_stop_async_cancels_and_awaits_scheduler_owned_job(monkeypatch) ->
 async def test_stop_during_final_progress_does_not_mark_completed_job_unsubmitted(
         monkeypatch,
 ) -> None:
-    """业务协程已完成后，取消最终进度写入不得改写任务执行结果。"""
+    """
+    业务协程已完成后，取消最终进度写入不得改写任务执行结果。
+    """
     finish_started = asyncio.Event()
 
     class BlockingFinishProgress(_AsyncProgressStub):
-        """把任务停在最终进度读取阶段。"""
+        """
+        把任务停在最终进度读取阶段。
+        """
 
         async def get(self):
+            """
+            通知收尾读取已经开始，并保持等待以验证关闭取消能够传递。
+            """
             finish_started.set()
             await asyncio.Event().wait()
 
@@ -190,7 +231,9 @@ async def test_stop_during_final_progress_does_not_mark_completed_job_unsubmitte
 async def test_foreign_loop_submission_runs_on_main_loop_and_finishes_before_stop(
         monkeypatch,
 ) -> None:
-    """自建事件循环提交的任务仍由应用主循环拥有并完成取消收尾。"""
+    """
+    自建事件循环提交的任务仍由应用主循环拥有并完成取消收尾。
+    """
     main_loop = asyncio.get_running_loop()
     started = asyncio.Event()
     cancelling = asyncio.Event()
@@ -250,7 +293,9 @@ async def test_foreign_loop_submission_runs_on_main_loop_and_finishes_before_sto
 async def test_cross_thread_submission_is_registered_before_stop_snapshot(
         monkeypatch,
 ) -> None:
-    """跨线程提交与 owner 登记必须对关闭快照表现为同一原子操作。"""
+    """
+    跨线程提交与 owner 登记必须对关闭快照表现为同一原子操作。
+    """
     main_loop = asyncio.get_running_loop()
     registration_entered = threading.Event()
     registration_release = threading.Event()
@@ -293,7 +338,9 @@ async def test_cross_thread_submission_is_registered_before_stop_snapshot(
 
 @pytest.mark.anyio
 async def test_submit_to_loop_tracks_internal_progress_or_finish_tasks() -> None:
-    """进度和收尾协程也必须归 Scheduler 所有并可在关闭时收口。"""
+    """
+    进度和收尾协程也必须归 Scheduler 所有并可在关闭时收口。
+    """
     started = asyncio.Event()
     cancelled = asyncio.Event()
 
@@ -323,19 +370,26 @@ async def test_submit_to_loop_tracks_internal_progress_or_finish_tasks() -> None
 
 @pytest.mark.anyio
 async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> None:
-    """同步任务回投的进度与收尾句柄都必须纳入关闭收口。"""
+    """
+    同步任务回投的进度与收尾句柄都必须纳入关闭收口。
+    """
     update_started = asyncio.Event()
     finish_started = asyncio.Event()
     gate = asyncio.Event()
     cancelled = 0
 
     class BlockingProgress:
-        """让进度和收尾停在异步后端，便于验证 owner registry。"""
+        """
+        让进度和收尾停在异步后端，便于验证 owner registry。
+        """
 
         def __init__(self, _key: str) -> None:
             pass
 
         async def update(self, **_kwargs) -> None:
+            """
+            阻塞进度更新并记录取消次数，随后继续传播取消异常。
+            """
             nonlocal cancelled
             update_started.set()
             try:
@@ -345,6 +399,9 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
                 raise
 
         async def get(self):
+            """
+            阻塞收尾读取并记录取消次数；正常释放时返回空进度。
+            """
             nonlocal cancelled
             finish_started.set()
             try:
@@ -355,6 +412,9 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
             return None
 
         async def end(self, **_kwargs) -> None:
+            """
+            提供无副作用的结束入口，使测试聚焦取消与读取过程。
+            """
             pass
 
     _patch_progress(monkeypatch, BlockingProgress)
@@ -379,14 +439,22 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
 
 @pytest.mark.anyio
 async def test_stale_progress_cannot_update_replaced_job(monkeypatch) -> None:
-    """旧 generation 的延迟进度不得写入新注册的同 ID 任务。"""
+    """
+    旧 generation 的延迟进度不得写入新注册的同 ID 任务。
+    """
     updates = []
 
     class RecordingProgress:
+        """
+        在内存中记录调度进度，验证任务状态的更新顺序。
+        """
         def __init__(self, _key: str) -> None:
             pass
 
         async def update(self, **kwargs) -> None:
+            """
+            记录进度更新参数，供任务状态断言使用。
+            """
             updates.append(kwargs)
 
     monkeypatch.setattr(scheduler_progress, "AsyncProgressHelper", RecordingProgress)
@@ -413,21 +481,31 @@ async def test_stale_progress_cannot_update_replaced_job(monkeypatch) -> None:
 
 @pytest.mark.anyio
 async def test_final_progress_waits_for_pending_update(monkeypatch) -> None:
-    """任务终态必须等待已提交的进度回调，避免 running 快照迟到覆盖。"""
+    """
+    任务终态必须等待已提交的进度回调，避免 running 快照迟到覆盖。
+    """
     update_started = asyncio.Event()
     allow_update = asyncio.Event()
     finished = asyncio.Event()
     writes = []
 
     class BlockingProgress(_AsyncProgressStub):
-        """把中间进度写停在终态收尾之前。"""
+        """
+        把中间进度写停在终态收尾之前。
+        """
 
         async def update(self, **_kwargs) -> None:
+            """
+            等待测试允许后记录进度写入，验证关闭不会提前结束在途更新。
+            """
             update_started.set()
             await allow_update.wait()
             writes.append("update")
 
         async def end(self, **_kwargs) -> None:
+            """
+            记录结束写入并通知测试收尾已完成。
+            """
             writes.append("end")
             finished.set()
 
@@ -452,27 +530,47 @@ async def test_final_progress_waits_for_pending_update(monkeypatch) -> None:
 
 @pytest.mark.anyio
 async def test_replaced_job_keeps_active_state_without_stale_progress(monkeypatch) -> None:
-    """同 ID 新 generation 显示真实运行态，但不继承旧任务进度详情。"""
+    """
+    同 ID 新 generation 显示真实运行态，但不继承旧任务进度详情。
+    """
     detail = {}
 
     class RecordingProgress:
+        """
+        在内存中记录调度进度，验证任务状态的更新顺序。
+        """
         def __init__(self, _key: str) -> None:
             pass
 
         def start(self) -> None:
+            """
+            提供无副作用的进度启动入口。
+            """
             pass
 
         def update(self, **kwargs) -> None:
+            """
+            将进度更新合入共享详情，模拟同步进度存储。
+            """
             detail.update(kwargs)
 
         def get(self):
+            """
+            返回当前进度详情，供同步收尾路径读取。
+            """
             return detail
 
     class RecordingAsyncProgress:
+        """
+        提供异步任务使用的进度读取接口，隔离真实进度存储。
+        """
         def __init__(self, _key: str) -> None:
             pass
 
         async def get(self):
+            """
+            返回当前进度详情，供异步收尾路径读取。
+            """
             return detail
 
     monkeypatch.setattr(scheduler_execution, "ProgressHelper", RecordingProgress)
@@ -510,7 +608,9 @@ async def test_replaced_job_keeps_active_state_without_stale_progress(monkeypatc
 
 @pytest.mark.anyio
 async def test_stale_generation_cannot_finish_replaced_job(monkeypatch) -> None:
-    """旧 generation 收尾不得改写同 ID 的新任务状态或进度。"""
+    """
+    旧 generation 收尾不得改写同 ID 的新任务状态或进度。
+    """
     monkeypatch.setattr(scheduler_progress, "AsyncProgressHelper", _AsyncProgressStub)
     scheduler = _scheduler("generation-job", lambda: None)
     old_job = scheduler._jobs["generation-job"]
@@ -536,7 +636,9 @@ async def test_stale_generation_cannot_finish_replaced_job(monkeypatch) -> None:
 
 
 def test_agent_task_manual_start_has_single_reservation() -> None:
-    """并发手动触发同一 AgentTask 时只能有一个调用获得 reservation。"""
+    """
+    并发手动触发同一 AgentTask 时只能有一个调用获得 reservation。
+    """
     scheduler = _scheduler("agent-task-1", lambda: None)
     scheduler._jobs["agent-task-1"].update(
         name="AgentTask",
@@ -568,7 +670,9 @@ def test_agent_task_manual_start_has_single_reservation() -> None:
 
 
 def test_scheduler_rejects_new_submission_after_stop() -> None:
-    """进入 stopping/stopped 后不得再从旧 scheduler 提交任务。"""
+    """
+    进入 stopping/stopped 后不得再从旧 scheduler 提交任务。
+    """
     scheduler = _scheduler("stopped-job", lambda: None)
     scheduler._lifecycle_state = "stopping"
 
@@ -578,7 +682,9 @@ def test_scheduler_rejects_new_submission_after_stop() -> None:
 
 @pytest.mark.anyio
 async def test_config_reload_does_not_restart_scheduler_during_shutdown() -> None:
-    """系统关闭开始后到达的配置事件不得重新打开调度入口。"""
+    """
+    系统关闭开始后到达的配置事件不得重新打开调度入口。
+    """
     scheduler = _scheduler("shutdown-reload", lambda: None)
     scheduler._lifecycle_state = "stopping"
     scheduler.init = lambda **_kwargs: pytest.fail("关闭阶段不得重新初始化调度器")
@@ -590,7 +696,9 @@ async def test_config_reload_does_not_restart_scheduler_during_shutdown() -> Non
 
 @pytest.mark.anyio
 async def test_config_reload_clears_wallpaper_cache_before_reinitializing() -> None:
-    """壁纸配置热重载应先清理旧缓存，再建立新任务目录。"""
+    """
+    壁纸配置热重载应先清理旧缓存，再建立新任务目录。
+    """
     scheduler = _scheduler("reload-wallpaper", lambda: None)
     calls = []
     scheduler._services = SimpleNamespace(
@@ -610,19 +718,25 @@ async def test_config_reload_clears_wallpaper_cache_before_reinitializing() -> N
 
 @pytest.mark.anyio
 async def test_scheduler_list_keeps_previous_catalog_until_reload_is_ready(monkeypatch) -> None:
-    """重载期间返回旧任务快照，新调度器启动后切回实时目录。"""
+    """
+    重载期间返回旧任务快照，新调度器启动后切回实时目录。
+    """
     _patch_progress(monkeypatch)
     scheduler = _scheduler("reload-list", lambda: None)
     shutdown_started = threading.Event()
     shutdown_release = threading.Event()
 
     class BlockingScheduler:
-        """提供可控关闭的旧调度器。"""
+        """
+        提供可控关闭的旧调度器。
+        """
 
         running = True
 
         def __init__(self) -> None:
-            """准备一项重载前可见的计划任务。"""
+            """
+            准备一项重载前可见的计划任务。
+            """
             self.jobs = [SimpleNamespace(
                 id="reload-list",
                 name="生命周期测试",
@@ -630,25 +744,35 @@ async def test_scheduler_list_keeps_previous_catalog_until_reload_is_ready(monke
             )]
 
         def get_jobs(self) -> list:
-            """返回当前注册作业。"""
+            """
+            返回当前注册作业。
+            """
             return list(self.jobs)
 
         def remove_all_jobs(self) -> None:
-            """模拟热重载时清除旧调度器的作业。"""
+            """
+            模拟热重载时清除旧调度器的作业。
+            """
             self.jobs.clear()
 
         def shutdown(self) -> None:
-            """在测试信号处暂停关闭，暴露重载期间的列表状态。"""
+            """
+            在测试信号处暂停关闭，暴露重载期间的列表状态。
+            """
             shutdown_started.set()
             shutdown_release.wait(timeout=1)
 
     class ReplacementScheduler:
-        """提供初始化目录完成后的最小 Scheduler 接口。"""
+        """
+        提供初始化目录完成后的最小 Scheduler 接口。
+        """
 
         running = False
 
         def get_jobs(self) -> list:
-            """返回新目录尚未启动时的作业。"""
+            """
+            返回新目录尚未启动时的作业。
+            """
             return [SimpleNamespace(
                 id="reload-list",
                 name="生命周期测试",
@@ -656,7 +780,9 @@ async def test_scheduler_list_keeps_previous_catalog_until_reload_is_ready(monke
             )]
 
         def start(self) -> None:
-            """标记新调度器已经启动。"""
+            """
+            标记新调度器已经启动。
+            """
             self.running = True
 
     old_scheduler = BlockingScheduler()
@@ -692,28 +818,38 @@ async def test_scheduler_list_keeps_previous_catalog_until_reload_is_ready(monke
 async def test_concurrent_config_reload_waits_for_old_scheduler_shutdown(
         monkeypatch,
 ) -> None:
-    """并发配置事件合并为一次重建，旧调度线程池结束前不得启动新实例。"""
+    """
+    并发配置事件合并为一次重建，旧调度线程池结束前不得启动新实例。
+    """
     shutdown_started = threading.Event()
     shutdown_release = threading.Event()
 
     class BlockingScheduler:
-        """提供可控关闭的旧调度器。"""
+        """
+        提供可控关闭的旧调度器。
+        """
 
         running = True
 
         @staticmethod
         def get_jobs() -> list:
-            """该并发用例不注册计划任务。"""
+            """
+            该并发用例不注册计划任务。
+            """
             return []
 
         @staticmethod
         def remove_all_jobs() -> None:
-            """并发用例不注册计划任务，无需清理。"""
+            """
+            并发用例不注册计划任务，无需清理。
+            """
             pass
 
         @staticmethod
         def shutdown() -> None:
-            """在测试信号处阻塞，以验证重复重载被合并。"""
+            """
+            在测试信号处阻塞，以验证重复重载被合并。
+            """
             shutdown_started.set()
             shutdown_release.wait(timeout=1)
 
@@ -744,7 +880,9 @@ async def test_concurrent_config_reload_waits_for_old_scheduler_shutdown(
 async def test_config_reload_preserves_overlap_guard_across_job_generations(
         monkeypatch,
 ) -> None:
-    """热重载替换任务定义后，同 ID 旧任务结束前不得启动新 generation。"""
+    """
+    热重载替换任务定义后，同 ID 旧任务结束前不得启动新 generation。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     finished = asyncio.Event()
@@ -762,13 +900,17 @@ async def test_config_reload_preserves_overlap_guard_across_job_generations(
     scheduler = _scheduler("reload-overlap", job)
 
     class ActiveScheduler:
-        """提供列表接口所需的最小 APScheduler 状态。"""
+        """
+        提供列表接口所需的最小 APScheduler 状态。
+        """
 
         running = True
 
         @staticmethod
         def get_jobs() -> list:
-            """当前用例只关注正在运行任务，不提供后续计划。"""
+            """
+            当前用例只关注正在运行任务，不提供后续计划。
+            """
             return []
 
     def init(**_kwargs) -> None:
@@ -828,7 +970,9 @@ async def test_config_reload_preserves_overlap_guard_across_job_generations(
 def test_stop_between_prepare_and_submission_releases_active_generation(
         monkeypatch,
 ) -> None:
-    """关闭插入准备与提交之间时，不得遗留未实际运行的 generation。"""
+    """
+    关闭插入准备与提交之间时，不得遗留未实际运行的 generation。
+    """
     calls = 0
     scheduler = _scheduler("stop-race", None)
 
@@ -864,7 +1008,9 @@ def test_stop_between_prepare_and_submission_releases_active_generation(
 async def test_cross_thread_rejection_closes_unstarted_business_coroutine(
         monkeypatch,
 ) -> None:
-    """跨线程提交被关闭门禁拒绝时，包装与业务协程都必须释放。"""
+    """
+    跨线程提交被关闭门禁拒绝时，包装与业务协程都必须释放。
+    """
     main_loop = asyncio.get_running_loop()
     prepared = threading.Event()
     release = threading.Event()
@@ -907,7 +1053,9 @@ async def test_cross_thread_rejection_closes_unstarted_business_coroutine(
 def test_cancelled_cross_thread_proxy_waits_for_target_loop_cleanup(
         monkeypatch,
 ) -> None:
-    """跨线程代理提前取消后，真实完成信号必须等待目标循环清理。"""
+    """
+    跨线程代理提前取消后，真实完成信号必须等待目标循环清理。
+    """
     target_loop = asyncio.new_event_loop()
     loop_blocked = threading.Event()
     loop_release = threading.Event()
@@ -963,7 +1111,9 @@ def test_cancelled_cross_thread_proxy_waits_for_target_loop_cleanup(
 
 @pytest.mark.anyio
 async def test_subscription_queue_poll_returns_while_owned_search_is_running(monkeypatch) -> None:
-    """长搜索不占用轮询调用，重复轮询不重入且取消必须等待同步 worker 结束。"""
+    """
+    长搜索不占用轮询调用，重复轮询不重入且取消必须等待同步 worker 结束。
+    """
     from app.chain.subscribe.facade import SubscribeChain
 
     _patch_progress(monkeypatch)
@@ -973,7 +1123,9 @@ async def test_subscription_queue_poll_returns_while_owned_search_is_running(mon
     calls = []
 
     def consume(**kwargs):
-        """模拟慢搜索并捕获手工搜索参数，禁止真实业务调用。"""
+        """
+        模拟慢搜索并捕获手工搜索参数，禁止真实业务调用。
+        """
         calls.append(kwargs)
         started.set()
         assert release.wait(timeout=5)

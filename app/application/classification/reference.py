@@ -1,4 +1,6 @@
-"""稳定分类引用、兼容路径快照和安全目录路径解析。"""
+"""
+稳定分类引用、兼容路径快照和安全目录路径解析。
+"""
 
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from app.schemas.category import (
 )
 from app.schemas.types import MediaType
 
+# 分类引用解析后的稳定状态集合。
 ClassificationReferenceState = Literal[
     "resolved",
     "legacy",
@@ -34,14 +37,19 @@ ClassificationReferenceState = Literal[
     "media_type_mismatch",
     "invalid_path",
 ]
-"""分类引用解析后的稳定状态集合。"""
 
 
 class ClassificationPolicyProvider(Protocol):
-    """分类引用解析只需要的活动策略读取端口。"""
+    """
+    分类引用解析只需要的活动策略读取端口。
+    """
 
     def active_policy(self) -> ClassificationPolicy | None:
-        """返回当前活动策略；策略不可用时返回空值。"""
+        """
+        返回当前活动策略；策略不可用时返回空值。
+
+        :return: 当前活动策略；配置尚未就绪或不可用时返回 None
+        """
         ...
 
 
@@ -52,7 +60,9 @@ _classification_resolver: ClassificationCategoryResolver | None = None
 def configure_classification_category_resolver(
     resolver: ClassificationCategoryResolver | None,
 ) -> ClassificationCategoryResolver | None:
-    """装配稳定分类引用解析器，并返回旧值供组合根或测试恢复。"""
+    """
+    装配稳定分类引用解析器，并返回旧值供组合根或测试恢复。
+    """
     global _classification_resolver
     with _classification_resolver_lock:
         previous = _classification_resolver
@@ -63,14 +73,18 @@ def configure_classification_category_resolver(
 def reset_classification_category_resolver(
     resolver: ClassificationCategoryResolver | None = None,
 ) -> None:
-    """恢复指定分类解析器；省略参数时清除当前 lifespan 装配。"""
+    """
+    恢复指定分类解析器；省略参数时清除当前 lifespan 装配。
+    """
     global _classification_resolver
     with _classification_resolver_lock:
         _classification_resolver = resolver
 
 
 def classification_category_resolver_snapshot() -> ClassificationCategoryResolver:
-    """返回当前解析器；未装配时退化为只接受安全路径快照。"""
+    """
+    返回当前解析器；未装配时退化为只接受安全路径快照。
+    """
     with _classification_resolver_lock:
         resolver = _classification_resolver
     return resolver or ClassificationCategoryResolver(lambda: None)
@@ -78,7 +92,15 @@ def classification_category_resolver_snapshot() -> ClassificationCategoryResolve
 
 @dataclass(frozen=True, slots=True)
 class ClassificationCategoryResolution:
-    """一次分类引用解析产生的稳定 ID、路径和降级说明。"""
+    """
+    一次分类引用解析产生的稳定 ID、路径和降级说明。
+
+    :param category_id: 调用方提供或成功解析的稳定分类标识；未提供时为 None
+    :param path: 可安全拼装的相对目录段；空元组表示没有可用路径
+    :param state: 解析状态，区分成功、旧路径、未指定、策略不可用及引用无效原因
+    :param policy_revision: 解析时采用的策略版本；未使用有效策略时为 0
+    :param message: 降级或拒绝引用的原因；无附加说明时为 None
+    """
 
     category_id: str | None
     path: tuple[str, ...]
@@ -88,28 +110,44 @@ class ClassificationCategoryResolution:
 
     @property
     def requested(self) -> bool:
-        """返回调用方是否提供了分类 ID 或路径快照。"""
+        """
+        返回调用方是否提供了分类 ID 或路径快照。
+        """
         return bool(self.category_id or self.path or self.state == "invalid_path")
 
     @property
     def usable(self) -> bool:
-        """返回该解析结果是否包含可安全拼装的相对目录路径。"""
+        """
+        返回该解析结果是否包含可安全拼装的相对目录路径。
+        """
         return bool(self.path)
 
     @property
     def stable(self) -> bool:
-        """返回分类 ID 是否已在当前策略中解析成功。"""
+        """
+        返回分类 ID 是否已在当前策略中解析成功。
+        """
         return self.state == "resolved" and bool(self.category_id)
 
     @property
     def downgraded(self) -> bool:
-        """返回本次解析是否从稳定 ID 降级到了兼容路径语义。"""
+        """
+        返回本次解析是否从稳定 ID 降级到了兼容路径语义。
+        """
         return self.state not in {"resolved", "legacy", "missing"}
 
 
 @dataclass(frozen=True, slots=True)
 class EffectiveClassificationSnapshot:
-    """一次已生效分类的稳定持久化快照，不依赖当前活动策略。"""
+    """
+    一次已生效分类的稳定持久化快照，不依赖当前活动策略。
+
+    :param category_id: 已生效分类的稳定标识；兼容路径可不含标识
+    :param category_path: 持久化的相对目录段，空元组表示未选择路径
+    :param rule_id: 当次命中的分类规则标识；人工选择等场景可为 None
+    :param policy_revision: 生成快照时使用的策略版本；旧数据可能为 None
+    :param source: 分类选择依据，例如规则、手动选择或历史快照
+    """
 
     category_id: str | None = None
     category_path: tuple[str, ...] = ()
@@ -119,16 +157,22 @@ class EffectiveClassificationSnapshot:
 
     @property
     def path(self) -> str | None:
-        """返回持久化使用的 POSIX 风格相对路径快照。"""
+        """
+        返回持久化使用的 POSIX 风格相对路径快照。
+        """
         return "/".join(self.category_path) or None
 
     @property
     def selected(self) -> bool:
-        """返回快照是否声明了稳定分类或兼容路径。"""
+        """
+        返回快照是否声明了稳定分类或兼容路径。
+        """
         return bool(self.category_id or self.category_path)
 
     def to_selection(self) -> ClassificationSelection | None:
-        """转换为领域分类选择；空快照返回空值。"""
+        """
+        转换为领域分类选择；空快照返回空值。
+        """
         if not self.selected:
             return None
         return ClassificationSelection(
@@ -142,7 +186,9 @@ class EffectiveClassificationSnapshot:
 def effective_classification_snapshot(
     media: object | None,
 ) -> EffectiveClassificationSnapshot:
-    """从最终媒体对象投影分类事实，绝不读取描述性 metadata_category。"""
+    """
+    从最终媒体对象投影分类事实，绝不读取描述性 metadata_category。
+    """
     if media is None:
         return EffectiveClassificationSnapshot()
     classification = getattr(media, "classification", None)
@@ -178,7 +224,9 @@ def persisted_classification_snapshot(
     policy_revision: object = None,
     source: object = None,
 ) -> EffectiveClassificationSnapshot:
-    """从数据库标量构造安全历史快照，不使用当前策略反查旧事实。"""
+    """
+    从数据库标量构造安全历史快照，不使用当前策略反查旧事实。
+    """
     path, path_error = _path_snapshot(cast(str | Sequence[str] | None, category_path))
     revision: int | None
     try:
@@ -202,7 +250,9 @@ def apply_persisted_classification_snapshot(
     media: object | None,
     snapshot: EffectiveClassificationSnapshot,
 ) -> object | None:
-    """把历史分类原样冻结到媒体副本，避免当前策略覆盖已发生事实。"""
+    """
+    把历史分类原样冻结到媒体副本，避免当前策略覆盖已发生事实。
+    """
     if media is None or not snapshot.selected:
         return media
     frozen_media = deepcopy(media)
@@ -230,7 +280,9 @@ def subscription_classification_override(
     path_snapshot: str | Sequence[str] | None,
     media_type: object,
 ) -> ClassificationSelection | None:
-    """按稳定 ID 优先解析订阅人工覆盖，并兼容安全旧路径。"""
+    """
+    按稳定 ID 优先解析订阅人工覆盖，并兼容安全旧路径。
+    """
     resolution = classification_category_resolver_snapshot().resolve(
         category_id=category_id,
         path_snapshot=path_snapshot,
@@ -252,7 +304,9 @@ def normalize_classification_reference_payload(
     id_field: str = "media_category_id",
     path_field: str = "media_category",
 ) -> dict[str, object]:
-    """规范化写入载荷中的稳定分类 ID 与兼容路径，并保留 PATCH 清空语义。"""
+    """
+    规范化写入载荷中的稳定分类 ID 与兼容路径，并保留 PATCH 清空语义。
+    """
     normalized = dict(payload)
     has_id = id_field in normalized
     has_path = path_field in normalized
@@ -278,13 +332,17 @@ def normalize_classification_reference_payload(
 
 
 class ClassificationCategoryResolver:
-    """依据当前策略解析稳定分类 ID，并保留显式兼容降级。"""
+    """
+    依据当前策略解析稳定分类 ID，并保留显式兼容降级。
+    """
 
     def __init__(
         self,
         provider: ClassificationPolicyProvider | Callable[[], ClassificationPolicy | None],
     ) -> None:
-        """保存活动策略端口或等价的无参读取函数。"""
+        """
+        保存活动策略端口或等价的无参读取函数。
+        """
         self._provider = provider
 
     def resolve(
@@ -294,7 +352,9 @@ class ClassificationCategoryResolver:
         path_snapshot: str | Sequence[str] | None = None,
         media_type: object = None,
     ) -> ClassificationCategoryResolution:
-        """优先解析稳定 ID；失败时仅使用通过安全校验的路径快照。"""
+        """
+        优先解析稳定 ID；失败时仅使用通过安全校验的路径快照。
+        """
         normalized_id = str(category_id or "").strip() or None
         snapshot, snapshot_error = _path_snapshot(path_snapshot)
         normalized_type = classification_media_type(media_type)
@@ -380,7 +440,9 @@ class ClassificationCategoryResolver:
         )
 
     def resolve_media(self, media: object | None) -> ClassificationCategoryResolution:
-        """从媒体生效分类读取稳定 ID，缺失时兼容 library_category。"""
+        """
+        从媒体生效分类读取稳定 ID，缺失时兼容 library_category。
+        """
         if media is None:
             return ClassificationCategoryResolution(None, (), "missing")
         classification = getattr(media, "classification", None)
@@ -405,7 +467,9 @@ class ClassificationCategoryResolver:
         self,
         media_type: object = None,
     ) -> tuple[tuple[str, ...], ...]:
-        """返回活动策略中指定媒体类型的启用安全分类路径。"""
+        """
+        返回活动策略中指定媒体类型的启用安全分类路径。
+        """
         policy = self._active_policy()
         if policy is None:
             return ()
@@ -425,7 +489,9 @@ class ClassificationCategoryResolver:
         return tuple(paths)
 
     def _active_policy(self) -> ClassificationPolicy | None:
-        """兼容协议对象和轻量无参函数两种策略提供器。"""
+        """
+        兼容协议对象和轻量无参函数两种策略提供器。
+        """
         provider = self._provider
         if callable(provider) and not hasattr(provider, "active_policy"):
             return provider()
@@ -441,7 +507,9 @@ class ClassificationCategoryResolver:
         message: str,
         policy_revision: int = 0,
     ) -> ClassificationCategoryResolution:
-        """构造保留失败状态的兼容路径降级结果。"""
+        """
+        构造保留失败状态的兼容路径降级结果。
+        """
         if snapshot_error:
             return ClassificationCategoryResolution(
                 category_id=category_id,
@@ -461,7 +529,15 @@ class ClassificationCategoryResolver:
 
 @dataclass(frozen=True, slots=True)
 class ClassificationDirectoryReference:
-    """目录配置对一个稳定分类 ID 的只读引用快照。"""
+    """
+    目录配置对一个稳定分类 ID 的只读引用快照。
+
+    :param index: 目录在原始配置列表中的位置，从 0 开始，用于定位问题
+    :param directory_name: 用于诊断展示的目录名称
+    :param category_id: 目录绑定的稳定分类标识
+    :param media_type: 目录限定的媒体类型；None 表示未限定
+    :param path_snapshot: 目录保存的兼容分类路径；未保存时为 None
+    """
 
     index: int
     directory_name: str
@@ -471,17 +547,23 @@ class ClassificationDirectoryReference:
 
 
 class DirectoryClassificationReferenceValidator:
-    """读取当前目录配置并校验候选策略不会破坏稳定引用。"""
+    """
+    读取当前目录配置并校验候选策略不会破坏稳定引用。
+    """
 
     def __init__(self, provider: Callable[[], object]) -> None:
-        """保存每次校验都读取最新目录配置快照的提供函数。"""
+        """
+        保存每次校验都读取最新目录配置快照的提供函数。
+        """
         self._provider = provider
 
     def validate(
         self,
         policy: ClassificationPolicy,
     ) -> ClassificationValidationResult:
-        """校验候选策略与当前目录稳定引用的一致性。"""
+        """
+        校验候选策略与当前目录稳定引用的一致性。
+        """
         return validate_directory_classification_references(
             policy,
             self._provider(),
@@ -492,7 +574,9 @@ def validate_directory_classification_references(
     policy: ClassificationPolicy,
     raw_directories: object,
 ) -> ClassificationValidationResult:
-    """校验候选策略不会删除、禁用或改变目录引用分类的媒体类型。"""
+    """
+    校验候选策略不会删除、禁用或改变目录引用分类的媒体类型。
+    """
     references, issues = _directory_references(raw_directories)
     categories = {category.id: category for category in policy.categories}
     for reference in references:
@@ -551,7 +635,9 @@ def validate_directory_classification_references(
 def _directory_references(
     raw_directories: object,
 ) -> tuple[list[ClassificationDirectoryReference], list[ClassificationValidationIssue]]:
-    """从兼容目录配置中投影稳定引用，并保留损坏配置诊断。"""
+    """
+    从兼容目录配置中投影稳定引用，并保留损坏配置诊断。
+    """
     if raw_directories is None:
         return [], []
     if not isinstance(raw_directories, list):
@@ -611,7 +697,9 @@ def _directory_references(
 
 
 def classification_media_type(value: object) -> ClassificationMediaType | None:
-    """把 MediaType、中文值或 Agent 值规范为分类策略媒体类型。"""
+    """
+    把 MediaType、中文值或 Agent 值规范为分类策略媒体类型。
+    """
     if isinstance(value, Enum):
         value = value.value
     text = str(value or "").strip()
@@ -627,7 +715,9 @@ def append_classification_category_path(
     root: Path,
     segments: Sequence[str],
 ) -> Path:
-    """把安全分类路径段逐级追加到目标根目录。"""
+    """
+    把安全分类路径段逐级追加到目标根目录。
+    """
     return root.joinpath(*validate_classification_category_path(segments))
 
 
@@ -637,7 +727,9 @@ def category_path_below_media_type(
     *,
     type_folder_enabled: bool,
 ) -> tuple[str, ...]:
-    """兼容移除已重复包含在分类快照首段的媒体类型根目录。"""
+    """
+    兼容移除已重复包含在分类快照首段的媒体类型根目录。
+    """
     path = validate_classification_category_path(segments)
     if not type_folder_enabled or not path:
         return path
@@ -648,7 +740,9 @@ def category_path_below_media_type(
 
 
 def ensure_path_within_root(root: Path, target: Path) -> Path:
-    """拒绝重命名或插件结果逃逸已选定的目标根目录。"""
+    """
+    拒绝重命名或插件结果逃逸已选定的目标根目录。
+    """
     pure_root, pure_target = _comparable_paths(root, target)
     if ".." in pure_target.parts:
         raise ValueError(f"目标路径包含上级目录，不能越过目标根目录：{target}")
@@ -660,7 +754,9 @@ def ensure_path_within_root(root: Path, target: Path) -> Path:
 def _path_snapshot(
     value: str | Sequence[str] | None,
 ) -> tuple[tuple[str, ...], str | None]:
-    """把兼容字符串或路径段数组转换为受校验的不可变快照。"""
+    """
+    把兼容字符串或路径段数组转换为受校验的不可变快照。
+    """
     if value is None:
         return (), None
     if isinstance(value, str):
@@ -683,7 +779,9 @@ def _path_snapshot(
 
 
 def _comparable_paths(root: Path, target: Path) -> tuple[PurePath, PurePath]:
-    """按 POSIX 或 Windows drive 语义构造可比较的纯路径。"""
+    """
+    按 POSIX 或 Windows drive 语义构造可比较的纯路径。
+    """
     root_text = root.as_posix()
     target_text = target.as_posix()
     if re.match(r"^[A-Za-z]:/", root_text):

@@ -1,4 +1,6 @@
-"""运行时同步 worker 的取消与容量合同回归。"""
+"""
+运行时同步 worker 的取消与容量合同回归。
+"""
 
 import ast
 import asyncio
@@ -21,7 +23,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_host_uses_canonical_threadpool_boundary() -> None:
-    """canonical 宿主不得重新直连框架线程池 helper。"""
+    """
+    canonical 宿主不得重新直连框架线程池 helper。
+    """
     violations: list[str] = []
     for path in sorted((PROJECT_ROOT / "app").rglob("*.py")):
         relative_path = path.relative_to(PROJECT_ROOT).as_posix()
@@ -46,7 +50,9 @@ def test_host_uses_canonical_threadpool_boundary() -> None:
 def test_submit_with_context_is_independent_of_thread_inheritance(
     inherit_context: int,
 ) -> None:
-    """线程继承开关不得改变逐任务快照，worker 也不得保留首个请求状态。"""
+    """
+    线程继承开关不得改变逐任务快照，worker 也不得保留首个请求状态。
+    """
     script = """
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -79,7 +85,9 @@ print(json.dumps(observed))
 
 
 def test_plugin_file_adapters_share_runtime_completion_contract() -> None:
-    """插件包文件适配器不得维护另一套线程取消实现。"""
+    """
+    插件包文件适配器不得维护另一套线程取消实现。
+    """
     assert (
         plugin_package_adapter._await_thread_operation
         is run_in_threadpool_to_completion
@@ -88,12 +96,16 @@ def test_plugin_file_adapters_share_runtime_completion_contract() -> None:
 
 @pytest.mark.asyncio
 async def test_await_task_to_terminal_ignores_repeated_cancellation() -> None:
-    """调用方连续取消时，受保护任务仍须结束并返回真实结果。"""
+    """
+    调用方连续取消时，受保护任务仍须结束并返回真实结果。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
 
     async def protected_operation() -> str:
-        """阻塞到测试释放，用于观察受保护任务的真实终态。"""
+        """
+        阻塞到测试释放，用于观察受保护任务的真实终态。
+        """
         started.set()
         await release.wait()
         return "completed"
@@ -114,7 +126,9 @@ async def test_await_task_to_terminal_ignores_repeated_cancellation() -> None:
 
 @pytest.mark.asyncio
 async def test_threadpool_capacity_is_held_until_cancelled_call_finishes() -> None:
-    """调用方取消后，执行令牌必须由真实同步调用持有到终态。"""
+    """
+    调用方取消后，执行令牌必须由真实同步调用持有到终态。
+    """
     limiter = current_default_thread_limiter()
     original_capacity = limiter.total_tokens
     release = threading.Event()
@@ -122,7 +136,9 @@ async def test_threadpool_capacity_is_held_until_cancelled_call_finishes() -> No
     second_started = threading.Event()
 
     def blocking_call(started: threading.Event) -> None:
-        """占住线程容量直到测试放行，模拟取消后仍在运行的同步任务。"""
+        """
+        占住线程容量直到测试放行，模拟取消后仍在运行的同步任务。
+        """
         started.set()
         release.wait()
 
@@ -164,7 +180,9 @@ async def test_threadpool_capacity_is_held_until_cancelled_call_finishes() -> No
 
 @pytest.mark.asyncio
 async def test_cancelled_threadpool_call_preserves_worker_failure_as_cause() -> None:
-    """调用方取消优先返回，线程终态异常仍保留为诊断原因。"""
+    """
+    调用方取消优先返回，线程终态异常仍保留为诊断原因。
+    """
     loop = asyncio.get_running_loop()
     previous_handler = loop.get_exception_handler()
     loop_errors: list[dict] = []
@@ -172,7 +190,9 @@ async def test_cancelled_threadpool_call_preserves_worker_failure_as_cause() -> 
     started = threading.Event()
 
     def failing_call() -> None:
-        """在线程收到放行后抛错，用于核对取消异常保留真实失败原因。"""
+        """
+        在线程收到放行后抛错，用于核对取消异常保留真实失败原因。
+        """
         started.set()
         release.wait()
         raise ValueError("worker failed")

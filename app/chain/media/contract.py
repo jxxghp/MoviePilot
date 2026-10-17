@@ -1,4 +1,6 @@
-"""MediaChain owner 的静态组合合同。"""
+"""
+MediaChain 各职责组件的静态组合契约。
+"""
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional, Protocol, TypeVar, Union
@@ -31,14 +33,22 @@ _MediaPayload = dict[str, Any]
 
 
 class _ProjectionEventManagerPort(Protocol):
-    """声明身份投影 owner 使用的最小事件发送合同。"""
+    """
+    声明跨来源身份转换需要的最小事件发送契约。
+    """
 
     def send_event(
         self,
         event_type: ChainEventType,
         data: object,
     ) -> Optional[object]:
-        """同步发送身份投影事件。"""
+        """
+        同步发送身份投影事件。
+
+        :param event_type: 跨来源媒体身份转换使用的链式事件类型
+        :param data: 包含来源、目标来源、媒体标识及类型的投影请求
+        :return: 插件处理后的事件对象，未返回结果时为 None
+        """
         ...
 
     async def async_send_event(
@@ -46,7 +56,13 @@ class _ProjectionEventManagerPort(Protocol):
         event_type: ChainEventType,
         data: object,
     ) -> Optional[object]:
-        """异步发送身份投影事件。"""
+        """
+        异步发送身份投影事件。
+
+        :param event_type: 跨来源媒体身份转换使用的链式事件类型
+        :param data: 包含来源、目标来源、媒体标识及类型的投影请求
+        :return: 插件处理后的事件对象，未返回结果时为 None
+        """
         ...
 
 
@@ -54,7 +70,9 @@ if TYPE_CHECKING:
     from app.application.music.catalog import MusicCatalogService, MusicSourcePort
 
     class _MediaOwnerBase:
-        """声明各媒体 owner 组合后可依赖的精确静态合同。"""
+        """
+        声明各媒体组件组合后可依赖的精确静态契约。
+        """
 
         _video_primary_source: ClassVar[MediaSource]
         _music_primary_source: ClassVar[MediaSource]
@@ -66,7 +84,9 @@ if TYPE_CHECKING:
 
         @staticmethod
         def _music_source_chain(media_source: MediaSource) -> Optional[MusicSourcePort]:
-            """解析固定音乐来源链，目录匹配与目录搜索使用同一来源端口。"""
+            """
+            解析固定音乐来源链，目录匹配与目录搜索使用同一来源端口。
+            """
             ...
 
         def run_module(
@@ -75,7 +95,9 @@ if TYPE_CHECKING:
             *args: Any,
             **kwargs: Any,
         ) -> Any:
-            """通过运行时分发器同步调用模块能力。"""
+            """
+            通过运行时分发器同步调用模块能力。
+            """
             ...
 
         async def async_run_module(
@@ -84,7 +106,9 @@ if TYPE_CHECKING:
             *args: Any,
             **kwargs: Any,
         ) -> Any:
-            """通过运行时分发器异步调用模块能力。"""
+            """
+            通过运行时分发器异步调用模块能力。
+            """
             ...
 
         def _finalize_recognition_result(
@@ -95,7 +119,9 @@ if TYPE_CHECKING:
             refresh: bool = False,
             allow_enrichment: bool = True,
         ) -> Optional[_ClassificationSubjectT]:
-            """通过注入的应用服务分类一个完整识别结果。"""
+            """
+            通过注入的应用服务分类一个完整识别结果。
+            """
             ...
 
         async def _async_finalize_recognition_result(
@@ -106,7 +132,9 @@ if TYPE_CHECKING:
             refresh: bool = False,
             allow_enrichment: bool = True,
         ) -> Optional[_ClassificationSubjectT]:
-            """通过注入的应用服务异步补充并分类完整识别结果。"""
+            """
+            通过注入的应用服务异步补充并分类完整识别结果。
+            """
             ...
 
         def recognize_media(
@@ -120,7 +148,9 @@ if TYPE_CHECKING:
             share_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
         ) -> Optional[MediaInfo]:
-            """同步执行稳定媒体识别入口。"""
+            """
+            同步执行稳定媒体识别入口。
+            """
             ...
 
         async def async_recognize_media(
@@ -134,7 +164,9 @@ if TYPE_CHECKING:
             share_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
         ) -> Optional[MediaInfo]:
-            """异步执行稳定媒体识别入口。"""
+            """
+            异步执行稳定媒体识别入口。
+            """
             ...
 
         def recognize_music_from_source(
@@ -145,7 +177,9 @@ if TYPE_CHECKING:
             cache: bool = True,
             music_type: Optional[str] = None,
         ) -> Optional[MusicInfo]:
-            """同步按固定来源识别音乐实体。"""
+            """
+            同步按固定来源识别音乐实体。
+            """
             ...
 
         async def async_recognize_music_from_source(
@@ -156,12 +190,16 @@ if TYPE_CHECKING:
             cache: bool = True,
             music_type: Optional[str] = None,
         ) -> Optional[MusicInfo]:
-            """异步按固定来源识别音乐实体。"""
+            """
+            异步按固定来源识别音乐实体。
+            """
             ...
 
         @classmethod
         def _simplify_recognized_music_info(cls, info: _MusicMetadataT) -> _MusicMetadataT:
-            """按配置返回简体化音乐信息，专辑详情包含逐曲转换。"""
+            """
+            按配置返回简体化音乐信息，专辑详情包含逐曲转换。
+            """
             ...
 
         @classmethod
@@ -169,7 +207,9 @@ if TYPE_CHECKING:
             cls,
             matched: dict[str, MusicInfo],
         ) -> dict[str, MusicInfo]:
-            """按配置返回简体化音乐目录映射。"""
+            """
+            按配置返回简体化音乐目录映射。
+            """
             ...
 
         def recognize_music_album_directory(
@@ -180,7 +220,9 @@ if TYPE_CHECKING:
             contextual_meta: Optional[MetaMusic] = None,
             file_paths: Optional[list[Path]] = None,
         ) -> dict[str, MusicInfo]:
-            """同步识别音乐专辑目录。"""
+            """
+            同步识别音乐专辑目录。
+            """
             ...
 
         @classmethod
@@ -190,7 +232,9 @@ if TYPE_CHECKING:
             metas: list[MetaMusic],
             album: MusicAlbumInfo,
         ) -> dict[str, MusicInfo]:
-            """将专辑级分类上下文传递给对位曲目。"""
+            """
+            将专辑级分类上下文传递给对位曲目。
+            """
             ...
 
         async def async_recognize_music_album_directory(
@@ -201,7 +245,9 @@ if TYPE_CHECKING:
             contextual_meta: Optional[MetaMusic] = None,
             file_paths: Optional[list[Path]] = None,
         ) -> dict[str, MusicInfo]:
-            """异步识别音乐专辑目录。"""
+            """
+            异步识别音乐专辑目录。
+            """
             ...
 
         def select_recognize_source(
@@ -213,7 +259,9 @@ if TYPE_CHECKING:
             is_recognized: Optional[_RecognitionPredicate] = None,
             plugin_event: ChainEventType = ChainEventType.NameRecognize,
         ) -> Optional[MediaInfo]:
-            """同步选择原生或插件识别结果。"""
+            """
+            同步选择原生或插件识别结果。
+            """
             ...
 
         async def async_select_recognize_source(
@@ -225,7 +273,9 @@ if TYPE_CHECKING:
             is_recognized: Optional[_RecognitionPredicate] = None,
             plugin_event: ChainEventType = ChainEventType.NameRecognize,
         ) -> Optional[MediaInfo]:
-            """异步选择原生或插件识别结果。"""
+            """
+            异步选择原生或插件识别结果。
+            """
             ...
 
         def recognize_help(
@@ -237,7 +287,9 @@ if TYPE_CHECKING:
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
         ) -> Optional[MediaInfo]:
-            """同步请求插件辅助识别。"""
+            """
+            同步请求插件辅助识别。
+            """
             ...
 
         async def async_recognize_help(
@@ -249,7 +301,9 @@ if TYPE_CHECKING:
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
         ) -> Optional[MediaInfo]:
-            """异步请求插件辅助识别。"""
+            """
+            异步请求插件辅助识别。
+            """
             ...
 
         def _recognize_with_fallback_by_meta(
@@ -261,7 +315,9 @@ if TYPE_CHECKING:
             obtain_images: bool = False,
             music_type: Optional[str] = None,
         ) -> Optional[MediaInfo]:
-            """同步识别元数据并在需要时回退插件。"""
+            """
+            同步识别元数据并在需要时回退插件。
+            """
             ...
 
         async def _async_recognize_with_fallback_by_meta(
@@ -273,18 +329,24 @@ if TYPE_CHECKING:
             obtain_images: bool = False,
             music_type: Optional[str] = None,
         ) -> Optional[MediaInfo]:
-            """异步识别元数据并在需要时回退插件。"""
+            """
+            异步识别元数据并在需要时回退插件。
+            """
             ...
 
         def obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
-            """同步补充影视图片。"""
+            """
+            同步补充影视图片。
+            """
             ...
 
         async def async_obtain_images(
             self,
             mediainfo: MediaInfo,
         ) -> Optional[MediaInfo]:
-            """异步补充影视图片。"""
+            """
+            异步补充影视图片。
+            """
             ...
 
         def search_medias(
@@ -292,21 +354,29 @@ if TYPE_CHECKING:
             meta: MetaBase,
             media_source: Optional[MediaSourceSelection] = None,
         ) -> Optional[list[MediaInfo]]:
-            """同步搜索媒体候选。"""
+            """
+            同步搜索媒体候选。
+            """
             ...
 
         def _music_catalog(self) -> MusicCatalogService:
-            """提供音乐来源 ABI 的目录适配器。"""
+            """
+            提供音乐来源 ABI 的目录适配器。
+            """
             ...
 
         def search(self, title: str, media_source: Optional[MediaSourceSelection] = None,
                    mtype: Optional[MediaType] = None, limit: int = 20) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
-            """通过共用入口搜索所有媒体类型。"""
+            """
+            通过共用入口搜索所有媒体类型。
+            """
             ...
 
         async def async_search(self, title: str, media_source: Optional[MediaSourceSelection] = None,
                                mtype: Optional[MediaType] = None, limit: int = 20) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
-            """通过共用入口异步搜索所有媒体类型。"""
+            """
+            通过共用入口异步搜索所有媒体类型。
+            """
             ...
 
         async def async_search_medias(
@@ -314,7 +384,9 @@ if TYPE_CHECKING:
             meta: MetaBase,
             media_source: Optional[MediaSourceSelection] = None,
         ) -> Optional[list[MediaInfo]]:
-            """异步搜索媒体候选。"""
+            """
+            异步搜索媒体候选。
+            """
             ...
 
         def douban_info(
@@ -323,7 +395,9 @@ if TYPE_CHECKING:
             mtype: Optional[MediaType] = None,
             raise_exception: bool = False,
         ) -> Optional[_MediaPayload]:
-            """同步读取豆瓣详情。"""
+            """
+            同步读取豆瓣详情。
+            """
             ...
 
         async def async_douban_info(
@@ -332,7 +406,9 @@ if TYPE_CHECKING:
             mtype: Optional[MediaType] = None,
             raise_exception: bool = False,
         ) -> Optional[_MediaPayload]:
-            """异步读取豆瓣详情。"""
+            """
+            异步读取豆瓣详情。
+            """
             ...
 
         def tmdb_info(
@@ -341,7 +417,9 @@ if TYPE_CHECKING:
             mtype: MediaType,
             season: Optional[int] = None,
         ) -> Optional[_MediaPayload]:
-            """同步读取 TMDB 详情。"""
+            """
+            同步读取 TMDB 详情。
+            """
             ...
 
         async def async_tmdb_info(
@@ -350,18 +428,24 @@ if TYPE_CHECKING:
             mtype: MediaType,
             season: Optional[int] = None,
         ) -> Optional[_MediaPayload]:
-            """异步读取 TMDB 详情。"""
+            """
+            异步读取 TMDB 详情。
+            """
             ...
 
         def bangumi_info(self, bangumiid: int) -> Optional[_MediaPayload]:
-            """同步读取 Bangumi 详情。"""
+            """
+            同步读取 Bangumi 详情。
+            """
             ...
 
         async def async_bangumi_info(
             self,
             bangumiid: int,
         ) -> Optional[_MediaPayload]:
-            """异步读取 Bangumi 详情。"""
+            """
+            异步读取 Bangumi 详情。
+            """
             ...
 
         def match_doubaninfo(
@@ -373,7 +457,9 @@ if TYPE_CHECKING:
             season: Optional[int] = None,
             raise_exception: bool = False,
         ) -> Optional[_MediaPayload]:
-            """同步匹配豆瓣详情。"""
+            """
+            同步匹配豆瓣详情。
+            """
             ...
 
         async def async_match_doubaninfo(
@@ -385,7 +471,9 @@ if TYPE_CHECKING:
             season: Optional[int] = None,
             raise_exception: bool = False,
         ) -> Optional[_MediaPayload]:
-            """异步匹配豆瓣详情。"""
+            """
+            异步匹配豆瓣详情。
+            """
             ...
 
         def match_tmdbinfo(
@@ -395,7 +483,9 @@ if TYPE_CHECKING:
             year: Optional[str] = None,
             season: Optional[int] = None,
         ) -> Optional[_MediaPayload]:
-            """同步匹配 TMDB 详情。"""
+            """
+            同步匹配 TMDB 详情。
+            """
             ...
 
         async def async_match_tmdbinfo(
@@ -405,7 +495,9 @@ if TYPE_CHECKING:
             year: Optional[str] = None,
             season: Optional[int] = None,
         ) -> Optional[_MediaPayload]:
-            """异步匹配 TMDB 详情。"""
+            """
+            异步匹配 TMDB 详情。
+            """
             ...
 
 else:

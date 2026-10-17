@@ -1,4 +1,6 @@
-"""应用生命周期组件的组装、启动和关闭编排。"""
+"""
+应用生命周期组件的组装、启动和关闭编排。
+"""
 
 import asyncio
 import inspect
@@ -116,7 +118,9 @@ async def init_extra():
 
 
 def _log_runtime_gil_status() -> None:
-    """在核心模块和插件完成导入后记录解释器的实际并发模式。"""
+    """
+    在核心模块和插件完成导入后记录解释器的实际并发模式。
+    """
     free_threaded = is_free_threaded_runtime()
     gil_enabled = is_gil_enabled()
     if free_threaded and gil_enabled:
@@ -136,10 +140,14 @@ async def run_shutdown_step(
     callback: Callable[[], object],
     timeout_seconds: float | None = None,
 ) -> bool:
-    """在有限预算内执行关闭阶段，并返回资源 owner 是否已经收敛。"""
+    """
+    在有限预算内执行关闭阶段，并返回资源 owner 是否已经收敛。
+    """
 
     async def invoke() -> object:
-        """在主循环调用 owner，并等待其可能返回的异步结果。"""
+        """
+        在主循环调用 owner，并等待其可能返回的异步结果。
+        """
         result = callback()
         if inspect.isawaitable(result):
             return await result
@@ -149,7 +157,9 @@ async def run_shutdown_step(
         task = asyncio.create_task(invoke(), name=f"shutdown.{name}")
 
         def _consume_shutdown_result(done: asyncio.Future) -> None:
-            """消费延迟收敛任务的最终异常，避免事件循环产生未取回异常。"""
+            """
+            消费延迟收敛任务的最终异常，避免事件循环产生未取回异常。
+            """
             try:
                 done.result()
             except asyncio.CancelledError:
@@ -181,7 +191,9 @@ async def run_shutdown_step(
 def offload_shutdown_callback(
     callback: Callable[[], object],
 ) -> Callable[[], Awaitable[object]]:
-    """把明确会阻塞的同步关闭 owner 包装为异步生命周期回调。"""
+    """
+    把明确会阻塞的同步关闭 owner 包装为异步生命周期回调。
+    """
 
     async def invoke() -> object:
         return await run_in_threadpool_to_completion(callback)
@@ -194,7 +206,9 @@ async def run_startup_step(
     callback: Callable[[], object],
     timeout_seconds: float | None = None,
 ) -> object:
-    """执行单个启动阶段并记录耗时，失败时保留原异常和 fail-fast 语义。"""
+    """
+    执行单个启动阶段并记录耗时，失败时保留原异常和 fail-fast 语义。
+    """
     started_at = time.perf_counter()
     try:
         result = callback()
@@ -212,7 +226,9 @@ async def run_startup_step(
 async def stop_lifecycle_components(
     components: tuple[LifecycleComponent, ...],
 ) -> bool:
-    """按声明顺序关闭组件，并在关键 owner 未收敛时停止释放依赖。"""
+    """
+    按声明顺序关闭组件，并在关键 owner 未收敛时停止释放依赖。
+    """
     all_converged = True
     for component in sorted(
         (item for item in components if item.stop is not None),
@@ -241,7 +257,9 @@ def select_startup_cleanup_components(
     started_names: set[str],
     active_component: LifecycleComponent | None,
 ) -> tuple[LifecycleComponent, ...]:
-    """选择启动失败时已启动、部分启动及其 stop-only owner 的清理集合。"""
+    """
+    选择启动失败时已启动、部分启动及其 stop-only owner 的清理集合。
+    """
     cleanup_names = set(started_names)
     if active_component is not None:
         cleanup_names.add(active_component.name)
@@ -270,14 +288,18 @@ def select_startup_cleanup_components(
 
 
 async def initialize_modules_component(app: FastAPI) -> None:
-    """启动模块并把其类型化运行时发布到当前 FastAPI AppState。"""
+    """
+    启动模块并把其类型化运行时发布到当前 FastAPI AppState。
+    """
     runtime = await init_modules()
     if runtime is not None:
         app.state.host_runtime = runtime
 
 
 async def stop_modules_component(app: FastAPI) -> bool:
-    """关闭模块 owner；仅在完整收敛后撤销 AppState 中的 HostRuntime。"""
+    """
+    关闭模块 owner；仅在完整收敛后撤销 AppState 中的 HostRuntime。
+    """
     converged = await stop_modules()
     if converged:
         app.state.host_runtime = None
@@ -285,13 +307,17 @@ async def stop_modules_component(app: FastAPI) -> bool:
 
 
 def initialize_log_runtime(app: FastAPI) -> None:
-    """创建并发布当前 lifespan 独占的文件日志 writer。"""
+    """
+    创建并发布当前 lifespan 独占的文件日志 writer。
+    """
     app.state.log_shutdown_failed = False
     app.state.log_writer = start_log_writer(get_runtime_setting("LOG_PATH"))
 
 
 def stop_log_runtime(app: FastAPI) -> bool:
-    """关闭当前 lifespan 的日志 owner，失败时保留句柄供重试。"""
+    """
+    关闭当前 lifespan 的日志 owner，失败时保留句柄供重试。
+    """
     writer = getattr(app.state, "log_writer", None)
     converged = shutdown_log_writer(writer)
     app.state.log_shutdown_failed = not converged
@@ -301,7 +327,9 @@ def stop_log_runtime(app: FastAPI) -> bool:
 
 
 def initialize_message_runtime(app: FastAPI) -> None:
-    """显式启动组合根已经构造的共享消息队列。"""
+    """
+    显式启动组合根已经构造的共享消息队列。
+    """
     runtime = getattr(app.state, "host_runtime", None)
     if not isinstance(runtime, HostRuntime):
         raise RuntimeError("HostRuntime 尚未发布，无法启动消息队列")
@@ -310,7 +338,9 @@ def initialize_message_runtime(app: FastAPI) -> None:
 
 
 def stop_message_runtime(app: FastAPI) -> bool:
-    """关闭当前 lifespan 的共享消息队列并传播真实收敛结果。"""
+    """
+    关闭当前 lifespan 的共享消息队列并传播真实收敛结果。
+    """
     runtime = getattr(app.state, "host_runtime", None)
     if not isinstance(runtime, HostRuntime):
         converged = stop_message()
@@ -324,14 +354,18 @@ def stop_message_runtime(app: FastAPI) -> bool:
 
 
 def initialize_task_registry(app: FastAPI) -> None:
-    """创建当前 lifespan 独占的后台任务登记器。"""
+    """
+    创建当前 lifespan 独占的后台任务登记器。
+    """
     task_registry = TaskRegistry()
     app.state.task_registry = task_registry
     configure_task_registry(task_registry)
 
 
 async def stop_task_registry(app: FastAPI) -> bool:
-    """停止接收新后台任务，并把已封口登记器保留到下一次显式启动。"""
+    """
+    停止接收新后台任务，并把已封口登记器保留到下一次显式启动。
+    """
     task_registry = getattr(app.state, "task_registry", None)
     if not isinstance(task_registry, TaskRegistry):
         configure_task_registry(None)
@@ -343,20 +377,26 @@ async def stop_task_registry(app: FastAPI) -> bool:
 
 
 async def prepare_plugin_restore() -> None:
-    """先恢复未完成安装事务，再加载持久插件备份及其依赖。"""
+    """
+    先恢复未完成安装事务，再加载持久插件备份及其依赖。
+    """
     await get_plugin_installation_recovery().replay()
     await run_in_threadpool_to_completion(SystemChain().restore_plugins)
 
 
 def schedule_plugin_settlement(app: FastAPI) -> None:
-    """调度插件同步与启动收尾任务，并把取消权交给最前置的 TaskRegistry owner。"""
+    """
+    调度插件同步与启动收尾任务，并把取消权交给最前置的 TaskRegistry owner。
+    """
     task = asyncio.create_task(run_startup_step("插件同步与启动收尾", init_extra))
     task_registry = app.state.task_registry
     task_registry.register(task, owner="startup.plugin_settlement")
 
 
 def prepare_database_component(app: FastAPI) -> None:
-    """完成数据库建表、迁移与 head 校验后发布数据库就绪状态。"""
+    """
+    完成数据库建表、迁移与 head 校验后发布数据库就绪状态。
+    """
     # Alembic 及全部 ORM 元数据只在 lifespan 真正启动时加载，create_app/import 阶段
     # 继续保持不建库、不加载迁移运行时的纯 ASGI 结构语义。
     from app.startup.initializers.database import (
@@ -370,7 +410,9 @@ def prepare_database_component(app: FastAPI) -> None:
 
 
 def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
-    """按现有顺序构建应用组件清单，回调在每次 lifespan 启动时重新绑定。"""
+    """
+    按现有顺序构建应用组件清单，回调在每次 lifespan 启动时重新绑定。
+    """
     return (
         LifecycleComponent(
             name="文件日志",
@@ -672,7 +714,9 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
 
 
 def get_lifecycle_manifest(app: FastAPI, *, safe_mode: bool) -> tuple[dict[str, object], ...]:
-    """导出指定模式下的生命周期组件、依赖、顺序和超时清单。"""
+    """
+    导出指定模式下的生命周期组件、依赖、顺序和超时清单。
+    """
     return lifecycle_manifest(
         build_lifecycle_components(app),
         safe_mode=safe_mode,

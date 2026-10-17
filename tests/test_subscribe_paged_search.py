@@ -1,4 +1,6 @@
-"""逐页提交复用完整缺集和原下载选集规则，不把批次完成当作订阅完成。"""
+"""
+逐页提交复用完整缺集和原下载选集规则，不把批次完成当作订阅完成。
+"""
 
 from dataclasses import replace
 from types import SimpleNamespace
@@ -36,7 +38,9 @@ from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 @pytest.fixture
 def subscription(monkeypatch):
-    """仅隔离媒体库、站点、下载器及订阅写入，保留实际缺集、选集和完成判断。"""
+    """
+    仅隔离媒体库、站点、下载器及订阅写入，保留实际缺集、选集和完成判断。
+    """
     initial = SubscriptionSnapshot(id=31, name="Example Show", type=MediaType.TV.value,
                                    media_source=MediaSource.TMDB.value, media_id="1", season=1,
                                    start_episode=1, total_episode=1, manual_total_episode=1, state="R")
@@ -71,13 +75,17 @@ def subscription(monkeypatch):
 
 
 def _missing(scope, item):
-    """通过真实订阅规则计算媒体库与下载记录合并后的缺集。"""
+    """
+    通过真实订阅规则计算媒体库与下载记录合并后的缺集。
+    """
     return scope.chain.resolve_subscribe_missing(
         subscribe=item, meta=build_subscribe_meta(item), mediainfo=scope.media, mediakey="tmdb:1")[1]
 
 
 def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, monkeypatch):
-    """搜索中扩展总集数后，下载结算保留新缺集，检查阶段可先同步旧范围。"""
+    """
+    搜索中扩展总集数后，下载结算保留新缺集，检查阶段可先同步旧范围。
+    """
     scope = subscription
     target = SubscriptionSearchTarget(scope.initial, build_subscribe_meta(scope.initial), scope.media,
                                       _missing(scope, scope.initial), "tmdb:1")
@@ -88,7 +96,9 @@ def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, mon
     monkeypatch.setattr(scope.chain, "get_sub_sites", lambda _subscribe: [1])
     calls = []
     def request(**params):
-        """搜索首轮后模拟用户扩展订阅范围。"""
+        """
+        搜索首轮后模拟用户扩展订阅范围。
+        """
         calls.append(params["page"])
         # 开始搜索后用户将总集数从 1 增加到 2。
         scope.current["value"] = replace(scope.current["value"], total_episode=2)
@@ -113,7 +123,9 @@ def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, mon
 
 
 def test_best_version_search_uses_normal_rules_for_never_downloaded_episodes(subscription, monkeypatch):
-    """洗版候选同时包含缺集和升级集时，缺集使用普通订阅规则组。"""
+    """
+    洗版候选同时包含缺集和升级集时，缺集使用普通订阅规则组。
+    """
     scope = subscription
     subscribe = replace(
         scope.initial,
@@ -164,7 +176,9 @@ def test_best_version_search_uses_normal_rules_for_never_downloaded_episodes(sub
 
 
 def test_best_version_candidate_filter_handles_full_pack_and_explicit_groups(subscription, monkeypatch):
-    """全集候选按目标范围归类，订阅显式规则组同时覆盖两种候选。"""
+    """
+    全集候选按目标范围归类，订阅显式规则组同时覆盖两种候选。
+    """
     scope = subscription
     subscribe = replace(scope.initial, best_version=1, total_episode=2, filter_groups=["custom"])
     target = SubscriptionSearchTarget(
@@ -190,7 +204,9 @@ def test_best_version_candidate_filter_handles_full_pack_and_explicit_groups(sub
 
 
 def test_non_best_version_candidate_filter_keeps_existing_filtering(subscription, monkeypatch):
-    """普通订阅仍通过原有候选过滤器，不构造洗版规则分支。"""
+    """
+    普通订阅仍通过原有候选过滤器，不构造洗版规则分支。
+    """
     scope = subscription
     target = SubscriptionSearchTarget(
         scope.initial,
@@ -206,7 +222,9 @@ def test_non_best_version_candidate_filter_keeps_existing_filtering(subscription
 
 
 def test_paged_best_version_search_builds_dynamic_rule_checkpoint(subscription, monkeypatch):
-    """洗版分页计划保存普通与升级规则快照，恢复时配置变化会重新搜索。"""
+    """
+    洗版分页计划保存普通与升级规则快照，恢复时配置变化会重新搜索。
+    """
     scope = subscription
     subscribe = replace(scope.initial, best_version=1, total_episode=2, episode_priority={"1": 80})
     target = SubscriptionSearchTarget(
@@ -219,13 +237,17 @@ def test_paged_best_version_search_builds_dynamic_rule_checkpoint(subscription, 
     captured = {}
 
     class FakeScan:
-        """捕获分页计划而不发起站点请求。"""
+        """
+        捕获分页计划而不发起站点请求。
+        """
 
         def __init__(self, *, plan, **_kwargs):
             captured["plan"] = plan
 
         def run(self, _submit):
-            """模拟空分页搜索。"""
+            """
+            模拟空分页搜索。
+            """
 
     scope.chain.get_sub_sites = lambda _subscribe: [1]
     scope.chain.get_params = lambda _subscribe: {}
@@ -248,7 +270,9 @@ def test_paged_best_version_search_builds_dynamic_rule_checkpoint(subscription, 
     }
 
 def test_best_version_target_episodes_handles_incomplete_identity(subscription):
-    """历史订阅缺少媒体键或季号时回退到订阅范围，不访问空键映射。"""
+    """
+    历史订阅缺少媒体键或季号时回退到订阅范围，不访问空键映射。
+    """
     target = SubscriptionSearchTarget(
         subscription.initial,
         build_subscribe_meta(subscription.initial),
@@ -265,7 +289,9 @@ def test_best_version_target_episodes_handles_incomplete_identity(subscription):
 @pytest.mark.parametrize("explicit_missing", [False, True])
 @pytest.mark.parametrize("strategy", ["smart", "full", "single_page"])
 def test_whole_season_downloads_late_complete_pack_before_early_parts(subscription, monkeypatch, explicit_missing, strategy):
-    """整季缺失的真实分页与下载选集链路只提交后页全集包，不抢跑前页散集。"""
+    """
+    整季缺失的真实分页与下载选集链路只提交后页全集包，不抢跑前页散集。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2, manual_total_episode=2)
     scope.current["value"] = current
@@ -283,14 +309,18 @@ def test_whole_season_downloads_late_complete_pack_before_early_parts(subscripti
     calls = []
 
     def download(*_args, **_params):
-        """下载副作用必须晚于真实末页，不因散集关闭证据提前执行。"""
+        """
+        下载副作用必须晚于真实末页，不因散集关闭证据提前执行。
+        """
         assert calls == ([0] if strategy == "single_page" else [0, 1, 2, 3])
         return "hash"
 
     scope.download.download_single.side_effect = download
 
     def request(**params):
-        """两页散集后出现整季包，再以空页确认来源结束。"""
+        """
+        两页散集后出现整季包，再以空页确认来源结束。
+        """
         page = params["page"]
         calls.append(page)
         titles = {0: "Example Show S01E01", 1: "Example Show S01E02",
@@ -325,7 +355,9 @@ def test_whole_season_downloads_late_complete_pack_before_early_parts(subscripti
     ({"start_episode": 2}, [2], True),
 ])
 def test_initial_pack_uses_download_records_and_current_missing(fields, episodes, expected):
-    """首次下载以当前缺集事实为准，已有下载或媒体库已有剧集时不能扩大到全集。"""
+    """
+    首次下载以当前缺集事实为准，已有下载或媒体库已有剧集时不能扩大到全集。
+    """
     subscribe = SubscriptionSnapshot(id=1, name="Show", type=MediaType.TV.value, season=1, total_episode=2)
     subscribe = replace(subscribe, **fields)
     missing = {"tmdb:1": {1: NotExistMediaInfo(season=1, episodes=episodes, total_episode=2)}}
@@ -336,7 +368,9 @@ def test_initial_pack_uses_download_records_and_current_missing(fields, episodes
 
 @pytest.mark.parametrize("pack_episodes,pack_success", [(None, False), ([1, 2], True), ([1], True), ([1, 2], False)])
 def test_initial_download_prefers_complete_pack_and_falls_back(subscription, pack_episodes, pack_success):
-    """显式全缺集时整包优先于散集；种子不完整或无整包时仍下载所需散集。"""
+    """
+    显式全缺集时整包优先于散集；种子不完整或无整包时仍下载所需散集。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2)
     scope.current["value"] = current
@@ -351,11 +385,15 @@ def test_initial_download_prefers_complete_pack_and_falls_back(subscription, pac
     contexts = parts + ([pack] if pack_episodes is not None else [])
 
     def prepare(torrent, **_params):
-        """解析出的剧集与资源标题独立，避免把标题整季误当成真实完整包。"""
+        """
+        解析出的剧集与资源标题独立，避免把标题整季误当成真实完整包。
+        """
         return b"torrent", None, pack_episodes if torrent is pack.torrent_info else MetaInfo(torrent.title).episode_list
 
     def submit(context, **_params):
-        """整包下载器失败后仍允许提交散集，验证真实回退而非空候选。"""
+        """
+        整包下载器失败后仍允许提交散集，验证真实回退而非空候选。
+        """
         return None if context is pack and not pack_success else "hash"
 
     scope.download.download_torrent.side_effect = prepare
@@ -369,7 +407,9 @@ def test_initial_download_prefers_complete_pack_and_falls_back(subscription, pac
 
 
 def test_initial_pack_rechecks_current_download_progress(subscription):
-    """搜索开始后新增下载记录时，提交前重读快照并恢复按集选择。"""
+    """
+    搜索开始后新增下载记录时，提交前重读快照并恢复按集选择。
+    """
     scope = subscription
     prepared = replace(scope.initial, total_episode=2)
     scope.current["value"] = replace(prepared, note=[1])
@@ -385,7 +425,9 @@ def test_initial_pack_rechecks_current_download_progress(subscription):
 
 
 def test_ready_batch_uses_original_partial_pack_selection_and_returns_full_missing(subscription):
-    """本批只准 E01 时，原下载链从合集选 E01，返回值仍保留未就绪 E02。"""
+    """
+    本批只准 E01 时，原下载链从合集选 E01，返回值仍保留未就绪 E02。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2)
     scope.current["value"] = current
@@ -400,6 +442,9 @@ def test_ready_batch_uses_original_partial_pack_selection_and_returns_full_missi
 
 
 def test_ready_batch_cannot_expand_existing_candidate_episode_restriction(subscription):
+    """
+    已就绪下载批次不得扩大候选原有的允许剧集范围。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2)
     scope.current["value"] = current
@@ -415,7 +460,9 @@ def test_ready_batch_cannot_expand_existing_candidate_episode_restriction(subscr
 
 
 def test_all_ready_season_pack_with_extra_episode_downloads_whole_pack_like_original(subscription):
-    """整季缺集全部就绪时不加本批集数限制，与原 MP 一致：整季包多出一集仍整包下载、不做选集。"""
+    """
+    整季缺集全部就绪时不加本批集数限制，与原 MP 一致：整季包多出一集仍整包下载、不做选集。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2)
     scope.current["value"] = current
@@ -431,7 +478,9 @@ def test_all_ready_season_pack_with_extra_episode_downloads_whole_pack_like_orig
 
 
 def test_all_ready_missing_season_keeps_original_whole_pack_priority(subscription):
-    """整季缺集全部就绪时先下载整季包，不因单集候选排序靠前而改走拆包。"""
+    """
+    整季缺集全部就绪时先下载整季包，不因单集候选排序靠前而改走拆包。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2)
     scope.current["value"] = current
@@ -450,7 +499,9 @@ def test_all_ready_missing_season_keeps_original_whole_pack_priority(subscriptio
 
 @pytest.mark.parametrize("files,accepted", [([1, 2], True), ([1], False)])
 def test_full_season_upgrade_keeps_complete_pack_requirement(subscription, files, accepted):
-    """整季洗版仍走原完整覆盖校验，完整包可下载，不完整包不能降为拆包。"""
+    """
+    整季洗版仍走原完整覆盖校验，完整包可下载，不完整包不能降为拆包。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2, best_version=1, best_version_full=1, current_priority=0)
     scope.current["value"] = current
@@ -471,6 +522,9 @@ def test_full_season_upgrade_keeps_complete_pack_requirement(subscription, files
 
 
 def test_episode_upgrade_keeps_original_full_pack_first(subscription):
+    """
+    按集洗版仍优先保留原始完整合集候选。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2, best_version=1, current_priority=0)
     scope.current["value"] = current
@@ -486,7 +540,9 @@ def test_episode_upgrade_keeps_original_full_pack_first(subscription):
 
 @pytest.mark.parametrize("replacement_allowed", [None, set(), {2}])
 def test_replacement_candidate_keeps_batch_and_own_episode_limits(subscription, replacement_allowed):
-    """插件替换候选后，本批范围和新候选自身限制仍须同时满足。"""
+    """
+    插件替换候选后，本批范围和新候选自身限制仍须同时满足。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2)
     scope.current["value"] = current
@@ -511,7 +567,9 @@ def test_replacement_candidate_keeps_batch_and_own_episode_limits(subscription, 
 
 
 def test_scan_end_preserves_newer_automatic_total_and_missing(subscription, monkeypatch):
-    """结束搜索不能用开始时的两集快照覆盖后来确认的三集，也不能提前完成订阅。"""
+    """
+    结束搜索不能用开始时的两集快照覆盖后来确认的三集，也不能提前完成订阅。
+    """
     scope = subscription
     initial = replace(scope.initial, total_episode=2, manual_total_episode=0)
     target = SubscriptionSearchTarget(initial, build_subscribe_meta(initial), scope.media,
@@ -529,7 +587,9 @@ def test_scan_end_preserves_newer_automatic_total_and_missing(subscription, monk
 
 
 def test_scan_end_reconciles_current_missing_after_target_was_submitted(subscription):
-    """本轮原目标已提交，但用户增加了总集数，结束扫描时仍须保留新增缺集。"""
+    """
+    本轮原目标已提交，但用户增加了总集数，结束扫描时仍须保留新增缺集。
+    """
     scope = subscription
     target = SubscriptionSearchTarget(scope.initial, build_subscribe_meta(scope.initial), scope.media,
                                       _missing(scope, scope.initial), "tmdb:1")
@@ -542,6 +602,9 @@ def test_scan_end_reconciles_current_missing_after_target_was_submitted(subscrip
 
 
 def test_scan_end_cannot_finalize_replaced_subscription(subscription):
+    """
+    分页扫描结束时，不得完成已被替换的订阅版本。
+    """
     scope = subscription
     target = SubscriptionSearchTarget(scope.initial, build_subscribe_meta(scope.initial), scope.media,
                                       _missing(scope, scope.initial), "tmdb:1")
@@ -552,7 +615,9 @@ def test_scan_end_cannot_finalize_replaced_subscription(subscription):
 
 
 def test_scan_end_still_reconciles_a_subscription_paused_during_the_accepted_search(subscription):
-    """与原流程一致：暂停只影响后续自动调度，已接纳的搜索照常结算缺集。"""
+    """
+    与原流程一致：暂停只影响后续自动调度，已接纳的搜索照常结算缺集。
+    """
     scope = subscription
     target = SubscriptionSearchTarget(scope.initial, build_subscribe_meta(scope.initial), scope.media,
                                       _missing(scope, scope.initial), "tmdb:1")
@@ -565,6 +630,9 @@ def test_scan_end_still_reconciles_a_subscription_paused_during_the_accepted_sea
 
 @pytest.mark.parametrize("media_type", [MediaType.TV, MediaType.MOVIE])
 def test_scan_end_still_finishes_when_current_media_is_complete(subscription, media_type):
+    """
+    扫描结束时当前媒体已完整，仍应正常完成订阅。
+    """
     scope = subscription
     current = replace(scope.initial, type=media_type.value, note=[1])
     scope.current["value"] = current

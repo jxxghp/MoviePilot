@@ -1,3 +1,7 @@
+"""
+验证 Agent 任务的原子认领、配置快照和执行状态持久化。
+"""
+
 import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Thread, current_thread
@@ -8,7 +12,8 @@ import pytest
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
-# pylint: disable=no-name-in-module  # 旧公开入口由 runtime compat 惰性注入，Pylint 无法静态解析。
+# 旧公开入口由运行时兼容层惰性注入，Pylint 无法静态解析。
+# pylint: disable=no-name-in-module
 from app.agent.orchestrator import AgentManager
 from app.agent.tools.impl.agent_task import AgentTaskTool
 from app.db import base as db_base
@@ -23,7 +28,9 @@ Engine = get_engine()
 
 
 def _add_task(prefix: str, *, trigger_type: str = "cron") -> AgentTask:
-    """创建带隔离 owner 的 Agent 自主任务。"""
+    """
+    创建带隔离 owner 的 Agent 自主任务。
+    """
     user_id = f"{prefix}-{uuid4().hex}"
     return AgentTaskOper().add(
         name=f"{prefix} 检查",
@@ -41,7 +48,9 @@ def _add_task(prefix: str, *, trigger_type: str = "cron") -> AgentTask:
 
 
 def _build_query_tool(user_id: str) -> AgentTaskTool:
-    """构造绑定当前 owner 的任务查询工具。"""
+    """
+    构造绑定当前 owner 的任务查询工具。
+    """
     tool = AgentTaskTool(
         session_id=f"session-{user_id}",
         user_id=user_id,
@@ -52,7 +61,9 @@ def _build_query_tool(user_id: str) -> AgentTaskTool:
 
 
 def test_begin_run_claims_once_and_preserves_snapshot() -> None:
-    """并发认领只能创建一个 run，且任务修改不改变执行快照。"""
+    """
+    并发认领只能创建一个 run，且任务修改不改变执行快照。
+    """
     task = _add_task("run-claim")
 
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -83,7 +94,9 @@ def test_begin_run_claims_once_and_preserves_snapshot() -> None:
 
 
 def test_begin_run_uses_configuration_committed_before_atomic_claim(monkeypatch) -> None:
-    """配置先完成写入时，执行快照不得因秒级时间相同而读取旧值。"""
+    """
+    配置先完成写入时，执行快照不得因秒级时间相同而读取旧值。
+    """
     fixed_time = "2026-08-13 20:00:00"
     monkeypatch.setattr(AgentTaskOper, "_now", staticmethod(lambda: fixed_time))
     task = _add_task("run-current-snapshot")
@@ -130,7 +143,9 @@ def test_begin_run_uses_configuration_committed_before_atomic_claim(monkeypatch)
 
 
 def test_begin_run_rejects_unknown_trigger_source() -> None:
-    """运行记录只接受已定义的定时或手动触发入口。"""
+    """
+    运行记录只接受已定义的定时或手动触发入口。
+    """
     task = _add_task("run-source")
 
     with pytest.raises(ValueError, match="不支持的 Agent 任务触发来源"):
@@ -143,7 +158,9 @@ def test_begin_run_rejects_unknown_trigger_source() -> None:
 
 
 def test_agenttaskrun_oper_reuses_explicit_query_session(db, monkeypatch):
-    """AgentTaskOper 的运行记录查询必须复用调用方同步会话。"""
+    """
+    AgentTaskOper 的运行记录查询必须复用调用方同步会话。
+    """
     task = _add_task("run-explicit-query")
     run = AgentTaskOper().begin_run(task.id)
     assert run
@@ -160,7 +177,9 @@ def test_agenttaskrun_oper_reuses_explicit_query_session(db, monkeypatch):
 
 @pytest.mark.anyio
 async def test_agenttask_oper_async_get_uses_async_query_boundary() -> None:
-    """异步任务查询应复用统一 AsyncSession 路径并保持 owner 过滤语义。"""
+    """
+    异步任务查询应复用统一 AsyncSession 路径并保持 owner 过滤语义。
+    """
     task = _add_task("run-async-query")
 
     assert await AgentTaskOper().async_get(task.id, user_id=task.user_id) is not None
@@ -168,7 +187,9 @@ async def test_agenttask_oper_async_get_uses_async_query_boundary() -> None:
 
 
 def test_begin_run_rolls_back_task_claim_when_run_insert_fails() -> None:
-    """运行记录插入失败时，任务的 running 投影必须随事务回滚。"""
+    """
+    运行记录插入失败时，任务的 running 投影必须随事务回滚。
+    """
     first_task = _add_task("run-rollback-first")
     second_task = _add_task("run-rollback-second")
     run_id = uuid4().hex
@@ -200,7 +221,9 @@ def test_begin_run_rolls_back_task_claim_when_run_insert_fails() -> None:
 
 
 def test_finish_run_finalizes_once_under_concurrency() -> None:
-    """同一 run 的并发收口只能有一个成功并只累计一次。"""
+    """
+    同一 run 的并发收口只能有一个成功并只累计一次。
+    """
     task = _add_task("run-finish-once")
     run = AgentTaskOper().begin_run(task.id)
     assert run
@@ -228,7 +251,9 @@ def test_finish_run_finalizes_once_under_concurrency() -> None:
 
 
 def test_stale_finish_cannot_overwrite_latest_run_projection() -> None:
-    """迟到的旧运行只能收口自己，不得覆盖任务的最新运行投影。"""
+    """
+    迟到的旧运行只能收口自己，不得覆盖任务的最新运行投影。
+    """
     task = _add_task("run-stale")
     oper = AgentTaskOper()
     first = oper.begin_run(task.id, "scheduled")
@@ -263,7 +288,9 @@ def test_stale_finish_cannot_overwrite_latest_run_projection() -> None:
 
 
 def test_interruption_requires_matching_running_run() -> None:
-    """有 run 指针时，对账不得只改任务而留下不一致的运行历史。"""
+    """
+    有 run 指针时，对账不得只改任务而留下不一致的运行历史。
+    """
     task = _add_task("run-interrupt-mismatch")
     oper = AgentTaskOper()
     run = oper.begin_run(task.id)
@@ -285,7 +312,9 @@ def test_interruption_requires_matching_running_run() -> None:
 
 
 def test_interruption_supports_legacy_running_task_without_run() -> None:
-    """升级前遗留的 running 投影没有 run 指针时仍需兼容对账。"""
+    """
+    升级前遗留的 running 投影没有 run 指针时仍需兼容对账。
+    """
     task = _add_task("run-interrupt-legacy")
     with SessionFactory() as db:
         db.query(AgentTask).filter(AgentTask.id == task.id).update(
@@ -306,7 +335,9 @@ def test_interruption_supports_legacy_running_task_without_run() -> None:
 
 
 def test_interruption_and_manual_rerun_keep_distinct_history() -> None:
-    """中断对账与显式重跑应保留两条互不覆盖的执行记录。"""
+    """
+    中断对账与显式重跑应保留两条互不覆盖的执行记录。
+    """
     task = _add_task("run-interrupt", trigger_type="date")
     oper = AgentTaskOper()
     first = oper.begin_run(task.id, "scheduled")
@@ -333,7 +364,9 @@ def test_interruption_and_manual_rerun_keep_distinct_history() -> None:
 
 
 def test_delete_rejects_running_task_and_removes_all_history() -> None:
-    """运行中任务不可删除，收口后永久删除不得留下孤立 run。"""
+    """
+    运行中任务不可删除，收口后永久删除不得留下孤立 run。
+    """
     task = _add_task("run-delete")
     oper = AgentTaskOper()
     run = oper.begin_run(task.id)
@@ -350,7 +383,9 @@ def test_delete_rejects_running_task_and_removes_all_history() -> None:
 
 @pytest.mark.anyio
 async def test_query_task_returns_owner_scoped_ten_recent_runs(monkeypatch) -> None:
-    """单任务查询只向 owner 返回最近十次运行，列表查询不携带历史。"""
+    """
+    单任务查询只向 owner 返回最近十次运行，列表查询不携带历史。
+    """
     task = _add_task("run-query")
     other = _add_task("run-query-other")
     oper = AgentTaskOper()
@@ -388,7 +423,9 @@ async def test_query_task_returns_owner_scoped_ten_recent_runs(monkeypatch) -> N
 @pytest.mark.anyio
 @pytest.mark.parametrize('reply, success', [('完成', True), ('本轮未完成：工具循环已停止', False)])
 async def test_agent_manager_records_manual_trigger_source(monkeypatch, reply, success) -> None:
-    """真实入口记录手动触发来源，受控停止不能把定时任务标为成功。"""
+    """
+    真实入口记录手动触发来源，受控停止不能把定时任务标为成功。
+    """
     from app.agent import orchestrator
     from app.runtime.config import settings
 
@@ -403,7 +440,9 @@ async def test_agent_manager_records_manual_trigger_source(monkeypatch, reply, s
     captured = {}
 
     async def process_message(**kwargs):
-        """返回正常结果或循环停止结果，验证任务运行持久状态。"""
+        """
+        返回正常结果或循环停止结果，验证任务运行持久状态。
+        """
         captured.update(kwargs)
         return reply
 

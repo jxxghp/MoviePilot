@@ -1,4 +1,6 @@
-"""公共类型声明须保留站点解析器的分页、空结果及初始化兼容行为。"""
+"""
+公共类型声明须保留站点解析器的分页、空结果及初始化兼容行为。
+"""
 
 import json
 from unittest.mock import Mock
@@ -13,14 +15,18 @@ from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 
 @pytest.fixture
 def parser():
-    """使用受控请求客户端，测试不创建或发送真实 HTTP 请求。"""
+    """
+    使用受控请求客户端，测试不创建或发送真实 HTTP 请求。
+    """
     return NexusPhpSiteUserInfo("test", "https://example.com/", None, None, None,
                                 request_utils=Mock())
 
 
 @pytest.mark.parametrize("next_page", [None, False, ""])
 def test_seeding_pagination_distinguishes_empty_path_from_terminal(parser, monkeypatch, next_page):
-    """空路径仍触发第二页请求，None 与 False 均立即结束。"""
+    """
+    空路径仍触发第二页请求，None 与 False 均立即结束。
+    """
     parser.userid = 42
     parser._torrent_seeding_page = "seeding"
     request = Mock(return_value="page")
@@ -39,12 +45,16 @@ def test_seeding_pagination_distinguishes_empty_path_from_terminal(parser, monke
 
 @pytest.mark.parametrize("message", [None, (None, None, None), ("标题", "日期", "正文")])
 def test_unread_message_missing_result_keeps_failure_boundary(parser, monkeypatch, message):
-    """无结果仍抛出解包错误，合法三元组按原样进入待通知清单。"""
+    """
+    无结果仍抛出解包错误，合法三元组按原样进入待通知清单。
+    """
     parser.message_unread = 1
     parser._sys_mail_unread_page = None
 
     def collect(_text, links):
-        """模拟一页未读消息链接。"""
+        """
+        模拟一页未读消息链接。
+        """
         links.append("message/1")
         return None
 
@@ -62,7 +72,9 @@ def test_unread_message_missing_result_keeps_failure_boundary(parser, monkeypatc
 
 @pytest.mark.parametrize("page_number", [1, 1.5, "1"])
 def test_mtorrent_next_page_preserves_numeric_increment_and_invalid_input(monkeypatch, page_number):
-    """页码按既有加法递增，保留参数对象；字符串不会被隐式转为数字。"""
+    """
+    页码按既有加法递增，保留参数对象；字符串不会被隐式转为数字。
+    """
     parser = MTorrentSiteUserInfo("test", "https://example.com/", None, "key", None,
                                   request_utils=Mock())
     parameters = {"pageNumber": page_number, "pageSize": 200, "type": "SEEDING"}
@@ -83,7 +95,9 @@ def test_mtorrent_next_page_preserves_numeric_increment_and_invalid_input(monkey
 
 @pytest.mark.parametrize("use_keywords", [False, True])
 def test_audiences_constructor_preserves_base_arguments(use_keywords):
-    """显式构造签名继续接受父类全部位置参数与关键字参数。"""
+    """
+    显式构造签名继续接受父类全部位置参数与关键字参数。
+    """
     client = Mock()
     arguments = {
         "site_name": "test", "url": "https://example.com/", "site_cookie": None,

@@ -1,3 +1,7 @@
+"""
+验证外部媒体模块同步与异步客户端共享请求和投影规则。
+"""
+
 import asyncio
 from unittest.mock import AsyncMock, Mock
 
@@ -16,7 +20,9 @@ from app.schemas.types import MediaSource
 def test_bangumi_sync_async_share_request_and_projection(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Bangumi 同步异步搜索与人物投影应使用同一请求和结果规则。"""
+    """
+    Bangumi 同步异步搜索与人物投影应使用同一请求和结果规则。
+    """
     api = BangumiApi()
     sync_invoke = Mock(
         side_effect=[
@@ -50,7 +56,9 @@ def test_bangumi_sync_async_share_request_and_projection(
 def test_anilist_sync_async_share_queries_and_projection(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AniList 同步异步搜索与人物入口应共享查询文本、变量和投影。"""
+    """
+    AniList 同步异步搜索与人物入口应共享查询文本、变量和投影。
+    """
     api = AniListApi()
     search_payload = {"Page": {"media": [{"id": 154587}]}}
     person_payload = {"Staff": {"id": 95075, "name": {"native": "种崎敦美"}}}
@@ -77,7 +85,9 @@ def test_anilist_sync_async_share_queries_and_projection(
 def test_musicbrainz_sync_async_share_detail_decision(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """MusicBrainz 显式详情识别应共享来源准入、参数和缓存收尾。"""
+    """
+    MusicBrainz 显式详情识别应共享来源准入、参数和缓存收尾。
+    """
     module = MusicBrainzModule()
     module.cache = Mock()
     meta = MetaMusic(
@@ -110,7 +120,9 @@ def test_musicbrainz_sync_async_share_detail_decision(
 def test_theaudiodb_sync_async_share_request_plan_and_response(
         monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """TheAudioDB 同步异步详情应共享请求计划、响应解析和实体选择。"""
+    """
+    TheAudioDB 同步异步详情应共享请求计划、响应解析和实体选择。
+    """
     module = TheAudioDbModule()
     payload = {
         "track": [
@@ -145,7 +157,9 @@ def test_theaudiodb_sync_async_share_request_plan_and_response(
 
 
 def test_acoustid_lookup_plan_and_response_projection_are_transport_neutral() -> None:
-    """AcoustID 请求载荷和响应筛选不得依赖同步或异步传输实现。"""
+    """
+    AcoustID 请求载荷和响应筛选不得依赖同步或异步传输实现。
+    """
     recording_id = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
     plan = AcoustIdModule._lookup_plan(" client-key ", 243, "AQADtM...")
     payload = {

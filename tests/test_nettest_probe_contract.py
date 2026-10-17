@@ -1,4 +1,6 @@
-"""验证内置网络探针与对应模块请求契约保持一致。"""
+"""
+验证内置网络探针与对应模块请求契约保持一致。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -10,7 +12,9 @@ from app.application.network import NetworkTestService
 
 
 def _network_test_service(transport, **settings) -> NetworkTestService:
-    """创建读取独立设置快照的网络探测服务。"""
+    """
+    创建读取独立设置快照的网络探测服务。
+    """
     values = {"NORMAL_USER_AGENT": "MoviePilot-Test", **settings}
     return NetworkTestService(
         transport=transport,
@@ -20,7 +24,9 @@ def _network_test_service(transport, **settings) -> NetworkTestService:
 
 
 def test_anilist_probe_uses_post_graphql_request() -> None:
-    """AniList 官方 GraphQL 探针应使用模块相同的 POST JSON 协议。"""
+    """
+    AniList 官方 GraphQL 探针应使用模块相同的 POST JSON 协议。
+    """
     captured = {}
     response = SimpleNamespace(
         status_code=200,
@@ -30,7 +36,9 @@ def test_anilist_probe_uses_post_graphql_request() -> None:
     )
 
     async def respond(method, url, **options):
-        """记录 AniList 探测请求并返回成功响应。"""
+        """
+        记录 AniList 探测请求并返回成功响应。
+        """
         captured.update(method=method, url=url, **options)
         return response
 
@@ -50,7 +58,9 @@ def test_anilist_probe_uses_post_graphql_request() -> None:
 
 
 def test_theaudiodb_probe_uses_configured_key_and_module_health_endpoint() -> None:
-    """TheAudioDB 探针应使用模块配置的 Key 和相同的艺术家搜索接口。"""
+    """
+    TheAudioDB 探针应使用模块配置的 Key 和相同的艺术家搜索接口。
+    """
     configured_key = "custom-audio-key"
     captured = {}
     response = SimpleNamespace(
@@ -61,7 +71,9 @@ def test_theaudiodb_probe_uses_configured_key_and_module_health_endpoint() -> No
     )
 
     async def respond(method, url, **options):
-        """记录 TheAudioDB 探测请求并返回成功响应。"""
+        """
+        记录 TheAudioDB 探测请求并返回成功响应。
+        """
         captured.update(method=method, url=url, **options)
         return response
 
@@ -88,11 +100,15 @@ def test_theaudiodb_probe_uses_configured_key_and_module_health_endpoint() -> No
 
 @pytest.mark.parametrize("github_headers", [None, {"Authorization": "Bearer github-token"}])
 def test_network_proxy_probe_uses_configured_github_identity(github_headers) -> None:
-    """通用代理探针应沿用 GitHub API 身份，且公开目录不泄漏认证头。"""
+    """
+    通用代理探针应沿用 GitHub API 身份，且公开目录不泄漏认证头。
+    """
     captured = {}
 
     async def respond(method, url, **options):
-        """按请求是否携带预期身份模拟 GitHub API 响应。"""
+        """
+        按请求是否携带预期身份模拟 GitHub API 响应。
+        """
         captured.update(method=method, url=url, **options)
         return SimpleNamespace(
             status_code=200 if options["headers"] == github_headers else 403,
@@ -122,11 +138,15 @@ def test_network_proxy_probe_uses_configured_github_identity(github_headers) -> 
 
 
 def test_wechatclawbot_cdn_probe_accepts_parameterless_400() -> None:
-    """微信 ClawBot 媒体 CDN 对无参数裸请求返回 400，探针应视为连通正常。"""
+    """
+    微信 ClawBot 媒体 CDN 对无参数裸请求返回 400，探针应视为连通正常。
+    """
     captured = {}
 
     async def respond(method, url, **options):
-        """模拟 CDN 对裸地址请求返回 400 空响应。"""
+        """
+        模拟 CDN 对裸地址请求返回 400 空响应。
+        """
         captured.update(method=method, url=url, **options)
         return SimpleNamespace(status_code=400, headers={}, text="", aclose=AsyncMock())
 
@@ -141,11 +161,15 @@ def test_wechatclawbot_cdn_probe_accepts_parameterless_400() -> None:
 
 
 def test_tmdb_web_probe_identifies_as_moviepilot() -> None:
-    """TMDB 网站探针应使用程序自身 UA，浏览器 UA 会被站点人机校验页拦成 403。"""
+    """
+    TMDB 网站探针应使用程序自身 UA，浏览器 UA 会被站点人机校验页拦成 403。
+    """
     captured = {}
 
     async def respond(method, url, **options):
-        """按请求头里的 UA 模拟 TMDB 网站对非真实浏览器的响应。"""
+        """
+        按请求头里的 UA 模拟 TMDB 网站对非真实浏览器的响应。
+        """
         captured.update(method=method, url=url, **options)
         identifies_as_app = (options["headers"] or {}).get("User-Agent") == "MoviePilot/3.1.1 (Linux; x86_64)"
         return SimpleNamespace(

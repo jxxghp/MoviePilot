@@ -1,3 +1,7 @@
+"""
+通过 HDDolby 接口搜索种子并转换为通用索引结果。
+"""
+
 from typing import Any, List, Optional, Tuple
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
@@ -10,7 +14,7 @@ from app.schemas.types import MediaType
 
 class HddolbySpider:
     """
-    HDDolby API
+    通过 HDDolby API 搜索种子并生成带认证信息的下载配方。
     """
     _indexerid = None
     _domain = None
@@ -63,11 +67,16 @@ class HddolbySpider:
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
         """
         获取搜索接口单页容量。
+
+        :param keyword: 保留统一入口参数，不影响本站的分页容量
+        :return: 本站搜索接口的固定单页记录数
         """
         return cls._size
 
     def __init__(self, indexer: dict):
-        """使用站点配置初始化 HDDolby API 请求上下文。"""
+        """
+        使用站点配置初始化 HDDolby API 请求上下文。
+        """
         self.systemconfig = get_configured_system_config()
         if indexer:
             self._indexerid = indexer.get('id')
@@ -85,7 +94,7 @@ class HddolbySpider:
 
     def __get_params(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> dict:
         """
-        获取请求参数
+        获取请求参数。
         """
         if mtype == MediaType.TV:
             categories = self._tv_category
@@ -96,7 +105,6 @@ class HddolbySpider:
         else:
             categories = list(set(self._movie_category + self._tv_category))
 
-        # 输入参数
         return {
             "keyword": keyword,
             "page_number": page,
@@ -107,7 +115,7 @@ class HddolbySpider:
 
     def __parse_result(self, results: List[dict]) -> List[dict]:
         """
-        解析搜索结果
+        解析搜索结果。
         """
         torrents = []
         if not results:
@@ -177,7 +185,9 @@ class HddolbySpider:
         return torrents
 
     def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
-        """统一判定搜索响应状态、业务错误并投影 HDDolby 结果。"""
+        """
+        统一判定搜索响应状态、业务错误并投影 HDDolby 结果。
+        """
         if res and res.status_code == 200:
             result = res.json()
             if result.get("error"):
@@ -192,13 +202,16 @@ class HddolbySpider:
 
     def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
-        搜索
+        同步搜索 HDDolby 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
 
-        # 准备参数
         params = self.__get_params(keyword, mtype, page)
 
-        # 发送请求
         res = RequestUtils(
             headers={
                 "Content-Type": "application/json",
@@ -214,12 +227,15 @@ class HddolbySpider:
 
     async def async_search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
-        异步搜索
+        异步搜索 HDDolby 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
-        # 准备参数
         params = self.__get_params(keyword, mtype, page)
 
-        # 发送请求
         res = await AsyncRequestUtils(
             headers={
                 "Content-Type": "application/json",
@@ -236,7 +252,7 @@ class HddolbySpider:
     @staticmethod
     def __get_downloadvolumefactor(discount: int) -> float:
         """
-        获取下载系数
+        获取下载系数。
         """
         discount_dict = {
             2: 0,
@@ -251,7 +267,7 @@ class HddolbySpider:
     @staticmethod
     def __get_uploadvolumefactor(discount: int) -> float:
         """
-        获取上传系数
+        获取上传系数。
         """
         discount_dict = {
             3: 2,
@@ -264,6 +280,6 @@ class HddolbySpider:
 
     def __get_download_url(self, torrent_id: int, downhash: str) -> str:
         """
-        获取下载链接，返回base64编码的json字符串及URL
+        获取下载链接，返回base64编码的json字符串及URL。
         """
         return f"{self._domain}download.php?id={torrent_id}&downhash={downhash}"

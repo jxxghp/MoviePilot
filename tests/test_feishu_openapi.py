@@ -1,4 +1,6 @@
-"""飞书 OpenAPI 客户端测试：令牌缓存与失效重试、请求路径与请求体、上传下载和失败归一。"""
+"""
+飞书 OpenAPI 客户端测试：令牌缓存与失效重试、请求路径与请求体、上传下载和失败归一。
+"""
 
 import json
 from pathlib import Path
@@ -11,7 +13,9 @@ from app.modules.feishu.openapi import NETWORK_ERROR_CODE, FeishuOpenApi, _parse
 
 
 class FakeResponse:
-    """模拟 requests.Response 中客户端用到的属性。"""
+    """
+    模拟 requests.Response 中客户端用到的属性。
+    """
 
     def __init__(self, body: Any = None, status_code: int = 200, headers: Optional[Dict[str, str]] = None,
                  content: bytes = b""):
@@ -22,13 +26,18 @@ class FakeResponse:
         self.content = content
 
     def json(self):
+        """
+        返回预设响应正文；正文缺失时模拟 JSON 解析失败。
+        """
         if self._body is None:
             raise ValueError("not json")
         return self._body
 
 
 class FakeHttp:
-    """替代 RequestUtils：记录每次请求，按队列返回预设响应。"""
+    """
+    替代 RequestUtils：记录每次请求，按队列返回预设响应。
+    """
 
     def __init__(self, token_responses: List[FakeResponse], responses: List[Optional[FakeResponse]]):
         self.token_responses = list(token_responses)
@@ -37,14 +46,23 @@ class FakeHttp:
         self.calls: List[Dict[str, Any]] = []
 
     def post_res(self, url, **kwargs):
+        """
+        记录令牌请求参数，并按顺序返回预设令牌响应。
+        """
         self.token_calls.append({"url": url, **kwargs})
         return self.token_responses.pop(0)
 
     def request(self, method, url, **kwargs):
+        """
+        记录业务请求参数，并按顺序返回预设响应。
+        """
         self.calls.append({"method": method, "url": url, **kwargs})
         return self.responses.pop(0)
 
     def close(self):
+        """
+        模拟关闭 HTTP 客户端，不持有需要释放的外部资源。
+        """
         pass
 
 
@@ -63,7 +81,9 @@ def _ok(data: Optional[dict] = None, log_id: str = "log-1") -> FakeResponse:
 
 
 def test_create_message_request_and_cached_token():
-    """发送消息使用 IM 接口的路径、查询参数与请求体，令牌只获取一次并复用。"""
+    """
+    发送消息使用 IM 接口的路径、查询参数与请求体，令牌只获取一次并复用。
+    """
     http = FakeHttp([_token()], [_ok({"message_id": "om_1"}), _ok({"message_id": "om_2"})])
     client = _client(http)
 
@@ -86,7 +106,9 @@ def test_create_message_request_and_cached_token():
 
 
 def test_token_refreshes_ten_minutes_before_expiry(monkeypatch):
-    """令牌在过期前 10 分钟即重新获取。"""
+    """
+    令牌在过期前 10 分钟即重新获取。
+    """
     now = [1000.0]
     monkeypatch.setattr(openapi.time, "time", lambda: now[0])
     http = FakeHttp([_token("t-1", expire=7200), _token("t-2")], [_ok(), _ok()])
@@ -100,7 +122,9 @@ def test_token_refreshes_ten_minutes_before_expiry(monkeypatch):
 
 
 def test_invalid_token_is_refreshed_and_retried_once():
-    """接口判定令牌失效时刷新令牌并重试一次，不会无限重试。"""
+    """
+    接口判定令牌失效时刷新令牌并重试一次，不会无限重试。
+    """
     invalid = FakeResponse({"code": 99991663, "msg": "Invalid access token"}, status_code=400)
     http = FakeHttp([_token("stale"), _token("fresh")], [invalid, _ok({"reaction_id": "r1"})])
     client = _client(http)
@@ -113,7 +137,9 @@ def test_invalid_token_is_refreshed_and_retried_once():
 
 
 def test_token_failure_skips_request():
-    """获取令牌失败时不发出业务请求，并返回本地错误码。"""
+    """
+    获取令牌失败时不发出业务请求，并返回本地错误码。
+    """
     http = FakeHttp([FakeResponse({"code": 10003, "msg": "invalid app_secret"})], [])
     client = _client(http)
 
@@ -125,7 +151,9 @@ def test_token_failure_skips_request():
 
 
 def test_business_error_keeps_code_and_log_id():
-    """开放平台业务错误原样保留 code/msg/log_id，便于日志排查。"""
+    """
+    开放平台业务错误原样保留 code/msg/log_id，便于日志排查。
+    """
     error = FakeResponse({"code": 230002, "msg": "bot not in chat"}, status_code=400, headers={"X-Tt-Logid": "L9"})
     http = FakeHttp([_token()], [error])
 
@@ -136,7 +164,9 @@ def test_business_error_keeps_code_and_log_id():
 
 @pytest.mark.parametrize("response", [None, FakeResponse(None, status_code=502)])
 def test_network_failure_and_non_json_are_normalized(response):
-    """网络失败或非 JSON 响应统一为失败响应，不抛异常。"""
+    """
+    网络失败或非 JSON 响应统一为失败响应，不抛异常。
+    """
     http = FakeHttp([_token()], [response])
 
     result = _client(http).patch_message("om_1", "{}")
@@ -146,7 +176,9 @@ def test_network_failure_and_non_json_are_normalized(response):
 
 
 def test_path_params_are_url_encoded():
-    """路径参数整体编码，含 / 或 ? 的 ID 不会改写请求目标。"""
+    """
+    路径参数整体编码，含 / 或 ? 的 ID 不会改写请求目标。
+    """
     http = FakeHttp([_token()], [_ok()])
 
     _client(http).delete_message_reaction("om/1?x", "r#1")
@@ -156,7 +188,9 @@ def test_path_params_are_url_encoded():
 
 
 def test_cardkit_requests():
-    """CardKit 创建、流式更新与设置更新使用各自的方法、路径和请求体。"""
+    """
+    CardKit 创建、流式更新与设置更新使用各自的方法、路径和请求体。
+    """
     http = FakeHttp([_token()], [_ok({"card_id": "c1"}), _ok(), _ok()])
     client = _client(http)
 
@@ -176,7 +210,9 @@ def test_cardkit_requests():
 
 
 def test_upload_image_and_file_use_multipart(tmp_path: Path):
-    """图片与文件以 multipart 上传，表单字段与文件内容正确。"""
+    """
+    图片与文件以 multipart 上传，表单字段与文件内容正确。
+    """
     image = tmp_path / "poster.png"
     image.write_bytes(b"\x89PNG")
     audio = tmp_path / "voice.opus"
@@ -197,7 +233,9 @@ def test_upload_image_and_file_use_multipart(tmp_path: Path):
 
 
 def test_download_message_resource_returns_bytes_name_and_type():
-    """下载资源返回内容、Content-Disposition 文件名和 Content-Type。"""
+    """
+    下载资源返回内容、Content-Disposition 文件名和 Content-Type。
+    """
     download = FakeResponse(
         status_code=200,
         headers={
@@ -216,7 +254,9 @@ def test_download_message_resource_returns_bytes_name_and_type():
 
 
 def test_download_failure_returns_none():
-    """下载接口返回错误 JSON 时不把错误体当作文件内容。"""
+    """
+    下载接口返回错误 JSON 时不把错误体当作文件内容。
+    """
     http = FakeHttp([_token()], [FakeResponse({"code": 234003, "msg": "file not found"}, status_code=400)])
 
     assert _client(http).download_image("img_1") is None
@@ -233,11 +273,16 @@ def test_download_failure_returns_none():
     ],
 )
 def test_parse_file_name(header, expected):
+    """
+    响应头中的文件名支持普通文本、百分号编码和错误解码后的 UTF-8。
+    """
     assert _parse_file_name(header) == expected
 
 
 def test_response_bodies_are_json_strings_not_reencoded():
-    """content 等字段按调用方给出的 JSON 字符串原样发送，不做二次编码。"""
+    """
+    content 等字段按调用方给出的 JSON 字符串原样发送，不做二次编码。
+    """
     http = FakeHttp([_token()], [_ok()])
     content = json.dumps({"text": "你好"}, ensure_ascii=False)
 
@@ -248,7 +293,9 @@ def test_response_bodies_are_json_strings_not_reencoded():
 
 
 def test_upload_retry_after_invalid_token_resends_full_content(tmp_path: Path):
-    """令牌失效重试时重新上传完整文件内容，而不是已读到末尾的空句柄。"""
+    """
+    令牌失效重试时重新上传完整文件内容，而不是已读到末尾的空句柄。
+    """
     image = tmp_path / "poster.png"
     image.write_bytes(b"\x89PNG-full")
     invalid = FakeResponse({"code": 99991663, "msg": "Invalid access token"}, status_code=400)

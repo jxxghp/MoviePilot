@@ -1,4 +1,6 @@
-"""媒体服务器客户端安全投影接口测试。"""
+"""
+媒体服务器客户端安全投影接口测试。
+"""
 
 import asyncio
 
@@ -7,14 +9,20 @@ from app.schemas.types import SystemConfigKey
 
 
 def test_media_server_clients_only_projects_enabled_names_and_types(monkeypatch) -> None:
-    """客户端列表不得返回地址、令牌或其他完整连接配置。"""
+    """
+    客户端列表不得返回地址、令牌或其他完整连接配置。
+    """
     calls = []
 
     class FakeSystemConfig:
-        """返回包含敏感字段的媒体服务器配置。"""
+        """
+        返回包含敏感字段的媒体服务器配置。
+        """
 
         def get(self, key):
-            """记录读取键并返回测试配置。"""
+            """
+            记录读取键并返回测试配置。
+            """
             calls.append(key)
             return [
                 {

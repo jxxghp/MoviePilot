@@ -1,4 +1,6 @@
-"""本地持久 Python cell 协议的异步进程与 RPC 适配。"""
+"""
+本地持久 Python cell 协议的异步进程与 RPC 适配。
+"""
 
 import asyncio
 import contextvars
@@ -20,15 +22,20 @@ from app.adapters.system.code.runner import RUNNER_SOURCE
 from app.runtime.tasks import get_task_registry
 
 Dispatch = Callable[[str, dict[str, Any]], Awaitable[Any]]
+# 单个内核响应帧最多允许 16 MiB，限制错误或异常输出造成的内存占用。
 MAX_FRAME_BYTES = 16 * 1024 * 1024
 
 
 class PythonKernel:
-    """一个串行 cell 内核；变量持久，但每个 cell 的工具授权必须由调用方重新绑定。"""
+    """
+    一个串行 cell 内核；变量持久，但每个 cell 的工具授权必须由调用方重新绑定。
+    """
 
     def __init__(self, directory: Path, tools: tuple[str, ...], *, blocking: Callable[..., Awaitable[Any]],
                  cwd: Path | None = None, schemas: dict[str, dict[str, Any]] | None = None) -> None:
-        """运行目录属于单个宿主 owner，工具集变化必须创建新内核。"""
+        """
+        运行目录属于单个宿主 owner，工具集变化必须创建新内核。
+        """
         self.directory, self.tools = directory, tools
         self._blocking = blocking
         self.schemas = schemas
@@ -55,13 +62,17 @@ class PythonKernel:
         self.execution_count = 0
 
     def _own(self, task: asyncio.Task[Any]) -> asyncio.Task[Any]:
-        """读取与 RPC 连接都交给宿主登记器，不创建无人收口的后台任务。"""
+        """
+        读取与 RPC 连接都交给宿主登记器，不创建无人收口的后台任务。
+        """
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return task
 
     def _files(self) -> None:
-        """启动前以私有权限生成 runner/stubs，用户代码不进入命令行或环境变量。"""
+        """
+        启动前以私有权限生成 runner/stubs，用户代码不进入命令行或环境变量。
+        """
         self.directory.mkdir(parents=True, mode=0o700, exist_ok=True)
         os.chmod(self.directory, 0o700)
         if os.name != 'nt':
@@ -72,7 +83,9 @@ class PythonKernel:
                 stream.write(source)
 
     def _connected(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        """同步接收回调显式登记连接 owner，关闭期间立即拒绝新连接。"""
+        """
+        同步接收回调显式登记连接 owner，关闭期间立即拒绝新连接。
+        """
         if self.closed:
             writer.close()
             return
@@ -82,7 +95,9 @@ class PythonKernel:
             writer.close()
 
     async def start(self) -> None:
-        """先建立私有本地端点，再启动可被回收的子进程；失败沿同一关闭路径收口。"""
+        """
+        先建立私有本地端点，再启动可被回收的子进程；失败沿同一关闭路径收口。
+        """
         try:
             async with self._lifecycle_lock:
                 # 长驻传输任务不能保留首个 cell 的图状态、完整消息或旧身份上下文。
@@ -95,7 +110,9 @@ class PythonKernel:
             raise
 
     async def _start_process(self) -> None:
-        """创建步骤与关闭互斥，外部封口不能在端点建立途中漏掉新创建的资源。"""
+        """
+        创建步骤与关闭互斥，外部封口不能在端点建立途中漏掉新创建的资源。
+        """
         if self.closed or self._prepare is not None:
             raise RuntimeError('Python kernel has already been started or closed')
         self._prepare = self._own(get_task_registry().create(self._prepare_files(), owner='agent.code.prepare', cancel_on_shutdown=False))
@@ -118,11 +135,15 @@ class PythonKernel:
         self._own(get_task_registry().create(self._read_stderr(), owner='agent.code.stderr'))
 
     async def _prepare_files(self) -> None:
-        """登记器接管可等待的文件准备过程，具体阻塞执行由宿主注入。"""
+        """
+        登记器接管可等待的文件准备过程，具体阻塞执行由宿主注入。
+        """
         await self._blocking(self._files)
 
     async def _listen(self) -> None:
-        """POSIX 用短路径0600 UDS，Windows 用随机端口回环 TCP 加随机令牌。"""
+        """
+        POSIX 用短路径0600 UDS，Windows 用随机端口回环 TCP 加随机令牌。
+        """
         if os.name == 'nt':
             self.server = await asyncio.start_server(self._connected, '127.0.0.1', 0, limit=1024 * 1024)
             self.endpoint = f'tcp://127.0.0.1:{self.server.sockets[0].getsockname()[1]}'
@@ -132,7 +153,9 @@ class PythonKernel:
             os.chmod(self.endpoint, 0o600)
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        """逐行认证且串行派发；连接本身不携带上一个 cell 的认证上下文。"""
+        """
+        逐行认证且串行派发；连接本身不携带上一个 cell 的认证上下文。
+        """
         try:
             while not self.closed:
                 line = await asyncio.wait_for(reader.readline(), 300)
@@ -153,7 +176,9 @@ class PythonKernel:
                 pass
 
     async def _request(self, line: bytes, dispatch: Dispatch | None) -> Any:
-        """令牌、结构和活动 cell 都通过后才把请求交给业务授权回调。"""
+        """
+        令牌、结构和活动 cell 都通过后才把请求交给业务授权回调。
+        """
         try:
             request = json.loads(line)
         except (ValueError, UnicodeError):
@@ -173,7 +198,9 @@ class PythonKernel:
         return await dispatch(name, arguments)
 
     async def _stdout(self) -> None:
-        """按随机标记和字节长度分帧，直接 fd 输出作为当前 cell 原始输出。"""
+        """
+        按随机标记和字节长度分帧，直接 fd 输出作为当前 cell 原始输出。
+        """
         assert self.process is not None and self.process.stdout is not None
         stream = self.process.stdout
         marker = ('\n' + self._sentinel + ' ').encode()
@@ -190,7 +217,9 @@ class PythonKernel:
                 await self._responses.put({'status': 'kernel-eof'})
 
     async def _frames(self, buffer: bytes, marker: bytes, stream: asyncio.StreamReader) -> bytes:
-        """有界处理可能跨读取分片的头和正文，损坏长度不能导致宿主无限分配内存。"""
+        """
+        有界处理可能跨读取分片的头和正文，损坏长度不能导致宿主无限分配内存。
+        """
         while True:
             index = buffer.find(marker)
             if index < 0:
@@ -217,13 +246,17 @@ class PythonKernel:
             buffer = body[length:]
 
     async def _read_stderr(self) -> None:
-        """即使错误流超出10KB也持续排空，避免子进程阻塞在未读取的管道。"""
+        """
+        即使错误流超出10KB也持续排空，避免子进程阻塞在未读取的管道。
+        """
         assert self.process is not None and self.process.stderr is not None
         while chunk := await self.process.stderr.read(4096):
             self._stderr.append(chunk)
 
     async def execute(self, code: str, *, dispatch: Dispatch, timeout: float) -> dict[str, Any]:
-        """脚本异常保留变量；超时、取消或通信失败销毁内核，不能复用半次执行。"""
+        """
+        脚本异常保留变量；超时、取消或通信失败销毁内核，不能复用半次执行。
+        """
         async with self._cell_lock:
             try:
                 return await self._execute_cell(code, dispatch=dispatch, timeout=timeout)
@@ -232,7 +265,9 @@ class PythonKernel:
                 raise
 
     async def _execute_cell(self, code: str, *, dispatch: Dispatch, timeout: float) -> dict[str, Any]:
-        """只有当前串行 cell 可以消费响应；排队等待不复用前一次的派发回调。"""
+        """
+        只有当前串行 cell 可以消费响应；排队等待不复用前一次的派发回调。
+        """
         if self.closed or self.process is None or self.process.stdin is None:
             raise RuntimeError('Python kernel is unavailable')
         self._raw.drain()
@@ -257,7 +292,9 @@ class PythonKernel:
             self._dispatch = None
 
     async def close(self) -> bool:
-        """先封 RPC 再终止进程，最后回收任务、描述符和私有临时文件。"""
+        """
+        先封 RPC 再终止进程，最后回收任务、描述符和私有临时文件。
+        """
         self.closed, self._dispatch = True, None
         async with self._lifecycle_lock:
             if not self._cleaned:
@@ -266,7 +303,9 @@ class PythonKernel:
         return True
 
     async def _cleanup(self) -> None:
-        """等待不可撤销的创建步骤结算后再删除文件，避免迟到创建留下孤儿资源。"""
+        """
+        等待不可撤销的创建步骤结算后再删除文件，避免迟到创建留下孤儿资源。
+        """
         if self._startup is not None:
             await asyncio.gather(asyncio.shield(self._startup), return_exceptions=True)
         if self._prepare is not None:

@@ -1,4 +1,6 @@
-"""整理历史类型化适配器的投影与事务测试。"""
+"""
+整理历史类型化适配器的投影与事务测试。
+"""
 
 import asyncio
 
@@ -21,7 +23,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _repository() -> TransactionalTransferHistoryRepository:
-    """构造绑定测试数据库短 Session 的整理历史仓储。"""
+    """
+    构造绑定测试数据库短 Session 的整理历史仓储。
+    """
     return TransactionalTransferHistoryRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
@@ -33,7 +37,9 @@ def _history_write(
     src: str = "/downloads/Typed.Show.S01/Episode01.mkv",
     status: bool = True,
 ) -> TransferHistoryWrite:
-    """构造覆盖整理、历史和 Agent 消费字段的类型化写入。"""
+    """
+    构造覆盖整理、历史和 Agent 消费字段的类型化写入。
+    """
     return TransferHistoryWrite(
         src=src,
         src_storage="local",
@@ -69,7 +75,9 @@ def _history_write(
 
 
 def test_transactional_repository_projects_detached_snapshots(db) -> None:
-    """同步查询应在 Session 内完成投影，并冻结所有嵌套 JSON。"""
+    """
+    同步查询应在 Session 内完成投影，并冻结所有嵌套 JSON。
+    """
     repository = _repository()
     created = repository.replace(_history_write())
 
@@ -119,7 +127,9 @@ def test_transactional_repository_projects_detached_snapshots(db) -> None:
 
 
 def test_transactional_repository_does_not_project_failure_feedback_for_success(db) -> None:
-    """成功整理历史不得被投影成带失败阶段和恢复动作的记录。"""
+    """
+    成功整理历史不得被投影成带失败阶段和恢复动作的记录。
+    """
     repository = _repository()
     created = repository.replace(_history_write())
 
@@ -132,12 +142,16 @@ def test_transactional_repository_rolls_back_replace_on_commit_failure(
     db,
     monkeypatch,
 ) -> None:
-    """替换提交失败时应恢复旧记录，不留下未提交的新投影。"""
+    """
+    替换提交失败时应恢复旧记录，不留下未提交的新投影。
+    """
     repository = _repository()
     original = repository.replace(_history_write())
 
     def fail_commit(_unit_of_work) -> None:
-        """模拟数据库提交失败。"""
+        """
+        模拟数据库提交失败。
+        """
         raise RuntimeError("commit failed")
 
     monkeypatch.setattr(SqlAlchemyUnitOfWork, "commit", fail_commit)
@@ -151,7 +165,9 @@ def test_transactional_repository_rolls_back_replace_on_commit_failure(
 
 
 def test_transactional_repository_sync_mutations_use_committed_uow(db) -> None:
-    """Hash 更新、普通删除和清空应分别由独立事务完整提交。"""
+    """
+    Hash 更新、普通删除和清空应分别由独立事务完整提交。
+    """
     repository = _repository()
     first = repository.replace(_history_write(src="/downloads/first.mkv"))
     second = repository.replace(_history_write(src="/downloads/second.mkv"))
@@ -170,7 +186,9 @@ def test_transactional_repository_sync_mutations_use_committed_uow(db) -> None:
 
 
 def test_transactional_repository_persists_downloader_cleanup_failure(db) -> None:
-    """下载器清理失败应独立更新历史，并投影为可执行的清理阶段。"""
+    """
+    下载器清理失败应独立更新历史，并投影为可执行的清理阶段。
+    """
     repository = _repository()
     created = repository.replace(_history_write(src="/downloads/cleanup.mkv"))
 
@@ -191,7 +209,9 @@ def test_transactional_repository_persists_downloader_cleanup_failure(db) -> Non
 
 
 def test_transactional_repository_preserves_durable_history(db) -> None:
-    """普通删除和清空不得破坏 durable 任务恢复证据。"""
+    """
+    普通删除和清空不得破坏 durable 任务恢复证据。
+    """
     durable = db.add(
         TransferHistory(
             transfer_task_id="task-typed-history",
@@ -212,7 +232,9 @@ def test_transactional_repository_preserves_durable_history(db) -> None:
 
 
 def test_transactional_repository_async_queries_and_delete(db) -> None:
-    """异步分页与计数返回快照，删除由独立异步事务提交。"""
+    """
+    异步分页与计数返回快照，删除由独立异步事务提交。
+    """
     repository = _repository()
     created = repository.replace(_history_write(src="/downloads/async.mkv"))
 
@@ -222,7 +244,9 @@ def test_transactional_repository_async_queries_and_delete(db) -> None:
         int,
         list[TransferHistoryStatisticSnapshot],
     ]:
-        """在同一事件循环执行全部异步查询和删除。"""
+        """
+        在同一事件循环执行全部异步查询和删除。
+        """
         by_id = await repository.async_get(created.id)
         assert by_id == created
         by_title = await repository.async_list_by_title("Typed", count=10)
@@ -246,7 +270,9 @@ def test_transactional_repository_async_queries_and_delete(db) -> None:
 
 
 def test_transactional_repository_returns_typed_monthly_statistics(db) -> None:
-    """月度聚合应返回命名 DTO，不向 Application 泄漏位置元组。"""
+    """
+    月度聚合应返回命名 DTO，不向 Application 泄漏位置元组。
+    """
     repository = _repository()
     repository.replace(_history_write(src="/downloads/monthly.mkv"))
 
@@ -258,7 +284,9 @@ def test_transactional_repository_returns_typed_monthly_statistics(db) -> None:
 
 
 def test_session_repository_obeys_request_uow(db) -> None:
-    """请求级 adapter 只暂存删除，提交或回滚由请求 UoW 决定。"""
+    """
+    请求级 adapter 只暂存删除，提交或回滚由请求 UoW 决定。
+    """
     repository = _repository()
     created = repository.replace(_history_write(src="/downloads/request.mkv"))
 

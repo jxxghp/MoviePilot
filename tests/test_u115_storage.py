@@ -1,3 +1,7 @@
+"""
+验证115 存储客户端的目录和文件操作映射。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import patch
 

@@ -1,4 +1,6 @@
-"""整理规划输入与原子检查点持久化测试。"""
+"""
+整理规划输入与原子检查点持久化测试。
+"""
 
 from dataclasses import replace
 
@@ -28,7 +30,9 @@ from app.db.models.transferpending import TransferPending
 
 @pytest.fixture
 def repository(tmp_path):
-    """创建只服务单个测试的 SQLite 整理计划仓储。"""
+    """
+    创建只服务单个测试的 SQLite 整理计划仓储。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'transfer-planning.db'}")
     TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
@@ -36,7 +40,9 @@ def repository(tmp_path):
 
 
 def _claim(repository, task_id: str):
-    """为需要变更规划状态的测试取得独占租约。"""
+    """
+    为需要变更规划状态的测试取得独占租约。
+    """
     claimed = repository.claim_task(
         task_id=task_id,
         owner_id="planning-test-worker",
@@ -48,7 +54,10 @@ def _claim(repository, task_id: str):
 
 
 def _pending_snapshot(repository, task_id: str) -> dict[str, object]:
-    """使用隔离 Session 冻结测试所需的持久状态字段。"""
+    """
+    使用隔离 Session 冻结测试所需的持久状态字段。
+    """
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = session.execute(
             select(TransferPending).where(TransferPending.task_id == task_id)
@@ -61,7 +70,9 @@ def _pending_snapshot(repository, task_id: str) -> dict[str, object]:
 
 
 def _planning_input(*, target_path: str = "/library/Movies") -> TransferPlanningInput:
-    """构造包含恢复所需媒体上下文的完整规划输入。"""
+    """
+    构造包含恢复所需媒体上下文的完整规划输入。
+    """
     return TransferPlanningInput(
         source_fileitem={
             "storage": "local",
@@ -88,7 +99,9 @@ def _planning_input(*, target_path: str = "/library/Movies") -> TransferPlanning
 
 
 def _checkpoint(planning_input: TransferPlanningInput) -> TransferPlanCheckpoint:
-    """构造可直接执行且不会再次触发 rename 的计划检查点。"""
+    """
+    构造可直接执行且不会再次触发 rename 的计划检查点。
+    """
     return TransferPlanCheckpoint(
         planning_input=planning_input,
         target_storage="local",
@@ -128,7 +141,9 @@ def _checkpoint(planning_input: TransferPlanningInput) -> TransferPlanCheckpoint
 def _provider_checkpoint(
         planning_input: TransferPlanningInput,
 ) -> TransferPlanCheckpoint:
-    """构造只冻结旧 ABI、尚未生成宿主文件计划的检查点。"""
+    """
+    构造只冻结旧 ABI、尚未生成宿主文件计划的检查点。
+    """
     invocation = TransferProviderInvocationSnapshot(
         fileitem=planning_input.source_fileitem,
         meta=planning_input.meta,
@@ -172,7 +187,9 @@ def _provider_checkpoint(
 
 
 def test_planning_dtos_round_trip_versioned_json() -> None:
-    """输入和检查点应完整往返 JSON，并保留有序叶操作。"""
+    """
+    输入和检查点应完整往返 JSON，并保留有序叶操作。
+    """
     planning_input = _planning_input()
     checkpoint = _checkpoint(planning_input)
 
@@ -196,7 +213,9 @@ def test_planning_dtos_round_trip_versioned_json() -> None:
 
 
 def test_provider_invocation_snapshot_round_trip_preserves_optional_values() -> None:
-    """旧 ABI 快照往返 JSON 后必须保留 None、False 和自动目录原始值。"""
+    """
+    旧 ABI 快照往返 JSON 后必须保留 None、False 和自动目录原始值。
+    """
     checkpoint = _provider_checkpoint(_planning_input())
 
     restored = TransferPlanCheckpoint.from_payload(checkpoint.to_payload())
@@ -216,7 +235,9 @@ def test_provider_invocation_snapshot_round_trip_preserves_optional_values() -> 
 
 
 def test_legacy_checkpoint_payload_defaults_resolved_context() -> None:
-    """旧检查点缺少 resolved 字段时仍应恢复为兼容空快照。"""
+    """
+    旧检查点缺少 resolved 字段时仍应恢复为兼容空快照。
+    """
     payload = _checkpoint(_planning_input()).to_payload()
     for key in (
             "resolved_meta",
@@ -253,7 +274,9 @@ def test_transfer_provider_reference_rejects_invalid_fields(
         plugin_name,
         method,
 ) -> None:
-    """旧 provider 引用必须具有稳定插件身份且只能指向 transfer 方法。"""
+    """
+    旧 provider 引用必须具有稳定插件身份且只能指向 transfer 方法。
+    """
     with pytest.raises(ValueError, match="provider"):
         TransferProviderReference(
             plugin_id=plugin_id,
@@ -263,7 +286,9 @@ def test_transfer_provider_reference_rejects_invalid_fields(
 
 
 def test_checkpoint_rejects_duplicate_legacy_provider_plugin_id() -> None:
-    """同一 checkpoint 不得以不同名称重复冻结同一插件身份。"""
+    """
+    同一 checkpoint 不得以不同名称重复冻结同一插件身份。
+    """
     with pytest.raises(ValueError, match="plugin_id.*重复"):
         replace(
             _checkpoint(_planning_input()),
@@ -275,7 +300,9 @@ def test_checkpoint_rejects_duplicate_legacy_provider_plugin_id() -> None:
 
 
 def test_checkpoint_rejects_non_array_legacy_provider_payload() -> None:
-    """JSON 恢复边界不得把单个对象等非数组值当成 provider 序列。"""
+    """
+    JSON 恢复边界不得把单个对象等非数组值当成 provider 序列。
+    """
     payload = _checkpoint(_planning_input()).to_payload()
     payload["legacy_transfer_providers"] = {
         "plugin_id": "provider-a",
@@ -287,7 +314,9 @@ def test_checkpoint_rejects_non_array_legacy_provider_payload() -> None:
 
 
 def test_resolved_context_does_not_change_admission_fingerprint(repository) -> None:
-    """规划后上下文属于 checkpoint，不得反向改变已提交的准入指纹。"""
+    """
+    规划后上下文属于 checkpoint，不得反向改变已提交的准入指纹。
+    """
     planning_input = _planning_input()
     admitted = repository.admit(
         storage="local",
@@ -329,7 +358,9 @@ def test_resolved_context_does_not_change_admission_fingerprint(repository) -> N
 
 
 def test_admit_reuses_identical_input_and_rejects_conflict(repository) -> None:
-    """同一源文件只允许复用完全相同的规划输入。"""
+    """
+    同一源文件只允许复用完全相同的规划输入。
+    """
     planning_input = _planning_input()
     first = repository.admit(
         storage="local",
@@ -352,7 +383,10 @@ def test_admit_reuses_identical_input_and_rejects_conflict(repository) -> None:
 
 
 def test_admit_allows_new_generation_when_history_has_previous_task(repository) -> None:
-    """历史保留上一代任务投影时，同源新事实仍可形成新任务世代。"""
+    """
+    历史保留上一代任务投影时，同源新事实仍可形成新任务世代。
+    """
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         session.add(TransferHistory(
             transfer_task_id="settled-task",
@@ -369,6 +403,7 @@ def test_admit_allows_new_generation_when_history_has_previous_task(repository) 
         planning_input=_planning_input(),
     )
 
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = session.execute(select(TransferPending)).scalar_one()
     assert admission.task_id == pending.task_id
@@ -376,7 +411,9 @@ def test_admit_allows_new_generation_when_history_has_previous_task(repository) 
 
 
 def test_checkpoint_atomically_advances_and_is_idempotent(repository) -> None:
-    """完整计划和 planned 状态应同事务提交且允许相同检查点重试。"""
+    """
+    完整计划和 planned 状态应同事务提交且允许相同检查点重试。
+    """
     planning_input = _planning_input()
     admitted = repository.admit(
         storage="local",
@@ -416,7 +453,9 @@ def test_checkpoint_atomically_advances_and_is_idempotent(repository) -> None:
 
 
 def test_provider_pending_checkpoint_atomically_upgrades_to_host_plan(repository) -> None:
-    """崩溃可恢复的 provider 快照只能经 CAS 升级为宿主 planned 计划。"""
+    """
+    崩溃可恢复的 provider 快照只能经 CAS 升级为宿主 planned 计划。
+    """
     planning_input = _planning_input()
     admitted = repository.admit(
         storage="local",
@@ -483,7 +522,9 @@ def test_provider_pending_checkpoint_atomically_upgrades_to_host_plan(repository
 
 
 def test_checkpoint_rejects_fingerprint_without_partial_state(repository) -> None:
-    """错误输入指纹不能写入部分计划或改变 accepted 状态。"""
+    """
+    错误输入指纹不能写入部分计划或改变 accepted 状态。
+    """
     planning_input = _planning_input()
     admitted = repository.admit(
         storage="local",
@@ -506,7 +547,9 @@ def test_checkpoint_rejects_fingerprint_without_partial_state(repository) -> Non
 
 
 def test_planning_failure_stays_accepted_until_success(repository) -> None:
-    """规划失败只留痕，后续成功规划应清错并原子推进状态。"""
+    """
+    规划失败只留痕，后续成功规划应清错并原子推进状态。
+    """
     planning_input = _planning_input()
     admitted = repository.admit(
         storage="local",
@@ -536,7 +579,9 @@ def test_planning_failure_stays_accepted_until_success(repository) -> None:
 
 
 def test_checkpoint_rejects_missing_task(repository) -> None:
-    """不存在的稳定任务身份不能凭空创建已规划记录。"""
+    """
+    不存在的稳定任务身份不能凭空创建已规划记录。
+    """
     planning_input = _planning_input()
     with pytest.raises(TransferPlanningStateError):
         repository.checkpoint_plan(
@@ -550,7 +595,9 @@ def test_checkpoint_rejects_missing_task(repository) -> None:
 def test_canonical_admission_requires_explicit_versioned_planning_input(
         tmp_path,
 ) -> None:
-    """直接 ORM 写入不得伪造默认输入，canonical 仓储必须显式保存完整快照。"""
+    """
+    直接 ORM 写入不得伪造默认输入，canonical 仓储必须显式保存完整快照。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'orm-defaults.db'}")
     factory = sessionmaker(bind=engine)
     TransferPending.__table__.create(engine)
@@ -589,7 +636,9 @@ def test_canonical_admission_requires_explicit_versioned_planning_input(
 
 
 def test_projection_rejects_input_version_and_fingerprint_corruption(tmp_path) -> None:
-    """列版本、JSON 和指纹任一不一致时都不得返回伪冻结 DTO。"""
+    """
+    列版本、JSON 和指纹任一不一致时都不得返回伪冻结 DTO。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'input-corruption.db'}")
     factory = sessionmaker(bind=engine)
     TransferHistory.__table__.create(engine)
@@ -635,7 +684,9 @@ def test_projection_rejects_input_version_and_fingerprint_corruption(tmp_path) -
 
 
 def test_projection_rejects_checkpoint_version_corruption(tmp_path) -> None:
-    """planned 行的列版本与自包含 checkpoint JSON 必须严格一致。"""
+    """
+    planned 行的列版本与自包含 checkpoint JSON 必须严格一致。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'checkpoint-corruption.db'}")
     factory = sessionmaker(bind=engine)
     TransferHistory.__table__.create(engine)

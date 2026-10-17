@@ -1,3 +1,7 @@
+"""
+验证消息渠道中的媒体候选交互、音乐命令和能力回退。
+"""
+
 from dataclasses import replace
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -16,6 +20,8 @@ from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.events import EventManager
+
+# 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.schemas import IncomingMessage, TransferDirectoryConf  # pylint: disable=no-name-in-module
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -29,7 +35,9 @@ from app.schemas.types import (
 
 @pytest.fixture(autouse=True)
 def clear_media_interactions():
-    """清理媒体交互状态，避免用例之间共享内存会话。"""
+    """
+    清理媒体交互状态，避免用例之间共享内存会话。
+    """
     yield
     media_interaction_manager.clear()
     plugin_input_interaction_manager.clear()
@@ -37,7 +45,9 @@ def clear_media_interactions():
 
 @pytest.fixture(autouse=True)
 def mock_default_media_search():
-    """未显式验证搜索结果的消息路由用例不访问真实媒体元数据服务"""
+    """
+    未显式验证搜索结果的消息路由用例不访问真实媒体元数据服务
+    """
     with patch(
         "app.chain.media.MediaChain.search",
         side_effect=lambda title: (_build_meta(title), []),
@@ -46,7 +56,9 @@ def mock_default_media_search():
 
 
 def _build_meta(name: str) -> MetaBase:
-    """构造媒体识别元数据。"""
+    """
+    构造媒体识别元数据。
+    """
     meta = MetaBase(name)
     meta.name = name
     meta.begin_season = 1
@@ -64,12 +76,16 @@ def _build_meta(name: str) -> MetaBase:
     ],
 )
 def test_resolve_explicit_music_message_actions(text, action, query):
-    """显式音乐前缀应路由到相应音乐操作并保留检索词。"""
+    """
+    显式音乐前缀应路由到相应音乐操作并保留检索词。
+    """
     assert MediaInteractionChain._resolve_action(text) == (action, query)
 
 
 def test_message_routes_music_search_when_agent_is_disabled():
-    """未启用智能助手时，消息渠道音乐搜索应创建音乐候选交互。"""
+    """
+    未启用智能助手时，消息渠道音乐搜索应创建音乐候选交互。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=False)
     candidates = [
@@ -118,7 +134,9 @@ def test_message_routes_music_search_when_agent_is_disabled():
 
 
 def test_music_candidates_are_presented_as_text_for_plain_message_channel():
-    """不支持媒体卡片的消息渠道应以编号文本展示单曲和专辑候选。"""
+    """
+    不支持媒体卡片的消息渠道应以编号文本展示单曲和专辑候选。
+    """
     chain = MediaInteractionChain()
     request = media_interaction_manager.create_or_replace(
         user_id="music-user",
@@ -157,7 +175,9 @@ def test_music_candidates_are_presented_as_text_for_plain_message_channel():
 
 @pytest.mark.parametrize("channel", [NotificationChannel.Wechat, NotificationChannel.Telegram])
 def test_music_torrents_show_original_titles_and_keep_selection(channel):
-    """音乐资源选择显示原始音乐标题，并保留当前渠道的序号或按钮操作。"""
+    """
+    音乐资源选择显示原始音乐标题，并保留当前渠道的序号或按钮操作。
+    """
     chain = MediaInteractionChain()
     album = MusicInfo(
         media_source=MediaSource.MusicBrainz,
@@ -217,7 +237,9 @@ def test_music_torrents_show_original_titles_and_keep_selection(channel):
 
 
 def test_music_subscription_selection_preserves_selected_music_type():
-    """选择音乐专辑创建订阅时应将实体类型传给订阅链。"""
+    """
+    选择音乐专辑创建订阅时应将实体类型传给订阅链。
+    """
     chain = MediaInteractionChain()
     album = MusicInfo(
         media_source=MediaSource.MusicBrainz,
@@ -259,7 +281,9 @@ def test_music_subscription_selection_preserves_selected_music_type():
 
 
 def test_auto_download_fallback_subscription_preserves_music_type():
-    """音乐自动下载未完成时补建订阅应保留单曲或专辑实体类型。"""
+    """
+    音乐自动下载未完成时补建订阅应保留单曲或专辑实体类型。
+    """
     chain = MediaInteractionChain()
     album = MusicInfo(
         media_source=MediaSource.MusicBrainz,
@@ -306,7 +330,9 @@ def test_auto_download_fallback_subscription_preserves_music_type():
 
 
 def _build_context(title: str = "星际穿越") -> Context:
-    """构造可用于媒体交互下载测试的资源上下文。"""
+    """
+    构造可用于媒体交互下载测试的资源上下文。
+    """
     return Context(
         meta_info=_build_meta(title),
         media_info=MediaInfo(
@@ -325,7 +351,9 @@ def _build_context(title: str = "星际穿越") -> Context:
 
 
 def _build_tv_context(title: str = "葬送的芙莉莲") -> Context:
-    """构造可用于媒体交互下载测试的电视剧上下文。"""
+    """
+    构造可用于媒体交互下载测试的电视剧上下文。
+    """
     return Context(
         meta_info=_build_meta(title),
         media_info=MediaInfo(
@@ -345,7 +373,9 @@ def _build_tv_context(title: str = "葬送的芙莉莲") -> Context:
 
 
 def _build_download_dirs() -> list[TransferDirectoryConf]:
-    """构造不同媒体类型各一个下载目录的配置。"""
+    """
+    构造不同媒体类型各一个下载目录的配置。
+    """
     return [
         TransferDirectoryConf(
             name="电影下载",
@@ -366,7 +396,9 @@ def _build_download_dirs() -> list[TransferDirectoryConf]:
 
 
 def _build_multiple_movie_download_dirs() -> list[TransferDirectoryConf]:
-    """构造多个匹配电影类型的下载目录配置。"""
+    """
+    构造多个匹配电影类型的下载目录配置。
+    """
     return [
         TransferDirectoryConf(
             name="电影下载",
@@ -394,7 +426,9 @@ def _build_multiple_movie_download_dirs() -> list[TransferDirectoryConf]:
 
 
 def _build_single_download_dir() -> list[TransferDirectoryConf]:
-    """构造只有一个下载目录的配置。"""
+    """
+    构造只有一个下载目录的配置。
+    """
     return [
         TransferDirectoryConf(
             name="默认下载",
@@ -406,7 +440,9 @@ def _build_single_download_dir() -> list[TransferDirectoryConf]:
 
 
 def test_rebuild_download_scope_keeps_special_season_zero():
-    """重新下载特别季时只能重建季 0 范围，不能扩展为整部剧的所有季。"""
+    """
+    重新下载特别季时只能重建季 0 范围，不能扩展为整部剧的所有季。
+    """
     meta = _build_meta("测试剧")
     meta.begin_season = 0
     mediainfo = MediaInfo(
@@ -426,7 +462,9 @@ def test_rebuild_download_scope_keeps_special_season_zero():
 
 
 def test_message_routes_text_reply_to_media_interaction_before_ai():
-    """已有传统媒体交互时，用户回复应优先交给传统交互处理。"""
+    """
+    已有传统媒体交互时，用户回复应优先交给传统交互处理。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -467,7 +505,9 @@ def test_message_routes_text_reply_to_media_interaction_before_ai():
 
 
 def test_message_process_preserves_parser_message_id_context():
-    """消息链不按渠道解释 message_id，只透传解析器给出的原消息上下文。"""
+    """
+    消息链不按渠道解释 message_id，只透传解析器给出的原消息上下文。
+    """
     chain = MessageChain()
     incoming = IncomingMessage(
         channel=NotificationChannel.Telegram,
@@ -494,7 +534,9 @@ def test_message_process_preserves_parser_message_id_context():
 
 
 def test_message_process_keeps_callback_message_id_as_edit_context():
-    """按钮回调的 message_id 仍应作为机器人原消息 ID 传递，供编辑原消息使用。"""
+    """
+    按钮回调的 message_id 仍应作为机器人原消息 ID 传递，供编辑原消息使用。
+    """
     chain = MessageChain()
     incoming = IncomingMessage(
         channel=NotificationChannel.Telegram,
@@ -520,7 +562,9 @@ def test_message_process_keeps_callback_message_id_as_edit_context():
 
 
 def test_message_process_preserves_non_telegram_plain_message_id():
-    """非 Telegram 渠道保持旧行为，普通消息 ID 仍向下传递给渠道实现自行解释。"""
+    """
+    非 Telegram 渠道保持旧行为，普通消息 ID 仍向下传递给渠道实现自行解释。
+    """
     chain = MessageChain()
     incoming = IncomingMessage(
         channel=NotificationChannel.Slack,
@@ -545,7 +589,9 @@ def test_message_process_preserves_non_telegram_plain_message_id():
 
 
 def test_handle_message_keeps_legacy_positional_images_argument():
-    """新增 reply_to_message_id 不应改变旧位置参数 images/audio/files 的含义。"""
+    """
+    新增 reply_to_message_id 不应改变旧位置参数 images/audio/files 的含义。
+    """
     chain = MessageChain()
     images = [IncomingMessage.MessageImage(ref="tg://file_id/photo-1")]
 
@@ -576,7 +622,9 @@ def test_handle_message_keeps_legacy_positional_images_argument():
 
 
 def test_plugin_input_session_captures_plain_text_before_media_interaction():
-    """插件输入会话存在时，普通文本应派发给插件而不是媒体交互。"""
+    """
+    插件输入会话存在时，普通文本应派发给插件而不是媒体交互。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -638,7 +686,9 @@ def test_plugin_input_session_captures_plain_text_before_media_interaction():
 
 
 def test_plugin_input_session_does_not_record_sensitive_text_history():
-    """插件输入命中时不应先写入普通用户消息历史。"""
+    """
+    插件输入命中时不应先写入普通用户消息历史。
+    """
     chain = MessageChain()
     plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -661,7 +711,9 @@ def test_plugin_input_session_does_not_record_sensitive_text_history():
 
 
 def test_plugin_input_session_captures_slash_like_text_before_commands():
-    """插件输入会话中的 /path 文本不应被当成 slash 命令。"""
+    """
+    插件输入会话中的 /path 文本不应被当成 slash 命令。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -690,7 +742,9 @@ def test_plugin_input_session_captures_slash_like_text_before_commands():
 
 
 def test_plugin_input_session_cancel_notifies_plugin_and_clears():
-    """取消词应清理插件输入会话并通知目标插件。"""
+    """
+    取消词应清理插件输入会话并通知目标插件。
+    """
     chain = MessageChain()
     plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -723,7 +777,9 @@ def test_plugin_input_session_cancel_notifies_plugin_and_clears():
 
 
 def test_plugin_input_cancel_does_not_block_next_command():
-    """取消输入后下一条 slash 命令应按正常命令路由处理。"""
+    """
+    取消输入后下一条 slash 命令应按正常命令路由处理。
+    """
     chain = MessageChain()
     plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -759,7 +815,9 @@ def test_plugin_input_cancel_does_not_block_next_command():
 
 
 def test_plugin_input_session_ignores_non_text_messages():
-    """图片/文件等非纯文本消息不应消费待输入会话。"""
+    """
+    图片/文件等非纯文本消息不应消费待输入会话。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -787,7 +845,9 @@ def test_plugin_input_session_ignores_non_text_messages():
 
 
 def test_plugin_input_session_ignores_none_text_messages():
-    """文本为空时不应因 CALLBACK 检查崩溃或消费待输入会话。"""
+    """
+    文本为空时不应因 CALLBACK 检查崩溃或消费待输入会话。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -819,7 +879,9 @@ def test_plugin_input_session_ignores_none_text_messages():
 
 
 def test_plugin_input_session_is_bound_to_user_and_channel():
-    """同一用户不同渠道的插件输入会话互不匹配。"""
+    """
+    同一用户不同渠道的插件输入会话互不匹配。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -836,7 +898,9 @@ def test_plugin_input_session_is_bound_to_user_and_channel():
 
 
 def test_plugin_input_session_does_not_capture_other_channel_text():
-    """生产消费路径也必须保持用户+渠道绑定。"""
+    """
+    生产消费路径也必须保持用户+渠道绑定。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -862,7 +926,9 @@ def test_plugin_input_session_does_not_capture_other_channel_text():
 
 
 def test_plugin_input_session_does_not_capture_other_source_text():
-    """同一渠道不同来源的插件输入会话互不匹配。"""
+    """
+    同一渠道不同来源的插件输入会话互不匹配。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -888,7 +954,9 @@ def test_plugin_input_session_does_not_capture_other_source_text():
 
 
 def test_plugin_input_session_does_not_capture_other_chat_text():
-    """同一用户同一 bot 的不同 chat 不应串扰插件输入会话。"""
+    """
+    同一用户同一 bot 的不同 chat 不应串扰插件输入会话。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -933,7 +1001,9 @@ def test_plugin_input_session_does_not_capture_other_chat_text():
 
 
 def test_plugin_input_prompt_message_requires_matching_reply():
-    """绑定提示消息 ID 的插件输入只应消费当前 ForceReply 回复。"""
+    """
+    绑定提示消息 ID 的插件输入只应消费当前 ForceReply 回复。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -995,7 +1065,9 @@ def test_plugin_input_prompt_message_requires_matching_reply():
 
 
 def test_plugin_input_prompt_message_matches_integer_reply_ids():
-    """真实 Telegram message_id 为 int，应与内部 str 归一化后的 prompt_message_id 匹配。"""
+    """
+    真实 Telegram message_id 为 int，应与内部 str 归一化后的 prompt_message_id 匹配。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1027,7 +1099,9 @@ def test_plugin_input_prompt_message_matches_integer_reply_ids():
 
 
 def test_plugin_input_prompt_message_ignores_plain_text_without_reply():
-    """用户未使用 ForceReply 回复框直接发文本时，绑定会话不应消费该文本。"""
+    """
+    用户未使用 ForceReply 回复框直接发文本时，绑定会话不应消费该文本。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1062,7 +1136,9 @@ def test_plugin_input_prompt_message_ignores_plain_text_without_reply():
 
 
 def test_plugin_input_prompt_message_allows_direct_cancel_without_reply():
-    """绑定 ForceReply 时，取消词应能直接结束会话，避免用户被残留回复框卡住。"""
+    """
+    绑定 ForceReply 时，取消词应能直接结束会话，避免用户被残留回复框卡住。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1103,7 +1179,9 @@ def test_plugin_input_prompt_message_allows_direct_cancel_without_reply():
 
 
 def test_expired_prompt_message_cancel_text_falls_back_to_normal_search_without_notice():
-    """绑定 ForceReply 过期后，即使输入取消词也应静默放行给普通文本链路。"""
+    """
+    绑定 ForceReply 过期后，即使输入取消词也应静默放行给普通文本链路。
+    """
     chain = MessageChain()
     plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1141,7 +1219,9 @@ def test_expired_prompt_message_cancel_text_falls_back_to_normal_search_without_
 
 
 def test_plugin_input_prompt_message_requires_matching_chat_id():
-    """绑定提示消息 ID 时还必须匹配 chat_id，避免跨聊天同号消息误消费。"""
+    """
+    绑定提示消息 ID 时还必须匹配 chat_id，避免跨聊天同号消息误消费。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1177,7 +1257,9 @@ def test_plugin_input_prompt_message_requires_matching_chat_id():
 
 
 def test_expired_prompt_message_input_falls_back_to_normal_search_without_notice():
-    """回复过期 ForceReply 时不提示插件输入超时，交回普通文本搜索。"""
+    """
+    回复过期 ForceReply 时不提示插件输入超时，交回普通文本搜索。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1216,7 +1298,9 @@ def test_expired_prompt_message_input_falls_back_to_normal_search_without_notice
 
 
 def test_expired_prompt_message_without_reply_falls_back_and_clears_state():
-    """绑定会话过期后，未命中回复框的文本也应放行并清理过期状态。"""
+    """
+    绑定会话过期后，未命中回复框的文本也应放行并清理过期状态。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1252,7 +1336,9 @@ def test_expired_prompt_message_without_reply_falls_back_and_clears_state():
 
 
 def test_plugin_input_chatless_session_keeps_legacy_chat_fallback():
-    """旧插件未绑定 chat_id 时，同 source 消息仍可兼容消费。"""
+    """
+    旧插件未绑定 chat_id 时，同 source 消息仍可兼容消费。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1280,7 +1366,9 @@ def test_plugin_input_chatless_session_keeps_legacy_chat_fallback():
 
 
 def test_plugin_input_wildcard_session_does_not_match_missing_source_with_chat():
-    """chat fallback 不应把完全 wildcard 会话扩大到有渠道但缺来源的消息。"""
+    """
+    chat fallback 不应把完全 wildcard 会话扩大到有渠道但缺来源的消息。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -1297,7 +1385,9 @@ def test_plugin_input_wildcard_session_does_not_match_missing_source_with_chat()
 
 
 def test_plugin_input_chat_bound_session_does_not_match_missing_chat():
-    """绑定 chat_id 的会话不应被缺少 chat_id 的消息消费。"""
+    """
+    绑定 chat_id 的会话不应被缺少 chat_id 的消息消费。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -1318,7 +1408,9 @@ def test_plugin_input_chat_bound_session_does_not_match_missing_chat():
 
 
 def test_plugin_input_core_path_preserves_original_chat_id():
-    """直接进入核心路由时也应保留 chat_id 绑定，避免防御路径漏掉插件输入。"""
+    """
+    直接进入核心路由时也应保留 chat_id 绑定，避免防御路径漏掉插件输入。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1348,7 +1440,9 @@ def test_plugin_input_core_path_preserves_original_chat_id():
 
 
 def test_plugin_input_session_does_not_capture_missing_source_text():
-    """来源缺失的入站消息不应捕获绑定到具体来源的输入会话。"""
+    """
+    来源缺失的入站消息不应捕获绑定到具体来源的输入会话。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1374,7 +1468,9 @@ def test_plugin_input_session_does_not_capture_missing_source_text():
 
 
 def test_plugin_input_session_does_not_capture_callback_payload():
-    """待输入会话存在时，按钮回调仍应优先进入回调链而不是投递给插件。"""
+    """
+    待输入会话存在时，按钮回调仍应优先进入回调链而不是投递给插件。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1410,7 +1506,9 @@ def test_plugin_input_session_does_not_capture_callback_payload():
 
 
 def test_plugin_input_session_expires_after_timeout():
-    """插件输入会话超过 TTL 后不再匹配。"""
+    """
+    插件输入会话超过 TTL 后不再匹配。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -1425,7 +1523,9 @@ def test_plugin_input_session_expires_after_timeout():
 
 
 def test_plugin_input_session_expired_text_notifies_plugin_and_continues_routing():
-    """过期插件输入遇到命令时应提示超时，并让命令继续正常路由。"""
+    """
+    过期插件输入遇到命令时应提示超时，并让命令继续正常路由。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1463,7 +1563,9 @@ def test_plugin_input_session_expired_text_notifies_plugin_and_continues_routing
 
 
 def test_plugin_input_session_expired_sensitive_text_is_not_recorded_or_routed():
-    """过期插件输入中的普通文本仍可能是敏感信息，应提示后吞掉。"""
+    """
+    过期插件输入中的普通文本仍可能是敏感信息，应提示后吞掉。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1498,7 +1600,9 @@ def test_plugin_input_session_expired_sensitive_text_is_not_recorded_or_routed()
 
 
 def test_plugin_input_expired_text_after_cleanup_is_not_recorded_or_routed():
-    """其他用户触发过期清理后，迟到的普通文本仍应按过期插件输入吞掉。"""
+    """
+    其他用户触发过期清理后，迟到的普通文本仍应按过期插件输入吞掉。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1543,7 +1647,9 @@ def test_plugin_input_expired_text_after_cleanup_is_not_recorded_or_routed():
 
 
 def test_plugin_input_session_with_no_channel_matches_specific_channel():
-    """插件拿不到渠道时创建的会话应能被该用户下一条具体渠道消息消费。"""
+    """
+    插件拿不到渠道时创建的会话应能被该用户下一条具体渠道消息消费。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1570,7 +1676,9 @@ def test_plugin_input_session_with_no_channel_matches_specific_channel():
 
 
 def test_plugin_input_session_with_no_channel_and_no_source_does_not_match_specific_message():
-    """完全缺少渠道来源的会话不应跨渠道捕获具体消息。"""
+    """
+    完全缺少渠道来源的会话不应跨渠道捕获具体消息。
+    """
     chain = MessageChain()
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1594,7 +1702,9 @@ def test_plugin_input_session_with_no_channel_and_no_source_does_not_match_speci
 
 
 def test_plugin_input_create_or_replace_keeps_legacy_positional_timeout_and_payload():
-    """新增 prompt_message_id 不应改变旧位置参数 timeout_seconds/payload 的含义。"""
+    """
+    新增 prompt_message_id 不应改变旧位置参数 timeout_seconds/payload 的含义。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         "10001",
         "demo_plugin",
@@ -1613,7 +1723,9 @@ def test_plugin_input_create_or_replace_keeps_legacy_positional_timeout_and_payl
 
 
 def test_plugin_input_create_or_replace_ignores_prompt_message_without_chat_id():
-    """缺少 chat_id 时不启用 prompt_message_id 绑定，避免创建永远无法消费的会话。"""
+    """
+    缺少 chat_id 时不启用 prompt_message_id 绑定，避免创建永远无法消费的会话。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -1628,7 +1740,9 @@ def test_plugin_input_create_or_replace_ignores_prompt_message_without_chat_id()
 
 
 def test_plugin_input_create_or_replace_ignores_prompt_message_for_non_telegram_channel():
-    """非 Telegram 渠道不启用 prompt_message_id 绑定，避免渠道无法上报回复 ID 时卡死。"""
+    """
+    非 Telegram 渠道不启用 prompt_message_id 绑定，避免渠道无法上报回复 ID 时卡死。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -1653,7 +1767,9 @@ def test_plugin_input_create_or_replace_ignores_prompt_message_for_non_telegram_
 
 
 def test_plugin_input_bypass_reply_check_still_requires_matching_chat_id():
-    """取消词绕过 reply_id 校验时，仍必须匹配绑定会话的 chat_id。"""
+    """
+    取消词绕过 reply_id 校验时，仍必须匹配绑定会话的 chat_id。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -1681,7 +1797,9 @@ def test_plugin_input_bypass_reply_check_still_requires_matching_chat_id():
 
 
 def test_plugin_input_specific_session_replaces_overlapping_no_channel_session():
-    """同用户创建具体渠道会话时，应替换重叠的无渠道会话，避免下一条消息被连环接管。"""
+    """
+    同用户创建具体渠道会话时，应替换重叠的无渠道会话，避免下一条消息被连环接管。
+    """
     old_request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="old_plugin",
@@ -1705,7 +1823,9 @@ def test_plugin_input_specific_session_replaces_overlapping_no_channel_session()
 
 
 def test_plugin_input_session_pop_by_user_consumes_once():
-    """原子消费应保证同一个会话只返回一次。"""
+    """
+    原子消费应保证同一个会话只返回一次。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -1721,7 +1841,9 @@ def test_plugin_input_session_pop_by_user_consumes_once():
 
 
 def test_plugin_input_session_pop_by_user_ignores_prompt_message_binding():
-    """主动清理会话时不应要求提供 ForceReply 的 reply_to_message_id。"""
+    """
+    主动清理会话时不应要求提供 ForceReply 的 reply_to_message_id。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -1738,7 +1860,9 @@ def test_plugin_input_session_pop_by_user_ignores_prompt_message_binding():
 
 
 def test_plugin_input_session_pop_by_user_removes_expired_prompt_session():
-    """主动清理已过期会话时，也应移除过期表中的绑定 ForceReply 会话。"""
+    """
+    主动清理已过期会话时，也应移除过期表中的绑定 ForceReply 会话。
+    """
     request = plugin_input_interaction_manager.create_or_replace(
         user_id="10001",
         plugin_id="demo_plugin",
@@ -1757,7 +1881,9 @@ def test_plugin_input_session_pop_by_user_removes_expired_prompt_session():
 
 
 def test_target_plugin_filter_only_allows_target_plugin_handler():
-    """带目标插件的输入事件不应投递给其他插件或模块级处理器。"""
+    """
+    带目标插件的输入事件不应投递给其他插件或模块级处理器。
+    """
 
     def demo_plugin_handler(_event):
         return None
@@ -1782,7 +1908,9 @@ def test_target_plugin_filter_only_allows_target_plugin_handler():
 
 
 def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
-    """全局 AI 开启时，/noai 前缀应让本条消息进入传统搜索交互。"""
+    """
+    全局 AI 开启时，/noai 前缀应让本条消息进入传统搜索交互。
+    """
     chain = MessageChain()
     chain.runtime_config = replace(
         chain.runtime_config,
@@ -1824,7 +1952,9 @@ def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
 
 
 def test_callback_routes_to_media_interaction_chain():
-    """媒体按钮回调应路由到媒体交互链。"""
+    """
+    媒体按钮回调应路由到媒体交互链。
+    """
     chain = MessageChain()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1856,7 +1986,9 @@ def test_callback_routes_to_media_interaction_chain():
 
 
 def test_media_interaction_starts_search_and_posts_media_list():
-    """传统媒体交互应能搜索媒体并发送候选列表。"""
+    """
+    传统媒体交互应能搜索媒体并发送候选列表。
+    """
     chain = MediaInteractionChain()
     meta = _build_meta("星际穿越")
     medias = [
@@ -1893,7 +2025,9 @@ def test_media_interaction_starts_search_and_posts_media_list():
 
 
 def test_media_interaction_legacy_page_callback_updates_existing_request():
-    """旧格式翻页回调仍应更新当前媒体交互请求。"""
+    """
+    旧格式翻页回调仍应更新当前媒体交互请求。
+    """
     chain = MediaInteractionChain()
     request = media_interaction_manager.create_or_replace(
         user_id="10001",
@@ -1927,7 +2061,9 @@ def test_media_interaction_legacy_page_callback_updates_existing_request():
 
 
 def test_torrent_selection_prompts_download_dir_buttons_before_download():
-    """匹配当前媒体的目录有多个时，应先发送下载目录按钮而不是立即下载。"""
+    """
+    匹配当前媒体的目录有多个时，应先发送下载目录按钮而不是立即下载。
+    """
     chain = MediaInteractionChain()
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
@@ -1974,7 +2110,9 @@ def test_torrent_selection_prompts_download_dir_buttons_before_download():
 
 
 def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
-    """匹配当前媒体的目录只有一个时，应跳过目录选择并交给下载链自动匹配。"""
+    """
+    匹配当前媒体的目录只有一个时，应跳过目录选择并交给下载链自动匹配。
+    """
     chain = MediaInteractionChain()
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
@@ -2018,7 +2156,9 @@ def test_torrent_selection_skips_download_dir_when_only_one_dir_matches_media():
 
 
 def test_torrent_selection_skips_download_dir_when_user_has_single_dir():
-    """用户只有一个下载目录时，也应跳过目录选择并交给下载链自动匹配。"""
+    """
+    用户只有一个下载目录时，也应跳过目录选择并交给下载链自动匹配。
+    """
     chain = MediaInteractionChain()
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
@@ -2062,7 +2202,9 @@ def test_torrent_selection_skips_download_dir_when_user_has_single_dir():
 
 
 def test_torrent_selection_prompts_text_download_dir_for_plain_channel():
-    """不支持按钮的渠道在多个匹配目录时，应提示用户回复数字选择下载目录。"""
+    """
+    不支持按钮的渠道在多个匹配目录时，应提示用户回复数字选择下载目录。
+    """
     chain = MediaInteractionChain()
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
@@ -2105,7 +2247,9 @@ def test_torrent_selection_prompts_text_download_dir_for_plain_channel():
 
 
 def test_download_dir_callback_runs_pending_single_download_without_save_path_for_auto():
-    """下载目录选择自动匹配时，应不传 save_path 继续执行挂起的单资源下载。"""
+    """
+    下载目录选择自动匹配时，应不传 save_path 继续执行挂起的单资源下载。
+    """
     chain = MediaInteractionChain()
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
@@ -2150,7 +2294,9 @@ def test_download_dir_callback_runs_pending_single_download_without_save_path_fo
 
 
 def test_download_dir_callback_runs_pending_single_download_with_save_path():
-    """下载目录按钮回调应使用所选 save_path 继续执行挂起的单资源下载。"""
+    """
+    下载目录按钮回调应使用所选 save_path 继续执行挂起的单资源下载。
+    """
     chain = MediaInteractionChain()
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
@@ -2195,7 +2341,9 @@ def test_download_dir_callback_runs_pending_single_download_with_save_path():
 
 
 def test_download_dir_text_reply_runs_pending_single_download_without_save_path():
-    """下载目录文本回复选择自动匹配时应不传 save_path。"""
+    """
+    下载目录文本回复选择自动匹配时应不传 save_path。
+    """
     chain = MediaInteractionChain()
     context = _build_context()
     request = media_interaction_manager.create_or_replace(
@@ -2240,7 +2388,9 @@ def test_download_dir_text_reply_runs_pending_single_download_without_save_path(
 
 
 def test_get_download_dirs_keeps_matching_tv_category_dir():
-    """目录列表应保留匹配当前电视剧类别的下载目录。"""
+    """
+    目录列表应保留匹配当前电视剧类别的下载目录。
+    """
     chain = MediaInteractionChain()
     context = _build_tv_context()
 

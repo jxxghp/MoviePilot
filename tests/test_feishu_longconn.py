@@ -1,4 +1,6 @@
-"""飞书事件长连接协议测试：pbbp2 帧编解码、事件应答、分包合并、握手失败分类与真实 WebSocket 收发。"""
+"""
+飞书事件长连接协议测试：pbbp2 帧编解码、事件应答、分包合并、握手失败分类与真实 WebSocket 收发。
+"""
 
 import base64
 import json
@@ -23,7 +25,9 @@ SDK_EVENT_FRAME = bytes.fromhex(
 
 
 def _event_frame(payload: bytes, message_type: str = "event", **headers: str) -> Frame:
-    """构造服务端下发的 DATA 帧。"""
+    """
+    构造服务端下发的 DATA 帧。
+    """
     frame_headers = [("type", message_type), ("message_id", headers.pop("message_id", "m1"))]
     frame_headers += [("sum", headers.pop("sum", "1")), ("seq", headers.pop("seq", "0"))]
     frame_headers += [("trace_id", "t1")]
@@ -35,14 +39,18 @@ def _connection(on_event=None) -> FeishuLongConnection:
 
 
 def test_ping_frame_matches_sdk_encoding():
-    """心跳帧与 SDK 编码逐字节一致，required 字段即使为 0 也写出。"""
+    """
+    心跳帧与 SDK 编码逐字节一致，required 字段即使为 0 也写出。
+    """
     ping = Frame(service=7, method=0, headers=[("type", "ping")])
 
     assert ping.encode() == SDK_PING_FRAME
 
 
 def test_event_frame_round_trips_sdk_bytes():
-    """解析 SDK 编码的事件帧后再编码，字节不变，optional 字段按原样保留。"""
+    """
+    解析 SDK 编码的事件帧后再编码，字节不变，optional 字段按原样保留。
+    """
     frame = Frame.decode(SDK_EVENT_FRAME)
 
     assert (frame.seq_id, frame.log_id, frame.service, frame.method) == (3, 9, 7, 1)
@@ -55,21 +63,27 @@ def test_event_frame_round_trips_sdk_bytes():
 
 
 def test_negative_int32_field_round_trips():
-    """int32 负值按 10 字节 varint 编码，解码后恢复符号。"""
+    """
+    int32 负值按 10 字节 varint 编码，解码后恢复符号。
+    """
     frame = Frame(service=-5, method=1)
 
     assert Frame.decode(frame.encode()).service == -5
 
 
 def test_truncated_frame_raises():
-    """截断的帧不会被当作合法数据。"""
+    """
+    截断的帧不会被当作合法数据。
+    """
     with pytest.raises(ValueError):
         # 去掉最后一字节后，LogIDNew 声明的长度超出剩余数据。
         Frame.decode(SDK_EVENT_FRAME[:-1])
 
 
 def test_event_reply_keeps_frame_and_encodes_result():
-    """事件应答复用原帧字段并追加 biz_rt，处理结果以 base64 JSON 放在 data。"""
+    """
+    事件应答复用原帧字段并追加 biz_rt，处理结果以 base64 JSON 放在 data。
+    """
     received = []
     conn = _connection(lambda payload: received.append(payload) or {"toast": {"content": "操作已提交"}})
 
@@ -85,7 +99,9 @@ def test_event_reply_keeps_frame_and_encodes_result():
 
 
 def test_event_reply_without_result_and_on_failure():
-    """无返回值时只回 code 200；处理异常时回 500，连接不中断。"""
+    """
+    无返回值时只回 code 200；处理异常时回 500，连接不中断。
+    """
     assert json.loads(Frame.decode(_connection()._handle_frame(_event_frame(b"{}").encode())).payload) == {
         "code": 200
     }
@@ -98,7 +114,9 @@ def test_event_reply_without_result_and_on_failure():
 
 
 def test_card_type_frame_is_ignored_without_reply():
-    """card 类型帧与 SDK 一致：不分发也不应答。"""
+    """
+    card 类型帧与 SDK 一致：不分发也不应答。
+    """
     received = []
     conn = _connection(received.append)
 
@@ -107,7 +125,9 @@ def test_card_type_frame_is_ignored_without_reply():
 
 
 def test_fragmented_event_is_combined_before_dispatch():
-    """分包事件在全部分片到达后按 seq 顺序拼接再分发，只对最后一片应答。"""
+    """
+    分包事件在全部分片到达后按 seq 顺序拼接再分发，只对最后一片应答。
+    """
     received = []
     conn = _connection(received.append)
 
@@ -121,7 +141,9 @@ def test_fragmented_event_is_combined_before_dispatch():
 
 
 def test_expired_fragments_are_dropped(monkeypatch):
-    """超过合包等待时间的分片被丢弃，迟到的分片不会拼出残缺事件。"""
+    """
+    超过合包等待时间的分片被丢弃，迟到的分片不会拼出残缺事件。
+    """
     received = []
     conn = _connection(received.append)
     now = [100.0]
@@ -134,7 +156,9 @@ def test_expired_fragments_are_dropped(monkeypatch):
 
 
 def test_pong_payload_updates_client_config():
-    """pong 帧携带的 ClientConfig 覆盖心跳与重连参数。"""
+    """
+    pong 帧携带的 ClientConfig 覆盖心跳与重连参数。
+    """
     conn = _connection()
     pong = Frame(method=0, headers=[("type", "pong")], payload=b'{"PingInterval": 15, "ReconnectCount": 3}')
 
@@ -157,7 +181,9 @@ def _endpoint_response(body, status_code=200):
     ],
 )
 def test_endpoint_errors_are_classified(monkeypatch, body, error):
-    """繁忙与内部错误可重试，凭据等客户端错误视为致命。"""
+    """
+    繁忙与内部错误可重试，凭据等客户端错误视为致命。
+    """
     monkeypatch.setattr(longconn.RequestUtils, "post_res", lambda self, url, **kw: _endpoint_response(body))
 
     with pytest.raises(error):
@@ -165,7 +191,9 @@ def test_endpoint_errors_are_classified(monkeypatch, body, error):
 
 
 def test_endpoint_success_applies_config(monkeypatch):
-    """地址接口成功时返回 URL 并应用服务端配置，请求体携带应用凭据。"""
+    """
+    地址接口成功时返回 URL 并应用服务端配置，请求体携带应用凭据。
+    """
     calls = []
 
     def post_res(self, url, **kwargs):
@@ -196,7 +224,9 @@ def test_endpoint_success_applies_config(monkeypatch):
     ],
 )
 def test_handshake_failures_are_classified(headers, error):
-    """无权限与连接数超限不再重连，其余握手失败按可重试处理。"""
+    """
+    无权限与连接数超限不再重连，其余握手失败按可重试处理。
+    """
     err = websocket.WebSocketBadStatusException("bad", 400, resp_headers=headers)
 
     with pytest.raises(error):
@@ -204,7 +234,9 @@ def test_handshake_failures_are_classified(headers, error):
 
 
 def test_fatal_error_stops_reconnect(monkeypatch):
-    """致命错误让 run() 直接返回，不进入重连等待。"""
+    """
+    致命错误让 run() 直接返回，不进入重连等待。
+    """
     attempts = []
 
     def run_once(self):
@@ -218,11 +250,15 @@ def test_fatal_error_stops_reconnect(monkeypatch):
 
 
 def test_stop_requested_during_connection_error_stops_without_reconnect(monkeypatch):
-    """连接异常发生后若已收到停止请求，run() 应立即退出而不再重连。"""
+    """
+    连接异常发生后若已收到停止请求，run() 应立即退出而不再重连。
+    """
     conn = _connection()
 
     def fail_after_stop():
-        """模拟底层连接先收到停止请求、随后抛出断连异常。"""
+        """
+        模拟底层连接先收到停止请求、随后抛出断连异常。
+        """
         conn._stop_event.set()
         raise ConnectionError("peer closed")
 
@@ -232,7 +268,9 @@ def test_stop_requested_during_connection_error_stops_without_reconnect(monkeypa
 
 
 def test_reconnect_count_limit(monkeypatch):
-    """服务端限定重连次数时，连续失败超过上限后停止。"""
+    """
+    服务端限定重连次数时，连续失败超过上限后停止。
+    """
     attempts = []
 
     def run_once(self):
@@ -249,7 +287,9 @@ def test_reconnect_count_limit(monkeypatch):
 
 
 def test_reconnects_indefinitely_after_established_connections_drop(monkeypatch):
-    """连上后断开不计入连续失败：多次断线后仍按抖动重连，不会因重连次数上限永久退出。"""
+    """
+    连上后断开不计入连续失败：多次断线后仍按抖动重连，不会因重连次数上限永久退出。
+    """
     attempts = []
     delays = []
 
@@ -273,25 +313,38 @@ def test_reconnects_indefinitely_after_established_connections_drop(monkeypatch)
 
 
 class _SilentSocket:
-    """只接收 ping、从不回任何帧的连接，模拟链路静默断开。"""
+    """
+    只接收 ping、从不回任何帧的连接，模拟链路静默断开。
+    """
 
     def __init__(self, clock):
         self.clock = clock
         self.sent = []
 
     def send(self, data, opcode=None):
+        """
+        解码发送帧并记录其类型，不发送真实网络数据。
+        """
         self.sent.append(Frame.decode(data).header("type"))
 
     def settimeout(self, timeout):
+        """
+        保存接收超时秒数，供模拟时钟推进使用。
+        """
         self.timeout = timeout
 
     def recv_data(self):
+        """
+        推进模拟时钟并抛出超时异常，模拟连接持续没有入站帧。
+        """
         self.clock[0] += self.timeout
         raise websocket.WebSocketTimeoutException("timeout")
 
 
 def test_silent_connection_is_detected(monkeypatch):
-    """超过心跳间隔加宽限仍无入站帧时抛出断线，交给 run() 重连。"""
+    """
+    超过心跳间隔加宽限仍无入站帧时抛出断线，交给 run() 重连。
+    """
     clock = [0.0]
     monkeypatch.setattr(longconn.time, "monotonic", lambda: clock[0])
     conn = _connection()

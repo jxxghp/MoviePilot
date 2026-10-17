@@ -1,4 +1,6 @@
-"""终端输出分页、游标校验与有界结果投影。"""
+"""
+终端输出分页、游标校验与有界结果投影。
+"""
 
 from __future__ import annotations
 
@@ -12,23 +14,31 @@ TERMINAL_MAX_READ_BYTES = 64 * 1024
 
 
 class TerminalOutputError(ValueError):
-    """携带稳定错误码和最小页预算的可恢复输出读取错误。"""
+    """
+    携带稳定错误码和最小页预算的可恢复输出读取错误。
+    """
 
     def __init__(self, message: str, *, code: str = "invalid_output_cursor", minimum_read_bytes: Optional[int] = None) -> None:
-        """保留结构化恢复提示，调用方不必解析中文消息。"""
+        """
+        保留结构化恢复提示，调用方不必解析中文消息。
+        """
         super().__init__(message)
         self.code = code
         self.minimum_read_bytes = minimum_read_bytes
 
 
 def validate_output_budget(max_output_chars: Optional[int]) -> None:
-    """宿主内部预算必须容纳有界命令预览和完整恢复元数据。"""
+    """
+    宿主内部预算必须容纳有界命令预览和完整恢复元数据。
+    """
     if max_output_chars is not None and (type(max_output_chars) is not int or max_output_chars < 4096):
         raise ValueError("max_output_chars 必须为空或至少 4096 的整数")
 
 
 def normalize_read_limit(max_bytes: Optional[int]) -> int:
-    """限制单次读取返回的输出大小。"""
+    """
+    限制单次读取返回的输出大小。
+    """
     try:
         normalized = int(max_bytes or TERMINAL_DEFAULT_READ_BYTES)
     except (TypeError, ValueError):
@@ -41,7 +51,9 @@ def normalize_read_limit(max_bytes: Optional[int]) -> int:
 def resolve_cursor(
     session: _TerminalSession, *, since_seq: Optional[int], since_offset: Optional[int],
 ) -> tuple[int, int, bool]:
-    """保留旧序号含义，验证下一分片偏移，并显式恢复已过保留窗口的游标。"""
+    """
+    保留旧序号含义，验证下一分片偏移，并显式恢复已过保留窗口的游标。
+    """
     for name, value in (("since_seq", since_seq), ("since_offset", since_offset)):
         if value is not None and (type(value) is not int or value < 0):
             raise TerminalOutputError(f"{name} 必须为非负整数")
@@ -68,7 +80,9 @@ def resolve_cursor(
 
 
 def _slice_output(encoded: bytes, limit: int, *, partial: bool) -> bytes:
-    """遵守页预算和完整字符边界；零进展明确报错，不能伪装成成功分页。"""
+    """
+    遵守页预算和完整字符边界；零进展明确报错，不能伪装成成功分页。
+    """
     if len(encoded) <= limit:
         return encoded
     if not partial:
@@ -93,7 +107,9 @@ def collect_output(
     since_offset: Optional[int] = None,
     max_bytes: Optional[int],
 ) -> dict[str, Any]:
-    """按完整分片序号及下一分片字节偏移返回实际交付的输出页。"""
+    """
+    按完整分片序号及下一分片字节偏移返回实际交付的输出页。
+    """
     read_limit = normalize_read_limit(max_bytes)
     seq, offset, lost = resolve_cursor(session, since_seq=since_seq, since_offset=since_offset)
     selected_chunks = [chunk for chunk in session.chunks if chunk.seq > seq]
@@ -127,7 +143,9 @@ def read_payload(
     max_bytes: Optional[int], preserve_output_error: bool = False,
     max_output_chars: Optional[int] = None, extra_fields: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """动作已发生时保留会话句柄和未消费游标，只把分页错误作为附加恢复信息。"""
+    """
+    动作已发生时保留会话句柄和未消费游标，只把分页错误作为附加恢复信息。
+    """
     validate_output_budget(max_output_chars)
     try:
         page = collect_output(session, since_seq=since_seq, since_offset=since_offset, max_bytes=max_bytes)
@@ -177,7 +195,9 @@ def read_payload(
 
 
 def _text_preview(value: str, limit: int = 1024) -> str:
-    """按 JSON 实际转义开销限制元数据预览，极长命令不能挤掉输出游标。"""
+    """
+    按 JSON 实际转义开销限制元数据预览，极长命令不能挤掉输出游标。
+    """
     low, high = 0, min(len(value), limit)
     while low < high:
         middle = (low + high + 1) // 2
@@ -192,7 +212,9 @@ def _session_payload(
     session: _TerminalSession,
     page: dict[str, Any],
 ) -> dict[str, Any]:
-    """生成工具返回的结构化会话状态。"""
+    """
+    生成工具返回的结构化会话状态。
+    """
     command = _text_preview(session.command)
     cwd = _text_preview(session.cwd)
     error = _text_preview(session.error, 512) if session.error else session.error

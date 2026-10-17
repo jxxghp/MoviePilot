@@ -1,4 +1,6 @@
-"""Agent 人格统一管理工具。"""
+"""
+Agent 人格统一管理工具。
+"""
 
 import json
 from typing import Literal, Optional, Type
@@ -13,49 +15,55 @@ from app.runtime.log import logger
 PersonaAction = Literal["list", "switch", "update"]
 
 
+# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
 class PersonaInput(BaseModel):  # type: ignore[misc]
-    """查询、切换或更新 Agent 人格的统一输入参数。"""
+    """
+    查询、切换或更新 Agent 人格的统一输入参数。
+    """
 
     action: PersonaAction = Field(
         ...,
-        description="Action to perform: list, switch, or update.",
+        description="人格动作：list 查询、switch 切换或 update 更新",
     )
     query: Optional[str] = Field(
         None,
-        description=("Optional list filter for persona_id, label, description, or aliases."),
+        description="list 的可选筛选文本，匹配人格标识、名称、说明或别名",
     )
     persona_id: Optional[str] = Field(
         None,
-        description=(
-            "Target persona for switch or update. Existing labels and aliases are "
-            "accepted; new personas require a lowercase persona_id."
-        ),
+        description="switch 或 update 的目标人格，接受已有名称或别名；新建时须用小写标识",
     )
-    label: Optional[str] = Field(None, description="Replacement display label.")
+    label: Optional[str] = Field(
+        None,
+        description="替换后的展示名称",
+    )
     description: Optional[str] = Field(
         None,
-        description="Replacement description of the intended persona style.",
+        description="替换后的人格风格说明",
     )
     aliases: Optional[list[str]] = Field(
         None,
-        description="Full replacement list of persona aliases.",
+        description="完整替换人格别名的列表",
     )
     instructions: Optional[str] = Field(
         None,
-        description="Full replacement PERSONA.md body without YAML frontmatter.",
+        description="完整替换 PERSONA.md 的正文，不包含 YAML 前言",
     )
     append_instructions: Optional[list[str]] = Field(
         None,
-        description="Additional persona rules appended to the existing body.",
+        description="追加到现有正文的人格规则列表",
     )
     create_if_missing: bool = Field(
         False,
-        description="Create a new runtime persona when update cannot resolve one.",
+        description="update 无法定位已有定义时是否创建新运行时人格，默认 False",
     )
 
+    # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
     @model_validator(mode="after")  # type: ignore[misc]
     def validate_action(self) -> "PersonaInput":
-        """按动作校验目标人格和更新字段。"""
+        """
+        按动作校验目标人格和更新字段。
+        """
         if self.query is not None:
             self.query = self.query.strip() or None
         if self.persona_id is not None:
@@ -77,19 +85,31 @@ class PersonaInput(BaseModel):  # type: ignore[misc]
 
 
 class PersonaTool(MoviePilotTool):
-    """通过一个动作式接口查询、切换或管理 Agent 人格。"""
+    """
+    通过一个动作式接口查询、切换或管理 Agent 人格。
+    """
 
-    name: str = "persona"
-    tags: list[str] = [ToolTag.Read, ToolTag.Write, ToolTag.Persona]
-    description: str = (
-        "Manage agent personas with one structured action. Use list to discover personas "
-        "and the active state. Only a system administrator may switch the global active "
-        "persona or create and rewrite a persona definition."
+    name: str = Field(
+        default="persona",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = PersonaInput
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.Write, ToolTag.Persona],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default="通过结构化动作管理智能体人格。list 查询人格及当前启用状态。只有系统管理员可以切换全局启用人格，或创建、重写人格定义。",
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=PersonaInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
 
     def get_tool_message(self, **kwargs: object) -> str:
-        """生成统一人格操作的用户可见提示。"""
+        """
+        生成统一人格操作的用户可见提示。
+        """
         action = str(kwargs.get("action") or "list")
         action_name = {
             "list": "查询人格",
@@ -99,6 +119,7 @@ class PersonaTool(MoviePilotTool):
         target = kwargs.get("persona_id") or kwargs.get("query")
         return f"{action_name}: {target}" if target else action_name
 
+    # 具体参数由 args_schema 验证，执行入口保留与工具基类的动态分发兼容。
     async def run(  # type: ignore[override]
         self,
         action: PersonaAction,
@@ -112,7 +133,9 @@ class PersonaTool(MoviePilotTool):
         create_if_missing: bool = False,
         **kwargs: object,
     ) -> str:
-        """执行查询、切换或更新人格定义。"""
+        """
+        执行查询、切换或更新人格定义。
+        """
         payload = PersonaInput(
             action=action,
             query=query,
@@ -144,6 +167,7 @@ class PersonaTool(MoviePilotTool):
             if payload.action == "switch":
                 return self._switch_persona(payload.persona_id)
             return self._update_persona(payload)
+        # 工具边界统一接收外部能力异常，并返回可供模型恢复的失败结果。
         except Exception as error:  # noqa: BLE001
             logger.error(
                 "人格操作失败: action=%s, error=%s",
@@ -161,7 +185,9 @@ class PersonaTool(MoviePilotTool):
 
     @staticmethod
     def _list_personas(query: Optional[str]) -> str:
-        """列出可用人格并按可选关键词过滤。"""
+        """
+        列出可用人格并按可选关键词过滤。
+        """
         runtime_config = agent_runtime_manager.load_runtime_config()
         personas = runtime_config.list_personas()
         if query:
@@ -186,7 +212,9 @@ class PersonaTool(MoviePilotTool):
 
     @staticmethod
     def _switch_persona(persona_id: Optional[str]) -> str:
-        """切换当前持久化激活人格。"""
+        """
+        切换当前持久化激活人格。
+        """
         if persona_id is None:
             raise ValueError("switch 缺少 persona_id")
         runtime_config = agent_runtime_manager.set_active_persona(persona_id)
@@ -203,7 +231,9 @@ class PersonaTool(MoviePilotTool):
 
     @staticmethod
     def _update_persona(payload: PersonaInput) -> str:
-        """创建或更新一项运行时人格定义。"""
+        """
+        创建或更新一项运行时人格定义。
+        """
         if payload.persona_id is None:
             raise ValueError("update 缺少 persona_id")
         persona, created = agent_runtime_manager.update_persona_definition(

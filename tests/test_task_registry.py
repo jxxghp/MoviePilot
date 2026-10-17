@@ -1,4 +1,6 @@
-"""进程内后台任务登记与关停语义测试。"""
+"""
+进程内后台任务登记与关停语义测试。
+"""
 
 import asyncio
 import concurrent.futures
@@ -14,7 +16,9 @@ from app.runtime.tasks import TaskRegistry
 
 
 class _CloseCountingCoroutine(Coroutine[Any, Any, None]):
-    """记录 pending submission 的协程关闭所有权。"""
+    """
+    记录 pending submission 的协程关闭所有权。
+    """
 
     def __init__(self) -> None:
         self.close_count = 0
@@ -23,26 +27,39 @@ class _CloseCountingCoroutine(Coroutine[Any, Any, None]):
         return self
 
     def send(self, _value):
+        """
+        立即结束协程替身，避免任务注册测试执行真实异步工作。
+        """
         raise StopIteration
 
     def throw(self, typ, val=None, tb=None):
+        """
+        按协程协议重新抛出传入异常，并保留显式提供的回溯。
+        """
         if val is None:
             raise typ
         raise val.with_traceback(tb)
 
     def close(self) -> None:
+        """
+        累计关闭次数，检查拒收或关闭流程是否恰好释放协程一次。
+        """
         self.close_count += 1
 
 
 def test_task_registry_removes_completed_task() -> None:
-    """正常完成的任务应自动退出登记表，避免长期持有请求对象。"""
+    """
+    正常完成的任务应自动退出登记表，避免长期持有请求对象。
+    """
 
     async def scenario() -> None:
         registry = TaskRegistry()
         release = asyncio.Event()
 
         async def worker() -> None:
-            """等待测试释放信号。"""
+            """
+            等待测试释放信号。
+            """
             await release.wait()
 
         task = registry.create(worker(), owner="test.completed")
@@ -58,7 +75,9 @@ def test_task_registry_removes_completed_task() -> None:
 
 
 def test_task_registry_cancels_tasks_and_rejects_late_registration() -> None:
-    """关停应取消存量任务，并拒绝在资源释放阶段继续产生新任务。"""
+    """
+    关停应取消存量任务，并拒绝在资源释放阶段继续产生新任务。
+    """
 
     async def scenario() -> None:
         registry = TaskRegistry()
@@ -66,7 +85,9 @@ def test_task_registry_cancels_tasks_and_rejects_late_registration() -> None:
         cancelled = asyncio.Event()
 
         async def worker() -> None:
-            """记录任务收到取消信号。"""
+            """
+            记录任务收到取消信号。
+            """
             started.set()
             try:
                 await asyncio.Event().wait()
@@ -83,7 +104,9 @@ def test_task_registry_cancels_tasks_and_rejects_late_registration() -> None:
         assert registry.records == ()
 
         async def late_worker() -> None:
-            """模拟关停开始后到达的晚任务。"""
+            """
+            模拟关停开始后到达的晚任务。
+            """
 
         with pytest.raises(RuntimeError, match="正在关闭"):
             registry.create(late_worker(), owner="test.late")
@@ -92,14 +115,18 @@ def test_task_registry_cancels_tasks_and_rejects_late_registration() -> None:
 
 
 def test_task_registry_runs_sync_function_and_tracks_until_completion() -> None:
-    """同步任务应在线程池执行，并在真实完成前保留 owner 记录。"""
+    """
+    同步任务应在线程池执行，并在真实完成前保留 owner 记录。
+    """
 
     async def scenario() -> None:
         registry = TaskRegistry()
         release = asyncio.Event()
 
         def worker(value: int) -> int:
-            """返回传入值，验证参数和结果没有被登记器改写。"""
+            """
+            返回传入值，验证参数和结果没有被登记器改写。
+            """
             return value
 
         task = registry.create_sync(worker, 7, owner="test.sync")
@@ -114,7 +141,9 @@ def test_task_registry_runs_sync_function_and_tracks_until_completion() -> None:
 
 
 def test_task_registry_owns_threadsafe_submission_until_shutdown() -> None:
-    """宿主线程提交的协程应先登记 owner，并由 Registry 关停取消和等待。"""
+    """
+    宿主线程提交的协程应先登记 owner，并由 Registry 关停取消和等待。
+    """
 
     async def scenario() -> None:
         registry = TaskRegistry()
@@ -123,7 +152,9 @@ def test_task_registry_owns_threadsafe_submission_until_shutdown() -> None:
         cleaned = asyncio.Event()
 
         async def worker() -> None:
-            """保持运行直到 Registry 发出取消，并记录清理已完成。"""
+            """
+            保持运行直到 Registry 发出取消，并记录清理已完成。
+            """
             started.set()
             try:
                 await asyncio.Event().wait()
@@ -150,14 +181,18 @@ def test_task_registry_owns_threadsafe_submission_until_shutdown() -> None:
 
 
 def test_task_registry_rejects_threadsafe_submission_after_shutdown() -> None:
-    """关停先赢得竞态时应关闭协程并同步拒绝提交。"""
+    """
+    关停先赢得竞态时应关闭协程并同步拒绝提交。
+    """
 
     async def scenario() -> None:
         registry = TaskRegistry()
         loop = asyncio.get_running_loop()
 
         async def late_worker() -> None:
-            """模拟关停完成后从宿主线程到达的晚任务。"""
+            """
+            模拟关停完成后从宿主线程到达的晚任务。
+            """
 
         assert await registry.shutdown(timeout_seconds=1.0) is True
         coroutine = late_worker()
@@ -176,12 +211,16 @@ def test_task_registry_rejects_threadsafe_submission_after_shutdown() -> None:
 
 
 def test_task_registry_shutdown_closes_submission_before_loop_dispatch() -> None:
-    """回调尚未执行时关停也必须关闭协程并结束 completion。"""
+    """
+    回调尚未执行时关停也必须关闭协程并结束 completion。
+    """
     registry = TaskRegistry()
     loop = asyncio.new_event_loop()
 
     async def worker() -> None:
-        """不应被迟到的 loop callback 启动。"""
+        """
+        不应被迟到的 loop callback 启动。
+        """
 
     coroutine = worker()
     completion = registry.submit_threadsafe(
@@ -200,12 +239,16 @@ def test_task_registry_shutdown_closes_submission_before_loop_dispatch() -> None
 
 
 def test_task_registry_caller_cancels_before_loop_dispatch() -> None:
-    """调用方在 callback 前取消时应关闭协程，迟到 callback 不得创建 Task。"""
+    """
+    调用方在 callback 前取消时应关闭协程，迟到 callback 不得创建 Task。
+    """
     registry = TaskRegistry()
     loop = asyncio.new_event_loop()
 
     async def worker() -> None:
-        """不应在 completion 取消后启动。"""
+        """
+        不应在 completion 取消后启动。
+        """
 
     coroutine = worker()
     completion = registry.submit_threadsafe(
@@ -223,13 +266,17 @@ def test_task_registry_caller_cancels_before_loop_dispatch() -> None:
 
 
 def test_task_registry_closes_submission_when_loop_rejects_callback() -> None:
-    """目标 loop 已关闭时同步失败，并且不遗留未等待协程。"""
+    """
+    目标 loop 已关闭时同步失败，并且不遗留未等待协程。
+    """
     registry = TaskRegistry()
     loop = asyncio.new_event_loop()
     loop.close()
 
     async def worker() -> None:
-        """模拟无法进入目标 loop 的提交。"""
+        """
+        模拟无法进入目标 loop 的提交。
+        """
 
     coroutine = worker()
     with pytest.raises(RuntimeError, match="closed"):
@@ -243,17 +290,24 @@ def test_task_registry_closes_submission_when_loop_rejects_callback() -> None:
 
 
 def test_task_registry_shutdown_owns_close_before_loop_rejection() -> None:
-    """shutdown 已取走 pending 后，迟到的投递失败不得再次关闭同一协程。"""
+    """
+    shutdown 已取走 pending 后，迟到的投递失败不得再次关闭同一协程。
+    """
     registry = TaskRegistry()
     dispatch_entered = threading.Event()
     release_dispatch = threading.Event()
     coroutine = _CloseCountingCoroutine()
 
     class BlockingClosedLoop:
-        """让 shutdown 稳定发生在投递抛错之前。"""
+        """
+        让 shutdown 稳定发生在投递抛错之前。
+        """
 
         @staticmethod
         def call_soon_threadsafe(_callback) -> None:
+            """
+            阻塞跨线程派发直至测试放行，再模拟事件循环已经关闭。
+            """
             dispatch_entered.set()
             release_dispatch.wait()
             raise RuntimeError("loop closed")
@@ -275,7 +329,9 @@ def test_task_registry_shutdown_owns_close_before_loop_rejection() -> None:
 
 
 def test_task_registry_shutdown_rejects_late_successful_dispatch() -> None:
-    """shutdown 取走 pending 后，迟到的成功投递也不得发布真实 Task。"""
+    """
+    shutdown 取走 pending 后，迟到的成功投递也不得发布真实 Task。
+    """
     registry = TaskRegistry()
     dispatch_entered = threading.Event()
     release_dispatch = threading.Event()
@@ -283,10 +339,15 @@ def test_task_registry_shutdown_rejects_late_successful_dispatch() -> None:
     coroutine = _CloseCountingCoroutine()
 
     class BlockingLoop:
-        """让 shutdown 稳定发生在 loop 接受 callback 之前。"""
+        """
+        让 shutdown 稳定发生在 loop 接受 callback 之前。
+        """
 
         @staticmethod
         def call_soon_threadsafe(callback) -> None:
+            """
+            延迟接受回调直到关闭竞争发生，记录最终送达循环的回调。
+            """
             dispatch_entered.set()
             release_dispatch.wait()
             callbacks.append(callback)
@@ -310,7 +371,9 @@ def test_task_registry_shutdown_rejects_late_successful_dispatch() -> None:
 
 
 def test_task_registry_completion_does_not_retain_itself_after_cancellation() -> None:
-    """终态回调不得让已取消 completion 依赖循环 GC 才能释放。"""
+    """
+    终态回调不得让已取消 completion 依赖循环 GC 才能释放。
+    """
     registry = TaskRegistry()
     loop = asyncio.new_event_loop()
     completion = registry.submit_threadsafe(
@@ -329,12 +392,16 @@ def test_task_registry_completion_does_not_retain_itself_after_cancellation() ->
 
 
 def test_task_registry_pending_non_cancellable_work_does_not_start_on_shutdown() -> None:
-    """尚未发布成 Task 的 non-cancellable 工作仍应在关停时直接关闭。"""
+    """
+    尚未发布成 Task 的 non-cancellable 工作仍应在关停时直接关闭。
+    """
     registry = TaskRegistry()
     loop = asyncio.new_event_loop()
 
     async def worker() -> None:
-        """未开始的同步兼容工作不应拖延关停。"""
+        """
+        未开始的同步兼容工作不应拖延关停。
+        """
 
     coroutine = worker()
     completion = registry.submit_threadsafe(
@@ -354,7 +421,9 @@ def test_task_registry_pending_non_cancellable_work_does_not_start_on_shutdown()
 
 
 def test_task_registry_keeps_timed_out_sync_owner_until_real_completion() -> None:
-    """同步线程超过关停预算后仍应保留 owner，不能把包装任务取消成伪完成。"""
+    """
+    同步线程超过关停预算后仍应保留 owner，不能把包装任务取消成伪完成。
+    """
 
     async def scenario() -> None:
         registry = TaskRegistry()
@@ -366,7 +435,9 @@ def test_task_registry_keeps_timed_out_sync_owner_until_real_completion() -> Non
         loop.set_exception_handler(lambda _, context: reports.append(context))
 
         def worker() -> None:
-            """模拟无法由 asyncio 取消、需要外部资源自行结束的同步工作。"""
+            """
+            模拟无法由 asyncio 取消、需要外部资源自行结束的同步工作。
+            """
             started.set()
             release.wait()
 
@@ -394,7 +465,9 @@ def test_task_registry_keeps_timed_out_sync_owner_until_real_completion() -> Non
 
 
 def test_task_registry_keeps_stubborn_cancelled_task_visible() -> None:
-    """协程清理超过预算时只收一次取消，并在最终退出后自动清理。"""
+    """
+    协程清理超过预算时只收一次取消，并在最终退出后自动清理。
+    """
 
     async def scenario() -> None:
         registry = TaskRegistry()
@@ -408,7 +481,9 @@ def test_task_registry_keeps_stubborn_cancelled_task_visible() -> None:
         loop.set_exception_handler(lambda _, context: reports.append(context))
 
         async def worker() -> None:
-            """模拟收到取消后仍必须完成的异步清理。"""
+            """
+            模拟收到取消后仍必须完成的异步清理。
+            """
             nonlocal cancellation_count
             started.set()
             try:

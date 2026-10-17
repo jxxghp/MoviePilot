@@ -1,4 +1,6 @@
-"""Agent 中断后恢复已确认事实，避免重复执行有副作用的工具。"""
+"""
+Agent 中断后恢复已确认事实，避免重复执行有副作用的工具。
+"""
 
 import asyncio
 import json
@@ -19,29 +21,39 @@ from app.agent.orchestrator import MoviePilotAgent
 
 
 class _InterruptedGraph:
-    """在图已保存工具状态后失败或等待取消的执行替身。"""
+    """
+    在图已保存工具状态后失败或等待取消的执行替身。
+    """
 
     def __init__(self, messages, *, blocked=False, state_error=False):
-        """保存可恢复图状态和由用例控制的故障模式。"""
+        """
+        保存可恢复图状态和由用例控制的故障模式。
+        """
         self.messages = messages
         self.blocked = blocked
         self.state_error = state_error
         self.started = asyncio.Event()
 
     async def ainvoke(self, _payload, config=None):
-        """通知工具执行已结束，再模拟下一次模型调用中断。"""
+        """
+        通知工具执行已结束，再模拟下一次模型调用中断。
+        """
         self.started.set()
         if self.blocked:
             await asyncio.Event().wait()
         raise RuntimeError("model request failed")
 
     async def astream(self, payload, **_kwargs):
-        """保持与真实流式图相同的异常传播边界。"""
+        """
+        保持与真实流式图相同的异常传播边界。
+        """
         await self.ainvoke(payload)
         yield {}
 
     def get_state(self, _config):
-        """提供已完成工具回执，或模拟 checkpoint 不可读。"""
+        """
+        提供已完成工具回执，或模拟 checkpoint 不可读。
+        """
         if self.state_error:
             raise RuntimeError("checkpoint unavailable")
         return SimpleNamespace(values={"messages": self.messages})
@@ -49,7 +61,9 @@ class _InterruptedGraph:
 
 @pytest.fixture
 def recovery_agent(monkeypatch):
-    """隔离模型、持久化和通知边界，仅保留真实会话记忆缓存。"""
+    """
+    隔离模型、持久化和通知边界，仅保留真实会话记忆缓存。
+    """
     persistence = SimpleNamespace(async_save_agent_messages=AsyncMock())
     memory = MemoryManager(persistence=persistence)
     agent = MoviePilotAgent(
@@ -73,7 +87,9 @@ def recovery_agent(monkeypatch):
 
 
 def _completed_tool_messages():
-    """构造已创建下载、另一个写操作尚无回执的会话。"""
+    """
+    构造已创建下载、另一个写操作尚无回执的会话。
+    """
     return [
         HumanMessage(content="下载电影并更新订阅"),
         AIMessage(
@@ -90,7 +106,9 @@ def _completed_tool_messages():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
 async def test_failure_preserves_completed_receipts_and_marks_unknown_outcomes(recovery_agent, streaming):
-    """失败后的新一轮输入应包含已完成回执，悬空写调用保持结果未知。"""
+    """
+    失败后的新一轮输入应包含已完成回执，悬空写调用保持结果未知。
+    """
     agent, persistence = recovery_agent
     agent._should_stream = lambda: streaming
     original = _completed_tool_messages()
@@ -126,7 +144,9 @@ async def test_failure_preserves_completed_receipts_and_marks_unknown_outcomes(r
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
 async def test_cancellation_preserves_snapshot_and_still_propagates(recovery_agent, streaming):
-    """用户取消必须保存完成事实，同时保持调用方收到 CancelledError。"""
+    """
+    用户取消必须保存完成事实，同时保持调用方收到 CancelledError。
+    """
     agent, persistence = recovery_agent
     agent._should_stream = lambda: streaming
     graph = _InterruptedGraph(_completed_tool_messages(), blocked=True)
@@ -149,7 +169,9 @@ async def test_cancellation_preserves_snapshot_and_still_propagates(recovery_age
 
 @pytest.mark.asyncio
 async def test_recovery_sanitizes_checkpoint_without_mutating_live_messages(recovery_agent):
-    """中断快照清理凭据和供应商载荷，不把工具 artifact 或异常体落盘。"""
+    """
+    中断快照清理凭据和供应商载荷，不把工具 artifact 或异常体落盘。
+    """
     agent, persistence = recovery_agent
     original = _completed_tool_messages()
     original[0].content = "api_key=raw-user-secret"
@@ -176,7 +198,9 @@ async def test_recovery_sanitizes_checkpoint_without_mutating_live_messages(reco
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["checkpoint", "persistence", "creation", "configuration"])
 async def test_snapshot_failure_does_not_replace_original_error(recovery_agent, failure):
-    """读取或保存恢复快照失败时，仍按原来的执行错误收尾。"""
+    """
+    读取或保存恢复快照失败时，仍按原来的执行错误收尾。
+    """
     agent, _persistence = recovery_agent
     graph = _InterruptedGraph(_completed_tool_messages(), state_error=failure == "checkpoint")
     agent._create_agent = AsyncMock(return_value=graph)
@@ -197,7 +221,9 @@ async def test_snapshot_failure_does_not_replace_original_error(recovery_agent, 
 
 @pytest.mark.asyncio
 async def test_recovery_does_not_create_chat_history_for_background_tasks(recovery_agent):
-    """无渠道后台任务沿用不保存普通会话的边界。"""
+    """
+    无渠道后台任务沿用不保存普通会话的边界。
+    """
     agent, persistence = recovery_agent
     agent.channel = None
     agent.source = None
@@ -210,14 +236,18 @@ async def test_recovery_does_not_create_chat_history_for_background_tasks(recove
 
 @pytest.mark.asyncio
 async def test_snapshot_timeout_keeps_memory_and_does_not_delay_cancellation(recovery_agent, monkeypatch):
-    """持久化等待有界，超时后内存事实仍可复用且取消照常收敛。"""
+    """
+    持久化等待有界，超时后内存事实仍可复用且取消照常收敛。
+    """
     agent, persistence = recovery_agent
     graph = _InterruptedGraph(_completed_tool_messages(), blocked=True)
     agent._create_agent = AsyncMock(return_value=graph)
     monkeypatch.setattr("app.agent.orchestrator.AGENT_RECOVERY_SNAPSHOT_TIMEOUT", 0.01)
 
     async def block_save(**_kwargs):
-        """模拟数据库写边界迟迟未返回，不访问真实数据库。"""
+        """
+        模拟数据库写边界迟迟未返回，不访问真实数据库。
+        """
         await asyncio.Event().wait()
 
     persistence.async_save_agent_messages.side_effect = block_save
@@ -233,7 +263,9 @@ async def test_snapshot_timeout_keeps_memory_and_does_not_delay_cancellation(rec
 
 @pytest.mark.asyncio
 async def test_second_cancellation_during_snapshot_still_invalidates_graph(recovery_agent):
-    """保存中断快照时再次取消，也不能遗留旧图让后续请求重用。"""
+    """
+    保存中断快照时再次取消，也不能遗留旧图让后续请求重用。
+    """
     agent, persistence = recovery_agent
     graph = _InterruptedGraph(_completed_tool_messages(), blocked=True)
     agent._create_agent = AsyncMock(return_value=graph)
@@ -241,7 +273,9 @@ async def test_second_cancellation_during_snapshot_still_invalidates_graph(recov
     saving = asyncio.Event()
 
     async def block_save(**_kwargs):
-        """将第二次取消定位到持久化等待阶段。"""
+        """
+        将第二次取消定位到持久化等待阶段。
+        """
         saving.set()
         await asyncio.Event().wait()
 
@@ -261,7 +295,9 @@ async def test_second_cancellation_during_snapshot_still_invalidates_graph(recov
 
 @pytest.mark.asyncio
 async def test_interrupted_snapshot_preserves_sanitized_plan(recovery_agent):
-    """图中的未完成计划随中断提示写入快照，凭据不会进入计划恢复数据。"""
+    """
+    图中的未完成计划随中断提示写入快照，凭据不会进入计划恢复数据。
+    """
     agent, persistence = recovery_agent
     graph = _InterruptedGraph(_completed_tool_messages())
     plan = {
@@ -283,16 +319,22 @@ async def test_interrupted_snapshot_preserves_sanitized_plan(recovery_agent):
 
 
 class _InterruptedModel(FakeMessagesListChatModel):
-    """允许首次工具执行后模型失败，再以同样的历史继续回应。"""
+    """
+    允许首次工具执行后模型失败，再以同样的历史继续回应。
+    """
 
     fail_after_tool: bool = True
 
     def bind_tools(self, _tools, **_kwargs):
-        """测试模型固定返回工具协议消息，不需要连接真实供应商。"""
+        """
+        测试模型固定返回工具协议消息，不需要连接真实供应商。
+        """
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        """第二次模型请求只失败一次，保留已完成工具所在的 checkpoint。"""
+        """
+        第二次模型请求只失败一次，保留已完成工具所在的 checkpoint。
+        """
         if self.i == 1 and self.fail_after_tool:
             self.fail_after_tool = False
             raise RuntimeError("model disconnected after download")
@@ -301,13 +343,17 @@ class _InterruptedModel(FakeMessagesListChatModel):
 
 @pytest.mark.asyncio
 async def test_real_graph_rebuild_uses_receipts_without_replaying_completed_tool(recovery_agent):
-    """真实 LangGraph 中工具已成功、后续模型失败时，重建图不重放旧工具。"""
+    """
+    真实 LangGraph 中工具已成功、后续模型失败时，重建图不重放旧工具。
+    """
     agent, _persistence = recovery_agent
     writes = []
 
     @tool
     def add_download() -> str:
-        """记录一次不可重复创建的测试下载。"""
+        """
+        记录一次不可重复创建的测试下载。
+        """
         writes.append("download-created")
         return '{"download_id": "created-once"}'
 
@@ -338,21 +384,27 @@ async def test_real_graph_rebuild_uses_receipts_without_replaying_completed_tool
 
 @pytest.mark.asyncio
 async def test_parallel_tool_failure_keeps_successful_pending_write(recovery_agent):
-    """同批并行工具部分失败时，checkpoint 的成功 pending write 仍进入恢复历史。"""
+    """
+    同批并行工具部分失败时，checkpoint 的成功 pending write 仍进入恢复历史。
+    """
     agent, _persistence = recovery_agent
     completed = asyncio.Event()
     writes = []
 
     @tool
     async def add_download() -> str:
-        """模拟已生效的下载写操作，并通知并行失败工具。"""
+        """
+        模拟已生效的下载写操作，并通知并行失败工具。
+        """
         writes.append("download-created")
         completed.set()
         return '{"download_id": "parallel-created-once"}'
 
     @tool
     async def update_subscription() -> str:
-        """等待下载生效后模拟另一路写操作失败。"""
+        """
+        等待下载生效后模拟另一路写操作失败。
+        """
         await completed.wait()
         raise RuntimeError("subscription connection lost")
 
@@ -391,7 +443,9 @@ async def test_parallel_tool_failure_keeps_successful_pending_write(recovery_age
 @pytest.mark.asyncio
 @pytest.mark.parametrize("provider", ["interleaved", "gemini", "anthropic", "responses"])
 async def test_signed_history_recovers_as_portable_facts_without_broken_protocol(recovery_agent, provider):
-    """签名或思考工具链转为普通历史事实，供应商 SDK 可重新组装下一轮请求。"""
+    """
+    签名或思考工具链转为普通历史事实，供应商 SDK 可重新组装下一轮请求。
+    """
     from langchain_anthropic.chat_models import _format_messages
     from langchain_google_genai.chat_models import _parse_chat_history
     from langchain_openai.chat_models.base import _convert_message_to_dict
@@ -447,7 +501,9 @@ async def test_signed_history_recovers_as_portable_facts_without_broken_protocol
 
 
 def test_portable_recovery_retains_historical_plan_before_state_restore():
-    """计划中间件恢复前即失败时，历史消息携带的计划仍可随事实快照恢复。"""
+    """
+    计划中间件恢复前即失败时，历史消息携带的计划仍可随事实快照恢复。
+    """
     messages = _completed_tool_messages()
     messages[1].additional_kwargs[PLAN_SNAPSHOT_KEY] = {
         "objective": "核验下载和订阅",

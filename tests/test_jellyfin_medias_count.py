@@ -1,24 +1,36 @@
 # -*- coding: utf-8 -*-
+"""
+验证 Jellyfin 媒体数量查询及返回值归一化。
+"""
+
 from unittest.mock import patch
 
 from app.modules.jellyfin.jellyfin import Jellyfin
 
 
 class _FakeResponse:
-    """模拟媒体服务器 HTTP 响应。"""
+    """
+    模拟媒体服务器 HTTP 响应。
+    """
 
     def __init__(self, payload: dict, status_code: int = 200):
-        """保存响应数据和状态码。"""
+        """
+        保存响应数据和状态码。
+        """
         self._payload = payload
         self.status_code = status_code
 
     def json(self) -> dict:
-        """返回模拟的 JSON 数据。"""
+        """
+        返回模拟的 JSON 数据。
+        """
         return self._payload
 
 
 def _make_client(user: str = "user-id") -> Jellyfin:
-    """构造跳过初始化的 Jellyfin 客户端。"""
+    """
+    构造跳过初始化的 Jellyfin 客户端。
+    """
     client = Jellyfin.__new__(Jellyfin)
     client._host = "http://media.local/"
     client._apikey = "token"
@@ -28,7 +40,9 @@ def _make_client(user: str = "user-id") -> Jellyfin:
 
 
 def _routed_get_res(views: dict, counts: dict, global_counts: dict = None):
-    """按 URL 分发的 get_res 模拟：视图列表、单库统计与全局统计。"""
+    """
+    按 URL 分发的 get_res 模拟：视图列表、单库统计与全局统计。
+    """
 
     def _get_res(url, params=None, **_kwargs):
         if url.endswith("/Views"):
@@ -44,7 +58,9 @@ def _routed_get_res(views: dict, counts: dict, global_counts: dict = None):
 
 
 def test_medias_count_deduplicates_multi_folder_library():
-    """多文件夹电影库应按用户视图统计，避免版本重复计数（#5915）。"""
+    """
+    多文件夹电影库应按用户视图统计，避免版本重复计数（#5915）。
+    """
     client = _make_client()
     views = {"Items": [{"Id": "lib-movie", "CollectionType": "movies"}]}
     # 用户级查询会折叠同一影片的多个版本，返回 67 而非数据库原始行数 201
@@ -62,7 +78,9 @@ def test_medias_count_deduplicates_multi_folder_library():
 
 
 def test_medias_count_buckets_by_collection_type():
-    """电影与剧集库应按视图类型分桶累计，未知类型库不参与统计。"""
+    """
+    电影与剧集库应按视图类型分桶累计，未知类型库不参与统计。
+    """
     client = _make_client()
     views = {
         "Items": [
@@ -90,7 +108,9 @@ def test_medias_count_buckets_by_collection_type():
 
 
 def test_medias_count_falls_back_without_user():
-    """无可用用户时应回退到全局 Items/Counts 统计。"""
+    """
+    无可用用户时应回退到全局 Items/Counts 统计。
+    """
     client = _make_client(user=None)
 
     with patch("app.modules.jellyfin.jellyfin.RequestUtils") as request_utils_cls:
@@ -107,7 +127,9 @@ def test_medias_count_falls_back_without_user():
 
 
 def test_medias_count_falls_back_when_collection_type_missing():
-    """媒体库缺少 CollectionType 时应回退到全局 Items/Counts 统计。"""
+    """
+    媒体库缺少 CollectionType 时应回退到全局 Items/Counts 统计。
+    """
     client = _make_client()
     views = {
         "Items": [{
@@ -139,7 +161,9 @@ def test_medias_count_falls_back_when_collection_type_missing():
 
 
 def test_medias_count_falls_back_when_views_unavailable():
-    """媒体库视图查询失败时应回退到全局 Items/Counts 统计。"""
+    """
+    媒体库视图查询失败时应回退到全局 Items/Counts 统计。
+    """
     client = _make_client()
 
     def _get_res(url, params=None, **_kwargs):

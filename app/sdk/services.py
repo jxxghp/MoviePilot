@@ -1,4 +1,6 @@
-"""插件可使用的宿主服务发现与运行时门面。"""
+"""
+插件可使用的宿主服务发现与运行时门面。
+"""
 
 from app.application.downloader import DownloaderHelper
 from app.application.mediaserver import (

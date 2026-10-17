@@ -561,6 +561,7 @@ fi
 SETUP_SCRIPT="$ROOT/scripts/local_setup.py"
 
 if [ -z "${CONFIG_DIR:-}" ] && [ -f "$ROOT/.moviepilot.env" ]; then
+  # 配置文件路径由当前安装目录决定，静态检查时无法预先解析。
   # shellcheck disable=SC1090
   . "$ROOT/.moviepilot.env"
 fi

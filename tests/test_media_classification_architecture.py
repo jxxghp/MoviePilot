@@ -1,4 +1,6 @@
-"""统一分类领域与具体媒体来源之间的架构边界测试。"""
+"""
+统一分类领域与具体媒体来源之间的架构边界测试。
+"""
 
 import ast
 from pathlib import Path
@@ -11,7 +13,9 @@ CLASSIFICATION_ROOTS = (
 
 
 def _imported_modules(path: Path) -> tuple[str, ...]:
-    """静态提取一个分类模块中的绝对导入目标。"""
+    """
+    静态提取一个分类模块中的绝对导入目标。
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     modules: list[str] = []
     for node in ast.walk(tree):
@@ -23,7 +27,9 @@ def _imported_modules(path: Path) -> tuple[str, ...]:
 
 
 def test_classification_layers_do_not_import_concrete_source_modules() -> None:
-    """纯规则和应用服务不得反向依赖 TMDB、音乐或插件来源实现。"""
+    """
+    纯规则和应用服务不得反向依赖 TMDB、音乐或插件来源实现。
+    """
     violations = [
         (path.relative_to(PROJECT_ROOT).as_posix(), module)
         for root in CLASSIFICATION_ROOTS

@@ -1,3 +1,7 @@
+"""
+验证启动警告的分类、输出与重复控制。
+"""
+
 import warnings
 
 import pytest
@@ -6,7 +10,9 @@ import app
 
 
 def test_app_registers_pg_bin_for_windows_free_threaded(tmp_path, monkeypatch):
-    """Windows free-threaded 启动时应注册 PostgreSQL DLL 目录。"""
+    """
+    Windows free-threaded 启动时应注册 PostgreSQL DLL 目录。
+    """
     handle = object()
     registered = []
     monkeypatch.setattr(app, "is_windows", lambda: True)
@@ -27,7 +33,9 @@ def test_app_registers_pg_bin_for_windows_free_threaded(tmp_path, monkeypatch):
 
 
 def test_app_skips_pg_bin_for_standard_runtime(monkeypatch):
-    """标准 Windows 运行时不应执行 free-threaded 专属 DLL 注册。"""
+    """
+    标准 Windows 运行时不应执行 free-threaded 专属 DLL 注册。
+    """
     monkeypatch.setattr(app, "is_windows", lambda: True)
     monkeypatch.setattr(app, "is_free_threaded_runtime", lambda: False)
     monkeypatch.setattr(
@@ -42,7 +50,9 @@ def test_app_skips_pg_bin_for_standard_runtime(monkeypatch):
 
 
 def test_app_skips_missing_pg_bin_for_windows_free_threaded(monkeypatch):
-    """无效外部目录不能污染 Windows DLL 搜索路径。"""
+    """
+    无效外部目录不能污染 Windows DLL 搜索路径。
+    """
     monkeypatch.setattr(app, "is_windows", lambda: True)
     monkeypatch.setattr(app, "is_free_threaded_runtime", lambda: True)
     monkeypatch.setattr(
@@ -75,7 +85,9 @@ def test_app_installs_known_oss2_invalid_escape_warning_filter():
 
 
 def test_app_does_not_hide_other_invalid_escape_warnings():
-    """其他无效转义仍应暴露，避免过滤器遮蔽新问题。"""
+    """
+    其他无效转义仍应暴露，避免过滤器遮蔽新问题。
+    """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         app._filter_third_party_startup_warnings()
@@ -91,7 +103,9 @@ def test_app_does_not_hide_other_invalid_escape_warnings():
 
 
 def test_app_installs_google_genai_python314_warning_filter():
-    """app 初始化过滤器应覆盖 Google GenAI SDK 的 Python 3.14 弃用警告。"""
+    """
+    app 初始化过滤器应覆盖 Google GenAI SDK 的 Python 3.14 弃用警告。
+    """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         app._filter_third_party_startup_warnings()

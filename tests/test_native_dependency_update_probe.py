@@ -1,4 +1,6 @@
-"""已加载原生依赖更新探针的纯逻辑测试。"""
+"""
+已加载原生依赖更新探针的纯逻辑测试。
+"""
 
 import pytest
 
@@ -19,7 +21,9 @@ def _attempt(
     fresh_version: str | None = "2.0.0",
     fresh_hash: str | None = "v2-hash",
 ) -> dict:
-    """构造分类器所需的最小探针结果。"""
+    """
+    构造分类器所需的最小探针结果。
+    """
     return {
         "before": {"binary_sha256": "v1-hash"},
         "install_success": success,
@@ -33,7 +37,9 @@ def _attempt(
 
 
 def test_classify_online_attempt_distinguishes_failed_update_states():
-    """安装失败后必须区分原载荷未变和环境已发生变化。"""
+    """
+    安装失败后必须区分原载荷未变和环境已发生变化。
+    """
     assert (
         classify_online_attempt(
             _attempt(
@@ -62,7 +68,9 @@ def test_classify_online_attempt_distinguishes_failed_update_states():
 
 
 def test_classify_online_attempt_distinguishes_restart_boundaries():
-    """成功回执还要结合磁盘载荷和当前进程状态判定。"""
+    """
+    成功回执还要结合磁盘载荷和当前进程状态判定。
+    """
     assert (
         classify_online_attempt(
             _attempt(
@@ -100,12 +108,16 @@ def test_online_attempt_succeeded_requires_target_payload(
     classification: str,
     expected: bool,
 ):
-    """恢复成功不能掩盖在线阶段未写入目标载荷。"""
+    """
+    恢复成功不能掩盖在线阶段未写入目标载荷。
+    """
     assert online_attempt_succeeded({"classification": classification}) is expected
 
 
 def test_validate_runtime_target_checks_host_and_interpreter_architecture(monkeypatch):
-    """宿主架构与解释器 ABI 必须分别进入证据门禁。"""
+    """
+    宿主架构与解释器 ABI 必须分别进入证据门禁。
+    """
     monkeypatch.setattr(
         "scripts.probe_native_dependency_update.platform.system",
         lambda: "Windows",
@@ -145,7 +157,9 @@ def test_validate_runtime_target_rejects_mislabeled_evidence(
     expected_suffix: str,
     message: str,
 ):
-    """平台标签与真实运行目标不一致时不得继续生成成功证据。"""
+    """
+    平台标签与真实运行目标不一致时不得继续生成成功证据。
+    """
     monkeypatch.setattr(
         "scripts.probe_native_dependency_update.platform.system",
         lambda: "Windows",
@@ -168,14 +182,18 @@ def test_validate_runtime_target_rejects_mislabeled_evidence(
 
 
 def test_classify_online_attempt_preserves_probe_failures():
-    """探针自身异常不能被误报成系统文件锁或安装结果。"""
+    """
+    探针自身异常不能被误报成系统文件锁或安装结果。
+    """
     attempt = _attempt(success=False, fresh=None, loaded=100)
     attempt["probe_error"] = "RuntimeError: fixture failed"
     assert classify_online_attempt(attempt) == "probe_error"
 
 
 def test_write_manifest_covers_legacy_and_modern_plugin_contracts(tmp_path):
-    """探针清单必须分别复现 requirements 与 PEP 621 入口。"""
+    """
+    探针清单必须分别复现 requirements 与 PEP 621 入口。
+    """
     legacy = _write_manifest(
         tmp_path,
         kind="requirements",
@@ -194,7 +212,9 @@ def test_write_manifest_covers_legacy_and_modern_plugin_contracts(tmp_path):
 
 
 def test_write_manifest_rejects_unknown_contract(tmp_path):
-    """未知清单形态不能静默退化成 legacy 行为。"""
+    """
+    未知清单形态不能静默退化成 legacy 行为。
+    """
     with pytest.raises(ValueError, match="不支持的清单类型"):
         _write_manifest(
             tmp_path,

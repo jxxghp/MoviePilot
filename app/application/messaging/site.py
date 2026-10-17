@@ -1,3 +1,7 @@
+"""
+站点列表、连通检查与文本指令的渠道交互。
+"""
+
 import re
 from typing import Callable, Optional, Tuple, Union
 
@@ -171,7 +175,9 @@ class SiteInteractionHandler:
             username: str,
             text: str,
     ) -> bool:
-        """处理 /sites 文本交互并保持消息链公开 ABI。"""
+        """
+        处理 /sites 文本交互并保持消息链公开 ABI。
+        """
         return self._handle_text_interaction(channel, source, userid, username, text)
 
     def _handle_text_interaction(

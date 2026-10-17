@@ -1,4 +1,6 @@
-"""用真实本地 Python 子进程验证持久 cell、IPC、输出与回收边界。"""
+"""
+用真实本地 Python 子进程验证持久 cell、IPC、输出与回收边界。
+"""
 
 import asyncio
 import json
@@ -19,13 +21,17 @@ from app.runtime.tasks import get_task_registry
 
 
 async def _dispatch(name, arguments):
-    """只返回调用参数，不触发任何真实业务或网络。"""
+    """
+    只返回调用参数，不触发任何真实业务或网络。
+    """
     return {'name': name, 'value': arguments['value']}
 
 
 @pytest_asyncio.fixture
 async def kernel(tmp_path):
-    """每个测试创建并可靠关闭真实内核，失败也不能把进程留给下一用例。"""
+    """
+    每个测试创建并可靠关闭真实内核，失败也不能把进程留给下一用例。
+    """
     instance = PythonKernel(tmp_path / 'kernel', ('moviepilot_api',), blocking=asyncio.to_thread)
     await instance.start()
     try:
@@ -36,7 +42,9 @@ async def kernel(tmp_path):
 
 @pytest.mark.asyncio
 async def test_python_state_imports_exceptions_and_fresh_rpc_context(kernel):
-    """变量和导入跨 cell 保留，普通异常保留已赋值状态，每次 RPC 使用当前回调。"""
+    """
+    变量和导入跨 cell 保留，普通异常保留已赋值状态，每次 RPC 使用当前回调。
+    """
     result = await kernel.execute(
         'import math\nfrom moviepilot_tools import moviepilot_api\n'
         'total = math.factorial(5)\nprint(moviepilot_api(value=total))', dispatch=_dispatch, timeout=5,
@@ -47,7 +55,9 @@ async def test_python_state_imports_exceptions_and_fresh_rpc_context(kernel):
     assert failed['status'] == 'error' and 'ValueError: cell failure' in failed['traceback']
 
     async def current(name, arguments):
-        """替换回调即可改变当前调用身份，不重启 Python 或复用旧连接上下文。"""
+        """
+        替换回调即可改变当前调用身份，不重启 Python 或复用旧连接上下文。
+        """
         return {'current': True, **await _dispatch(name, arguments)}
 
     recovered = await kernel.execute('print(moviepilot_api(value=total))', dispatch=current, timeout=5)
@@ -57,7 +67,9 @@ async def test_python_state_imports_exceptions_and_fresh_rpc_context(kernel):
 
 @pytest.mark.asyncio
 async def test_multithreaded_rpc_does_not_mix_replies(kernel):
-    """同一持久连接上的并发 Python 线程仍各自收到匹配的调用结果。"""
+    """
+    同一持久连接上的并发 Python 线程仍各自收到匹配的调用结果。
+    """
     result = await kernel.execute(
         'from concurrent.futures import ThreadPoolExecutor\n'
         'from moviepilot_tools import moviepilot_api\n'
@@ -71,7 +83,9 @@ async def test_multithreaded_rpc_does_not_mix_replies(kernel):
 
 @pytest.mark.asyncio
 async def test_fd_output_cannot_corrupt_frames_and_large_streams_are_drained(kernel):
-    """直接 fd 输出与伪造帧文本不影响随机协议标记，大 stderr 不阻塞进程。"""
+    """
+    直接 fd 输出与伪造帧文本不影响随机协议标记，大 stderr 不阻塞进程。
+    """
     result = await kernel.execute(
         'import os\nos.write(1, b"\\nFAKE_MARKER 999\\nraw output\\n")\n'
         'os.write(2, b"E" * 100000)\nprint("cell result")', dispatch=_dispatch, timeout=5,
@@ -85,7 +99,9 @@ async def test_fd_output_cannot_corrupt_frames_and_large_streams_are_drained(ker
 
 @pytest.mark.asyncio
 async def test_token_allowlist_and_expired_cell_are_checked(kernel):
-    """请求必须同时通过令牌、工具名和活动 cell 检查；旧派发引用不能跨 cell 使用。"""
+    """
+    请求必须同时通过令牌、工具名和活动 cell 检查；旧派发引用不能跨 cell 使用。
+    """
     good = {'token': kernel._token, 'tool': 'moviepilot_api', 'args': {'value': 1}}
     assert 'No active' in (await kernel._request(json.dumps(good).encode(), None))['error']
     kernel._dispatch = _dispatch
@@ -100,7 +116,9 @@ async def test_token_allowlist_and_expired_cell_are_checked(kernel):
 @pytest.mark.asyncio
 @pytest.mark.parametrize('cancel', [False, True])
 async def test_interrupted_cell_destroys_process_and_tasks(kernel, cancel):
-    """超时及宿主取消都等到进程结束并释放端点，不允许继续使用不完整的状态。"""
+    """
+    超时及宿主取消都等到进程结束并释放端点，不允许继续使用不完整的状态。
+    """
     task = get_task_registry().create(
         kernel.execute('import time\ntime.sleep(60)', dispatch=_dispatch, timeout=0.1 if not cancel else 30),
         owner='test.code.cell',
@@ -119,13 +137,17 @@ async def test_interrupted_cell_destroys_process_and_tasks(kernel, cancel):
 
 @pytest.mark.asyncio
 async def test_cancellation_during_file_creation_cleans_late_work(tmp_path, monkeypatch):
-    """线程创建不能被取消；宿主必须等创建真正结束，再回收迟到文件。"""
+    """
+    线程创建不能被取消；宿主必须等创建真正结束，再回收迟到文件。
+    """
     instance = PythonKernel(tmp_path / 'late', (), blocking=asyncio.to_thread)
     entered, release = threading.Event(), threading.Event()
     original = instance._files
 
     def delayed():
-        """在创建线程持有一个可由测试控制的有限等待点。"""
+        """
+        在创建线程持有一个可由测试控制的有限等待点。
+        """
         entered.set()
         assert release.wait(5)
         original()
@@ -147,7 +169,9 @@ async def test_cancellation_during_file_creation_cleans_late_work(tmp_path, monk
 
 @pytest.mark.asyncio
 async def test_private_files_and_parent_death_signal(kernel):
-    """私有文件不可被其他系统用户读取，父死亡管道在正在执行时也能终止内核。"""
+    """
+    私有文件不可被其他系统用户读取，父死亡管道在正在执行时也能终止内核。
+    """
     if os.name == 'nt':
         pytest.skip('POSIX 文件权限和死亡管道；Windows 使用进程句柄')
     assert stat.S_IMODE(kernel.directory.stat().st_mode) == 0o700
@@ -161,7 +185,9 @@ async def test_private_files_and_parent_death_signal(kernel):
 
 
 def test_environment_preserves_deployment_configuration_without_mutating_parent():
-    """管理员内核继承完整部署配置，但不继承宿主导入路径或改写父环境。"""
+    """
+    管理员内核继承完整部署配置，但不继承宿主导入路径或改写父环境。
+    """
     parent = {'PATH': '/bin', 'HOME': '/home/example', 'HOME_TOKEN': 'example-token',
               'LANG': 'en_US.UTF-8', 'OPENAI_API_KEY': 'example-key', 'PYTHONPATH': '/host',
               'CONFIG_DIR': '/config', 'DB_TYPE': 'postgresql',
@@ -178,7 +204,9 @@ def test_environment_preserves_deployment_configuration_without_mutating_parent(
 @pytest.mark.asyncio
 @pytest.mark.parametrize('database_type', ['postgresql', 'sqlite'])
 async def test_kernel_and_nested_script_use_host_database_configuration(tmp_path, monkeypatch, database_type):
-    """遗留 SQLite 存在时，内核和后续脚本仍按宿主配置选择数据库且不输出凭据。"""
+    """
+    遗留 SQLite 存在时，内核和后续脚本仍按宿主配置选择数据库且不输出凭据。
+    """
     config_path = tmp_path / 'config'
     config_path.mkdir()
     (config_path / 'user.db').touch()
@@ -230,7 +258,9 @@ async def test_kernel_and_nested_script_use_host_database_configuration(tmp_path
 
 
 def test_bounded_output_preserves_readable_spill(tmp_path):
-    """预览按字节预算保留首尾，正文可续读且超过5MB时明确报告上限。"""
+    """
+    预览按字节预算保留首尾，正文可续读且超过5MB时明确报告上限。
+    """
     text = 'A' * STDOUT_BYTES + '中' * SPILL_BYTES + 'THE_END'
     preview, metadata = project_stdout(text, tmp_path)
     assert preview.startswith('AAAA') and preview.endswith('THE_END')
@@ -245,7 +275,9 @@ def test_bounded_output_preserves_readable_spill(tmp_path):
 
 @pytest.mark.asyncio
 async def test_parent_death_also_retires_inherited_descendants(kernel):
-    """父进程死亡不能留下继承输出管道的孙进程，使宿主一直等不到 EOF。"""
+    """
+    父进程死亡不能留下继承输出管道的孙进程，使宿主一直等不到 EOF。
+    """
     if os.name == 'nt':
         pytest.skip('真实 POSIX 进程组；Windows 由 taskkill 树回收')
     result = await kernel.execute('import subprocess, sys\n'

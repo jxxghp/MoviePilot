@@ -1,4 +1,6 @@
-"""音乐整理批次的本地标签准入、目录共识和曲目上下文编排。"""
+"""
+音乐整理批次的本地标签准入、目录共识和曲目上下文编排。
+"""
 
 import hashlib
 import json
@@ -25,7 +27,18 @@ from app.schemas.types import MediaType
 
 @dataclass(slots=True)
 class MusicBatchContext:
-    """同批音乐文件之间的歌词关联与已识别上下文。"""
+    """
+    同批音乐文件之间的歌词关联与已识别上下文。
+
+    :param related_main_keys: 歌词、封面或 CUE 文件到主音轨的映射，键均为存储与路径二元组
+    :param single_main_keys: 所在物理发行范围仅有一个主音轨的文件键集合
+    :param album_main_keys: 具有专辑名称和艺人共识的多音轨发行成员键集合
+    :param album_evidence_by_main_key: 按主音轨键保存的同发行标签共识，仅用于补齐缺失信息
+    :param resolved_contexts: 按主音轨键缓存已经识别的音乐元数据与媒体结果
+    :param tags_by_file: 本批已读取的本地音频标签，键缺失表示未读取，值为 None 表示读取失败
+    :param release_by_main_key: 主音轨键到所属物理发行分组的映射
+    :param cue_by_main_key: 按主音轨键保存的整轨 CUE 结构元数据
+    """
 
     related_main_keys: dict[Tuple[str, str], Tuple[str, str]] = field(default_factory=dict)
     single_main_keys: set[Tuple[str, str]] = field(default_factory=set)
@@ -39,7 +52,14 @@ class MusicBatchContext:
 
 @dataclass(frozen=True, slots=True)
 class MusicReleaseGroup:
-    """同一物理发行单元的文件范围和仅供专辑级补缺的标签共识。"""
+    """
+    同一物理发行单元的文件范围和仅供专辑级补缺的标签共识。
+
+    :param directory: 当前物理发行的根目录，多碟目录归并到同一发行范围
+    :param files: 属于当前发行范围的音频文件，保留存储身份
+    :param evidence: 同发行文件的专辑级标签共识，无法形成可靠共识时为 None
+    :ivar preview_id: 根据排序后的存储和路径生成的稳定分组摘要，由初始化后处理计算，不接受构造参数
+    """
 
     directory: Path
     files: tuple[FileItem, ...]
@@ -47,13 +67,17 @@ class MusicReleaseGroup:
     preview_id: str = field(init=False)
 
     def __post_init__(self) -> None:
-        """按实际成员及存储生成稳定展示分组，不用同名专辑或父目录合并不同发行。"""
+        """
+        按实际成员及存储生成稳定展示分组，不用同名专辑或父目录合并不同发行。
+        """
         members = sorted((item.storage or "local", item.path) for item in self.files)
         object.__setattr__(self, "preview_id", hashlib.sha256(json.dumps(members).encode()).hexdigest())
 
     @property
     def paths(self) -> list[Path]:
-        """返回完整音轨路径列表，路径失效时拒绝悄悄缩小识别范围。"""
+        """
+        返回完整音轨路径列表，路径失效时拒绝悄悄缩小识别范围。
+        """
         return [_release_item_path(item) for item in self.files]
 
 
@@ -61,7 +85,9 @@ def music_planning_input(
         owner: _TransferOwnerBase, task: TransferTask, context: MusicBatchContext,
         cleanup: Optional[FileItem], regions: Optional[list[str]], scripts: Optional[list[str]],
 ) -> TransferPlanningInput:
-    """冻结需要重新识别的原发行范围，重启恢复不能扩大到未选择的其他专辑。"""
+    """
+    冻结需要重新识别的原发行范围，重启恢复不能扩大到未选择的其他专辑。
+    """
     planning = cast(TransferPlanningInput, owner._TransferChain__build_planning_input(task, cleanup_dest_fileitem=cleanup))
     if not isinstance(task.meta, MetaMusic):
         return planning
@@ -90,7 +116,9 @@ def music_planning_input(
 
 
 def _music_preview_context(owner: _TransferOwnerBase, task: TransferTask, context: MusicBatchContext) -> dict[str, Any]:
-    """复用本次标签扫描和发行边界；远端及读取失败都不能冒充没有标签。"""
+    """
+    复用本次标签扫描和发行边界；远端及读取失败都不能冒充没有标签。
+    """
     key = owner._get_file_key(task.fileitem)
     main_key = context.related_main_keys.get(key, key)
     group = context.release_by_main_key.get(main_key)
@@ -112,7 +140,9 @@ def _music_preview_context(owner: _TransferOwnerBase, task: TransferTask, contex
 
 
 def _music_retry_files(task: TransferTask, scope: dict[str, Any]) -> tuple[list[FileItem], FileItem]:
-    """恢复已选音频范围并拒绝越过当前发行目录的路径。"""
+    """
+    恢复已选音频范围并拒绝越过当前发行目录的路径。
+    """
     current = Path(str(task.fileitem.path)).absolute()
     directory = Path(str(scope.get("directory", ""))).absolute()
     expected = current.parent.parent if MetaMusic.parse_disc_dir(current.parent.name) else current.parent
@@ -139,7 +169,9 @@ def _music_retry_files(task: TransferTask, scope: dict[str, Any]) -> tuple[list[
 
 
 def _music_retry_preferences(scope: dict[str, Any], key: str) -> Optional[list[str]]:
-    """校验冻结的发行偏好，损坏的恢复输入不能悄悄改变候选选择。"""
+    """
+    校验冻结的发行偏好，损坏的恢复输入不能悄悄改变候选选择。
+    """
     values = scope.get(key)
     if values is None:
         return None
@@ -150,7 +182,9 @@ def _music_retry_preferences(scope: dict[str, Any], key: str) -> Optional[list[s
 
 @capture_audio_metadata()
 def refresh_music_retry_context(owner: _TransferOwnerBase, task: TransferTask) -> None:
-    """仅在未规划的 accepted 重放中重新识别，已有检查点必须沿用冻结身份和路径。"""
+    """
+    仅在未规划的 accepted 重放中重新识别，已有检查点必须沿用冻结身份和路径。
+    """
     planning = task.planning_input
     scope = planning.options.get("music_recognition_scope") if planning else None
     if task.plan_checkpoint is not None or not task.planning_context_restored:
@@ -197,7 +231,9 @@ def refresh_music_retry_context(owner: _TransferOwnerBase, task: TransferTask) -
 
 
 def defer_music_recognition(owner: _TransferOwnerBase, task: TransferTask) -> Optional[tuple[bool, str]]:
-    """临时来源故障保留未规划任务并有界退避，预算耗尽后交给普通失败结算。"""
+    """
+    临时来源故障保留未规划任务并有界退避，预算耗尽后交给普通失败结算。
+    """
     if task.plan_checkpoint is not None or not isinstance(task.mediainfo, MusicInfo):
         return None
     if not task.planning_input or not task.planning_input.options.get("music_recognition_scope"):
@@ -222,12 +258,16 @@ def defer_music_recognition(owner: _TransferOwnerBase, task: TransferTask) -> Op
 
 
 def _music_file_key(item: FileItem) -> Tuple[str, str]:
-    """按存储与规范路径隔离标签快照，远端同名路径不能借用本机文件标签。"""
+    """
+    按存储与规范路径隔离标签快照，远端同名路径不能借用本机文件标签。
+    """
     return item.storage or "local", str(Path(item.path)) if item.path else ""
 
 
 def _release_item_path(item: FileItem) -> Path:
-    """发行分组只接受已经解析的实际文件路径，不能把空路径解释成当前目录。"""
+    """
+    发行分组只接受已经解析的实际文件路径，不能把空路径解释成当前目录。
+    """
     if not item.path:
         raise ValueError("发行分组中的音轨缺少路径")
     return Path(item.path)
@@ -240,7 +280,9 @@ def append_cue_companions(
         video_source: bool,
         exclude_words: Any,
 ) -> tuple[list[tuple[FileItem, bool]], dict[Tuple[str, str], Any]]:
-    """把有效整轨 CUE 排在其音频后归档；分轨 CUE 仅供识别，避免复制失效引用。"""
+    """
+    把有效整轨 CUE 排在其音频后归档；分轨 CUE 仅供识别，避免复制失效引用。
+    """
     if video_source:
         return items, inherited
     result = list(items)
@@ -279,7 +321,8 @@ def restore_music_resource_meta(
         *,
         storage: Optional[str] = "local",
 ) -> Optional[MetaMusic]:
-    """从原始种子主副标题补足文件的发行线索，不复用已丢弃的远端身份。
+    """
+    从原始种子主副标题补足文件的发行线索，不复用已丢弃的远端身份。
 
     专辑字段只传到下载根及其碟片目录；全集或更深的独立专辑目录只继承
     可信艺人。文件曲名、曲序和已有标签不被整包标题覆盖。
@@ -334,7 +377,9 @@ def restore_music_resource_meta(
 
 
 def _music_directory_consensus(values: list[str], *, artist: bool = False) -> Optional[str]:
-    """只在同目录至少两个标签高度一致时返回共识值。"""
+    """
+    只在同目录至少两个标签高度一致时返回共识值。
+    """
     normalized = [
         ("variousartists" if artist and _collective_artist(value) else music_text_key(value), value.strip())
         for value in values
@@ -352,7 +397,9 @@ def _music_directory_consensus(values: list[str], *, artist: bool = False) -> Op
 def _music_directory_evidence(
         items: list[FileItem], tags_by_file: dict[Tuple[str, str], Optional[MetaMusic]],
 ) -> Optional[MetaMusic]:
-    """从同一发行目录的原始音频标签提取可信艺人与专辑共识。"""
+    """
+    从同一发行目录的原始音频标签提取可信艺人与专辑共识。
+    """
     artist_values: list[str] = []
     track_artists: list[str] = []
     album_values: list[str] = []
@@ -399,14 +446,18 @@ def _music_directory_evidence(
 
 
 def _collective_artist(value: Optional[str]) -> bool:
-    """识别专辑层的群星署名，不把它复制成每首歌曲的演唱者。"""
+    """
+    识别专辑层的群星署名，不把它复制成每首歌曲的演唱者。
+    """
     return music_text_key(value) in {
         music_text_key(name) for name in ("Various Artists", "Various", "VA", "群星", "众艺人", "眾藝人")
     }
 
 
 def _album_artist(meta: MetaMusic, directory: Path) -> Optional[str]:
-    """专辑署名优先读 Album Artist，明确的合辑标志可补群星，但不改逐曲艺人。"""
+    """
+    专辑署名优先读 Album Artist，明确的合辑标志可补群星，但不改逐曲艺人。
+    """
     if meta.album_artist:
         return meta.album_artist
     if "Compilation" in meta.secondary_types:
@@ -418,14 +469,18 @@ def _album_artist(meta: MetaMusic, directory: Path) -> Optional[str]:
 
 
 def _release_signature(meta: MetaMusic, directory: Path) -> tuple[str, str, Any]:
-    """缺少发行 ID 时，以专辑署名、标题和当前年份限定可关联的标签。"""
+    """
+    缺少发行 ID 时，以专辑署名、标题和当前年份限定可关联的标签。
+    """
     artist = _album_artist(meta, directory)
     artist_key = "variousartists" if _collective_artist(artist) else music_text_key(artist)
     return artist_key, music_text_key(meta.album), meta.release_year or meta.year
 
 
 def _rendition_groups(group: list[FileItem], tags: dict[Tuple[str, str], Optional[MetaMusic]]) -> list[list[FileItem]]:
-    """同一曲序存在多份时按实际编码区分版本，正常混合介质的多碟仍保持一组。"""
+    """
+    同一曲序存在多份时按实际编码区分版本，正常混合介质的多碟仍保持一组。
+    """
     positions = Counter(
         (meta.disc_number or MetaMusic.parse_disc_dir(_release_item_path(item).parent.name) or 1, meta.track_number)
         for item in group if (meta := tags.get(_music_file_key(item))) and meta.track_number
@@ -441,7 +496,9 @@ def _rendition_groups(group: list[FileItem], tags: dict[Tuple[str, str], Optiona
 
 
 def _release_groups(items: list[FileItem], tags_by_file: dict[Tuple[str, str], Optional[MetaMusic]]) -> list[MusicReleaseGroup]:
-    """优先按具体发行 ID 分组，缺 ID 时按专辑署名、标题及发行年隔离同目录多专辑。"""
+    """
+    优先按具体发行 ID 分组，缺 ID 时按专辑署名、标题及发行年隔离同目录多专辑。
+    """
     grouped: dict[tuple[Any, ...], list[FileItem]] = {}
     unassigned: list[FileItem] = []
     known: dict[tuple[str, str, Any], set[str]] = {}
@@ -508,7 +565,9 @@ def _release_groups(items: list[FileItem], tags_by_file: dict[Tuple[str, str], O
 
 
 def _release_directory(item: FileItem) -> Path:
-    """把 CD/Disc 子目录定位到所属专辑根，不跨越其它子专辑目录。"""
+    """
+    把 CD/Disc 子目录定位到所属专辑根，不跨越其它子专辑目录。
+    """
     parent = _release_item_path(item).parent
     return parent.parent if MetaMusic.parse_disc_dir(parent.name) is not None else parent
 
@@ -517,7 +576,9 @@ def _apply_music_directory_evidence(
         meta: MetaMusic,
         evidence: Optional[MetaMusic],
 ) -> MetaMusic:
-    """仅补齐缺失的作品身份字段，不覆盖单曲原有标签。"""
+    """
+    仅补齐缺失的作品身份字段，不覆盖单曲原有标签。
+    """
     if not evidence:
         return meta
     merged = deepcopy(meta)
@@ -545,7 +606,9 @@ def _apply_music_directory_evidence(
 
 
 def _apply_music_directory_year(meta: MetaMusic, file_path: Path) -> MetaMusic:
-    """保留明确的标签发行年，仅用目录年份补正旧版未区分语义的 year。"""
+    """
+    保留明确的标签发行年，仅用目录年份补正旧版未区分语义的 year。
+    """
     if meta.release_year and meta.field_sources.get("release_year") in {"tag", "album_tags"}:
         merged = deepcopy(meta)
         merged.year = cast(Any, meta.release_year)
@@ -569,7 +632,9 @@ def _local_music_context(
         batch_context: MusicBatchContext,
         file_meta: MetaMusic,
 ) -> Optional[tuple[MetaMusic, MusicInfo]]:
-    """仅以本地真实标签建立快速整理上下文，不向在线来源确认身份。"""
+    """
+    仅以本地真实标签建立快速整理上下文，不向在线来源确认身份。
+    """
     if file_item.storage != "local" or not owner._is_audio_file(file_item):
         return None
     if file_meta.organization_error:
@@ -589,7 +654,9 @@ def _local_music_context(
 
 
 def _local_music_info(meta: MetaMusic, status: str) -> MusicInfo:
-    """记录已通过本地整理准入的证据类型，标签即使含MBID也不声明在线确认。"""
+    """
+    记录已通过本地整理准入的证据类型，标签即使含MBID也不声明在线确认。
+    """
     info = MusicInfo.from_meta(meta)
     info.raw_data["recognition"] = {"status": status}
     return info
@@ -600,7 +667,9 @@ def prepare_music_batch_context(
         file_items: list[tuple[FileItem, bool]],
         batch_mtype: Optional[MediaType],
 ) -> MusicBatchContext:
-    """建立同目录音轨、歌词、封面和单音轨目录的批次索引；歧义发行不共享封面。"""
+    """
+    建立同目录音轨、歌词、封面和单音轨目录的批次索引；歧义发行不共享封面。
+    """
     context = MusicBatchContext()
     if batch_mtype not in (None, MediaType.MUSIC):
         return context
@@ -656,7 +725,9 @@ def _bind_music_cover_context(
         owner: _TransferOwnerBase, context: MusicBatchContext, item: FileItem,
         main_items_by_dir: dict[Tuple[str, str], list[FileItem]],
 ) -> None:
-    """只把封面绑定到同目录的唯一物理发行，避免多专辑目录共享错图。"""
+    """
+    只把封面绑定到同目录的唯一物理发行，避免多专辑目录共享错图。
+    """
     if not owner._is_music_cover_file(item):
         return
     main_items = main_items_by_dir.get(owner._get_file_parent_key(item), [])
@@ -675,7 +746,9 @@ def _finalize_music_group_context(
         local: bool,
         preserve_selection: bool,
 ) -> tuple[Any, Optional[Union[MediaInfo, MusicInfo]]]:
-    """统一同一发行的专辑名称与分类，保留各曲艺人及用户明确选择。"""
+    """
+    统一同一发行的专辑名称与分类，保留各曲艺人及用户明确选择。
+    """
     if not isinstance(meta, MetaMusic) or not isinstance(info, MusicInfo):
         return meta, info
     recognition = info.raw_data.get("recognition")
@@ -731,7 +804,9 @@ def resolve_music_batch_file_context(
         release_regions: Optional[list[str]],
         release_scripts: Optional[list[str]],
 ) -> tuple[Any, Optional[Union[MediaInfo, MusicInfo]]]:
-    """解析一项音乐上下文，并让同名歌词复用主音轨结果。"""
+    """
+    解析一项音乐上下文，并让同名歌词复用主音轨结果。
+    """
     file_key = owner._get_file_key(file_item)
     related_key = batch_context.related_main_keys.get(file_key)
     related_context = (
@@ -828,7 +903,9 @@ def _recognize_music_batch_file(
         release_regions: Optional[list[str]],
         release_scripts: Optional[list[str]],
 ) -> tuple[MetaMusic, Optional[MusicInfo]]:
-    """按专辑、曲目证据和单音轨目录结构依次补齐音乐身份。"""
+    """
+    按专辑、曲目证据和单音轨目录结构依次补齐音乐身份。
+    """
     file_meta, task_mediainfo = owner._match_music_album_context(
         file_item,
         file_path,

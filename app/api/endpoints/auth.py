@@ -1,7 +1,11 @@
+"""
+提供插件认证方式发现、外部认证跳转和一次性票据兑换接口。
+"""
+
 from typing import Any, cast
 
 from fastapi import Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
 from app.api.dependencies.auth import get_auth_service
@@ -20,12 +24,13 @@ from app.schemas.user import AuthProviderInfo as _SchemaAuthProviderInfo
 router = ResponseAPIRouter()
 
 
+# 沿用当前 Pydantic 动态基类的类型检查兼容处理。
 class AuthExchangeRequest(BaseModel):  # type: ignore[misc]
     """
     插件认证票据兑换请求。
     """
 
-    ticket: str
+    ticket: str = Field(description="插件认证成功后签发的一次性票据，用于兑换宿主登录令牌")
 
 
 def _system_auth_providers(service: AuthService) -> list[dict[str, Any]]:

@@ -1,3 +1,7 @@
+"""
+验证本地站点资源按解释器 ABI 筛选及事务式替换。
+"""
+
 import importlib.util
 import sys
 import uuid
@@ -9,7 +13,9 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 
 
 def load_local_setup_module():
-    """以隔离模块名加载本地安装脚本，避免测试间共享模块状态。"""
+    """
+    以隔离模块名加载本地安装脚本，避免测试间共享模块状态。
+    """
     module_name = f"moviepilot_local_setup_resources_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, MODULE_PATH)
     assert spec is not None and spec.loader is not None
@@ -28,6 +34,9 @@ def load_local_setup_module():
 def test_python_version_tag_distinguishes_free_threaded_abi(
     monkeypatch, gil_disabled, suffix
 ):
+    """
+    解释器版本标签区分普通构建与自由线程 ABI。
+    """
     module = load_local_setup_module()
     monkeypatch.setattr(
         module.sysconfig,
@@ -75,6 +84,9 @@ def test_python_version_tag_distinguishes_free_threaded_abi(
 def test_filter_resources_files_selects_exact_runtime_artifact(
     tmp_path, platform_tag, machine, python_version, expected
 ):
+    """
+    资源筛选只保留站点数据和精确匹配运行时的原生扩展。
+    """
     module = load_local_setup_module()
     filenames = {
         "user.sites.v3.bin",
@@ -104,6 +116,9 @@ def test_filter_resources_files_selects_exact_runtime_artifact(
 def test_copy_resource_files_keeps_only_current_runtime_artifact(
     monkeypatch, tmp_path
 ):
+    """
+    复制资源后仅保留当前运行时扩展、站点数据和类型声明。
+    """
     module = load_local_setup_module()
     source_dir = tmp_path / "resources.v3"
     target_dir = tmp_path / "site"
@@ -147,6 +162,9 @@ def test_copy_resource_files_keeps_only_current_runtime_artifact(
 def test_copy_resource_files_rejects_partial_source_before_changing_target(
     monkeypatch, tmp_path
 ):
+    """
+    源资源不完整时，在修改目标前拒绝操作并保留旧资源。
+    """
     module = load_local_setup_module()
     source_dir = tmp_path / "resources.v3"
     target_dir = tmp_path / "site"
@@ -169,6 +187,9 @@ def test_copy_resource_files_rejects_partial_source_before_changing_target(
 
 
 def test_copy_resource_files_keeps_target_when_staging_fails(monkeypatch, tmp_path):
+    """
+    资源暂存失败时保留目标内容，并清理临时目录。
+    """
     module = load_local_setup_module()
     source_dir = tmp_path / "resources.v3"
     target_dir = tmp_path / "site"
@@ -203,6 +224,9 @@ def test_copy_resource_files_keeps_target_when_staging_fails(monkeypatch, tmp_pa
 
 
 def test_copy_resource_files_rolls_back_when_commit_fails(monkeypatch, tmp_path):
+    """
+    资源替换提交失败时恢复旧扩展和数据文件。
+    """
     module = load_local_setup_module()
     source_dir = tmp_path / "resources.v3"
     target_dir = tmp_path / "site"
@@ -238,6 +262,9 @@ def test_copy_resource_files_rolls_back_when_commit_fails(monkeypatch, tmp_path)
 def test_local_resource_status_requires_current_native_artifact(
     monkeypatch, tmp_path
 ):
+    """
+    本地资源就绪判定要求当前解释器对应的原生扩展存在。
+    """
     module = load_local_setup_module()
     monkeypatch.setattr(module, "SITE_RESOURCE_DIR", tmp_path)
     monkeypatch.setattr(module, "_get_platform_tag", lambda: ("darwin", "arm64"))

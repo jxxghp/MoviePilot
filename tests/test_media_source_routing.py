@@ -1,3 +1,7 @@
+"""
+验证统一媒体身份的构造、来源路由与插件来源扩展。
+"""
+
 from unittest.mock import Mock, patch
 
 from app.chain.base import ChainBase
@@ -9,14 +13,18 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _chain_without_init() -> ChainBase:
-    """构造不加载真实模块和外部服务的识别链实例。"""
+    """
+    构造不加载真实模块和外部服务的识别链实例。
+    """
     chain = object.__new__(ChainBase)
     chain.eventmanager = Mock(check=Mock(return_value=False))
     return chain
 
 
 def test_generic_source_id_resolves_as_fixed_enum() -> None:
-    """规范来源和原生 ID 应组成唯一媒体身份。"""
+    """
+    规范来源和原生 ID 应组成唯一媒体身份。
+    """
     assert resolve_media_identity(
         media_source="anilist",
         media_id="154587",
@@ -24,7 +32,9 @@ def test_generic_source_id_resolves_as_fixed_enum() -> None:
 
 
 def test_iqiyi_source_routes_through_unified_identity() -> None:
-    """爱奇艺探索来源应支持选择解析、身份解析和媒体键构造。"""
+    """
+    爱奇艺探索来源应支持选择解析、身份解析和媒体键构造。
+    """
     assert parse_media_source_selection("iqiyi,iqiyidiscover") == (
         MediaSource("iqiyi"), MediaSource("iqiyidiscover"),
     )
@@ -37,7 +47,9 @@ def test_iqiyi_source_routes_through_unified_identity() -> None:
 
 
 def test_plugin_source_is_preserved_as_dynamic_enum() -> None:
-    """格式合法的插件来源应作为动态枚举成员进入通用识别链。"""
+    """
+    格式合法的插件来源应作为动态枚举成员进入通用识别链。
+    """
     assert resolve_media_identity(
         media_source="plugin_source",
         media_id="custom-1",
@@ -45,7 +57,9 @@ def test_plugin_source_is_preserved_as_dynamic_enum() -> None:
 
 
 def test_invalid_source_identifier_is_rejected() -> None:
-    """包含空格或分隔符的来源标识不得进入通用识别链。"""
+    """
+    包含空格或分隔符的来源标识不得进入通用识别链。
+    """
     assert resolve_media_identity(
         media_source="Plugin Source:Invalid",
         media_id="custom-1",
@@ -53,7 +67,9 @@ def test_invalid_source_identifier_is_rejected() -> None:
 
 
 def test_zero_media_id_is_rejected() -> None:
-    """零值 ID 是旧表占位符，不得重新进入统一媒体身份链路。"""
+    """
+    零值 ID 是旧表占位符，不得重新进入统一媒体身份链路。
+    """
     assert resolve_media_identity(
         media_source=MediaSource.TMDB,
         media_id="0",
@@ -61,7 +77,9 @@ def test_zero_media_id_is_rejected() -> None:
 
 
 def test_explicit_source_recognition_reaches_modules_with_unified_identity() -> None:
-    """显式身份应只以 media_source 和 media_id 进入模块调度。"""
+    """
+    显式身份应只以 media_source 和 media_id 进入模块调度。
+    """
     chain = _chain_without_init()
     media = MediaInfo(
         media_source=MediaSource.AniList,
@@ -91,7 +109,9 @@ def test_explicit_source_recognition_reaches_modules_with_unified_identity() -> 
 
 
 def test_default_recognition_passes_empty_generic_identity() -> None:
-    """默认识别也只向模块传递为空的统一媒体身份。"""
+    """
+    默认识别也只向模块传递为空的统一媒体身份。
+    """
     chain = _chain_without_init()
     media = MediaInfo(
         media_source=MediaSource.TMDB,
@@ -118,7 +138,9 @@ def test_default_recognition_passes_empty_generic_identity() -> None:
 
 
 def test_module_dispatch_always_reaches_plugins() -> None:
-    """模块调度必须始终先执行插件模块。"""
+    """
+    模块调度必须始终先执行插件模块。
+    """
     chain = _chain_without_init()
     chain._module_dispatcher = Mock()
     chain._module_dispatcher.dispatch.return_value = "plugin"
@@ -130,7 +152,9 @@ def test_module_dispatch_always_reaches_plugins() -> None:
 
 
 def test_explicit_search_source_reaches_plugins() -> None:
-    """请求级搜索来源应以统一字段进入完整模块调度。"""
+    """
+    请求级搜索来源应以统一字段进入完整模块调度。
+    """
     chain = _chain_without_init()
     chain.run_module = Mock(return_value=[])
     meta = MetaBase("Frieren")

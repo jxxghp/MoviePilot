@@ -1,4 +1,6 @@
-"""Scheduler 启动、热重载和关闭生命周期。"""
+"""
+Scheduler 启动、热重载和关闭生命周期。
+"""
 
 import asyncio
 import threading
@@ -17,7 +19,9 @@ lock = threading.Lock()
 
 
 class SchedulerLifecycleOwner(_SchedulerOwnerBase):
-    """Scheduler 启动、热重载和关闭生命周期。"""
+    """
+    Scheduler 启动、热重载和关闭生命周期。
+    """
 
     async def on_config_changed(self) -> None:
         """
@@ -37,7 +41,9 @@ class SchedulerLifecycleOwner(_SchedulerOwnerBase):
         self.init(_already_stopped=True)
 
     def _snapshot_and_shutdown(self, scheduler: Any) -> None:
-        """在线程池中保存旧任务目录并收口旧调度器，避免阻塞事件循环。"""
+        """
+        在线程池中保存旧任务目录并收口旧调度器，避免阻塞事件循环。
+        """
         try:
             schedule_snapshot = self.list()
         except Exception as err:
@@ -88,7 +94,9 @@ class SchedulerLifecycleOwner(_SchedulerOwnerBase):
                 self._reload_schedule_snapshot = None
 
     def _begin_stop(self) -> tuple[Any, tuple[SchedulerHandle, ...]]:
-        """关闭提交入口并摘出当前调度器与其拥有的异步句柄。"""
+        """
+        关闭提交入口并摘出当前调度器与其拥有的异步句柄。
+        """
         with self._lock:
             self._lifecycle_state = "stopping"
             self._event.set()
@@ -104,7 +112,9 @@ class SchedulerLifecycleOwner(_SchedulerOwnerBase):
         return scheduler, handles
 
     def _begin_reload(self) -> tuple[bool, Any]:
-        """关闭旧计划的提交入口，保留已开始任务直到其自然完成。"""
+        """
+        关闭旧计划的提交入口，保留已开始任务直到其自然完成。
+        """
         with self._lock:
             if runtime_stop_state.is_system_stopped or self._lifecycle_state in {"stopping", "reloading"}:
                 return False, None
@@ -116,7 +126,9 @@ class SchedulerLifecycleOwner(_SchedulerOwnerBase):
 
     @staticmethod
     def _shutdown_scheduler_sync(scheduler: Any) -> None:
-        """等待 APScheduler 自有线程池停止。"""
+        """
+        等待 APScheduler 自有线程池停止。
+        """
         if scheduler and scheduler.running:
             scheduler.shutdown()
 
@@ -140,7 +152,9 @@ class SchedulerLifecycleOwner(_SchedulerOwnerBase):
                 logger.error(f"停止定时任务失败：{err} - {traceback.format_exc()}")
 
     async def stop_async(self) -> None:
-        """关闭调度器并等待已投递协程收口。"""
+        """
+        关闭调度器并等待已投递协程收口。
+        """
         scheduler, handles = self._begin_stop()
         for handle in handles:
             self._cancel_handle(handle)

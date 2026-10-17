@@ -1,3 +1,7 @@
+"""
+验证SunnyPT 站点索引查询与结果映射。
+"""
+
 import asyncio
 import base64
 import json
@@ -18,36 +22,50 @@ from app.schemas.types import MediaSource, MediaType, MessageType
 
 
 class _FakeResponse:
-    """构造站点 API 测试使用的最小响应对象。"""
+    """
+    构造站点 API 测试使用的最小响应对象。
+    """
 
     def __init__(self, payload: dict, status_code: int = 200):
-        """保存响应数据和状态码。"""
+        """
+        保存响应数据和状态码。
+        """
         self._payload = payload
         self.status_code = status_code
         self.reason = "OK"
 
     def __bool__(self) -> bool:
-        """按 HTTP 成功状态模拟 requests.Response 的布尔值。"""
+        """
+        按 HTTP 成功状态模拟 requests.Response 的布尔值。
+        """
         return self.status_code < 400
 
     def json(self) -> dict:
-        """返回预设 JSON 数据。"""
+        """
+        返回预设 JSON 数据。
+        """
         return self._payload
 
     def close(self) -> None:
-        """模拟释放短生命周期响应。"""
+        """
+        模拟释放短生命周期响应。
+        """
 
 
 @pytest.fixture(autouse=True)
 def clear_sunnypt_category_cache():
-    """在用例前后清理 SunnyPT 分类缓存，避免进程级状态互相污染。"""
+    """
+    在用例前后清理 SunnyPT 分类缓存，避免进程级状态互相污染。
+    """
     SunnyPTSpider._category_cache.clear()
     yield
     SunnyPTSpider._category_cache.clear()
 
 
 def _build_indexer() -> dict:
-    """构造 SunnyPT API Spider 所需的最小站点配置。"""
+    """
+    构造 SunnyPT API Spider 所需的最小站点配置。
+    """
     return {
         "id": "sunnypt",
         "name": "Sunny",
@@ -64,7 +82,9 @@ def _build_indexer() -> dict:
 
 
 def _category_response() -> _FakeResponse:
-    """构造 SunnyPT 分类接口响应。"""
+    """
+    构造 SunnyPT 分类接口响应。
+    """
     return _FakeResponse({
         "code": 0,
         "msg": "ok",
@@ -77,7 +97,9 @@ def _category_response() -> _FakeResponse:
 
 
 def _torrent_response() -> _FakeResponse:
-    """构造 SunnyPT 种子搜索接口响应。"""
+    """
+    构造 SunnyPT 种子搜索接口响应。
+    """
     return _FakeResponse({
         "code": 0,
         "msg": "ok",
@@ -108,11 +130,15 @@ def _torrent_response() -> _FakeResponse:
 
 
 def test_sunnypt_search_maps_api_fields_and_caches_categories(monkeypatch):
-    """SunnyPT 搜索应映射标准字段、编码下载请求并复用分类缓存。"""
+    """
+    SunnyPT 搜索应映射标准字段、编码下载请求并复用分类缓存。
+    """
     calls = []
 
     def fake_get_res(request, url: str, params: dict = None, **_kwargs):
-        """按请求路径回放分类和种子响应。"""
+        """
+        按请求路径回放分类和种子响应。
+        """
         calls.append((url, params, request._headers))
         if url.endswith("/categories"):
             return _category_response()
@@ -188,11 +214,15 @@ def test_sunnypt_search_maps_api_fields_and_caches_categories(monkeypatch):
 
 
 def test_sunnypt_async_search_uses_api_contract(monkeypatch):
-    """SunnyPT 异步搜索应使用同一套 GET 参数和响应映射。"""
+    """
+    SunnyPT 异步搜索应使用同一套 GET 参数和响应映射。
+    """
     calls = []
 
     async def fake_get_res(request, url: str, params: dict = None, **_kwargs):
-        """异步回放分类和种子响应。"""
+        """
+        异步回放分类和种子响应。
+        """
         calls.append((url, params, request._headers))
         if url.endswith("/categories"):
             return _category_response()
@@ -222,7 +252,9 @@ def test_sunnypt_async_search_uses_api_contract(monkeypatch):
 
 
 def test_indexer_normalizes_spider_imdb_identity() -> None:
-    """Indexer 应在边界将 Spider 的 IMDb 字段转换为统一媒体身份。"""
+    """
+    Indexer 应在边界将 Spider 的 IMDb 字段转换为统一媒体身份。
+    """
     torrents = IndexerModule._IndexerModule__parse_result(
         site={"id": 1, "name": "Sunny"},
         result_array=[{
@@ -239,7 +271,9 @@ def test_indexer_normalizes_spider_imdb_identity() -> None:
 
 
 def test_sunnypt_user_parser_reads_profile_and_messages_without_marking_read(monkeypatch):
-    """SunnyPT 用户解析器应读取统计和未读消息，但不能在解析阶段标记已读。"""
+    """
+    SunnyPT 用户解析器应读取统计和未读消息，但不能在解析阶段标记已读。
+    """
     requested_urls = []
     profile = {
         "code": 0,
@@ -277,7 +311,9 @@ def test_sunnypt_user_parser_reads_profile_and_messages_without_marking_read(mon
     }
 
     def fake_get_page_content(_self, url: str, **_kwargs):
-        """按请求地址回放用户信息和消息列表。"""
+        """
+        按请求地址回放用户信息和消息列表。
+        """
         requested_urls.append(url)
         return json.dumps(messages if "/messages" in url else profile)
 
@@ -319,7 +355,9 @@ def test_sunnypt_user_parser_reads_profile_and_messages_without_marking_read(mon
 
 
 def test_site_messages_are_deduplicated_by_persisted_source(monkeypatch):
-    """站点消息应使用解析器保留的消息 ID 来源标识做持久化去重。"""
+    """
+    站点消息应使用解析器保留的消息 ID 来源标识做持久化去重。
+    """
     duplicate_source = "sunnypt-message:9001-dedup-test"
     MessageOper().add(
         source=duplicate_source,
@@ -350,11 +388,15 @@ def test_site_messages_are_deduplicated_by_persisted_source(monkeypatch):
 
 
 def test_indexer_module_dispatches_sunnypt_search(monkeypatch):
-    """IndexerModule 应把 SunnyPT 同步搜索参数交给专用 API Spider。"""
+    """
+    IndexerModule 应把 SunnyPT 同步搜索参数交给专用 API Spider。
+    """
     captured = {}
 
     def fake_search(_self, keyword, mtype, cat, page):
-        """记录 IndexerModule 传给 SunnyPT Spider 的搜索参数。"""
+        """
+        记录 IndexerModule 传给 SunnyPT Spider 的搜索参数。
+        """
         captured.update({
             "keyword": keyword,
             "mtype": mtype,
@@ -399,21 +441,29 @@ def test_indexer_module_dispatches_sunnypt_search(monkeypatch):
 
 
 def test_sunnypt_site_test_uses_profile_api(monkeypatch):
-    """SunnyPT 连接测试应使用 Build 配置的 profile API 和 X-API-Key。"""
+    """
+    SunnyPT 连接测试应使用 Build 配置的 profile API 和 X-API-Key。
+    """
     captured = {}
 
     def fake_get_indexer(domain: str):
-        """返回包含独立 API 地址的 SunnyPT 索引配置。"""
+        """
+        返回包含独立 API 地址的 SunnyPT 索引配置。
+        """
         assert domain == "sunnypt.top"
         return {"api_url": "https://api.sunnypt.top/api/v1/mp"}
 
     def fake_sites_helper():
-        """构造不触发动态资源保护元类的站点帮助器替身。"""
+        """
+        构造不触发动态资源保护元类的站点帮助器替身。
+        """
         return SimpleNamespace(get_indexer=fake_get_indexer)
 
     @contextmanager
     def fake_open_response(*, url: str, headers: dict, **_kwargs):
-        """在 Site HTTP Port 边界回放有效用户资料。"""
+        """
+        在 Site HTTP Port 边界回放有效用户资料。
+        """
         captured.update({"url": url, "headers": headers})
         yield _FakeResponse({
             "code": 0,
@@ -443,12 +493,16 @@ def test_sunnypt_site_test_uses_profile_api(monkeypatch):
 
 
 def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
-    """两段式下载不得记录或缓存包含短时凭证的真实下载地址。"""
+    """
+    两段式下载不得记录或缓存包含短时凭证的真实下载地址。
+    """
     captured = {}
     log_messages = []
 
     def fake_post_res(_request, url: str, params: dict = None, **_kwargs):
-        """回放 download-token 接口返回的短时下载地址。"""
+        """
+        回放 download-token 接口返回的短时下载地址。
+        """
         captured["token_url"] = url
         captured["token_params"] = params
         return _FakeResponse({
@@ -460,12 +514,16 @@ def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
         })
 
     def fake_download_torrent(_helper, **kwargs):
-        """记录 TorrentHelper 的失败缓存开关并返回有效种子内容。"""
+        """
+        记录 TorrentHelper 的失败缓存开关并返回有效种子内容。
+        """
         captured.update(kwargs)
         return None, b"torrent-content", "Movie", ["Movie.mkv"], ""
 
     def capture_log(message: str):
-        """收集下载链日志以校验敏感地址不会泄露。"""
+        """
+        收集下载链日志以校验敏感地址不会泄露。
+        """
         log_messages.append(message)
 
     monkeypatch.setattr(
@@ -503,11 +561,15 @@ def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
 
 
 def test_sunnypt_music_search_uses_music_media_type(monkeypatch):
-    """SunnyPT 音乐搜索应提交 music 媒体类型并将结果标记为音乐。"""
+    """
+    SunnyPT 音乐搜索应提交 music 媒体类型并将结果标记为音乐。
+    """
     calls = []
 
     def fake_get_res(request, url: str, params: dict = None, **_kwargs):
-        """按请求路径回放分类和种子响应。"""
+        """
+        按请求路径回放分类和种子响应。
+        """
         calls.append((url, params))
         if url.endswith("/categories"):
             return _FakeResponse({

@@ -1,4 +1,6 @@
-"""AniList 的无效 GraphQL 响应不得阻止官方回退与中文合并。"""
+"""
+AniList 的无效 GraphQL 响应不得阻止官方回退与中文合并。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, Mock
@@ -15,7 +17,9 @@ from app.modules.anilist.anilist import AniListApi
     {"data": False}, {"errors": ["unavailable"], "data": {"Media": {"id": 1}}},
 ])
 def test_invalid_proxy_payload_preserves_official_fallback(asynchronous, proxy_payload):
-    """无效对象、无效 data 和 GraphQL 错误都应触发既有官方查询路径。"""
+    """
+    无效对象、无效 data 和 GraphQL 错误都应触发既有官方查询路径。
+    """
     proxy = Mock(status_code=200)
     proxy.json.return_value = proxy_payload
     official = Mock(status_code=200)
@@ -44,14 +48,18 @@ def test_invalid_proxy_payload_preserves_official_fallback(asynchronous, proxy_p
 
 @pytest.mark.parametrize("payload", [{}, {"Media": None}, {"Page": {"media": []}}])
 def test_valid_graphql_data_preserves_identity(payload):
-    """有效 data 对象包括空对象均应原样返回，保留既有空结果处理规则。"""
+    """
+    有效 data 对象包括空对象均应原样返回，保留既有空结果处理规则。
+    """
     response = Mock(status_code=200)
     response.json.return_value = {"data": payload}
     assert AniListApi._extract_response(response) is payload
 
 
 def test_translation_map_preserves_raw_ids_and_in_place_merge():
-    """数字和字符串 ID 不互相转换，递归合并保留原对象和别名顺序。"""
+    """
+    数字和字符串 ID 不互相转换，递归合并保留原对象和别名顺序。
+    """
     translated = [
         {"id": 12, "title": "数字", "synonyms": ["A", "B"]},
         {"id": "12", "title": "字符串", "synonyms": []},

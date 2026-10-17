@@ -1,3 +1,7 @@
+"""
+提供 Bangumi 条目搜索、发现和详情查询接口。
+"""
+
 from typing import Any, List, Optional
 
 from fastapi import Depends

@@ -1,4 +1,6 @@
-"""低基数运行指标端口与进程级 Facade。"""
+"""
+低基数运行指标端口与进程级 Facade。
+"""
 
 from __future__ import annotations
 
@@ -12,16 +14,27 @@ from typing import Any, Callable, Iterator, Mapping, Protocol, TypeVar, cast
 
 
 class MetricKind(StrEnum):
-    """声明指标采用 counter、histogram 或 gauge 语义。"""
+    """
+    声明指标采用 counter、histogram 或 gauge 语义。
+    """
 
+    # 累计计数，记录本次增加量
     COUNTER = "counter"
+    # 数值分布，记录本次观测样本
     HISTOGRAM = "histogram"
+    # 瞬时数值，记录当前状态
     GAUGE = "gauge"
 
 
 @dataclass(frozen=True, slots=True)
 class MetricSpec:
-    """声明稳定指标名称、类型与允许的低基数标签。"""
+    """
+    声明稳定指标名称、类型与允许的低基数标签。
+
+    :param name: 稳定且唯一的指标名称
+    :param kind: 指标的累计、分布或瞬时值类型
+    :param labels: 允许写入的低基数标签名集合
+    """
 
     name: str
     kind: MetricKind
@@ -75,17 +88,29 @@ METRIC_SPECS = {
 
 
 class ObservationPort(Protocol):
-    """Application/runtime 可依赖的最小指标写入端口。"""
+    """
+    Application/runtime 可依赖的最小指标写入端口。
+    """
 
     def record(self, spec: MetricSpec, value: float, labels: Mapping[str, str]) -> None:
-        """记录一个已经通过标签合同校验的指标值。"""
+        """
+        记录一个已经通过标签合同校验的指标值。
+
+        :param spec: 已登记的指标名称、类型和标签约束
+        :param value: 本次指标观测值，按指标类型解释为增量或样本
+        :param labels: 已通过契约校验的低基数标签值映射
+        """
 
 
 class NoopObservationPort:
-    """未安装或未启用 exporter 时完全无副作用的默认实现。"""
+    """
+    未安装或未启用 exporter 时完全无副作用的默认实现。
+    """
 
     def record(self, spec: MetricSpec, value: float, labels: Mapping[str, str]) -> None:
-        """接受合法指标但不分配 exporter 资源。"""
+        """
+        接受合法指标但不分配 exporter 资源。
+        """
 
 
 _observation_port: ObservationPort = NoopObservationPort()
@@ -94,9 +119,14 @@ _FacadeClass = TypeVar("_FacadeClass", bound=type)
 
 
 def observe_compat_facade(facade: str) -> Callable[[_FacadeClass], _FacadeClass]:
-    """为旧 ABI Facade 的公开和私有方法记录低基数命中，不改变方法合同。"""
+    """
+    为旧 ABI Facade 的公开和私有方法记录低基数命中，不改变方法合同。
+    """
 
     def decorate(cls: _FacadeClass) -> _FacadeClass:
+        """
+        包装兼容门面的普通、类和静态方法，保留各自的绑定方式。
+        """
         for name, descriptor in tuple(vars(cls).items()):
             if name.startswith("__") and name.endswith("__"):
                 continue
@@ -123,7 +153,8 @@ def observe_compat_facade(facade: str) -> Callable[[_FacadeClass], _FacadeClass]
 
 
 def _enforce_deprecation(facade: str, operation: str) -> None:
-    """对一次旧 Facade 命中执行其当前的废弃阶段处置。
+    """
+    对一次旧 Facade 命中执行其当前的废弃阶段处置。
 
     观测回答「谁还在用」，废弃阶段回答「什么时候不再让用」，两者共用同一组标签。
     未登记废弃通告的 Facade 在此完全不受影响。
@@ -142,11 +173,16 @@ def _wrap_compat_method(
     operation: str,
     visibility: str,
 ) -> Callable[..., Any]:
-    """包装一个兼容方法并保持同步/异步调用形态及反射元数据。"""
+    """
+    包装一个兼容方法并保持同步/异步调用形态及反射元数据。
+    """
     if inspect.iscoroutinefunction(method):
 
         @functools.wraps(method)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            """
+            记录兼容调用并执行废弃策略，再等待原异步方法。
+            """
             record_metric(
                 "compat.facade.hit",
                 facade=facade,
@@ -161,6 +197,9 @@ def _wrap_compat_method(
 
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        """
+        记录兼容调用并执行废弃策略，再同步调用原方法。
+        """
         record_metric(
             "compat.facade.hit",
             facade=facade,
@@ -175,13 +214,17 @@ def _wrap_compat_method(
 
 
 def configure_observation(port: ObservationPort | None) -> None:
-    """由组合根替换进程级端口；None 明确恢复 no-op。"""
+    """
+    由组合根替换进程级端口；None 明确恢复 no-op。
+    """
     global _observation_port
     _observation_port = port or NoopObservationPort()
 
 
 def record_metric(name: str, value: float = 1, **labels: str) -> None:
-    """校验名称、类型无关数值和标签白名单后写入当前端口。"""
+    """
+    校验名称、类型无关数值和标签白名单后写入当前端口。
+    """
     spec = METRIC_SPECS[name]
     unexpected = set(labels) - spec.labels
     if unexpected:
@@ -191,7 +234,9 @@ def record_metric(name: str, value: float = 1, **labels: str) -> None:
 
 @contextmanager
 def observe_duration(name: str, **labels: str) -> Iterator[None]:
-    """记录代码块耗时，并把成功或失败收敛为低基数 outcome。"""
+    """
+    记录代码块耗时，并把成功或失败收敛为低基数 outcome。
+    """
     started_at = time.perf_counter()
     outcome = "success"
     try:

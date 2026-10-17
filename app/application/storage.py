@@ -1,3 +1,7 @@
+"""
+存储服务配置的读取、更新与按类型查询。
+"""
+
 from typing import List, Optional, TypedDict
 
 from app.application.configuration import get_configured_system_config
@@ -6,7 +10,13 @@ from app.schemas.types import SystemConfigKey
 
 
 class _StorageConfigRecord(TypedDict, total=False):
-    """StorageConf 持久化字典的可选字段，保留模型默认值和校验。"""
+    """
+    StorageConf 持久化字典的可选字段，保留模型默认值和校验。
+
+    :ivar type: 存储类型标识；键可缺失，缺失或 None 的校验由 StorageConf 执行
+    :ivar name: 存储实例的展示名称；键可缺失，None 表示未提供名称
+    :ivar config: 对应存储类型的连接配置；键可缺失，None 表示未提供配置
+    """
 
     type: str | None
     name: str | None

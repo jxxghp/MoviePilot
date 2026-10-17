@@ -1,3 +1,7 @@
+"""
+验证微信渠道客户端的会话、消息和配置行为。
+"""
+
 import json
 import tempfile
 from types import SimpleNamespace
@@ -10,12 +14,16 @@ CLIENT_BASE_URL = "https://ilinkai.weixin.qq.com"
 
 
 def _create_client(**kwargs) -> ILinkClient:
-    """构造指向 iLink 服务端的客户端实例。"""
+    """
+    构造指向 iLink 服务端的客户端实例。
+    """
     return ILinkClient(base_url=CLIENT_BASE_URL, **kwargs)
 
 
 def _empty_state() -> dict:
-    """构造未登录的微信 ClawBot 持久化状态。"""
+    """
+    构造未登录的微信 ClawBot 持久化状态。
+    """
     return {
         "bot_token": None,
         "account_id": None,
@@ -28,17 +36,24 @@ def _empty_state() -> dict:
 
 
 def _create_bot() -> WechatClawBot:
-    """构造不自动轮询的微信 ClawBot 实例。"""
+    """
+    构造不自动轮询的微信 ClawBot 实例。
+    """
     with patch.object(WechatClawBot, "_load_state", return_value=_empty_state()):
         return WechatClawBot(name="wechatclawbot-test", auto_start_polling=False)
 
 
 def _module_config() -> SimpleNamespace:
-    """构造消息解析所需的渠道配置。"""
+    """
+    构造消息解析所需的渠道配置。
+    """
     return SimpleNamespace(name="wechatclawbot-test", config={})
 
 
 def test_ilink_parse_incoming_uses_seq_as_message_id_fallback():
+    """
+    入站消息缺少独立消息标识时，使用序列号作为去重标识。
+    """
     client = _create_client()
 
     message = client._parse_incoming(
@@ -55,7 +70,9 @@ def test_ilink_parse_incoming_uses_seq_as_message_id_fallback():
 
 
 def test_ilink_parse_incoming_extracts_item_list_media():
-    """iLink 下行媒体放在 item_list 子项的 media 中，应解析为可直接下载的附件引用。"""
+    """
+    iLink 下行媒体放在 item_list 子项的 media 中，应解析为可直接下载的附件引用。
+    """
     client = _create_client()
     image_url = "https://novac2c.cdn.weixin.qq.com/c2c/download?fileid=image-1"
     voice_url = "https://novac2c.cdn.weixin.qq.com/c2c/download?fileid=voice-1"
@@ -118,7 +135,9 @@ def test_ilink_parse_incoming_extracts_item_list_media():
 
 
 def test_ilink_parse_incoming_keeps_legacy_file_item_types():
-    """历史报文把文件放在 type=5/6 的 file_item 中，仍需保持兼容。"""
+    """
+    历史报文把文件放在 type=5/6 的 file_item 中，仍需保持兼容。
+    """
     client = _create_client()
     file_url = "https://novac2c.cdn.weixin.qq.com/c2c/download?fileid=legacy-1"
 
@@ -146,6 +165,9 @@ def test_ilink_parse_incoming_keeps_legacy_file_item_types():
 
 
 def test_ilink_extract_updates_keeps_empty_sync_buf():
+    """
+    提取更新时保留服务端返回的空同步游标，不回退为旧值。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
 
     items, sync_buf = client._extract_updates(
@@ -167,6 +189,9 @@ def test_ilink_extract_updates_keeps_empty_sync_buf():
 
 
 def test_ilink_poll_updates_resets_sync_buf_when_server_returns_empty_cursor():
+    """
+    轮询收到空游标后重置本地同步状态，避免继续使用旧游标。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
     response = MagicMock()
     response.json.return_value = {
@@ -191,6 +216,9 @@ def test_ilink_poll_updates_resets_sync_buf_when_server_returns_empty_cursor():
 
 
 def test_ilink_poll_updates_accepts_canonical_payload_without_explicit_success_flag():
+    """
+    标准更新结构即使没有显式成功标志，也可被正常处理。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
     response = MagicMock()
     response.json.return_value = {
@@ -215,6 +243,9 @@ def test_ilink_poll_updates_accepts_canonical_payload_without_explicit_success_f
 
 
 def test_ilink_poll_updates_rejects_noncanonical_nested_success_payload():
+    """
+    拒绝非标准嵌套成功结构，避免把不受支持的消息格式当作更新。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
     response = MagicMock()
     response.json.return_value = {
@@ -242,6 +273,9 @@ def test_ilink_poll_updates_rejects_noncanonical_nested_success_payload():
 
 
 def test_ilink_poll_updates_rejects_failed_payload_even_if_it_contains_messages():
+    """
+    响应已声明失败时，即使附带消息也不能作为成功更新消费。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
     failed_response = MagicMock()
     failed_response.json.return_value = {
@@ -278,6 +312,9 @@ def test_ilink_poll_updates_rejects_failed_payload_even_if_it_contains_messages(
 
 
 def test_ilink_test_connection_accepts_getconfig_ilink_user_id_limitation():
+    """
+    连通性自检缺少额外用户参数的提示不等同于连接失败。
+    """
     client = _create_client(bot_token="token")
     response = MagicMock()
     response.json.return_value = {
@@ -294,6 +331,9 @@ def test_ilink_test_connection_accepts_getconfig_ilink_user_id_limitation():
 
 
 def test_wechatclawbot_message_parser_deduplicates_message_id():
+    """
+    渠道消息解析按消息标识去重，重复投递不再次处理。
+    """
     module = WechatClawBotModule()
     body = json.dumps(
         {
@@ -325,7 +365,9 @@ def test_wechatclawbot_message_parser_deduplicates_message_id():
 
 
 def test_wechatclawbot_message_parser_accepts_image_only_message():
-    """图片入站消息（无文本）应进入 Agent 链路，而不是被判为无效消息丢弃。"""
+    """
+    图片入站消息（无文本）应进入 Agent 链路，而不是被判为无效消息丢弃。
+    """
     module = WechatClawBotModule()
     client = _create_client()
     parsed_message = client._parse_incoming(
@@ -363,7 +405,9 @@ def test_wechatclawbot_message_parser_accepts_image_only_message():
 
 
 def test_wechatclawbot_message_parser_logs_unrecognized_content():
-    """无法识别的入站内容应留下诊断日志，而不是静默丢弃。"""
+    """
+    无法识别的入站内容应留下诊断日志，而不是静默丢弃。
+    """
     module = WechatClawBotModule()
     body = json.dumps(
         {
@@ -391,6 +435,9 @@ def test_wechatclawbot_message_parser_logs_unrecognized_content():
 
 
 def test_wechatclawbot_send_msg_uses_plain_text_payload():
+    """
+    普通机器人消息以纯文本发送，保留标题、正文与链接。
+    """
     bot = _create_bot()
     mock_client = MagicMock()
     mock_client.send_text.return_value = True
@@ -412,6 +459,9 @@ def test_wechatclawbot_send_msg_uses_plain_text_payload():
 
 
 def test_wechatclawbot_send_msg_prefers_text_when_text_and_image_coexist():
+    """
+    正文和配图同时存在时优先发送正文，不额外加载远端图片。
+    """
     bot = _create_bot()
     mock_client = MagicMock()
     mock_client.send_text.return_value = True
@@ -441,6 +491,9 @@ def test_wechatclawbot_send_msg_prefers_text_when_text_and_image_coexist():
 
 
 def test_wechatclawbot_send_file_prefers_image_when_image_file_has_caption():
+    """
+    图片文件带说明时仍按图片发送，避免退化为纯文本消息。
+    """
     bot = _create_bot()
     mock_client = MagicMock()
     mock_client.send_text.return_value = True
@@ -470,6 +523,9 @@ def test_wechatclawbot_send_file_prefers_image_when_image_file_has_caption():
 
 
 def test_wechatclawbot_send_file_prefers_file_when_generic_file_has_caption():
+    """
+    普通文件带说明时仍发送文件内容，避免丢失附件。
+    """
     bot = _create_bot()
     mock_client = MagicMock()
     mock_client.send_text.return_value = True

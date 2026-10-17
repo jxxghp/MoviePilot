@@ -1,3 +1,7 @@
+"""
+验证媒体服务器仪表盘区分成功空结果与查询失败。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -21,7 +25,9 @@ def test_dashboard_media_endpoints_preserve_successful_empty_results(
     chain_method,
     kwargs,
 ):
-    """媒体服务器成功返回空列表时，Dashboard 接口应保留真实空结果。"""
+    """
+    媒体服务器成功返回空列表时，Dashboard 接口应保留真实空结果。
+    """
     with patch("app.api.endpoints.mediaserver.MediaServerChain") as chain_cls:
         getattr(chain_cls.return_value, chain_method).return_value = []
 
@@ -46,7 +52,9 @@ def test_dashboard_media_endpoints_report_upstream_failures(
     chain_method,
     kwargs,
 ):
-    """媒体服务器请求失败时，Dashboard 接口不得把 None 折叠为空列表。"""
+    """
+    媒体服务器请求失败时，Dashboard 接口不得把 None 折叠为空列表。
+    """
     with patch("app.api.endpoints.mediaserver.MediaServerChain") as chain_cls:
         getattr(chain_cls.return_value, chain_method).return_value = None
 
@@ -69,7 +77,9 @@ def test_dashboard_media_endpoints_report_upstream_failures(
     ],
 )
 def test_media_server_chain_preserves_none_from_provider(method_name, run_method):
-    """媒体服务器处理链应保留提供方失败状态，交由接口层转换为明确错误。"""
+    """
+    媒体服务器处理链应保留提供方失败状态，交由接口层转换为明确错误。
+    """
     chain = MediaServerChain.__new__(MediaServerChain)
     chain.run_module = lambda method, **kwargs: None
 

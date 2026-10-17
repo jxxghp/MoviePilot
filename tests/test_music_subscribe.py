@@ -1,3 +1,7 @@
+"""
+验证音乐订阅的元数据构造、历史值兼容和缺集缓存。
+"""
+
 import asyncio
 from contextlib import contextmanager
 from dataclasses import fields
@@ -35,7 +39,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _music_info() -> MusicInfo:
-    """构造音乐订阅测试使用的标准目标。"""
+    """
+    构造音乐订阅测试使用的标准目标。
+    """
     return MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -47,7 +53,9 @@ def _music_info() -> MusicInfo:
 
 
 def _search_chain_for_torrents(contexts: list[Context]) -> SearchChain:
-    """只替换站点 I/O，保留真实共用搜索、解析、过滤和匹配流程。"""
+    """
+    只替换站点 I/O，保留真实共用搜索、解析、过滤和匹配流程。
+    """
     chain = SearchChain()
     chain._SearchChain__search_all_sites = Mock(return_value=[context.torrent_info for context in contexts])
     chain.process = Mock(wraps=chain.process)
@@ -55,7 +63,9 @@ def _search_chain_for_torrents(contexts: list[Context]) -> SearchChain:
 
 
 def _subscribe(**overrides) -> SimpleNamespace:
-    """构造不依赖数据库的音乐订阅对象。"""
+    """
+    构造不依赖数据库的音乐订阅对象。
+    """
     values = dict(
         id=7,
         name="晴天",
@@ -116,7 +126,9 @@ def _subscribe(**overrides) -> SimpleNamespace:
 def _music_recognition_chain(
         recognized: MusicInfo | None = None,
 ) -> Mock:
-    """构造同时支持同步、异步识别与分类收口的媒体链替身。"""
+    """
+    构造同时支持同步、异步识别与分类收口的媒体链替身。
+    """
     media_chain = Mock()
     media_chain.recognize_media.return_value = recognized
     media_chain.async_recognize_media = AsyncMock(return_value=recognized)
@@ -127,14 +139,20 @@ def _music_recognition_chain(
 
 
 def _configure_subscription_write(chain, repository) -> None:
-    """为音乐测试链注入显式同步修改作用域。"""
+    """
+    为音乐测试链注入显式同步修改作用域。
+    """
     chain.subscription_repository = repository
 
     @contextmanager
     def mutation_scope():
-        """把同步修改命令委托给当前测试 repository。"""
+        """
+        把同步修改命令委托给当前测试 repository。
+        """
         def update(subscribe_id, payload, _actor, existing=None, scene="update"):
-            """按生产命令返回结构记录测试写入。"""
+            """
+            按生产命令返回结构记录测试写入。
+            """
             repository.update(subscribe_id, SubscriptionPatch(payload))
             old = {
                 field.name: getattr(existing, field.name, None)
@@ -153,7 +171,9 @@ def _configure_subscription_write(chain, repository) -> None:
 
 
 def _execution_context(*, cancelled=None, operation="search", allow_paused_search=True) -> SubscriptionExecutionContext:
-    """构造音乐订阅使用的独立执行上下文。"""
+    """
+    构造音乐订阅使用的独立执行上下文。
+    """
     admission = SubscriptionExecutionAdmission()
     lease = admission.try_acquire(
         subscription_id=7,
@@ -171,7 +191,9 @@ def _execution_context(*, cancelled=None, operation="search", allow_paused_searc
 
 
 def test_build_subscribe_meta_returns_music_meta():
-    """音乐订阅应构造 MetaMusic，而不是交给影视标题解析器。"""
+    """
+    音乐订阅应构造 MetaMusic，而不是交给影视标题解析器。
+    """
     meta = build_subscribe_meta(_subscribe())
 
     assert isinstance(meta, MetaMusic)
@@ -182,7 +204,9 @@ def test_build_subscribe_meta_returns_music_meta():
 
 
 def test_build_subscribe_meta_ignores_non_numeric_music_year():
-    """历史脏年份不能阻断音乐订阅元数据构造。"""
+    """
+    历史脏年份不能阻断音乐订阅元数据构造。
+    """
     meta = build_subscribe_meta(_subscribe(year="unknown"))
 
     assert isinstance(meta, MetaMusic)
@@ -190,7 +214,9 @@ def test_build_subscribe_meta_ignores_non_numeric_music_year():
 
 
 def test_subscribe_media_keys_returns_canonical_and_legacy_keys():
-    """音乐订阅缺集缓存同时保留来源键和旧纯 ID 键。"""
+    """
+    音乐订阅缺集缓存同时保留来源键和旧纯 ID 键。
+    """
     assert subscribe_media_keys(_subscribe()) == [
         "musicbrainz:recording-1",
         "recording-1",
@@ -198,7 +224,9 @@ def test_subscribe_media_keys_returns_canonical_and_legacy_keys():
 
 
 def test_build_subscribe_meta_ignores_invalid_music_year():
-    """音乐订阅的非数字年份应被安全忽略，不能阻断订阅流程。"""
+    """
+    音乐订阅的非数字年份应被安全忽略，不能阻断订阅流程。
+    """
     meta = build_subscribe_meta(_subscribe(year="unknown"))
 
     assert isinstance(meta, MetaMusic)
@@ -206,7 +234,9 @@ def test_build_subscribe_meta_ignores_invalid_music_year():
 
 
 def test_music_subscribe_recovers_completion_from_persisted_download_note():
-    """进程重启后音乐订阅应像电影一样用已确认下载备注恢复完成状态。"""
+    """
+    进程重启后音乐订阅应像电影一样用已确认下载备注恢复完成状态。
+    """
     subscribe = _subscribe(note=[1])
     subscribe.total_episode = 0
     subscribe.manual_total_episode = False
@@ -225,7 +255,9 @@ def test_music_subscribe_recovers_completion_from_persisted_download_note():
 
 
 def test_music_subscribe_reuses_search_download_and_finish_flow():
-    """音乐订阅应复用站点搜索、批量下载和订阅完成主流程。"""
+    """
+    音乐订阅应复用站点搜索、批量下载和订阅完成主流程。
+    """
     subscribe = _subscribe(keyword="周杰伦 晴天")
     target = _music_info()
     context = Context(
@@ -265,7 +297,9 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
 
 
 def test_music_search_honours_cancel_before_external_work():
-    """音乐搜索在安全边界收到取消后不得继续访问站点。"""
+    """
+    音乐搜索在安全边界收到取消后不得继续访问站点。
+    """
     subscribe = _subscribe()
     chain = SubscribeChain()
     execution_context = _execution_context(cancelled=lambda: True)
@@ -281,7 +315,9 @@ def test_music_search_honours_cancel_before_external_work():
 
 
 def test_music_best_version_filters_before_stopping_keyword_search():
-    """首关键词只有当前音质时，应继续换词直到找到满足洗版条件的资源。"""
+    """
+    首关键词只有当前音质时，应继续换词直到找到满足洗版条件的资源。
+    """
     subscribe = _subscribe(best_version=1, current_priority=90)
     target = _music_info()
     chain = SubscribeChain()
@@ -291,7 +327,9 @@ def test_music_best_version_filters_before_stopping_keyword_search():
     calls = []
 
     def search(**kwargs):
-        """首轮为 CD 音质，组合词返回更高音质。"""
+        """
+        首轮为 CD 音质，组合词返回更高音质。
+        """
         calls.append(kwargs["keyword"])
         quality = "16bit 44.1kHz" if len(calls) == 1 else "24bit 96kHz"
         return [TorrentInfo(title=f"周杰伦 - 晴天 FLAC {quality}", category=MediaType.MUSIC.value)]
@@ -314,7 +352,9 @@ def test_music_best_version_filters_before_stopping_keyword_search():
 
 
 def test_music_download_marks_shared_execution_context_before_side_effect():
-    """音乐下载必须把取消和副作用边界传入统一下载治理。"""
+    """
+    音乐下载必须把取消和副作用边界传入统一下载治理。
+    """
     cancelled = [False]
     subscribe = _subscribe()
     target = _music_info()
@@ -330,7 +370,9 @@ def test_music_download_marks_shared_execution_context_before_side_effect():
     download_chain = Mock()
 
     def batch_download(**kwargs):
-        """模拟下载器边界内开始提交后才收到取消。"""
+        """
+        模拟下载器边界内开始提交后才收到取消。
+        """
         governance = kwargs["governance"]
         assert governance.cancelled() is False
         governance.mark_started()
@@ -357,7 +399,9 @@ def test_music_download_marks_shared_execution_context_before_side_effect():
 
 
 def test_music_download_rechecks_paused_state_before_submission():
-    """没有搜索执行上下文时，暂停的音乐订阅不得提交下载。"""
+    """
+    没有搜索执行上下文时，暂停的音乐订阅不得提交下载。
+    """
     subscribe = _subscribe()
     paused = _subscribe(state="S")
     repository = Mock()
@@ -377,7 +421,9 @@ def test_music_download_rechecks_paused_state_before_submission():
 
 @pytest.mark.parametrize("prepared_state", ["R", "S"])
 def test_music_accepted_search_downloads_paused_subscription(prepared_state):
-    """显式搜索和指定暂停订阅补搜能提交候选，不主动恢复订阅状态。"""
+    """
+    显式搜索和指定暂停订阅补搜能提交候选，不主动恢复订阅状态。
+    """
     prepared = _subscribe(state=prepared_state)
     current = _subscribe(state="S")
     target = _music_info()
@@ -395,7 +441,9 @@ def test_music_accepted_search_downloads_paused_subscription(prepared_state):
     download_chain = Mock()
 
     def submit(**kwargs):
-        """模拟外部提交，并验证策略传入真实搜索取消和副作用信号。"""
+        """
+        模拟外部提交，并验证策略传入真实搜索取消和副作用信号。
+        """
         assert kwargs["contexts"] == [candidate]
         assert kwargs["governance"].cancelled() is False
         kwargs["governance"].mark_started()
@@ -417,7 +465,9 @@ def test_music_accepted_search_downloads_paused_subscription(prepared_state):
 
 
 def test_music_automatic_search_cannot_download_after_pause():
-    """音乐自动搜索也必须在下载提交前遵守最新暂停状态。"""
+    """
+    音乐自动搜索也必须在下载提交前遵守最新暂停状态。
+    """
     execution = _execution_context(allow_paused_search=False)
     repository = Mock()
     repository.get.return_value = _subscribe(state="S")
@@ -437,7 +487,9 @@ def test_music_automatic_search_cannot_download_after_pause():
 
 
 def test_music_paused_match_cannot_submit_download():
-    """匹配执行上下文不能使用搜索任务的暂停放行规则。"""
+    """
+    匹配执行上下文不能使用搜索任务的暂停放行规则。
+    """
     repository = Mock()
     repository.get.return_value = _subscribe(state="S")
     chain = SubscribeChain()
@@ -458,12 +510,16 @@ def test_music_paused_match_cannot_submit_download():
 
 @pytest.mark.parametrize("cancel_at", ["entry", "preparing"])
 def test_music_paused_search_still_cancels_before_submission(cancel_at):
-    """暂停搜索的放行不能绕过入口或资源准备阶段的取消。"""
+    """
+    暂停搜索的放行不能绕过入口或资源准备阶段的取消。
+    """
     cancelled = [cancel_at == "entry"]
     execution = _execution_context(cancelled=lambda: cancelled[0])
 
     def on_phase(phase, _site_id):
-        """在指定阶段模拟用户取消，保持搜索暂停放行与取消信号独立。"""
+        """
+        在指定阶段模拟用户取消，保持搜索暂停放行与取消信号独立。
+        """
         if phase == cancel_at:
             cancelled[0] = True
 
@@ -487,7 +543,9 @@ def test_music_paused_search_still_cancels_before_submission(cancel_at):
 
 
 def test_music_subscribe_filters_declared_bitrate_and_format():
-    """音乐订阅应按规范化格式和最低码率过滤站点资源。"""
+    """
+    音乐订阅应按规范化格式和最低码率过滤站点资源。
+    """
     subscribe = _subscribe(audio_format="MP3", min_bitrate=320000)
     contexts = [
         Context(torrent_info=TorrentInfo(
@@ -507,7 +565,9 @@ def test_music_subscribe_filters_declared_bitrate_and_format():
 
 
 def test_music_best_version_only_accepts_higher_audio_score():
-    """音乐洗版只能接收高于当前版本的候选，并把音质分数写入下载优先级。"""
+    """
+    音乐洗版只能接收高于当前版本的候选，并把音质分数写入下载优先级。
+    """
     subscribe = _subscribe(best_version=1, current_priority=90)
     contexts = [
         Context(torrent_info=TorrentInfo(
@@ -528,7 +588,9 @@ def test_music_best_version_only_accepts_higher_audio_score():
 
 
 def test_music_best_version_preserves_configured_format_priority():
-    """音乐洗版应优先采用用户规则组给出的格式顺序，而非覆盖为自动音质分数。"""
+    """
+    音乐洗版应优先采用用户规则组给出的格式顺序，而非覆盖为自动音质分数。
+    """
     subscribe = _subscribe(best_version=1, current_priority=90)
     context = Context(torrent_info=TorrentInfo(
         title="周杰伦 - 晴天 MP3 320kbps",
@@ -537,7 +599,9 @@ def test_music_best_version_preserves_configured_format_priority():
     chain = SubscribeChain()
 
     def apply_rule_priority(**kwargs):
-        """模拟音乐格式规则组把当前候选排到最高优先级。"""
+        """
+        模拟音乐格式规则组把当前候选排到最高优先级。
+        """
         kwargs["torrent_list"][0].pri_order = 100
         return kwargs["torrent_list"]
 
@@ -554,7 +618,9 @@ def test_music_best_version_preserves_configured_format_priority():
 
 
 def test_music_best_version_persists_downloaded_rule_priority():
-    """音乐洗版成功后应按实际采用的规则优先级和音频参数更新当前版本。"""
+    """
+    音乐洗版成功后应按实际采用的规则优先级和音频参数更新当前版本。
+    """
     subscribe = _subscribe(best_version=1, current_priority=90)
     meta = MetaMusic(title="晴天")
     meta.apply_audio_quality("MP3 320kbps")
@@ -597,7 +663,9 @@ def test_music_best_version_persists_downloaded_rule_priority():
 
 
 def test_music_filter_keeps_cached_torrent_priority_isolated():
-    """音乐订阅规则写入优先级时不得污染供其它订阅复用的 RSS 缓存。"""
+    """
+    音乐订阅规则写入优先级时不得污染供其它订阅复用的 RSS 缓存。
+    """
     subscribe = _subscribe(best_version=1, current_priority=90)
     source_torrent = TorrentInfo(
         title="周杰伦 - 晴天 MP3 320kbps",
@@ -608,7 +676,9 @@ def test_music_filter_keeps_cached_torrent_priority_isolated():
     chain = SubscribeChain()
 
     def apply_rule_priority(**kwargs):
-        """模拟过滤模块在传入对象上写入规则优先级。"""
+        """
+        模拟过滤模块在传入对象上写入规则优先级。
+        """
         kwargs["torrent_list"][0].pri_order = 100
         return kwargs["torrent_list"]
 
@@ -627,7 +697,9 @@ def test_music_filter_keeps_cached_torrent_priority_isolated():
 
 
 def test_music_subscribe_matches_artist_from_resource_description():
-    """站点主标题只有曲名时，应允许使用副标题中的艺术家完成目标复核。"""
+    """
+    站点主标题只有曲名时，应允许使用副标题中的艺术家完成目标复核。
+    """
     subscribe = _subscribe()
     context = Context(torrent_info=TorrentInfo(
         title="晴天 FLAC",
@@ -647,7 +719,9 @@ def test_music_subscribe_matches_artist_from_resource_description():
 
 
 def test_music_rss_applies_subscription_words_without_mutating_cache():
-    """RSS 与主动搜索使用同一订阅识别词，并保持缓存中的资源原文独立。"""
+    """
+    RSS 与主动搜索使用同一订阅识别词，并保持缓存中的资源原文独立。
+    """
     subscribe = _subscribe(custom_words="错误曲名 => 晴天")
     torrent = TorrentInfo(title="周杰伦 - 错误曲名 FLAC", category=MediaType.MUSIC.value)
     original_meta = MetaMusic.parse_resource(torrent.title)
@@ -667,7 +741,9 @@ def test_music_rss_applies_subscription_words_without_mutating_cache():
 
 @pytest.mark.parametrize("album_target", [False, True])
 def test_music_rss_rejects_subtitle_version_or_partial_album(album_target):
-    """RSS 不能把副标题现场版或单曲所属专辑当作可自动下载的目标。"""
+    """
+    RSS 不能把副标题现场版或单曲所属专辑当作可自动下载的目标。
+    """
     target = _music_info()
     if album_target:
         target.music_type = MUSIC_ENTITY_ALBUM
@@ -684,7 +760,9 @@ def test_music_rss_rejects_subtitle_version_or_partial_album(album_target):
 
 
 def test_album_best_version_waits_for_accumulated_full_coverage():
-    """专辑洗版在累计曲目达到总数前不更新质量基线，达到后才允许更新。"""
+    """
+    专辑洗版在累计曲目达到总数前不更新质量基线，达到后才允许更新。
+    """
     subscribe = _subscribe(
         name="叶惠美",
         music_type=MUSIC_ENTITY_ALBUM,
@@ -757,7 +835,9 @@ def test_album_best_version_waits_for_accumulated_full_coverage():
 
 
 def test_music_subscribe_ignores_non_music_category():
-    """音乐订阅不得自动下载未被站点分类为音乐的资源。"""
+    """
+    音乐订阅不得自动下载未被站点分类为音乐的资源。
+    """
     subscribe = _subscribe()
     context = Context(
         torrent_info=TorrentInfo(
@@ -779,7 +859,9 @@ def test_music_subscribe_ignores_non_music_category():
 
 
 def test_music_subscribe_ignores_unrelated_music_title():
-    """即使站点分类为音乐，资源标题不含目标单曲或专辑名时也不得自动下载。"""
+    """
+    即使站点分类为音乐，资源标题不含目标单曲或专辑名时也不得自动下载。
+    """
     subscribe = _subscribe()
     context = Context(
         torrent_info=TorrentInfo(
@@ -802,7 +884,9 @@ def test_music_subscribe_ignores_unrelated_music_title():
 
 
 def test_music_subscribe_skips_search_when_target_is_already_in_library():
-    """单曲或完整专辑已在媒体库时应直接完成查重处理，不得重复搜索和下载。"""
+    """
+    单曲或完整专辑已在媒体库时应直接完成查重处理，不得重复搜索和下载。
+    """
     subscribe = _subscribe()
     chain = SubscribeChain()
     chain.check_and_handle_existing_media = Mock(return_value=(True, {}))
@@ -818,7 +902,9 @@ def test_music_subscribe_skips_search_when_target_is_already_in_library():
 
 
 def test_music_rss_match_reuses_cached_context_without_second_site_search():
-    """订阅刷新应直接消费 RSS 音乐上下文，不得为每条音乐订阅再次调用站点搜索。"""
+    """
+    订阅刷新应直接消费 RSS 音乐上下文，不得为每条音乐订阅再次调用站点搜索。
+    """
     subscribe = _subscribe()
     target = _music_info()
     source_context = Context(
@@ -862,7 +948,9 @@ def test_music_rss_match_reuses_cached_context_without_second_site_search():
 
 
 def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavailable():
-    """远端详情短暂失败时应从订阅快照恢复专辑语义，不能按标题猜成第一首单曲。"""
+    """
+    远端详情短暂失败时应从订阅快照恢复专辑语义，不能按标题猜成第一首单曲。
+    """
     subscribe = _subscribe(
         name="叶惠美",
         media_id="release-group-1",
@@ -889,7 +977,9 @@ def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavai
 
 
 def test_music_subscription_remote_result_uses_manual_category_override() -> None:
-    """远端音乐详情应在订阅边界应用去空段后的手工分类覆盖。"""
+    """
+    远端音乐详情应在订阅边界应用去空段后的手工分类覆盖。
+    """
     subscribe = _subscribe(media_category=" 音乐 / 华语 // 流行 ")
     remote = _music_info()
     media_chain = _music_recognition_chain(remote)
@@ -907,7 +997,9 @@ def test_music_subscription_remote_result_uses_manual_category_override() -> Non
 
 
 def test_music_subscription_without_manual_category_keeps_automatic_classification() -> None:
-    """空白手工分类应传入 None，使最终分类服务继续执行自动规则。"""
+    """
+    空白手工分类应传入 None，使最终分类服务继续执行自动规则。
+    """
     subscribe = _subscribe(media_category=" / / ")
     remote = _music_info()
     automatic = _music_info()
@@ -927,7 +1019,9 @@ def test_music_subscription_without_manual_category_keeps_automatic_classificati
 
 
 def test_legacy_music_identity_failure_does_not_guess_entity_from_title():
-    """旧订阅有标准 ID 却无实体类型时，识别失败后应保留订阅而不是误选标题搜索首项。"""
+    """
+    旧订阅有标准 ID 却无实体类型时，识别失败后应保留订阅而不是误选标题搜索首项。
+    """
     subscribe = _subscribe(music_type=None)
     media_chain = _music_recognition_chain()
 
@@ -942,7 +1036,9 @@ def test_legacy_music_identity_failure_does_not_guess_entity_from_title():
 
 
 def test_album_subscription_without_remote_id_uses_persisted_entity_snapshot():
-    """专辑快照缺少远端 ID 时也不得退化为单曲识别。"""
+    """
+    专辑快照缺少远端 ID 时也不得退化为单曲识别。
+    """
     subscribe = _subscribe(
         name="叶惠美",
         media_source=None,
@@ -965,7 +1061,9 @@ def test_album_subscription_without_remote_id_uses_persisted_entity_snapshot():
 
 
 def test_legacy_music_without_identity_uses_recording_recognition_boundary():
-    """旧订阅缺少标准身份时只能恢复为单曲，不能消费全局搜索中的专辑或艺术家候选。"""
+    """
+    旧订阅缺少标准身份时只能恢复为单曲，不能消费全局搜索中的专辑或艺术家候选。
+    """
     subscribe = _subscribe(
         media_source=None,
         media_id=None,
@@ -985,7 +1083,9 @@ def test_legacy_music_without_identity_uses_recording_recognition_boundary():
 
 
 def test_legacy_music_subscription_rejects_artist_recognition_result():
-    """旧订阅缺少实体类型时不得把艺术家识别结果迁移成可下载订阅。"""
+    """
+    旧订阅缺少实体类型时不得把艺术家识别结果迁移成可下载订阅。
+    """
     subscribe = _subscribe(music_type=None)
     artist = MusicInfo(
         media_source="musicbrainz",
@@ -1007,7 +1107,9 @@ def test_legacy_music_subscription_rejects_artist_recognition_result():
 
 
 def test_album_subscription_preserves_track_count_snapshot_when_remote_omits_it():
-    """专辑远端详情暂缺曲目数时应复用持久化快照，且不得修改共享识别对象。"""
+    """
+    专辑远端详情暂缺曲目数时应复用持久化快照，且不得修改共享识别对象。
+    """
     subscribe = _subscribe(
         name="叶惠美",
         music_type=MUSIC_ENTITY_ALBUM,
@@ -1034,7 +1136,9 @@ def test_album_subscription_preserves_track_count_snapshot_when_remote_omits_it(
 
 
 def test_async_music_subscription_remote_result_uses_manual_category_override() -> None:
-    """异步远端识别结果应使用与同步路径一致的订阅分类覆盖。"""
+    """
+    异步远端识别结果应使用与同步路径一致的订阅分类覆盖。
+    """
     subscribe = _subscribe(media_category=" 音乐 / 欧美 / 摇滚 ")
     remote = _music_info()
     media_chain = _music_recognition_chain(remote)
@@ -1055,7 +1159,9 @@ def test_async_music_subscription_remote_result_uses_manual_category_override() 
 
 
 def test_async_music_subscription_fallback_snapshot_is_finalized() -> None:
-    """异步远端失败后的持久化快照也必须经过同一最终分类入口。"""
+    """
+    异步远端失败后的持久化快照也必须经过同一最终分类入口。
+    """
     subscribe = _subscribe(
         name="叶惠美",
         music_type=MUSIC_ENTITY_ALBUM,
@@ -1078,7 +1184,9 @@ def test_async_music_subscription_fallback_snapshot_is_finalized() -> None:
 
 
 def test_album_subscription_finishes_only_after_accumulated_tracks():
-    """专辑按跨资源累计的独立曲目数完成，单曲仍在任一成功下载后完成。"""
+    """
+    专辑按跨资源累计的独立曲目数完成，单曲仍在任一成功下载后完成。
+    """
     album_subscribe = _subscribe(
         music_type=MUSIC_ENTITY_ALBUM,
         total_tracks=11,
@@ -1113,7 +1221,9 @@ def test_album_subscription_finishes_only_after_accumulated_tracks():
 
 
 def test_album_download_facts_accumulate_and_finish_at_total_tracks():
-    """专辑下载事实跨轮次合并去重，达到总曲目数后才触发完成。"""
+    """
+    专辑下载事实跨轮次合并去重，达到总曲目数后才触发完成。
+    """
     album_subscribe = _subscribe(
         name="叶惠美",
         media_id="release-group-1",
@@ -1155,7 +1265,9 @@ def test_album_download_facts_accumulate_and_finish_at_total_tracks():
 
 
 def test_music_subscribe_target_validation_enforces_entity_semantics():
-    """单曲无需专辑曲目数，专辑必须有总曲目数，艺术家和实体错配均不可订阅。"""
+    """
+    单曲无需专辑曲目数，专辑必须有总曲目数，艺术家和实体错配均不可订阅。
+    """
     recording = _music_info()
     recording.total_tracks = 11
     album = MusicInfo(
@@ -1184,7 +1296,9 @@ def test_music_subscribe_target_validation_enforces_entity_semantics():
 
 
 def test_recording_target_sync_clears_stale_album_track_count():
-    """旧单曲订阅若误存所属专辑曲目数，刷新元数据时应主动清空。"""
+    """
+    旧单曲订阅若误存所属专辑曲目数，刷新元数据时应主动清空。
+    """
     subscribe = _subscribe(total_tracks=11)
     subscribe_oper = Mock()
     updated = _subscribe(total_tracks=None)
@@ -1203,7 +1317,9 @@ def test_recording_target_sync_clears_stale_album_track_count():
 
 
 def test_album_target_sync_does_not_clear_stable_track_count():
-    """专辑详情缺少曲目数时，同步逻辑不得清空已确认的完整性快照。"""
+    """
+    专辑详情缺少曲目数时，同步逻辑不得清空已确认的完整性快照。
+    """
     subscribe = _subscribe(
         name="叶惠美",
         music_type=MUSIC_ENTITY_ALBUM,
@@ -1228,7 +1344,9 @@ def test_album_target_sync_does_not_clear_stable_track_count():
 
 
 def test_prepare_music_subscription_rejects_album_without_track_count():
-    """搜索入口必须在同步和查库前拒绝无法验证完整覆盖的专辑。"""
+    """
+    搜索入口必须在同步和查库前拒绝无法验证完整覆盖的专辑。
+    """
     subscribe = _subscribe(
         name="未知专辑",
         music_type=None,
@@ -1255,7 +1373,9 @@ def test_prepare_music_subscription_rejects_album_without_track_count():
 
 
 def test_subscribe_add_music_uses_explicit_entity_recognize():
-    """带稳定身份的音乐订阅应按来源、ID 和实体直查，不再按标题换目标。"""
+    """
+    带稳定身份的音乐订阅应按来源、ID 和实体直查，不再按标题换目标。
+    """
     target = _music_info()
     media_chain = Mock()
     media_chain.recognize_media = Mock(return_value=target)
@@ -1300,7 +1420,9 @@ def test_subscribe_add_music_routes_new_album_sources(
         media_id: str,
         title: str,
 ):
-    """新增音乐源的专辑订阅应保留来源、原生 ID 与实体类型。"""
+    """
+    新增音乐源的专辑订阅应保留来源、原生 ID 与实体类型。
+    """
     target = MusicInfo(
         media_source=media_source,
         media_id=media_id,
@@ -1339,7 +1461,9 @@ def test_subscribe_add_music_routes_new_album_sources(
 
 
 def test_subscribe_add_rejects_music_entity_mismatch_before_database_write():
-    """请求专辑却识别为单曲时必须中止，不能创建完成语义错误的订阅。"""
+    """
+    请求专辑却识别为单曲时必须中止，不能创建完成语义错误的订阅。
+    """
     media_chain = Mock()
     media_chain.recognize_media.return_value = _music_info()
     add_subscribe = Mock()
@@ -1363,7 +1487,9 @@ def test_subscribe_add_rejects_music_entity_mismatch_before_database_write():
 
 
 def test_subscribe_add_music_fails_fast_on_offline_fallback():
-    """统一识别返回离线兜底（无远端 source）时订阅应直接失败，不写入数据库。"""
+    """
+    统一识别返回离线兜底（无远端 source）时订阅应直接失败，不写入数据库。
+    """
     offline = MusicInfo(title="未知曲目", artists=["未知艺术家"])
     media_chain = Mock()
     media_chain.recognize_by_meta = Mock(return_value=offline)
@@ -1384,7 +1510,9 @@ def test_subscribe_add_music_fails_fast_on_offline_fallback():
 
 
 def test_follow_preserves_album_entity_and_track_count():
-    """Follow 专辑分享不得走影视标题解析，并须保留整专完成判定字段。"""
+    """
+    Follow 专辑分享不得走影视标题解析，并须保留整专完成判定字段。
+    """
     share = {
         "share_uid": "follow-user",
         "name": "叶惠美",
@@ -1427,7 +1555,9 @@ def test_follow_preserves_album_entity_and_track_count():
 
 
 def test_refresh_enables_music_entry_fetch_when_music_subscribe_exists():
-    """存在音乐订阅时，订阅刷新应要求种子链额外抓取站点音乐专用入口。"""
+    """
+    存在音乐订阅时，订阅刷新应要求种子链额外抓取站点音乐专用入口。
+    """
     chain = SubscribeChain()
     subscribe_oper = Mock()
     # get_subscribed_sites 不带状态查询，has_music_subscribe 按可搜索状态查询

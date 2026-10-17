@@ -1,4 +1,6 @@
-"""插件安装事务用例的端到端副作用顺序与补偿测试。"""
+"""
+插件安装事务用例的端到端副作用顺序与补偿测试。
+"""
 
 import asyncio
 from contextlib import nullcontext
@@ -48,7 +50,9 @@ RECEIPT = "sha256:" + "a" * 64
 
 
 def _identity(*, version: str = "1.0.0", revision: int = 1) -> PluginIdentity:
-    """构造与市场候选匹配的已提交来源身份。"""
+    """
+    构造与市场候选匹配的已提交来源身份。
+    """
     return PluginIdentity(
         plugin_id="DemoPlugin",
         normalized_plugin_id="demoplugin",
@@ -78,7 +82,9 @@ def _admission(
     identity: PluginIdentity | None = None,
     version: str = "1.0.0",
 ) -> PluginInstallAdmission:
-    """冻结一个可供安装用例消费的官方 V3 候选。"""
+    """
+    冻结一个可供安装用例消费的官方 V3 候选。
+    """
     candidate = PluginMarketCandidate(
         plugin_id="DemoPlugin",
         source_key=SOURCE_KEY,
@@ -111,7 +117,9 @@ def _admission(
 
 
 class _PersistenceSpy:
-    """记录安装 journal 的异步状态转移，并允许注入持久化失败。"""
+    """
+    记录安装 journal 的异步状态转移，并允许注入持久化失败。
+    """
 
     def __init__(
         self,
@@ -135,7 +143,9 @@ class _PersistenceSpy:
         self,
         record: PluginInstallationRecord,
     ) -> PluginInstallationRecord:
-        """保存 PREPARED journal。"""
+        """
+        保存 PREPARED journal。
+        """
         self.calls.append("journal_create")
         if self.create_error:
             raise self.create_error
@@ -158,16 +168,22 @@ class _PersistenceSpy:
         self,
         transaction_id: str,
     ) -> PluginInstallationRecord | None:
-        """返回 journal 创建结果，模拟超时后的确认读取。"""
+        """
+        返回 journal 创建结果，模拟超时后的确认读取。
+        """
         self.calls.append("journal_get")
         return self.records.get(transaction_id)
 
     async def list_installations(self) -> list[PluginInstallationRecord]:
-        """返回当前未收尾 journal，供连续事务恢复测试复用。"""
+        """
+        返回当前未收尾 journal，供连续事务恢复测试复用。
+        """
         return list(self.records.values())
 
     async def get_identity(self, _plugin_id: str) -> PluginIdentity | None:
-        """返回恢复核验使用的当前身份事实。"""
+        """
+        返回恢复核验使用的当前身份事实。
+        """
         return self.identity
 
     async def set_installation_target(
@@ -177,7 +193,9 @@ class _PersistenceSpy:
         membership_target: bool,
         identity_target: PluginIdentity | None,
     ) -> PluginInstallationRecord:
-        """保存最终 membership 与身份 revision。"""
+        """
+        保存最终 membership 与身份 revision。
+        """
         self.calls.append("journal_target")
         if self.target_error:
             raise self.target_error
@@ -198,7 +216,9 @@ class _PersistenceSpy:
         *,
         identity_target: PluginIdentity | None,
     ) -> PluginInstallationRecord:
-        """把 journal 推进到 COMMITTED。"""
+        """
+        把 journal 推进到 COMMITTED。
+        """
         self.calls.append("journal_commit")
         if self.commit_error:
             raise self.commit_error
@@ -222,7 +242,9 @@ class _PersistenceSpy:
         *,
         expected_phase: PluginInstallationPhase,
     ) -> bool:
-        """按 phase 删除已补偿或已收尾 journal。"""
+        """
+        按 phase 删除已补偿或已收尾 journal。
+        """
         self.calls.append("journal_delete")
         if self.delete_error:
             raise self.delete_error
@@ -258,7 +280,9 @@ def _command(
     restart_required_recorder=None,
     transaction_id: str = "txn-demo",
 ) -> tuple[PluginInstallCommand, _PersistenceSpy, list[str]]:
-    """构造只含窄端口的安装命令，并返回可观测调用记录。"""
+    """
+    构造只含窄端口的安装命令，并返回可观测调用记录。
+    """
     calls: list[str] = persistence.calls if persistence else []
     persistence = persistence or _PersistenceSpy(calls)
     checkpoint = SimpleNamespace(
@@ -267,22 +291,30 @@ def _command(
     )
 
     async def default_checkpoint(_plugin_id: str, _transaction_id: str):
-        """返回事务级文件快照。"""
+        """
+        返回事务级文件快照。
+        """
         calls.append("checkpoint")
         return checkpoint
 
     async def default_installer(**_kwargs):
-        """表示包载荷安装成功。"""
+        """
+        表示包载荷安装成功。
+        """
         calls.append("package")
         return True, "installed"
 
     async def default_receipt(_plugin_id: str):
-        """返回稳定的已落盘载荷收据。"""
+        """
+        返回稳定的已落盘载荷收据。
+        """
         calls.append("receipt")
         return RECEIPT
 
     async def default_reporter(_plugin_id: str, _repo_url: str | None):
-        """表示远程安装上报成功。"""
+        """
+        表示远程安装上报成功。
+        """
         calls.append("report")
         return True
 
@@ -325,7 +357,9 @@ def _journal_record(
     *,
     transaction_id: str,
 ) -> PluginInstallationRecord:
-    """构造占用同一物理插件槽位的旧安装 journal。"""
+    """
+    构造占用同一物理插件槽位的旧安装 journal。
+    """
     committed = phase is PluginInstallationPhase.COMMITTED
     return PluginInstallationRecord(
         transaction_id=transaction_id,
@@ -350,7 +384,9 @@ async def _execute(
     force: bool = False,
     **kwargs,
 ):
-    """执行测试安装并默认使用当前冻结候选。"""
+    """
+    执行测试安装并默认使用当前冻结候选。
+    """
     return await command.execute(
         admission=admission or _admission(),
         release_version=release_version,
@@ -361,7 +397,9 @@ async def _execute(
 
 @pytest.mark.asyncio
 async def test_success_commits_journal_before_report_and_cleans_package_snapshot():
-    """成功路径按快照、journal、运行态、数据库提交、清理和上报顺序执行。"""
+    """
+    成功路径按快照、journal、运行态、数据库提交、清理和上报顺序执行。
+    """
     calls: list[str] = []
 
     def mark(name: str):
@@ -431,7 +469,9 @@ async def test_success_commits_journal_before_report_and_cleans_package_snapshot
 
 @pytest.mark.asyncio
 async def test_non_active_runtime_status_compensates_before_database_commit():
-    """运行态重载未激活时，安装必须在数据库提交前补偿并返回失败。"""
+    """
+    运行态重载未激活时，安装必须在数据库提交前补偿并返回失败。
+    """
     package_restore = AsyncMock()
     package_cleanup = AsyncMock()
     rollback_reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
@@ -467,7 +507,9 @@ async def test_non_active_runtime_status_compensates_before_database_commit():
 
 @pytest.mark.asyncio
 async def test_native_dependency_change_commits_payload_when_reload_waits_for_restart():
-    """原生依赖已经落盘后，重载失败不得恢复为与新依赖不匹配的旧插件。"""
+    """
+    原生依赖已经落盘后，重载失败不得恢复为与新依赖不匹配的旧插件。
+    """
     change = NativeDependencyChange(
         distribution="native-demo",
         previous_version="1.0.0",
@@ -512,7 +554,9 @@ async def test_native_dependency_change_commits_payload_when_reload_waits_for_re
 
 @pytest.mark.asyncio
 async def test_native_dependency_change_keeps_active_plugin_available():
-    """当前进程仍可重载时，插件保持 ACTIVE 并独立记录重启要求。"""
+    """
+    当前进程仍可重载时，插件保持 ACTIVE 并独立记录重启要求。
+    """
     change = NativeDependencyChange(
         distribution="native-demo",
         previous_version="1.0.0",
@@ -543,7 +587,9 @@ async def test_native_dependency_change_keeps_active_plugin_available():
 
 @pytest.mark.asyncio
 async def test_native_dependency_detection_failure_keeps_normal_install_result():
-    """原生依赖诊断不可用时应保持普通插件安装语义。"""
+    """
+    原生依赖诊断不可用时应保持普通插件安装语义。
+    """
     restart_required_recorder = Mock()
     command, _, _ = _command(
         native_dependency_changes=AsyncMock(side_effect=OSError("probe unavailable")),
@@ -560,7 +606,9 @@ async def test_native_dependency_detection_failure_keeps_normal_install_result()
 
 @pytest.mark.asyncio
 async def test_failed_package_install_keeps_detected_native_restart_requirement():
-    """依赖部分落盘后安装失败，文件补偿不能清除进程级激活要求。"""
+    """
+    依赖部分落盘后安装失败，文件补偿不能清除进程级激活要求。
+    """
     change = NativeDependencyChange(
         distribution="native-demo",
         previous_version="1.0.0",
@@ -589,7 +637,9 @@ async def test_failed_package_install_keeps_detected_native_restart_requirement(
 
 @pytest.mark.asyncio
 async def test_existing_plugin_with_non_active_runtime_status_is_not_reported_successfully():
-    """已有载荷刷新失败时不得伪装成运行态成功或发送安装上报。"""
+    """
+    已有载荷刷新失败时不得伪装成运行态成功或发送安装上报。
+    """
     target_reloader = AsyncMock(return_value=PluginRuntimeStatus.LOAD_FAILED)
     reporter = AsyncMock()
     command, persistence, _ = _command(
@@ -620,7 +670,9 @@ async def test_existing_plugin_with_non_active_runtime_status_is_not_reported_su
 async def test_unfinished_journal_blocks_follow_up_before_payload_write(
     phase: PluginInstallationPhase,
 ) -> None:
-    """旧 journal 未收尾时，新安装不得写载荷或推进身份 revision。"""
+    """
+    旧 journal 未收尾时，新安装不得写载荷或推进身份 revision。
+    """
     persistence = _PersistenceSpy([])
     old_record = _journal_record(phase, transaction_id=f"old-{phase.value}")
     persistence.records[old_record.transaction_id] = old_record
@@ -676,7 +728,9 @@ async def test_unfinished_journal_blocks_follow_up_before_payload_write(
 
 @pytest.mark.asyncio
 async def test_package_rejection_restores_files_and_removes_prepared_journal():
-    """包安装返回失败时不得切换运行态，且必须删除 PREPARED journal。"""
+    """
+    包安装返回失败时不得切换运行态，且必须删除 PREPARED journal。
+    """
     package_restore = AsyncMock()
     package_cleanup = AsyncMock()
     target_reloader = AsyncMock()
@@ -708,7 +762,9 @@ async def test_package_rejection_restores_files_and_removes_prepared_journal():
 
 @pytest.mark.asyncio
 async def test_journal_create_failure_uses_legacy_rollback_without_journal_cleanup():
-    """journal 创建失败时使用兼容回滚，不尝试删除不存在的 journal。"""
+    """
+    journal 创建失败时使用兼容回滚，不尝试删除不存在的 journal。
+    """
     package_restore = AsyncMock()
     package_cleanup = AsyncMock()
     persistence = _PersistenceSpy(
@@ -732,7 +788,9 @@ async def test_journal_create_failure_uses_legacy_rollback_without_journal_clean
 
 @pytest.mark.asyncio
 async def test_persistence_unavailable_during_journal_prepare_is_rethrown():
-    """数据库 worker 暂不可用时完成无 journal 回滚后保留异常语义。"""
+    """
+    数据库 worker 暂不可用时完成无 journal 回滚后保留异常语义。
+    """
     package_restore = AsyncMock()
     package_cleanup = AsyncMock()
     persistence = _PersistenceSpy(
@@ -769,7 +827,9 @@ async def test_precommit_failure_restores_files_and_runtime(
     failure_stage: str,
     runtime_touched: bool,
 ):
-    """每个提交前阶段失败都恢复文件，运行态失败还要恢复旧运行态。"""
+    """
+    每个提交前阶段失败都恢复文件，运行态失败还要恢复旧运行态。
+    """
     package_restore = AsyncMock()
     rollback_reloader = AsyncMock()
     registration_refresher = AsyncMock()
@@ -829,7 +889,9 @@ async def test_precommit_failure_restores_files_and_runtime(
 
 @pytest.mark.asyncio
 async def test_precommit_failure_keeps_previous_declared_metadata_snapshot():
-    """提交前失败不得把新声明快照写成当前身份事实。"""
+    """
+    提交前失败不得把新声明快照写成当前身份事实。
+    """
     previous = _identity(version="1.0.0", revision=3)
     persistence = _PersistenceSpy([], identity=previous)
     rollback_reloader = AsyncMock()
@@ -856,7 +918,9 @@ async def test_precommit_failure_keeps_previous_declared_metadata_snapshot():
 
 @pytest.mark.asyncio
 async def test_database_commit_failure_restores_runtime_before_deleting_journal():
-    """数据库最终提交失败时，文件、运行态和 PREPARED journal 必须一起补偿。"""
+    """
+    数据库最终提交失败时，文件、运行态和 PREPARED journal 必须一起补偿。
+    """
     package_restore = AsyncMock()
     rollback_reloader = AsyncMock()
     persistence = _PersistenceSpy(
@@ -882,7 +946,9 @@ async def test_database_commit_failure_restores_runtime_before_deleting_journal(
 
 @pytest.mark.asyncio
 async def test_cleanup_failure_keeps_committed_journal_for_replay():
-    """数据库已提交但清理失败时不能回滚载荷，journal 必须保留供启动重放。"""
+    """
+    数据库已提交但清理失败时不能回滚载荷，journal 必须保留供启动重放。
+    """
     package_finalize = AsyncMock(side_effect=RuntimeError("cleanup unavailable"))
     rollback_reloader = AsyncMock()
     command, persistence, _ = _command(
@@ -901,7 +967,9 @@ async def test_cleanup_failure_keeps_committed_journal_for_replay():
 
 @pytest.mark.asyncio
 async def test_report_failure_does_not_rollback_committed_install():
-    """远程安装上报失败属于非关键副作用，不得撤销已提交本地安装。"""
+    """
+    远程安装上报失败属于非关键副作用，不得撤销已提交本地安装。
+    """
     package_restore = AsyncMock()
     reporter = AsyncMock(side_effect=RuntimeError("server unavailable"))
     command, persistence, _ = _command(
@@ -921,7 +989,9 @@ async def test_report_failure_does_not_rollback_committed_install():
 
 @pytest.mark.asyncio
 async def test_existing_matching_payload_only_refreshes_runtime():
-    """同一来源、代际和版本已提交时只刷新运行态，不重复写包或 journal。"""
+    """
+    同一来源、代际和版本已提交时只刷新运行态，不重复写包或 journal。
+    """
     checkpointer = AsyncMock()
     installer = AsyncMock()
     reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
@@ -953,7 +1023,9 @@ async def test_existing_matching_payload_only_refreshes_runtime():
 
 @pytest.mark.asyncio
 async def test_force_install_replaces_matching_payload_and_local_sync_skips_report():
-    """强制安装和本地同步都绕过刷新短路，本地同步还禁止远程上报。"""
+    """
+    强制安装和本地同步都绕过刷新短路，本地同步还禁止远程上报。
+    """
     installer = AsyncMock(return_value=(True, "synced"))
     reporter = AsyncMock(return_value=True)
     command, _, _ = _command(
@@ -985,7 +1057,9 @@ async def test_force_install_replaces_matching_payload_and_local_sync_skips_repo
 
 @pytest.mark.asyncio
 async def test_mutation_rejection_happens_before_package_write_guard():
-    """运行时封口后拒绝安装，不能进入包写入抑制或文件快照。"""
+    """
+    运行时封口后拒绝安装，不能进入包写入抑制或文件快照。
+    """
     checkpointer = AsyncMock()
     package_guard = Mock(return_value=nullcontext())
     rejected = Mock(side_effect=PluginMutationRejectedError("安装插件 DemoPlugin"))
@@ -1006,7 +1080,9 @@ async def test_mutation_rejection_happens_before_package_write_guard():
 
 @pytest.mark.asyncio
 async def test_cancelled_package_install_waits_for_compensation():
-    """包安装被取消时等待文件恢复和 journal 清理完成后再传播取消。"""
+    """
+    包安装被取消时等待文件恢复和 journal 清理完成后再传播取消。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     package_restore = AsyncMock()
@@ -1036,7 +1112,9 @@ async def test_cancelled_package_install_waits_for_compensation():
 
 @pytest.mark.asyncio
 async def test_cancelled_package_install_keeps_detected_native_restart_requirement():
-    """取消传播前完成依赖检测，已替换的共享原生载荷仍要求重启。"""
+    """
+    取消传播前完成依赖检测，已替换的共享原生载荷仍要求重启。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     change = NativeDependencyChange(
@@ -1073,7 +1151,9 @@ async def test_cancelled_package_install_keeps_detected_native_restart_requireme
 
 @pytest.mark.asyncio
 async def test_cancelled_journal_create_resolves_persisted_record_before_rollback():
-    """PREPARED 已写入但调用被取消时，必须确认记录并完成补偿。"""
+    """
+    PREPARED 已写入但调用被取消时，必须确认记录并完成补偿。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     package_restore = AsyncMock()
@@ -1108,7 +1188,9 @@ async def test_cancelled_journal_create_resolves_persisted_record_before_rollbac
 
 @pytest.mark.asyncio
 async def test_cancelled_prepared_commit_rolls_back_after_outcome_check():
-    """提交任务确定仍为 PREPARED 时，取消必须先完成旧载荷补偿。"""
+    """
+    提交任务确定仍为 PREPARED 时，取消必须先完成旧载荷补偿。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     package_restore = AsyncMock()
@@ -1147,7 +1229,9 @@ async def test_cancelled_prepared_commit_rolls_back_after_outcome_check():
 
 @pytest.mark.asyncio
 async def test_cancelled_committed_install_keeps_journal_for_startup_cleanup():
-    """数据库已提交后发生取消时不得回滚新载荷，journal 留给启动收尾。"""
+    """
+    数据库已提交后发生取消时不得回滚新载荷，journal 留给启动收尾。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     package_restore = AsyncMock()
@@ -1193,7 +1277,9 @@ async def test_cancelled_committed_install_keeps_journal_for_startup_cleanup():
 
 @pytest.mark.asyncio
 async def test_commit_ack_failure_uses_committed_journal_as_final_fact():
-    """提交回执丢失但 journal 已为 COMMITTED 时继续完成新载荷收尾。"""
+    """
+    提交回执丢失但 journal 已为 COMMITTED 时继续完成新载荷收尾。
+    """
     package_restore = AsyncMock()
     persistence = _PersistenceSpy([])
 
@@ -1228,7 +1314,9 @@ async def test_commit_ack_failure_uses_committed_journal_as_final_fact():
 
 @pytest.mark.asyncio
 async def test_unknown_commit_result_preserves_current_payload_and_journal():
-    """数据库最终状态无法读取时不得猜测回滚，必须留待启动恢复。"""
+    """
+    数据库最终状态无法读取时不得猜测回滚，必须留待启动恢复。
+    """
     package_restore = AsyncMock()
     rollback_reloader = AsyncMock()
     persistence = _PersistenceSpy([], commit_error=RuntimeError("commit failed"))
@@ -1252,7 +1340,9 @@ async def test_unknown_commit_result_preserves_current_payload_and_journal():
 
 @pytest.mark.asyncio
 async def test_runtime_compensation_failure_keeps_prepared_journal():
-    """旧运行态未恢复完整时不得删除 PREPARED journal 和恢复材料。"""
+    """
+    旧运行态未恢复完整时不得删除 PREPARED journal 和恢复材料。
+    """
     package_restore = AsyncMock()
     package_cleanup = AsyncMock()
     target_reloader = AsyncMock(side_effect=RuntimeError("reload failed"))

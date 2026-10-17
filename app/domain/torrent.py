@@ -1,4 +1,6 @@
-"""种子身份与下载链接的纯领域判断规则。"""
+"""
+种子身份与下载链接的纯领域判断规则。
+"""
 
 import base64
 import binascii
@@ -12,7 +14,9 @@ if TYPE_CHECKING:
 
 
 def is_magnet_link(content: Union[str, bytes]) -> bool:
-    """判断字符串或字节内容是否为磁力链接。"""
+    """
+    判断字符串或字节内容是否为磁力链接。
+    """
     if not content:
         return False
     if isinstance(content, str):
@@ -23,7 +27,9 @@ def is_magnet_link(content: Union[str, bytes]) -> bool:
 
 
 def _bencoded_value_end(content: bytes, offset: int) -> int:
-    """跳过一个完整 bencode 值，保留 info 原始字节以避免重编码改变哈希。"""
+    """
+    跳过一个完整 bencode 值，保留 info 原始字节以避免重编码改变哈希。
+    """
     marker = content[offset:offset + 1]
     if marker == b"i":
         end = content.index(b"e", offset + 1)
@@ -59,7 +65,9 @@ def _bencoded_value_end(content: bytes, offset: int) -> int:
 
 
 def _bencoded_dictionary(content: bytes) -> dict[bytes, bytes]:
-    """提取字典直属键值的原始切片，不解码二进制文件树或 pieces root。"""
+    """
+    提取字典直属键值的原始切片，不解码二进制文件树或 pieces root。
+    """
     if not content.startswith(b"d") or _bencoded_value_end(content, 0) != len(content):
         raise ValueError("bencode 字典无效")
     result: dict[bytes, bytes] = {}
@@ -79,7 +87,8 @@ def _bencoded_dictionary(content: bytes) -> dict[bytes, bytes]:
 
 
 def download_hashes(content: Union[str, bytes]) -> frozenset[str]:
-    """读取实际种子或磁力的 v1/v2 身份；v2 同时接受下载器使用的 40 位截断哈希。
+    """
+    读取实际种子或磁力的 v1/v2 身份；v2 同时接受下载器使用的 40 位截断哈希。
 
     哈希只由原始 info 字节或明确的磁力标识构造，名称和大小不构成身份。
     解析失败返回空集合，调用方不得据此接管其它已有任务。
@@ -110,7 +119,9 @@ def download_hashes(content: Union[str, bytes]) -> frozenset[str]:
 
 
 def resource_identity(torrent: "TorrentInfo") -> Optional[tuple[str, str]]:
-    """按站点和稳定种子标识匹配资源，不把临时签名或标题当成种子 ID。"""
+    """
+    按站点和稳定种子标识匹配资源，不把临时签名或标题当成种子 ID。
+    """
     site = str(torrent.site or torrent.site_name or "")
     for name, prefix in (("torrent_id", "id"), ("info_hash", "hash")):
         value = getattr(torrent, name, None)
@@ -138,7 +149,9 @@ def resource_identity(torrent: "TorrentInfo") -> Optional[tuple[str, str]]:
 
 
 def is_expiring_download_url(url: Optional[str]) -> bool:
-    """识别已知的时间戳加签名下载链接；不推断签名的具体有效期。"""
+    """
+    识别已知的时间戳加签名下载链接；不推断签名的具体有效期。
+    """
     if not url or not url.startswith(("http://", "https://")):
         return False
     try:
@@ -149,7 +162,8 @@ def is_expiring_download_url(url: Optional[str]) -> bool:
 
 
 def rate_limit_cooldown(message: Optional[str]) -> Optional[int]:
-    """识别种子下载限流语义并返回冷却秒数；未知错误返回空。
+    """
+    识别种子下载限流语义并返回冷却秒数；未知错误返回空。
 
     每日下载配额采用完整 24 小时以覆盖站点时区；短期限流沿用至少一小时的
     订阅冷却，提示更长等待时按提示延长，不在下载调用内立即重试。

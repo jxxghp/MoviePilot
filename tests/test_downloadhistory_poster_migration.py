@@ -1,3 +1,7 @@
+"""
+验证下载历史海报字段的升级和降级。
+"""
+
 import importlib
 
 import sqlalchemy as sa
@@ -6,7 +10,9 @@ from alembic.operations import Operations
 
 
 def test_downloadhistory_poster_migration_adds_and_removes_column(monkeypatch) -> None:
-    """迁移应为下载历史增加可空海报字段，并支持回滚。"""
+    """
+    迁移应为下载历史增加可空海报字段，并支持回滚。
+    """
     migration = importlib.import_module(
         "database.versions.a8c4e2f6b1d9_2_2_15"
     )

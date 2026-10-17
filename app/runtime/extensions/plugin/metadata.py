@@ -1,4 +1,6 @@
-"""插件目录条目的运行态元数据映射。"""
+"""
+插件目录条目的运行态元数据映射。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +12,9 @@ from app.schemas.plugin import Plugin
 
 
 class PluginMetadataMapper:
-    """把市场或本地仓条目映射为包含运行态状态的插件 DTO。"""
+    """
+    把市场或本地仓条目映射为包含运行态状态的插件 DTO。
+    """
 
     def __init__(
         self,
@@ -24,7 +28,9 @@ class PluginMetadataMapper:
         version_compare: Callable[[str, str, str], bool],
         log: Any,
     ) -> None:
-        """保存注册表、兼容判断和权限判断端口。"""
+        """
+        保存注册表、兼容判断和权限判断端口。
+        """
         self._plugin_instance = plugin_instance
         self._plugin_class = plugin_class
         self._annotate_system_version = annotate_system_version
@@ -43,7 +49,9 @@ class PluginMetadataMapper:
         add_time: int,
         package_version: Optional[str] = None,
     ) -> Optional[Plugin]:
-        """映射一个插件索引条目，不兼容或无权限时返回空。"""
+        """
+        映射一个插件索引条目，不兼容或无权限时返回空。
+        """
         if not isinstance(plugin_info, dict):
             return None
         info = self._annotate_runtime_compatibility(
@@ -100,18 +108,23 @@ class PluginMetadataMapper:
         return plugin
 
     def _state(self, plugin_id: str, instance: Optional[Any]) -> bool:
-        """安全读取插件运行状态，插件异常时降级为未启用。"""
+        """
+        安全读取插件运行状态，插件异常时降级为未启用。
+        """
         if not instance or not hasattr(instance, "get_state"):
             return False
         try:
             return bool(instance.get_state())
+        # 插件状态方法由第三方实现，异常时返回停用状态并记录原因。
         except Exception as error:  # noqa: BLE001
             self._logger.error(f"获取插件 {plugin_id} 状态出错：{error}")
             return False
 
     @staticmethod
     def normalize_label(labels: Any) -> Optional[str]:
-        """兼容市场标签的旧字符串和新列表格式。"""
+        """
+        兼容市场标签的旧字符串和新列表格式。
+        """
         if isinstance(labels, str):
             label = labels.strip()
             return label or None

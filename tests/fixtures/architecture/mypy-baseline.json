@@ -1477,7 +1477,7 @@
     "misc": 23
   },
   "app/schemas/plugin.py": {
-    "assignment": 2,
+    "assignment": 1,
     "misc": 16
   },
   "app/schemas/response.py": {
@@ -1500,7 +1500,6 @@
     "no-any-return": 1
   },
   "app/schemas/system.py": {
-    "assignment": 1,
     "misc": 15,
     "type-arg": 4
   },
@@ -1511,7 +1510,6 @@
     "misc": 3
   },
   "app/schemas/transfer.py": {
-    "assignment": 1,
     "misc": 16,
     "no-untyped-def": 1,
     "type-arg": 3

@@ -1,4 +1,6 @@
-"""订阅业务活动的持久化记录。"""
+"""
+订阅业务活动的持久化记录。
+"""
 
 from typing import Any
 
@@ -9,7 +11,9 @@ from app.db.base import Base, get_id_column
 
 
 class SubscribeActivity(Base):
-    """以独立订阅标识保存活动，完成或删除活动订阅不级联丢失历史。"""
+    """
+    以独立订阅标识保存活动，完成或删除活动订阅不级联丢失历史。
+    """
 
     id = get_id_column()
     activity_key: Mapped[str] = mapped_column(String(32), nullable=False)

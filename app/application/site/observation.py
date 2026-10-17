@@ -1,4 +1,6 @@
-"""站点搜索调用的轻量结果观察上下文。"""
+"""
+站点搜索调用的轻量结果观察上下文。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +12,15 @@ from typing import Iterator, Optional
 
 @dataclass(slots=True)
 class SiteSearchObservation:
-    """记录一次站点搜索是否发出请求及其可治理结果。"""
+    """
+    记录一次站点搜索是否发出请求及其可治理结果。
+
+    :param attempted: 本轮是否实际发起站点请求，默认 False
+    :param outcome: 可供队列调度判断的调用结果，初始为 skipped
+    :param error: 失败或延后的可读原因；无异常时为 None
+    :param raw_count: 过滤前页面结果数；未报告时为 None
+    :param has_more: 站点是否明确报告仍有下一页；None 表示未知
+    """
 
     attempted: bool = False
     outcome: str = "skipped"
@@ -27,7 +37,9 @@ _current_observation: ContextVar[Optional[SiteSearchObservation]] = ContextVar(
 
 @contextmanager
 def capture_site_search_observation() -> Iterator[SiteSearchObservation]:
-    """为当前同步 worker 捕获一次索引器搜索结果。"""
+    """
+    为当前同步执行者捕获一次索引器搜索结果。
+    """
     observation = SiteSearchObservation()
     token = _current_observation.set(observation)
     try:
@@ -42,7 +54,9 @@ def report_site_search_outcome(
     outcome: str,
     error: Optional[str] = None,
 ) -> None:
-    """由索引器在不改变公开返回合同的前提下发布调用结果。"""
+    """
+    由索引器在不改变公开返回合同的前提下发布调用结果。
+    """
     observation = _current_observation.get()
     if observation is None:
         return
@@ -54,7 +68,9 @@ def report_site_search_outcome(
 
 
 def report_site_search_page(*, raw_count: int, has_more: Optional[bool] = None) -> None:
-    """发布过滤前的页事实；短页不自动等价于末页，旧 List 返回 ABI 保持不变。"""
+    """
+    发布过滤前的页事实；短页不自动等价于末页，旧 List 返回 ABI 保持不变。
+    """
     observation = _current_observation.get()
     if observation is not None:
         observation.raw_count = max(raw_count, observation.raw_count or 0)

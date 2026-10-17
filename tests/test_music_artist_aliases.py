@@ -1,4 +1,6 @@
-"""按来源真实Artist身份补证别名，不把拼音或同名结果猜成另一艺人。"""
+"""
+按来源真实Artist身份补证别名，不把拼音或同名结果猜成另一艺人。
+"""
 
 import asyncio
 from copy import deepcopy
@@ -19,7 +21,9 @@ ARTIST_ID = "a223958d-5c56-4b2c-a30a-87e357bc121b"
 
 
 def _module(source, monkeypatch, *, wrong_id=False, alias="Zhōu Jié Lún"):
-    """构造真实来源投影与确认入口，仅替换HTTP边界，避免单例和真实服务污染。"""
+    """
+    构造真实来源投影与确认入口，仅替换HTTP边界，避免单例和真实服务污染。
+    """
     module = object.__new__(MusicBrainzModule if source == MediaSource.MusicBrainz else TheAudioDbModule)
     if source == MediaSource.MusicBrainz:
         monkeypatch.setattr(module, "_cached_recognition", lambda _plan: None)
@@ -33,7 +37,9 @@ def _module(source, monkeypatch, *, wrong_id=False, alias="Zhōu Jié Lún"):
         artist_payload = {"artists": [{"idArtist": "other" if wrong_id else "201", "strArtist": "周杰倫", "strArtistAlternate": alias}]}
 
     def request(path, _params=None, **_kwargs):
-        """同一搜索实体及其Artist详情可重复读取，响应保持原样以检验缓存隔离。"""
+        """
+        同一搜索实体及其Artist详情可重复读取，响应保持原样以检验缓存隔离。
+        """
         return artist_payload if path.startswith("/artist/") or path == "artist.php" else payload
 
     sync, asynchronous = Mock(side_effect=request), AsyncMock(side_effect=request)
@@ -46,7 +52,9 @@ def _module(source, monkeypatch, *, wrong_id=False, alias="Zhōu Jié Lún"):
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("wrong_id", [False, True])
 def test_recording_verifies_real_artist_alias_before_accepting_pinyin(monkeypatch, source, asynchronous, wrong_id):
-    """实际来源入口可用有声调/空格别名确认拼音；错误Artist响应不得建立身份。"""
+    """
+    实际来源入口可用有声调/空格别名确认拼音；错误Artist响应不得建立身份。
+    """
     module, sync, async_request, payload = _module(source, monkeypatch, wrong_id=wrong_id)
     original = deepcopy(payload)
     kwargs = {"meta": MetaMusic(title="晴天", artists=["ZhouJieLun"]), "media_source": source, "music_type": "recording"}
@@ -64,7 +72,9 @@ def test_recording_verifies_real_artist_alias_before_accepting_pinyin(monkeypatc
 
 @pytest.mark.parametrize("source", [MediaSource.MusicBrainz, MediaSource.TheAudioDB])
 def test_candidate_without_source_alias_does_not_guess_transliteration(monkeypatch, source):
-    """中文名字相似或拼音相近不构成来源别名证据。"""
+    """
+    中文名字相似或拼音相近不构成来源别名证据。
+    """
     module, _sync, _async, _payload = _module(source, monkeypatch, alias="Another Person")
     result = module.recognize_media(meta=MetaMusic(title="晴天", artists=["ZhouJieLun"]), media_source=source, music_type="recording")
     assert not result or result.media_id is None
@@ -72,7 +82,9 @@ def test_candidate_without_source_alias_does_not_guess_transliteration(monkeypat
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_alias_lookup_deduplicates_ids_and_keeps_candidate_roles(asynchronous):
-    """同一Artist只查一次、批次最多三人；版本冲突和跨来源候选不参与补证。"""
+    """
+    同一Artist只查一次、批次最多三人；版本冲突和跨来源候选不参与补证。
+    """
     meta = MetaMusic(title="Song", artists=["Romanized"], version="Live")
     candidates = [MusicInfo(media_source=MediaSource.TheAudioDB, media_id=str(index + 1), title="Song (Live)",
                             artists=["真实署名"], artist_ids=[str(index // 2 + 1)]) for index in range(8)]
@@ -90,7 +102,9 @@ def test_alias_lookup_deduplicates_ids_and_keeps_candidate_roles(asynchronous):
 
 
 def test_known_artist_does_not_spend_alias_requests():
-    """原署名已能通过繁简归一时无需额外查询，保留预算供整专曲目核验。"""
+    """
+    原署名已能通过繁简归一时无需额外查询，保留预算供整专曲目核验。
+    """
     item = MusicInfo(media_source=MediaSource.TheAudioDB, media_id="track", title="Song", artists=["周杰倫"], artist_ids=["201"])
     lookup = Mock()
     enrich_music_artist_aliases([(MetaMusic(title="Song", artists=["周杰伦"]), item)], MediaSource.TheAudioDB, lookup)
@@ -99,7 +113,9 @@ def test_known_artist_does_not_spend_alias_requests():
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_release_album_and_each_track_share_verified_artist_alias(monkeypatch, asynchronous):
-    """具体发行及逐曲模型都消费同一Artist证据，原始详情响应不被修改。"""
+    """
+    具体发行及逐曲模型都消费同一Artist证据，原始详情响应不被修改。
+    """
     module = object.__new__(MusicBrainzModule)
     credit = [{"artist": {"id": ARTIST_ID, "name": "周杰倫"}}]
     detail = {"id": "release-one", "title": "Album", "artist-credit": credit,
@@ -111,7 +127,9 @@ def test_release_album_and_each_track_share_verified_artist_alias(monkeypatch, a
     original = deepcopy(detail)
 
     def request(path, **_kwargs):
-        """发行详情和精确Artist查询都走真实投影层。"""
+        """
+        发行详情和精确Artist查询都走真实投影层。
+        """
         if path == f"/artist/{ARTIST_ID}":
             return {"id": ARTIST_ID, "name": "周杰倫", "aliases": [{"name": "Zhou Jie Lun"}]}
         return detail
@@ -132,7 +150,9 @@ def test_release_album_and_each_track_share_verified_artist_alias(monkeypatch, a
 
 
 def test_album_lookup_keeps_search_aliases_bound_to_same_artist():
-    """整专重新读取详情后仍保留搜索补证，其他曲目表演者不继承专辑艺人别名。"""
+    """
+    整专重新读取详情后仍保留搜索补证，其他曲目表演者不继承专辑艺人别名。
+    """
     card = MusicInfo(media_source=MediaSource.TheAudioDB, media_id="album", music_type="album", title="Album",
                      artists=["周杰倫"], artist_ids=["201"], artist_aliases=["ZhouJieLun"])
     album = MusicAlbumInfo(media_source=MediaSource.TheAudioDB, media_id="album", title="Album", artists=["周杰倫"], artist_ids=["201"],
@@ -154,7 +174,9 @@ def test_album_lookup_keeps_search_aliases_bound_to_same_artist():
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_musicbrainz_ambiguous_recordings_keep_diagnostics(monkeypatch, asynchronous):
-    """同证据的不同Recording不因列表顺序或后续查询变成成功身份。"""
+    """
+    同证据的不同Recording不因列表顺序或后续查询变成成功身份。
+    """
     module, _sync, _async, payload = _module(MediaSource.MusicBrainz, monkeypatch)
     payload["recordings"].append({**payload["recordings"][0], "id": "recording-two"})
     kwargs = {"meta": MetaMusic(title="晴天", artists=["ZhouJieLun"]), "media_source": MediaSource.MusicBrainz, "music_type": "recording"}
@@ -165,13 +187,17 @@ def test_musicbrainz_ambiguous_recordings_keep_diagnostics(monkeypatch, asynchro
 
 
 def test_alias_failure_is_not_cached_as_missing_identity(monkeypatch):
-    """核验别名时服务失败，候选保持未确认并携带可重试原因。"""
+    """
+    核验别名时服务失败，候选保持未确认并携带可重试原因。
+    """
     module, _sync, _async, _payload = _module(MediaSource.MusicBrainz, monkeypatch)
     cache_write = Mock()
     monkeypatch.setattr(module, "_update_recognize_cache", cache_write)
 
     def fail_alias(_ids, _aliases):
-        """模拟真实请求额度耗尽并保持来源故障诊断。"""
+        """
+        模拟真实请求额度耗尽并保持来源故障诊断。
+        """
         assert music_request_timeout() is None
         report_music_recognition("budget_exhausted", "别名核验预算耗尽")
         return []
@@ -186,7 +212,9 @@ def test_alias_failure_is_not_cached_as_missing_identity(monkeypatch):
 
 @pytest.mark.parametrize("music_type", ["recording", "album"])
 def test_musicbrainz_alias_collision_is_not_broken_by_response_order(music_type):
-    """不同Artist身份共享别名时，只凭同曲名同别名不足以确认某一实体。"""
+    """
+    不同Artist身份共享别名时，只凭同曲名同别名不足以确认某一实体。
+    """
     meta = MetaMusic(title="Song", artists=["Romanized"], music_type=music_type)
     candidates = [MusicInfo(media_source=MediaSource.MusicBrainz, media_id=f"entity-{index}", music_type=music_type,
                             title="Song", artists=[f"Artist {index}"], artist_ids=[f"artist-{index}"], artist_aliases=["Romanized"])
@@ -199,7 +227,9 @@ def test_musicbrainz_alias_collision_is_not_broken_by_response_order(music_type)
 
 
 def test_musicbrainz_duplicate_isrc_cannot_select_first_identity():
-    """同一ISRC出现在不同Recording ID时保留歧义，重复行仍可去重。"""
+    """
+    同一ISRC出现在不同Recording ID时保留歧义，重复行仍可去重。
+    """
     meta = MetaMusic(title="Local Name", isrc="USAAA0100001")
     candidates = [MusicInfo(media_source=MediaSource.MusicBrainz, media_id=identity, title="Remote Name", isrc=meta.isrc)
                   for identity in ("first", "second")]
@@ -210,7 +240,9 @@ def test_musicbrainz_duplicate_isrc_cannot_select_first_identity():
 
 
 def test_real_album_directory_retains_verified_source_aliases(tmp_path, monkeypatch):
-    """真实无标签文件经来源搜索、专辑详情、曲目对位后仍能用实际Artist别名整理。"""
+    """
+    真实无标签文件经来源搜索、专辑详情、曲目对位后仍能用实际Artist别名整理。
+    """
     import shutil
     from pathlib import Path
     from types import SimpleNamespace
@@ -239,7 +271,9 @@ def test_real_album_directory_retains_verified_source_aliases(tmp_path, monkeypa
     monkeypatch.setattr(chain, "_finalize_recognition_result", lambda info, **_kwargs: info)
 
     def search(meta, **kwargs):
-        """保持真实来源搜索和别名查询，只替换模块调度边界。"""
+        """
+        保持真实来源搜索和别名查询，只替换模块调度边界。
+        """
         return module.search_music(meta, media_source=MediaSource.TheAudioDB, **kwargs)
 
     backend = SimpleNamespace(search_music=search, get_music_album=lambda identity: module.music_album(MediaSource.TheAudioDB, identity))

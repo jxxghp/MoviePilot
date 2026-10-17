@@ -1,3 +1,7 @@
+"""
+读取下载任务并写入工作流上下文。
+"""
+
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.download import DownloadTask
@@ -24,7 +28,9 @@ class FetchDownloadsAction(BaseAction):
     }
 
     def __init__(self, action_id: str) -> None:
-        """初始化当前动作独立的执行状态。"""
+        """
+        初始化当前动作独立的执行状态。
+        """
         super().__init__(action_id)
         self._downloads: list[DownloadTask] = []
 
@@ -34,7 +40,9 @@ class FetchDownloadsAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        """返回当前动作是否已达到完成条件。"""
+        """
+        返回当前动作是否已达到完成条件。
+        """
         return self.done
 
     def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:

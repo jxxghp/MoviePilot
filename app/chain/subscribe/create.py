@@ -1,4 +1,6 @@
-"""订阅创建与批量写入编排"""
+"""
+订阅创建与批量写入编排
+"""
 
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Dict, Optional, Tuple, cast
@@ -32,10 +34,14 @@ def _build_post_commit_callback(
     owner: Any,
     context: _SubscribePostCommitContext,
 ) -> Callable[[int], bool]:
-    """冻结同步订阅提交后的副作用上下文。"""
+    """
+    冻结同步订阅提交后的副作用上下文。
+    """
 
     def after_commit(subscribe_id: int) -> bool:
-        """把同步提交后的副作用委托给通知 owner。"""
+        """
+        把同步提交后的副作用委托给通知组件。
+        """
         return cast(bool, owner._SubscribeChain__post_subscribe_added(subscribe_id, context))
 
     return after_commit
@@ -45,24 +51,31 @@ def _build_async_post_commit_callback(
     owner: Any,
     context: _SubscribePostCommitContext,
 ) -> Callable[[int], Awaitable[bool]]:
-    """冻结异步订阅提交后的副作用上下文。"""
+    """
+    冻结异步订阅提交后的副作用上下文。
+    """
 
     async def after_commit(subscribe_id: int) -> bool:
-        """把异步提交后的副作用委托给通知 owner。"""
+        """
+        把异步提交后的副作用委托给通知组件。
+        """
         return cast(bool, await owner._SubscribeChain__async_post_subscribe_added(subscribe_id, context))
 
     return after_commit
 
 
 class SubscribeCreateOwner(_SubscribeOwnerBase):
-    """订阅创建与批量写入编排，作为 SubscribeChain 的单一职责实现 owner。"""
+    """
+    订阅创建与批量写入编排，作为 SubscribeChain 的单一职责组件。
+    """
 
     def _SubscribeChain__get_default_kwargs(self, mtype: MediaType, **kwargs: Any) -> dict[str, Any]:
         """
-        获取订阅默认配置
-        :param mtype: 媒体类型
-        :param key: 配置键
-        :return: 配置值
+        合并调用方选项与对应媒体类型的订阅默认配置。
+
+        :param mtype: 订阅的媒体类型，音乐会关闭电视剧整包洗版和 IMDb 搜索选项
+        :param kwargs: 调用方提供的质量、关键词、站点、目录和洗版等订阅选项
+        :return: 合并后的订阅选项字典，空值是否回退按各配置项的既有规则处理
         """
         defaults = {
             "quality": self._SubscribeChain__get_default_subscribe_config(mtype, "quality")
@@ -144,7 +157,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         media_id: Optional[str],
         options: Dict[str, Any],
     ) -> Tuple[Optional[_SubscribeCreateContext], Optional[str]]:
-        """规范订阅新增输入，并在任何识别 I/O 前拒绝不完整的显式媒体身份。"""
+        """
+        规范订阅新增输入，并在任何识别 I/O 前拒绝不完整的显式媒体身份。
+        """
         explicit_identity = media_source is not None or media_id is not None
         media_source, media_id = resolve_media_identity(
             media_source=media_source,
@@ -186,7 +201,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
 
     @staticmethod
     def _SubscribeChain__normalize_recognized_subscribe_media(context: _SubscribeCreateContext) -> None:
-        """保留非 TMDB 影视标题清洗与从标题补季号的历史行为。"""
+        """
+        保留非 TMDB 影视标题清洗与从标题补季号的历史行为。
+        """
         mediainfo = context.mediainfo
         if context.mtype == MediaType.MUSIC or not mediainfo or mediainfo.media_source == MediaSource.TMDB:
             return
@@ -199,7 +216,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
     def _SubscribeChain__tmdb_conversion_identity(
         context: _SubscribeCreateContext,
     ) -> Optional[Tuple[MediaSource, str]]:
-        """识别源为 TMDB 时，返回需要换成 TMDB 整剧身份的影视来源身份；其余情况返回空。"""
+        """
+        识别源为 TMDB 时，返回需要换成 TMDB 整剧身份的影视来源身份；其余情况返回空。
+        """
         mediainfo = context.mediainfo
         if not mediainfo or mediainfo.type not in (MediaType.MOVIE, MediaType.TV):
             return None
@@ -218,7 +237,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         tmdbinfo: Optional[Dict[str, Any]],
         converted: Optional[MediaInfo],
     ) -> None:
-        """转换成功才替换订阅目标；豆瓣季条目的季号来自标题或投影结果，整剧身份本身不带季。"""
+        """
+        转换成功才替换订阅目标；豆瓣季条目的季号来自标题或投影结果，整剧身份本身不带季。
+        """
         tmdb_id = tmdbinfo.get("id") if tmdbinfo else None
         if not tmdb_id or not converted:
             logger.warning(
@@ -234,7 +255,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         context.mediainfo = converted
 
     def _SubscribeChain__convert_subscribe_media_to_tmdb(self, context: _SubscribeCreateContext) -> None:
-        """同步把豆瓣、Bangumi 等影视身份换成 TMDB，和豆瓣想看、豆瓣榜单的订阅口径一致。
+        """
+        同步把豆瓣、Bangumi 等影视身份换成 TMDB，和豆瓣想看、豆瓣榜单的订阅口径一致。
 
         非 TMDB 来源把每一季当成独立条目，标题和年份都是季级的；若直接作为订阅主身份，
         下载记录与整理会按季标题生成独立剧集目录，媒体库里就会出现多部同名剧。
@@ -267,7 +289,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         self,
         context: _SubscribeCreateContext,
     ) -> None:
-        """异步版本的 TMDB 身份转换，与同步入口共享判定和替换规则。"""
+        """
+        异步版本的 TMDB 身份转换，与同步入口共享判定和替换规则。
+        """
         identity = self._SubscribeChain__tmdb_conversion_identity(context)
         mediainfo = context.mediainfo
         if not identity or mediainfo is None:
@@ -293,7 +317,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         self._SubscribeChain__apply_converted_subscribe_media(context, source, media_id, tmdbinfo, converted)
 
     def _SubscribeChain__recognize_subscribe_media(self, context: _SubscribeCreateContext) -> Optional[str]:
-        """同步识别订阅目标；显式身份失败时禁止按标题换成另一个媒体。"""
+        """
+        同步识别订阅目标；显式身份失败时禁止按标题换成另一个媒体。
+        """
         if context.media_source and context.media_id:
             context.mediainfo = MediaChain().recognize_media(
                 meta=context.metainfo,
@@ -322,7 +348,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         self,
         context: _SubscribeCreateContext,
     ) -> Optional[str]:
-        """异步识别订阅目标，并与同步入口共享相同的规范化和校验规则。"""
+        """
+        异步识别订阅目标，并与同步入口共享相同的规范化和校验规则。
+        """
         if context.media_source and context.media_id:
             context.mediainfo = await MediaChain().async_recognize_media(
                 meta=context.metainfo,
@@ -351,7 +379,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         self,
         context: _SubscribeCreateContext,
     ) -> Optional[str]:
-        """校验识别结果以及音乐订阅实体，返回兼容旧入口的错误文案。"""
+        """
+        校验识别结果以及音乐订阅实体，返回兼容旧入口的错误文案。
+        """
         if not context.mediainfo:
             logger.warning(
                 f"未识别到媒体信息，标题：{context.title}，媒体来源：{context.media_source}，"
@@ -369,7 +399,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         return cast(Optional[str], music_error)
 
     def _SubscribeChain__prepare_subscribe_episodes(self, context: _SubscribeCreateContext) -> Optional[str]:
-        """同步补齐电视剧季集信息，并保持外部集数刷新只能扩展创建目标。"""
+        """
+        同步补齐电视剧季集信息，并保持外部集数刷新只能扩展创建目标。
+        """
         mediainfo = context.mediainfo
         if mediainfo.type != MediaType.TV:
             context.season = None
@@ -411,7 +443,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         self,
         context: _SubscribeCreateContext,
     ) -> Optional[str]:
-        """异步补齐电视剧季集信息，并复用同步入口的结果校验和字段写入规则。"""
+        """
+        异步补齐电视剧季集信息，并复用同步入口的结果校验和字段写入规则。
+        """
         mediainfo = context.mediainfo
         if mediainfo.type != MediaType.TV:
             context.season = None
@@ -451,7 +485,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
 
     @staticmethod
     def _SubscribeChain__validate_subscribe_seasons(context: _SubscribeCreateContext) -> Optional[str]:
-        """校验补充识别结果是否仍包含创建电视剧订阅所需的季集信息。"""
+        """
+        校验补充识别结果是否仍包含创建电视剧订阅所需的季集信息。
+        """
         if not context.mediainfo:
             logger.error("媒体信息识别失败！")
             return "媒体信息识别失败"
@@ -466,7 +502,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         current_total_episode: int,
         total_episode: int,
     ) -> Optional[str]:
-        """写入创建场景最终集数，阻止外部刷新把可靠的当前集数向下覆盖。"""
+        """
+        写入创建场景最终集数，阻止外部刷新把可靠的当前集数向下覆盖。
+        """
         if current_total_episode and total_episode < current_total_episode:
             total_episode = current_total_episode
         if not total_episode:
@@ -477,12 +515,16 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
 
     @staticmethod
     def _SubscribeChain__fill_subscribe_lack_episode(context: _SubscribeCreateContext) -> None:
-        """未显式指定缺失集数时沿用总集数，保持旧创建默认值。"""
+        """
+        未显式指定缺失集数时沿用总集数，保持旧创建默认值。
+        """
         if not context.options.get("lack_episode"):
             context.options["lack_episode"] = context.options.get("total_episode")
 
     def _SubscribeChain__finalize_subscribe_create_context(self, context: _SubscribeCreateContext) -> None:
-        """同步补图并写入规范媒体身份和订阅默认配置。"""
+        """
+        同步补图并写入规范媒体身份和订阅默认配置。
+        """
         if context.mediainfo.type != MediaType.MUSIC:
             self.obtain_images(mediainfo=context.mediainfo)
         self._SubscribeChain__apply_subscribe_create_defaults(context)
@@ -491,13 +533,17 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         self,
         context: _SubscribeCreateContext,
     ) -> None:
-        """异步补图并写入规范媒体身份和订阅默认配置。"""
+        """
+        异步补图并写入规范媒体身份和订阅默认配置。
+        """
         if context.mediainfo.type != MediaType.MUSIC:
             await self.async_obtain_images(mediainfo=context.mediainfo)
         self._SubscribeChain__apply_subscribe_create_defaults(context)
 
     def _SubscribeChain__apply_subscribe_create_defaults(self, context: _SubscribeCreateContext) -> None:
-        """以最终识别结果覆盖身份字段，并补齐当前媒体类型的默认订阅参数。"""
+        """
+        以最终识别结果覆盖身份字段，并补齐当前媒体类型的默认订阅参数。
+        """
         context.media_source, context.media_id = resolve_media_identity(media=context.mediainfo)
         context.options.update(
             {
@@ -512,7 +558,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         context: _SubscribeCreateContext,
         notification: Optional[dict[str, Any]] = None,
     ) -> _SubscribePostCommitContext:
-        """从创建阶段状态冻结提交后副作用需要的最小快照。"""
+        """
+        从创建阶段状态冻结提交后副作用需要的最小快照。
+        """
         return _SubscribePostCommitContext(
             title=context.title,
             year=context.year,
@@ -530,7 +578,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         )
 
     def _SubscribeChain__persist_subscribe_create(self, context: _SubscribeCreateContext) -> Tuple[Optional[int], str]:
-        """同步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。"""
+        """
+        同步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。
+        """
         post_commit_context = self._SubscribeChain__subscribe_post_commit_context(
             context,
             self._SubscribeChain__build_subscribe_notification(context),
@@ -560,7 +610,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         self,
         context: _SubscribeCreateContext,
     ) -> Tuple[Optional[int], str]:
-        """异步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。"""
+        """
+        异步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。
+        """
         post_commit_context = self._SubscribeChain__subscribe_post_commit_context(
             context,
             self._SubscribeChain__build_subscribe_notification(context),
@@ -695,7 +747,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         media_id: Optional[str],
         options: Dict[str, Any],
     ) -> Tuple[Optional[_SubscribeCreateContext], Optional[str]]:
-        """执行异步新增的识别、季集补齐和默认配置准备，但不触发持久化。"""
+        """
+        执行异步新增的识别、季集补齐和默认配置准备，但不触发持久化。
+        """
         context, error = self._SubscribeChain__build_subscribe_create_context(
             title,
             year,
@@ -742,7 +796,9 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         media_id: Optional[str] = None,
         **kwargs: JsonData,
     ) -> Tuple[Optional[int], str]:
-        """先完整准备各季订阅，再交给共享事务批量写端口原子提交。"""
+        """
+        先完整准备各季订阅，再交给共享事务批量写端口原子提交。
+        """
         requests: list[SubscriptionCreateRequest] = []
         for season in seasons:
             context, error = await self._SubscribeChain__async_prepare_subscribe_create(

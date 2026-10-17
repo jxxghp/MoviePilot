@@ -36,7 +36,7 @@ other clients.
 
 ### `media.cache.clear`
 `DELETE /api/v1/tmdb/cache`; policy effect: `destructive_write`.
-Purpose: Clear the complete administrator-only TMDB recognition cache.
+Purpose: 清空仅管理员可访问的 TMDB 识别缓存。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
@@ -44,15 +44,15 @@ Identity scope: `admin`; required role: `system_admin`.
 
 ### `media.cache.delete`
 `DELETE /api/v1/tmdb/cache/{cache_key}`; policy effect: `destructive_write`.
-Purpose: Delete one administrator-only TMDB recognition-cache entry by exact key.
+Purpose: 按精确缓存键删除一条管理员可访问的 TMDB 识别缓存。
 Identity scope: `admin`; required role: `system_admin`.
-- `path_params`: `cache_key*` (string): Exact recognition-cache key returned by the corresponding recognition-cache get operation.
+- `path_params`: `cache_key*` (string): 对应识别缓存查询操作返回的精确缓存键。
 - `query`: none
 - `body`: none
 
 ### `media.cache.get`
 `GET /api/v1/tmdb/cache`; policy effect: `safe_read`.
-Purpose: Inspect the administrator-only TMDB recognition cache and summary counts.
+Purpose: 查看仅管理员可访问的 TMDB 识别缓存及统计数量。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
@@ -60,7 +60,7 @@ Identity scope: `admin`; required role: `system_admin`.
 
 ### `media.classification.fields`
 `GET /api/v1/media/classification/fields`; policy effect: `safe_read`.
-Purpose: Read the media-classification field catalog and source capabilities.
+Purpose: 读取媒体分类字段目录及来源能力。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
@@ -68,15 +68,15 @@ Identity scope: `bound_user`; required role: `user`.
 
 ### `media.classification.policy.get`
 `GET /api/v1/media/classification/policy`; policy effect: `safe_read`.
-Purpose: Read the active automatic media-classification policy.
+Purpose: 读取当前生效的自动媒体分类策略。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
-- `query`: `template` (string|null): Pass default to read the built-in media-classification policy template; omit it to read the active policy.
+- `query`: `template` (string|null): 读取内置分类策略模板时传入 default；省略则读取活动策略
 - `body`: none
 
 ### `media.classification.policy.history`
 `GET /api/v1/media/classification/history`; policy effect: `safe_read`.
-Purpose: Read the bounded history of published media-classification policies.
+Purpose: 读取已发布媒体分类策略的有界历史。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
@@ -84,147 +84,147 @@ Identity scope: `admin`; required role: `system_admin`.
 
 ### `media.classification.policy.impact`
 `POST /api/v1/media/classification/impact`; policy effect: `safe_read`.
-Purpose: Estimate how an unpublished media-classification policy changes bounded recent samples.
+Purpose: 使用有界近期样本估算尚未发布的分类策略产生的变化。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
-- `body`: `example_limit` (integer; default `20`; minimum `0.0`; maximum `50.0`): Maximum number of representative impact examples to return.; `expected_revision*` (integer; minimum `1.0`): Current revision from a preceding read, used to reject concurrent state changes.; `policy*` (ClassificationPolicy-Input): Complete or draft automatic media-classification policy.; `sample_limit` (integer; default `100`; minimum `1.0`; maximum `200.0`): Maximum number of recent records or samples to inspect for impact analysis.; `samples` (array<ClassificationFacts>): Explicit normalized fact samples used for classification impact analysis.
+- `body`: `example_limit` (integer; default `20`; minimum `0.0`; maximum `50.0`): 响应中最多返回的变化样本明细数量; `expected_revision*` (integer; minimum `1.0`): 本次影响分析使用的活动策略基线 revision; `policy*` (ClassificationPolicy-Input): 完整的自动媒体分类策略或策略草稿。; `sample_limit` (integer; default `100`; minimum `1.0`; maximum `200.0`): 近期历史或显式事实的最大比较数量; `samples` (array<ClassificationFacts>): 可选显式事实；为空时使用近期下载和整理历史样本
 
 ### `media.classification.policy.preview`
 `POST /api/v1/media/classification/preview`; policy effect: `safe_read`.
-Purpose: Preview automatic media classification for selected media or normalized facts.
+Purpose: 为选定媒体或规范化事实预览自动分类结果。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
-- `body`: `input*` (ClassificationFactsPreviewInput|ClassificationMediaPreviewInput): Media or normalized-facts input used for a classification preview.; `policy` (ClassificationPolicy-Input|null): Complete or draft automatic media-classification policy.
+- `body`: `input*` (ClassificationFactsPreviewInput|ClassificationMediaPreviewInput): 可判别的预览输入; `policy` (ClassificationPolicy-Input|null): 可选未发布策略；省略时使用当前活动策略
 
 ### `media.classification.policy.rollback`
 `POST /api/v1/media/classification/rollback/{revision}`; policy effect: `reversible_write`.
-Purpose: Publish a selected historical media-classification policy as a new revision.
+Purpose: 把选定历史媒体分类策略作为新修订发布。
 Identity scope: `admin`; required role: `system_admin`.
-- `path_params`: `revision*` (integer): Published classification policy revision or expected revision number.
+- `path_params`: `revision*` (integer): 已发布分类策略修订号或预期修订号。
 - `query`: none
-- `body`: `expected_revision*` (integer; minimum `1.0`): Current revision from a preceding read, used to reject concurrent state changes.
+- `body`: `expected_revision*` (integer; minimum `1.0`): 客户端读取策略时的活动 revision
 
 ### `media.classification.policy.update`
 `PUT /api/v1/media/classification/policy`; policy effect: `reversible_write`.
-Purpose: Validate and publish a complete automatic media-classification policy.
+Purpose: 校验并发布完整的自动媒体分类策略。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
-- `body`: `expected_revision*` (integer; minimum `0.0`): Current revision from a preceding read, used to reject concurrent state changes.; `policy*` (ClassificationPolicy-Input): Complete or draft automatic media-classification policy.
+- `body`: `expected_revision*` (integer; minimum `0.0`): 客户端读取策略时的活动 revision; `policy*` (ClassificationPolicy-Input): 完整的自动媒体分类策略或策略草稿。
 
 ### `media.classification.policy.validate`
 `POST /api/v1/media/classification/validate`; policy effect: `safe_read`.
-Purpose: Validate an unpublished automatic media-classification policy without saving it.
+Purpose: 校验尚未发布的自动媒体分类策略，不保存。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
-- `body`: `policy*` (ClassificationPolicy-Input): Complete or draft automatic media-classification policy.
+- `body`: `policy*` (ClassificationPolicy-Input): 完整的自动媒体分类策略或策略草稿。
 
 ### `media.detail`
 `GET /api/v1/media/{media_id}`; policy effect: `safe_read`.
-Purpose: Read canonical media details from one selected metadata source.
+Purpose: 从选定元数据来源读取规范媒体详情。
 Identity scope: `public`; required role: `user`.
-- `path_params`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `query`: `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `type_name*` (string): Explicit media type name used when source IDs alone are ambiguous.
+- `path_params`: `media_id*` (string): 来源原生媒体标识，始终与搜索返回的精确 media_source 配对。
+- `query`: `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `type_name*` (string): 仅凭来源标识无法区分时使用的显式媒体类型名。
 - `body`: none
 
 ### `media.episode_group.seasons`
 `GET /api/v1/media/group/seasons/{episode_group}`; policy effect: `safe_read`.
-Purpose: List seasons defined by one exact TMDB episode-group identity.
+Purpose: 列出精确 TMDB 剧集组标识所定义的季。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
-- `path_params`: `episode_group*` (string): TMDB episode-group identifier used for alternate episode ordering.
-- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
+- `path_params`: `episode_group*` (string): 用于其他剧集排序方式的 TMDB 剧集组标识。
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。
 - `body`: none
 
 ### `media.episode_groups`
 `GET /api/v1/media/groups/{tmdbid}`; policy effect: `safe_read`.
-Purpose: List alternate TMDB episode groups available for one TV media identity.
+Purpose: 列出指定电视剧在 TMDB 中可用的其他剧集组。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
-- `path_params`: `tmdbid*` (integer): TMDB media ID returned by media search or detail.
-- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
+- `path_params`: `tmdbid*` (integer): 媒体搜索或详情返回的 TMDB 媒体标识。
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。
 - `body`: none
 
 ### `media.episode_schedule`
 `GET /api/v1/tmdb/{tmdbid}/{season}`; policy effect: `safe_read`.
-Purpose: Read TMDB episode release information for one season.
+Purpose: 读取 TMDB 中指定季的剧集上映信息。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
-- `path_params`: `season*` (integer): Season number used by the media, search, subscription, or transfer operation.; `tmdbid*` (integer): TMDB media ID returned by media search or detail.
-- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
+- `path_params`: `season*` (integer): 媒体、搜索、订阅或整理操作使用的季号。; `tmdbid*` (integer): 媒体搜索或详情返回的 TMDB 媒体标识。
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `episode_group` (string|null): 用于其他剧集排序方式的 TMDB 剧集组标识。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。
 - `body`: none
 
 ### `media.person.credits`
 `GET /api/v1/{source}/person/credits/{person_id}`; policy effect: `safe_read`.
-Purpose: Read one person's credits from the selected metadata source.
+Purpose: 读取选定元数据来源中指定人物的作品。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
-- `path_params`: `person_id*` (integer): Source-native person ID.; `source*` (string(douban,tmdb,bangumi,anilist)): Metadata source that owns the person ID.
-- `query`: `count` (integer; default `20`; minimum `1`; maximum `50`): Page size used by Bangumi and AniList; other sources ignore it.; `page` (integer; default `1`; minimum `1`): One-based result page number.
+- `path_params`: `person_id*` (integer): 元数据来源分配的人物标识。; `source*` (string(douban,tmdb,bangumi,anilist)): 人物标识所属的元数据来源。
+- `query`: `count` (integer; default `20`; minimum `1`; maximum `50`): Bangumi 和 AniList 使用的每页条数；其他来源忽略此值。; `page` (integer; default `1`; minimum `1`): 从 1 开始的结果页码。
 - `body`: none
 
 ### `media.person.search`
 `GET /api/v1/media/search`; policy effect: `safe_read`.
-Purpose: Search people and music artists across selected metadata sources.
+Purpose: 在选定元数据来源中搜索人物和音乐艺术家。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
-- `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album,artist)|null): Music identity level: recording, album, or artist where supported.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type*` (string=person): Literal person, selecting person search instead of media search.
+- `query`: `count` (integer; default `8`): 当前页最多返回的记录数。; `media_source` (array<MediaSource>; default `[]`): 元数据来源标识，保留与 media_id 一同返回的精确值。; `music_type` (string(recording,album,artist)|null): 音乐身份层级：按操作支持范围选择 recording、album 或 artist。; `page` (integer; default `1`): 从 1 开始的结果页码。; `title*` (string): 操作使用的媒体、种子、订阅或历史标题。; `type*` (string=person): 固定为 person，表示搜索人物。
 - `body`: none
 
 ### `media.recognize`
 `GET /api/v1/media/recognize`; policy effect: `safe_read`.
-Purpose: Recognize media identity from a title, subtitle, or custom rule context.
+Purpose: 根据标题、副标题或自定义规则上下文识别媒体身份。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
-- `query`: `custom_words` (string|null): Custom recognition or rename words applied to this media workflow.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `subtitle` (string|null): Optional subtitle text used together with title during media recognition.; `title*` (string): Media, torrent, subscription, or history title used by the operation.
+- `query`: `custom_words` (string|null): 本次媒体处理使用的自定义识别或重命名词。; `media_source` (MediaSource|null): 元数据来源标识，保留与 media_id 一同返回的精确值。; `subtitle` (string|null): 媒体识别时与标题配合使用的可选副标题。; `title*` (string): 操作使用的媒体、种子、订阅或历史标题。
 - `body`: none
 - **Agent note:** Recognition returns a context containing `media_info`, not a candidate list. A failed match still returns parsed `meta_info` with the applied recognition words, so treat recognition as successful only when `media_info` is present. Check its title and media type against the user's request. If recognition is missing or ambiguous, use `media.search` and compare candidates by title, type, and year. Preserve the selected result's exact `media_source` + `media_id` for `search.torrents`.
 
 ### `media.recognize_file`
 `GET /api/v1/media/recognize_file`; policy effect: `safe_read`.
-Purpose: Recognize canonical media identity from one exact filename and optional path context.
+Purpose: 根据精确文件名和可选路径上下文识别规范媒体身份。
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
-- `query`: `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `path*` (string): Storage or history path represented by this record.
+- `query`: `media_source` (MediaSource|null): 元数据来源标识，保留与 media_id 一同返回的精确值。; `path*` (string): 当前记录表示的存储路径或历史路径。
 - `body`: none
 
 ### `media.scrape`
 `POST /api/v1/media/scrape/{storage}`; policy effect: `external_side_effect`.
-Purpose: Generate or refresh metadata for one storage item.
+Purpose: 为一个存储项目生成或刷新元数据。
 Identity scope: `admin`; required role: `system_admin`.
-- `path_params`: `storage*` (string|null): Configured storage name or storage type used by the operation.
-- `query`: `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `type_name` (MediaType|null): Explicit media type name used when source IDs alone are ambiguous.
-- `body`: `basename` (string|null): Base filename without its parent path.; `children` (array<FileItem-Input>|null): Child storage items nested below this item.; `drive_id` (string|null): Provider-native storage drive identifier.; `extension` (string|null): Filename extension, including or excluding the leading dot as returned by storage.; `fileid` (string|null): Provider-native storage item identifier.; `modify_time` (number|null): Storage item modification timestamp.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `parent_fileid` (string|null): Provider-native identifier of the parent storage directory.; `path` (string|null; default `/`): Storage or history path represented by this record.; `pickcode` (string|null): 115 storage pickcode associated with the item.; `size` (integer|null): File or torrent size in bytes.; `storage` (string|null; default `local`): Configured storage name or storage type used by the operation.; `thumbnail` (string|null): Thumbnail URL returned by the storage provider.; `type` (string|null): MoviePilot media or storage item type required by the selected operation.; `url` (string|null): Site, storage, or torrent URL represented by this field.
+- `path_params`: `storage*` (string|null): 操作使用的已配置存储名称或存储类型。
+- `query`: `episode_group` (string|null): TMDB 剧集组编号，用于按指定季集顺序识别电视剧; `media_id` (string|null): 来源原生媒体标识，始终与搜索返回的精确 media_source 配对。; `media_source` (MediaSource|null): 元数据来源标识，保留与 media_id 一同返回的精确值。; `music_type` (string|null): 音乐身份层级：按操作支持范围选择 recording、album 或 artist。; `type_name` (MediaType|null): 仅凭来源标识无法区分时使用的显式媒体类型名。
+- `body`: `basename` (string|null): 不含扩展名的文件基本名称; `children` (array<FileItem-Input>|null): 子节点; `drive_id` (string|null): 云盘驱动器标识; `extension` (string|null): 文件后缀; `fileid` (string|null): 存储服务分配的文件标识; `modify_time` (number|null): 文件修改时间的 Unix 时间戳; `name` (string|null): 文件名; `parent_fileid` (string|null): 父ID; `path` (string|null; default `/`): 文件路径; `pickcode` (string|null): 115 文件下载提取码; `size` (integer|null): 文件大小; `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储; `thumbnail` (string|null): 缩略图; `type` (string|null): 条目类型，dir 表示目录，file 表示文件; `url` (string|null): 访问地址
 
 ### `media.search`
 `GET /api/v1/media/search`; policy effect: `safe_read`.
-Purpose: Search canonical media across selected metadata sources.
+Purpose: 在选定元数据来源中搜索规范媒体。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
-- `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album,artist)|null): Music identity level: recording, album, or artist where supported.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type` (string|null; default `media`): MoviePilot media or storage item type required by the selected operation.
+- `query`: `count` (integer; default `8`): 当前页最多返回的记录数。; `media_source` (array<MediaSource>; default `[]`): 元数据来源标识，保留与 media_id 一同返回的精确值。; `music_type` (string(recording,album,artist)|null): 音乐身份层级：按操作支持范围选择 recording、album 或 artist。; `page` (integer; default `1`): 从 1 开始的结果页码。; `title*` (string): 操作使用的媒体、种子、订阅或历史标题。; `type` (string|null; default `media`): 所选操作要求的媒体或存储项目类型。
 - `body`: none
 
 ### `media.seasons`
 `GET /api/v1/media/seasons`; policy effect: `safe_read`.
-Purpose: List seasons for one exact media identity or a title-and-year fallback.
+Purpose: 按精确媒体身份读取季列表，或回退到标题与年份查询。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
-- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `season` (integer): Season number used by the media, search, subscription, or transfer operation.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `year` (string): Release or premiere year used to disambiguate the media title.
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `media_id` (string|null): 来源原生媒体标识，始终与搜索返回的精确 media_source 配对。; `media_source` (MediaSource|null): 元数据来源标识，保留与 media_id 一同返回的精确值。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。; `season` (integer): 媒体、搜索、订阅或整理操作使用的季号。; `title` (string|null): 操作使用的媒体、种子、订阅或历史标题。; `year` (string): 用于区分同名媒体的发行或首映年份。
 - `body`: none
 
 ### `media.sources`
 `GET /api/v1/media/source`; policy effect: `safe_read`.
-Purpose: List metadata sources currently registered for MoviePilot media operations.
+Purpose: 列出当前已登记的媒体元数据来源。
 Identity scope: `bound_user`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
-- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。
 - `body`: none
 
 ## Body Models
@@ -232,157 +232,157 @@ Identity scope: `bound_user`; required role: `user`.
 This category document is self-contained: the shared models below are included so the Agent does not need a second Skill document before calling the API.
 
 ### `ClassificationFacts`
-Normalized media facts evaluated by the automatic classification policy.
-- `extensions` (object): Additional normalized classification facts supplied by extensions.
-- `field_sources` (object): Source provenance for normalized classification facts.
-- `identity*` (ClassificationIdentityFacts): Stable source-native media identity used by classification facts.
-- `media*` (ClassificationMediaFacts): Media metadata input used for a classification preview.
-- `music` (ClassificationMusicFacts|null): Music-specific normalized facts used by classification rules.
+自动分类策略求值的规范化媒体事实。
+- `extensions` (object): 按数据源命名空间隔离的插件扩展事实
+- `field_sources` (object): 跨来源补充事实到实际 provider 的映射
+- `identity*` (ClassificationIdentityFacts): 分类事实使用的稳定来源原生媒体身份。
+- `media*` (ClassificationMediaFacts): 分类预览使用的媒体元数据输入。
+- `music` (ClassificationMusicFacts|null): 音乐专用事实
 
 ### `ClassificationFactsPreviewInput`
-Normalized facts supplied directly for a classification preview.
-- `facts*` (ClassificationFacts): Normalized media facts to evaluate during a classification preview.
-- `kind` (string=facts; default `facts`): Classification rule or preview-input kind selected by the request.
+直接提供给分类预览的规范化事实。
+- `facts*` (ClassificationFacts): 分类预览时求值的规范化媒体事实。
+- `kind` (string=facts; default `facts`): 预览输入类型
 
 ### `ClassificationIdentityFacts`
-Stable source-native identity used by classification evaluation.
-- `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `media_source*` (string): Metadata source identifier. Preserve the exact value returned with media_id.
+分类求值使用的稳定来源原生身份。
+- `media_id*` (string): 当前数据源原生媒体 ID
+- `media_source*` (string): 当前主身份数据源
 
 ### `ClassificationMediaFacts`
-Normalized movie, TV, or shared media facts used by classification rules.
-- `adult` (boolean|null): Whether the media is marked as adult content.
-- `companies` (array<string>|null): Production companies or studios associated with the media.
-- `content_rating` (string|null): Content rating assigned to the media.
-- `countries` (array<string>|null): Normalized country or region codes used by classification rules.
-- `genre_keys` (array<string>|null): Normalized MoviePilot genre keys used by classification rules.
-- `genre_names` (array<string>|null): Source-provided genre names used as classification facts.
-- `language` (string|null): Normalized media language code used by classification rules.
-- `networks` (array<string>|null): Television networks or streaming platforms associated with the media.
-- `runtime` (integer|null): Persisted workflow runtime metadata used for safe resume.
-- `title` (string|null): Media, torrent, subscription, or history title used by the operation.
-- `type*` (string): MoviePilot media or storage item type required by the selected operation.
-- `year` (integer|null): Release or premiere year used to disambiguate the media title.
+分类规则使用的规范化电影、电视剧或共用媒体事实。
+- `adult` (boolean|null): 是否为成人内容
+- `companies` (array<string>|null): 出品公司或工作室名称
+- `content_rating` (string|null): 内容分级
+- `countries` (array<string>|null): 标准国家或地区代码
+- `genre_keys` (array<string>|null): MoviePilot 规范化类型键
+- `genre_names` (array<string>|null): 数据源提供的类型名称
+- `language` (string|null): 标准语言代码
+- `networks` (array<string>|null): 电视台或播出平台名称
+- `runtime` (integer|null): 影视时长，单位为分钟
+- `title` (string|null): 标准媒体标题
+- `type*` (string): 标准媒体类型
+- `year` (integer|null): 标准发行或首播年份
 
 ### `ClassificationMediaPreviewInput`
-A selected media search result supplied for classification preview.
-- `kind` (string=media; default `media`): Classification rule or preview-input kind selected by the request.
-- `media*` (object): Media metadata input used for a classification preview.
+提供给分类预览的选定媒体搜索结果。
+- `kind` (string=media; default `media`): 预览输入类型
+- `media*` (object): 从媒体搜索结果选择的媒体信息
 
 ### `ClassificationMusicFacts`
-Music-specific facts used by automatic classification rules.
-- `album_type` (string|null): Music album or release-group type used by classification rules.
-- `artist_country` (string|null): Country or region associated with the music artist.
-- `artists` (array<string>|null): Music artist names associated with the classified entity.
-- `entity_type` (string|null): Music entity type used by classification rules.
-- `genres` (array<string>|null): Normalized music genre values used by classification rules.
-- `release_status` (string|null): Music release status used by classification rules.
-- `secondary_types` (array<string>|null): Secondary music release-group types used by classification rules.
-- `tags` (array<string>|null): Comma-separated Douban Music category tags; use only with a Douban Music exploration source.
+自动分类规则使用的音乐专用事实。
+- `album_type` (string|null): 专辑主类型
+- `artist_country` (string|null): 艺术家国家或地区
+- `artists` (array<string>|null): 艺术家名称
+- `entity_type` (string|null): 音乐实体类型
+- `genres` (array<string>|null): 标准化音乐流派
+- `release_status` (string|null): 发行状态
+- `secondary_types` (array<string>|null): 专辑副类型
+- `tags` (array<string>|null): 数据源音乐标签
 
 ### `ClassificationPolicy-Input`
-Complete versioned automatic media-classification policy.
-- `categories` (array<ClassificationCategory>): Complete ordered media-category definitions in the classification policy.
-- `enrichment_mode` (string(primary_only,enrich_missing); default `primary_only`): Metadata enrichment mode used to populate classification facts.
-- `fallbacks` (object): Fallback category or label actions used when no classification rule matches.
-- `field_aliases` (object): Optional aliases mapping source-specific fields to normalized classification fields.
-- `mode` (string=first_match; default `first_match`): Operation mode; music.explore accepts chart or fresh, while transfer history records move, copy, link, or softlink.
-- `revision` (integer; default `0`; minimum `0.0`): Published classification policy revision or expected revision number.
-- `rules` (array<ClassificationRule-Input>): Ordered classification rules evaluated from highest priority to lowest.
-- `schema_version` (integer=2; default `2`): Classification policy schema version expected by the server.
-- `updated_at` (string|null): Timestamp when the persisted object or execution state was last updated.
+完整且带版本的自动媒体分类策略。
+- `categories` (array<ClassificationCategory>): 稳定分类定义列表
+- `enrichment_mode` (string(primary_only,enrich_missing); default `primary_only`): 缺失标准事实的跨来源补充模式
+- `fallbacks` (object): 各媒体类型的兜底分类 ID
+- `field_aliases` (object): 字段值别名到规范值的映射
+- `mode` (string=first_match; default `first_match`): 主分类规则求值模式
+- `revision` (integer; default `0`; minimum `0.0`): 已发布策略修订号
+- `rules` (array<ClassificationRule-Input>): 全局有序规则列表
+- `schema_version` (integer=2; default `2`): 分类策略结构版本
+- `updated_at` (string|null): 策略最后发布时间
 
 ### `FileItem-Input`
-One file or directory returned by a configured storage provider.
-- `basename` (string|null): Base filename without its parent path.
-- `children` (array<FileItem-Input>|null): Child storage items nested below this item.
-- `drive_id` (string|null): Provider-native storage drive identifier.
-- `extension` (string|null): Filename extension, including or excluding the leading dot as returned by storage.
-- `fileid` (string|null): Provider-native storage item identifier.
-- `modify_time` (number|null): Storage item modification timestamp.
-- `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.
-- `parent_fileid` (string|null): Provider-native identifier of the parent storage directory.
-- `path` (string|null; default `/`): Storage or history path represented by this record.
-- `pickcode` (string|null): 115 storage pickcode associated with the item.
-- `size` (integer|null): File or torrent size in bytes.
-- `storage` (string|null; default `local`): Configured storage name or storage type used by the operation.
-- `thumbnail` (string|null): Thumbnail URL returned by the storage provider.
-- `type` (string|null): MoviePilot media or storage item type required by the selected operation.
-- `url` (string|null): Site, storage, or torrent URL represented by this field.
+已配置存储提供方返回的一个文件或目录。
+- `basename` (string|null): 不含扩展名的文件基本名称
+- `children` (array<FileItem-Input>|null): 子节点
+- `drive_id` (string|null): 云盘驱动器标识
+- `extension` (string|null): 文件后缀
+- `fileid` (string|null): 存储服务分配的文件标识
+- `modify_time` (number|null): 文件修改时间的 Unix 时间戳
+- `name` (string|null): 文件名
+- `parent_fileid` (string|null): 父ID
+- `path` (string|null; default `/`): 文件路径
+- `pickcode` (string|null): 115 文件下载提取码
+- `size` (integer|null): 文件大小
+- `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储
+- `thumbnail` (string|null): 缩略图
+- `type` (string|null): 条目类型，dir 表示目录，file 表示文件
+- `url` (string|null): 访问地址
 
 ### `JsonData-Input`
-Arbitrary JSON-compatible auxiliary data.
+兼容 JSON 的任意辅助数据。
 This runtime model has no directly writable fields.
 
 ### `MediaSource`
-Canonical metadata source identifier paired with a source-native media ID.
+与来源原生媒体标识配对的规范元数据来源标识。
 This runtime model has no directly writable fields.
 
 ### `MediaType`
-MoviePilot media type.
+MoviePilot 媒体类型。
 This runtime model has no directly writable fields.
 
 ### `SubscriptionExecutionStatus`
-Subscription refresh execution status and progress summary.
-- `batch_id` (string|null): Stable subscription search batch identifier.
-- `can_cancel` (boolean; default `False`): Whether the current subscription execution can be cancelled.
-- `current_site_id` (integer|null): Configured site ID currently handling the subscription execution.
-- `error` (string|null): Human-readable workflow, provider, or execution error message.
-- `next_run_at` (string|null): Next scheduled subscription search time. Null when no future execution is planned.
-- `phase*` (string): Current phase of a subscription execution.
-- `source` (string|null): Exact metadata or recommendation source selected by the operation.
-- `state*` (string): Current site, subscription, marketplace, or transfer state filter.
-- `task_id` (string|null): Stable durable transfer task ID returned by transfer.manual_reviews.
-- `updated_at*` (string): Timestamp when the persisted object or execution state was last updated.
+订阅刷新执行状态和进度摘要。
+- `batch_id` (string|null): 所属批次标识
+- `can_cancel` (boolean; default `False`): 当前任务是否允许取消
+- `current_site_id` (integer|null): 正在处理的站点标识
+- `error` (string|null): 错误摘要
+- `next_run_at` (string|null): 下次计划执行时间
+- `phase*` (string): 当前执行阶段
+- `source` (string|null): 触发本轮订阅执行的入口或来源
+- `state*` (string): 当前业务状态
+- `task_id` (string|null): 任务标识
+- `updated_at*` (string): 更新时间
 
 ### `TorrentInfo`
-One torrent candidate returned by MoviePilot search.
-- `category` (string|null): MoviePilot media category or filter-group category, depending on the operation.
-- `date_elapsed` (string|null): Human-readable age of the torrent publication date.
-- `description` (string|null): Human-readable media, torrent, or subscription description.
-- `downloadvolumefactor` (number|null): Torrent download-volume multiplier reported by the site.
-- `enclosure` (string|null): Torrent download URL or enclosure supplied by the indexer result.
-- `freedate` (string|null): Torrent freeleech expiration timestamp reported by the site.
-- `freedate_diff` (string|null): Seconds remaining until the torrent freeleech period ends.
-- `grabs` (integer|null; default `0`): Number of completed downloads reported for the torrent.
-- `hit_and_run` (boolean|null; default `False`): Whether the torrent is subject to hit-and-run requirements.
-- `labels` (array<string>|null): Labels attached to the media, classification result, or torrent result.
-- `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.
-- `page_url` (string|null): Public details page for the torrent result.
-- `peers` (integer|null; default `0`): Number of downloading peers reported for the torrent.
-- `pri_order` (integer|null; default `0`): Indexer priority order assigned to the torrent result.
-- `pubdate` (string|null): Torrent publication timestamp.
-- `seeders` (integer|null; default `0`): Minimum seeder expression for a filter rule, or the torrent's seeder count.
-- `site` (integer|null): Source site identifier associated with the torrent result.
-- `site_cookie` (string|null): Site cookie bundled with the torrent result. Treat this value as a secret.
-- `site_downloader` (string|null): Downloader instance selected by the source site.
-- `site_name` (string|null): Human-readable source site name.
-- `site_order` (integer|null; default `0`): Source site's configured search order.
-- `site_proxy` (boolean|null; default `False`): Whether the torrent's source site uses the configured proxy.
-- `site_ua` (string|null): User-Agent associated with the source site.
-- `size` (number|null; default `0.0`): File or torrent size in bytes.
-- `title` (string|null): Media, torrent, subscription, or history title used by the operation.
-- `uploadvolumefactor` (number|null): Torrent upload-volume multiplier reported by the site.
-- `volume_factor` (string|null): Combined upload/download volume-factor label shown for the torrent.
+搜索返回的一个候选种子。
+- `category` (string|null): 种子分类 电影/电视剧/音乐
+- `date_elapsed` (string|null): 已过时间
+- `description` (string|null): 种子副标题
+- `downloadvolumefactor` (number|null): 下载因子
+- `enclosure` (string|null): 种子链接
+- `freedate` (string|null): 免费截止时间
+- `freedate_diff` (string|null): 剩余免费时间
+- `grabs` (integer|null; default `0`): 完成者
+- `hit_and_run` (boolean|null; default `False`): 种子是否存在下载后做种义务
+- `labels` (array<string>|null): 种子标签
+- `media_id` (string|null): 数据源原生 ID
+- `media_source` (MediaSource|null): 种子页面声明的媒体身份
+- `page_url` (string|null): 详情页面
+- `peers` (integer|null; default `0`): 下载者
+- `pri_order` (integer|null; default `0`): 种子优先级
+- `pubdate` (string|null): 发布时间
+- `seeders` (integer|null; default `0`): 做种者
+- `site` (integer|null): 站点ID
+- `site_cookie` (string|null): 站点Cookie
+- `site_downloader` (string|null): 站点下载器
+- `site_name` (string|null): 站点名称
+- `site_order` (integer|null; default `0`): 站点优先级
+- `site_proxy` (boolean|null; default `False`): 站点是否使用代理
+- `site_ua` (string|null): 站点UA
+- `size` (number|null; default `0.0`): 种子大小
+- `title` (string|null): 种子名称
+- `uploadvolumefactor` (number|null): 上传因子
+- `volume_factor` (string|null): 促销
 
 ### `WorkflowExecutionConfig`
-Workflow concurrency, join, branch, and failure policies.
-- `max_workers` (integer|null): Maximum concurrent workflow actions allowed by the execution configuration.
+工作流并发、汇合、分支和失败策略。
+- `max_workers` (integer|null): 最大并发动作数
 
 ### `WorkflowExecutionState-Input`
-Persisted resumable workflow execution state.
-- `errors` (object): Workflow execution errors keyed or ordered by action identity.
-- `nodes` (object): Persisted workflow node runtime states keyed by action identity.
-- `outputs` (object): Named output mappings produced by this workflow action.
-- `runtime` (WorkflowRuntimeState): Persisted workflow runtime metadata used for safe resume.
-- `version` (integer; default `1`): Plugin release or schema version selected by the operation.
+可恢复的持久化工作流执行状态。
+- `errors` (object): 按动作标识保存的执行错误
+- `nodes` (object): 按动作标识组织的持久化执行快照
+- `outputs` (object): 按动作标识保存的输出数据
+- `runtime` (WorkflowRuntimeState): 用于安全恢复的持久化工作流运行时元数据。
+- `version` (integer; default `1`): 执行快照的数据结构版本
 
 ### `WorkflowRuntimeState`
-Complete persisted workflow runtime and progress state.
-- `attempts` (object): Attempt counters keyed by workflow node or operation identity.
-- `errors` (object): Workflow execution errors keyed or ordered by action identity.
-- `finished_actions` (integer; default `0`): Workflow action IDs already completed in the persisted execution state.
-- `node_states` (object): Persisted runtime states keyed by workflow node identity.
-- `progress` (integer; default `0`): Current numeric or structured workflow execution progress.
-- `running_tasks` (integer; default `0`): Workflow task IDs currently executing.
+完整的持久化工作流运行和进度状态。
+- `attempts` (object): 按动作标识记录的执行尝试次数
+- `errors` (object): 按动作标识组织的执行错误
+- `finished_actions` (integer; default `0`): 已完成的工作流动作数量
+- `node_states` (object): 按动作标识组织的运行状态
+- `progress` (integer; default `0`): 当前完成百分比
+- `running_tasks` (integer; default `0`): 当前运行中的工作流任务数量

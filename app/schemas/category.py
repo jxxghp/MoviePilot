@@ -1,3 +1,7 @@
+"""
+媒体分类策略、分类事实、规则预览及发布结果的数据结构。
+"""
+
 from datetime import datetime
 from typing import Dict, Literal, Optional, TypeAlias, Union
 
@@ -8,50 +12,49 @@ from app.schemas.common import JsonData
 
 class CategoryRule(BaseModel):
     """
-    分类规则详情
+    分类规则详情。
     """
 
-    # 内容类型
-    genre_ids: Optional[str] = None
-    # 语种
-    original_language: Optional[str] = None
-    # 国家或地区（电视剧）
-    origin_country: Optional[str] = None
-    # 国家或地区（电影）
-    production_countries: Optional[str] = None
-    # 发行年份
-    release_year: Optional[str] = None
+    genre_ids: Optional[str] = Field(default=None, description="内容类型")
+    original_language: Optional[str] = Field(default=None, description="语种")
+    origin_country: Optional[str] = Field(default=None, description="国家或地区（电视剧）")
+    production_countries: Optional[str] = Field(default=None, description="国家或地区（电影）")
+    release_year: Optional[str] = Field(default=None, description="发行年份")
     # 允许接收其他动态字段
     model_config = ConfigDict(extra="allow")
 
 
 class CategoryConfig(BaseModel):
     """
-    分类策略配置
+    分类策略配置。
     """
 
-    # 电影分类策略
-    movie: Optional[Dict[str, Optional[CategoryRule]]] = Field(default_factory=dict)
-    # 电视剧分类策略
-    tv: Optional[Dict[str, Optional[CategoryRule]]] = Field(default_factory=dict)
+    movie: Optional[Dict[str, Optional[CategoryRule]]] = Field(default_factory=dict, description="电影分类策略")
+    tv: Optional[Dict[str, Optional[CategoryRule]]] = Field(default_factory=dict, description="电视剧分类策略")
 
 
 class MediaCategoryMap(RootModel[Dict[str, list[str]]]):
-    """媒体类型与自动分类名称列表的映射。"""
+    """
+    媒体类型与自动分类名称列表的映射。
+    """
 
 
 ClassificationMediaType: TypeAlias = Literal["电影", "电视剧", "音乐"]
-"""分类体系支持的媒体类型。"""
-
+"""
+分类体系支持的媒体类型。
+"""
 ClassificationRuleKind: TypeAlias = Literal["category", "label"]
-"""分类规则的输出类型。"""
-
+"""
+分类规则的输出类型。
+"""
 ClassificationPolicyMode: TypeAlias = Literal["first_match"]
-"""主分类规则的求值模式。"""
-
+"""
+主分类规则的求值模式。
+"""
 ClassificationEnrichmentMode: TypeAlias = Literal["primary_only", "enrich_missing"]
-"""分类事实是否允许通过其它数据源补充缺失标准字段。"""
-
+"""
+分类事实是否允许通过其它数据源补充缺失标准字段。
+"""
 ClassificationSourceSupport: TypeAlias = Literal[
     "native",
     "derived",
@@ -59,8 +62,9 @@ ClassificationSourceSupport: TypeAlias = Literal[
     "extension",
     "unavailable",
 ]
-"""数据源对单个分类字段的支持等级。"""
-
+"""
+数据源对单个分类字段的支持等级。
+"""
 ClassificationOperator: TypeAlias = Literal[
     "equals",
     "not_equals",
@@ -82,14 +86,17 @@ ClassificationOperator: TypeAlias = Literal[
     "exists",
     "not_exists",
 ]
-"""条件叶子可声明的操作符。"""
-
+"""
+条件叶子可声明的操作符。
+"""
 ClassificationFactScalar: TypeAlias = Union[str, int, float, bool, None]
-"""分类事实允许的 JSON 标量。"""
-
+"""
+分类事实允许的 JSON 标量。
+"""
 ClassificationFactValue: TypeAlias = Union[ClassificationFactScalar, list[ClassificationFactScalar]]
-"""分类事实和条件值允许的标量或标量列表。"""
-
+"""
+分类事实和条件值允许的标量或标量列表。
+"""
 ClassificationFieldValueType: TypeAlias = Literal[
     "string",
     "enum",
@@ -99,17 +106,22 @@ ClassificationFieldValueType: TypeAlias = Literal[
     "string_list",
     "boolean",
 ]
-"""字段目录支持的有限输入控件和值语义类型。"""
-
-
+"""
+字段目录支持的有限输入控件和值语义类型。
+"""
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class _ClassificationModel(BaseModel):  # type: ignore[misc]
-    """分类新契约的严格字段基类，避免静默吞掉前端字段拼写错误。"""
+    """
+    分类新契约的严格字段基类，避免静默吞掉前端字段拼写错误。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
 
 class ClassificationCategory(_ClassificationModel):
-    """稳定分类定义，ID 用于引用，路径用于生成媒体库相对目录。"""
+    """
+    稳定分类定义，ID 用于引用，路径用于生成媒体库相对目录。
+    """
 
     id: str = Field(description="稳定分类 ID")
     media_type: ClassificationMediaType = Field(description="分类适用的媒体类型")
@@ -120,7 +132,9 @@ class ClassificationCategory(_ClassificationModel):
 
 
 class ClassificationCondition(_ClassificationModel):
-    """条件树的叶子节点，描述字段、操作符和期望值。"""
+    """
+    条件树的叶子节点，描述字段、操作符和期望值。
+    """
 
     field: str = Field(description="字段目录中的稳定字段 ID")
     operator: ClassificationOperator = Field(description="字段条件操作符")
@@ -128,7 +142,9 @@ class ClassificationCondition(_ClassificationModel):
 
 
 class ClassificationConditionGroup(_ClassificationModel):
-    """递归条件组；每个节点只能声明 all、any、not 中的一种。"""
+    """
+    递归条件组；每个节点只能声明 all、any、not 中的一种。
+    """
 
     all: Optional[list[Union[ClassificationCondition, "ClassificationConditionGroup"]]] = Field(
         default=None,
@@ -151,9 +167,12 @@ class ClassificationConditionGroup(_ClassificationModel):
         serialize_by_alias=True,
     )
 
+    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
     @model_validator(mode="after")  # type: ignore[misc]
     def validate_group_operator(self) -> "ClassificationConditionGroup":
-        """确保条件组恰好选择一个组操作符。"""
+        """
+        确保条件组恰好选择一个组操作符。
+        """
         configured = sum(value is not None for value in (self.all, self.any, self.not_))
         if configured != 1:
             raise ValueError("条件组必须且只能声明 all、any、not 中的一种")
@@ -161,18 +180,22 @@ class ClassificationConditionGroup(_ClassificationModel):
 
 
 ClassificationConditionNode: TypeAlias = Union[ClassificationCondition, ClassificationConditionGroup]
-"""条件树中允许出现的叶子或条件组节点。"""
-
-
+"""
+条件树中允许出现的叶子或条件组节点。
+"""
 class ClassificationTarget(_ClassificationModel):
-    """规则命中后输出的主分类和附加标签。"""
+    """
+    规则命中后输出的主分类和附加标签。
+    """
 
     category_id: Optional[str] = Field(default=None, description="目标分类 ID")
     labels: list[str] = Field(default_factory=list, description="规则命中后附加的标签")
 
 
 class ClassificationRule(_ClassificationModel):
-    """全局有序的分类规则定义。"""
+    """
+    全局有序的分类规则定义。
+    """
 
     id: str = Field(description="稳定规则 ID")
     name: str = Field(description="规则显示名称")
@@ -186,7 +209,9 @@ class ClassificationRule(_ClassificationModel):
 
 
 class ClassificationPolicy(_ClassificationModel):
-    """可版本化发布的完整媒体分类策略。"""
+    """
+    可版本化发布的完整媒体分类策略。
+    """
 
     schema_version: Literal[2] = Field(default=2, description="分类策略结构版本")
     revision: int = Field(default=0, ge=0, description="已发布策略修订号")
@@ -203,7 +228,9 @@ class ClassificationPolicy(_ClassificationModel):
 
 
 class ClassificationPolicyState(_ClassificationModel):
-    """单个系统配置键中原子保存的活动分类策略和历史快照。"""
+    """
+    单个系统配置键中原子保存的活动分类策略和历史快照。
+    """
 
     active: ClassificationPolicy = Field(description="当前活动分类策略")
     history: list[ClassificationPolicy] = Field(
@@ -212,9 +239,12 @@ class ClassificationPolicyState(_ClassificationModel):
         description="按 revision 从新到旧排列的最近历史策略",
     )
 
+    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
     @model_validator(mode="after")  # type: ignore[misc]
     def validate_revisions(self) -> "ClassificationPolicyState":
-        """保证活动 revision 有效，且历史 revision 唯一、降序并早于活动版本。"""
+        """
+        保证活动 revision 有效，且历史 revision 唯一、降序并早于活动版本。
+        """
         if self.active.revision < 1:
             raise ValueError("活动分类策略 revision 必须大于等于 1")
         revisions = [policy.revision for policy in self.history]
@@ -230,14 +260,18 @@ class ClassificationPolicyState(_ClassificationModel):
 
 
 class ClassificationIdentityFacts(_ClassificationModel):
-    """分类输入中的稳定媒体身份事实。"""
+    """
+    分类输入中的稳定媒体身份事实。
+    """
 
     media_source: str = Field(description="当前主身份数据源")
     media_id: str = Field(description="当前数据源原生媒体 ID")
 
 
 class ClassificationMediaFacts(_ClassificationModel):
-    """电影、电视剧和音乐共享的标准分类事实。"""
+    """
+    电影、电视剧和音乐共享的标准分类事实。
+    """
 
     type: ClassificationMediaType = Field(description="标准媒体类型")
     title: Optional[str] = Field(default=None, description="标准媒体标题")
@@ -254,7 +288,9 @@ class ClassificationMediaFacts(_ClassificationModel):
 
 
 class ClassificationMusicFacts(_ClassificationModel):
-    """音乐实体专用的标准分类事实。"""
+    """
+    音乐实体专用的标准分类事实。
+    """
 
     entity_type: Optional[str] = Field(default=None, description="音乐实体类型")
     album_type: Optional[str] = Field(default=None, description="专辑主类型")
@@ -267,7 +303,9 @@ class ClassificationMusicFacts(_ClassificationModel):
 
 
 class ClassificationFactSource(_ClassificationModel):
-    """记录一个补充事实的媒体来源和实际 provider 身份。"""
+    """
+    记录一个补充事实的媒体来源和实际 provider 身份。
+    """
 
     media_source: str = Field(description="提供该事实的数据源")
     provider_id: str = Field(description="宿主分配的稳定 provider ID")
@@ -275,7 +313,9 @@ class ClassificationFactSource(_ClassificationModel):
 
 
 class ClassificationFacts(_ClassificationModel):
-    """规则求值器唯一接收的标准化分类事实集合。"""
+    """
+    规则求值器唯一接收的标准化分类事实集合。
+    """
 
     identity: ClassificationIdentityFacts = Field(description="媒体身份事实")
     media: ClassificationMediaFacts = Field(description="通用媒体事实")
@@ -291,7 +331,9 @@ class ClassificationFacts(_ClassificationModel):
 
 
 class ClassificationEnrichmentMatch(_ClassificationModel):
-    """provider 用于证明补充结果属于同一媒体的匹配依据。"""
+    """
+    provider 用于证明补充结果属于同一媒体的匹配依据。
+    """
 
     kind: Literal["external_id", "explicit_mapping"] = Field(
         description="外部 ID 命中或 provider 明确映射",
@@ -301,7 +343,9 @@ class ClassificationEnrichmentMatch(_ClassificationModel):
 
 
 class ClassificationEnrichmentRequest(_ClassificationModel):
-    """传给可选分类事实 provider 的有界只读请求。"""
+    """
+    传给可选分类事实 provider 的有界只读请求。
+    """
 
     identity: ClassificationIdentityFacts = Field(description="不可变的主媒体身份")
     media_type: ClassificationMediaType = Field(description="当前媒体类型")
@@ -316,12 +360,14 @@ class ClassificationEnrichmentRequest(_ClassificationModel):
     policy_revision: int = Field(ge=1, description="本次分类使用的策略 revision")
     timeout_seconds: float = Field(
         gt=0,
-        description="provider 应遵守的单次调用剩余时间预算",
+        description="补充来源应遵守的单次调用剩余时间预算，单位为秒",
     )
 
 
 class ClassificationEnrichmentResponse(_ClassificationModel):
-    """可选 provider 返回的同媒体标准事实补充结果。"""
+    """
+    可选 provider 返回的同媒体标准事实补充结果。
+    """
 
     media_source: str = Field(description="补充事实所属的数据源")
     match: ClassificationEnrichmentMatch = Field(description="同媒体匹配证明")
@@ -332,7 +378,9 @@ class ClassificationEnrichmentResponse(_ClassificationModel):
 
 
 class ClassificationSelection(_ClassificationModel):
-    """推荐或最终生效的分类选择快照。"""
+    """
+    推荐或最终生效的分类选择快照。
+    """
 
     category_id: Optional[str] = Field(default=None, description="分类 ID")
     category_path: list[str] = Field(default_factory=list, description="分类目录路径快照")
@@ -341,7 +389,9 @@ class ClassificationSelection(_ClassificationModel):
 
 
 class ClassificationResult(_ClassificationModel):
-    """分类求值产生的推荐、生效结果和状态。"""
+    """
+    分类求值产生的推荐、生效结果和状态。
+    """
 
     recommended: Optional[ClassificationSelection] = Field(default=None, description="规则自动推荐结果")
     effective: Optional[ClassificationSelection] = Field(default=None, description="按覆盖优先级解析后的结果")
@@ -354,7 +404,9 @@ class ClassificationResult(_ClassificationModel):
 
 
 class ClassificationConditionTrace(_ClassificationModel):
-    """预览中单个叶子条件的实际求值记录。"""
+    """
+    预览中单个叶子条件的实际求值记录。
+    """
 
     field: str = Field(description="字段 ID")
     operator: ClassificationOperator = Field(description="条件操作符")
@@ -372,7 +424,9 @@ class ClassificationConditionTrace(_ClassificationModel):
 
 
 class ClassificationRuleTrace(_ClassificationModel):
-    """预览中单条规则及其叶子条件的命中记录。"""
+    """
+    预览中单条规则及其叶子条件的命中记录。
+    """
 
     rule_id: str = Field(description="规则 ID")
     matched: bool = Field(description="规则是否匹配")
@@ -380,7 +434,9 @@ class ClassificationRuleTrace(_ClassificationModel):
 
 
 class ClassificationEvaluation(_ClassificationModel):
-    """分类预览接口返回的事实、结果、命中解释和警告。"""
+    """
+    分类预览接口返回的事实、结果、命中解释和警告。
+    """
 
     facts: ClassificationFacts = Field(description="本次求值使用的标准事实")
     result: ClassificationResult = Field(description="本次分类结果")
@@ -392,7 +448,9 @@ class ClassificationEvaluation(_ClassificationModel):
 
 
 class ClassificationEvaluationWarning(_ClassificationModel):
-    """预览中可定位到字段和来源的结构化提示。"""
+    """
+    预览中可定位到字段和来源的结构化提示。
+    """
 
     code: str = Field(description="稳定提示代码")
     message: str = Field(description="面向用户的提示文本")
@@ -405,14 +463,18 @@ class ClassificationEvaluationWarning(_ClassificationModel):
 
 
 class ClassificationFieldOption(_ClassificationModel):
-    """字段枚举控件使用的稳定值与显示文本。"""
+    """
+    字段枚举控件使用的稳定值与显示文本。
+    """
 
     value: ClassificationFactScalar = Field(description="规则中保存的稳定值")
     label: str = Field(description="前端显示文本")
 
 
 class ClassificationFieldDefinition(_ClassificationModel):
-    """前端条件编辑器使用的字段能力目录项。"""
+    """
+    前端条件编辑器使用的字段能力目录项。
+    """
 
     id: str = Field(description="稳定字段 ID")
     label: str = Field(description="本地化显示名称")
@@ -443,10 +505,13 @@ class ClassificationFieldDefinition(_ClassificationModel):
         description="退役字段建议替换为的标准字段 ID",
     )
 
+    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
     @field_validator("options", mode="before")  # type: ignore[misc]
     @classmethod
     def normalize_options(cls, value: object) -> object:
-        """兼容旧扩展字段的标量选项，并统一序列化为值和标签对象。"""
+        """
+        兼容旧扩展字段的标量选项，并统一序列化为值和标签对象。
+        """
         if not isinstance(value, (list, tuple)):
             return value
         return [
@@ -458,7 +523,9 @@ class ClassificationFieldDefinition(_ClassificationModel):
 
 
 class ClassificationValidationIssue(_ClassificationModel):
-    """策略校验产生的单条错误或警告。"""
+    """
+    策略校验产生的单条错误或警告。
+    """
 
     severity: Literal["error", "warning"] = Field(description="问题严重级别")
     code: str = Field(description="稳定问题代码")
@@ -467,33 +534,43 @@ class ClassificationValidationIssue(_ClassificationModel):
 
 
 class ClassificationValidationResult(_ClassificationModel):
-    """策略草稿的结构化校验结果。"""
+    """
+    策略草稿的结构化校验结果。
+    """
 
     valid: bool = Field(description="策略是否可以发布")
     issues: list[ClassificationValidationIssue] = Field(default_factory=list, description="全部错误和警告")
 
 
 class ClassificationPolicyPublishRequest(_ClassificationModel):
-    """以客户端读取到的 revision 发布完整分类策略草稿。"""
+    """
+    以客户端读取到的 revision 发布完整分类策略草稿。
+    """
 
     expected_revision: int = Field(ge=0, description="客户端读取策略时的活动 revision")
     policy: ClassificationPolicy = Field(description="待校验并整体发布的分类策略草稿")
 
 
 class ClassificationPolicyRollbackRequest(_ClassificationModel):
-    """以当前活动 revision 为并发前提发布一个历史策略内容。"""
+    """
+    以当前活动 revision 为并发前提发布一个历史策略内容。
+    """
 
     expected_revision: int = Field(ge=1, description="客户端读取策略时的活动 revision")
 
 
 class ClassificationPolicyValidateRequest(_ClassificationModel):
-    """请求服务端使用当前字段目录校验一个完整策略草稿。"""
+    """
+    请求服务端使用当前字段目录校验一个完整策略草稿。
+    """
 
     policy: ClassificationPolicy = Field(description="仅校验、不保存的完整策略草稿")
 
 
 class ClassificationPolicyLimits(_ClassificationModel):
-    """前端规则编辑器必须遵守的服务端策略结构限制。"""
+    """
+    前端规则编辑器必须遵守的服务端策略结构限制。
+    """
 
     max_category_depth: int = Field(ge=1, description="分类路径最大层数")
     max_category_segment_length: int = Field(ge=1, description="单个分类路径段最大长度")
@@ -505,7 +582,9 @@ class ClassificationPolicyLimits(_ClassificationModel):
 
 
 class ClassificationFieldCatalog(_ClassificationModel):
-    """前端规则编辑器使用的完整动态字段目录。"""
+    """
+    前端规则编辑器使用的完整动态字段目录。
+    """
 
     fields: list[ClassificationFieldDefinition] = Field(
         default_factory=list,
@@ -519,21 +598,28 @@ class ClassificationFieldCatalog(_ClassificationModel):
 
 
 class ClassificationFactsPreviewInput(_ClassificationModel):
-    """预览请求中由调用方直接提供的标准分类事实。"""
+    """
+    预览请求中由调用方直接提供的标准分类事实。
+    """
 
     kind: Literal["facts"] = Field(default="facts", description="预览输入类型")
     facts: ClassificationFacts = Field(description="本次预览使用的标准化分类事实")
 
 
 class ClassificationMediaPreviewInput(_ClassificationModel):
-    """从媒体搜索结果选择的完整媒体信息，用于直接预览分类结果。"""
+    """
+    从媒体搜索结果选择的完整媒体信息，用于直接预览分类结果。
+    """
 
     kind: Literal["media"] = Field(default="media", description="预览输入类型")
     media: dict[str, JsonData] = Field(description="从媒体搜索结果选择的媒体信息")
 
+    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
     @model_validator(mode="after")  # type: ignore[misc]
     def validate_media_identity(self) -> "ClassificationMediaPreviewInput":
-        """确保搜索结果包含分类所需的来源、编号和媒体类型。"""
+        """
+        确保搜索结果包含分类所需的来源、编号和媒体类型。
+        """
         source = str(self.media.get("media_source") or "").strip()
         media_id = str(self.media.get("media_id") or "").strip()
         media_type = str(self.media.get("type") or "").strip()
@@ -550,11 +636,13 @@ ClassificationPreviewInput: TypeAlias = Union[
     ClassificationFactsPreviewInput,
     ClassificationMediaPreviewInput,
 ]
-"""预览输入联合；前端通常提交搜索结果，旧调用仍可提交标准事实。"""
-
-
+"""
+预览输入联合；前端通常提交搜索结果，旧调用仍可提交标准事实。
+"""
 class ClassificationPreviewRequest(_ClassificationModel):
-    """对显式事实执行活动策略或未发布草稿的只读预览。"""
+    """
+    对显式事实执行活动策略或未发布草稿的只读预览。
+    """
 
     input: ClassificationPreviewInput = Field(description="可判别的预览输入")
     policy: Optional[ClassificationPolicy] = Field(
@@ -564,7 +652,9 @@ class ClassificationPreviewRequest(_ClassificationModel):
 
 
 class ClassificationImpactRequest(_ClassificationModel):
-    """比较活动策略和未发布草稿对显式或近期历史样本的影响。"""
+    """
+    比较活动策略和未发布草稿对显式或近期历史样本的影响。
+    """
 
     expected_revision: int = Field(
         ge=1,
@@ -591,7 +681,9 @@ class ClassificationImpactRequest(_ClassificationModel):
 
 
 class ClassificationImpactChange(_ClassificationModel):
-    """一个样本在活动策略和候选策略之间发生的分类变化。"""
+    """
+    一个样本在活动策略和候选策略之间发生的分类变化。
+    """
 
     identity: ClassificationIdentityFacts = Field(description="样本的稳定媒体身份")
     media_type: ClassificationMediaType = Field(description="样本媒体类型")
@@ -605,7 +697,9 @@ class ClassificationImpactChange(_ClassificationModel):
 
 
 class ClassificationImpactGroup(_ClassificationModel):
-    """按媒体类型和主身份来源聚合的影响统计。"""
+    """
+    按媒体类型和主身份来源聚合的影响统计。
+    """
 
     media_type: ClassificationMediaType = Field(description="分组媒体类型")
     media_source: str = Field(description="分组主身份数据源")
@@ -615,7 +709,9 @@ class ClassificationImpactGroup(_ClassificationModel):
 
 
 class ClassificationImpactAnalysis(_ClassificationModel):
-    """有边界的近期样本分类影响统计与变化明细。"""
+    """
+    有边界的近期样本分类影响统计与变化明细。
+    """
 
     estimated: Literal[True] = Field(
         default=True,
@@ -670,7 +766,9 @@ class ClassificationImpactAnalysis(_ClassificationModel):
 
 
 class ClassificationRevisionConflict(_ClassificationModel):
-    """分类策略发布或回滚遇到的 revision 冲突详情。"""
+    """
+    分类策略发布或回滚遇到的 revision 冲突详情。
+    """
 
     code: Literal["classification_revision_conflict"] = Field(
         default="classification_revision_conflict",
@@ -681,7 +779,9 @@ class ClassificationRevisionConflict(_ClassificationModel):
 
 
 class ClassificationPolicyHistory(_ClassificationModel):
-    """当前 revision 与有界历史策略快照列表。"""
+    """
+    当前 revision 与有界历史策略快照列表。
+    """
 
     active_revision: int = Field(ge=1, description="当前活动策略 revision")
     items: list[ClassificationPolicy] = Field(
@@ -692,7 +792,9 @@ class ClassificationPolicyHistory(_ClassificationModel):
 
 
 class ClassificationPolicyRollbackResult(_ClassificationModel):
-    """把历史策略内容发布为新 revision 后的结果。"""
+    """
+    把历史策略内容发布为新 revision 后的结果。
+    """
 
     restored_from_revision: int = Field(ge=1, description="被选中的历史 revision")
     policy: ClassificationPolicy = Field(description="新发布的活动策略")

@@ -1,4 +1,6 @@
-"""插件市场目录读取并发控制测试。"""
+"""
+插件市场目录读取并发控制测试。
+"""
 
 import asyncio
 import threading
@@ -14,7 +16,9 @@ def _catalog(
         max_concurrency: int = 2,
         error: Callable[[str], None] | None = None,
 ) -> PluginCatalogService:
-    """构造不依赖真实插件目录和网络的目录服务。"""
+    """
+    构造不依赖真实插件目录和网络的目录服务。
+    """
     return PluginCatalogService(
         market_loader=lambda *_args: {},
         async_market_loader=lambda *_args: {},
@@ -29,7 +33,9 @@ def _catalog(
 
 
 def test_sync_collect_limits_market_fetch_concurrency() -> None:
-    """同步目录刷新不能因市场数量增长而创建无限线程。"""
+    """
+    同步目录刷新不能因市场数量增长而创建无限线程。
+    """
     lock = threading.Lock()
     active = 0
     peak = 0
@@ -59,7 +65,9 @@ def test_sync_collect_limits_market_fetch_concurrency() -> None:
 
 
 def test_sync_collect_isolates_market_failure() -> None:
-    """同步目录刷新遇到单个市场异常时仍保留其他市场结果。"""
+    """
+    同步目录刷新遇到单个市场异常时仍保留其他市场结果。
+    """
     errors: list[str] = []
 
     def loader(
@@ -85,7 +93,9 @@ def test_sync_collect_isolates_market_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_async_collect_limits_market_fetch_concurrency() -> None:
-    """异步目录刷新必须用信号量限制同时在途的市场请求。"""
+    """
+    异步目录刷新必须用信号量限制同时在途的市场请求。
+    """
     active = 0
     peak = 0
 
@@ -109,6 +119,8 @@ async def test_async_collect_limits_market_fetch_concurrency() -> None:
 
 
 def test_market_fetch_concurrency_must_be_positive() -> None:
-    """无效并发值应在服务构造时快速失败。"""
+    """
+    无效并发值应在服务构造时快速失败。
+    """
     with pytest.raises(ValueError, match="大于 0"):
         _catalog(max_concurrency=0)

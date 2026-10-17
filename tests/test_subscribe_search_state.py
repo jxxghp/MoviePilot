@@ -1,3 +1,7 @@
+"""
+验证订阅搜索状态推进和恢复语义。
+"""
+
 import threading
 from contextlib import contextmanager
 from dataclasses import replace
@@ -21,6 +25,9 @@ from app.schemas.types import MediaType, SystemConfigKey
     ("single_page", False, "single_page"), ("smart", True, "full"), ("single_page", True, "full"),
 ])
 def test_subscription_search_strategy_and_upgrade_override(monkeypatch, strategy, best_version, expected):
+    """
+    订阅搜索策略遵循配置，并按洗版模式应用对应覆盖规则。
+    """
     values = {SystemConfigKey.SubscribeSearchStrategy: strategy}
     monkeypatch.setattr(subscribe_search, "get_configured_system_config", lambda: SimpleNamespace(get=values.get))
     assert subscribe_search._subscription_search_strategy(best_version) == expected
@@ -55,26 +62,38 @@ class _SubscribeOper:
 
 
 class _TimedOutLock:
-    """模拟订阅搜索锁在等待窗口内始终无法取得。"""
+    """
+    模拟订阅搜索锁在等待窗口内始终无法取得。
+    """
 
     def acquire(self, **_kwargs):
-        """返回未取得锁，验证调用方不会越过互斥边界继续执行。"""
+        """
+        返回未取得锁，验证调用方不会越过互斥边界继续执行。
+        """
         return False
 
     def release(self):
-        """超时路径不应释放未持有的锁。"""
+        """
+        超时路径不应释放未持有的锁。
+        """
         raise AssertionError("未持有的订阅锁不应被释放")
 
 
 def _configure_subscription_write(chain, repository) -> None:
-    """为绕过构造器的搜索链注入显式同步修改作用域。"""
+    """
+    为绕过构造器的搜索链注入显式同步修改作用域。
+    """
     chain.subscription_repository = repository
 
     @contextmanager
     def mutation_scope():
-        """把同步修改命令委托给状态测试 repository。"""
+        """
+        把同步修改命令委托给状态测试 repository。
+        """
         def update(subscribe_id, payload, _actor, existing=None, scene="update"):
-            """执行测试更新并返回生产命令形状。"""
+            """
+            执行测试更新并返回生产命令形状。
+            """
             updated = repository.update(subscribe_id, SubscriptionPatch(payload))
             return SubscriptionMutation(
                 snapshot=updated,
@@ -145,7 +164,9 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
 
 @pytest.mark.parametrize("resuming_sites", [False, True])
 def test_site_resume_preserves_the_full_search_schedule(monkeypatch, resuming_sites) -> None:
-    """补查坏站点不推迟健康站点的新周期，完整搜索才更新周期起点。"""
+    """
+    补查坏站点不推迟健康站点的新周期，完整搜索才更新周期起点。
+    """
     now = datetime.now(timezone.utc)
     subscribe = replace(
         _new_subscribe(datetime.now() - timedelta(days=2)), state="R",
@@ -174,7 +195,9 @@ def test_site_resume_preserves_the_full_search_schedule(monkeypatch, resuming_si
 
 
 def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None:
-    """用户归属订阅批次只按指定 ID 顺序读取，不扩大为全局状态搜索。"""
+    """
+    用户归属订阅批次只按指定 ID 顺序读取，不扩大为全局状态搜索。
+    """
     first = _new_subscribe(datetime.now() - timedelta(minutes=2))
     first = replace(first, state="R")
     second = replace(
@@ -206,7 +229,9 @@ def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None
 
 
 def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
-    """订阅搜索锁超时后必须中止，不能在无锁状态下继续访问订阅。"""
+    """
+    订阅搜索锁超时后必须中止，不能在无锁状态下继续访问订阅。
+    """
     monkeypatch.setattr(SubscribeChain, "_search_queue_lock", _TimedOutLock())
     subscribe_oper = Mock()
     progress = Mock()
@@ -223,7 +248,9 @@ def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
 
 
 def test_subscribe_search_releases_lock_when_repository_query_fails(monkeypatch) -> None:
-    """取得搜索锁后即使订阅查询失败，也必须释放进程级互斥锁。"""
+    """
+    取得搜索锁后即使订阅查询失败，也必须释放进程级互斥锁。
+    """
     lock = Mock()
     lock.acquire.return_value = True
     monkeypatch.setattr(SubscribeChain, "_search_queue_lock", lock)
@@ -239,7 +266,9 @@ def test_subscribe_search_releases_lock_when_repository_query_fails(monkeypatch)
 
 
 def test_subscribe_search_uses_refreshed_state_for_final_reset(monkeypatch) -> None:
-    """下载后重新读取的 R 状态不能再被旧 N 快照重置。"""
+    """
+    下载后重新读取的 R 状态不能再被旧 N 快照重置。
+    """
     subscribe = _new_subscribe(datetime.now() - timedelta(minutes=2))
     refreshed = replace(subscribe, state="R")
     _SubscribeOper.subscribe = subscribe
@@ -256,7 +285,9 @@ def test_subscribe_search_uses_refreshed_state_for_final_reset(monkeypatch) -> N
 
 
 def test_subscribe_search_progress_preserves_public_callback_payload() -> None:
-    """拆包后仍保持搜索开始和完成进度的既有文案及字段。"""
+    """
+    拆包后仍保持搜索开始和完成进度的既有文案及字段。
+    """
     subscribe = _new_subscribe(datetime.now() - timedelta(minutes=2))
     progress = Mock()
 
@@ -279,7 +310,9 @@ def test_subscribe_search_progress_preserves_public_callback_payload() -> None:
 
 
 def test_inline_search_conflict_does_not_report_false_completion(monkeypatch) -> None:
-    """兼容搜索遇到同订阅冲突时必须报告未执行，而不是成功完成。"""
+    """
+    兼容搜索遇到同订阅冲突时必须报告未执行，而不是成功完成。
+    """
     subscribe = replace(
         _new_subscribe(datetime.now() - timedelta(minutes=2)),
         state="R",
@@ -315,7 +348,9 @@ def test_inline_search_conflict_does_not_report_false_completion(monkeypatch) ->
 
 
 def test_subscribe_match_aborts_when_lock_times_out(monkeypatch) -> None:
-    """订阅匹配锁超时后必须中止，不能绕过防重复下载边界。"""
+    """
+    订阅匹配锁超时后必须中止，不能绕过防重复下载边界。
+    """
     monkeypatch.setattr(SubscribeChain, "_match_lock", _TimedOutLock())
     progress = Mock()
 

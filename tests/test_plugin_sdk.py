@@ -1,3 +1,7 @@
+"""
+验证插件公开 SDK 的导出与兼容调用契约。
+"""
+
 import importlib
 import subprocess
 import sys
@@ -17,7 +21,8 @@ from app.sdk.media import (
     set_custom_separator,
 )
 from app.sdk.network import RequestUtils, RssHelper, SitesHelper
-from app.sdk.plugin import ModuleManager, PluginChain, PluginManager, _PluginBase  # pylint: disable=no-name-in-module  # 惰性导出，静态分析不可见
+# 惰性导出，静态分析不可见。
+from app.sdk.plugin import ModuleManager, PluginChain, PluginManager, _PluginBase  # pylint: disable=no-name-in-module
 from app.sdk.services import NotificationHelper
 from app.sdk.utilities import StringUtils as UtilityStringUtils
 from app.sdk.utilities import convert, decrypt, encrypt
@@ -27,7 +32,9 @@ PROJECT_ROOT = Path(__file__).parents[1]
 
 
 def test_sdk_exports_canonical_plugin_interfaces():
-    """SDK 应复用 canonical 对象，不复制实现或制造第二套单例。"""
+    """
+    SDK 应复用 canonical 对象，不复制实现或制造第二套单例。
+    """
     from app.domain.context import MediaInfo as CanonicalMediaInfo
     from app.domain.meta.customization import (
         set_custom_separator as canonical_set_custom_separator,
@@ -45,6 +52,7 @@ def test_sdk_exports_canonical_plugin_interfaces():
     from app.runtime.extensions.plugin.manager import PluginManager as CanonicalPluginManager
     from app.adapters.network.http import RequestUtils as CanonicalRequestUtils
     from app.application.rss import RssHelper as CanonicalRssHelper
+    # 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
     from app.application.site.sites import SitesHelper as CanonicalSitesHelper  # pylint: disable=import-error,no-name-in-module
     from app.runtime.cache import Cache as CanonicalCache
     from app.runtime.cache import cached as canonical_cached
@@ -80,7 +88,9 @@ def test_sdk_exports_canonical_plugin_interfaces():
 
 
 def test_legacy_common_crypto_aliases_round_trip():
-    """v1 插件使用的 common 加解密符号应保持 CryptoJS 密文兼容。"""
+    """
+    v1 插件使用的 common 加解密符号应保持 CryptoJS 密文兼容。
+    """
     legacy_common = importlib.import_module("app.utils.common")
     legacy_decrypt = legacy_common.decrypt
     legacy_encrypt = legacy_common.encrypt
@@ -92,7 +102,9 @@ def test_legacy_common_crypto_aliases_round_trip():
 
 
 def test_sdk_plugin_package_exports_contract_base_and_managers():
-    """插件 SDK 包根导出契约基类与管理器，并复用 canonical 身份。"""
+    """
+    插件 SDK 包根导出契约基类与管理器，并复用 canonical 身份。
+    """
     from app.chain.base import ChainBase
     from app.runtime.extensions.module.manager import (
         ModuleManager as CanonicalModuleManager,
@@ -111,7 +123,9 @@ def test_sdk_plugin_package_exports_contract_base_and_managers():
 
 
 def test_sdk_plugin_contract_import_does_not_load_managers():
-    """仅导入契约基类不得连带拉起插件与模块管理器。"""
+    """
+    仅导入契约基类不得连带拉起插件与模块管理器。
+    """
     script = """
 import sys
 from app.sdk.plugin import _PluginBase
@@ -136,7 +150,9 @@ for name in (
 
 
 def test_browser_sdk_import_is_provider_free():
-    """仅导入浏览器 SDK 不得加载浏览器或虚拟显示实现。"""
+    """
+    仅导入浏览器 SDK 不得加载浏览器或虚拟显示实现。
+    """
     script = """
 import sys
 import app.sdk.browser
@@ -161,7 +177,9 @@ for name in (
 
 
 def test_feishu_sdk_exports_host_long_connection():
-    """飞书 SDK 复用宿主传输实现，插件与宿主飞书模块是同一个类。"""
+    """
+    飞书 SDK 复用宿主传输实现，插件与宿主飞书模块是同一个类。
+    """
     from app.adapters.network import feishu as feishu_adapter
     from app.sdk import feishu as feishu_sdk
 
@@ -171,7 +189,9 @@ def test_feishu_sdk_exports_host_long_connection():
 
 
 def test_browser_sdk_delegates_sync_and_async_launch(monkeypatch):
-    """SDK 只转发浏览器参数，不复制宿主生命周期实现。"""
+    """
+    SDK 只转发浏览器参数，不复制宿主生命周期实现。
+    """
     from app.sdk import browser as browser_sdk
     from app.adapters.network import browser as browser_adapter
 

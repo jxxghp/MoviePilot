@@ -1,3 +1,7 @@
+"""
+外部消息接入、会话管理、交互路由与智能体调用编排。
+"""
+
 import asyncio
 import base64
 import mimetypes
@@ -46,21 +50,36 @@ from app.schemas.types import EventType, NotificationChannel
 
 
 class MessageResponsePort(Protocol):
-    """消息链读取附件所需的最小同步 HTTP 响应契约。"""
+    """
+    消息链读取附件所需的最小同步 HTTP 响应契约。
+
+    :ivar content: 远程附件的原始字节内容
+    :ivar headers: 附件响应头，用于判断媒体类型及编码
+    """
 
     content: bytes
     headers: Mapping[str, str]
 
     def close(self) -> None:
-        """释放响应与连接资源。"""
+        """
+        释放响应与连接资源。
+        """
         ...
 
 
 class MessageHttpPort(Protocol):
-    """消息链读取远程附件所需的同步 GET 端口。"""
+    """
+    消息链读取远程附件所需的同步 GET 端口。
+    """
 
     def get(self, url: str, *, timeout: int) -> Optional[MessageResponsePort]:
-        """读取附件响应，并保留无响应与有响应两态。"""
+        """
+        读取附件响应，并保留无响应与有响应两态。
+
+        :param url: 远程图片或音频附件的完整地址
+        :param timeout: 请求超时秒数
+        :return: 原始附件响应，未取得响应时为 None；调用方读取后负责关闭
+        """
         ...
 
 
@@ -69,7 +88,9 @@ _message_http_port: Optional[MessageHttpPort] = None
 
 
 def configure_message_http_port(http: MessageHttpPort) -> Optional[MessageHttpPort]:
-    """由启动组合根装配消息附件 HTTP 端口，并返回旧实现。"""
+    """
+    由启动组合根装配消息附件 HTTP 端口，并返回旧实现。
+    """
     global _message_http_port
     with _message_http_lock:
         previous = _message_http_port
@@ -78,14 +99,18 @@ def configure_message_http_port(http: MessageHttpPort) -> Optional[MessageHttpPo
 
 
 def reset_message_http_port(http: Optional[MessageHttpPort] = None) -> None:
-    """恢复指定消息 HTTP 端口；省略参数时回到未装配状态。"""
+    """
+    恢复指定消息 HTTP 端口；省略参数时回到未装配状态。
+    """
     global _message_http_port
     with _message_http_lock:
         _message_http_port = http
 
 
 def _message_http_snapshot() -> MessageHttpPort:
-    """读取消息 HTTP 端口快照，未装配时稳定失败。"""
+    """
+    读取消息 HTTP 端口快照，未装配时稳定失败。
+    """
     with _message_http_lock:
         http = _message_http_port
     if http is None:
@@ -98,7 +123,9 @@ def _read_message_http(
     *,
     timeout: int = 30,
 ) -> tuple[Optional[bytes], Mapping[str, str]]:
-    """读取远程消息附件并在复制所需字段后立即释放响应。"""
+    """
+    读取远程消息附件并在复制所需字段后立即释放响应。
+    """
     response = _message_http_snapshot().get(url, timeout=timeout)
     if response is None:
         return None, {}
@@ -155,7 +182,9 @@ class MessageChain(ChainBase):
         self._message_session_service().cleanup(current_time)
 
     def _message_session_service(self) -> MessageSessionService:
-        """用类级兼容映射构建可测试的用户会话服务。"""
+        """
+        用类级兼容映射构建可测试的用户会话服务。
+        """
         return MessageSessionService(
             sessions=self._user_sessions,
             timeout_minutes=self._session_timeout_minutes,
@@ -163,7 +192,9 @@ class MessageChain(ChainBase):
         )
 
     def _plugin_input_interaction_handler(self) -> PluginInputInteractionHandler:
-        """构造使用当前 Chain 消息与事件端口的插件输入处理器。"""
+        """
+        构造使用当前 Chain 消息与事件端口的插件输入处理器。
+        """
         return PluginInputInteractionHandler(
             messenger=self,
             event_publisher=self.eventmanager,
@@ -171,6 +202,17 @@ class MessageChain(ChainBase):
 
     @dataclass
     class _ProcessingStatus:
+        """
+        保存回复处理中状态所需的渠道、消息和会话定位信息。
+
+        :param channel: 需要显示处理状态的通知渠道
+        :param source: 渠道接入来源标识
+        :param userid: 接收状态反馈的用户标识，None 表示未提供
+        :param message_id: 用于关联或更新的原消息标识，None 表示未提供
+        :param chat_id: 会话或群聊标识，None 表示使用渠道默认定位
+        :param metadata: 渠道扩展上下文，None 在序列化时转换为空字典
+        """
+
         channel: NotificationChannel
         source: str
         userid: Optional[Union[str, int]] = None
@@ -179,7 +221,9 @@ class MessageChain(ChainBase):
         metadata: Optional[Dict[str, Any]] = None
 
         def to_dict(self) -> Dict[str, Any]:
-            """转换为模块接口可安全传递的普通字典。"""
+            """
+            转换为模块接口可安全传递的普通字典。
+            """
             return {
                 "channel": self.channel.value,
                 "source": self.source,
@@ -193,18 +237,13 @@ class MessageChain(ChainBase):
         """
         调用模块识别消息内容
         """
-        # 消息来源
         source = args.get("source")
-        # 获取消息内容
         info = self.message_parser(source=source, body=body, form=form, args=args)
         if not info:
             logger.info("消息链路未识别到有效消息: source=%s", source)
             return
-        # 更新消息来源
         source = info.source
-        # 渠道
         channel = info.channel
-        # 用户ID
         userid = info.userid
         # 用户名（当渠道未提供公开用户名时，回退为 userid 的字符串，避免后续类型校验异常）
         username = (
@@ -214,7 +253,6 @@ class MessageChain(ChainBase):
             logger.debug(f"未识别到用户ID：{body}{form}{args}")
             return
 
-        # 消息内容
         text = str(info.text).strip() if info.text else ""
         images = info.images
         audio_refs = info.audio_refs
@@ -233,7 +271,6 @@ class MessageChain(ChainBase):
         original_chat_id = info.chat_id
         reply_to_message_id = info.reply_to_message_id
 
-        # 处理消息
         self.handle_message(
             channel=channel,
             source=source,
@@ -414,7 +451,9 @@ class MessageChain(ChainBase):
             has_audio_input: bool = False,
             is_channel_admin: Optional[bool] = None,
     ) -> bool:
-        """将 TG/飞书中的确认控制文本交回所属 Agent 会话。"""
+        """
+        将 TG/飞书中的确认控制文本交回所属 Agent 会话。
+        """
         if channel not in {NotificationChannel.Telegram, NotificationChannel.Feishu}:
             return False
         if str(text or "").strip() not in {"确认", "取消"}:
@@ -467,7 +506,9 @@ class MessageChain(ChainBase):
             is_channel_admin: Optional[bool] = None,
             callback_data: Optional[str] = None,
     ) -> bool:
-        """执行实际消息路由，便于统一包裹处理中状态。"""
+        """
+        执行实际消息路由，便于统一包裹处理中状态。
+        """
 
         context = InteractionContext(
             channel=channel,
@@ -661,7 +702,9 @@ class MessageChain(ChainBase):
             original_chat_id: Optional[Union[str, int]],
             text: str,
     ) -> Optional[_ProcessingStatus]:
-        """为支持的渠道标记“消息正在处理”。"""
+        """
+        为支持的渠道标记“消息正在处理”。
+        """
         status = self.start_message_processing_status(
             channel=channel,
             source=source,
@@ -708,7 +751,9 @@ class MessageChain(ChainBase):
         )
 
     def _interaction_router(self) -> interaction_router.InteractionRouter:
-        """构造交互路由器，文本会话按创建时间选择，回调路由注册顺序即优先级。"""
+        """
+        构造交互路由器，文本会话按创建时间选择，回调路由注册顺序即优先级。
+        """
         from app.application.messaging.update import update_interaction_manager
 
         session_routes = [
@@ -760,7 +805,6 @@ class MessageChain(ChainBase):
             if not parsed:
                 return InteractionDispatch(handled=False)
             plugin_id, content = parsed
-            # 广播给插件处理
             self.eventmanager.send_event(
                 EventType.MessageAction,
                 {
@@ -1028,7 +1072,6 @@ class MessageChain(ChainBase):
         """
         清除用户会话（远程命令接口）
         """
-        # 获取并清除会话信息
         session_id = self._message_session_service().clear(userid)
         if session_id:
             logger.info(f"已清除用户 {userid} 的会话: {session_id}")
@@ -1239,7 +1282,9 @@ class MessageChain(ChainBase):
             userid: Union[str, int],
             source: Optional[str] = None,
     ):
-        """查询当前用户的智能体会话状态。"""
+        """
+        查询当前用户的智能体会话状态。
+        """
         session_info = self._message_session_service().get(userid)
         if not session_info:
             self.post_message(
@@ -1297,7 +1342,6 @@ class MessageChain(ChainBase):
         处理AI智能体消息
         """
         try:
-            # 检查AI智能体是否启用
             if not self.runtime_config.ai_agent_enable:
                 self.post_message(
                     Message(
@@ -1327,12 +1371,11 @@ class MessageChain(ChainBase):
 
             images = IncomingMessage.MessageImage.normalize_list(images)
 
-            # 提取用户消息
             if self._has_ai_prefix(text):
                 # 前缀匹配不区分大小写，但保留原始正文避免改变用户输入内容。
                 user_message = text[len(self._ai_prefix):].strip()
             else:
-                user_message = text.strip()  # 按原消息处理
+                user_message = text.strip()
 
             if not user_message and not images and not files:
                 self.post_message(
@@ -1347,7 +1390,6 @@ class MessageChain(ChainBase):
                 )
                 return False
 
-            # 生成或复用会话ID
             session_id = session_id or self._get_or_create_session_id(userid)
             self._bind_session_id(userid, session_id)
 

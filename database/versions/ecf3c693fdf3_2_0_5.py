@@ -1,9 +1,9 @@
-"""2.0.5
+"""
+2.0.5 补齐订阅历史的识别词、分类和过滤规则，并尝试将站点范围转为 JSON。
 
-Revision ID: ecf3c693fdf3
-Revises: a73f2dbf5c09
-Create Date: 2024-10-21 12:36:20.631963
-
+版本标识： ecf3c693fdf3
+前置版本： a73f2dbf5c09
+创建时间： 2024-10-21 12:36:20.631963
 """
 import contextlib
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from app.runtime.log import logger
 
 
-# revision identifiers, used by Alembic.
+# Alembic 使用以下标识连接迁移版本链。
 revision = 'ecf3c693fdf3'
 down_revision = 'a73f2dbf5c09'
 branch_labels = None
@@ -21,6 +21,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    补齐订阅历史的识别词、分类和过滤规则，并尝试将站点范围转为 JSON。
+    """
     conn = op.get_bind()
     inspector = sa.inspect(conn)
     table_name = 'subscribehistory'
@@ -28,7 +31,6 @@ def upgrade() -> None:
 
     try:
         sites_col = next((c for c in columns if c['name'] == 'sites'), None)
-        # 如果 'sites' 列存在且类型不是 JSON，则进行修改
         if sites_col and not isinstance(sites_col['type'], sa.JSON):
             if conn.dialect.name == 'postgresql':
                 op.alter_column(table_name, 'sites',
@@ -53,4 +55,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    本版本不执行回退操作，保留升级后的结构与数据。
+    """
     pass

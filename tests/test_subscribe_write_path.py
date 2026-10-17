@@ -37,19 +37,25 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把订阅表纳入用例级回收。"""
+    """
+    把订阅表纳入用例级回收。
+    """
     db.watermark(Subscribe)
 
 
 def _media_id(tag: str) -> str:
-    """给每个用例分配独立媒体 ID，避免共用测试库时互相去重。"""
+    """
+    给每个用例分配独立媒体 ID，避免共用测试库时互相去重。
+    """
     return f"wp-{tag}"
 
 
 def _mediainfo(media_id: str, title: str = "识别标题",
                mtype: MediaType = MediaType.TV, year: str = "2026",
                episode_group: str = None) -> MediaInfo:
-    """构造带完整展示字段的识别结果。"""
+    """
+    构造带完整展示字段的识别结果。
+    """
     media = MediaInfo()
     media.type = mtype
     media.title = title
@@ -65,13 +71,17 @@ def _mediainfo(media_id: str, title: str = "识别标题",
 
 
 def _musicinfo(media_id: str, music_type: str, **kwargs) -> MusicInfo:
-    """构造音乐订阅所需的标准音乐信息。"""
+    """
+    构造音乐订阅所需的标准音乐信息。
+    """
     return MusicInfo(media_source=MediaSource.MusicBrainz, media_id=media_id,
                      music_type=music_type, **kwargs)
 
 
 def _add(_oper: SubscribeOper, is_async: bool, **kwargs):
-    """显式注入短事务仓储并分派同步或异步新增。"""
+    """
+    显式注入短事务仓储并分派同步或异步新增。
+    """
     writer = TransactionalSubscriptionRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
@@ -82,24 +92,32 @@ def _add(_oper: SubscribeOper, is_async: bool, **kwargs):
 
 
 def _row(db, subscribe_id: int) -> Subscribe:
-    """按主键读回落库的订阅行。"""
+    """
+    按主键读回落库的订阅行。
+    """
     db.session.expire_all()
     return Subscribe.get(db.session, subscribe_id)
 
 
 class _SubscribeSpy:
-    """记录建模入参并转交真实模型，保持写入路径仍然真的落库。"""
+    """
+    记录建模入参并转交真实模型，保持写入路径仍然真的落库。
+    """
 
     def __init__(self, recorded: list):
         self._recorded = recorded
 
     def __call__(self, **kwargs):
-        """截获 ``Subscribe(**kwargs)`` 的入参后构造真实模型实例。"""
+        """
+        截获 ``Subscribe(**kwargs)`` 的入参后构造真实模型实例。
+        """
         self._recorded.append(dict(kwargs))
         return Subscribe(**kwargs)
 
     def __getattr__(self, name):
-        """查重用的类方法（exists / async_exists 等）原样透传给真实模型。"""
+        """
+        查重用的类方法（exists / async_exists 等）原样透传给真实模型。
+        """
         return getattr(Subscribe, name)
 
 

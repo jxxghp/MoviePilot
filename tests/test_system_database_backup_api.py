@@ -1,4 +1,6 @@
-"""系统数据库备份 Web 管理端点测试。"""
+"""
+系统数据库备份 Web 管理端点测试。
+"""
 
 from __future__ import annotations
 
@@ -21,7 +23,9 @@ from app.application.backup import (
 
 
 class _Governance:
-    """提供端点测试所需的最小数据库治理合同。"""
+    """
+    提供端点测试所需的最小数据库治理合同。
+    """
 
     def __init__(self) -> None:
         self.artifact = SimpleNamespace(
@@ -33,17 +37,29 @@ class _Governance:
         )
 
     def list_backups(self):
+        """
+        返回预设备份条目，避免接口测试访问真实备份目录。
+        """
         return (self.artifact,)
 
     def create_backup(self):
+        """
+        返回预设新备份条目，不执行真实数据库备份。
+        """
         return self.artifact
 
     def verify_backup(self, name: str):
+        """
+        拒绝带路径的备份名称，否则返回含内部详情的成功校验结果。
+        """
         if "/" in name:
             raise ValueError("数据库备份文件名不能包含路径")
         return BackupVerification(True, "PRAGMA integrity_check", "private detail")
 
     def delete_backup(self, name: str):
+        """
+        拒绝带路径的备份名称，并为指定缺失文件模拟不存在错误。
+        """
         if "/" in name:
             raise ValueError("数据库备份文件名不能包含路径")
         if name == "missing.db":
@@ -52,7 +68,9 @@ class _Governance:
 
 @pytest.mark.asyncio
 async def test_list_database_backups_maps_public_fields(monkeypatch) -> None:
-    """列表不得把内部备份路径投影到 Web 响应。"""
+    """
+    列表不得把内部备份路径投影到 Web 响应。
+    """
     monkeypatch.setattr(system_endpoint, "get_database_governance", _Governance)
 
     result = await system_endpoint.list_database_backups(_=object())
@@ -69,7 +87,9 @@ async def test_list_database_backups_maps_public_fields(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_create_database_backup_reports_busy_state(monkeypatch) -> None:
-    """重复创建应返回冲突，不排队创建第二份备份。"""
+    """
+    重复创建应返回冲突，不排队创建第二份备份。
+    """
     governance = _Governance()
     monkeypatch.setattr(
         governance,
@@ -89,7 +109,9 @@ async def test_create_database_backup_reports_busy_state(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_verify_database_backup_rejects_path_input(monkeypatch) -> None:
-    """校验端点只接受受管文件名。"""
+    """
+    校验端点只接受受管文件名。
+    """
     monkeypatch.setattr(system_endpoint, "get_database_governance", _Governance)
 
     with pytest.raises(HTTPException) as error:
@@ -101,6 +123,9 @@ async def test_verify_database_backup_rejects_path_input(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_delete_database_backup_accepts_only_managed_name(monkeypatch) -> None:
+    """
+    删除备份接口只接受受管文件名，并将非法名称转为客户端错误。
+    """
     governance = _Governance()
     monkeypatch.setattr(system_endpoint, "get_database_governance", lambda: governance)
 
@@ -118,7 +143,9 @@ async def test_delete_database_backup_accepts_only_managed_name(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_delete_database_backup_uses_host_response_envelope(monkeypatch) -> None:
-    """Web 客户端必须收到统一响应，不能把成功删除误判为空响应错误。"""
+    """
+    Web 客户端必须收到统一响应，不能把成功删除误判为空响应错误。
+    """
     governance = _Governance()
     monkeypatch.setattr(system_endpoint, "get_database_governance", lambda: governance)
     app = FastAPI()
@@ -140,7 +167,9 @@ async def test_delete_database_backup_uses_host_response_envelope(monkeypatch) -
 
 @pytest.mark.asyncio
 async def test_list_database_backups_does_not_block_event_loop(monkeypatch) -> None:
-    """文件系统或数据库工具等待必须在线程边界内执行。"""
+    """
+    文件系统或数据库工具等待必须在线程边界内执行。
+    """
     started = Event()
     release = Event()
     governance = _Governance()
