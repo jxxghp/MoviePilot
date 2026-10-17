@@ -2,15 +2,14 @@
 验证绿联接口 RSA 分块、AES 请求加密与响应解密。
 """
 
-from types import SimpleNamespace
 import base64
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
-
 
 from app.modules.ugreen.crypto import UgreenCrypto
 

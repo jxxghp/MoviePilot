@@ -21,7 +21,6 @@ from app.runtime.events import Event
 from app.schemas.event import TransferRenameBuildEventData
 from app.schemas.types import ChainEventType
 
-
 # 只有插件补充 effect 或 codec 时才输出对应片段，用于验证事件修改在首次渲染生效。
 TEMPLATE = "{{title}}{% if effect %} {{effect}}{% endif %}{% if codec %} {{codec}}{% endif %}"
 

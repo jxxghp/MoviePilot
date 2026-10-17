@@ -30,8 +30,8 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
     TransferTask,
 )
-from app.chain.transfer.facade import TransferChain
 from app.chain.transfer.execution import _DurableTransferStepRunner
+from app.chain.transfer.facade import TransferChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import TransactionalTransferExecutionRepository

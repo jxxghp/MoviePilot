@@ -15,8 +15,8 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
 )
-from app.chain.transfer.facade import TransferChain
 from app.chain.transfer.execution import _DurableTransferStepRunner
+from app.chain.transfer.facade import TransferChain
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType
 from tests.test_transfer_job_manager import (

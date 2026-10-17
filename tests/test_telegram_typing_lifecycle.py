@@ -15,6 +15,7 @@ from app.agent.manager import AgentManager
 from app.agent.session import _async_start_processing_status, _MessageTask
 from app.chain.message import MessageChain
 from app.command import Command, _finish_command_processing_status
+
 # 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.modules.telegram import TelegramModule  # pylint: disable=no-name-in-module
 from app.modules.telegram.telegram import Telegram
