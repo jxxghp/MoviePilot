@@ -1,4 +1,6 @@
-"""插件依赖安装后的运行环境准入、健康检查与自动修复。"""
+"""
+插件依赖安装后的运行环境准入、健康检查与自动修复。
+"""
 
 from __future__ import annotations
 
@@ -44,7 +46,9 @@ from app.runtime.settings import get_runtime_setting
 
 
 class PluginRuntimeHealth:
-    """负责插件依赖写入的运行环境保护、检查和故障恢复。"""
+    """
+    负责插件依赖写入的运行环境保护、检查和故障恢复。
+    """
 
     _package_install_lock = threading.Lock()
     _protected_runtime_packages = frozenset({
@@ -62,6 +66,7 @@ class PluginRuntimeHealth:
         获取已安装的包及其版本
         使用 importlib.metadata 获取当前环境中已安装的包，标准化包名并转换版本信息
         对于无法解析的版本，记录警告日志并跳过
+
         :return: 已安装包的字典，格式为 {package_name: Version}
         """
         installed_packages: Dict[str, Version] = {}
@@ -100,7 +105,9 @@ class PluginRuntimeHealth:
 
     @staticmethod
     def __build_runtime_uv_check_command() -> List[str]:
-        """构造绑定当前解释器环境的 uv 依赖诊断命令。"""
+        """
+        构造绑定当前解释器环境的 uv 依赖诊断命令。
+        """
         uv_bin = find_uv(Path(sys.executable))
         if not uv_bin:
             return []
@@ -108,7 +115,9 @@ class PluginRuntimeHealth:
 
     @staticmethod
     def __format_package_name(name: str) -> str:
-        """将内部包名转换为依赖清单常用的连字符形式。"""
+        """
+        将内部包名转换为依赖清单常用的连字符形式。
+        """
         return name.replace("_", "-")
 
     @staticmethod
@@ -131,7 +140,9 @@ class PluginRuntimeHealth:
             cls,
             project_file: Path,
     ) -> Dict[str, Set[str]]:
-        """解析主项目 pyproject，收集当前平台生效的根依赖和 extras。"""
+        """
+        解析主项目 pyproject，收集当前平台生效的根依赖和 extras。
+        """
         roots: Dict[str, Set[str]] = {}
         if not project_file.exists():
             logger.warning(f"主项目依赖文件不存在：{project_file}")
@@ -254,7 +265,9 @@ class PluginRuntimeHealth:
 
     @classmethod
     def __get_strict_runtime_packages(cls) -> Set[str]:
-        """返回核心包及当前 ABI profile 中不得被插件改写的根包。"""
+        """
+        返回核心包及当前 ABI profile 中不得被插件改写的根包。
+        """
         packages = set(cls._protected_runtime_packages)
         project_file = get_runtime_setting('ROOT_PATH') / "pyproject.toml"
         try:
@@ -403,7 +416,9 @@ class PluginRuntimeHealth:
             cls,
             protected_packages: Dict[str, Version],
     ) -> Path:
-        """创建临时约束文件，取消时等待创建收口并删除已产生的文件。"""
+        """
+        创建临时约束文件，取消时等待创建收口并删除已产生的文件。
+        """
         create_task = asyncio.create_task(
             asyncio.to_thread(
                 cls.__create_runtime_constraints_file,
@@ -414,6 +429,9 @@ class PluginRuntimeHealth:
             return await asyncio.shield(create_task)
         except asyncio.CancelledError:
             async def cleanup_created_file() -> None:
+                """
+                等待后台创建约束文件结束，再删除取消请求遗留的临时文件。
+                """
                 try:
                     created_file = await create_task
                 except BaseException:
@@ -516,7 +534,9 @@ class PluginRuntimeHealth:
 
     @staticmethod
     def __runtime_health_error_lines(check_name: str, message: str) -> set[str]:
-        """提取未被项目依赖策略排除的稳定诊断项。"""
+        """
+        提取未被项目依赖策略排除的稳定诊断项。
+        """
         lines = {line.strip() for line in message.splitlines() if line.strip()}
         if check_name != "uv check":
             return lines
@@ -637,7 +657,9 @@ class PluginRuntimeHealth:
 
     @staticmethod
     def __with_free_threaded_reason(message: str) -> str:
-        """free-threaded 运行时下为 uv 安装失败补充可读原因，原始输出保留在后面便于排查。"""
+        """
+        free-threaded 运行时下为 uv 安装失败补充可读原因，原始输出保留在后面便于排查。
+        """
         if not is_free_threaded_runtime():
             return message
         reason = describe_free_threaded_install_failure(message)
@@ -674,7 +696,9 @@ class PluginRuntimeHealth:
             cls,
             request: PackageInstallRequest,
     ) -> Optional[str]:
-        """__free_threaded_preflight 的异步版本，取消时由子进程工具回收 uv 进程组。"""
+        """
+        __free_threaded_preflight 的异步版本，取消时由子进程工具回收 uv 进程组。
+        """
         if not is_free_threaded_runtime():
             return None
         failures: List[str] = []
@@ -697,6 +721,7 @@ class PluginRuntimeHealth:
                                        find_links_dirs: Optional[List[Path]] = None) -> Tuple[bool, str]:
         """
         使用自动降级策略安装依赖，并确保新安装的包可被动态导入
+
         :param dependency_files: 一个或多个插件依赖清单路径
         :param find_links_dirs: 额外的本地 wheels 目录列表
         :return: (是否成功, 错误信息)
@@ -861,7 +886,9 @@ class PluginRuntimeHealth:
 
     @classmethod
     async def __async_run_runtime_healthcheck(cls) -> Dict[str, Tuple[bool, str]]:
-        """异步执行插件安装后的运行环境检查。"""
+        """
+        异步执行插件安装后的运行环境检查。
+        """
         health_snapshot: Dict[str, Tuple[bool, str]] = {}
         uv_check = cls.__build_runtime_uv_check_command()
         if uv_check:
@@ -889,7 +916,9 @@ class PluginRuntimeHealth:
             cls,
             snapshot_file: Optional[Path] = None,
     ) -> Tuple[bool, str]:
-        """异步恢复主程序运行依赖，避免修复命令绕过可取消进程边界。"""
+        """
+        异步恢复主程序运行依赖，避免修复命令绕过可取消进程边界。
+        """
         repair_target = snapshot_file
         repair_desc = "主程序依赖快照"
         if repair_target and not await _await_thread_operation(repair_target.exists):
@@ -938,7 +967,9 @@ class PluginRuntimeHealth:
             snapshot_file: Optional[Path],
             baseline_health: Dict[str, Tuple[bool, str]],
     ) -> Tuple[bool, str]:
-        """异步检查并修复安装过程中新增的主程序环境异常。"""
+        """
+        异步检查并修复安装过程中新增的主程序环境异常。
+        """
         current_health = await cls.__async_run_runtime_healthcheck()
         health_message = cls.__runtime_health_regression_message(
             baseline_health,
@@ -971,7 +1002,9 @@ class PluginRuntimeHealth:
             dependency_files: Path | Sequence[Path],
             find_links_dirs: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
-        """通过可取消子进程异步安装一组插件依赖清单。"""
+        """
+        通过可取消子进程异步安装一组插件依赖清单。
+        """
         return await self.__async_install_packages_with_fallback(
             dependency_files,
             find_links_dirs,
@@ -983,7 +1016,9 @@ class PluginRuntimeHealth:
             dependency_files: Path | Sequence[Path],
             find_links_dirs: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
-        """异步安装插件依赖，并让取消能够终止 uv 子进程。"""
+        """
+        异步安装插件依赖，并让取消能够终止 uv 子进程。
+        """
         resolved_dependency_files: tuple[Path, ...]
         if isinstance(dependency_files, Path):
             resolved_dependency_files = (dependency_files,)
