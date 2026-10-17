@@ -41,5 +41,7 @@ class SearchRecommendStatusData(BaseModel):  # type: ignore[misc]
     AI 搜索结果推荐任务状态。
     """
 
-    status: Literal["disabled", "idle", "running", "completed", "error"] = Field(description="当前处理状态")
+    status: Literal["disabled", "idle", "running", "completed", "error"] = Field(
+        description="推荐任务状态：disabled 未启用、idle 空闲、running 运行中、completed 已完成、error 失败",
+    )
     results: list[int] = Field(default_factory=list, description="推荐结果在搜索列表中的索引")

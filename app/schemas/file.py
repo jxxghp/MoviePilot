@@ -37,7 +37,7 @@ class FileURI(BaseModel):
         :param uri: 文件 URI，如 /media/movie、u115:/media/movie 或 Windows 盘符路径 Z:/media
         :return: FileURI 对象
         """
-        storage, path = 'local', uri
+        storage, path = "local", uri
         for s in StorageSchema:
             protocol = f"{s.value}:"
             if uri.startswith(protocol):
@@ -60,8 +60,8 @@ class FileItem(FileURI):
     name: Optional[str] = Field(default=None, description="文件名")
     basename: Optional[str] = Field(default=None, description="不含扩展名的文件基本名称")
     extension: Optional[str] = Field(default=None, description="文件后缀")
-    size: Optional[int] = Field(default=None, description="文件大小")
-    modify_time: Optional[float] = Field(default=None, description="文件修改时间的 Unix 时间戳")
+    size: Optional[int] = Field(default=None, description="文件大小，单位为字节；目录或来源未提供时可为 None")
+    modify_time: Optional[float] = Field(default=None, description="文件修改时间的 Unix 时间戳，单位为秒，未提供时为 None")
     children: Optional[list["FileItem"]] = Field(default_factory=list, description="子节点")
     fileid: Optional[str] = Field(default=None, description="存储服务分配的文件标识")
     parent_fileid: Optional[str] = Field(default=None, description="父ID")

@@ -101,7 +101,7 @@ class MediaServerItemUserState(BaseModel):
     resume: Optional[bool] = Field(default=None, description="继续播放")
     last_played_date: Optional[str] = Field(default=None, description="上次播放时间 10位时间戳")
     play_count: Optional[int] = Field(default=None, description="播放次数(不等于完播次数，理解为浏览次数)")
-    percentage: Optional[float] = Field(default=None, description="播放进度")
+    percentage: Optional[float] = Field(default=None, description="播放进度百分比，通常为 0 至 100；未提供时为 None")
 
 
 class MediaServerItem(OptionalMediaIdentityMixin, BaseModel):
@@ -152,7 +152,7 @@ class WebhookEventInfo(BaseModel):
     media_source: Optional[MediaSource] = Field(default=None, description="媒体数据源")
     media_id: Optional[str] = Field(default=None, description="数据源原生 ID")
     overview: Optional[str] = Field(default=None, description="简介")
-    percentage: Optional[float] = Field(default=None, description="播放进度")
+    percentage: Optional[float] = Field(default=None, description="播放进度百分比，通常为 0 至 100；来源未提供或无法计算时为 None")
     ip: Optional[str] = Field(default=None, description="播放客户端的地址")
     device_name: Optional[str] = Field(default=None, description="播放设备名称")
     client: Optional[str] = Field(default=None, description="触发事件的客户端名称")

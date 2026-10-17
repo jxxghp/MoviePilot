@@ -31,8 +31,8 @@ class Storage(BaseModel):
     仪表板存储空间统计。
     """
 
-    total_storage: Optional[float] = Field(default=0.0, description="总存储空间")
-    used_storage: Optional[float] = Field(default=0.0, description="已使用空间")
+    total_storage: Optional[float] = Field(default=0.0, description="存储总容量，单位为字节")
+    used_storage: Optional[float] = Field(default=0.0, description="已使用存储容量，单位为字节")
 
 
 class ProcessInfo(BaseModel):
@@ -44,9 +44,9 @@ class ProcessInfo(BaseModel):
     name: Optional[str] = Field(default=None, description="进程名称")
     status: Optional[str] = Field(default=None, description="进程状态")
     cpu: Optional[float] = Field(default=0.0, description="进程占用CPU")
-    memory: Optional[float] = Field(default=0.0, description="进程占用内存 MB")
-    create_time: Optional[float] = Field(default=0.0, description="进程创建时间")
-    run_time: Optional[float] = Field(default=0.0, description="进程运行时间 秒")
+    memory: Optional[float] = Field(default=0.0, description="进程常驻内存，单位为 MiB（1024 的平方字节）")
+    create_time: Optional[float] = Field(default=0.0, description="进程创建的 Unix 时间戳，单位为秒；未采集时为 0")
+    run_time: Optional[float] = Field(default=0.0, description="运行时长的秒数部分；当前采集使用 timedelta.seconds，不包含完整天数")
 
 
 class DownloaderInfo(BaseModel):
@@ -54,11 +54,11 @@ class DownloaderInfo(BaseModel):
     仪表板下载器汇总信息。
     """
 
-    download_speed: Optional[float] = Field(default=0.0, description="下载速度")
-    upload_speed: Optional[float] = Field(default=0.0, description="上传速度")
-    download_size: Optional[float] = Field(default=0.0, description="下载量")
-    upload_size: Optional[float] = Field(default=0.0, description="上传量")
-    free_space: Optional[float] = Field(default=0.0, description="剩余空间")
+    download_speed: Optional[float] = Field(default=0.0, description="当前总下载速度，单位为字节每秒")
+    upload_speed: Optional[float] = Field(default=0.0, description="当前总上传速度，单位为字节每秒")
+    download_size: Optional[float] = Field(default=0.0, description="下载器返回的累计下载量，单位为字节，统计周期取决于下载器")
+    upload_size: Optional[float] = Field(default=0.0, description="下载器返回的累计上传量，单位为字节，统计周期取决于下载器")
+    free_space: Optional[float] = Field(default=0.0, description="下载器所在存储的可用空间，单位为字节")
 
 
 class DashboardMemoryInfo(BaseModel):
@@ -86,7 +86,7 @@ class ScheduleProgress(BaseModel):
     value: Optional[float] = Field(default=0.0, description="当前完成百分比")
     text: Optional[str] = Field(default=None, description="当前进度文本")
     text_i18n: Optional[str] = Field(default=None, description="多语言进度文本")
-    status: Optional[str] = Field(default=None, description="执行状态 waiting/running/success/failed")
+    status: Optional[str] = Field(default=None, description="执行状态：waiting 等待、running 运行中、success 成功、failed 失败")
     success: Optional[bool] = Field(default=None, description="最近一次执行是否成功")
     started_at: Optional[str] = Field(default=None, description="最近一次开始时间")
     finished_at: Optional[str] = Field(default=None, description="最近一次结束时间")
@@ -120,7 +120,7 @@ class ScheduleInfo(BaseModel):
     name_i18n: Optional[str] = Field(default=None, description="多语言名称")
     provider: Optional[str] = Field(default=None, description="提供者")
     provider_i18n: Optional[str] = Field(default=None, description="多语言提供者")
-    status: Optional[str] = Field(default=None, description="状态")
+    status: Optional[str] = Field(default=None, description="调度器提供的服务运行状态展示文本，与最近一次执行结果分开")
     status_i18n: Optional[str] = Field(default=None, description="多语言状态")
     next_run: Optional[str] = Field(default=None, description="下次执行时间")
     next_run_i18n: Optional[str] = Field(default=None, description="多语言下次执行时间")

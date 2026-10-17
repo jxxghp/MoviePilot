@@ -39,7 +39,7 @@ class AgentRecommendationItem(BaseModel):  # type: ignore[misc]
     disc_number: Optional[int] = Field(default=None, description="碟号")
     track_number: Optional[int] = Field(default=None, description="曲目号")
     total_tracks: Optional[int] = Field(default=None, description="总曲目数")
-    duration: Optional[int | float] = Field(default=None, description="时长")
+    duration: Optional[int | float] = Field(default=None, description="音乐音轨时长，单位为秒；非音乐条目或来源未提供时为 None")
     isrc: Optional[str] = Field(default=None, description="国际标准录音制品编码")
     version: Optional[str] = Field(default=None, description="版本说明")
     genres: list[str] = Field(default_factory=list, description="流派")

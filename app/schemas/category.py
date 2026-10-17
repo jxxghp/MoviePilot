@@ -360,7 +360,7 @@ class ClassificationEnrichmentRequest(_ClassificationModel):
     policy_revision: int = Field(ge=1, description="本次分类使用的策略 revision")
     timeout_seconds: float = Field(
         gt=0,
-        description="provider 应遵守的单次调用剩余时间预算",
+        description="补充来源应遵守的单次调用剩余时间预算，单位为秒",
     )
 
 

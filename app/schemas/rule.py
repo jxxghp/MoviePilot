@@ -17,9 +17,9 @@ class CustomRule(BaseModel):  # type: ignore[misc]
     name: Optional[str] = _Field(default=None, description="名称")
     include: Optional[str] = _Field(default=None, description="包含")
     exclude: Optional[str] = _Field(default=None, description="排除")
-    size_range: Optional[str] = _Field(default=None, description="大小范围（MB）")
+    size_range: Optional[str] = _Field(default=None, description="单集平均文件大小范围，单位为 MiB；a-b、>a、<a 均包含边界，空值不限制")
     seeders: Optional[str] = _Field(default=None, description="最少做种人数")
-    publish_time: Optional[str] = _Field(default=None, description="发布时间")
+    publish_time: Optional[str] = _Field(default=None, description="距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围")
 
 
 # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
@@ -44,9 +44,9 @@ class CustomFilterRuleCreateRequest(BaseModel):  # type: ignore[misc]
     name: str = _Field(description="显示名称")
     include: Optional[str] = _Field(default=None, description="包含")
     exclude: Optional[str] = _Field(default=None, description="排除")
-    size_range: Optional[str] = _Field(default=None, description="大小范围（MB）")
+    size_range: Optional[str] = _Field(default=None, description="单集平均文件大小范围，单位为 MiB；a-b、>a、<a 均包含边界，空值不限制")
     seeders: Optional[str] = _Field(default=None, description="允许的最少做种人数")
-    publish_time: Optional[str] = _Field(default=None, description="发布时间")
+    publish_time: Optional[str] = _Field(default=None, description="距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围")
 
 
 # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
@@ -59,9 +59,9 @@ class CustomFilterRuleUpdateRequest(BaseModel):  # type: ignore[misc]
     name: Optional[str] = _Field(default=None, description="显示名称")
     include: Optional[str] = _Field(default=None, description="包含")
     exclude: Optional[str] = _Field(default=None, description="排除")
-    size_range: Optional[str] = _Field(default=None, description="大小范围（MB）")
+    size_range: Optional[str] = _Field(default=None, description="单集平均文件大小范围，单位为 MiB；a-b、>a、<a 均包含边界，空值不限制")
     seeders: Optional[str] = _Field(default=None, description="允许的最少做种人数")
-    publish_time: Optional[str] = _Field(default=None, description="发布时间")
+    publish_time: Optional[str] = _Field(default=None, description="距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围")
 
 
 # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。

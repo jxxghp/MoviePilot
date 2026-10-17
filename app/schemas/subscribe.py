@@ -22,7 +22,7 @@ class SubscriptionActivityEvent(BaseModel):  # type: ignore[misc]
     event_id: str = Field(description="活动事件标识")
     kind: str = Field(description="订阅业务活动类型")
     source: str = Field(description="触发该业务活动的入口或来源")
-    status: str = Field(description="当前处理状态")
+    status: str = Field(description="本次订阅业务轮次的运行或结束状态，独立于订阅是否启用")
     started_at: str = Field(description="开始时间")
     finished_at: Optional[str] = Field(default=None, description="结束时间")
     counts: Dict[str, int] = Field(default_factory=dict, description="活动事件涉及的分类计数")

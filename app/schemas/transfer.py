@@ -29,7 +29,7 @@ class DownloaderTorrent(BaseModel):
     path: Optional[Path] = Field(default=None, description="文件或目录路径")
     size: Optional[float] = Field(default=0.0, description="文件大小，单位为字节")
     progress: Optional[float] = Field(default=0.0, description="当前完成百分比")
-    state: Optional[str] = Field(default='downloading', description="当前业务状态")
+    state: Optional[str] = Field(default="downloading", description="当前业务状态")
     upspeed: Optional[str] = Field(default=None, description="当前上传速度的格式化展示文本")
     dlspeed: Optional[str] = Field(default=None, description="当前下载速度的格式化展示文本")
     tags: Optional[str] = Field(default=None, description="下载器返回的任务标签文本")
@@ -144,7 +144,7 @@ class TransferQueueMediaData(BaseModel):  # type: ignore[misc]
     title_year: Optional[str] = Field(default=None, description="标题（年份）")
     year: Optional[str] = Field(default=None, description="媒体发行年份")
     poster_path: Optional[str] = Field(default=None, description="海报地址")
-    episode_run_time: Optional[List[int]] = Field(default_factory=list, description="集时长")
+    episode_run_time: Optional[List[int]] = Field(default_factory=list, description="来源提供的单集时长列表，单位为分钟；省略时为空列表，也允许显式传入 None")
     origin_country: Optional[List[str]] = Field(default_factory=list, description="原产国")
 
 
@@ -193,7 +193,7 @@ class TransferInfo(BaseModel):
     file_count: Optional[int] = Field(default=0, description="处理文件数")
     file_list: Optional[list] = Field(default_factory=list, description="处理文件清单")
     file_list_new: Optional[list] = Field(default_factory=list, description="目标文件清单")
-    total_size: Optional[int] = Field(default=0, description="总文件大小")
+    total_size: Optional[int] = Field(default=0, description="本次处理文件的总大小，单位为字节")
     fail_list: Optional[list] = Field(default_factory=list, description="失败清单")
     message: Optional[str] = Field(default=None, description="错误信息")
     need_scrape: Optional[bool] = Field(default=False, description="是否需要刮削")
@@ -373,7 +373,7 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     episode_detail: Optional[str] = Field(default=None, description="指定集数")
     episode_part: Optional[str] = Field(default=None, description="指定PART")
     episode_offset: Optional[str] = Field(default=None, description="集数偏移")
-    min_filesize: Optional[int] = Field(default=0, description="最小文件大小")
+    min_filesize: Optional[int] = Field(default=0, description="最低文件大小阈值，单位为 MiB；0 不限制，启用时仅保留严格大于阈值的文件")
     scrape: Optional[bool] = Field(default=False, description="刮削")
     library_type_folder: Optional[bool] = Field(default=None, description="媒体库类型子目录")
     library_category_folder: Optional[bool] = Field(default=None, description="媒体库类别子目录")
@@ -477,7 +477,11 @@ class MusicTransferPreview(BaseModel):  # type: ignore[misc]
 
     status: Literal["local_tags", "local_cue", "matched", "manual", "metadata", "not_found",
                     "ambiguous", "conflict", "service_error", "budget_exhausted", "unsupported"] = Field(
-        description="当前处理状态",
+        description=(
+            "识别结论：local_tags 本地标签、local_cue 本地曲目表、matched 在线确认、manual 手工指定、"
+            "metadata 仅元数据、not_found 未匹配、ambiguous 有歧义、conflict 证据冲突、"
+            "service_error 服务失败、budget_exhausted 预算耗尽、unsupported 不支持"
+        ),
     )
     online_confirmed: bool = Field(default=False, description="是否已通过在线元数据确认身份")
     music_type: Optional[str] = Field(default=None, description="音乐实体类型：recording 单曲、album 专辑")
@@ -502,7 +506,7 @@ class MusicTransferPreview(BaseModel):  # type: ignore[misc]
     candidates: list[MusicTransferCandidate] = Field(default_factory=list, description="需要用户确认的音乐身份候选列表")
     read_status: Literal["tags", "stream_only", "unreadable", "name_only", "companion", "unknown"] = Field(
         default="unknown",
-        description="音乐文件元数据读取状态",
+        description="读取状态：tags 有音频标签、stream_only 仅流信息、unreadable 无法读取、name_only 仅文件名、companion 配套文件、unknown 未知",
     )
     file_role: Literal["audio", "companion"] = Field(default="audio", description="音乐文件在资源组中的角色")
     group_id: Optional[str] = Field(default=None, description="标识只供当前已预览文件分组；不授予权限，也不授权展开该目录")

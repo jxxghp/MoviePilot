@@ -56,7 +56,7 @@ class GithubTokenStatus(BaseModel):  # type: ignore[misc]
     )
     login: str | None = Field(default=None, description="授权 GitHub 用户名")
     masked_token: str | None = Field(default=None, description="脱敏后的 Token 摘要")
-    expires_at: int | None = Field(default=None, description="Token 过期时间戳")
+    expires_at: int | None = Field(default=None, description="Token 过期的 Unix 时间戳，单位为秒；未知或无过期时间时为 None")
     needs_reauthorization: bool = Field(
         default=False,
         description="Token 是否失效、临近过期或缺少 Agent 提交 Issue/PR 所需授权范围",

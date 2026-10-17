@@ -15,8 +15,11 @@ class LLMAuthStatus(BaseModel):
     connected: bool = Field(default=False, description="是否已建立有效授权或连接")
     type: Optional[str] = Field(default=None, description="当前授权方式的类型")
     label: Optional[str] = Field(default=None, description="当前授权方式的显示名称")
-    expires_at: Optional[int | float | str] = Field(default=None, description="授权失效时间")
-    updated_at: Optional[int | float | str] = Field(default=None, description="更新时间")
+    expires_at: Optional[int | float | str] = Field(
+        default=None,
+        description="授权失效的 Unix 秒级时间戳，兼容字符串形式；未知或无过期时间时为 None",
+    )
+    updated_at: Optional[int | float | str] = Field(default=None, description="授权记录最近更新的 Unix 秒级时间戳，兼容字符串形式；未知时为 None")
 
 
 class LLMServerToolCapability(BaseModel):
@@ -48,7 +51,7 @@ class LLMModelInfo(BaseModel):
     transport: Optional[str] = Field(default=None, description="模型调用的传输方式")
     source: Optional[str] = Field(default=None, description="数据来源")
     release_date: Optional[str] = Field(default=None, description="发行日期")
-    status: Optional[str] = Field(default=None, description="当前处理状态")
+    status: Optional[str] = Field(default=None, description="模型目录元数据中的可用性或发布状态；提供商未声明时为 None")
     server_tools: list[LLMServerToolCapability] = Field(default_factory=list, description="模型可用的服务端工具能力")
 
 
@@ -114,14 +117,14 @@ class LLMProviderAuthSession(BaseModel):
     session_id: str = Field(description="会话标识")
     provider_id: Optional[str] = Field(default=None, description="模型提供商标识")
     flow_type: Optional[str] = Field(default=None, description="交互授权流程类型")
-    status: Optional[str] = Field(default=None, description="当前处理状态")
+    status: Optional[str] = Field(default=None, description="交互授权会话的当前阶段；未提供时为 None，具体状态由授权流程决定")
     message: Optional[str] = Field(default=None, description="面向调用方的结果说明")
     authorize_url: Optional[str] = Field(default=None, description="用户完成授权的页面地址")
     verification_url: Optional[str] = Field(default=None, description="用户输入授权码的页面地址")
     user_code: Optional[str] = Field(default=None, description="需要在提供商授权页面输入的用户码")
     instructions: Optional[str] = Field(default=None, description="面向用户的授权操作说明")
     interval_seconds: Optional[int] = Field(default=None, description="建议的轮询间隔秒数")
-    expires_at: Optional[int | float] = Field(default=None, description="授权失效时间")
+    expires_at: Optional[int | float] = Field(default=None, description="本次交互授权会话的过期 Unix 时间戳，单位为秒；未提供时为 None")
 
 
 class LLMTestResult(BaseModel):

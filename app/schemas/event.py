@@ -319,7 +319,7 @@ class MusicNameRecognizeEventData(ExtensibleEventData):
     artist: Optional[str] = Field(default=None, description="艺术家")
     album: Optional[str] = Field(default=None, description="专辑")
     year: Optional[Any] = Field(default=None, description="年份")
-    duration: Optional[Any] = Field(default=None, description="时长")
+    duration: Optional[Any] = Field(default=None, description="音轨时长，单位为秒；未提供时为 None")
     name: Optional[str] = Field(default=None, description="插件识别后的曲名")
 
 
@@ -599,10 +599,10 @@ class AgentTokensUsageEventData(BaseEventData):
     input_tokens: int = Field(default=0, description="输入令牌数")
     output_tokens: int = Field(default=0, description="输出令牌数")
     total_tokens: int = Field(default=0, description="输入和输出的令牌总数")
-    cache_read_input_tokens: int = Field(default=0, description="从提示词缓存读取的输入 tokens")
-    cache_write_input_tokens: int = Field(default=0, description="写入提示词缓存的输入 tokens")
-    uncached_input_tokens: int = Field(default=0, description="未命中缓存的输入 tokens")
-    cache_hit_ratio: Optional[float] = Field(default=None, description="提示词缓存命中率")
+    cache_read_input_tokens: int = Field(default=0, description="从提示词缓存读取的输入令牌数")
+    cache_write_input_tokens: int = Field(default=0, description="写入提示词缓存的输入令牌数")
+    uncached_input_tokens: int = Field(default=0, description="未命中提示词缓存的输入令牌数")
+    cache_hit_ratio: Optional[float] = Field(default=None, description="从缓存读取的输入令牌数占总输入令牌数的比例；缓存明细不可用或输入为 0 时为 None")
     cache_usage_available: bool = Field(default=False, description="供应商是否返回缓存用量明细")
     model_call_count: int = Field(default=0, description="模型调用次数")
     success: bool = Field(default=False, description="Agent 执行是否成功")
@@ -838,10 +838,10 @@ class TransferOverwriteCheckEventData(ChainEventData):
 
     # 输出参数
     source_size: Optional[int] = Field(
-        default=None, description="由插件提供的源文件真实大小，覆盖 fileitem.size 用于 size 模式比较；为 None 时表示不修改"
+        default=None, description="插件提供的源文件真实大小，单位为字节；用于 size 模式比较，None 表示不修改"
     )
     target_size: Optional[int] = Field(
-        default=None, description="由插件提供的目标文件真实大小，覆盖 target_item.size 用于 size 模式比较；为 None 时表示不修改"
+        default=None, description="插件提供的目标文件真实大小，单位为字节；用于 size 模式比较，None 表示不修改"
     )
     overwrite: Optional[bool] = Field(
         default=None, description="由插件直接给出的覆盖决策，非 None 时 将完全跳过 MoviePilot 内置的 size/never/latest 等比较逻辑"
