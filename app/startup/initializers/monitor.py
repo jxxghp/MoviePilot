@@ -1,4 +1,8 @@
-from app.monitor import Monitor
+"""
+初始化目录监控及其后台任务。
+"""
+
+from app.monitor import Monitor  # pylint: disable=no-name-in-module
 from app.runtime.execution import run_in_threadpool_to_completion
 
 
