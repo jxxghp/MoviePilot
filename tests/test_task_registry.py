@@ -27,14 +27,23 @@ class _CloseCountingCoroutine(Coroutine[Any, Any, None]):
         return self
 
     def send(self, _value):
+        """
+        立即结束协程替身，避免任务注册测试执行真实异步工作。
+        """
         raise StopIteration
 
     def throw(self, typ, val=None, tb=None):
+        """
+        按协程协议重新抛出传入异常，并保留显式提供的回溯。
+        """
         if val is None:
             raise typ
         raise val.with_traceback(tb)
 
     def close(self) -> None:
+        """
+        累计关闭次数，检查拒收或关闭流程是否恰好释放协程一次。
+        """
         self.close_count += 1
 
 
@@ -296,6 +305,9 @@ def test_task_registry_shutdown_owns_close_before_loop_rejection() -> None:
 
         @staticmethod
         def call_soon_threadsafe(_callback) -> None:
+            """
+            阻塞跨线程派发直至测试放行，再模拟事件循环已经关闭。
+            """
             dispatch_entered.set()
             release_dispatch.wait()
             raise RuntimeError("loop closed")
@@ -333,6 +345,9 @@ def test_task_registry_shutdown_rejects_late_successful_dispatch() -> None:
 
         @staticmethod
         def call_soon_threadsafe(callback) -> None:
+            """
+            延迟接受回调直到关闭竞争发生，记录最终送达循环的回调。
+            """
             dispatch_entered.set()
             release_dispatch.wait()
             callbacks.append(callback)

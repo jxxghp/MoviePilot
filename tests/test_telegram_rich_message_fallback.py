@@ -134,6 +134,9 @@ class TestSendMsgFallsBackToPlainText:
     """
 
     def test_falls_back_when_rich_message_fails(self):
+        """
+        富文本发送失败后降级为纯文本，成功结果保留降级消息标识。
+        """
         client = _make_client()
         client._api.send_rich_message.side_effect = TelegramApiError(
             "sendRichMessage", "Bad Request", 400
@@ -153,6 +156,9 @@ class TestSendMsgFallsBackToPlainText:
         assert client._api.send_message.call_args.kwargs["parse_mode"] == ""
 
     def test_no_fallback_when_rich_message_succeeds(self):
+        """
+        富文本发送成功时不重复发送纯文本消息。
+        """
         client = _make_client()
         client._api.send_rich_message.return_value = {
             "message_id": 1, "chat": {"id": "chat"}
@@ -164,6 +170,9 @@ class TestSendMsgFallsBackToPlainText:
         client._api.send_message.assert_not_called()
 
     def test_reports_failure_when_both_paths_fail(self):
+        """
+        富文本和纯文本发送均失败时，向调用方返回失败。
+        """
         client = _make_client()
         client._api.send_rich_message.side_effect = TelegramApiError(
             "sendRichMessage", "Bad Request", 400
@@ -219,6 +228,9 @@ class TestEditMsgFallsBackToPlainText:
     """
 
     def test_falls_back_when_rich_edit_fails(self):
+        """
+        富文本编辑失败后以纯文本再次编辑原消息。
+        """
         client = _make_client()
         client._api.edit_message_text.side_effect = [
             TelegramApiError("editMessageText", "Bad Request", 400),
@@ -235,6 +247,9 @@ class TestEditMsgFallsBackToPlainText:
         assert client._api.edit_message_text.call_args.kwargs["text"] == "# 结果"
 
     def test_no_fallback_when_rich_edit_succeeds(self):
+        """
+        富文本编辑成功时不触发额外的纯文本编辑。
+        """
         client = _make_client()
         client._api.edit_message_text.return_value = {
             "message_id": 5, "chat": {"id": "chat"}
@@ -314,6 +329,9 @@ class TestFallbackDisablesMarkdownV2:
     """
 
     def test_send_fallback_passes_empty_parse_mode(self):
+        """
+        降级发送显式清空解析模式，避免正文再次被 MarkdownV2 拒绝。
+        """
         client = _make_client()
         client._api.send_rich_message.side_effect = TelegramApiError(
             "sendRichMessage", "Bad Request", 400
@@ -327,6 +345,9 @@ class TestFallbackDisablesMarkdownV2:
         assert kwargs["parse_mode"] == "", "降级发送必须显式禁用 MarkdownV2"
 
     def test_edit_fallback_passes_empty_parse_mode(self):
+        """
+        降级编辑显式清空解析模式，避免重复触发富文本格式错误。
+        """
         client = _make_client()
         client._api.edit_message_text.side_effect = [
             TelegramApiError("editMessageText", "Bad Request", 400),

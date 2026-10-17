@@ -97,6 +97,9 @@ def _telegram_client(bot=None) -> Telegram:
 
 
 def test_start_typing_can_stop_by_chat_id():
+    """
+    输入状态任务可以通过会话标识停止，并从任务表移除。
+    """
     telegram = _telegram_client()
 
     telegram._start_typing_task(
@@ -112,6 +115,9 @@ def test_start_typing_can_stop_by_chat_id():
 
 
 def test_start_typing_can_stop_by_user_mapping():
+    """
+    仅提供用户标识时，通过用户与会话映射定位并停止输入状态任务。
+    """
     telegram = _telegram_client()
     telegram._user_chat_mapping["10001"] = "chat-2"
 
@@ -127,6 +133,9 @@ def test_start_typing_can_stop_by_user_mapping():
 
 
 def test_typing_task_has_max_duration_guard():
+    """
+    输入状态达到最长持续时间后自行结束，避免反馈任务永久存活。
+    """
     telegram = _telegram_client()
 
     telegram._start_typing_task(
@@ -249,6 +258,9 @@ def test_typing_start_is_rejected_after_client_stop():
 
 
 def test_agent_managed_send_msg_keeps_typing_for_worker_cleanup():
+    """
+    Agent 托管的消息发送保留输入状态，由工作任务统一收尾。
+    """
     telegram = _telegram_client()
     sent = SimpleNamespace(message_id=1, chat=SimpleNamespace(id="chat-1"))
 
@@ -306,6 +318,9 @@ def test_telegram_module_processing_status_starts_typing():
 
 
 def test_slash_command_defers_processing_status_to_command_handler():
+    """
+    斜杠命令的处理状态交由命令处理器结束，消息入口不提前清理。
+    """
     chain = MessageChain.__new__(MessageChain)
     chain.eventmanager = Mock()
     status = MessageChain._ProcessingStatus(
@@ -372,6 +387,9 @@ def test_command_handler_finishes_processing_status_after_execute():
 
 
 def test_finish_command_processing_status_uses_module_interface():
+    """
+    命令结束时通过统一模块接口清理状态，并传递备用用户标识。
+    """
     status = {
         "channel": NotificationChannel.Telegram.value,
         "source": "telegram-test",
@@ -390,6 +408,9 @@ def test_finish_command_processing_status_uses_module_interface():
 
 
 def test_async_agent_leaves_processing_status_to_worker():
+    """
+    异步 Agent 消息把处理状态生命周期交给工作任务管理。
+    """
     chain = MessageChain.__new__(MessageChain)
     chain.eventmanager = Mock()
     chain.runtime_config = replace(
@@ -434,6 +455,9 @@ def test_async_agent_leaves_processing_status_to_worker():
 
 
 def test_agent_manager_starts_processing_status_when_task_runs():
+    """
+    Agent 管理器在任务实际执行时启动处理状态，而非排队时启动。
+    """
     async def _run():
         manager = AgentManager()
         task = _MessageTask(
@@ -466,6 +490,9 @@ def test_agent_manager_starts_processing_status_when_task_runs():
 
 
 def test_agent_start_processing_status_uses_chain_interface():
+    """
+    Agent 启动处理状态时通过链层接口传递原始消息与会话位置。
+    """
     async def _run():
         task = _MessageTask(
             session_id="session-1",
@@ -515,6 +542,9 @@ def test_agent_start_processing_status_uses_chain_interface():
 
 
 def test_callback_stops_typing_when_message_handler_returns():
+    """
+    消息回调处理结束后停止输入反馈，避免保留已完成任务的状态。
+    """
     chain = MessageChain.__new__(MessageChain)
     chain.eventmanager = Mock()
     status = MessageChain._ProcessingStatus(
@@ -550,6 +580,9 @@ def test_callback_stops_typing_when_message_handler_returns():
 
 
 def test_chain_finishes_processing_through_module_interface():
+    """
+    消息链结束处理时调用统一模块接口，不直接操作具体渠道客户端。
+    """
     chain = MessageChain.__new__(MessageChain)
     status = MessageChain._ProcessingStatus(
         channel=NotificationChannel.Telegram,
@@ -579,6 +612,9 @@ def test_chain_finishes_processing_through_module_interface():
 
 
 def test_agent_manager_finishes_processing_status_after_each_task():
+    """
+    Agent 管理器在每个任务结束后清理该任务的处理状态。
+    """
     async def _run():
         manager = AgentManager()
         status = {
@@ -608,6 +644,9 @@ def test_agent_manager_finishes_processing_status_after_each_task():
 
 
 def test_agent_worker_starts_and_finishes_each_queued_task():
+    """
+    同一会话队列中的每个任务分别启动和结束处理状态。
+    """
     async def _run():
         manager = AgentManager()
         manager._session_queues["session-1"] = asyncio.Queue()

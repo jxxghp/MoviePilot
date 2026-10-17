@@ -28,6 +28,9 @@ def test_transfer_prefers_snapshot_over_live_lookup(monkeypatch):
     class _GuardSubscribeChain:
         def get_subscribe_by_source(self, source):
             # 一旦走到实时反查即视为失败：快照存在时不应触发
+            """
+            记录不应发生的订阅实时反查，用于确认整理优先使用已保存快照。
+            """
             called["lookup"] = True
             return SimpleNamespace(custom_words="不应使用\n实时反查")
 
@@ -50,6 +53,9 @@ def test_transfer_falls_back_to_live_lookup_without_snapshot(monkeypatch):
 
     class _FakeSubscribeChain:
         def get_subscribe_by_source(self, source):
+            """
+            校验订阅来源并返回实时自定义词，模拟缺少快照时的回退查询。
+            """
             assert source == "Subscribe|{...}"
             return SimpleNamespace(custom_words="A => B")
 
@@ -68,6 +74,9 @@ def test_transfer_returns_none_when_unavailable(monkeypatch):
 
     class _NoneSubscribeChain:
         def get_subscribe_by_source(self, source):
+            """
+            模拟订阅已不存在，使整理流程返回无可用自定义词。
+            """
             return None
 
     monkeypatch.setattr(mixins_module, "SubscribeChain", _NoneSubscribeChain)
