@@ -24,6 +24,7 @@ from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.metadata import SubscriptionSearchTarget
 from app.chain.subscribe.search import (
     _build_subscription_candidate_filter,
+    _best_version_target_episodes,
     _finish_paged_subscription,
     _process_paged_subscription,
 )
@@ -161,6 +162,7 @@ def test_best_version_search_uses_normal_rules_for_never_downloaded_episodes(sub
     ]
 
 
+
 def test_best_version_candidate_filter_handles_full_pack_and_explicit_groups(subscription, monkeypatch):
     """全集候选按目标范围归类，订阅显式规则组同时覆盖两种候选。"""
     scope = subscription
@@ -244,6 +246,20 @@ def test_paged_best_version_search_builds_dynamic_rule_checkpoint(subscription, 
         "normal": [],
         "best": [],
     }
+
+def test_best_version_target_episodes_handles_incomplete_identity(subscription):
+    """历史订阅缺少媒体键或季号时回退到订阅范围，不访问空键映射。"""
+    target = SubscriptionSearchTarget(
+        subscription.initial,
+        build_subscribe_meta(subscription.initial),
+        subscription.media,
+        {},
+        None,
+    )
+    subscribe = replace(subscription.initial, season=None)
+
+    assert _best_version_target_episodes(subscribe, target) == {1}
+
 
 
 @pytest.mark.parametrize("explicit_missing", [False, True])
