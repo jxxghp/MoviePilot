@@ -1250,20 +1250,9 @@
     "arg-type": 3,
     "assignment": 1,
     "empty-body": 1,
-    "no-any-return": 3,
+    "no-any-return": 1,
     "no-untyped-def": 7,
     "type-arg": 2
-  },
-  "app/modules/ugreen/ugreen.py": {
-    "arg-type": 4,
-    "no-any-return": 1,
-    "no-untyped-call": 7,
-    "no-untyped-def": 9,
-    "operator": 2,
-    "type-arg": 12,
-    "type-var": 1,
-    "union-attr": 7,
-    "var-annotated": 2
   },
   "app/modules/vocechat/__init__.py": {
     "assignment": 6,

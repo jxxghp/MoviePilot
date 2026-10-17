@@ -43,11 +43,12 @@ class Ugreen:
     _username: Optional[str] = None
     _password: Optional[str] = None
 
-    _userinfo: Optional[dict] = None
+    # 用户资料、媒体库和会话负载沿用 API 的原始 JSON 字典合同。
+    _userinfo: Optional[dict[str, Any]] = None
     _host: Optional[str] = None
     _playhost: Optional[str] = None
 
-    _libraries: dict[str, dict] = {}
+    _libraries: dict[str, dict[str, Any]] = {}
     _library_paths: dict[str, str] = {}
     _sync_libraries: List[str] = []
     _scan_type: int = 2
@@ -63,13 +64,13 @@ class Ugreen:
         username: Optional[str] = None,
         password: Optional[str] = None,
         play_host: Optional[str] = None,
-        sync_libraries: Optional[list] = None,
+        sync_libraries: Optional[list[str]] = None,
         scan_mode: Optional[Union[str, int]] = None,
         scan_type: Optional[Union[str, int]] = None,
         verify_ssl: Optional[Union[bool, str, int]] = True,
         mode: Optional[str] = None,
-        **kwargs,
-    ):
+        **kwargs: object,
+    ) -> None:
         """
         保存连接配置，并按端口或显式模式连接绿联影视服务。
 
@@ -116,7 +117,7 @@ class Ugreen:
         """
         return self._api
 
-    def close(self):
+    def close(self) -> None:
         """
         关闭绿联影视连接。
         """
@@ -210,7 +211,7 @@ class Ugreen:
         return hashlib.sha256((self._password or "").encode("utf-8")).hexdigest()
 
     @staticmethod
-    def __load_all_session_cache() -> dict:
+    def __load_all_session_cache() -> dict[str, Any]:
         """
         读取系统配置中保存的所有绿联会话。
 
@@ -220,7 +221,7 @@ class Ugreen:
         return sessions if isinstance(sessions, dict) else {}
 
     @staticmethod
-    def __save_all_session_cache(sessions: dict):
+    def __save_all_session_cache(sessions: dict[str, Any]) -> None:
         """
         把所有绿联实例的会话字典写回系统配置。
 
@@ -228,7 +229,7 @@ class Ugreen:
         """
         get_configured_system_config().set(SystemConfigKey.UgreenSessionCache, sessions)
 
-    def __remove_persisted_session(self):
+    def __remove_persisted_session(self) -> None:
         """
         从持久化会话映射中删除当前地址和账号对应的记录。
         """
@@ -238,7 +239,7 @@ class Ugreen:
             sessions.pop(cache_key, None)
             self.__save_all_session_cache(sessions)
 
-    def __save_persisted_session(self):
+    def __save_persisted_session(self) -> None:
         """
         保存内部接口会话、Cookie、密码摘要和更新时间。
 
@@ -261,12 +262,13 @@ class Ugreen:
         }
         self.__save_all_session_cache(sessions)
 
-    def __restore_persisted_session(self) -> bool:
+    def __restore_persisted_session(self, host: str) -> bool:
         """
         验证缓存会话的密码摘要和服务端用户状态，成功后接管客户端。
 
         密码变更或会话失效时删除旧记录；验证失败后关闭临时客户端，调用方可继续密码登录。
 
+        :param host: 重连入口已校验的服务地址
         :return: 恢复并验证成功时返回 True；记录缺失、配置变更或会话失效时返回 False
         """
         cache_key = self.__session_cache_key()
@@ -281,7 +283,7 @@ class Ugreen:
             self.__remove_persisted_session()
             return False
 
-        api = Api(host=self._host, verify_ssl=self._verify_ssl)
+        api = Api(host=host, verify_ssl=self._verify_ssl)
         if not api.import_session_state(cached):
             api.close()
             self.__remove_persisted_session()
@@ -341,11 +343,11 @@ class Ugreen:
             logger.debug(f"{self._username} 成功登录绿联媒体库服务")
             return True
 
-        if self.__restore_persisted_session():
+        if self.__restore_persisted_session(media_host):
             return True
 
-        self._api = Api(host=self._host, verify_ssl=self._verify_ssl)
-        if self._api.login(self._username, self._password) is None:
+        self._api = Api(host=media_host, verify_ssl=self._verify_ssl)
+        if self._api.login(media_username, media_password) is None:
             self.__remove_persisted_session()
             return False
 
@@ -359,7 +361,7 @@ class Ugreen:
         logger.debug(f"{self._username} 成功登录绿联影视")
         return True
 
-    def disconnect(self, logout: bool = False):
+    def disconnect(self, logout: bool = False) -> None:
         """
         关闭客户端并清空内存中的用户、媒体库与路径状态。
 
@@ -488,7 +490,7 @@ class Ugreen:
             return False
 
     @staticmethod
-    def __parse_year(video_info: dict) -> Optional[Union[str, int]]:
+    def __parse_year(video_info: dict[str, Any]) -> Optional[Union[str, int]]:
         """
         读取有效年份，缺失时从发行时间戳推断。
 
@@ -525,7 +527,9 @@ class Ugreen:
         return "Video"
 
     @staticmethod
-    def __build_media_server_item(video_info: dict, play_status: Optional[dict] = None):
+    def __build_media_server_item(
+        video_info: dict[str, Any], play_status: Optional[dict[str, Any]] = None,
+    ) -> Optional[_SchemaMediaServerItem]:
         """
         将内部视频信息和播放状态转换为统一媒体模型。
 
@@ -752,14 +756,15 @@ class Ugreen:
             )
         return image_url
 
-    def __build_play_item_from_wrapper(self, wrapper: dict) -> Optional[_SchemaMediaServerPlayItem]:
+    def __build_play_item_from_wrapper(self, wrapper: dict[str, Any]) -> Optional[_SchemaMediaServerPlayItem]:
         """
         将内部接口的视频与播放状态包装转换为仪表盘条目。
 
         :param wrapper: 包含 video_info、play_status 的包装，或直接传入视频信息字典
         :return: 播放条目；缺少视频标识时返回 None，进度转换并限制在 0 至 100 之间
         """
-        video_info = wrapper.get("video_info") if isinstance(wrapper.get("video_info"), dict) else wrapper
+        video_info_value = wrapper.get("video_info")
+        video_info = video_info_value if isinstance(video_info_value, dict) else wrapper
         if not isinstance(video_info, dict):
             return None
 
@@ -767,8 +772,10 @@ class Ugreen:
         if item_id is None:
             return None
 
-        play_status = wrapper.get("play_status") if isinstance(wrapper.get("play_status"), dict) else {}
-        progress = play_status.get("progress") if isinstance(play_status.get("progress"), (int, float)) else 0
+        play_status_value = wrapper.get("play_status")
+        play_status = play_status_value if isinstance(play_status_value, dict) else {}
+        progress_value = play_status.get("progress")
+        progress = progress_value if isinstance(progress_value, (int, float)) else 0
 
         if video_info.get("type") == 2:
             subtitle = play_status.get("tv_name") or "剧集"
@@ -1084,7 +1091,7 @@ class Ugreen:
             api.close()
 
     @staticmethod
-    def __extract_video_info_list(bucket: Any) -> list[dict]:
+    def __extract_video_info_list(bucket: object) -> list[dict[str, Any]]:
         """
         从搜索分类桶的 video_arr 中提取有效 video_info 字典。
 
@@ -1357,7 +1364,7 @@ class Ugreen:
             self, title: str, year: Optional[str] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         按标题、年份与统一媒体身份查找电视剧条目。
         """
@@ -1392,7 +1399,7 @@ class Ugreen:
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         season: Optional[int] = None,
-    ) -> tuple[Optional[str], Optional[Dict[int, list]]]:
+    ) -> tuple[Optional[str], Optional[Dict[int, list[int]]]]:
         """
         根据标题、年份、媒体身份和季号查询绿联媒体库中的电视剧已入库集数。
 
@@ -1462,7 +1469,7 @@ class Ugreen:
             if category_id and isinstance(season_num, int):
                 season_map[str(category_id)] = season_num
 
-        season_episodes: Dict[int, list] = {}
+        season_episodes: Dict[int, list[int]] = {}
         for ep in tv_detail.get("tv_info") or []:
             if not isinstance(ep, dict):
                 continue
@@ -1609,7 +1616,9 @@ class Ugreen:
 
         return self.__build_media_server_item(video_info, info.get("play_status"))
 
-    def _iter_library_videos(self, root_path: str, page_size: int = 100):
+    def _iter_library_videos(
+        self, root_path: str, page_size: int = 100,
+    ) -> Generator[dict[str, Any], None, None]:
         """
         广度优先分页遍历海报墙目录，最多访问 20000 个不同路径。
 
@@ -1664,7 +1673,7 @@ class Ugreen:
         parent: Union[str, int],
         start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
-    ) -> Generator[_SchemaMediaServerItem, Any, None]:
+    ) -> Generator[_SchemaMediaServerItem, None, None]:
         """
         分页遍历媒体库服务用户可见的电影、剧集和音乐专辑。
         """
@@ -1761,7 +1770,7 @@ class Ugreen:
         parent: Union[str, int],
         start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
-    ) -> Generator[_SchemaMediaServerItem | None | Any, Any, None]:
+    ) -> Generator[_SchemaMediaServerItem, None, None]:
         """
         按连接模式逐项遍历媒体库中可同步的媒体。
 
@@ -1789,7 +1798,7 @@ class Ugreen:
             return None
 
         skip = max(0, start_index or 0)
-        remain = -1 if limit in [None, -1] else max(0, limit)
+        remain = -1 if limit is None or limit == -1 else max(0, limit)
 
         for video in self._iter_library_videos(root_path=root_path):
             video_type = video.get("type")
@@ -1875,13 +1884,14 @@ class Ugreen:
         if data is None:
             return None
 
-        ret_resume = []
+        ret_resume: list[_SchemaMediaServerPlayItem] = []
         for item in data.get("video_arr") or []:
             if len(ret_resume) == page_size:
                 break
             if not isinstance(item, dict):
                 continue
-            video_info = item.get("video_info") if isinstance(item.get("video_info"), dict) else {}
+            video_info_value = item.get("video_info")
+            video_info = video_info_value if isinstance(video_info_value, dict) else {}
             library_id = str(video_info.get("media_lib_set_id") or "")
             if self.__is_library_blocked(library_id):
                 continue
@@ -1919,13 +1929,14 @@ class Ugreen:
         if data is None:
             return None
 
-        latest = []
+        latest: list[_SchemaMediaServerPlayItem] = []
         for item in data.get("video_arr") or []:
             if len(latest) == page_size:
                 break
             if not isinstance(item, dict):
                 continue
-            video_info = item.get("video_info") if isinstance(item.get("video_info"), dict) else {}
+            video_info_value = item.get("video_info")
+            video_info = video_info_value if isinstance(video_info_value, dict) else {}
             library_id = str(video_info.get("media_lib_set_id") or "")
             if self.__is_library_blocked(library_id):
                 continue
@@ -1973,7 +1984,8 @@ class Ugreen:
             if not isinstance(item, dict):
                 continue
 
-            video_info = item.get("video_info") if isinstance(item.get("video_info"), dict) else {}
+            video_info_value = item.get("video_info")
+            video_info = video_info_value if isinstance(video_info_value, dict) else {}
             video_type = video_info.get("type") if isinstance(video_info, dict) else None
             if video_type != 1 and video_type != 2:
                 continue
@@ -1990,7 +2002,7 @@ class Ugreen:
         return images
 
     @staticmethod
-    def get_image_cookies(image_url: str):
+    def get_image_cookies(image_url: str) -> None:
         # 绿联图片流接口依赖加密鉴权头，当前图片代理仅支持Cookie注入。
         """
         保留图片 Cookie 接口；绿联图片认证不通过 Cookie 提供。
