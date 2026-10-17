@@ -1,4 +1,6 @@
-"""API Route 预设通过共享 OpenAI 兼容通道发现模型的边界回归。"""
+"""
+API Route 预设通过共享 OpenAI 兼容通道发现模型的边界回归。
+"""
 
 from unittest.mock import AsyncMock
 
@@ -11,7 +13,9 @@ from app.foundation.singleton import Singleton
 
 @pytest.fixture
 def manager(monkeypatch):
-    """隔离管理器单例及目录缓存，防止测试影响其他 provider。"""
+    """
+    隔离管理器单例及目录缓存，防止测试影响其他 provider。
+    """
     key = (LLMProviderManager, (), frozenset())
     monkeypatch.setattr(Singleton, "_instances", {k: v for k, v in Singleton._instances.items() if k != key})
     instance = LLMProviderManager()
@@ -28,7 +32,9 @@ def manager(monkeypatch):
     ],
 )
 async def test_api_route_discovers_authenticated_models(manager, monkeypatch, base_url, expected_url):
-    """预设及覆盖地址都传递密钥，保留完整模型 ID，不推断缺失的上下文元数据。"""
+    """
+    预设及覆盖地址都传递密钥，保留完整模型 ID，不推断缺失的上下文元数据。
+    """
     requests = []
 
     def respond(request):

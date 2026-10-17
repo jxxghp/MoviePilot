@@ -1,4 +1,6 @@
-"""异常日志入口应保留错误等级、调用位置和备份接口的安全失败响应。"""
+"""
+异常日志入口应保留错误等级、调用位置和备份接口的安全失败响应。
+"""
 
 import logging
 from types import SimpleNamespace
@@ -14,7 +16,9 @@ from app.runtime.log import LoggerManager, logger
 
 @pytest.fixture
 def captured_logs(monkeypatch, caplog):
-    """捕获真实标准库日志记录与文件消息，避免写入运行目录。"""
+    """
+    捕获真实标准库日志记录与文件消息，避免写入运行目录。
+    """
     console = logging.Logger("exception-contract", level=logging.DEBUG)
     console.addHandler(caplog.handler)
     writer = Mock()
@@ -26,7 +30,9 @@ def captured_logs(monkeypatch, caplog):
 
 @pytest.mark.parametrize("include_exception", [None, False, True])
 def test_exception_logs_error_with_current_exception(captured_logs, include_exception):
-    """默认记录当前异常，也支持调用方显式关闭或启用堆栈。"""
+    """
+    默认记录当前异常，也支持调用方显式关闭或启用堆栈。
+    """
     caplog, writer = captured_logs
     original = ValueError("original failure")
     try:
@@ -46,7 +52,9 @@ def test_exception_logs_error_with_current_exception(captured_logs, include_exce
 
 
 def test_exception_accepts_explicit_exception(captured_logs):
-    """离开异常处理分支后仍能显式指定需要记录的原异常。"""
+    """
+    离开异常处理分支后仍能显式指定需要记录的原异常。
+    """
     caplog, _writer = captured_logs
     failure = RuntimeError("explicit failure")
     logger.exception("saved exception", exc_info=failure)
@@ -54,7 +62,9 @@ def test_exception_accepts_explicit_exception(captured_logs):
 
 
 def test_exception_respects_current_log_threshold(captured_logs, monkeypatch):
-    """高于 ERROR 的日志阈值继续拦截异常消息。"""
+    """
+    高于 ERROR 的日志阈值继续拦截异常消息。
+    """
     caplog, writer = captured_logs
     monkeypatch.setattr(log_module, "_effective_context_log_level", lambda: logging.CRITICAL)
     logger.exception("filtered failure")
@@ -70,7 +80,9 @@ def test_exception_respects_current_log_threshold(captured_logs, monkeypatch):
     (system_endpoint.delete_database_backup, "delete_backup", ("backup.db",)),
 ])
 async def test_database_failure_preserves_safe_http_error(captured_logs, monkeypatch, handler, operation, args):
-    """备份服务失败时记录原异常，返回预定 500 且不泄露内部路径。"""
+    """
+    备份服务失败时记录原异常，返回预定 500 且不泄露内部路径。
+    """
     caplog, _writer = captured_logs
     failure = RuntimeError("private database path /sensitive/database.db")
     governance = SimpleNamespace(**{operation: Mock(side_effect=failure)})

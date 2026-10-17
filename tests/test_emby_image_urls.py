@@ -1,4 +1,6 @@
-"""验证 Emby 图片版本标签参与图片 URL 构造。"""
+"""
+验证 Emby 图片版本标签参与图片 URL 构造。
+"""
 
 from unittest.mock import Mock, patch
 
@@ -6,19 +8,27 @@ from app.modules.emby.emby import Emby
 
 
 class _FakeResponse:
-    """提供 Emby 接口响应的最小 JSON 封装。"""
+    """
+    提供 Emby 接口响应的最小 JSON 封装。
+    """
 
     def __init__(self, payload):
-        """保存测试响应体。"""
+        """
+        保存测试响应体。
+        """
         self._payload = payload
 
     def json(self):
-        """返回测试响应体。"""
+        """
+        返回测试响应体。
+        """
         return self._payload
 
 
 def _client() -> Emby:
-    """构造跳过远端初始化的 Emby 客户端。"""
+    """
+    构造跳过远端初始化的 Emby 客户端。
+    """
     client = Emby.__new__(Emby)
     client._host = "http://emby.local/"
     client._playhost = None
@@ -30,7 +40,9 @@ def _client() -> Emby:
 
 
 def test_local_primary_image_url_includes_image_tag() -> None:
-    """封面标签应成为 URL 的版本参数，使缓存键随原地换图变化。"""
+    """
+    封面标签应成为 URL 的版本参数，使缓存键随原地换图变化。
+    """
     client = _client()
 
     assert client._Emby__get_local_image_by_id("item-id", "primary-tag") == (
@@ -42,7 +54,9 @@ def test_local_primary_image_url_includes_image_tag() -> None:
 
 
 def test_get_librarys_uses_primary_image_tag() -> None:
-    """媒体库封面应使用 Views 返回的 Primary 标签。"""
+    """
+    媒体库封面应使用 Views 返回的 Primary 标签。
+    """
     client = _client()
     client.get_items_count = Mock(return_value=0)
 
@@ -62,7 +76,9 @@ def test_get_librarys_uses_primary_image_tag() -> None:
 
 
 def test_get_resume_uses_primary_image_tag_for_movie_fallback() -> None:
-    """继续观看电影没有背景图时应使用电影主图标签。"""
+    """
+    继续观看电影没有背景图时应使用电影主图标签。
+    """
     client = _client()
     client.get_user_library_folders = Mock(return_value=[])
 
@@ -86,7 +102,9 @@ def test_get_resume_uses_primary_image_tag_for_movie_fallback() -> None:
 
 
 def test_get_latest_uses_primary_image_tag() -> None:
-    """最近入库条目的主图 URL 应携带图片标签。"""
+    """
+    最近入库条目的主图 URL 应携带图片标签。
+    """
     client = _client()
     client.get_user_library_folders = Mock(return_value=[])
 

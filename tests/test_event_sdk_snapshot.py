@@ -1,4 +1,6 @@
-"""插件 SDK 事件快照访问测试。"""
+"""
+插件 SDK 事件快照访问测试。
+"""
 
 import pytest
 
@@ -20,13 +22,17 @@ from app.sdk.events import (
 
 
 def test_sdk_exports_canonical_snapshot_interfaces() -> None:
-    """SDK 只公开 canonical 快照实现，不复制事件解析逻辑。"""
+    """
+    SDK 只公开 canonical 快照实现，不复制事件解析逻辑。
+    """
     assert EventPayloadSnapshot is RuntimeEventPayloadSnapshot
     assert snapshot_event_data is runtime_snapshot_event_data
 
 
 def test_event_snapshot_exposes_music_type_without_changing_raw_payload() -> None:
-    """插件可从快照稳定识别音乐，原 Context 和 MusicInfo 继续按旧 ABI 投递。"""
+    """
+    插件可从快照稳定识别音乐，原 Context 和 MusicInfo 继续按旧 ABI 投递。
+    """
     media = MusicInfo(title="Song", artists=["Artist"], album="Album")
     context = Context(media_info=media)
     raw = {"hash": "music-hash", "context": context}
@@ -49,7 +55,9 @@ def test_event_snapshot_exposes_music_type_without_changing_raw_payload() -> Non
 
 
 def test_chain_snapshot_separates_plugin_input_and_output_models() -> None:
-    """链式事件同时提供输入和回写快照，且不替换可变运行时事件模型。"""
+    """
+    链式事件同时提供输入和回写快照，且不替换可变运行时事件模型。
+    """
     context = Context(
         media_info=MediaInfo(type=MediaType.MOVIE, title="Movie", year="2026")
     )
@@ -73,7 +81,9 @@ def test_chain_snapshot_separates_plugin_input_and_output_models() -> None:
 
 
 def test_unknown_plugin_event_returns_unregistered_snapshot_without_error() -> None:
-    """插件自定义字符串事件没有宿主契约时保留原 payload，不制造假模型。"""
+    """
+    插件自定义字符串事件没有宿主契约时保留原 payload，不制造假模型。
+    """
     raw = {"plugin_owned": {"value": 1}}
 
     snapshot = snapshot_event_data("plugin.custom.event", raw)
@@ -88,7 +98,9 @@ def test_unknown_plugin_event_returns_unregistered_snapshot_without_error() -> N
 
 
 def test_invalid_known_event_returns_validation_errors_instead_of_raising() -> None:
-    """坏 payload 由 SDK 结果携带错误，插件可自行决定降级策略。"""
+    """
+    坏 payload 由 SDK 结果携带错误，插件可自行决定降级策略。
+    """
     raw = {"context": {"media_info": {"type": "音乐"}}}
 
     snapshot = snapshot_event_data(EventType.DownloadAdded, raw)
@@ -106,7 +118,9 @@ def test_invalid_known_event_returns_validation_errors_instead_of_raising() -> N
     (ChainEventType.AgentLLMProvider, {"metadata": {"items": ["original"]}}, "metadata"),
 ])
 def test_dict_snapshot_detaches_nested_extension_data(event_type, raw, field) -> None:
-    """dict 解析出的 Any/扩展字段也必须深复制，插件改快照不能污染原事件或另一个快照。"""
+    """
+    dict 解析出的 Any/扩展字段也必须深复制，插件改快照不能污染原事件或另一个快照。
+    """
     first = snapshot_event_data(event_type, raw)
     second = snapshot_event_data(event_type, raw)
     assert first.valid and second.valid
@@ -118,7 +132,9 @@ def test_dict_snapshot_detaches_nested_extension_data(event_type, raw, field) ->
 
 
 def test_snapshot_validation_errors_do_not_expose_credentials() -> None:
-    """SDK 错误对象与日志使用同一脱敏策略，保留模型名而不带原始输入。"""
+    """
+    SDK 错误对象与日志使用同一脱敏策略，保留模型名而不带原始输入。
+    """
     snapshot = snapshot_event_data(
         ChainEventType.AuthVerification,
         {"username": {"nested": "secret-username"}, "password": "secret-password"},

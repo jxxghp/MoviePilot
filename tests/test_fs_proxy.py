@@ -52,7 +52,9 @@ def test_stat_matches_direct_call(tmp_path, proxy):
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_realpath_resolves_parent_alias_for_missing_target(tmp_path, proxy, monkeypatch, enabled):
-    """目标尚未创建时，代理仍要解析父目录别名以保护重合的整理路径。"""
+    """
+    目标尚未创建时，代理仍要解析父目录别名以保护重合的整理路径。
+    """
     real = tmp_path / "library"
     real.mkdir()
     alias = tmp_path / "alias"
@@ -109,7 +111,9 @@ def test_listdir_missing_raises_file_not_found(tmp_path, proxy):
 
 
 def test_has_file_suffix_checks_nested_files_case_insensitively(tmp_path, proxy):
-    """子目录内的下载临时文件必须阻止原盘目录被视为完整。"""
+    """
+    子目录内的下载临时文件必须阻止原盘目录被视为完整。
+    """
     stream = tmp_path / "BDMV" / "STREAM"
     stream.mkdir(parents=True)
     (stream / "00001.m2ts.!qB").write_bytes(b"partial")
@@ -290,7 +294,9 @@ def test_worker_runs_standalone_without_app_on_path(tmp_path):
 
 
 def test_worker_reports_unknown_operations_and_keeps_reading(tmp_path):
-    """操作名缺失、为空或未知时保留错误回执，随后仍能处理有效请求。"""
+    """
+    操作名缺失、为空或未知时保留错误回执，随后仍能处理有效请求。
+    """
     worker_path = Path("app/adapters/system/fsworker.py").resolve()
     payloads = [{}, {"op": None}, {"op": ""}, {"op": "unknown"}, {"op": "ping"}]
     result = subprocess.run(

@@ -1,4 +1,6 @@
-"""下载与整理 durable 事件的原子写入和对象恢复测试。"""
+"""
+下载与整理 durable 事件的原子写入和对象恢复测试。
+"""
 
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -67,14 +69,18 @@ from app.schemas.types import EventType, MediaSource, MediaType
 
 
 def _session_factory():
-    """创建只服务当前测试的内存数据库和同步 Session 工厂。"""
+    """
+    创建只服务当前测试的内存数据库和同步 Session 工厂。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine)
 
 
 def _objects():
-    """构造下载和整理事件共用的最小真实领域对象。"""
+    """
+    构造下载和整理事件共用的最小真实领域对象。
+    """
     meta = MetaInfo("Demo.2026.1080p.mkv")
     media = MediaInfo(
         type=MediaType.MOVIE,
@@ -110,7 +116,9 @@ def _execution_checkpoint(
     outcome: str,
     identity: str = "execution-1",
 ) -> TransferExecutionCheckpoint:
-    """构造 outcome 与完整指纹一致的测试执行检查点。"""
+    """
+    构造 outcome 与完整指纹一致的测试执行检查点。
+    """
     overwrite_skipped = outcome == "overwrite_skipped"
     transferinfo = (
         TransferInfo(success=False, overwrite_skipped=True).model_dump(mode="json")
@@ -138,7 +146,9 @@ def _add_settling_pending(
     settlement_revision: int = 0,
     src_path: str | None = None,
 ) -> TransferExecutionCheckpoint:
-    """写入具备有效长租约和执行检查点的待结算任务。"""
+    """
+    写入具备有效长租约和执行检查点的待结算任务。
+    """
     checkpoint = _execution_checkpoint(
         outcome=execution_outcome,
         identity=execution_identity,
@@ -182,7 +192,9 @@ def _settlement(
     checkpoint_outcome: str | None = None,
     execution_identity: str = "execution-1",
 ) -> TransferResultSettlement:
-    """构造测试使用的稳定终态结算身份。"""
+    """
+    构造测试使用的稳定终态结算身份。
+    """
     checkpoint = _execution_checkpoint(
         outcome=checkpoint_outcome or outcome,
         identity=execution_identity,
@@ -203,7 +215,9 @@ def _stage_result_history(
     succeeded: bool,
     src_path: str | None = None,
 ):
-    """通过类型化历史端口暂存一条最小任务结算记录。"""
+    """
+    通过类型化历史端口暂存一条最小任务结算记录。
+    """
     return repository.replace(TransferHistoryWrite(
         src=src_path or f"/downloads/{task_id}.mkv",
         src_storage="local",
@@ -217,7 +231,9 @@ def _assert_event_key(
     topic: str,
     history_id: int,
 ) -> None:
-    """校验事件键保留业务关联，并以合法 UUID 区分每次事实。"""
+    """
+    校验事件键保留业务关联，并以合法 UUID 区分每次事实。
+    """
     key_topic, key_history_id, occurrence_id, version = event_key.split(":")
     assert key_topic == topic
     assert key_history_id == str(history_id)
@@ -226,7 +242,9 @@ def _assert_event_key(
 
 
 def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
-    """outbox 只存 JSON 快照，重放时恢复插件一直收到的对象类型。"""
+    """
+    outbox 只存 JSON 快照，重放时恢复插件一直收到的对象类型。
+    """
     meta, media, context, fileitem, transferinfo = _objects()
     download_payload = {
         "hash": "hash-1",
@@ -284,7 +302,9 @@ def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
     "[Group] Demo - 01 [1080p].AAC",
 ])
 def test_durable_video_snapshots_preserve_metadata_with_audio_suffix(title, monkeypatch):
-    """影视发布名尾部的音频编码不能在持久事件恢复时改变解析对象类型。"""
+    """
+    影视发布名尾部的音频编码不能在持久事件恢复时改变解析对象类型。
+    """
     monkeypatch.setattr(meta_runtime, "_audio_extensions_provider", lambda: (".aac", ".flac"))
     meta = MetaInfo(f"{title}.mkv", force_video=True)
     assert meta.org_string == title
@@ -314,7 +334,9 @@ def test_durable_video_snapshots_preserve_metadata_with_audio_suffix(title, monk
 @pytest.mark.parametrize("media_type", [MediaType.MUSIC.value, "music"])
 @pytest.mark.parametrize("title", ["Artist - Song.aac", "Artist - Album"])
 def test_durable_music_snapshots_keep_explicit_music_type(media_type, title):
-    """真实音乐仍按快照恢复标签，兼容旧类型标记及没有音频后缀的资源。"""
+    """
+    真实音乐仍按快照恢复标签，兼容旧类型标记及没有音频后缀的资源。
+    """
     meta = MetaMusic(
         org_string=title,
         title="标签中的曲名",
@@ -334,7 +356,9 @@ def test_durable_music_snapshots_keep_explicit_music_type(media_type, title):
 
 
 def test_transfer_outbox_dispatches_video_release_ending_in_aac(monkeypatch):
-    """真实整理 handler 恢复 AAC 尾缀影视快照后应派发事件并完成消息结算。"""
+    """
+    真实整理 handler 恢复 AAC 尾缀影视快照后应派发事件并完成消息结算。
+    """
     from app.startup.composition import outbox as outbox_composition
 
     monkeypatch.setattr(meta_runtime, "_audio_extensions_provider", lambda: (".aac",))
@@ -373,7 +397,9 @@ def test_transfer_outbox_dispatches_video_release_ending_in_aac(monkeypatch):
 
 
 def test_download_history_and_event_intent_share_one_transaction():
-    """下载历史、文件和四项具名 intent 在同一事务内提交。"""
+    """
+    下载历史、文件和四项具名 intent 在同一事务内提交。
+    """
     factory = _session_factory()
     writer = TransactionalChainDurableEventWriter(factory)
     _, _, context, _, _ = _objects()
@@ -475,14 +501,18 @@ def test_download_history_and_event_intent_share_one_transaction():
 
 
 def test_download_post_commit_effects_do_not_run_when_commit_fails(monkeypatch):
-    """下载历史提交失败时不得执行通知、后处理或即时事件。"""
+    """
+    下载历史提交失败时不得执行通知、后处理或即时事件。
+    """
     factory = _session_factory()
     writer = TransactionalChainDurableEventWriter(factory)
     _, _, context, _, _ = _objects()
     calls: list[str] = []
 
     def fail_commit(_unit_of_work) -> None:
-        """模拟历史与 outbox intent 的原子提交失败。"""
+        """
+        模拟历史与 outbox intent 的原子提交失败。
+        """
         raise RuntimeError("commit failed")
 
     monkeypatch.setattr(SqlAlchemyUnitOfWork, "commit", fail_commit)
@@ -517,7 +547,9 @@ def test_download_post_commit_effects_do_not_run_when_commit_fails(monkeypatch):
 
 
 def test_event_keys_distinguish_reused_history_ids():
-    """历史主键被数据库复用时，每次业务事实仍获得不同的幂等键。"""
+    """
+    历史主键被数据库复用时，每次业务事实仍获得不同的幂等键。
+    """
     download_keys = {download_added_event_key(7) for _ in range(2)}
     transfer_keys = {
         transfer_result_event_key("transfer.completed", 7)
@@ -536,7 +568,9 @@ def test_event_keys_distinguish_reused_history_ids():
 
 
 def test_task_settlement_event_key_is_deterministic_and_revision_scoped():
-    """任务结算按稳定任务、修订号和结果生成可重放的唯一事件键。"""
+    """
+    任务结算按稳定任务、修订号和结果生成可重放的唯一事件键。
+    """
     succeeded = TransferResultSettlement(
         task_id="task-1",
         lease_token="lease-1",
@@ -571,7 +605,9 @@ def test_task_settlement_event_key_is_deterministic_and_revision_scoped():
     ],
 )
 def test_task_settlement_rejects_incomplete_identity(kwargs, message):
-    """任务结算在进入数据库适配器前拒绝不完整的 fencing 身份。"""
+    """
+    任务结算在进入数据库适配器前拒绝不完整的 fencing 身份。
+    """
     values = {
         "task_id": "task-1",
         "lease_token": "lease-1",
@@ -585,7 +621,9 @@ def test_task_settlement_rejects_incomplete_identity(kwargs, message):
 
 
 def test_task_settlement_event_key_requires_transaction_revision():
-    """任务结算事件键只能使用持久层已取得的正向修订号。"""
+    """
+    任务结算事件键只能使用持久层已取得的正向修订号。
+    """
     settlement = TransferResultSettlement(
         task_id="task-1",
         lease_token="lease-1",
@@ -601,12 +639,16 @@ def test_task_settlement_event_key_requires_transaction_revision():
 
 
 def test_transfer_succeeds_when_history_id_is_reused_with_retained_outbox():
-    """整理历史删除而 outbox 保留时，复用主键不得阻断新整理记录。"""
+    """
+    整理历史删除而 outbox 保留时，复用主键不得阻断新整理记录。
+    """
     factory = _session_factory()
     writer = TransactionalChainDurableEventWriter(factory)
 
     def transfer(src: str):
-        """写入一条最小成功整理事实并完成即时事件。"""
+        """
+        写入一条最小成功整理事实并完成即时事件。
+        """
         return writer.transfer_result(
             topic="transfer.completed",
             stage_history=lambda repository: repository.replace(TransferHistoryWrite(
@@ -646,13 +688,17 @@ def test_transfer_succeeds_when_history_id_is_reused_with_retained_outbox():
 
 
 def test_transfer_event_failure_leaves_committed_intent_pending():
-    """整理历史提交后即时广播失败不得误删可供恢复的 pending intent。"""
+    """
+    整理历史提交后即时广播失败不得误删可供恢复的 pending intent。
+    """
     factory = _session_factory()
     writer = TransactionalChainDurableEventWriter(factory)
     meta, media, _, fileitem, transferinfo = _objects()
 
     def stage_history(repository):
-        """通过应用历史端口名暂存一条成功整理记录。"""
+        """
+        通过应用历史端口名暂存一条成功整理记录。
+        """
         return repository.replace(TransferHistoryWrite(
             src=fileitem.path,
             src_storage=fileitem.storage,
@@ -664,7 +710,9 @@ def test_transfer_event_failure_leaves_committed_intent_pending():
         ))
 
     def fail_publish(_payload):
-        """模拟插件事件总线在业务提交后失败。"""
+        """
+        模拟插件事件总线在业务提交后失败。
+        """
         raise RuntimeError("event failed")
 
     with pytest.raises(PostCommitEffectError, match="提交后的相关处理未完成") as error:
@@ -694,7 +742,9 @@ def test_transfer_event_failure_leaves_committed_intent_pending():
 
 
 def test_task_success_settlement_atomically_deletes_pending_and_steps():
-    """成功终态原子提交历史、pending、步骤和待异步投递的 intent。"""
+    """
+    成功终态原子提交历史、pending、步骤和待异步投递的 intent。
+    """
     factory = _session_factory()
     _add_settling_pending(factory)
     with factory() as session:
@@ -720,7 +770,9 @@ def test_task_success_settlement_atomically_deletes_pending_and_steps():
     published = []
 
     def publish(payload):
-        """验证即时发布只能观察到已提交的完整终态。"""
+        """
+        验证即时发布只能观察到已提交的完整终态。
+        """
         with factory() as session:
             assert session.execute(select(TransferPending)).scalar_one_or_none() is None
             assert session.execute(select(TransferHistory)).scalar_one().status is True
@@ -771,7 +823,9 @@ def test_task_success_settlement_atomically_deletes_pending_and_steps():
 
 
 def test_task_success_replay_reads_history_without_new_event():
-    """成功删除 pending 后重复结算只回读历史，不重复登记或发布事件。"""
+    """
+    成功删除 pending 后重复结算只回读历史，不重复登记或发布事件。
+    """
     factory = _session_factory()
     _add_settling_pending(factory)
     writer = TransactionalChainDurableEventWriter(factory)
@@ -811,7 +865,9 @@ def test_task_success_replay_reads_history_without_new_event():
 
 
 def test_multiple_same_source_tasks_keep_independent_replay_receipts():
-    """同源多代任务可依次完成，旧任务仍由独立回执幂等回读。"""
+    """
+    同源多代任务可依次完成，旧任务仍由独立回执幂等回读。
+    """
     factory = _session_factory()
     writer = TransactionalChainDurableEventWriter(factory)
     shared_src = "/downloads/shared-generation.mkv"
@@ -887,7 +943,9 @@ def test_multiple_same_source_tasks_keep_independent_replay_receipts():
 
 
 def test_task_settlement_without_public_topic_commits_no_outbox():
-    """无公共事件的文件仍原子结算历史和 pending，且不登记或发布事件。"""
+    """
+    无公共事件的文件仍原子结算历史和 pending，且不登记或发布事件。
+    """
     factory = _session_factory()
     _add_settling_pending(factory, task_id="lyrics-task")
     writer = TransactionalChainDurableEventWriter(factory)
@@ -920,7 +978,9 @@ def test_task_settlement_without_public_topic_commits_no_outbox():
 
 
 def test_task_settlement_binds_receipt_without_overwriting_success_history():
-    """不覆盖裁决只绑定任务回执，保留旧成功历史的全部业务字段。"""
+    """
+    不覆盖裁决只绑定任务回执，保留旧成功历史的全部业务字段。
+    """
     factory = _session_factory()
     _add_settling_pending(
         factory,
@@ -982,7 +1042,9 @@ def test_task_settlement_binds_receipt_without_overwriting_success_history():
 
 
 def test_task_overwrite_skip_without_success_history_settles_failed():
-    """覆盖跳过找不到成功历史时，显式执行事实仍可裁决为失败。"""
+    """
+    覆盖跳过找不到成功历史时，显式执行事实仍可裁决为失败。
+    """
     factory = _session_factory()
     _add_settling_pending(factory, execution_outcome="overwrite_skipped")
     writer = TransactionalChainDurableEventWriter(factory)
@@ -1024,7 +1086,9 @@ def test_task_settlement_rejects_checkpoint_outcome_conflicts_before_writes(
     checkpoint_outcome,
     settlement_outcome,
 ):
-    """执行证据与结算方向冲突或未知时，不得进入历史暂存。"""
+    """
+    执行证据与结算方向冲突或未知时，不得进入历史暂存。
+    """
     factory = _session_factory()
     _add_settling_pending(
         factory,
@@ -1056,7 +1120,9 @@ def test_task_settlement_rejects_checkpoint_outcome_conflicts_before_writes(
 
 
 def test_task_settlement_rejects_corrupted_checkpoint_outcome_before_writes():
-    """持久层出现未知执行 outcome 时必须隔离，不得构造历史或事件。"""
+    """
+    持久层出现未知执行 outcome 时必须隔离，不得构造历史或事件。
+    """
     factory = _session_factory()
     _add_settling_pending(factory)
     corrupted_payload = {
@@ -1102,7 +1168,9 @@ def test_task_settlement_rejects_corrupted_checkpoint_outcome_before_writes():
 
 
 def test_task_settlement_rejects_malformed_checkpoint_before_writes():
-    """指纹自洽但结构损坏的数据库检查点也不得驱动终态写入。"""
+    """
+    指纹自洽但结构损坏的数据库检查点也不得驱动终态写入。
+    """
     factory = _session_factory()
     _add_settling_pending(factory)
     malformed_payload = {
@@ -1147,7 +1215,9 @@ def test_task_settlement_rejects_malformed_checkpoint_before_writes():
 
 @pytest.mark.parametrize("cleanup", ["delete", "truncate"])
 def test_receipt_replay_survives_real_history_command_cleanup(cleanup):
-    """真实历史删除或清空命令执行后，独立回执仍可重放成功终态。"""
+    """
+    真实历史删除或清空命令执行后，独立回执仍可重放成功终态。
+    """
     factory = _session_factory()
     _add_settling_pending(factory, task_id="cleanup-task")
     writer = TransactionalChainDurableEventWriter(factory)
@@ -1208,7 +1278,9 @@ def test_receipt_replay_survives_real_history_command_cleanup(cleanup):
 
 
 def test_success_receipt_allows_expiry_and_legacy_same_source_replace():
-    """成功回执不锁死业务历史，过期清理和旧兼容替换仍按原契约工作。"""
+    """
+    成功回执不锁死业务历史，过期清理和旧兼容替换仍按原契约工作。
+    """
     factory = _session_factory()
     shared_src = "/downloads/cleanup-compatible.mkv"
     _add_settling_pending(
@@ -1263,7 +1335,9 @@ def test_success_receipt_allows_expiry_and_legacy_same_source_replace():
 
 
 def test_task_failure_settlement_is_replayable_and_retry_advances_revision():
-    """失败保留终态证据，重复调用幂等，显式重试后才递增修订号。"""
+    """
+    失败保留终态证据，重复调用幂等，显式重试后才递增修订号。
+    """
     factory = _session_factory()
     _add_settling_pending(factory, execution_outcome="failed")
     writer = TransactionalChainDurableEventWriter(factory)
@@ -1383,7 +1457,9 @@ def test_task_failure_settlement_is_replayable_and_retry_advances_revision():
 
 
 def test_failed_revision_replays_after_later_success_deleted_pending():
-    """后续重试成功删除 pending 后，旧失败修订仍按原执行身份幂等回读。"""
+    """
+    后续重试成功删除 pending 后，旧失败修订仍按原执行身份幂等回读。
+    """
     factory = _session_factory()
     _add_settling_pending(factory, execution_outcome="failed")
     writer = TransactionalChainDurableEventWriter(factory)
@@ -1472,7 +1548,9 @@ def test_failed_revision_replays_after_later_success_deleted_pending():
 
 
 def test_task_settlement_outbox_conflict_rolls_back_history_and_pending():
-    """intent 唯一键冲突时回滚此前已暂存的历史与 pending 终态。"""
+    """
+    intent 唯一键冲突时回滚此前已暂存的历史与 pending 终态。
+    """
     factory = _session_factory()
     _add_settling_pending(factory)
     event_key = "transfer.result:task-1:1:succeeded:v1"
@@ -1518,7 +1596,9 @@ def test_task_settlement_outbox_conflict_rolls_back_history_and_pending():
 
 
 def test_task_settlement_rejects_stale_lease_without_business_writes():
-    """陈旧 lease 在历史回调前即被 fencing，不能留下历史或 intent。"""
+    """
+    陈旧 lease 在历史回调前即被 fencing，不能留下历史或 intent。
+    """
     factory = _session_factory()
     _add_settling_pending(factory)
     writer = TransactionalChainDurableEventWriter(factory)
@@ -1550,7 +1630,9 @@ def test_concurrent_duplicate_settlement_returns_one_commit_and_one_replay(
         tmp_path,
         monkeypatch,
 ):
-    """并发重复结算只有一个事务写入，竞争输家回读同一不可变回执。"""
+    """
+    并发重复结算只有一个事务写入，竞争输家回读同一不可变回执。
+    """
     engine = create_engine(
         f"sqlite+pysqlite:///{tmp_path / 'settlement-race.db'}",
         connect_args={"check_same_thread": False, "timeout": 10},
@@ -1564,7 +1646,9 @@ def test_concurrent_duplicate_settlement_returns_one_commit_and_one_replay(
     original_read = TransactionalChainDurableEventWriter._read_settlement_result
 
     def synchronized_read(**kwargs):
-        """让两个调用都先观察到未结算，再同时进入事务竞争。"""
+        """
+        让两个调用都先观察到未结算，再同时进入事务竞争。
+        """
         result = original_read(**kwargs)
         if result is None:
             barrier.wait(timeout=10)
@@ -1577,7 +1661,9 @@ def test_concurrent_duplicate_settlement_returns_one_commit_and_one_replay(
     )
 
     def settle_once():
-        """用相同 fencing 身份提交同一成功终态。"""
+        """
+        用相同 fencing 身份提交同一成功终态。
+        """
         return writer.transfer_result(
             topic=None,
             stage_history=lambda repository: _stage_result_history(

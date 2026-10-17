@@ -1,4 +1,6 @@
-"""下载器添加任务失败时的提示文本。"""
+"""
+下载器添加任务失败时的提示文本。
+"""
 
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -20,7 +22,9 @@ _MAGNET = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
 
 
 def _build_module(module_cls, server):
-    """构造只包含下载所需依赖的下载器模块。"""
+    """
+    构造只包含下载所需依赖的下载器模块。
+    """
     module = module_cls.__new__(module_cls)
     module.get_instance = MagicMock(return_value=server)
     module.normalize_path = MagicMock(side_effect=lambda path, _downloader: str(path))
@@ -29,7 +33,9 @@ def _build_module(module_cls, server):
 
 
 def _rejecting_server(module_cls):
-    """下载器拒绝添加，且没有同名同大小的已有任务。"""
+    """
+    下载器拒绝添加，且没有同名同大小的已有任务。
+    """
     server = MagicMock()
     if module_cls is QbittorrentModule:
         server.add_torrent.return_value = (False, [])
@@ -48,7 +54,9 @@ def _rejecting_server(module_cls):
     ids=["torrent", "magnet"],
 )
 def test_rejected_download_reports_torrent_name_or_magnet(module_cls, content, expected):
-    """种子文件被拒时提示种子名称，磁力链接保留原文，不拼接种子二进制内容。"""
+    """
+    种子文件被拒时提示种子名称，磁力链接保留原文，不拼接种子二进制内容。
+    """
     module = _build_module(module_cls, _rejecting_server(module_cls))
 
     result = module.download(content=content, download_dir=Path("/downloads"), cookie="")
@@ -65,7 +73,9 @@ def test_rejected_download_reports_torrent_name_or_magnet(module_cls, content, e
     ids=["qbittorrent", "rtorrent"],
 )
 def test_added_download_without_hash_reports_torrent_name(module_cls, expected):
-    """添加成功但查不到任务时，提示同样使用种子名称。"""
+    """
+    添加成功但查不到任务时，提示同样使用种子名称。
+    """
     server = MagicMock()
     server.add_torrent.return_value = (True, []) if module_cls is QbittorrentModule else True
     server.get_torrent_id_by_tag.return_value = None

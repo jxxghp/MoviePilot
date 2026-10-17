@@ -1,4 +1,6 @@
-"""历史查询应用服务的分页、筛选和 DTO 边界测试。"""
+"""
+历史查询应用服务的分页、筛选和 DTO 边界测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock
@@ -16,7 +18,9 @@ def _make_service(
     downloads: AsyncMock | None = None,
     transfers: AsyncMock | None = None,
 ) -> tuple[HistoryQueryService, AsyncMock, AsyncMock]:
-    """构造使用可观察异步仓储的历史查询服务。"""
+    """
+    构造使用可观察异步仓储的历史查询服务。
+    """
     download_repository = downloads or AsyncMock()
     transfer_repository = transfers or AsyncMock()
     return (
@@ -31,7 +35,9 @@ def _make_service(
 
 @pytest.mark.asyncio
 async def test_list_download_returns_schema_dtos() -> None:
-    """下载历史查询不得把仓储对象原样泄漏给 API。"""
+    """
+    下载历史查询不得把仓储对象原样泄漏给 API。
+    """
     service, download_repository, _ = _make_service()
     raw_record = SimpleNamespace(id=7, title="Movie")
     download_repository.async_list_by_page.return_value = [raw_record]
@@ -45,7 +51,9 @@ async def test_list_download_returns_schema_dtos() -> None:
 
 @pytest.mark.asyncio
 async def test_download_history_reports_exact_total_without_changing_list() -> None:
-    """下载历史 API 应通过响应头报告精确总数并保持原列表返回。"""
+    """
+    下载历史 API 应通过响应头报告精确总数并保持原列表返回。
+    """
     service, download_repository, _ = _make_service()
     download_repository.async_list_by_page.return_value = [
         SimpleNamespace(id=7, title="Movie")
@@ -68,7 +76,9 @@ async def test_download_history_reports_exact_total_without_changing_list() -> N
 
 @pytest.mark.asyncio
 async def test_list_transfer_uses_explicit_status_without_reinterpreting_title() -> None:
-    """状态筛选必须使用显式参数，中文标题仍保持标题查询语义。"""
+    """
+    状态筛选必须使用显式参数，中文标题仍保持标题查询语义。
+    """
     service, _, transfer_repository = _make_service()
     transfer_repository.async_list_by_title.return_value = [
         SimpleNamespace(id=3, status=False)
@@ -91,7 +101,9 @@ async def test_list_transfer_uses_explicit_status_without_reinterpreting_title()
 
 @pytest.mark.asyncio
 async def test_list_transfer_preserves_glob_escaping() -> None:
-    """glob 查询应转义 SQL 通配符并显式启用 wildcard 模式。"""
+    """
+    glob 查询应转义 SQL 通配符并显式启用 wildcard 模式。
+    """
     service, _, transfer_repository = _make_service()
     transfer_repository.async_list_by_title.return_value = []
     transfer_repository.async_count_by_title.return_value = 0
@@ -121,7 +133,9 @@ async def test_list_transfer_preserves_glob_escaping() -> None:
 
 @pytest.mark.asyncio
 async def test_get_transfers_preserves_order_and_reports_missing_ids() -> None:
-    """批量 AI 重做准备应保持去重后的输入顺序并报告缺失记录。"""
+    """
+    批量 AI 重做准备应保持去重后的输入顺序并报告缺失记录。
+    """
     service, _, transfer_repository = _make_service()
     transfer_repository.async_get.side_effect = [
         SimpleNamespace(id=11),

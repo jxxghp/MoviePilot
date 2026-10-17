@@ -1,4 +1,6 @@
-"""Event Contract Registry 完整性和兼容校验测试。"""
+"""
+Event Contract Registry 完整性和兼容校验测试。
+"""
 
 from unittest.mock import patch
 
@@ -31,7 +33,9 @@ from app.schemas.types import ChainEventType, EventType, MediaType, SystemConfig
 
 
 def test_every_event_enum_has_complete_contract() -> None:
-    """53 个广播/链式事件必须全部登记并绑定 typed payload。"""
+    """
+    53 个广播/链式事件必须全部登记并绑定 typed payload。
+    """
     expected = {*EventType, *ChainEventType}
 
     assert set(EVENT_CONTRACTS) == expected
@@ -45,7 +49,9 @@ def test_every_event_enum_has_complete_contract() -> None:
 
 
 def test_extensible_plugin_payload_accepts_custom_fields_without_shape_change() -> None:
-    """插件动作 contract 只校验公共字段，插件自定义字段和原始 dict 均保持不变。"""
+    """
+    插件动作 contract 只校验公共字段，插件自定义字段和原始 dict 均保持不变。
+    """
     payload = {
         "plugin_id": "DemoPlugin",
         "action": "refresh",
@@ -60,7 +66,9 @@ def test_extensible_plugin_payload_accepts_custom_fields_without_shape_change() 
 
 
 def test_typed_payload_is_validated_without_changing_public_shape() -> None:
-    """旧 dict 通过 model 校验后仍以同一个 dict 对象投递给插件。"""
+    """
+    旧 dict 通过 model 校验后仍以同一个 dict 对象投递给插件。
+    """
     payload = {"key": "PROXY_HOST", "value": "http://proxy"}
 
     assert validate_event_payload(EventType.ConfigChanged, payload) == ()
@@ -71,14 +79,18 @@ def test_typed_payload_is_validated_without_changing_public_shape() -> None:
 
 
 def test_config_change_payload_normalizes_system_config_enum_key() -> None:
-    """SystemConfigKey 事件键必须使用持久化值，才能命中运行期 watch。"""
+    """
+    SystemConfigKey 事件键必须使用持久化值，才能命中运行期 watch。
+    """
     payload = ConfigChangeEventData(key=SystemConfigKey.CustomIdentifiers)
 
     assert payload.key == {SystemConfigKey.CustomIdentifiers.value}
 
 
 def test_invalid_typed_payload_is_diagnostic_only() -> None:
-    """兼容阶段坏 payload 产生诊断但不阻断既有投递。"""
+    """
+    兼容阶段坏 payload 产生诊断但不阻断既有投递。
+    """
     payload = {"value": "missing-key"}
 
     with patch("app.runtime.events.logger.warning") as warning:
@@ -93,7 +105,9 @@ def test_invalid_typed_payload_is_diagnostic_only() -> None:
     (ChainEventType.AgentLLMProvider, {"provider": {"api_key": "secret-api-key"}, "api_key": "secret-api-key"}),
 ])
 def test_invalid_event_diagnostics_never_include_raw_credentials(event_type, payload) -> None:
-    """字段校验失败时，诊断日志不能通过整个输入字典泄露合法或非法字段里的密钥。"""
+    """
+    字段校验失败时，诊断日志不能通过整个输入字典泄露合法或非法字段里的密钥。
+    """
     with patch("app.runtime.events.logger.warning") as warning:
         event = Event(event_type, payload)
     assert event.event_data is payload
@@ -104,7 +118,9 @@ def test_invalid_event_diagnostics_never_include_raw_credentials(event_type, pay
 
 
 def test_selected_user_side_effects_are_marked_durable_required() -> None:
-    """所有 durable-required 事件必须一一登记唯一的恢复 topic。"""
+    """
+    所有 durable-required 事件必须一一登记唯一的恢复 topic。
+    """
     durable_events = {
         event_type
         for event_type, contract in EVENT_CONTRACTS.items()
@@ -117,7 +133,9 @@ def test_selected_user_side_effects_are_marked_durable_required() -> None:
 
 
 def test_durable_event_dispatcher_requires_every_recovery_handler() -> None:
-    """恢复 dispatcher 缺少任一登记 topic 时必须在构造边界失败。"""
+    """
+    恢复 dispatcher 缺少任一登记 topic 时必须在构造边界失败。
+    """
     handlers = {
         topic: lambda _message: None
         for topic in REQUIRED_OUTBOX_TOPICS
@@ -130,7 +148,9 @@ def test_durable_event_dispatcher_requires_every_recovery_handler() -> None:
 
 
 def test_download_and_transfer_typed_contracts_accept_legacy_runtime_objects() -> None:
-    """新增 typed contract 只做诊断，不把插件收到的领域对象替换成 dict。"""
+    """
+    新增 typed contract 只做诊断，不把插件收到的领域对象替换成 dict。
+    """
     meta = MetaInfo("Demo.2026.mkv")
     media = MediaInfo(type=MediaType.MOVIE, title="Demo", year="2026")
     context = Context(meta_info=meta, media_info=media)
@@ -160,7 +180,9 @@ def test_download_and_transfer_typed_contracts_accept_legacy_runtime_objects() -
 
 
 def test_music_runtime_objects_are_checked_as_typed_snapshots() -> None:
-    """音乐运行时对象保留给插件，同时通过快照契约明确 type/music_type。"""
+    """
+    音乐运行时对象保留给插件，同时通过快照契约明确 type/music_type。
+    """
     from app.domain.context import MusicInfo
 
     media = MusicInfo(title="Song", artists=["Artist"], album="Album")
@@ -177,7 +199,9 @@ def test_music_runtime_objects_are_checked_as_typed_snapshots() -> None:
 
 
 def test_snapshot_contract_metadata_declares_mutable_chain_boundaries() -> None:
-    """核心链式事件公开快照输入输出模型，但仍处于兼容诊断模式。"""
+    """
+    核心链式事件公开快照输入输出模型，但仍处于兼容诊断模式。
+    """
     selection = get_event_contract(ChainEventType.ResourceSelection)
     download = get_event_contract(ChainEventType.ResourceDownload)
 
@@ -191,7 +215,9 @@ def test_snapshot_contract_metadata_declares_mutable_chain_boundaries() -> None:
 
 
 def test_model_instance_remains_mutable_chain_payload() -> None:
-    """链式处理器继续接收原 model 实例，确保输出字段可原地接力。"""
+    """
+    链式处理器继续接收原 model 实例，确保输出字段可原地接力。
+    """
     payload = ConfigChangeEventData(key={"PROXY_HOST"})
     event = Event(EventType.ConfigChanged, payload)
 

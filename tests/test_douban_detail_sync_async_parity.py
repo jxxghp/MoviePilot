@@ -1,4 +1,6 @@
-"""豆瓣影视详情同步与异步入口的业务决策一致性测试。"""
+"""
+豆瓣影视详情同步与异步入口的业务决策一致性测试。
+"""
 
 import asyncio
 from copy import deepcopy
@@ -11,7 +13,9 @@ from app.schemas.types import MediaType
 
 
 def _module() -> DoubanModule:
-    """构造只注入离线详情客户端的豆瓣模块。"""
+    """
+    构造只注入离线详情客户端的豆瓣模块。
+    """
     module = object.__new__(DoubanModule)
     module.doubanapi = Mock()
     module.doubanapi.async_movie_detail = AsyncMock()
@@ -22,12 +26,16 @@ def _module() -> DoubanModule:
 
 
 def _detail(media_type: str, title: str) -> dict[str, object]:
-    """构造可验证类型回退和人物合并的最小豆瓣详情。"""
+    """
+    构造可验证类型回退和人物合并的最小豆瓣详情。
+    """
     return {"id": "100", "type": media_type, "title": title}
 
 
 def test_unknown_type_sync_async_share_movie_first_tv_fallback() -> None:
-    """未知类型时双入口都应先查电影，未命中后再查电视剧并合并人物。"""
+    """
+    未知类型时双入口都应先查电影，未命中后再查电视剧并合并人物。
+    """
     module = _module()
     sync_detail = _detail("tv", "测试剧")
     async_detail = deepcopy(sync_detail)
@@ -68,7 +76,9 @@ def test_unknown_type_sync_async_share_movie_first_tv_fallback() -> None:
 def test_explicit_type_sync_async_use_same_detail_branch(
     media_type: MediaType, detail_method: str, celebrity_method: str
 ) -> None:
-    """显式类型时双入口只访问对应详情分支并采用相同人物投影。"""
+    """
+    显式类型时双入口只访问对应详情分支并采用相同人物投影。
+    """
     module = _module()
     source = _detail(media_type.value, "指定类型")
     celebrities = {"directors": [], "actors": [{"id": "2"}]}
@@ -114,7 +124,9 @@ def test_explicit_type_sync_async_use_same_detail_branch(
 def test_detail_response_classification_is_shared_and_pure(
     info: dict[str, object] | None, expected: str
 ) -> None:
-    """详情响应分类不应依赖同步或异步客户端状态。"""
+    """
+    详情响应分类不应依赖同步或异步客户端状态。
+    """
     original = deepcopy(info)
 
     assert DoubanModule._classify_douban_detail(info) == expected
