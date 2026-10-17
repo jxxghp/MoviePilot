@@ -38,6 +38,11 @@ from app.schemas.exception import ImmediateException
 TELEGRAM_PARSE_MODE_MARKDOWN = "MarkdownV2"
 TELEGRAM_PARSE_MODE_HTML = "HTML"
 TELEGRAM_PARSE_MODE_PLAIN = ""
+# Telegram 对同一消息的编辑频率有独立限制；流式缓冲会在闸门后合并为最新内容。
+TELEGRAM_EDIT_MIN_INTERVAL_SECONDS = 2.0
+TELEGRAM_RATE_LIMIT_DEFAULT_SECONDS = 60.0
+TELEGRAM_RATE_LIMIT_LOG_INTERVAL_SECONDS = 60.0
+_TELEGRAM_RETRY_AFTER_PATTERN = re.compile(r"retry\s+after\s+(\d+)", re.IGNORECASE)
 # InputRichMessage 在 Bot API 中定义的字段，转换结果中的其他键不发送。
 _RICH_MESSAGE_FIELDS = ("html", "markdown", "is_rtl", "skip_entity_detection")
 TELEGRAM_PARSE_MODE_ALIASES = {
@@ -72,9 +77,10 @@ def _is_non_retryable_api_error(err: Exception) -> bool:
     """
     判断 Bot API 错误是否为重试无意义的 4xx。
 
-    5xx 与网络异常仍按原逻辑重试；429 由 Telegram 侧限流，同样不适合立即失败。
+    5xx 与网络异常仍按原逻辑重试；400 是确定性拒绝，429 需要由调用方建立冷却，
+    两者都不适合立即重复请求。
     """
-    return isinstance(err, TelegramApiError) and err.error_code == 400
+    return isinstance(err, TelegramApiError) and err.error_code in (400, 429)
 
 
 class Telegram:
@@ -118,6 +124,12 @@ class Telegram:
         self._polling_thread = None
         # 一个 Telegram 配置对应一个 SDK client，运行状态不能被其他配置共享。
         self._user_chat_mapping: Dict[str, str] = {}
+        # 出站编辑使用独立状态，避免高频流式回调把限流放大为重复请求。
+        self._edit_state_lock = threading.RLock()
+        self._edit_next_allowed: Dict[tuple[str, int], float] = {}
+        self._chat_rate_limit_until: Dict[str, float] = {}
+        self._chat_rate_limit_skipped: Dict[str, int] = {}
+        self._chat_rate_limit_last_log: Dict[str, float] = {}
         self._typing_tasks: Dict[str, threading.Thread] = {}
         self._typing_stop_flags: Dict[str, threading.Event] = {}
         self._typing_lock = threading.RLock()
@@ -160,6 +172,154 @@ class Telegram:
         if self._bot is None:
             raise RuntimeError("Telegram客户端未初始化")
         return self._bot
+
+    @staticmethod
+    def _find_api_error(err: BaseException) -> Optional[TelegramApiError]:
+        """沿异常链查找 Bot API 原始错误，保留装饰器包装后的 429 语义。"""
+        current: Optional[BaseException] = err
+        seen: set[int] = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            if isinstance(current, TelegramApiError):
+                return current
+            current = current.__cause__ or current.__context__
+        return None
+
+    @classmethod
+    def _retry_after_seconds(cls, err: BaseException) -> Optional[int]:
+        """读取 Telegram 429 的结构化或文本冷却秒数。"""
+        api_error = cls._find_api_error(err)
+        if api_error is None or api_error.error_code != 429:
+            return None
+        retry_after = api_error.parameters.get("retry_after")
+        try:
+            if retry_after is not None and float(retry_after) > 0:
+                return max(1, int(float(retry_after)))
+        except (TypeError, ValueError):
+            pass
+        matched = _TELEGRAM_RETRY_AFTER_PATTERN.search(api_error.description)
+        if matched:
+            return max(1, int(matched.group(1)))
+        return None
+
+    @classmethod
+    def _is_rate_limit_error(cls, err: BaseException) -> bool:
+        """判断异常链是否包含 Telegram 429。"""
+        return cls._retry_after_seconds(err) is not None or (
+            (api_error := cls._find_api_error(err)) is not None
+            and api_error.error_code == 429
+        )
+
+    def _ensure_edit_state(self) -> None:
+        """为旧测试桩和未完整初始化实例补齐出站编辑状态。"""
+        if hasattr(self, "_edit_state_lock"):
+            return
+        self._edit_state_lock = threading.RLock()
+        self._edit_next_allowed = {}
+        self._chat_rate_limit_until = {}
+        self._chat_rate_limit_skipped = {}
+        self._chat_rate_limit_last_log = {}
+
+    def _mark_rate_limit(
+            self,
+            chat_id: Union[str, int],
+            err: BaseException,
+            operation: str = "编辑",
+    ) -> None:
+        """为聊天记录 Telegram 429 冷却，并输出一次可诊断的限流日志。"""
+        self._ensure_edit_state()
+        retry_after = self._retry_after_seconds(err) or int(TELEGRAM_RATE_LIMIT_DEFAULT_SECONDS)
+        now = time.monotonic()
+        chat_key = str(chat_id)
+        with self._edit_state_lock:
+            previous_until = self._chat_rate_limit_until.get(chat_key, 0.0)
+            cooldown_until = max(
+                previous_until,
+                now + max(retry_after, 1),
+            )
+            self._chat_rate_limit_until[chat_key] = cooldown_until
+            if previous_until <= now:
+                self._chat_rate_limit_skipped[chat_key] = 0
+                self._chat_rate_limit_last_log[chat_key] = now
+        if cooldown_until > previous_until:
+            logger.warning(
+                "Telegram%s触发429，chat_id=%s，冷却%s秒%s",
+                operation,
+                chat_id,
+                retry_after,
+                "（按 retry_after）" if self._retry_after_seconds(err) else "（未提供 retry_after，使用默认值）",
+            )
+
+    def _is_chat_rate_limited(self, chat_id: Union[str, int], operation: str = "编辑") -> bool:
+        """检查聊天是否仍在 Telegram 429 冷却期，并限频记录跳过次数。"""
+        self._ensure_edit_state()
+        now = time.monotonic()
+        chat_key = str(chat_id)
+        with self._edit_state_lock:
+            cooldown_until = self._chat_rate_limit_until.get(chat_key, 0.0)
+            if cooldown_until <= now:
+                if chat_key in self._chat_rate_limit_until:
+                    skipped = self._chat_rate_limit_skipped.pop(chat_key, 0)
+                    self._chat_rate_limit_until.pop(chat_key, None)
+                    self._chat_rate_limit_last_log.pop(chat_key, None)
+                    if skipped:
+                        logger.info(
+                            "Telegram%s限流冷却结束，chat_id=%s，期间跳过%s次请求",
+                            operation,
+                            chat_id,
+                            skipped,
+                        )
+                return False
+            skipped = self._chat_rate_limit_skipped.get(chat_key, 0) + 1
+            self._chat_rate_limit_skipped[chat_key] = skipped
+            last_log = self._chat_rate_limit_last_log.get(chat_key, 0.0)
+            if skipped == 1 or now - last_log >= TELEGRAM_RATE_LIMIT_LOG_INTERVAL_SECONDS:
+                self._chat_rate_limit_last_log[chat_key] = now
+                remaining = max(0, int(cooldown_until - now))
+                logger.warning(
+                    "Telegram%s处于429冷却，跳过后续请求：chat_id=%s，剩余约%s秒，累计跳过%s次",
+                    operation,
+                    chat_id,
+                    remaining,
+                    skipped,
+                )
+            return True
+
+    def _reserve_edit(self, chat_id: Union[str, int], message_id: Union[str, int]) -> bool:
+        """原子预留一次消息编辑，执行聊天冷却和消息级最小间隔检查。"""
+        self._ensure_edit_state()
+        if self._is_chat_rate_limited(chat_id):
+            return False
+        now = time.monotonic()
+        key = (str(chat_id), int(message_id))
+        with self._edit_state_lock:
+            if self._edit_next_allowed.get(key, 0.0) > now:
+                return False
+            self._edit_next_allowed[key] = now + TELEGRAM_EDIT_MIN_INTERVAL_SECONDS
+        return True
+
+    def _mark_edit_succeeded(
+            self, chat_id: Union[str, int], message_id: Union[str, int]
+    ) -> None:
+        """以实际完成时间重新计算消息编辑间隔，避免并发请求贴着结束时间发送。"""
+        self._ensure_edit_state()
+        key = (str(chat_id), int(message_id))
+        with self._edit_state_lock:
+            self._edit_next_allowed[key] = (
+                time.monotonic() + TELEGRAM_EDIT_MIN_INTERVAL_SECONDS
+            )
+
+    def _remember_sent_message(self, sent: Any, chat_id: Union[str, int]) -> None:
+        """记录新消息的发送时间，使首个流式编辑也遵守最小间隔。"""
+        self._ensure_edit_state()
+        if not isinstance(sent, dict) or not sent.get("message_id"):
+            return
+        target_chat_id = sent.get("chat", {}).get("id", chat_id)
+        key = (str(target_chat_id), int(sent["message_id"]))
+        with self._edit_state_lock:
+            self._edit_next_allowed[key] = (
+                time.monotonic() + TELEGRAM_EDIT_MIN_INTERVAL_SECONDS
+            )
 
     def _run_polling(self) -> None:
         """轮询线程入口，逐条处理 getUpdates 返回的更新。"""
@@ -690,6 +850,9 @@ class Telegram:
             original_chat_id,
             private_delivery=private_delivery,
         )
+        if self._is_chat_rate_limited(chat_id, operation="发送"):
+            self._stop_typing_if_needed(chat_id, stop_typing)
+            return {"success": False}
         if not title and not text and not rich_message:
             logger.warn("标题、内容和富文本内容不能同时为空")
             self._stop_typing_if_needed(chat_id, stop_typing)
@@ -718,13 +881,14 @@ class Telegram:
 
             if rich_message:
                 if original_message_id and original_chat_id and not force_reply:
-                    result = self.__edit_rich_message(
+                    result = self.edit_msg(
                         chat_id=original_chat_id,
                         message_id=original_message_id,
+                        text=text or "",
                         rich_message=rich_message,
-                        reply_markup=reply_markup,
+                        buttons=buttons,
+                        stop_typing=stop_typing,
                     )
-                    self._stop_typing_if_needed(chat_id, stop_typing)
                     return {
                         "success": bool(result),
                         "message_id": original_message_id,
@@ -746,15 +910,20 @@ class Telegram:
                         ),
                     )
                 except Exception as rich_err:
-                    # Rich Message 失败不再等同于通知丢失，降级为纯文本重发一次。
-                    logger.warning(
-                        f"Telegram Rich Message 发送失败，降级为纯文本：{rich_err}"
-                    )
-                    sent = self.__send_plain_fallback(
-                        chat_id=target_chat_id,
-                        rich_message=rich_message,
-                        reply_markup=reply_markup,
-                    )
+                    if self._is_rate_limit_error(rich_err):
+                        self._mark_rate_limit(target_chat_id, rich_err, operation="发送")
+                        sent = None
+                    else:
+                        # Rich Message 失败不再等同于通知丢失，降级为纯文本重发一次。
+                        logger.warning(
+                            f"Telegram Rich Message 发送失败，降级为纯文本：{rich_err}"
+                        )
+                        sent = self.__send_plain_fallback(
+                            chat_id=target_chat_id,
+                            rich_message=rich_message,
+                            reply_markup=reply_markup,
+                        )
+                self._remember_sent_message(sent, target_chat_id)
                 self._stop_typing_if_needed(chat_id, stop_typing)
                 return self._sent_result(sent, chat_id)
 
@@ -770,6 +939,7 @@ class Telegram:
                         parse_mode=parse_mode,
                         reply_to_message_id=original_message_id,
                     )
+                    self._remember_sent_message(sent, original_chat_id)
                     self._stop_typing_if_needed(chat_id, stop_typing)
                     return self._sent_result(sent, chat_id)
                 # 编辑消息
@@ -798,6 +968,7 @@ class Telegram:
                     disable_web_page_preview=disable_web_page_preview,
                     parse_mode=parse_mode,
                 )
+                self._remember_sent_message(sent, chat_id)
                 self._stop_typing_if_needed(chat_id, stop_typing)
                 return self._sent_result(sent, chat_id)
 
@@ -1258,6 +1429,9 @@ class Telegram:
         if not self._bot:
             return None
 
+        if not self._reserve_edit(chat_id, message_id):
+            return False
+
         parse_mode = self._normalize_parse_mode(parse_mode)
         try:
             if rich_message:
@@ -1271,35 +1445,46 @@ class Telegram:
                     reply_markup=reply_markup,
                 )
                 if result:
+                    self._mark_edit_succeeded(chat_id, message_id)
                     return True
+                if self._is_chat_rate_limited(chat_id):
+                    return False
                 # Rich Message 编辑失败时降级为纯文本覆盖，避免回复停留在旧内容。
                 logger.warning(
                     f"Telegram Rich Message 编辑失败，降级为纯文本：chat_id={chat_id}"
                 )
-                return self.__edit_plain_fallback(
+                fallback_result = self.__edit_plain_fallback(
                     chat_id=str(chat_id),
                     message_id=int(message_id),
                     rich_message=rich_message,
                     reply_markup=reply_markup,
                 )
+                if fallback_result:
+                    self._mark_edit_succeeded(chat_id, message_id)
+                return fallback_result
 
             # 组合标题和文本
             if title:
                 bold_title = self._format_title(title, parse_mode)
-                caption = f"{bold_title}\n{text}" if text else bold_title
+                caption = f"{bold_title}\n{text}" if text else (bold_title or "")
             elif text:
                 caption = text
             else:
                 return False
 
-            return self.__edit_message(
+            edit_result = self.__edit_message(
                 chat_id=str(chat_id),
                 message_id=int(message_id),
                 text=caption,
                 buttons=buttons,
                 parse_mode=parse_mode,
             )
+            if edit_result:
+                self._mark_edit_succeeded(chat_id, message_id)
+            return edit_result
         except Exception as e:
+            if self._is_rate_limit_error(e):
+                self._mark_rate_limit(chat_id, e)
             logger.error(f"编辑Telegram消息异常: {str(e)}")
             return False
         finally:
@@ -1433,6 +1618,9 @@ class Telegram:
                 )
             return True
         except Exception as e:
+            if self._is_rate_limit_error(e):
+                self._mark_rate_limit(chat_id, e)
+                return False
             if self.__is_message_not_modified_error(e):
                 logger.debug(f"Telegram消息内容未变化，跳过编辑：{str(e)}")
                 return True
@@ -1507,6 +1695,9 @@ class Telegram:
             if self.__is_message_not_modified_error(err):
                 logger.debug(f"Telegram消息内容未变化，跳过编辑：{str(err)}")
                 return True
+            if self._is_rate_limit_error(err):
+                self._mark_rate_limit(chat_id, err)
+                return False
             logger.error(f"编辑 Telegram Rich Message 失败：{str(err)}")
             return False
 
@@ -1542,6 +1733,9 @@ class Telegram:
             if self.__is_message_not_modified_error(err):
                 logger.debug(f"Telegram消息内容未变化，跳过编辑：{str(err)}")
                 return True
+            if self._is_rate_limit_error(err):
+                self._mark_rate_limit(chat_id, err)
+                return False
             logger.error(f"Telegram Rich Message 降级为纯文本编辑仍失败：{str(err)}")
             return False
 
@@ -1585,6 +1779,8 @@ class Telegram:
             # 保留 Telegram 返回的原始描述（错误码、description），否则日志只剩
             # “发送失败”四个字，无法定位是内容非法还是接口不匹配。
             if _is_non_retryable_api_error(err):
+                if self._is_rate_limit_error(err):
+                    self._mark_rate_limit(chat_id, err, operation="发送")
                 raise NonRetryableTelegramError(
                     f"发送 Telegram Rich Message 失败：{err}"
                 ) from err
@@ -1626,6 +1822,8 @@ class Telegram:
                 message_thread_id=topic_kwargs.get("message_thread_id"),
             )
         except Exception as err:
+            if self._is_rate_limit_error(err):
+                self._mark_rate_limit(chat_id, err, operation="发送")
             logger.error(f"Telegram Rich Message 降级为纯文本发送仍失败：{err}")
             return None
 
@@ -1720,7 +1918,13 @@ class Telegram:
                     disable_web_page_preview=disable_web_page_preview,
                     **kwargs
                 )
-        except Exception:
+        except Exception as err:
+            if self._is_rate_limit_error(err):
+                chat_id = kwargs.get("chat_id") or self._telegram_chat_id or ""
+                self._mark_rate_limit(chat_id, err, operation="发送")
+                raise NonRetryableTelegramError(
+                    f"发送 Telegram {'图片' if image else '文本'}消息被限流：{err}"
+                ) from err
             raise RetryException(f"发送{'图片' if image else '文本'}消息失败")
 
     @retry(RetryException, logger=logger)
@@ -1759,6 +1963,12 @@ class Telegram:
                 )
             return ret
         except Exception as err:
+            if self._is_rate_limit_error(err):
+                chat_id = kwargs.get("chat_id") or self._telegram_chat_id or ""
+                self._mark_rate_limit(chat_id, err, operation="发送")
+                raise NonRetryableTelegramError(
+                    f"发送 Telegram 长消息被限流：{err}"
+                ) from err
             raise RetryException("长消息发送失败") from err
 
     @retry(RetryException, logger=logger)
@@ -1819,6 +2029,12 @@ class Telegram:
                 sent_idx.add(i)
 
             except Exception as e:
+                if self._is_rate_limit_error(e):
+                    chat_id = kwargs.get("chat_id") or self._telegram_chat_id or ""
+                    self._mark_rate_limit(chat_id, e, operation="发送")
+                    raise NonRetryableTelegramError(
+                        f"发送 Telegram 消息被限流：{e}"
+                    ) from e
                 try:
                     raise RetryException(f"消息 [{i + 1}/{len(boxs)}] 发送失败") from e
                 except NameError:

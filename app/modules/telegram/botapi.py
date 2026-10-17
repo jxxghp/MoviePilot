@@ -43,11 +43,18 @@ class TelegramApiError(Exception):
     "message is not modified" 等可忽略错误。
     """
 
-    def __init__(self, method: str, description: str, error_code: Optional[int] = None):
+    def __init__(
+            self,
+            method: str,
+            description: str,
+            error_code: Optional[int] = None,
+            parameters: Optional[JsonDict] = None,
+    ):
         """保留 API 错误码和描述，供调用方区分业务拒绝与网络失败。"""
         self.method = method
         self.description = description
         self.error_code = error_code
+        self.parameters = parameters or {}
         super().__init__(
             f"Telegram API {method} 调用失败，错误码：{error_code}，描述：{description}"
         )
@@ -197,7 +204,10 @@ class TelegramBotApi:
             ) from None
         if not payload.get("ok"):
             raise TelegramApiError(
-                method, str(payload.get("description")), payload.get("error_code")
+                method,
+                str(payload.get("description")),
+                payload.get("error_code"),
+                payload.get("parameters"),
             )
         return payload.get("result")
 

@@ -133,6 +133,23 @@ def test_api_error_keeps_telegram_description(post_res):
     assert exc.value.error_code == 502
 
 
+def test_api_error_preserves_rate_limit_parameters(post_res):
+    """429 响应中的 retry_after 应保留给出站冷却策略。"""
+    post_res.return_value = _response({
+        "ok": False,
+        "error_code": 429,
+        "description": "Too Many Requests: retry after 17",
+        "parameters": {"retry_after": 17},
+    })
+    client = TelegramBotApi("1:abc")
+
+    with pytest.raises(TelegramApiError) as exc:
+        client.edit_message_text(chat_id=1, message_id=2, text="next")
+
+    assert exc.value.error_code == 429
+    assert exc.value.parameters == {"retry_after": 17}
+
+
 def test_polling_dispatches_in_order_and_survives_handler_errors():
     """更新按顺序分发，offset 确认到最后一条；单条处理失败不影响后续更新。"""
     client = TelegramBotApi("1:abc")

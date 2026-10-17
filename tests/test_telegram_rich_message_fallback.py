@@ -6,6 +6,7 @@ import pytest
 
 from app.modules.telegram.botapi import TelegramApiError, TelegramNetworkError
 from app.modules.telegram.telegram import (
+    TELEGRAM_EDIT_MIN_INTERVAL_SECONDS,
     NonRetryableTelegramError,
     RetryException,
     Telegram,
@@ -39,6 +40,14 @@ class TestNonRetryableApiError:
     def test_network_error_is_retryable(self):
         """网络临时异常保留重试能力。"""
         assert _is_non_retryable_api_error(TelegramNetworkError("m", "timeout")) is False
+
+    def test_429_is_non_retryable_until_cooldown(self):
+        """429 不能在通用重试器内立即重放。"""
+        err = TelegramApiError(
+            "editMessageText", "Too Many Requests: retry after 17", 429,
+            {"retry_after": 17},
+        )
+        assert _is_non_retryable_api_error(err) is True
 
     def test_unrelated_error_is_retryable(self):
         """非 API 异常不被误判为确定性拒绝。"""
@@ -142,6 +151,37 @@ class TestSendMsgFallsBackToPlainText:
 
         assert result["success"] is False
 
+    def test_send_429_skips_fallback_and_retry(self):
+        """Rich 发送收到 429 时应立即返回失败，不再重试或发送纯文本。"""
+        client = _make_client()
+        client._api.send_rich_message.side_effect = TelegramApiError(
+            "sendRichMessage", "Too Many Requests: retry after 17", 429,
+            {"retry_after": 17},
+        )
+
+        with patch("time.sleep") as sleep_mock:
+            result = client.send_msg(title="结果", text="正文", rich_message="# 结果")
+
+        assert result["success"] is False
+        client._api.send_rich_message.assert_called_once()
+        client._api.send_message.assert_not_called()
+        sleep_mock.assert_not_called()
+
+    def test_plain_send_429_skips_retry(self):
+        """普通发送收到 429 时也应隔离输出失败，不能阻塞 Agent。"""
+        client = _make_client()
+        client._api.send_message.side_effect = TelegramApiError(
+            "sendMessage", "Too Many Requests: retry after 17", 429,
+            {"retry_after": 17},
+        )
+
+        with patch("time.sleep") as sleep_mock:
+            result = client.send_msg(title="结果", text="正文")
+
+        assert result["success"] is False
+        client._api.send_message.assert_called_once()
+        sleep_mock.assert_not_called()
+
 
 class TestEditMsgFallsBackToPlainText:
     """编辑路径同样需要降级，避免回复停留在旧内容。"""
@@ -174,6 +214,56 @@ class TestEditMsgFallsBackToPlainText:
 
         assert result is True
         assert client._api.edit_message_text.call_count == 1
+
+    def test_429_does_not_try_plain_text_fallback(self):
+        """Rich 编辑收到 429 时不能再用纯文本编辑放大限流。"""
+        client = _make_client()
+        client._api.edit_message_text.side_effect = TelegramApiError(
+            "editMessageText", "Too Many Requests: retry after 17", 429,
+            {"retry_after": 17},
+        )
+
+        result = client.edit_msg(
+            chat_id="chat", message_id=5, text="正文", rich_message="# 结果"
+        )
+
+        assert result is False
+        client._api.edit_message_text.assert_called_once()
+
+    def test_429_cooldown_skips_follow_up_edits(self, monkeypatch):
+        """同一聊天的冷却期内后续编辑不应再触碰 Bot API。"""
+        client = _make_client()
+        now = [100.0]
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+        client._api.edit_message_text.side_effect = TelegramApiError(
+            "editMessageText", "Too Many Requests: retry after 17", 429,
+            {"retry_after": 17},
+        )
+
+        assert client.edit_msg(chat_id="chat", message_id=5, text="正文", rich_message="# 结果") is False
+        now[0] += 10
+        assert client.edit_msg(chat_id="chat", message_id=5, text="更新", rich_message="# 更新") is False
+        assert client._api.edit_message_text.call_count == 1
+        now[0] += 8
+        client._api.edit_message_text.side_effect = None
+        client._api.edit_message_text.return_value = {"message_id": 5}
+        assert client.edit_msg(chat_id="chat", message_id=5, text="更新", rich_message="# 更新") is True
+        assert client._api.edit_message_text.call_count == 2
+
+    def test_successful_edits_are_throttled_and_latest_text_wins(self, monkeypatch):
+        """最小编辑间隔内只保留最新一次刷新，解除后发送当前文本。"""
+        client = _make_client()
+        now = [100.0]
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+        client._api.edit_message_text.return_value = {"message_id": 5}
+
+        assert client.edit_msg(chat_id="chat", message_id=5, text="首帧", rich_message="# 首帧") is True
+        now[0] += TELEGRAM_EDIT_MIN_INTERVAL_SECONDS / 2
+        assert client.edit_msg(chat_id="chat", message_id=5, text="最新", rich_message="# 最新") is False
+        assert client._api.edit_message_text.call_count == 1
+        now[0] += TELEGRAM_EDIT_MIN_INTERVAL_SECONDS
+        assert client.edit_msg(chat_id="chat", message_id=5, text="最新", rich_message="# 最新") is True
+        assert client._api.edit_message_text.call_count == 2
 
 
 class TestFallbackDisablesMarkdownV2:
