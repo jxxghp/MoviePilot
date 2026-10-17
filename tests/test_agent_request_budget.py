@@ -13,9 +13,9 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
-from app.agent.orchestrator import MoviePilotAgent
 from app.agent.middleware.selection import ToolSelectorMiddleware
 from app.agent.middleware.usage import UsageMiddleware
+from app.agent.orchestrator import MoviePilotAgent
 from app.chain.message import MessageChain
 
 

@@ -14,17 +14,20 @@ from urllib.parse import quote
 
 # 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.agent import AgentChain, MoviePilotAgent  # pylint: disable=no-name-in-module
+
 # 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.agent.llm import LLMHelper  # pylint: disable=no-name-in-module
 from app.agent.tools.impl.send_local_file import SendLocalFileInput
 from app.agent.tools.impl.send_message import SendMessageInput, SendMessageTool
 from app.chain.message import MessageChain
 from app.modules.discord import DiscordModule
+
 # 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.modules.qqbot import QQBotModule  # pylint: disable=no-name-in-module
 from app.modules.qqbot.qqbot import QQBot
 from app.modules.slack import SlackModule
 from app.modules.synologychat import SynologyChatModule
+
 # 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.modules.telegram import TelegramModule  # pylint: disable=no-name-in-module
 from app.modules.telegram.botapi import TelegramBotApi
@@ -34,6 +37,7 @@ from app.modules.wechat import WechatModule
 from app.modules.wechat.wechatbot import WeChatBot
 from app.runtime.config import settings
 from app.runtime.loop import main_loop_registry
+
 # 此导入使用兼容包的惰性公开符号，Pylint 无法静态解析。
 from app.schemas import IncomingMessage, Message  # pylint: disable=no-name-in-module
 from app.schemas.types import MessageType, NotificationChannel

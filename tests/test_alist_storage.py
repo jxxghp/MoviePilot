@@ -7,8 +7,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
-
 import pytest
+
 from app.modules.filemanager.storages import alist as alist_module
 from app.modules.filemanager.storages.alist import Alist
 from app.schemas.file import FileItem

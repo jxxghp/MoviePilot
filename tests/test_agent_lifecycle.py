@@ -11,6 +11,7 @@ import app.agent.orchestrator as agent_module
 from app.adapters.system import resource as resource_module
 from app.adapters.system.resource import configure_resource_version_provider
 from app.agent.memory import MemoryManager
+
 # 此兼容入口通过惰性属性提供管理器符号，Pylint 无法静态解析。
 from app.agent.orchestrator import (  # pylint: disable=no-name-in-module
     AGENT_SESSION_QUEUE_MAX_SIZE,

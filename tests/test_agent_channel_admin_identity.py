@@ -13,6 +13,7 @@ from app.application.messaging.channel.admin import (
     resolve_config_principal_ids,
 )
 from app.modules.discord import DiscordModule
+
 # 经 module 导入以注册飞书管理员解析器
 from app.modules.feishu.module import Feishu
 from app.modules.qqbot.module import QQBotModule

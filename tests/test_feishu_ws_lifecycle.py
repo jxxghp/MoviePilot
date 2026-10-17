@@ -17,8 +17,10 @@ ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
 # 先安装可选依赖占位，隔离长连接测试不需要的外部依赖。
 from app.adapters.network.feishu import FeishuLongConnection  # noqa: E402
+
 # 先安装可选依赖占位，隔离长连接测试不需要的外部依赖。
 from app.modules.feishu.feishu import Feishu  # noqa: E402
+
 # 先安装可选依赖占位，隔离长连接测试不需要的外部依赖。
 from app.modules.feishu.openapi import FeishuOpenApi  # noqa: E402
 

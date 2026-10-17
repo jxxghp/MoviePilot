@@ -17,10 +17,13 @@ ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
 # 先安装可选依赖占位，避免加载飞书媒体处理模块时缺少依赖。
 from app.domain.context import MediaInfo  # noqa: E402
+
 # 先安装可选依赖占位，避免加载飞书媒体处理模块时缺少依赖。
 from app.modules.feishu.feishu import Feishu  # noqa: E402
+
 # 先安装可选依赖占位，避免加载飞书媒体处理模块时缺少依赖。
 from app.modules.feishu.openapi import FeishuResponse  # noqa: E402
+
 # 先安装可选依赖占位，避免加载飞书媒体处理模块时缺少依赖。
 from app.schemas.message import Message  # noqa: E402
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from app.agent.llm.provider import (
     LLMProviderError,
     LLMProviderManager,

@@ -20,22 +20,28 @@ ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
 # 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.agent.callback import StreamingHandler  # noqa: E402
+
 # 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.modules.feishu.feishu import Feishu  # noqa: E402
+
 # 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.modules.feishu.module import FeishuModule  # noqa: E402
+
 # 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.modules.feishu.openapi import FeishuOpenApi, FeishuResponse  # noqa: E402
+
 # 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.schemas.message import (  # noqa: E402
     Message,
     MessageResponse,
 )
+
 # 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.schemas.notification import (  # noqa: E402
     ChannelCapability,
     ChannelCapabilityManager,
 )
+
 # 先安装可选依赖占位，避免加载飞书及消息模块时缺少依赖。
 from app.schemas.types import MessageType, NotificationChannel  # noqa: E402
 
