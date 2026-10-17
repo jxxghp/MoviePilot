@@ -4,7 +4,7 @@ import time
 from hashlib import sha256
 from pathlib import Path
 from threading import Lock
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from cryptography.hazmat.primitives import hashes
 
@@ -17,11 +17,21 @@ from app.runtime.rate import QpsRateLimiter, RateStats
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 lock = Lock()
+
+JsonObject = dict[str, Any]
+JsonResponse = Union[JsonObject, list[Any]]
+
+
+def _as_object(value: object) -> JsonObject:
+    """
+    将接口返回值收窄为 JSON 对象。
+    """
+    return value if isinstance(value, dict) else {}
 
 
 MIN_U115_UPLOAD_PART_SIZE = 1 * 1024 * 1024
@@ -50,7 +60,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     """
 
     # 存储类型
-    schema = StorageSchema.U115
+    schema: StorageSchema = StorageSchema.U115
 
     # 支持的整理方式
     transtype = {"move": "移动", "copy": "复制"}
@@ -65,9 +75,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     # 风控触发后休眠时间（秒）
     limit_sleep_seconds = 3600
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self._auth_state = {}
+        self._auth_state: JsonObject = {}
         self._request_utils = RequestUtils(
             use_session=True,
             timeout=20,
@@ -82,7 +92,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         # 总体 QPS/QPM/QPH 统计
         self._rate_stats = RateStats(source="115")
 
-    def _init_session(self):
+    def _init_session(self) -> None:
         """
         初始化带速率限制的会话
         """
@@ -98,7 +108,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """关闭 115 HTTP 客户端。"""
         self._request_utils.close()
 
-    def _check_session(self):
+    def _check_session(self) -> None:
         """
         检查会话是否过期
         """
@@ -118,9 +128,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             expires_in = tokens.get("expires_in", 0)
             refresh_time = tokens.get("refresh_time", 0)
             if expires_in and refresh_time + expires_in < int(time.time()):
-                tokens = self.__refresh_access_token(refresh_token)
-                if tokens:
-                    self.set_config({"refresh_time": int(time.time()), **tokens})
+                refreshed_tokens = self.__refresh_access_token(refresh_token)
+                if refreshed_tokens:
+                    tokens = refreshed_tokens
+                    self.set_config({"refresh_time": int(time.time()), **refreshed_tokens})
                 else:
                     return None
             access_token = tokens.get("access_token")
@@ -130,7 +141,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 )
             return access_token
 
-    def generate_auth_url(self) -> Tuple[dict, str]:
+    def generate_auth_url(self) -> Tuple[JsonObject, str]:
         """
         生成 OAuth2 授权 URL
         """
@@ -141,11 +152,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             if resp is None:
                 return {}, "无法连接到授权服务器"
 
-            result = resp.json()
+            result = _as_object(resp.json())
             if not result.get("success"):
                 return {}, result.get("message", "获取授权URL失败")
 
-            data = result.get("data", {})
+            data = _as_object(result.get("data", {}))
             auth_url = data.get("auth_url")
             state = data.get("state")
 
@@ -159,7 +170,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【115】获取授权 URL 失败: {str(e)}")
             return {}, f"获取授权 URL 失败: {str(e)}"
 
-    def generate_qrcode(self) -> Tuple[dict, str]:
+    def generate_qrcode(self) -> Tuple[JsonObject, str]:
         """
         实现PKCE规范的设备授权二维码生成
         """
@@ -179,9 +190,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         )
         if resp is None:
             return {}, "网络错误"
-        result = resp.json()
+        result = _as_object(resp.json())
         if result.get("code") != 0:
-            return {}, result.get("message")
+            return {}, str(result.get("message", ""))
         # 持久化验证参数
         self._auth_state = {
             "code_verifier": code_verifier,
@@ -193,7 +204,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         # 生成二维码内容
         return {"codeContent": result["data"]["qrcode"]}, ""
 
-    def check_login(self) -> Optional[Tuple[dict, str]]:
+    def check_login(self, *args: Any, **kwargs: Any) -> Optional[JsonObject | Tuple[JsonObject, str]]:
         """
         检查授权状态
         """
@@ -213,9 +224,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             )
             if resp is None:
                 return {}, "网络错误"
-            result = resp.json()
+            result = _as_object(resp.json())
             if result.get("code") != 0 or not result.get("data"):
-                return {}, result.get("message")
+                return {}, str(result.get("message", ""))
             if result["data"]["status"] == 2:
                 tokens = self.__get_access_token()
                 self.set_config({"refresh_time": int(time.time()), **tokens})
@@ -226,7 +237,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         except HttpRequestError as e:
             return {}, str(e)
 
-    def __check_oauth_login(self) -> Tuple[dict, str]:
+    def __check_oauth_login(self) -> Tuple[JsonObject, str]:
         """
         检查 OAuth2 授权状态
         """
@@ -241,11 +252,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             if resp is None:
                 return {}, "无法连接到授权服务器"
 
-            result = resp.json()
+            result = _as_object(resp.json())
             status = result.get("status", "pending")
 
             if status == "completed":
-                data = result.get("data", {})
+                data = _as_object(result.get("data", {}))
                 if data:
                     self.set_config(
                         {
@@ -267,7 +278,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【115】检查授权状态失败: {str(e)}")
             return {}, f"检查授权状态失败: {str(e)}"
 
-    def __get_access_token(self) -> dict:
+    def __get_access_token(self) -> JsonObject:
         """
         确认登录后，获取相关token
         """
@@ -282,12 +293,12 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         )
         if resp is None:
             raise Exception("获取 access_token 失败")
-        result = resp.json()
+        result = _as_object(resp.json())
         if result.get("code") != 0:
             raise Exception(result.get("message"))
-        return result["data"]
+        return _as_object(result.get("data"))
 
-    def __refresh_access_token(self, refresh_token: str) -> Optional[dict]:
+    def __refresh_access_token(self, refresh_token: str) -> Optional[JsonObject]:
         """
         刷新access_token
         """
@@ -300,13 +311,14 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 f"【115】刷新 access_token 失败：refresh_token={refresh_token}"
             )
             return None
-        result = resp.json()
+        result = _as_object(resp.json())
         if result.get("code") != 0:
             logger.warn(
                 f"【115】刷新 access_token 失败：{result.get('code')} - {result.get('message')}！"
             )
             return None
-        return result.get("data")
+        data = result.get("data")
+        return _as_object(data) if data is not None else None
 
     def _request_api(
         self,
@@ -315,8 +327,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         result_key: Optional[str] = None,
         *,
         accepted_codes: Tuple[int, ...] = U115_DEFAULT_ACCEPTED_CODES,
-        **kwargs,
-    ) -> Optional[Union[dict, list]]:
+        **kwargs: Any,
+    ) -> Optional[JsonResponse]:
         """
         带错误处理和速率限制的API请求
 
@@ -415,7 +427,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             )
 
         # 返回数据
-        ret_data = resp.json()
+        ret_data = _as_object(resp.json())
         if ret_data.get("code") not in accepted_codes:
             error_msg = ret_data.get("message", "")
             if not no_error_log:
@@ -448,7 +460,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             return None
 
         if result_key:
-            return ret_data.get(result_key)
+            result = ret_data.get(result_key)
+            return result if isinstance(result, (dict, list)) else None
         return ret_data
 
     @staticmethod
@@ -465,7 +478,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             else:
                 while chunk := f.read(8192):
                     sha1.update(chunk)
-        return sha1.finalize().hex()
+        return str(sha1.finalize().hex())
 
     @staticmethod
     def __get_upload_part_size(file_size: int) -> int:
@@ -485,29 +498,35 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 return part_size
         return U115_UPLOAD_PART_SIZE_STEPS[-1]
 
-    def init_storage(self):
-        pass
+    def init_storage(self) -> None:
+        """
+        初始化存储配置。
+        """
+        return None
 
     def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
         目录遍历实现
         """
 
+        item_path = fileitem.path or "/"
         if fileitem.type == "file":
             item = self.detail(fileitem)
             if item:
                 return [item]
             return []
-        if fileitem.path == "/":
+        if item_path == "/":
             cid = "0"
         else:
-            cid = fileitem.fileid
+            cid = fileitem.fileid or ""
             if not cid:
-                _fileitem = self.get_item(Path(fileitem.path))
+                _fileitem = self.get_item(Path(item_path))
                 if not _fileitem:
-                    logger.warn(f"【115】获取目录 {fileitem.path} 失败！")
+                    logger.warn(f"【115】获取目录 {item_path} 失败！")
                     return []
-                cid = _fileitem.fileid
+                cid = _fileitem.fileid or ""
+            if not cid:
+                return []
 
         items = []
         offset = 0
@@ -527,10 +546,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             )
             if resp is None:
                 raise FileNotFoundError(f"【115】{fileitem.path} 检索出错！")
-            if not resp:
+            if not isinstance(resp, list):
                 break
             for item in resp:
-                parent_path = Path(fileitem.path)  # noqa
+                parent_path = Path(item_path)
                 item_name = item["fn"]
                 full_path = parent_path / item_name
                 items.append(
@@ -561,7 +580,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         创建目录
         """
-        new_path = Path(parent_item.path) / name
+        new_path = Path(parent_item.path or "/") / name
         resp = self._request_api(
             "POST",
             "/open/folder/add",
@@ -570,7 +589,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 "file_name": name,
             },
         )
-        if not resp:
+        if not isinstance(resp, dict):
             return None
         if not resp.get("state"):
             if resp.get("code") == 20004:
@@ -606,10 +625,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             """
             编码 115 OSS 回调参数。
             """
-            return oss2.utils.b64encode_as_string(cb)
+            return str(oss2.utils.b64encode_as_string(cb))
 
         target_name = new_name or local_path.name
-        target_path = Path(target_dir.path) / target_name
+        target_path = Path(target_dir.path or "/") / target_name
         # 计算文件特征值
         file_size = local_path.stat().st_size
         file_sha1 = self._calc_sha1(local_path)
@@ -628,13 +647,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             "preid": file_preid,
         }
         init_resp = self._request_api("POST", "/open/upload/init", data=init_data)
-        if not init_resp:
+        if not isinstance(init_resp, dict):
             return None
         if not init_resp.get("state"):
             logger.warn(f"【115】初始化上传失败: {init_resp.get('error')}")
             return None
         # 结果
-        init_result = init_resp.get("data")
+        init_result = _as_object(init_resp.get("data"))
         logger.debug(f"【115】上传 Step 1 初始化结果: {init_result}")
         # 回调信息
         bucket_name = init_result.get("bucket")
@@ -665,13 +684,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 {"pick_code": pick_code, "sign_key": sign_key, "sign_val": sign_val}
             )
             init_resp = self._request_api("POST", "/open/upload/init", data=init_data)
-            if not init_resp:
+            if not isinstance(init_resp, dict):
                 return None
             if not init_resp.get("state"):
                 logger.warn(f"【115】上传二次认证失败: {init_resp.get('error')}")
                 return None
             # 二次认证结果
-            init_result = init_resp.get("data")
+            init_result = _as_object(init_resp.get("data"))
             logger.debug(f"【115】上传 Step 2 二次认证结果: {init_result}")
             if not pick_code:
                 pick_code = init_result.get("pick_code")
@@ -695,7 +714,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                     "data",
                     params={"file_id": int(file_id)},
                 )
-                if info_resp:
+                if isinstance(info_resp, dict):
                     return _SchemaFileItem(
                         storage=self.schema.value,
                         fileid=str(info_resp["file_id"]),
@@ -720,7 +739,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         # Step 4: 获取上传凭证
         token_resp = self._request_api("GET", "/open/upload/get_token", "data")
-        if not token_resp:
+        if not isinstance(token_resp, dict):
             logger.warn("【115】获取上传凭证失败")
             return None
         logger.debug(f"【115】上传 Step 4 获取上传凭证结果: {token_resp}")
@@ -742,7 +761,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 "pick_code": pick_code,
             },
         )
-        if resume_resp:
+        if isinstance(resume_resp, dict):
             logger.debug(f"【115】上传 Step 5 断点续传结果: {resume_resp}")
             if resume_resp.get("callback"):
                 callback = resume_resp["callback"]
@@ -775,7 +794,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             上传凭证过期时重新获取 115 上传凭证并重建 OSS Bucket。
             """
             token_resp = self._request_api("GET", "/open/upload/get_token", "data")
-            if not token_resp:
+            if not isinstance(token_resp, dict):
                 raise Exception("【115】重新获取上传凭证失败")
             logger.info("【115】已重新获取上传凭证，继续上传")
             return oss2.Bucket(
@@ -835,9 +854,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         progress_callback(100)
 
         # 请求头
+        callback_data = _as_object(callback)
         headers = {
-            "X-oss-callback": encode_callback(callback["callback"]),
-            "x-oss-callback-var": encode_callback(callback["callback_var"]),
+            "X-oss-callback": encode_callback(str(callback_data.get("callback", ""))),
+            "x-oss-callback-var": encode_callback(str(callback_data.get("callback_var", ""))),
             "x-oss-forbid-overwrite": "false",
         }
         try:
@@ -905,11 +925,15 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             modify_time=local_path.stat().st_mtime if local_path.exists() else None,
         )
 
-    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         带实时进度显示的下载
         """
-        detail = self.get_item(Path(fileitem.path))
+        item_path = fileitem.path
+        if not item_path:
+            logger.error(f"【115】文件路径为空: {fileitem.name}")
+            return None
+        detail = self.get_item(Path(item_path))
         if not detail:
             logger.error(f"【115】获取文件详情失败: {fileitem.name}")
             return None
@@ -921,7 +945,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【115】获取下载链接失败: {fileitem.name}")
             return None
 
-        download_url = list(download_info.values())[0].get("url", {}).get("url")
+        if not isinstance(download_info, dict) or not download_info:
+            return None
+        first_info = next(iter(download_info.values()))
+        download_url = _as_object(_as_object(first_info).get("url")).get("url")
         if not download_url:
             logger.error(f"【115】下载链接为空: {fileitem.name}")
             return None
@@ -935,19 +962,21 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         # 初始化进度条
         logger.info(f"【115】开始下载: {fileitem.name} -> {local_path}")
-        progress_callback = transfer_process(Path(fileitem.path).as_posix())
+        progress_callback = transfer_process(item_path)
 
         try:
             with self._request_utils.get_stream(
                 download_url, raise_exception=True
             ) as r:
+                if r is None:
+                    return None
                 r.raise_for_status()
                 downloaded_size = 0
 
                 with open(local_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=self.chunk_size):
-                        if runtime_stop_state.consume_transfer_stop(fileitem.path):
-                            logger.info(f"【115】{fileitem.path} 下载已取消！")
+                        if runtime_stop_state.consume_transfer_stop(item_path):
+                            logger.info(f"【115】{item_path} 下载已取消！")
                             r.close()
                             return None
                         f.write(chunk)
@@ -981,6 +1010,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         删除文件/目录
         """
+        if not fileitem.fileid:
+            return False
         try:
             self._request_api(
                 "POST", "/open/ufile/delete", data={"file_ids": int(fileitem.fileid)}
@@ -993,6 +1024,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         重命名文件/目录
         """
+        if not fileitem.fileid:
+            return False
         resp = self._request_api(
             "POST",
             "/open/ufile/update",
@@ -1000,7 +1033,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         )
         if not resp:
             return False
-        if resp["state"]:
+        if isinstance(resp, dict) and resp.get("state"):
             return True
         return False
 
@@ -1100,34 +1133,43 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         获取文件/目录详细信息
         """
+        if not fileitem.path:
+            return None
         return self.get_item(Path(fileitem.path))
 
     def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
         复制
         """
-        if fileitem.fileid is None:
-            fileitem = self.get_item(Path(fileitem.path))
-            if not fileitem:
+        if not fileitem.fileid:
+            if not fileitem.path:
+                return False
+            resolved_fileitem = self.get_item(Path(fileitem.path))
+            if not resolved_fileitem:
                 logger.warn(f"【115】获取文件 {fileitem.path} 失败！")
                 return False
+            fileitem = resolved_fileitem
         dest_fileitem = self.get_item(path)
-        if not dest_fileitem or dest_fileitem.type != "dir":
+        if not dest_fileitem or dest_fileitem.type != "dir" or not dest_fileitem.fileid:
             logger.warn(f"【115】目标路径 {path} 不是一个有效的目录！")
+            return False
+        file_id = fileitem.fileid
+        dest_file_id = dest_fileitem.fileid
+        if not file_id or not dest_file_id:
             return False
 
         resp = self._request_api(
             "POST",
             "/open/ufile/copy",
             data={
-                "file_id": int(fileitem.fileid),
-                "pid": int(dest_fileitem.fileid),
+                "file_id": int(file_id),
+                "pid": int(dest_file_id),
             },
         )
-        if not resp:
+        if not isinstance(resp, dict):
             return False
-        if resp["state"]:
-            new_path = Path(path) / fileitem.name
+        if resp.get("state"):
+            new_path = Path(path) / (fileitem.name or "")
             new_item = self.get_item(new_path)
             if not new_item:
                 return False
@@ -1139,27 +1181,34 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         移动
         """
-        if fileitem.fileid is None:
-            fileitem = self.get_item(Path(fileitem.path))
-            if not fileitem:
+        if not fileitem.fileid:
+            if not fileitem.path:
+                return False
+            resolved_fileitem = self.get_item(Path(fileitem.path))
+            if not resolved_fileitem:
                 logger.warn(f"【115】获取文件 {fileitem.path} 失败！")
                 return False
+            fileitem = resolved_fileitem
         dest_fileitem = self.get_item(path)
-        if not dest_fileitem or dest_fileitem.type != "dir":
+        if not dest_fileitem or dest_fileitem.type != "dir" or not dest_fileitem.fileid:
             logger.warn(f"【115】目标路径 {path} 不是一个有效的目录！")
+            return False
+        file_id = fileitem.fileid
+        dest_file_id = dest_fileitem.fileid
+        if not file_id or not dest_file_id:
             return False
         resp = self._request_api(
             "POST",
             "/open/ufile/move",
             data={
-                "file_ids": int(fileitem.fileid),
-                "to_cid": int(dest_fileitem.fileid),
+                "file_ids": int(file_id),
+                "to_cid": int(dest_file_id),
             },
         )
-        if not resp:
+        if not isinstance(resp, dict):
             return False
-        if resp["state"]:
-            new_path = Path(path) / fileitem.name
+        if resp.get("state"):
+            new_path = Path(path) / (fileitem.name or "")
             new_file = self.get_item(new_path)
             if not new_file:
                 return False
@@ -1168,10 +1217,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         return False
 
     def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
-        pass
+        return False
 
     def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
-        pass
+        return False
 
     def usage(self) -> Optional[_SchemaStorageUsage]:
         """
@@ -1179,7 +1228,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         try:
             resp = self._request_api("GET", "/open/user/info", "data")
-            if not resp:
+            if not isinstance(resp, dict):
                 return None
             space = resp["rt_space_info"]
             return _SchemaStorageUsage(
