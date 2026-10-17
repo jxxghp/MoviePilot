@@ -1,4 +1,6 @@
-from ..tmdb import TMDb, TMDbJson
+from typing import Any
+
+from ..tmdb import TMDb
 
 
 class Movie(TMDb):
@@ -29,7 +31,7 @@ class Movie(TMDb):
         "upcoming": "/movie/upcoming",
     }
 
-    def details(self, movie_id: int, append_to_response: str="videos,trailers,images,casts,translations,keywords,release_dates") -> TMDbJson:
+    def details(self, movie_id: int, append_to_response: str | None="videos,trailers,images,casts,translations,keywords,release_dates") -> Any:
         """
         Get the primary information about a movie.
         :param movie_id: int
@@ -41,7 +43,7 @@ class Movie(TMDb):
             params="append_to_response=%s" % append_to_response
         )
 
-    def account_states(self, movie_id: int) -> TMDbJson:
+    def account_states(self, movie_id: int) -> Any:
         """
         Grab the following account states for a session:
         Movie rating, If it belongs to your watchlist, or If it belongs to your favourite list.
@@ -53,7 +55,7 @@ class Movie(TMDb):
             params="session_id=%s" % self.session_id
         )
 
-    def alternative_titles(self, movie_id: int, country: str | None=None) -> TMDbJson:
+    def alternative_titles(self, movie_id: int, country: str | None=None) -> Any:
         """
         Get all of the alternative titles for a movie.
         :param movie_id: int
@@ -66,7 +68,7 @@ class Movie(TMDb):
             key="titles"
         )
 
-    def changes(self, movie_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> TMDbJson:
+    def changes(self, movie_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
         Get the changes for a movie. By default only the last 24 hours are returned.
         You can query up to 14 days in a single query by using the start_date and end_date query parameters.
@@ -87,7 +89,7 @@ class Movie(TMDb):
             key="changes"
         )
 
-    def credits(self, movie_id: int) -> TMDbJson:
+    def credits(self, movie_id: int) -> Any:
         """
         Get the cast and crew for a movie.
         :param movie_id: int
@@ -95,7 +97,7 @@ class Movie(TMDb):
         """
         return self._request_obj(self._urls["credits"] % movie_id)
 
-    def external_ids(self, movie_id: int) -> TMDbJson:
+    def external_ids(self, movie_id: int) -> Any:
         """
         Get the external ids for a movie.
         :param movie_id: int
@@ -103,7 +105,7 @@ class Movie(TMDb):
         """
         return self._request_obj(self._urls["external_ids"] % movie_id)
 
-    def images(self, movie_id: int, include_image_language: str | None=None) -> TMDbJson:
+    def images(self, movie_id: int, include_image_language: str | None=None) -> Any:
         """
         Get the images that belong to a movie.
         Querying images with a language parameter will filter the results.
@@ -119,7 +121,7 @@ class Movie(TMDb):
             params="include_image_language=%s" % include_image_language if include_image_language else ""
         )
 
-    def keywords(self, movie_id: int) -> TMDbJson:
+    def keywords(self, movie_id: int) -> Any:
         """
         Get the keywords associated to a movie.
         :param movie_id: int
@@ -130,7 +132,7 @@ class Movie(TMDb):
             key="keywords"
         )
 
-    def lists(self, movie_id: int, page: int=1) -> TMDbJson:
+    def lists(self, movie_id: int, page: int=1) -> Any:
         """
         Get a list of lists that this movie belongs to.
         :param movie_id: int
@@ -143,7 +145,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    def recommendations(self, movie_id: int, page: int=1) -> TMDbJson:
+    def recommendations(self, movie_id: int, page: int=1) -> Any:
         """
         Get a list of recommended movies for a movie.
         :param movie_id: int
@@ -156,7 +158,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    def release_dates(self, movie_id: int) -> TMDbJson:
+    def release_dates(self, movie_id: int) -> Any:
         """
         Get the release date along with the certification for a movie.
         :param movie_id: int
@@ -167,7 +169,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    def reviews(self, movie_id: int, page: int=1) -> TMDbJson:
+    def reviews(self, movie_id: int, page: int=1) -> Any:
         """
         Get the user reviews for a movie.
         :param movie_id: int
@@ -180,7 +182,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    def similar(self, movie_id: int, page: int=1) -> TMDbJson:
+    def similar(self, movie_id: int, page: int=1) -> Any:
         """
         Get a list of similar movies.
         :param movie_id: int
@@ -193,7 +195,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    def translations(self, movie_id: int) -> TMDbJson:
+    def translations(self, movie_id: int) -> Any:
         """
         Get a list of translations that have been created for a movie.
         :param movie_id: int
@@ -204,7 +206,7 @@ class Movie(TMDb):
             key="translations"
         )
 
-    def videos(self, movie_id: int, page: int=1) -> TMDbJson:
+    def videos(self, movie_id: int, page: int=1) -> Any:
         """
         Get the videos that have been added to a movie.
         :param movie_id: int
@@ -217,7 +219,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    def watch_providers(self, movie_id: int) -> TMDbJson:
+    def watch_providers(self, movie_id: int) -> Any:
         """
         You can query this method to get a list of the availabilities per country by provider.
         :param movie_id: int
@@ -252,14 +254,14 @@ class Movie(TMDb):
             method="DELETE"
         )
 
-    def latest(self) -> TMDbJson:
+    def latest(self) -> Any:
         """
         Get the most newly created movie. This is a live response and will continuously change.
         :return:
         """
         return self._request_obj(self._urls["latest"])
 
-    def now_playing(self, region: str | None=None, page: int=1) -> TMDbJson:
+    def now_playing(self, region: str | None=None, page: int=1) -> Any:
         """
         Get a list of movies in theatres.
         :param region: str
@@ -275,7 +277,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    def popular(self, region: str | None=None, page: int=1) -> TMDbJson:
+    def popular(self, region: str | None=None, page: int=1) -> Any:
         """
         Get a list of the current popular movies on TMDb. This list updates daily.
         :param region: str
@@ -291,7 +293,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    def top_rated(self, region: str | None=None, page: int=1) -> TMDbJson:
+    def top_rated(self, region: str | None=None, page: int=1) -> Any:
         """
         Get the top rated movies on TMDb.
         :param region: str
@@ -307,7 +309,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    def upcoming(self, region: str | None=None, page: int=1) -> TMDbJson:
+    def upcoming(self, region: str | None=None, page: int=1) -> Any:
         """
         Get a list of upcoming movies in theatres.
         :param region: str
@@ -325,7 +327,7 @@ class Movie(TMDb):
 
     # 异步版本方法
     async def async_details(self, movie_id: int,
-                            append_to_response: str = "videos,trailers,images,casts,translations,keywords,release_dates") -> TMDbJson:
+                            append_to_response: str | None = "videos,trailers,images,casts,translations,keywords,release_dates") -> Any:
         """
         Get the primary information about a movie.（异步版本）
         :param movie_id: int
@@ -337,7 +339,7 @@ class Movie(TMDb):
             params="append_to_response=%s" % append_to_response
         )
 
-    async def async_account_states(self, movie_id: int) -> TMDbJson:
+    async def async_account_states(self, movie_id: int) -> Any:
         """
         Grab the following account states for a session:
         Movie rating, If it belongs to your watchlist, or If it belongs to your favourite list.（异步版本）
@@ -349,7 +351,7 @@ class Movie(TMDb):
             params="session_id=%s" % self.session_id
         )
 
-    async def async_alternative_titles(self, movie_id: int, country: str | None=None) -> TMDbJson:
+    async def async_alternative_titles(self, movie_id: int, country: str | None=None) -> Any:
         """
         Get all of the alternative titles for a movie.（异步版本）
         :param movie_id: int
@@ -362,7 +364,7 @@ class Movie(TMDb):
             key="titles"
         )
 
-    async def async_changes(self, movie_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> TMDbJson:
+    async def async_changes(self, movie_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
         Get the changes for a movie. By default only the last 24 hours are returned.
         You can query up to 14 days in a single query by using the start_date and end_date query parameters.（异步版本）
@@ -383,7 +385,7 @@ class Movie(TMDb):
             key="changes"
         )
 
-    async def async_credits(self, movie_id: int) -> TMDbJson:
+    async def async_credits(self, movie_id: int) -> Any:
         """
         Get the cast and crew for a movie.（异步版本）
         :param movie_id: int
@@ -391,7 +393,7 @@ class Movie(TMDb):
         """
         return await self._async_request_obj(self._urls["credits"] % movie_id)
 
-    async def async_external_ids(self, movie_id: int) -> TMDbJson:
+    async def async_external_ids(self, movie_id: int) -> Any:
         """
         Get the external ids for a movie.（异步版本）
         :param movie_id: int
@@ -399,7 +401,7 @@ class Movie(TMDb):
         """
         return await self._async_request_obj(self._urls["external_ids"] % movie_id)
 
-    async def async_images(self, movie_id: int, include_image_language: str | None=None) -> TMDbJson:
+    async def async_images(self, movie_id: int, include_image_language: str | None=None) -> Any:
         """
         Get the images that belong to a movie.
         Querying images with a language parameter will filter the results.
@@ -415,7 +417,7 @@ class Movie(TMDb):
             params="include_image_language=%s" % include_image_language if include_image_language else ""
         )
 
-    async def async_keywords(self, movie_id: int) -> TMDbJson:
+    async def async_keywords(self, movie_id: int) -> Any:
         """
         Get the keywords associated to a movie.（异步版本）
         :param movie_id: int
@@ -426,7 +428,7 @@ class Movie(TMDb):
             key="keywords"
         )
 
-    async def async_lists(self, movie_id: int, page: int=1) -> TMDbJson:
+    async def async_lists(self, movie_id: int, page: int=1) -> Any:
         """
         Get a list of lists that this movie belongs to.（异步版本）
         :param movie_id: int
@@ -439,7 +441,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    async def async_recommendations(self, movie_id: int, page: int=1) -> TMDbJson:
+    async def async_recommendations(self, movie_id: int, page: int=1) -> Any:
         """
         Get a list of recommended movies for a movie.（异步版本）
         :param movie_id: int
@@ -452,7 +454,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    async def async_release_dates(self, movie_id: int) -> TMDbJson:
+    async def async_release_dates(self, movie_id: int) -> Any:
         """
         Get the release date along with the certification for a movie.（异步版本）
         :param movie_id: int
@@ -463,7 +465,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    async def async_reviews(self, movie_id: int, page: int=1) -> TMDbJson:
+    async def async_reviews(self, movie_id: int, page: int=1) -> Any:
         """
         Get the user reviews for a movie.（异步版本）
         :param movie_id: int
@@ -476,7 +478,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    async def async_similar(self, movie_id: int, page: int=1) -> TMDbJson:
+    async def async_similar(self, movie_id: int, page: int=1) -> Any:
         """
         Get a list of similar movies.（异步版本）
         :param movie_id: int
@@ -489,7 +491,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    async def async_translations(self, movie_id: int) -> TMDbJson:
+    async def async_translations(self, movie_id: int) -> Any:
         """
         Get a list of translations that have been created for a movie.（异步版本）
         :param movie_id: int
@@ -500,7 +502,7 @@ class Movie(TMDb):
             key="translations"
         )
 
-    async def async_videos(self, movie_id: int, page: int=1) -> TMDbJson:
+    async def async_videos(self, movie_id: int, page: int=1) -> Any:
         """
         Get the videos that have been added to a movie.（异步版本）
         :param movie_id: int
@@ -513,7 +515,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    async def async_watch_providers(self, movie_id: int) -> TMDbJson:
+    async def async_watch_providers(self, movie_id: int) -> Any:
         """
         You can query this method to get a list of the availabilities per country by provider.（异步版本）
         :param movie_id: int
@@ -548,14 +550,14 @@ class Movie(TMDb):
             method="DELETE"
         )
 
-    async def async_latest(self) -> TMDbJson:
+    async def async_latest(self) -> Any:
         """
         Get the most newly created movie. This is a live response and will continuously change.（异步版本）
         :return:
         """
         return await self._async_request_obj(self._urls["latest"])
 
-    async def async_now_playing(self, region: str | None=None, page: int=1) -> TMDbJson:
+    async def async_now_playing(self, region: str | None=None, page: int=1) -> Any:
         """
         Get a list of movies in theatres.（异步版本）
         :param region: str
@@ -571,7 +573,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    async def async_popular(self, region: str | None=None, page: int=1) -> TMDbJson:
+    async def async_popular(self, region: str | None=None, page: int=1) -> Any:
         """
         Get a list of the current popular movies on TMDb. This list updates daily.（异步版本）
         :param region: str
@@ -587,7 +589,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    async def async_top_rated(self, region: str | None=None, page: int=1) -> TMDbJson:
+    async def async_top_rated(self, region: str | None=None, page: int=1) -> Any:
         """
         Get the top rated movies on TMDb.（异步版本）
         :param region: str
@@ -603,7 +605,7 @@ class Movie(TMDb):
             key="results"
         )
 
-    async def async_upcoming(self, region: str | None=None, page: int=1) -> TMDbJson:
+    async def async_upcoming(self, region: str | None=None, page: int=1) -> Any:
         """
         Get a list of upcoming movies in theatres.（异步版本）
         :param region: str
