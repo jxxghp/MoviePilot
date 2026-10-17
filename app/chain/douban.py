@@ -1,8 +1,14 @@
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, List, Optional, cast
 
 from app.chain.base import ChainBase
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
+from app.schemas.comment import (
+    MediaCommentPage as _SchemaMediaCommentPage,
+)
+from app.schemas.comment import (
+    MediaReviewPage as _SchemaMediaReviewPage,
+)
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, MusicEntityType
 
@@ -440,3 +446,83 @@ class DoubanChain(ChainBase):
         :param doubanid:  豆瓣ID
         """
         return await self.async_run_module("async_douban_tv_recommend", doubanid=doubanid)
+
+    def movie_interests(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaCommentPage:
+        """
+        根据豆瓣ID查询电影短评
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        return cast(_SchemaMediaCommentPage, self.run_module("douban_movie_interests", doubanid=doubanid, start=start, count=count))
+
+    def tv_interests(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaCommentPage:
+        """
+        根据豆瓣ID查询电视剧短评
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        return cast(_SchemaMediaCommentPage, self.run_module("douban_tv_interests", doubanid=doubanid, start=start, count=count))
+
+    def movie_reviews(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaReviewPage:
+        """
+        根据豆瓣ID查询电影影评
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        return cast(_SchemaMediaReviewPage, self.run_module("douban_movie_reviews", doubanid=doubanid, start=start, count=count))
+
+    def tv_reviews(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaReviewPage:
+        """
+        根据豆瓣ID查询电视剧影评
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        return cast(_SchemaMediaReviewPage, self.run_module("douban_tv_reviews", doubanid=doubanid, start=start, count=count))
+
+    async def async_movie_interests(self, doubanid: str, start: int = 0,
+                                    count: int = 20) -> _SchemaMediaCommentPage:
+        """
+        根据豆瓣ID查询电影短评（异步版本）
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        return cast(_SchemaMediaCommentPage, await self.async_run_module("async_douban_movie_interests", doubanid=doubanid,
+                                                      start=start, count=count))
+
+    async def async_tv_interests(self, doubanid: str, start: int = 0,
+                                 count: int = 20) -> _SchemaMediaCommentPage:
+        """
+        根据豆瓣ID查询电视剧短评（异步版本）
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        return cast(_SchemaMediaCommentPage, await self.async_run_module("async_douban_tv_interests", doubanid=doubanid,
+                                                      start=start, count=count))
+
+    async def async_movie_reviews(self, doubanid: str, start: int = 0,
+                                  count: int = 20) -> _SchemaMediaReviewPage:
+        """
+        根据豆瓣ID查询电影影评（异步版本）
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        return cast(_SchemaMediaReviewPage, await self.async_run_module("async_douban_movie_reviews", doubanid=doubanid,
+                                                      start=start, count=count))
+
+    async def async_tv_reviews(self, doubanid: str, start: int = 0,
+                               count: int = 20) -> _SchemaMediaReviewPage:
+        """
+        根据豆瓣ID查询电视剧影评（异步版本）
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        return cast(_SchemaMediaReviewPage, await self.async_run_module("async_douban_tv_reviews", doubanid=doubanid,
+                                                      start=start, count=count))
