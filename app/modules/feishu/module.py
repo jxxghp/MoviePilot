@@ -1,3 +1,7 @@
+"""
+飞书通知模块的实例管理、投递路由和统一消息接口。
+"""
+
 from typing import Any, List, Optional, Tuple, Union
 
 from app.application.messaging.channel.admin import (
@@ -20,6 +24,9 @@ register_channel_admin_resolver(
 
 
 class FeishuModule(_MessageChannelModuleBase[Feishu]):
+    """
+    按通知实例路由飞书消息、附件、卡片更新和处理状态。
+    """
     _notification_user_target_keys = (
         "feishu_openid",
         "feishu_userid",
@@ -28,45 +35,81 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
     _notification_admin_default_config_keys = ("FEISHU_OPEN_ID", "FEISHU_CHAT_ID")
 
     def init_module(self) -> None:
+        """
+        加载飞书通知实例并绑定渠道类型。
+        """
         super().init_service(service_name=Feishu.__name__.lower(), service_type=Feishu)
         self._channel = NotificationChannel.Feishu
 
     @staticmethod
     def get_name() -> str:
+        """
+        返回配置界面使用的渠道名称。
+
+        :return: 飞书
+        """
         return "飞书"
 
     @staticmethod
     def get_type() -> ModuleType:
+        """
+        声明模块属于通知服务。
+
+        :return: 通知模块类型
+        """
         return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:
+        """
+        声明模块使用飞书通知渠道。
+
+        :return: 飞书渠道枚举
+        """
         return NotificationChannel.Feishu
 
     @staticmethod
     def get_priority() -> int:
+        """
+        返回同一接口的模块调度优先级。
+
+        :return: 固定为 2；数值越小越先调用
+        """
         return 2
 
     def _commands_enabled(self, config: Optional[dict]) -> bool:
         """
-        飞书机器人无斜杠命令概念，开放平台也不提供命令注册/删除 API，
+        飞书机器人无斜杠命令概念，开放平台也不提供命令注册/删除 API，。
         跳过命令注册，避免基类默认钩子调用不存在的 client.register_commands。
         """
         return False
 
     def stop(self) -> bool:
-        """停止全部飞书实例，并返回资源是否全部收敛。"""
+        """
+        停止全部飞书实例并等待长连接退出。
+
+        :return: 全部实例均停止成功时返回 True，否则返回 False
+        """
         return self._stop_service_instances()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """通知模块通过系统通知配置控制实例化，这里不额外设置环境开关。"""
+        """
+        通知模块通过系统通知配置控制实例化，这里不额外设置环境开关。
+        """
         return None
 
     @staticmethod
     def _resolve_message_target(
             message: Message,
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """解析发送目标：交互式回复优先回到原会话（群聊@回复必须回原群），其次 open_id，最后回退 user_id 或 chat_id。"""
+        """
+        从通知内容解析用户、会话和接收标识类型。
+
+        要求私聊且有用户时只按用户寻址；否则优先回到原会话，再使用通知用户及渠道目标。
+
+        :param message: 包含私聊约束、原会话和渠道目标的消息
+        :return: 用户标识、会话标识和接收标识类型的三元组；缺少的项为 None
+        """
         userid = str(message.userid).strip() if message.userid else None
         chat_id = None
         receive_id_type = "open_id" if userid else None
@@ -98,6 +141,15 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
     def message_parser(
             self, source: str, body: Any, form: Any, args: Any
     ) -> Optional[IncomingMessage]:
+        """
+        交给来源实例解析统一入口报文。
+
+        :param source: 通知实例名称
+        :param body: JSON 文本、字节或已解析的报文
+        :param form: 兼容其他渠道的表单参数，当前不使用
+        :param args: 兼容其他渠道的查询参数，当前不使用
+        :return: 统一消息；实例缺失或报文被拒绝时返回 None
+        """
         client_config = self.get_config(source)
         if not client_config:
             return None
@@ -107,6 +159,12 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         return client.parse_message(body)
 
     def post_message(self, message: Message, **kwargs) -> None:
+        """
+        向符合通知规则的实例发送卡片、附件或语音。
+
+        :param message: 通知内容和目标；同时有封面与文件时分别发送卡片和附件
+        :param kwargs: 兼容模块分发的附加参数，当前不使用
+        """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -160,6 +218,12 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
                     )
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
+        """
+        向符合通知规则的实例发送媒体候选卡片。
+
+        :param message: 标题、按钮和接收目标等通知信息
+        :param medias: 媒体候选列表，客户端最多展示前 10 项
+        """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -175,6 +239,12 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
                 )
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
+        """
+        向符合通知规则的实例发送种子候选卡片。
+
+        :param message: 标题、按钮和接收目标等通知信息
+        :param torrents: 种子候选列表，客户端最多展示前 10 项
+        """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -200,6 +270,19 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             buttons: Optional[List[List[dict]]] = None,
             metadata: Optional[dict] = None,
     ) -> Optional[bool]:
+        """
+        通过指定实例更新普通卡片或流式卡片。
+
+        :param channel: 目标通知渠道；非飞书时不处理
+        :param source: 原消息所属通知实例
+        :param message_id: 原消息标识
+        :param chat_id: 流式图片补发使用的会话标识
+        :param text: 新的正文
+        :param title: 普通卡片的新标题
+        :param buttons: 新按钮布局；提供按钮时使用普通卡片更新
+        :param metadata: 原消息流式状态，客户端会原地更新序号和重试信息
+        :return: 更新成功返回 True，失败或实例缺失返回 False；渠道不匹配返回 None
+        """
         if channel != self._channel:
             return None
         for conf in self.get_configs().values():
@@ -218,6 +301,14 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         return False
 
     def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
+        """
+        发送消息并返回首个成功实例的消息引用。
+
+        封面与附件组合只以卡片发送结果决定成功，附件发送结果不影响返回值。
+
+        :param message: 待发送通知；plain 模式通过纯文本保留敏感字符，封面与文件分别发送
+        :return: 成功主消息的引用与可选流式状态；没有成功实例时返回 None
+        """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -296,6 +387,15 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         return None
 
     def download_feishu_image_to_data_url(self, image_ref: str, source: str) -> Optional[str]:
+        """
+        下载飞书图片引用并编码为数据地址。
+
+        优先下载原消息资源，失败后尝试机器人上传的图片接口。
+
+        :param image_ref: feishu://image/ 引用，可携带原消息标识
+        :param source: 用于下载的通知实例名称
+        :return: Base64 图片数据地址；引用无效、实例缺失或下载失败返回 None
+        """
         if not image_ref or not image_ref.startswith("feishu://image/"):
             return None
         client_config = self.get_config(source)
@@ -329,6 +429,15 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
 
     def download_feishu_file_bytes(self, file_ref: str, source: str) -> Optional[bytes]:
+        """
+        下载飞书文件或音频引用的原始内容。
+
+        带原消息时依次尝试音频资源和文件资源，随后回退到机器人文件下载接口。
+
+        :param file_ref: feishu://file/ 引用，可携带 om_ 开头的原消息标识
+        :param source: 用于下载的通知实例名称
+        :return: 资源字节；引用无效、实例缺失或下载失败返回 None
+        """
         if not file_ref or not file_ref.startswith("feishu://file/"):
             return None
         client_config = self.get_config(source)
@@ -374,6 +483,14 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             emoji_type: str,
             source: str,
     ) -> Optional[str]:
+        """
+        通过指定实例给消息添加表情回应。
+
+        :param message_id: 目标消息标识
+        :param emoji_type: 飞书表情名称
+        :param source: 通知实例名称
+        :return: 回应标识；实例缺失或接口失败时返回 None
+        """
         client_config = self.get_config(source)
         if not client_config:
             return None
@@ -388,6 +505,14 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             reaction_id: str,
             source: str,
     ) -> Optional[bool]:
+        """
+        通过指定实例删除消息表情回应。
+
+        :param message_id: 目标消息标识
+        :param reaction_id: 待删除回应标识
+        :param source: 通知实例名称
+        :return: 删除成功返回 True，实例缺失或接口失败返回 False
+        """
         client_config = self.get_config(source)
         if not client_config:
             return False
@@ -406,7 +531,15 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             text: Optional[str] = None,
     ) -> Optional[dict]:
         """
-        使用飞书消息表情标记“正在处理”。
+        为有文本的普通消息添加“正在处理”表情。
+
+        :param channel: 来源渠道；非飞书时忽略
+        :param source: 来源通知实例
+        :param userid: 发送者标识，保存在状态中供后续使用
+        :param message_id: 需要标记的原消息标识
+        :param chat_id: 原会话标识，保存在状态中
+        :param text: 用于排除空内容和 CALLBACK: 按钮回调的正文
+        :return: 含回应标识的处理状态；不适用或添加失败返回 None
         """
         if channel != self._channel:
             return None
@@ -442,7 +575,15 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             status: Optional[dict] = None,
     ) -> Optional[bool]:
         """
-        删除飞书“正在处理”表情。
+        根据起始处理状态删除“正在处理”表情。
+
+        :param channel: 来源渠道；非飞书时忽略
+        :param source: 来源通知实例
+        :param userid: 兼容统一接口的用户标识，当前不使用
+        :param message_id: 状态中无消息标识时使用的原消息标识
+        :param chat_id: 兼容统一接口的会话标识，当前不使用
+        :param status: 起始阶段返回的处理状态，必须包含回应标识
+        :return: 删除成功返回 True；缺少状态或删除失败返回 False；渠道不匹配返回 None
         """
         if channel != self._channel:
             return None
@@ -458,6 +599,12 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         )
 
     def finalize_message(self, response: MessageResponse) -> bool:
+        """
+        为流式卡片提交下一个序号并关闭流式展示。
+
+        :param response: 包含飞书来源及 feishu_streaming 状态的发送结果
+        :return: 成功关闭返回 True；渠道、状态或实例不适用及接口失败返回 False
+        """
         if response.channel != self._channel or not isinstance(response.metadata, dict):
             return False
         stream_meta = response.metadata.get("feishu_streaming") or {}
