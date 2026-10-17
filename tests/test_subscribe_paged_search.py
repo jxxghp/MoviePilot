@@ -23,8 +23,8 @@ from app.chain.search.facade import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.metadata import SubscriptionSearchTarget
 from app.chain.subscribe.search import (
-    _build_subscription_candidate_filter,
     _best_version_target_episodes,
+    _build_subscription_candidate_filter,
     _finish_paged_subscription,
     _process_paged_subscription,
 )
