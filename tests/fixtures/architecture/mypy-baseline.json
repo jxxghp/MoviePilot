@@ -16,15 +16,6 @@
     "str-bytes-safe": 2,
     "union-attr": 14
   },
-  "app/adapters/external/server.py": {
-    "arg-type": 5,
-    "assignment": 1,
-    "misc": 9,
-    "no-any-return": 19,
-    "no-untyped-call": 6,
-    "no-untyped-def": 59,
-    "type-arg": 40
-  },
   "app/adapters/network/browser.py": {
     "arg-type": 4,
     "no-any-return": 2,
@@ -285,12 +276,10 @@
     "redundant-cast": 2
   },
   "app/api/endpoints/anilist.py": {
-    "attr-defined": 1,
-    "no-untyped-call": 2
+    "attr-defined": 1
   },
   "app/api/endpoints/bangumi.py": {
     "attr-defined": 1,
-    "no-untyped-call": 3,
     "operator": 12
   },
   "app/api/endpoints/dashboard.py": {
@@ -302,12 +291,10 @@
     "arg-type": 20,
     "attr-defined": 1,
     "no-redef": 1,
-    "no-untyped-call": 5,
     "operator": 2
   },
   "app/api/endpoints/douban.py": {
-    "attr-defined": 1,
-    "no-untyped-call": 2
+    "attr-defined": 1
   },
   "app/api/endpoints/download.py": {
     "arg-type": 6,
@@ -325,7 +312,7 @@
     "arg-type": 2,
     "assignment": 7,
     "attr-defined": 3,
-    "no-untyped-call": 5,
+    "no-untyped-call": 2,
     "no-untyped-def": 1
   },
   "app/api/endpoints/mediaserver.py": {
@@ -392,23 +379,21 @@
     "type-arg": 5
   },
   "app/api/endpoints/subscribe.py": {
-    "arg-type": 11,
-    "assignment": 3,
+    "arg-type": 5,
+    "assignment": 1,
     "attr-defined": 2,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "type-arg": 2
   },
   "app/api/endpoints/system.py": {
     "arg-type": 1,
-    "no-untyped-call": 5,
+    "no-untyped-call": 4,
     "no-untyped-def": 24,
     "type-arg": 6
   },
   "app/api/endpoints/tmdb.py": {
     "attr-defined": 1,
-    "no-untyped-call": 2,
     "operator": 4,
     "type-arg": 3
   },
@@ -522,7 +507,6 @@
     "arg-type": 1,
     "attr-defined": 26,
     "no-any-return": 6,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "type-arg": 4
   },
@@ -603,7 +587,6 @@
   "app/chain/subscribe/completion.py": {
     "arg-type": 2,
     "assignment": 1,
-    "no-untyped-call": 1,
     "operator": 3,
     "type-var": 1,
     "union-attr": 8,
@@ -624,7 +607,6 @@
     "union-attr": 7
   },
   "app/chain/subscribe/notify.py": {
-    "no-untyped-call": 2,
     "union-attr": 6
   },
   "app/chain/subscribe/query.py": {
@@ -747,11 +729,10 @@
   },
   "app/domain/context.py": {
     "assignment": 86,
-    "no-any-return": 1,
-    "no-untyped-call": 4,
-    "no-untyped-def": 23,
+    "no-untyped-call": 2,
+    "no-untyped-def": 4,
     "operator": 1,
-    "type-arg": 36
+    "type-arg": 24
   },
   "app/domain/meta/metaanime.py": {
     "arg-type": 1,
@@ -856,23 +837,12 @@
     "union-attr": 18
   },
   "app/modules/douban/__init__.py": {
-    "arg-type": 1,
-    "assignment": 27,
+    "assignment": 24,
     "empty-body": 1,
     "no-any-return": 1,
-    "no-untyped-call": 3,
     "no-untyped-def": 7,
     "return-value": 2,
-    "type-arg": 13,
-    "union-attr": 2
-  },
-  "app/modules/douban/apiv2.py": {
-    "misc": 6,
-    "no-any-return": 4,
-    "no-untyped-def": 132,
-    "return-value": 1,
-    "type-arg": 22,
-    "var-annotated": 1
+    "type-arg": 8
   },
   "app/modules/emby/__init__.py": {
     "arg-type": 3,
@@ -1167,7 +1137,6 @@
   },
   "app/modules/musicbrainz/cache.py": {
     "no-any-return": 1,
-    "no-untyped-call": 2,
     "no-untyped-def": 3,
     "type-arg": 3,
     "union-attr": 1
@@ -1292,7 +1261,6 @@
   },
   "app/modules/themoviedb/cache.py": {
     "no-any-return": 3,
-    "no-untyped-call": 2,
     "no-untyped-def": 4,
     "type-arg": 5,
     "union-attr": 5
@@ -1461,15 +1429,10 @@
     "var-annotated": 1
   },
   "app/runtime/cache.py": {
-    "arg-type": 8,
-    "assignment": 1,
     "attr-defined": 12,
-    "misc": 2,
     "no-any-return": 1,
-    "no-untyped-def": 54,
-    "override": 17,
-    "type-arg": 3,
-    "unused-coroutine": 3
+    "no-untyped-def": 4,
+    "override": 17
   },
   "app/runtime/compat/imports.py": {
     "assignment": 1,
