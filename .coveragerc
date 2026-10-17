@@ -14,7 +14,6 @@ exclude_lines =
     if __name__ == .__main__.:
     raise NotImplementedError
     pass
-    ^\s*\.\.\.$
 
 [html]
 directory = htmlcov
