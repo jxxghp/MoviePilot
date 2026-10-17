@@ -415,9 +415,7 @@ class TrimeMedia:
             for episode in episodes or []:
                 if episode.season_number is None or episode.episode_number is None:
                     continue
-                if episode.season_number not in season_episodes:
-                    season_episodes[episode.season_number] = []
-                season_episodes[episode.season_number].append(episode.episode_number)
+                season_episodes.setdefault(episode.season_number, []).append(episode.episode_number)
         return item_id, season_episodes
 
     def refresh_root_library(self) -> Optional[bool]:
