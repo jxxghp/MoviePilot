@@ -1,3 +1,7 @@
+"""
+Vyo 媒体服务器客户端，负责分页检索、媒体身份、播放列表和扫描排队。
+"""
+
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
@@ -15,7 +19,8 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class _SearchInterrupted(Exception):
-    """关键字翻页中途请求失败。
+    """
+    关键字翻页中途请求失败。
 
     与「查完了」区分开：调用方据此返回 None（服务不可达），而不是空结果
     （确定不在库中）——后者会让上层误判成需要重新下载。
@@ -23,7 +28,8 @@ class _SearchInterrupted(Exception):
 
 
 class Vyo:
-    """Vyo 媒体服务客户端。
+    """
+    Vyo 媒体服务客户端。
 
     只使用 Muvyo 管理端口的原生接口，凭据是 Muvyo 管理面板的长效 API Key；
     Vyo 没有音乐库，也不主动外发 Webhook，相关能力在模块层显式留空。
@@ -42,6 +48,15 @@ class Vyo:
         sync_libraries: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> None:
+        """
+        保存服务配置并通过媒体库列表探测 API 密钥是否有效。
+
+        :param host: Vyo 管理端地址
+        :param apikey: 管理面板的长期 API 密钥
+        :param play_host: 生成网页或远程图片链接的地址，省略时使用管理端地址
+        :param sync_libraries: 同步媒体库标识，空列表或包含 all 表示不限制
+        :param kwargs: 通用服务配置的额外参数，当前不读取
+        """
         self._host = UrlUtils.standardize_base_url(host).rstrip("/") if host else None
         self._playhost = (
             UrlUtils.standardize_base_url(play_host).rstrip("/") if play_host else None
@@ -55,24 +70,31 @@ class Vyo:
             return
         self.reconnect()
 
-    # ── 连接状态 ────────────────────────────────────────────────
 
     def is_configured(self) -> bool:
-        """配置是否完整到可以发起请求。"""
+        """
+        配置是否完整到可以发起请求。
+        """
         return bool(self._host and self._apikey)
 
     def is_authenticated(self) -> bool:
-        """当前 API Key 是否已探测通过。"""
+        """
+        当前 API Key 是否已探测通过。
+        """
         return self._active
 
     def is_inactive(self) -> bool:
-        """是否需要重连。"""
+        """
+        是否需要重连。
+        """
         if not self.is_configured():
             return False
         return not self._active
 
     def reconnect(self) -> bool:
-        """用媒体库列表接口探测连通性与凭据有效性。"""
+        """
+        用媒体库列表接口探测连通性与凭据有效性。
+        """
         if not self.is_configured():
             return False
         result = self._api.request("/libraries", suppress_log=True)
@@ -80,12 +102,20 @@ class Vyo:
         return self._active
 
     def disconnect(self) -> None:
-        """释放底层会话。"""
+        """
+        释放底层会话。
+        """
         self._active = False
         self._api.close()
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
-        """用 Vyo 账号完成用户认证，返回访问令牌。"""
+        """
+        通过 Vyo 账号认证接口获取访问令牌。
+
+        :param username: 用户账号
+        :param password: 用户密码
+        :return: 认证成功的访问令牌；配置、凭据不完整或响应无有效令牌时返回 None，不更新管理 API 密钥
+        """
         if not self.is_configured() or not username or not password:
             return None
         result = self._api.request(
@@ -100,12 +130,16 @@ class Vyo:
         token = result.data.get("access_token") or result.data.get("token")
         return str(token) if token else None
 
-    # ── 媒体库 ──────────────────────────────────────────────────
 
     def get_librarys(
         self, hidden: Optional[bool] = False
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
-        """获取媒体库列表。"""
+        """
+        查询媒体库并按需筛选同步范围。
+
+        :param hidden: 是否隐藏未选入同步范围的库，默认不筛选
+        :return: 统一媒体库列表；请求失败时返回 None
+        """
         rows = self.__library_rows()
         if rows is None:
             return None
@@ -141,7 +175,9 @@ class Vyo:
         return libraries
 
     def __library_rows(self) -> Optional[List[Dict[str, Any]]]:
-        """媒体库原始记录，连接失败返回 None。"""
+        """
+        媒体库原始记录，连接失败返回 None。
+        """
         result = self._api.request("/libraries")
         if not result or not result.success or not isinstance(result.data, dict):
             return None
@@ -149,7 +185,12 @@ class Vyo:
         return items if isinstance(items, list) else []
 
     def get_items_count(self, parent: Union[str, int]) -> Optional[int]:
-        """获取指定媒体库可同步的媒体条目总数。"""
+        """
+        查询媒体库内电影和电视剧的总数。
+
+        :param parent: 媒体库标识
+        :return: 服务端 total 计数；标识为空、请求失败或缺少计数时返回 None
+        """
         if not parent:
             return None
         result = self.__query_items(
@@ -166,7 +207,17 @@ class Vyo:
         start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
     ) -> Generator[Optional[_SchemaMediaServerItem], Any, None]:
-        """遍历媒体库中的电影与剧集条目，limit 为 None 或 -1 时取全部。"""
+        """
+        使用固定页大小遍历媒体库中的电影和电视剧。
+
+        按 100 条分页将偏移换算为页号，并在本地丢弃页内偏移。
+        配置不完整或读取失败时结束迭代；无法转换的条目仍占用数量配额。
+
+        :param parent: 媒体库标识
+        :param start_index: 起始条目偏移，空值或负数按 0 处理
+        :param limit: 最多检查的原始条目数；None 或 -1 不限，其他非正值不产生条目
+        :yields: 转换成功的统一媒体条目
+        """
         if not parent or not self.is_configured():
             return
         # 页大小固定，页码才能稳定映射到偏移量；条数上限在产出侧裁剪
@@ -209,7 +260,9 @@ class Vyo:
         sort_by: str = "",
         sort_order: str = "",
     ) -> Optional[Dict[str, Any]]:
-        """调用条目列表接口；Vyo 只接受页码，偏移量由调用方换算。"""
+        """
+        调用条目列表接口；Vyo 只接受页码，偏移量由调用方换算。
+        """
         params: Dict[str, Any] = {"page": max(1, page), "page_size": page_size}
         if library_id:
             params["library_id"] = library_id
@@ -231,7 +284,8 @@ class Vyo:
         return result.data
 
     def __search_rows(self, keyword: str, kinds: str) -> Optional[Generator[Dict[str, Any], Any, None]]:
-        """按关键字翻页产出条目原始记录。
+        """
+        按关键字翻页产出条目原始记录。
 
         Vyo 的关键字查询是模糊匹配，命中数可能超过单页上限；只读第一页会让
         存在性判断把排在后面的目标误判成「未入库」，因此这里翻页直到取完。
@@ -242,6 +296,12 @@ class Vyo:
             return None
 
         def rows() -> Generator[Dict[str, Any], Any, None]:
+            """
+            从已获取的首页继续逐页产出搜索结果，后续页失败时抛出中断信号。
+
+            :yields: 搜索响应中的原始媒体条目
+            :raises _SearchInterrupted: 后续分页请求失败，调用方不可将已有部分结果视为完整查询
+            """
             result: Dict[str, Any] = first
             page = 1
             seen = 0
@@ -267,10 +327,14 @@ class Vyo:
 
         return rows()
 
-    # ── 条目 ────────────────────────────────────────────────────
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
-        """获取单个条目详情。"""
+        """
+        读取单个媒体条目并转换为统一模型。
+
+        :param itemid: Vyo 条目标识
+        :return: 媒体详情；配置不完整、标识为空、请求或转换失败时返回 None
+        """
         if not itemid or not self.is_configured():
             return None
         result = self._api.request(f"/items/{itemid}", suppress_log=True)
@@ -285,7 +349,17 @@ class Vyo:
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
     ) -> Optional[List[_SchemaMediaServerItem]]:
-        """按标题和年份检查电影是否存在。"""
+        """
+        完整搜索电影候选，并按标题、年份和来源身份过滤。
+
+        只有完整读取全部搜索页后才返回匹配项，避免把部分结果误判成未入库。
+
+        :param title: 必须精确匹配的标题
+        :param year: 可选年份，空值不限制
+        :param media_source: 用于排除身份冲突的媒体来源
+        :param media_id: 对应来源内的标识
+        :return: 匹配的电影列表，无匹配时为空；配置不完整或任意搜索页失败时返回 None
+        """
         if not title or not self.is_configured():
             return None
         rows = self.__search_rows(keyword=title, kinds="Movie")
@@ -316,7 +390,17 @@ class Vyo:
         media_id: Optional[str] = None,
         season: Optional[int] = None,
     ) -> Tuple[Optional[str], Optional[Dict[int, List[int]]]]:
-        """返回剧集在媒体库中每季已有的集号。"""
+        """
+        定位电视剧并返回各季已入库的集号。
+
+        :param item_id: 优先使用的缓存条目标识，失效或身份冲突时回退标题搜索
+        :param title: 回退搜索使用的剧名
+        :param year: 可选年份，空值不限制
+        :param media_source: 目标媒体来源
+        :param media_id: 来源内的目标标识
+        :param season: 指定季号，None 表示全部季
+        :return: 电视剧标识和排序去重后的季集映射；请求失败返回两项 None，确定未找到时返回 None 和空映射
+        """
         if not self.is_configured():
             return None, None
         series_id = item_id
@@ -358,7 +442,9 @@ class Vyo:
         media_source: Optional[MediaSource],
         media_id: Optional[str],
     ) -> Optional[str]:
-        """按标题定位剧集条目 ID；连接失败返回 None，未找到返回空串。"""
+        """
+        按标题定位剧集条目 ID；连接失败返回 None，未找到返回空串。
+        """
         rows = self.__search_rows(keyword=title, kinds="Series")
         if rows is None:
             return None
@@ -379,7 +465,13 @@ class Vyo:
         return ""
 
     def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
-        """获取指定季的集号到条目 ID 映射。"""
+        """
+        先定位季条目，再分页读取分集条目标识。
+
+        :param item_id: 电视剧条目标识
+        :param season: 目标季号
+        :return: 集号到条目标识的映射；配置或输入不完整、季未找到时为空，中途请求失败时保留已收集部分
+        """
         if not item_id or not self.is_configured():
             return {}
         season_id = self.__find_season_id(item_id, season)
@@ -405,7 +497,9 @@ class Vyo:
             page += 1
 
     def __find_season_id(self, series_id: str, season: int) -> str:
-        """在剧集下定位指定季的条目 ID。"""
+        """
+        在剧集下定位指定季的条目 ID。
+        """
         page = 1
         while True:
             result = self.__query_items(
@@ -422,7 +516,9 @@ class Vyo:
             page += 1
 
     def __format_item_info(self, row: Dict[str, Any]) -> Optional[_SchemaMediaServerItem]:
-        """把 Vyo 条目转换为统一媒体服务器模型。"""
+        """
+        把 Vyo 条目转换为统一媒体服务器模型。
+        """
         try:
             metadata = row.get("metadata_info") or {}
             provider_ids: Dict[str, Any] = {}
@@ -459,7 +555,9 @@ class Vyo:
 
     @staticmethod
     def __item_path(row: Dict[str, Any]) -> Optional[str]:
-        """条目详情带媒体源时取第一个文件路径，列表接口没有路径字段。"""
+        """
+        条目详情带媒体源时取第一个文件路径，列表接口没有路径字段。
+        """
         sources = row.get("sources")
         if isinstance(sources, list):
             for source in sources:
@@ -469,15 +567,23 @@ class Vyo:
 
     @staticmethod
     def __local_time(value: Optional[str]) -> Optional[str]:
-        """把 ISO 时间截断为统一模型使用的秒级本地时间文本。"""
+        """
+        将时间文本去掉小数秒，并把日期时间分隔符改为空格。
+
+        :param value: 服务端时间文本
+        :return: 规整后的文本；空值返回 None；本方法不解析或转换时区
+        """
         if not value:
             return None
         return str(value).split(".")[0].replace("T", " ")
 
-    # ── 统计与展示 ──────────────────────────────────────────────
 
     def get_medias_count(self) -> Optional[_SchemaStatistic]:
-        """媒体数量统计。"""
+        """
+        查询电影、电视剧和分集数量统计。
+
+        :return: 统一统计对象；请求失败或业务数据结构不符时返回 None
+        """
         result = self._api.request("/statistics")
         if not result or not result.success or not isinstance(result.data, dict):
             return None
@@ -488,18 +594,32 @@ class Vyo:
         )
 
     def get_user_count(self) -> int:
-        """媒体库可见用户数。"""
+        """
+        查询媒体库接口可见的用户数。
+
+        :return: 用户列表长度；请求失败或返回值不是列表时返回 0
+        """
         result = self._api.request("/users", suppress_log=True)
         if not result or not result.success or not isinstance(result.data, list):
             return 0
         return len(result.data)
 
     def get_resume(self, num: Optional[int] = 12) -> Optional[List[_SchemaMediaServerPlayItem]]:
-        """继续观看列表。"""
+        """
+        查询用户可继续观看的电影和分集。
+
+        :param num: 目标数量，空值或 0 使用 20，最终限制在 1 至 100 条
+        :return: 统一播放列表；配置不完整或查询失败时返回 None
+        """
         return self.__play_items(filter_by="resume", num=num, resume=True)
 
     def get_latest(self, num: Optional[int] = 20) -> Optional[List[_SchemaMediaServerPlayItem]]:
-        """最新入库列表。"""
+        """
+        按入库时间降序查询最新电影和电视剧。
+
+        :param num: 目标数量，空值或 0 使用 20，最终限制在 1 至 100 条
+        :return: 统一播放列表；配置不完整或查询失败时返回 None
+        """
         return self.__play_items(sort_by="added", sort_order="desc", num=num, resume=False)
 
     def __play_items(
@@ -510,7 +630,9 @@ class Vyo:
         sort_by: str = "",
         sort_order: str = "",
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
-        """把条目列表转换为可播放展示项。"""
+        """
+        把条目列表转换为可播放展示项。
+        """
         if not self.is_configured():
             return None
         count = max(1, min(self.PAGE_LIMIT, num or 20))
@@ -562,7 +684,13 @@ class Vyo:
     def get_latest_backdrops(
         self, num: Optional[int] = 20, remote: Optional[bool] = False
     ) -> Optional[List[str]]:
-        """最新入库条目的背景图地址。"""
+        """
+        从最新 100 个电影和电视剧中筛选有背景图的条目。
+
+        :param num: 目标图片数量，空值或 0 使用 20，限制在 1 至 100
+        :param remote: 是否优先使用外网播放地址作为图片根地址
+        :return: 不含管理密钥的图片 URL 列表；配置不完整或请求失败时返回 None
+        """
         if not self.is_configured():
             return None
         count = max(1, min(self.PAGE_LIMIT, num or 20))
@@ -583,15 +711,23 @@ class Vyo:
         return images
 
     def get_play_url(self, item_id: str) -> Optional[str]:
-        """媒体库网页播放地址。"""
+        """
+        构造 Vyo 媒体库网页中的条目链接。
+
+        :param item_id: 媒体条目标识
+        :return: 网页 URL；标识为空或配置不完整时返回 None，不验证条目是否存在
+        """
         if not item_id or not self.is_configured():
             return None
         return f"{self._playhost or self._host}/library/item/{item_id}"
 
-    # ── 入库刷新 ────────────────────────────────────────────────
 
     def refresh_root_library(self) -> Optional[bool]:
-        """触发全部媒体库扫描。"""
+        """
+        把所有媒体库扫描请求加入后台队列。
+
+        :return: 全部入队成功时返回 True；无可扫描媒体库或任一入队失败时返回 False，库列表请求失败时返回 None
+        """
         rows = self.__library_rows()
         if rows is None:
             return None
@@ -601,7 +737,14 @@ class Vyo:
     def refresh_library_by_items(
         self, items: List[_SchemaRefreshMediaItem]
     ) -> Optional[bool]:
-        """按入库路径定位媒体库并触发扫描；定位不到时退回全库扫描。"""
+        """
+        按目标路径确定媒体库并排队扫描，无法定位时退回全部媒体库。
+
+        定位成功的媒体库去重后逐个发送请求，个别请求失败不会阻止其余媒体库入队。
+
+        :param items: 包含目标路径的媒体刷新请求列表
+        :return: 全部扫描入队结果；空输入返回 False，库列表查询失败返回 None
+        """
         if not items:
             return False
         rows = self.__library_rows()
@@ -627,7 +770,9 @@ class Vyo:
     def __match_library_by_path(
         rows: List[Dict[str, Any]], target_path: Optional[Path]
     ) -> str:
-        """按目录归属把入库路径映射到媒体库。"""
+        """
+        按目录归属把入库路径映射到媒体库。
+        """
         if not target_path:
             return ""
         for row in rows:
@@ -641,7 +786,9 @@ class Vyo:
         return ""
 
     def __queue_scan(self, library_id: str) -> bool:
-        """把媒体库扫描排进 Vyo 的后台队列，不阻塞入库流程。"""
+        """
+        把媒体库扫描排进 Vyo 的后台队列，不阻塞入库流程。
+        """
         if not library_id:
             return False
         result = self._api.request(f"/libraries/{library_id}/scan-task", method="post")

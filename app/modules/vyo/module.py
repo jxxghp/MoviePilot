@@ -1,3 +1,7 @@
+"""
+Vyo 模块，沿用 mediavault 配置身份提供媒体服务器统一接口。
+"""
+
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app.modules._base.mediaserver import _MediaServerModuleBase
@@ -12,7 +16,9 @@ from app.schemas.types import MediaServerType, ModuleType
 
 
 class VyoModule(_MediaServerModuleBase[Vyo]):
-    """Vyo 媒体服务模块。"""
+    """
+    Vyo 媒体服务模块。
+    """
 
     # 媒体库标识（ExistMediaInfo.server_type）
     # 配置类型值沿用 mediavault，兼容已保存的媒体服务器配置
@@ -20,7 +26,7 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
 
     def init_module(self) -> None:
         """
-        初始化模块
+        初始化模块。
         """
         # 展示名更改为 Vyo，持久化配置类型仍为 mediavault，不能从类名推导。
         super().init_service(
@@ -32,40 +38,48 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
 
     @staticmethod
     def get_name() -> str:
-        """返回媒体服务器模块名称。"""
+        """
+        返回媒体服务器模块名称。
+        """
         return "Vyo"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return MediaServerType.Vyo
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 7
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
-        """本模块不使用开关设置。"""
+        """
+        本模块不使用开关设置。
+        """
         return None
 
     def _is_inactive(self, server: Vyo) -> bool:
-        """未配置的实例不参与定时重连。"""
+        """
+        未配置的实例不参与定时重连。
+        """
         return server.is_configured() and server.is_inactive()
 
     def stop(self) -> None:
-        """停止模块"""
+        """
+        逐个断开 Vyo 实例，单个失败不阻止其他实例关闭。
+        """
         for server in self.get_instances().values():
             try:
                 server.disconnect()
@@ -73,7 +87,9 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
                 logger.error(f"停止 Vyo 模块实例失败：{err}")
 
     def _test_server(self, server: Vyo, name: Optional[str]) -> Optional[str]:
-        """用配置完整性与 API Key 探测结果判断连接状态。"""
+        """
+        用配置完整性与 API Key 探测结果判断连接状态。
+        """
         if not server.is_configured():
             return f"{self.get_name()}配置不完整：{name}"
         if server.is_inactive() and not server.reconnect():
@@ -84,7 +100,10 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         self, server: Optional[str] = None
     ) -> Optional[List[_SchemaStatistic]]:
         """
-        媒体数量统计
+        汇总指定实例或全部 Vyo 实例的媒体与用户数量。
+
+        :param server: 指定实例名称，省略时汇总全部实例
+        :return: 统计列表；无实例或全部统计请求失败时返回空列表
         """
         if server:
             server_obj: Optional[Vyo] = self.get_instance(server)
@@ -104,7 +123,12 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         self, server: Optional[str] = None, hidden: Optional[bool] = False, **kwargs: Any
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        媒体库列表
+        读取实例媒体库列表。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param hidden: 是否隐藏同步范围外的库
+        :param kwargs: 兼容统一媒体服务器接口的额外参数，当前不使用
+        :return: 统一媒体库列表；实例不存在或查询失败时返回 None
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if server_obj:
@@ -119,12 +143,13 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         limit: Optional[int] = -1,
     ) -> Optional[Generator[Optional[_SchemaMediaServerItem], Any, None]]:
         """
-        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+        返回电影和电视剧同步条目的迭代器。
 
-        :param server: 媒体服务器名称
-        :param library_id: 媒体库ID
-        :param start_index: 起始索引
-        :param limit: 每次请求的最大项目数，None 或 -1 表示一次性获取所有数据
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param library_id: 媒体库标识
+        :param start_index: 零基条目偏移，负值按 0 处理
+        :param limit: 最多检查的条目数量，None 或 -1 表示不限
+        :return: 统一条目生成器；实例不存在时返回 None，底层请求失败可能提前结束迭代
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if server_obj:
@@ -135,7 +160,11 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         self, server: str, library_id: Union[str, int]
     ) -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数
+        查询媒体库中的电影和电视剧总数。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param library_id: 媒体库标识
+        :return: 条目总数；实例不存在或查询失败时返回 None
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if server_obj:
@@ -146,7 +175,11 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         self, server: str, item_id: str
     ) -> Optional[_SchemaMediaServerItem]:
         """
-        媒体库项目详情
+        查询单个媒体条目详情。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: Vyo 条目标识
+        :return: 统一媒体模型；实例不存在或查询失败时返回 None
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if server_obj:
@@ -157,7 +190,11 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         self, server: str, item_id: Union[str, int]
     ) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
-        获取剧集信息
+        查询电视剧已入库的季集编号。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: Vyo 条目标识
+        :return: 季集列表；实例不存在时返回 None，无可用数据时返回空列表
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if not server_obj:
@@ -174,7 +211,12 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         self, server: str, item_id: Union[str, int], season: int
     ) -> Optional[Dict[int, str]]:
         """
-        获取指定季的集号到条目 ID 映射
+        查询指定季中集号对应的条目标识。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: Vyo 条目标识
+        :param season: 目标季号
+        :return: 集号到条目标识的映射；实例不存在时返回 None，客户端中途失败可能返回部分映射
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if not server_obj:
@@ -185,7 +227,12 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         self, server: str, count: Optional[int] = 20, **kwargs: Any
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器正在播放信息
+        查询当前账号的继续观看列表。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param count: 目标数量，最终限制为 1 至 100，空值或 0 使用 20
+        :param kwargs: 兼容统一媒体服务器接口的额外参数，当前不使用
+        :return: 播放条目列表；实例不存在或查询失败时返回 None
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if not server_obj:
@@ -196,7 +243,11 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         self, server: str, item_id: Union[str, int]
     ) -> Optional[str]:
         """
-        获取媒体库播放地址
+        构造媒体条目的网页播放链接。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: Vyo 条目标识
+        :return: 网页 URL；实例或必要配置不可用时返回 None
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if not server_obj:
@@ -207,7 +258,12 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         self, server: Optional[str] = None, count: Optional[int] = 20, **kwargs: Any
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器最新入库条目
+        查询最近入库的电影和电视剧。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param count: 目标数量，最终限制为 1 至 100，空值或 0 使用 20
+        :param kwargs: 兼容统一媒体服务器接口的额外参数，当前不使用
+        :return: 最新媒体列表；实例不存在或查询失败时返回 None
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if not server_obj:
@@ -222,11 +278,13 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         **kwargs: Any,
     ) -> List[str]:
         """
-        获取媒体服务器最新入库条目的图片
+        获取最新电影和电视剧的公开背景图。
 
-        :param server: 媒体服务器名称
-        :param count: 获取数量
-        :param remote: True为外网链接，False为内网链接
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param count: 目标图片数量，最终限制为 1 至 100
+        :param remote: 是否优先使用外网图片根地址
+        :param kwargs: 兼容统一媒体服务器接口的额外参数，当前不使用
+        :return: 无管理密钥的图片 URL 列表；实例不可用或没有图片时返回空列表
         """
         server_obj: Optional[Vyo] = self.get_instance(server)
         if not server_obj:
