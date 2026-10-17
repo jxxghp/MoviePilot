@@ -1,9 +1,15 @@
+"""
+初始化目录监控及其后台任务。
+"""
+
 from app.monitor import Monitor
 from app.runtime.execution import run_in_threadpool_to_completion
 
 
 def init_monitor() -> None:
-    """初始化监控器；复用单例时必须显式开启新的应用 lifespan。"""
+    """
+    初始化监控器；复用单例时必须显式开启新的应用 lifespan。
+    """
     monitor = Monitor.get_existing_instance()
     if monitor is None:
         Monitor()
@@ -17,7 +23,9 @@ def init_monitor() -> None:
 
 
 async def stop_monitor(timeout: float = Monitor.LIFECYCLE_CLOSE_TIMEOUT) -> bool:
-    """在线程池里永久关闭监控器，取消后仍等待同步 owner 收敛到终态。"""
+    """
+    在线程池里永久关闭监控器，取消后仍等待同步 owner 收敛到终态。
+    """
     monitor = Monitor.get_existing_instance()
     if monitor is None:
         return True

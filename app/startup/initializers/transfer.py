@@ -1,3 +1,7 @@
+"""
+为整理流程注入启动期依赖。
+"""
+
 from typing import cast
 
 from app.chain.transfer.facade import TransferChain
@@ -16,7 +20,8 @@ def replay_pending_transfers() -> None:
 
 
 async def stop_transfer_runtime(timeout_seconds: float = 30.0) -> bool:
-    """关闭已存在的整理后台 owner，且不在关停阶段创建新的整理链实例。
+    """
+    关闭已存在的整理后台 owner，且不在关停阶段创建新的整理链实例。
 
     :param timeout_seconds: worker 与 pending 回放共享的最大等待秒数
     :return: 没有已创建实例或所有整理后台 owner 均已收敛时返回 True

@@ -1,3 +1,7 @@
+"""
+初始化数据库结构并执行启动期迁移。
+"""
+
 import traceback
 from collections.abc import Callable
 from configparser import ConfigParser as _ConfigParser
@@ -19,7 +23,9 @@ from app.startup.composition.database import build_database_governance
 
 
 def _build_alembic_config(engine: Engine | None = None) -> Config:
-    """构造与应用活动数据库一致的 Alembic 配置。"""
+    """
+    构造与应用活动数据库一致的 Alembic 配置。
+    """
     engine = engine or get_engine()
     alembic_cfg = Config()
     alembic_cfg.file_config = _ConfigParser(interpolation=None)
@@ -38,7 +44,9 @@ def _migration_state(
         engine: Engine,
         alembic_cfg: Config,
 ) -> tuple[bool, tuple[str, ...], tuple[str, ...]]:
-    """读取数据库迁移状态，并在结构写入前校验版本链。"""
+    """
+    读取数据库迁移状态，并在结构写入前校验版本链。
+    """
     script = ScriptDirectory.from_config(alembic_cfg)
     target_heads = tuple(script.get_heads())
     with engine.connect() as connection:
@@ -56,7 +64,9 @@ def _validate_migration_lineage(
         current_heads: tuple[str, ...],
         target_heads: tuple[str, ...],
 ) -> None:
-    """拒绝无法沿当前迁移链安全升级的数据库版本。"""
+    """
+    拒绝无法沿当前迁移链安全升级的数据库版本。
+    """
     if len(target_heads) != 1:
         raise RuntimeError(
             f"数据库迁移脚本必须只有一个 head，当前为 {target_heads}"
@@ -90,7 +100,9 @@ def _validate_migration_lineage(
 
 
 def prepare_database(*, before_alembic: Callable[[], None] | None = None) -> None:
-    """在建表或迁移前完成版本校验、可选备份与安全的结构升级。"""
+    """
+    在建表或迁移前完成版本校验、可选备份与安全的结构升级。
+    """
     engine = get_engine()
     alembic_cfg = _build_alembic_config(engine)
     has_existing_database, current_heads, target_heads = _migration_state(
@@ -129,7 +141,9 @@ def prepare_database(*, before_alembic: Callable[[], None] | None = None) -> Non
 
 
 def verify_database_revision() -> None:
-    """确认活动数据库已位于当前唯一 Alembic head，否则阻止 readiness。"""
+    """
+    确认活动数据库已位于当前唯一 Alembic head，否则阻止 readiness。
+    """
     engine = get_engine()
     alembic_cfg = _build_alembic_config(engine)
     _, current_heads, target_heads = _migration_state(engine, alembic_cfg)
