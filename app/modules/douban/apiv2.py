@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
+"""
+封装豆瓣影视与音乐查询，保留同步和异步接口的响应及缓存约定。
+"""
+
 import base64
 import hashlib
 import hmac
 import re
 from datetime import datetime
 from random import choice
-from typing import Any, Callable, Optional, ParamSpec, TypeVar, cast
+from typing import Any, Callable, Optional, ParamSpec, Protocol, TypeVar, Union, cast
 from urllib import parse
 
 from bs4 import BeautifulSoup
@@ -17,8 +21,10 @@ from app.runtime.cache import cached
 from app.runtime.settings import get_runtime_setting
 
 
-def _empty_music_response(payload: Any) -> bool:
-    """音乐空搜索只短期缓存，不能沿用电影详情的长缓存周期。"""
+def _empty_music_response(payload: object) -> bool:
+    """
+    音乐空搜索只短期缓存，不能沿用电影详情的长缓存周期。
+    """
     return not payload or (isinstance(payload, dict) and any(
         key in payload and not payload[key] for key in ("items", "subjects")
     ))
@@ -29,15 +35,67 @@ _MusicReturn = TypeVar("_MusicReturn")
 
 
 def _cached_music_request(function: Callable[_MusicParams, _MusicReturn]) -> Callable[_MusicParams, _MusicReturn]:
-    """在保持原函数签名的缓存边界上应用音乐专用命名空间与短负缓存。"""
+    """
+    在保持原函数签名的缓存边界上应用音乐专用命名空间与短负缓存。
+    """
     return cast(Callable[_MusicParams, _MusicReturn], cached(
         maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True,
         shared_key="music_get_v2", empty_ttl=300, empty_if=_empty_music_response,
     )(function))
 
 
+_QueryValue = Optional[Union[str, int]]
+
+
+class _JsonResponse(Protocol):
+    """
+    只读取同步及异步 HTTP 响应共有的 JSON 解码接口。
+    """
+
+    @property
+    def status_code(self) -> int:
+        """
+        返回服务端 HTTP 状态码，用于区分音乐条目缺失和服务故障。
+
+        :return: HTTP 状态码
+        """
+        ...
+
+    def json(self) -> Any:
+        """
+        解码外部 JSON；嵌套字段由各豆瓣业务投影按对应接口解释。
+
+        :return: HTTP 客户端解码得到的原始 JSON 内容
+        :raises ValueError: 响应不是有效 JSON
+        """
+        ...
+
+
+def _cached_api_request(
+        shared_key: Optional[str] = None,
+) -> Callable[[Callable[_MusicParams, _MusicReturn]], Callable[_MusicParams, _MusicReturn]]:
+    """
+    为豆瓣请求声明缓存装饰器保持参数和返回类型的契约。
+
+    :param shared_key: 同步及异步接口共享的缓存名称；缺省时沿用函数名称
+    :return: 保持原函数签名的缓存装饰器
+    """
+    def decorate(function: Callable[_MusicParams, _MusicReturn]) -> Callable[_MusicParams, _MusicReturn]:
+        """
+        保留底层装饰器的调用方式与缓存属性，不额外包装请求执行过程。
+        """
+        return cast(Callable[_MusicParams, _MusicReturn], cached(
+            maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta,
+            skip_none=True, shared_key=shared_key,
+        )(function))
+
+    return decorate
+
+
 class DoubanApi(metaclass=WeakSingleton):
-    """封装豆瓣 Frodo API 与音乐官网公开浏览页面。"""
+    """
+    封装豆瓣 Frodo API 与音乐官网公开浏览页面。
+    """
 
     _urls = {
         # 搜索类
@@ -115,13 +173,13 @@ class DoubanApi(metaclass=WeakSingleton):
         # 音乐
         "music_single": "/subject_collection/music_single/items",
 
-        # rank list
+        # 排行榜
         "movie_rank_list": "/movie/rank_list",
         "movie_year_ranks": "/movie/year_ranks",
         "book_rank_list": "/book/rank_list",
         "tv_rank_list": "/tv/rank_list",
 
-        # movie info
+        # 电影信息
         "movie_detail": "/movie/",
         "movie_rating": "/movie/%s/rating",
         "movie_photos": "/movie/%s/photos",
@@ -131,7 +189,7 @@ class DoubanApi(metaclass=WeakSingleton):
         "movie_recommendations": "/movie/%s/recommendations",
         "movie_celebrities": "/movie/%s/celebrities",
 
-        # tv info
+        # 剧集信息
         "tv_detail": "/tv/",
         "tv_rating": "/tv/%s/rating",
         "tv_photos": "/tv/%s/photos",
@@ -141,25 +199,25 @@ class DoubanApi(metaclass=WeakSingleton):
         "tv_recommendations": "/tv/%s/recommendations",
         "tv_celebrities": "/tv/%s/celebrities",
 
-        # book info
+        # 图书信息
         "book_detail": "/book/",
         "book_rating": "/book/%s/rating",
         "book_interests": "/book/%s/interests",
         "book_reviews": "/book/%s/reviews",
         "book_recommendations": "/book/%s/recommendations",
 
-        # music info
+        # 音乐信息
         "music_detail": "/music/",
         "music_rating": "/music/%s/rating",
         "music_interests": "/music/%s/interests",
         "music_reviews": "/music/%s/reviews",
         "music_recommendations": "/music/%s/recommendations",
 
-        # doulist
+        # 豆列信息
         "doulist": "/doulist/",
         "doulist_items": "/doulist/%s/items",
 
-        # person
+        # 人物信息
         "person_detail": "/elessar/subject/",
         "person_work": "/elessar/work_collections/%s/works",
     }
@@ -176,11 +234,14 @@ class DoubanApi(metaclass=WeakSingleton):
     _api_url = "https://api.douban.com/v2"
     _music_web_url = "https://music.douban.com"
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        建立复用连接的同步请求客户端，由 close 释放连接。
+        """
         self._request = RequestUtils(use_session=True)
 
     @classmethod
-    def __sign(cls, url: str, ts: str, method='GET') -> str:
+    def __sign(cls, url: str, ts: str, method: str = 'GET') -> str:
         """
         签名
         """
@@ -194,33 +255,35 @@ class DoubanApi(metaclass=WeakSingleton):
             ).digest()
         ).decode()
 
-    def __invoke_recommend(self, url: str, **kwargs) -> dict:
+    def __invoke_recommend(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
         推荐/发现类API
         """
         return self.__invoke(url, **kwargs)
 
-    async def __async_invoke_recommend(self, url: str, **kwargs) -> dict:
+    async def __async_invoke_recommend(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
         推荐/发现类API（异步版本）
         """
         return await self.__async_invoke(url, **kwargs)
 
-    def __invoke_search(self, url: str, **kwargs) -> dict:
+    def __invoke_search(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
         搜索类API
         """
         return self.__invoke(url, **kwargs)
 
-    async def __async_invoke_search(self, url: str, **kwargs) -> dict:
+    async def __async_invoke_search(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
         搜索类API（异步版本）
         """
         return await self.__async_invoke(url, **kwargs)
 
     @staticmethod
-    def _music_response_payload(response: Any) -> Optional[dict[str, Any]]:
-        """将音乐服务故障与正常无条目分开，错误响应不能写成长时间负缓存。"""
+    def _music_response_payload(response: Optional[_JsonResponse]) -> Optional[dict[str, Any]]:
+        """
+        将音乐服务故障与正常无条目分开，错误响应不能写成长时间负缓存。
+        """
         if response is not None and response.status_code == 404:
             return {}
         if response is None or response.status_code != 200:
@@ -237,8 +300,10 @@ class DoubanApi(metaclass=WeakSingleton):
         return payload
 
     @_cached_music_request
-    def _music_get(self, url: str, **kwargs: Any) -> Optional[dict[str, Any]]:
-        """仅音乐查询消费当前识别预算；影视继续使用原有请求和缓存合同。"""
+    def _music_get(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
+        """
+        仅音乐查询消费当前识别预算；影视继续使用原有请求和缓存合同。
+        """
         timeout = music_request_timeout(maximum=20)
         if timeout is None:
             return None
@@ -252,8 +317,10 @@ class DoubanApi(metaclass=WeakSingleton):
                 response.close()
 
     @_cached_music_request
-    async def _async_music_get(self, url: str, **kwargs: Any) -> Optional[dict[str, Any]]:
-        """音乐异步请求使用相同预算及缓存命名空间，响应始终释放。"""
+    async def _async_music_get(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
+        """
+        音乐异步请求使用相同预算及缓存命名空间，响应始终释放。
+        """
         timeout = music_request_timeout(maximum=20)
         if timeout is None:
             return None
@@ -265,13 +332,13 @@ class DoubanApi(metaclass=WeakSingleton):
             if response is not None:
                 await response.aclose()
 
-    def _prepare_get_request(self, url: str, **kwargs) -> tuple[str, dict]:
+    def _prepare_get_request(self, url: str, **kwargs: _QueryValue) -> tuple[str, dict[str, _QueryValue]]:
         """
         准备GET请求的URL和参数
         """
         req_url = self._base_url + url
 
-        params: dict = {'apiKey': self._api_key}
+        params: dict[str, _QueryValue] = {'apiKey': self._api_key}
         if kwargs:
             params.update(kwargs)
 
@@ -283,21 +350,25 @@ class DoubanApi(metaclass=WeakSingleton):
             'os_rom': 'android',
             'apiKey': self._api_key,
             '_ts': ts,
-            '_sig': self.__sign(url=req_url, ts=ts)
+            # 所有公开入口的 _ts 均来自字符串参数，联合类型仅用于承载其他查询值。
+            '_sig': self.__sign(url=req_url, ts=cast(str, ts))
         })
         return req_url, params
 
     @staticmethod
     def _handle_response(
-        resp: Any
-    ) -> dict:
+        resp: Optional[_JsonResponse]
+    ) -> Optional[dict[str, Any]]:
         """
         处理HTTP响应
         """
-        return resp.json() if resp is not None else None
+        if resp is None:
+            return None
+        payload: dict[str, Any] = resp.json()
+        return payload
 
-    @cached(maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True, shared_key="get")
-    def __invoke(self, url: str, **kwargs) -> dict:
+    @_cached_api_request(shared_key="get")
+    def __invoke(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
         GET请求
         """
@@ -309,8 +380,8 @@ class DoubanApi(metaclass=WeakSingleton):
         )
         return self._handle_response(resp)
 
-    @cached(maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True, shared_key="get")
-    async def __async_invoke(self, url: str, **kwargs) -> dict:
+    @_cached_api_request(shared_key="get")
+    async def __async_invoke(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
         GET请求（异步版本）
         """
@@ -320,20 +391,20 @@ class DoubanApi(metaclass=WeakSingleton):
         ).get_res(url=req_url, params=params)
         return self._handle_response(resp)
 
-    def _prepare_post_request(self, url: str, **kwargs) -> tuple[str, dict]:
+    def _prepare_post_request(self, url: str, **kwargs: _QueryValue) -> tuple[str, dict[str, _QueryValue]]:
         """
         准备POST请求的URL和参数
         """
         req_url = self._api_url + url
-        params = {'apikey': self._api_key2}
+        params: dict[str, _QueryValue] = {'apikey': self._api_key2}
         if kwargs:
             params.update(kwargs)
         if '_ts' in params:
             params.pop('_ts')
         return req_url, params
 
-    @cached(maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True, shared_key="post")
-    def __post(self, url: str, **kwargs) -> dict:
+    @_cached_api_request(shared_key="post")
+    def __post(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
         POST请求
         使用 `_api_key2` 以表单字段 `apikey` 提交，参数由 `_prepare_post_request` 组装
@@ -346,8 +417,8 @@ class DoubanApi(metaclass=WeakSingleton):
         )
         return self._handle_response(resp)
 
-    @cached(maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True, shared_key="post")
-    async def __async_post(self, url: str, **kwargs) -> dict:
+    @_cached_api_request(shared_key="post")
+    async def __async_post(self, url: str, **kwargs: _QueryValue) -> Optional[dict[str, Any]]:
         """
         POST请求（异步版本）
         """
@@ -358,21 +429,21 @@ class DoubanApi(metaclass=WeakSingleton):
         return self._handle_response(resp)
 
     def imdbid(self, imdbid: str,
-               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         IMDBID搜索
         """
         return self.__post(self._urls["imdbid"] % imdbid, _ts=ts)
 
     async def async_imdbid(self, imdbid: str,
-                           ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                           ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         IMDBID搜索（异步版本）
         """
         return await self.__async_post(self._urls["imdbid"] % imdbid, _ts=ts)
 
     def search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-               ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> dict:
+               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         关键字搜索
         """
@@ -380,7 +451,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                           ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> dict:
+                           ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         关键字搜索（异步版本）
         """
@@ -388,7 +459,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def movie_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影搜索
         """
@@ -396,7 +467,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_movie_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影搜索（异步版本）
         """
@@ -404,7 +475,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def tv_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                  ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视搜索
         """
@@ -412,7 +483,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_tv_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                              ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                              ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视搜索（异步版本）
         """
@@ -420,7 +491,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def book_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                    ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         书籍搜索
         """
@@ -428,7 +499,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_book_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         书籍搜索（异步版本）
         """
@@ -436,8 +507,10 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def music_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
-        """搜索豆瓣音乐条目。"""
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
+        """
+        搜索豆瓣音乐条目。
+        """
         return self._music_get(
             self._urls["search_subject"],
             type="music",
@@ -449,8 +522,10 @@ class DoubanApi(metaclass=WeakSingleton):
 
     async def async_music_search(self, keyword: str, start: Optional[int] = 0,
                                  count: Optional[int] = 20,
-                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
-        """异步搜索豆瓣音乐条目。"""
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
+        """
+        异步搜索豆瓣音乐条目。
+        """
         return await self._async_music_get(
             self._urls["search_subject"],
             type="music",
@@ -461,7 +536,7 @@ class DoubanApi(metaclass=WeakSingleton):
         )
 
     def group_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         小组搜索
         """
@@ -469,7 +544,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_group_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         小组搜索（异步版本）
         """
@@ -477,7 +552,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def person_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         人物搜索
         """
@@ -485,7 +560,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_person_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                  ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         人物搜索（异步版本）
         """
@@ -493,7 +568,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def movie_showing(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         正在热映
         """
@@ -501,7 +576,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_movie_showing(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                                  ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         正在热映（异步版本）
         """
@@ -509,7 +584,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def movie_soon(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                   ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         即将上映
         """
@@ -517,7 +592,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_movie_soon(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         即将上映（异步版本）
         """
@@ -525,7 +600,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def movie_hot_gaia(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                       ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                       ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         热门电影
         """
@@ -533,7 +608,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_movie_hot_gaia(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                                   ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         热门电影（异步版本）
         """
@@ -541,7 +616,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def tv_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
-               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         热门剧集
         """
@@ -549,7 +624,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_tv_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                           ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                           ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         热门剧集（异步版本）
         """
@@ -557,7 +632,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def tv_animation(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         动画
         """
@@ -565,7 +640,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_tv_animation(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         动画（异步版本）
         """
@@ -573,7 +648,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def tv_variety_show(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                        ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                        ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         综艺
         """
@@ -581,7 +656,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_tv_variety_show(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                                    ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         综艺（异步版本）
         """
@@ -589,7 +664,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def tv_rank_list(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧排行榜
         """
@@ -597,7 +672,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_tv_rank_list(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧排行榜（异步版本）
         """
@@ -605,7 +680,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def show_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                 ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         综艺热门
         """
@@ -613,102 +688,112 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_show_hot(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                             ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                             ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         综艺热门（异步版本）
         """
         return await self.__async_invoke_recommend(self._urls["show_hot"],
                                                    start=start, count=count, _ts=ts)
 
-    def movie_detail(self, subject_id: str):
+    def movie_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         电影详情
         """
         return self.__invoke_search(self._urls["movie_detail"] + subject_id)
 
-    async def async_movie_detail(self, subject_id: str):
+    async def async_movie_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         电影详情（异步版本）
         """
         return await self.__async_invoke_search(self._urls["movie_detail"] + subject_id)
 
-    def movie_celebrities(self, subject_id: str):
+    def movie_celebrities(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         电影演职员
         """
         return self.__invoke_search(self._urls["movie_celebrities"] % subject_id)
 
-    async def async_movie_celebrities(self, subject_id: str):
+    async def async_movie_celebrities(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         电影演职员（异步版本）
         """
         return await self.__async_invoke_search(self._urls["movie_celebrities"] % subject_id)
 
-    def tv_detail(self, subject_id: str):
+    def tv_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         电视剧详情
         """
         return self.__invoke_search(self._urls["tv_detail"] + subject_id)
 
-    async def async_tv_detail(self, subject_id: str):
+    async def async_tv_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         电视剧详情（异步版本）
         """
         return await self.__async_invoke_search(self._urls["tv_detail"] + subject_id)
 
-    def tv_celebrities(self, subject_id: str):
+    def tv_celebrities(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         电视剧演职员
         """
         return self.__invoke_search(self._urls["tv_celebrities"] % subject_id)
 
-    async def async_tv_celebrities(self, subject_id: str):
+    async def async_tv_celebrities(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         电视剧演职员（异步版本）
         """
         return await self.__async_invoke_search(self._urls["tv_celebrities"] % subject_id)
 
-    def book_detail(self, subject_id: str):
+    def book_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         书籍详情
         """
         return self.__invoke_search(self._urls["book_detail"] + subject_id)
 
-    async def async_book_detail(self, subject_id: str):
+    async def async_book_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         书籍详情（异步版本）
         """
         return await self.__async_invoke_search(self._urls["book_detail"] + subject_id)
 
     def music_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
-        """获取豆瓣音乐详情。"""
+        """
+        获取豆瓣音乐详情。
+        """
         return self._music_get(self._urls["music_detail"] + subject_id)
 
     async def async_music_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
-        """异步获取豆瓣音乐详情。"""
+        """
+        异步获取豆瓣音乐详情。
+        """
         return await self._async_music_get(self._urls["music_detail"] + subject_id)
 
-    def music_single(self, start: int = 0, count: int = 20) -> dict:
-        """分页获取豆瓣音乐推荐合集。"""
+    def music_single(self, start: int = 0, count: int = 20) -> Optional[dict[str, Any]]:
+        """
+        分页获取豆瓣音乐推荐合集。
+        """
         return self.__invoke_recommend(
             self._urls["music_single"], start=start, count=count
         )
 
-    async def async_music_single(self, start: int = 0, count: int = 20) -> dict:
-        """异步分页获取豆瓣音乐推荐合集。"""
+    async def async_music_single(self, start: int = 0, count: int = 20) -> Optional[dict[str, Any]]:
+        """
+        异步分页获取豆瓣音乐推荐合集。
+        """
         return await self.__async_invoke_recommend(
             self._urls["music_single"], start=start, count=count
         )
 
-    @cached(maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True)
+    @_cached_api_request()
     def music_tag(
             self,
             tag: str,
             start: int = 0,
             count: int = 20,
             sort: str = "U",
-    ) -> dict:
-        """从豆瓣音乐官方标签页读取专辑，并适配为统一的音乐条目列表。"""
+    ) -> dict[str, Any]:
+        """
+        从豆瓣音乐官方标签页读取专辑，并适配为统一的音乐条目列表。
+        """
         normalized_tag = str(tag or "").strip()
         if not normalized_tag:
             return {"items": []}
@@ -716,7 +801,7 @@ class DoubanApi(metaclass=WeakSingleton):
         first_page = max(start, 0) // page_size
         first_offset = max(start, 0) % page_size
         required = first_offset + max(count, 1)
-        items = []
+        items: list[dict[str, Any]] = []
         page = first_page
         while len(items) < required:
             url = f"{self._music_web_url}/tag/{parse.quote(normalized_tag, safe='')}"
@@ -735,9 +820,11 @@ class DoubanApi(metaclass=WeakSingleton):
             page += 1
         return {"items": items[first_offset:first_offset + max(count, 1)]}
 
-    @cached(maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True)
-    def music_chart(self) -> dict:
-        """从豆瓣音乐官方榜单页读取新碟榜，并补充专辑详情供卡片展示。"""
+    @_cached_api_request()
+    def music_chart(self) -> dict[str, Any]:
+        """
+        从豆瓣音乐官方榜单页读取新碟榜，并补充专辑详情供卡片展示。
+        """
         response = RequestUtils(
             ua=get_runtime_setting('NORMAL_USER_AGENT'),
             proxies=get_runtime_setting('PROXY'),
@@ -745,7 +832,7 @@ class DoubanApi(metaclass=WeakSingleton):
             accept_type="text/html,application/xhtml+xml",
         ).get_res(url=f"{self._music_web_url}/chart")
         chart_items = self._parse_music_chart_page(response.content if response else b"")
-        items = []
+        items: list[dict[str, Any]] = []
         for chart_item in chart_items:
             detail = self.music_detail(subject_id=chart_item["id"])
             if isinstance(detail, dict) and detail:
@@ -759,12 +846,14 @@ class DoubanApi(metaclass=WeakSingleton):
         return {"items": items}
 
     @staticmethod
-    def _parse_music_tag_page(content: bytes) -> list[dict]:
-        """解析豆瓣音乐标签页中的专辑 ID、封面、发行信息和评分。"""
+    def _parse_music_tag_page(content: bytes) -> list[dict[str, Any]]:
+        """
+        解析豆瓣音乐标签页中的专辑 ID、封面、发行信息和评分。
+        """
         if not content:
             return []
         soup = BeautifulSoup(content, "html.parser")
-        items = []
+        items: list[dict[str, Any]] = []
         for row in soup.select("tr.item[id]"):
             media_id = str(row.get("id") or "").strip()
             title_link = row.select_one("div.pl2 > a[href*='/subject/']")
@@ -799,8 +888,10 @@ class DoubanApi(metaclass=WeakSingleton):
         return items
 
     @staticmethod
-    def _parse_music_chart_page(content: bytes) -> list[dict]:
-        """解析豆瓣新碟榜的专辑 ID、标题和艺术家。"""
+    def _parse_music_chart_page(content: bytes) -> list[dict[str, Any]]:
+        """
+        解析豆瓣新碟榜的专辑 ID、标题和艺术家。
+        """
         if not content:
             return []
         soup = BeautifulSoup(content, "html.parser")
@@ -809,7 +900,7 @@ class DoubanApi(metaclass=WeakSingleton):
             None,
         )
         container = heading.parent if heading else None
-        items = []
+        items: list[dict[str, Any]] = []
         for row in container.select("ul.col3 li") if container else []:
             link = row.select_one("p.entry a[href*='/subject/']")
             if not link:
@@ -832,8 +923,10 @@ class DoubanApi(metaclass=WeakSingleton):
             subject_id: str,
             start: int = 0,
             count: int = 20,
-    ) -> dict:
-        """获取豆瓣音乐条目的相关推荐。"""
+    ) -> Optional[dict[str, Any]]:
+        """
+        获取豆瓣音乐条目的相关推荐。
+        """
         return self.__invoke_recommend(
             self._urls["music_recommendations"] % subject_id,
             start=start,
@@ -845,8 +938,10 @@ class DoubanApi(metaclass=WeakSingleton):
             subject_id: str,
             start: int = 0,
             count: int = 20,
-    ) -> dict:
-        """异步获取豆瓣音乐条目的相关推荐。"""
+    ) -> Optional[dict[str, Any]]:
+        """
+        异步获取豆瓣音乐条目的相关推荐。
+        """
         return await self.__async_invoke_recommend(
             self._urls["music_recommendations"] % subject_id,
             start=start,
@@ -854,7 +949,7 @@ class DoubanApi(metaclass=WeakSingleton):
         )
 
     def movie_top250(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影TOP250
         """
@@ -862,39 +957,39 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_movie_top250(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影TOP250（异步版本）
         """
         return await self.__async_invoke_recommend(self._urls["movie_top250"],
                                                    start=start, count=count, _ts=ts)
 
-    def movie_recommend(self, tags='', sort='R', start: Optional[int] = 0, count: Optional[int] = 20,
-                        ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+    def movie_recommend(self, tags: str = '', sort: str = 'R', start: Optional[int] = 0, count: Optional[int] = 20,
+                        ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影探索
         """
         return self.__invoke_recommend(self._urls["movie_recommend"], tags=tags, sort=sort,
                                        start=start, count=count, _ts=ts)
 
-    async def async_movie_recommend(self, tags='', sort='R', start: Optional[int] = 0, count: Optional[int] = 20,
-                                    ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+    async def async_movie_recommend(self, tags: str = '', sort: str = 'R', start: Optional[int] = 0, count: Optional[int] = 20,
+                                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影探索（异步版本）
         """
         return await self.__async_invoke_recommend(self._urls["movie_recommend"], tags=tags, sort=sort,
                                                    start=start, count=count, _ts=ts)
 
-    def tv_recommend(self, tags='', sort='R', start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+    def tv_recommend(self, tags: str = '', sort: str = 'R', start: Optional[int] = 0, count: Optional[int] = 20,
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧探索
         """
         return self.__invoke_recommend(self._urls["tv_recommend"], tags=tags, sort=sort,
                                        start=start, count=count, _ts=ts)
 
-    async def async_tv_recommend(self, tags='', sort='R', start: Optional[int] = 0, count: Optional[int] = 20,
-                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+    async def async_tv_recommend(self, tags: str = '', sort: str = 'R', start: Optional[int] = 0, count: Optional[int] = 20,
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧探索（异步版本）
         """
@@ -902,7 +997,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def tv_chinese_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                               ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         华语口碑周榜
         """
@@ -910,7 +1005,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_tv_chinese_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                                           ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                           ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         华语口碑周榜（异步版本）
         """
@@ -918,7 +1013,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def tv_global_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                              ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                              ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         全球口碑周榜
         """
@@ -926,21 +1021,21 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_tv_global_best_weekly(self, start: Optional[int] = 0, count: Optional[int] = 20,
-                                          ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                          ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         全球口碑周榜（异步版本）
         """
         return await self.__async_invoke_recommend(self._urls["tv_global_best_weekly"],
                                                    start=start, count=count, _ts=ts)
 
-    def doulist_detail(self, subject_id: str):
+    def doulist_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         豆列详情
         :param subject_id: 豆列id
         """
         return self.__invoke_search(self._urls["doulist"] + subject_id)
 
-    async def async_doulist_detail(self, subject_id: str):
+    async def async_doulist_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """
         豆列详情（异步版本）
         :param subject_id: 豆列id
@@ -948,7 +1043,7 @@ class DoubanApi(metaclass=WeakSingleton):
         return await self.__async_invoke_search(self._urls["doulist"] + subject_id)
 
     def doulist_items(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                      ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         豆列列表
         :param subject_id: 豆列id
@@ -960,7 +1055,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_doulist_items(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                  ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         豆列列表（异步版本）
         :param subject_id: 豆列id
@@ -972,7 +1067,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def movie_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                              ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                              ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影推荐
         :param subject_id: 电影id
@@ -984,7 +1079,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_movie_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                          ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                          ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影推荐（异步版本）
         :param subject_id: 电影id
@@ -996,7 +1091,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def tv_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                           ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                           ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧推荐
         :param subject_id: 电视剧id
@@ -1008,7 +1103,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_tv_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                       ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                       ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧推荐（异步版本）
         :param subject_id: 电视剧id
@@ -1020,7 +1115,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def movie_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影剧照
         :param subject_id: 电影id
@@ -1032,7 +1127,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_movie_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影剧照（异步版本）
         :param subject_id: 电影id
@@ -1044,7 +1139,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def tv_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                  ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧剧照
         :param subject_id: 电视剧id
@@ -1056,7 +1151,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_tv_photos(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                              ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                              ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧剧照（异步版本）
         :param subject_id: 电视剧id
@@ -1068,7 +1163,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def movie_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                        ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+                        ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影短评
         :param subject_id: 电影id
@@ -1080,7 +1175,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_movie_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+                                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影短评（异步版本）
         :param subject_id: 电影id
@@ -1092,7 +1187,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def tv_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧短评
         :param subject_id: 电视剧id
@@ -1104,7 +1199,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_tv_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧短评（异步版本）
         :param subject_id: 电视剧id
@@ -1116,7 +1211,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def movie_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影影评
         :param subject_id: 电影id
@@ -1128,7 +1223,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_movie_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电影影评（异步版本）
         :param subject_id: 电影id
@@ -1140,7 +1235,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def tv_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧影评
         :param subject_id: 电视剧id
@@ -1152,7 +1247,7 @@ class DoubanApi(metaclass=WeakSingleton):
                                     start=start, count=count, _ts=ts)
 
     async def async_tv_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+                               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         电视剧影评（异步版本）
         :param subject_id: 电视剧id
@@ -1163,7 +1258,7 @@ class DoubanApi(metaclass=WeakSingleton):
         return await self.__async_invoke_search(self._urls["tv_reviews"] % subject_id,
                                                 start=start, count=count, _ts=ts)
 
-    def person_detail(self, subject_id: int):
+    def person_detail(self, subject_id: int) -> Optional[dict[str, Any]]:
         """
         用户详情
         :param subject_id: 人物 id
@@ -1171,7 +1266,7 @@ class DoubanApi(metaclass=WeakSingleton):
         """
         return self.__invoke_search(self._urls["person_detail"] + str(subject_id))
 
-    async def async_person_detail(self, subject_id: int):
+    async def async_person_detail(self, subject_id: int) -> Optional[dict[str, Any]]:
         """
         用户详情（异步版本）
         :param subject_id: 人物 id
@@ -1182,7 +1277,7 @@ class DoubanApi(metaclass=WeakSingleton):
     def person_work(self, subject_id: int, start: Optional[int] = 0, count: Optional[int] = 20,
                     sort_by: Optional[str] = "time",
                     collection_title: Optional[str] = "影视",
-                    ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         用户作品集
         :param subject_id: work_collection id
@@ -1200,7 +1295,7 @@ class DoubanApi(metaclass=WeakSingleton):
     async def async_person_work(self, subject_id: int, start: Optional[int] = 0, count: Optional[int] = 20,
                                 sort_by: Optional[str] = "time",
                                 collection_title: Optional[str] = "影视",
-                                ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+                                ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """
         用户作品集（异步版本）
         :param subject_id: work_collection id
@@ -1215,14 +1310,16 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 collection_title=collection_title,
                                                 start=start, count=count, _ts=ts)
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """
         清空LRU缓存
         """
-        self.__invoke.cache_clear()
+        getattr(self.__invoke, "cache_clear")()
         getattr(self._music_get, "cache_clear")()
-        self.__post.cache_clear()
+        getattr(self.__post, "cache_clear")()
 
-    def close(self):
-        """关闭豆瓣同步 HTTP 客户端。"""
+    def close(self) -> None:
+        """
+        关闭豆瓣同步 HTTP 客户端。
+        """
         self._request.close()
