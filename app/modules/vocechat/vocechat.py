@@ -1,3 +1,7 @@
+"""
+VoceChat 机器人消息发送与文件下载客户端。
+"""
+
 import base64
 import re
 import threading
@@ -15,21 +19,29 @@ lock = threading.Lock()
 
 
 class VoceChat:
-    """管理 VoceChat 连接配置并向频道或用户发送消息。"""
+    """
+    管理 VoceChat 连接配置并向频道或用户发送消息。
+    """
 
-    # host
+    # 服务根地址；连接配置不完整时保持为空。
     _host = None
-    # apikey
+    # 机器人 API 密钥。
     _apikey = None
     # 频道ID
     _channel_id = None
-    # 请求对象
     _client = None
     _file_client = None
 
     def __init__(self, VOCECHAT_HOST: Optional[str] = None, VOCECHAT_API_KEY: Optional[str] = None, VOCECHAT_CHANNEL_ID: Optional[str] = None, **kwargs: object) -> None:
         """
-        初始化
+        保存 VoceChat 连接配置并创建消息及文件请求客户端。
+
+        任一必需配置缺失时保留未初始化状态。
+
+        :param VOCECHAT_HOST: 服务根地址；省略协议时补充 http://
+        :param VOCECHAT_API_KEY: 机器人 API 密钥
+        :param VOCECHAT_CHANNEL_ID: 默认接收频道标识
+        :param kwargs: 兼容通知配置中的其他字段，当前忽略
         """
         if not VOCECHAT_HOST or not VOCECHAT_API_KEY or not VOCECHAT_CHANNEL_ID:
             logger.error("VoceChat配置不完整！")
@@ -54,13 +66,17 @@ class VoceChat:
 
     def get_state(self) -> bool:
         """
-        获取状态
+        查询机器人信息，检查服务是否返回有效结果。
+
+        :return: 机器人接口返回非空数据时为 True
         """
         return True if self.get_groups() else False
 
     def get_groups(self) -> object:
         """
-        获取频道列表
+        读取机器人接口返回的频道配置数据。
+
+        :return: 接口原始 JSON 数据；客户端未初始化或请求失败时返回 None
         """
         if not self._client:
             return None
@@ -74,12 +90,14 @@ class VoceChat:
                  image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
-        微信消息发送入口，支持文本、图片、链接跳转、指定发送对象
-        :param title: 消息标题
-        :param text: 消息内容
-        :param userid: 消息发送对象的ID，为空则发给所有人
-        :param link: 消息链接
-        :return: 发送状态，错误信息
+        向指定用户或默认频道发送 Markdown 消息。
+
+        :param title: 消息标题，可与正文择一提供
+        :param text: 消息正文
+        :param image: 可选图片地址
+        :param userid: 数字用户标识、UID#用户标识或 GID#频道标识；为空时使用默认频道
+        :param link: 可选详情链接
+        :return: 发送成功返回 True；客户端未初始化返回 None；内容或发送失败返回 False
         """
         if not self._client:
             return None
@@ -113,7 +131,9 @@ class VoceChat:
 
     @staticmethod
     def _guess_mime_type(content: bytes, default: str = "image/jpeg") -> str:
-        """按文件头识别支持的图片格式，无法识别时保留调用方默认类型。"""
+        """
+        按文件头识别支持的图片格式，无法识别时保留调用方默认类型。
+        """
         if not content:
             return default
         if content.startswith(b"\x89PNG\r\n\x1a\n"):
@@ -130,7 +150,12 @@ class VoceChat:
 
     def download_file(self, path: str) -> Optional[Tuple[bytes, str]]:
         """
-        下载 VoceChat 文件资源
+        使用机器人凭据下载服务内文件。
+
+        优先保留响应的 MIME 类型；缺失时依据图片文件头推断，未知格式默认 image/jpeg。
+
+        :param path: 服务返回的文件路径，按查询参数编码
+        :return: 文件字节与 MIME 类型；路径、客户端或下载不可用时返回 None
         """
         if not path or not self._file_client:
             return None
@@ -146,7 +171,12 @@ class VoceChat:
         return res.content, mime_type or self._guess_mime_type(res.content)
 
     def download_file_to_data_url(self, path: str) -> Optional[str]:
-        """下载文件并保留检测到的 MIME 类型生成 data URL。"""
+        """
+        下载文件并保留检测到的 MIME 类型生成 data URL。
+
+        :param path: 服务内文件路径
+        :return: 带 MIME 类型的 Base64 地址；下载失败返回 None
+        """
         file_data = self.download_file(path)
         if not file_data:
             return None
@@ -156,7 +186,13 @@ class VoceChat:
     def send_medias_msg(self, title: Optional[str], medias: List[MediaInfo],
                         userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
-        发送列表类消息
+        向指定对象发送带媒体评分与详情链接的列表。
+
+        :param title: 列表标题
+        :param medias: 待展示媒体列表
+        :param userid: 数字用户标识、UID#用户标识或 GID#频道标识；为空时使用默认频道
+        :param link: 列表末尾的可选详情链接
+        :return: 发送成功返回 True；客户端未初始化返回 None；发送失败返回 False
         """
         if not self._client:
             return None
@@ -198,7 +234,13 @@ class VoceChat:
                           title: Optional[str] = None,
                           link: Optional[str] = None) -> Optional[bool]:
         """
-        发送列表消息
+        向指定对象发送带站点和资源属性的种子列表。
+
+        :param torrents: 待展示种子上下文列表
+        :param userid: 数字用户标识、UID#用户标识或 GID#频道标识；为空时使用默认频道
+        :param title: 列表标题
+        :param link: 兼容调用参数；当前循环会覆盖为最后一个种子的详情地址
+        :return: 发送成功返回 True；客户端未初始化返回 None；空列表或发送失败返回 False
         """
         if not self._client:
             return None
@@ -241,8 +283,12 @@ class VoceChat:
     @retry(Exception, logger=logger)
     def __send_request(self, userid: str, caption: str) -> bool:
         """
-        向VoceChat发送报文
-        userid格式：数字用户ID / UID#xxx / GID#xxx
+        串行提交消息，连接失败时由重试装饰器重试。
+
+        :param userid: 数字用户标识、UID#用户标识或 GID#频道标识
+        :param caption: UTF-8 编码前的 Markdown 正文
+        :return: HTTP 200 返回 True；接收人无效或收到失败响应时返回 False
+        :raises Exception: 连接失败且重试次数耗尽
         """
         if not self._client:
             return False
