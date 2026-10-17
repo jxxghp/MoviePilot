@@ -145,6 +145,35 @@ def test_runtime_updates_bundled_subagent_when_version_increases(tmp_path):
     assert "version two" in subagent.text
 
 
+def test_runtime_removes_removed_bundled_subagents_and_keeps_custom_definitions(tmp_path):
+    """内置子代理删除后应清理旧副本，同时保留未知的用户定义。"""
+    defaults_root = tmp_path / "defaults"
+    _write_current_persona(defaults_root)
+    _write_subagent(defaults_root, "general-purpose")
+
+    runtime_root = tmp_path / "agent" / "runtime"
+    _write_subagent(runtime_root, "download-diagnostician")
+    _write_subagent(
+        runtime_root,
+        "custom-reader",
+        description="Custom reader subagent.",
+        body="Only inspect custom media signals.",
+    )
+
+    manager = AgentRuntimeManager(
+        agent_root_dir=tmp_path / "agent",
+        bundled_defaults_dir=defaults_root,
+    )
+    runtime_config = manager.load_runtime_config()
+
+    assert not (runtime_root / "subagents" / "download-diagnostician").exists()
+    assert (runtime_root / "subagents" / "custom-reader" / "SUBAGENT.md").exists()
+    assert [subagent.subagent_id for subagent in runtime_config.available_subagents] == [
+        "custom-reader",
+        "general-purpose",
+    ]
+
+
 def test_middleware_profiles_are_loaded_from_runtime_config(monkeypatch, tmp_path):
     """子代理中间件应从运行时 YAML 定义生成 profile。"""
     defaults_root = tmp_path / "defaults"

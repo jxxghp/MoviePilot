@@ -34,6 +34,19 @@ SUBAGENT_SCHEMA_VERSION = 1
 DEFAULT_PERSONA_ID = "default"
 PERSONA_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
+# 这些 ID 曾随旧版内置目录发布；保留迁移清单可在升级时删除旧副本，同时不影响
+# 用户自行创建的其它 ID。内置 ID 视为保留名称，用户定义应使用不同的 ID。
+REMOVED_BUNDLED_SUBAGENT_IDS = frozenset(
+    {
+        "download-diagnostician",
+        "media-researcher",
+        "moviepilot-explorer",
+        "resource-searcher",
+        "subscription-analyst",
+        "system-diagnostician",
+    }
+)
+
 
 def _default_agent_root_dir() -> Path:
     """从组合根设置服务取得 Agent 目录，导入早期保留旧设置回退。"""
@@ -475,7 +488,7 @@ class AgentRuntimeManager:
         return tuple(entries)
 
     def _sync_bundled_defaults(self) -> None:
-        """同步默认运行时文件，并按版本更新内置子代理定义。"""
+        """同步默认运行时文件，并按版本更新或清理内置子代理定义。"""
         if not self.bundled_defaults_dir.exists():
             return
         for path in sorted(self.bundled_defaults_dir.rglob("*")):
@@ -492,6 +505,29 @@ class AgentRuntimeManager:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
             logger.info(f"已同步默认 Agent 运行时文件: {target}")
+        self._remove_removed_bundled_subagents()
+
+    def _remove_removed_bundled_subagents(self) -> None:
+        """删除已从内置目录移除的保留子代理，保留其它用户定义。"""
+        bundled_subagents_root = self.bundled_defaults_dir / SUBAGENTS_DIR
+        bundled_ids = (
+            {path.name for path in bundled_subagents_root.iterdir() if path.is_dir()}
+            if bundled_subagents_root.is_dir()
+            else set()
+        )
+
+        for subagent_id in sorted(REMOVED_BUNDLED_SUBAGENT_IDS - bundled_ids):
+            target_dir = self.subagents_dir / subagent_id
+            target_file = target_dir / SUBAGENT_FILE
+            if not target_file.is_file() and not target_file.is_symlink():
+                continue
+            target_file.unlink()
+            try:
+                target_dir.rmdir()
+            except OSError:
+                # 用户可能在保留目录中放置了其它文件，只移除旧的内置定义。
+                pass
+            logger.info(f"已删除废弃的默认 Agent 子代理定义: {target_file}")
 
     @classmethod
     def _should_update_bundled_subagent(
