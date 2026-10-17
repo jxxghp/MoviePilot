@@ -456,7 +456,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         season: Optional[int] = None,
         episode: Optional[int] = None,
         **kwargs,
-    ) -> Optional[bytes]:
+    ) -> Optional[str]:
         """
         为选择 Bangumi 刮削来源的媒体生成 NFO 内容。
 
@@ -464,7 +464,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param season: 目标季号，省略时生成媒体级元数据
         :param episode: 目标集号，省略时由季号决定元数据范围
         :param kwargs: 统一刮削接口的额外参数，当前不使用
-        :return: UTF-8 XML 字节；刮削来源不是 Bangumi 或无法生成时为 None
+        :return: 包含 UTF-8 编码声明的 XML 文本；刮削来源不是 Bangumi 或无法生成时为 None
         """
         scrape_source = mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')
         if scrape_source != "bangumi":

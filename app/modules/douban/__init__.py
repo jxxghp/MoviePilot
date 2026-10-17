@@ -1875,14 +1875,14 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                                                         count=count)
         return self._project_collection(infos)
 
-    def metadata_nfo(self, mediainfo: MediaInfo, season: int = None, **kwargs) -> Optional[bytes]:
+    def metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None, **kwargs) -> Optional[str]:
         """
-        获取 UTF-8 编码的 NFO XML 字节。
+        获取包含 UTF-8 编码声明的 NFO XML 文本。
 
         :param mediainfo: 已识别媒体信息，可带自定义刮削来源
         :param season: 目标季号；None 表示整剧，0 可表示特别篇
         :param kwargs: 兼容统一模块入口的扩展参数；按识别入口需要转交，刮削入口当前忽略
-        :return: UTF-8 编码的 NFO XML 字节；未选择豆瓣刮削时返回 None
+        :return: 包含 UTF-8 编码声明的 NFO XML 文本；未选择豆瓣刮削时返回 None
         """
         if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != "douban":
             return None

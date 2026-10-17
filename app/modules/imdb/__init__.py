@@ -846,7 +846,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         season: Optional[int] = None,
         episode: Optional[int] = None,
         **kwargs,
-    ) -> Optional[bytes]:
+    ) -> Optional[str]:
         """
         为选择 IMDb 刮削来源的媒体生成 NFO。
 
@@ -854,7 +854,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param season: 可选季号
         :param episode: 可选集号
         :param kwargs: 统一刮削接口的额外参数，当前不读取
-        :return: UTF-8 XML 字节；来源不符、刮削器未初始化或无法生成时为 None
+        :return: 包含 UTF-8 编码声明的 XML 文本；来源不符、刮削器未初始化或无法生成时为 None
         """
         del kwargs
         if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != MediaSource.IMDb.value:

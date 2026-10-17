@@ -697,7 +697,7 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         season: Optional[int] = None,
         episode: Optional[int] = None,
         **kwargs,
-    ) -> Optional[bytes]:
+    ) -> Optional[str]:
         """
         为选择 AniList 刮削来源的媒体生成 NFO。
 
@@ -705,7 +705,7 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param season: 可选季号，省略时生成媒体级内容
         :param episode: 可选集号，与季号共同决定内容范围
         :param kwargs: 统一刮削接口的额外参数，当前不读取
-        :return: UTF-8 XML 字节；刮削来源不符或无法生成时为 None
+        :return: 包含 UTF-8 编码声明的 XML 文本；刮削来源不符或无法生成时为 None
         """
         scrape_source = mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')
         if scrape_source != "anilist":

@@ -19,13 +19,13 @@ class DoubanScraper:
     _force_nfo = False
     _force_img = False
 
-    def get_metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None) -> Optional[bytes]:
+    def get_metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None) -> Optional[str]:
         """
         生成电影、整剧或季级别的 NFO XML。
 
         :param mediainfo: 包含豆瓣简介、演职员和评分的媒体对象
         :param season: 季号；非电影且提供季号时生成季文档
-        :return: UTF-8 编码的 XML 字节；无法生成时返回 None
+        :return: 包含 UTF-8 编码声明的 XML 文本；无法生成时返回 None
         """
         if mediainfo.type == MediaType.MOVIE:
             doc = self.__gen_movie_nfo_file(mediainfo=mediainfo)
@@ -35,7 +35,7 @@ class DoubanScraper:
             else:
                 doc = self.__gen_tv_nfo_file(mediainfo=mediainfo)
         if doc:
-            return doc.toprettyxml(indent="  ", encoding="utf-8")
+            return doc.toprettyxml(indent="  ", encoding="utf-8").decode("utf-8")
 
         return None
 

@@ -11,7 +11,7 @@ TemplateContextBuilder 的并发安全单元测试。
 import threading
 
 from app.application.messaging.message import TemplateContextBuilder, TemplateHelper
-from app.domain.context import MediaInfo
+from app.domain.context import MediaInfo, TorrentInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.modules.filemanager.transhandler import TransHandler
@@ -141,6 +141,41 @@ def test_build_exposes_total_episodes_from_current_season() -> None:
     )
 
     assert context.get("total_episodes") == 3
+
+
+def test_build_exposes_matching_episode_metadata_when_name_is_empty() -> None:
+    """
+    季集元数据命中当前集时，即使 TMDB 没有集名也应保留空字符串和日期字段。
+    """
+    meta = MetaInfo("Demo S01E01")
+    context = TemplateContextBuilder().build(
+        meta=meta,
+        episodes_info=[TmdbEpisode(episode_number=1, name=None, air_date="2025-01-02")],
+    )
+
+    assert context["episode_title"] == ""
+    assert context["episode_date"] == "2025-01-02"
+
+
+def test_build_projects_torrent_size_and_strips_html_description() -> None:
+    """
+    种子上下文应格式化数字大小，并清理描述中的 HTML 标签。
+    """
+    torrent = TorrentInfo(
+        title="Demo",
+        size=1024 * 1024 * 2,
+        description="<p>简介 <b>内容</b></p>",
+        labels=["免费"],
+        hit_and_run=True,
+    )
+    context = {}
+
+    TemplateContextBuilder._add_torrent_info(context, torrent)
+
+    assert context["size"] == "2.0M"
+    assert context["description"] == "简介 内容"
+    assert context["hit_and_run"] == "是"
+    assert context["labels"] == "免费"
 
 
 def test_build_preserves_special_season_context() -> None:

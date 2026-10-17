@@ -61,7 +61,7 @@ class TmdbScraper:
         :param mediainfo: 包含 TMDB 标识、媒体类型及可选分集组的媒体信息
         :param season: 季号；None 时生成电影或整剧文档
         :param episode: 输出文档的单集编号；非零且提供季号时生成单集文档
-        :return: UTF-8 编码的 XML 字节；未生成文档时返回 None
+        :return: 包含 UTF-8 编码声明的 XML 文本；未生成文档时返回 None
         """
         if mediainfo.type == MediaType.MOVIE:
             doc = self.__gen_movie_nfo_file(mediainfo=mediainfo)
@@ -92,7 +92,7 @@ class TmdbScraper:
             else:
                 doc = self.__gen_tv_nfo_file(mediainfo=mediainfo)
         if doc:
-            return doc.toprettyxml(indent="  ", encoding="utf-8")
+            return doc.toprettyxml(indent="  ", encoding="utf-8").decode("utf-8")
 
         return None
 
