@@ -40,7 +40,6 @@ from app.application.subscription.sitebudget import (
 from app.chain.media import MediaChain
 from app.chain.search.execution import MediaSearchPlan
 from app.chain.search.facade import SearchChain
-from app.chain.search.result import SearchResultOwner
 from app.chain.search.scan import SearchScan, search_targets
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.metadata import (
@@ -160,8 +159,7 @@ def _build_subscription_candidate_filter(
         ):
             if not candidates:
                 continue
-            candidates = SearchResultOwner._filter_identified_contexts(
-                cast(Any, searchchain),
+            candidates = cast(Any, searchchain)._filter_identified_contexts(
                 candidates,
                 media,
                 groups,

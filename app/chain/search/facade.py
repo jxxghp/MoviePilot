@@ -412,6 +412,7 @@ class SearchChain(ChainBase):
     _prepare_params = staticmethod(SearchPlanOwner._prepare_params)
     _copy_media_input = staticmethod(SearchPlanOwner._copy_media_input)
     _parse_result = SearchResultOwner._parse_result
+    _filter_identified_contexts = SearchResultOwner._filter_identified_contexts
     _remove_duplicate = staticmethod(SearchResultOwner._remove_duplicate)
     _build_music_contexts = SearchMusicOwner._build_music_contexts
     _matching_music_torrents = staticmethod(SearchMusicOwner._matching_music_torrents)

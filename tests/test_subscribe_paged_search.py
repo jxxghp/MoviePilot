@@ -20,7 +20,6 @@ from app.application.subscription.priority import (
 )
 from app.chain.download import DownloadChain
 from app.chain.search.facade import SearchChain
-from app.chain.search.result import SearchResultOwner
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.metadata import SubscriptionSearchTarget
 from app.chain.subscribe.search import (
@@ -133,6 +132,8 @@ def test_best_version_search_uses_normal_rules_for_never_downloaded_episodes(sub
                 torrent_info=TorrentInfo(site=1, title="Example Show S01E01")),
         Context(meta_info=MetaInfo("Example Show S01E02"), media_info=scope.media,
                 torrent_info=TorrentInfo(site=1, title="Example Show S01E02")),
+        Context(meta_info=None, media_info=scope.media,
+                torrent_info=TorrentInfo(site=1, title="Example Show S01")),
     ]
     monkeypatch.setattr(
         subscribe_search,
@@ -142,18 +143,107 @@ def test_best_version_search_uses_normal_rules_for_never_downloaded_episodes(sub
             SystemConfigKey.BestVersionFilterRuleGroups: ["best"],
         }.get(key)),
     )
-    monkeypatch.setattr(SearchResultOwner, "_filter_identified_contexts", lambda _owner, items, *_args: items)
+    monkeypatch.setattr(SearchChain, "_filter_identified_contexts", lambda _owner, items, *_args: items)
     calls = []
     scope.chain._filter_search_contexts = lambda _subscribe, items, *, apply_best_version=True: (
         calls.append((items, apply_best_version)) or items
     )
 
     candidate_filter = _build_subscription_candidate_filter(scope.chain, SearchChain(), subscribe, target)
-    assert {item.meta_info.episode_list[0] for item in candidate_filter(contexts)} == {1, 2}
+    assert {
+        item.meta_info.episode_list[0]
+        for item in candidate_filter(contexts)
+        if item.meta_info
+    } == {1, 2}
     assert [(items[0].meta_info.episode_list, apply_best) for items, apply_best in calls] == [
         ([2], False),
         ([1], True),
     ]
+
+
+def test_best_version_candidate_filter_handles_full_pack_and_explicit_groups(subscription, monkeypatch):
+    """全集候选按目标范围归类，订阅显式规则组同时覆盖两种候选。"""
+    scope = subscription
+    subscribe = replace(scope.initial, best_version=1, total_episode=2, filter_groups=["custom"])
+    target = SubscriptionSearchTarget(
+        subscribe,
+        build_subscribe_meta(subscribe),
+        scope.media,
+        {"tmdb:1": {1: NotExistMediaInfo(season=1, episodes=[], total_episode=2)}},
+        "tmdb:1",
+    )
+    calls = []
+    scope.chain._filter_search_contexts = lambda _subscribe, items, *, apply_best_version=True: (
+        calls.append((items, apply_best_version)) or items
+    )
+    monkeypatch.setattr(SearchChain, "_filter_identified_contexts", lambda _owner, items, *_args: items)
+
+    candidate_filter = _build_subscription_candidate_filter(scope.chain, SearchChain(), subscribe, target)
+    full_pack = Context(meta_info=MetaInfo("Example Show S01"), media_info=scope.media,
+                        torrent_info=TorrentInfo(site=1, title="Example Show S01"))
+    assert candidate_filter([full_pack]) == [full_pack]
+    assert calls[0][1] is False
+    assert subscribe_search._subscription_rule_groups(subscribe) == (["custom"], ["custom"])
+    assert subscribe_search._best_version_target_episodes(subscribe, target) == {1, 2}
+
+
+def test_non_best_version_candidate_filter_keeps_existing_filtering(subscription, monkeypatch):
+    """普通订阅仍通过原有候选过滤器，不构造洗版规则分支。"""
+    scope = subscription
+    target = SubscriptionSearchTarget(
+        scope.initial,
+        build_subscribe_meta(scope.initial),
+        scope.media,
+        {"tmdb:1": {1: NotExistMediaInfo(season=1, episodes=[1], total_episode=1)}},
+        "tmdb:1",
+    )
+    filtered = object()
+    scope.chain._filter_search_contexts = lambda _subscribe, items, **_kwargs: filtered
+    candidate_filter = _build_subscription_candidate_filter(scope.chain, SearchChain(), scope.initial, target)
+    assert candidate_filter([]) is filtered
+
+
+def test_paged_best_version_search_builds_dynamic_rule_checkpoint(subscription, monkeypatch):
+    """洗版分页计划保存普通与升级规则快照，恢复时配置变化会重新搜索。"""
+    scope = subscription
+    subscribe = replace(scope.initial, best_version=1, total_episode=2, episode_priority={"1": 80})
+    target = SubscriptionSearchTarget(
+        subscribe,
+        build_subscribe_meta(subscribe),
+        scope.media,
+        {"tmdb:1": {1: NotExistMediaInfo(season=1, episodes=[1, 2], total_episode=2)}},
+        "tmdb:1",
+    )
+    captured = {}
+
+    class FakeScan:
+        """捕获分页计划而不发起站点请求。"""
+
+        def __init__(self, *, plan, **_kwargs):
+            captured["plan"] = plan
+
+        def run(self, _submit):
+            """模拟空分页搜索。"""
+
+    scope.chain.get_sub_sites = lambda _subscribe: [1]
+    scope.chain.get_params = lambda _subscribe: {}
+    scope.chain._SubscribeChain__build_full_pack_first_no_exists = lambda *_args, **_kwargs: None
+    monkeypatch.setattr(subscribe_search, "SearchScan", FakeScan)
+    monkeypatch.setattr(subscribe_search, "_finish_paged_subscription", lambda *_args: None)
+    monkeypatch.setattr(subscribe_search, "_subscription_search_strategy", lambda _best_version: "single_page")
+    _process_paged_subscription(
+        scope.chain,
+        subscribe,
+        SearchChain(),
+        target,
+        SystemConfigKey.BestVersionFilterRuleGroups,
+        None,
+    )
+    assert captured["plan"].rule_groups == []
+    assert captured["plan"].rule_groups_signature == {
+        "normal": [],
+        "best": [],
+    }
 
 
 @pytest.mark.parametrize("explicit_missing", [False, True])
