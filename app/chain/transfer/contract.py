@@ -1,4 +1,6 @@
-"""整理职责 owner 的静态组合宿主合同。"""
+"""
+整理职责组件 的静态组合宿主合同。
+"""
 
 from typing import TYPE_CHECKING, Any
 
@@ -6,7 +8,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     class _TransferOwnerHost:
-        """声明 TransferChain 组合后向各 owner 提供的属性和兄弟职责。"""
+        """
+        声明 TransferChain 组合后向各组件 提供的属性和兄弟职责。
+        """
 
         _LEASE_HEARTBEAT_INTERVAL_SECONDS: float
         _QUEUE_STOP_SENTINEL: object
@@ -138,7 +142,9 @@ if TYPE_CHECKING:
         async_post_message: Callable[..., Any]
 
         def __init__(self, runtime_context: Any | None = None) -> None:
-            """声明最终 Chain 提供的运行上下文构造入口。"""
+            """
+            声明最终 Chain 提供的运行上下文构造入口。
+            """
             return None
 
     _TransferOwnerBase = _TransferOwnerHost

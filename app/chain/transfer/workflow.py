@@ -1,4 +1,6 @@
-"""整理请求候选构建与任务工作流编排。"""
+"""
+整理请求候选构建与任务工作流编排。
+"""
 
 import re
 import uuid
@@ -66,7 +68,9 @@ def _normalize_transfer_identity(
     Optional[str],
     Optional[str],
 ]:
-    """规范整理请求的媒体身份，并在显式身份缺失时短路。"""
+    """
+    规范整理请求的媒体身份，并在显式身份缺失时短路。
+    """
     explicit_identity = media_source is not None or media_id is not None
     normalized_source, normalized_media_id = resolve_media_identity(
         media_source=media_source,
@@ -99,14 +103,17 @@ def _normalize_transfer_identity(
 
 
 class TransferWorkflowOwner(_TransferOwnerBase):
-    """协调请求级候选构建并委托规划、执行与结算 owner。"""
+    """
+    协调请求级候选构建并委托规划、执行与结算组件。
+    """
 
     @staticmethod
     def _build_transfer_fileitem(
             torrent: DownloaderTorrent,
             download_dirs: List[TransferDirectoryConf],
     ) -> Optional[FileItem]:
-        """按任务映射后的存储和目录准入，再从实际存储读取源文件。
+        """
+        按任务映射后的存储和目录准入，再从实际存储读取源文件。
 
         远程 URI 仅用于路径解析，不能执行本地 exists/stat。连接或权限异常
         与确认不存在分别记录，保留任务供下一次下载器监控重试。
@@ -192,7 +199,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             return None
 
         def _apply_predicate(file_item: FileItem, is_bluray_dir: bool) -> List[Tuple[FileItem, bool]]:
-            """仅保留满足调用方筛选条件的普通文件或蓝光目录。"""
+            """
+            仅保留满足调用方筛选条件的普通文件或蓝光目录。
+            """
             if predicate is None or predicate(file_item, is_bluray_dir):
                 return [(file_item, is_bluray_dir)]
             return []
@@ -211,7 +220,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 # 返回该文件所在的原盘根目录
                 return _apply_predicate(bluray_dir, True)
 
-        # 单文件
         if fileitem.type == "file":
             return _apply_predicate(fileitem, False)
 
@@ -341,13 +349,17 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         matched_template = False
 
         def keep_candidate(item: FileItem, _is_bluray_dir: bool) -> bool:
-            """候选遍历阶段只响应取消请求，不提前应用业务过滤。"""
+            """
+            候选遍历阶段只响应取消请求，不提前应用业务过滤。
+            """
             if continue_callback and not continue_callback():
                 raise OperationInterrupted()
             return True
 
         def is_allowed(item: FileItem, is_bluray_dir: bool) -> bool:
-            """判断候选文件是否符合格式、后缀、大小和屏蔽词约束。"""
+            """
+            判断候选文件是否符合格式、后缀、大小和屏蔽词约束。
+            """
             nonlocal matched_template
             if continue_callback and not continue_callback():
                 raise OperationInterrupted()
@@ -457,7 +469,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         )
 
     def _execute_transfer(self, *args: Any, **kwargs: Any) -> Tuple[bool, Union[str, dict]]:
-        """兼容旧内部钩子，统一委托请求工作流 owner。"""
+        """
+        兼容旧内部钩子，统一委托请求工作流组件。
+        """
         return self._run_transfer_workflow(*args, **kwargs)
 
     @capture_audio_metadata()
@@ -498,6 +512,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
     ) -> Tuple[bool, Union[str, dict]]:
         """
         执行一个复杂目录的整理操作
+
         :param fileitem: 文件项
         :param meta: 元数据
         :param mediainfo: 媒体信息
@@ -524,7 +539,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param sync_extra_files: 是否在整理主视频文件时同步整理同媒体附加文件
         :param cleanup_dest_fileitem: 确认存在待整理任务后需要清理的旧目标文件
         :param continue_callback: 继续处理回调
-        :param recovery_admission: 内部恢复调用绑定的既有 durable 记录
+        :param recovery_admission: 内部恢复调用绑定的既有 持久化 记录
         :param music_release_regions: 本次音乐整理的发行地区优先级
         :param music_release_scripts: 本次音乐整理的文字字形优先级
         :param selected_fileitems: 前端显式选中的文件，按同一批次规划
@@ -557,7 +572,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if preview:
             # 预览模式始终同步执行，避免进入异步队列
             background = False
-        # 自定义格式
         has_episode_format_template = bool(epformat and epformat.format)
         formaterHandler = (
             FormatParser(
@@ -570,7 +584,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             else None
         )
 
-        # 汇总错误信息
         err_msgs: List[str] = []
         transfer_exclude_words = get_configured_system_config().get(SystemConfigKey.TransferExcludeWords)
 
@@ -692,7 +705,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
     def _enqueue_transfer_candidate(
         self, task: TransferTask, errors: list[str], submission: _TransferSubmissionCollector,
     ) -> Optional[bool]:
-        """在唯一队列入口捕获准入失败，给同批其余文件保留执行机会和错误回执。"""
+        """
+        在唯一队列入口捕获准入失败，给同批其余文件保留执行机会和错误回执。
+        """
         try:
             return bool(self.put_to_queue(task=task))
         except Exception as error:
@@ -736,7 +751,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         selected_music_track_map: dict[str, MusicInfo],
         submission: _TransferSubmissionCollector,
     ) -> Tuple[List[TransferTask], bool, List[str], int, set[Tuple[str, str]]]:
-        """从冻结候选构建任务，并集中执行历史去重与 durable 绑定。"""
+        """
+        从冻结候选构建任务，并集中执行历史去重与 持久化 绑定。
+        """
         all_success = True
         transfer_tasks: List[TransferTask] = []
         err_msgs: List[str] = []
@@ -799,7 +816,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                                         all_success = False
                                         logger.error(message)
                                         err_msgs.append(message)
-                                    # 普通失败重试仍由唯一 durable 调度器继续原计划。
+                                    # 普通失败重试仍由唯一 持久任务调度器继续原计划。
                                     continue
                             state, message = self._delete_manual_transfer_history(
                                 history=transferd,
@@ -875,7 +892,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     err_msgs.append(f"{file_path.name} 无法识别有效信息")
                     continue
 
-                # 获取下载Hash
                 if download_history and (not downloader or not download_hash):
                     _downloader = download_history.downloader
                     _download_hash = download_history.download_hash
@@ -953,7 +969,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     else:
                         logger.debug(f"{file_path.name} 已在整理队列中，跳过")
                 else:
-                    # 加入列表
                     queued = self._TransferChain__put_to_jobview(transfer_task)
                     if queued:
                         self._register_scrape_batch_task(transfer_task)
@@ -985,7 +1000,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
     def _music_transfer_items(
             self, items: List[Tuple[FileItem, bool]], context: Any,
     ) -> Generator[Tuple[FileItem, bool], None, None]:
-        """随主音轨逐项解析再放行封面，无法证明唯一音乐归属时不生成图片任务。"""
+        """
+        随主音轨逐项解析再放行封面，无法证明唯一音乐归属时不生成图片任务。
+        """
         for item, bluray in items:
             if self._is_music_cover_file(item):
                 related = context.related_main_keys.get(self._get_file_key(item))
@@ -995,14 +1012,18 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             yield item, bluray
 
     def _cancel_unexecuted_tasks(self, tasks: list[TransferTask]) -> None:
-        """撤销本次同步请求尚未执行的内存占位，让用户之后可以重新提交这些文件。"""
+        """
+        撤销本次同步请求尚未执行的内存占位，让用户之后可以重新提交这些文件。
+        """
         for task in tasks:
             self.jobview.fail_unfinished_task(task)
             self.jobview.try_remove_job(task)
             self._finish_scrape_batch_task(task)
 
     def _submission_execution_state(self, task: TransferTask, enabled: bool) -> Optional[str]:
-        """失败后读取既有持久投影，避免把等待恢复或人工复核误报为可重新提交。"""
+        """
+        失败后读取既有持久投影，避免把等待恢复或人工复核误报为可重新提交。
+        """
         if not enabled or task.terminal_settled or not task.admission_task_id:
             return None
         try:
@@ -1022,27 +1043,26 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         err_msgs: List[str],
         submission: _TransferSubmissionCollector,
     ) -> Tuple[bool, List[str], List[dict[str, Any]]]:
-        """同步消费已规划任务；后台任务只由 queue owner 消费。"""
+        """
+        同步消费已规划任务；后台任务只由 队列组件 消费。
+        """
         preview_items: List[dict[str, Any]] = []
 
         def _preview_callback(task: TransferTask, transferinfo: TransferInfo) -> Tuple[bool, str]:
-            """收集预览结果，保持任务执行顺序。"""
+            """
+            收集预览结果，保持任务执行顺序。
+            """
             preview_items.append(build_transfer_preview_item(task, transferinfo))
             return transferinfo.success, transferinfo.message
 
         if transfer_tasks:
-            # 总数量
             total_num = len(transfer_tasks)
-            # 已处理数量
             processed_num = 0
-            # 失败数量
             fail_num = 0
-            # 已完成文件
             finished_files = []
 
             progress = None
             if not preview:
-                # 启动进度
                 progress = ProgressHelper(ProgressKey.FileTransfer)
                 progress.start()
                 __process_msg = f"开始整理，共 {total_num} 个文件 ..."
@@ -1056,7 +1076,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         err_msgs.append("整理已取消，剩余文件未执行")
                         break
                     if not preview:
-                        # 更新进度
                         __process_msg = (
                             f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."
                         )
@@ -1076,7 +1095,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         callback_task: TransferTask,
                         transferinfo: TransferInfo,
                     ) -> Tuple[bool, str]:
-                        """同步路径也由默认回调原子提交历史、事件与 durable 终态。"""
+                        """
+                        同步路径也由默认回调原子提交历史、事件与 持久化 终态。
+                        """
                         nonlocal terminal_settlement
                         submission.capture(callback_task, transferinfo)
                         callback = _preview_callback if preview else self._TransferChain__default_callback

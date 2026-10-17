@@ -1,4 +1,6 @@
-"""整理请求的候选路径解析与批次归属规划。"""
+"""
+整理请求的候选路径解析与批次归属规划。
+"""
 
 from copy import deepcopy
 from pathlib import Path
@@ -30,7 +32,9 @@ from app.schemas.workflow import FileItem
 def preview_media_title(
         mediainfo: Optional[Union[MediaInfo, MusicInfo]],
 ) -> Optional[str]:
-    """音乐预览以专辑为批次标题，影视继续使用原有标题。"""
+    """
+    音乐预览以专辑为批次标题，影视继续使用原有标题。
+    """
     if isinstance(mediainfo, MusicInfo) and mediainfo.album:
         return (
             f"{mediainfo.album} ({mediainfo.year})"
@@ -49,7 +53,9 @@ def _should_discard_batch_recording_identity(
         mediainfo: Optional[MediaInfo | MusicInfo],
         history_music_type: Optional[str],
 ) -> bool:
-    """判断自动整专是否误带了共享单曲身份。"""
+    """
+    判断自动整专是否误带了共享单曲身份。
+    """
     if not multi_track_music_batch or (manual and media_source and media_id):
         return False
     batch_music_type = getattr(mediainfo, "music_type", None)
@@ -69,7 +75,9 @@ def _should_discard_batch_music_identity(
         mediainfo: Optional[MediaInfo | MusicInfo],
         history_music_type: Optional[str],
 ) -> bool:
-    """仅音乐批次在未显式指定媒体时丢弃共享身份并重新识别内部作品。"""
+    """
+    仅音乐批次在未显式指定媒体时丢弃共享身份并重新识别内部作品。
+    """
     if batch_mtype != MediaType.MUSIC:
         return False
     if manual and not (media_source and media_id):
@@ -85,7 +93,9 @@ def _should_discard_batch_music_identity(
 
 
 class _TransferCandidatePlanner:
-    """持有一次整理请求的只读候选规划上下文。"""
+    """
+    持有一次整理请求的只读候选规划上下文。
+    """
 
     def __init__(
             self,
@@ -103,7 +113,9 @@ class _TransferCandidatePlanner:
             sync_extra_files: bool,
             fileitem: FileItem,
     ) -> None:
-        """冻结候选规划依赖，避免请求阶段再读取可变配置。"""
+        """
+        冻结候选规划依赖，避免请求阶段再读取可变配置。
+        """
         self._chain = chain
         self._meta = meta
         self._season = season
@@ -146,7 +158,9 @@ class _TransferCandidatePlanner:
             inherited: Optional[MetaBase],
             discard_saved_identity: bool,
     ) -> tuple[Optional[MetaBase], Optional[MusicInfo]]:
-        """按显式输入、下载证据及附加文件归属构建上下文，读取始终绑定具体存储。"""
+        """
+        按显式输入、下载证据及附加文件归属构建上下文，读取始终绑定具体存储。
+        """
         if not fileitem.path:
             return None, None
         history_meta, history_info = self._chain._restore_music_download_context(
@@ -182,6 +196,7 @@ class _TransferCandidatePlanner:
     ) -> Optional[MetaBase]:
         """
         从文件路径识别媒体信息，用于判断附加文件是否属于当前主视频。
+
         :param force_video: 强制按视频解析，附加文件归属匹配专用，避免音乐判定干扰归属比较
         """
         # 音频后缀且无可靠影视类型来源时按音乐解析，走 MusicBrainz 识别链
@@ -207,13 +222,10 @@ class _TransferCandidatePlanner:
         """
         应用手动传入的季集覆盖和自定义识别格式。
         """
-        # 合并季
         if self._season is not None:
             current_meta.begin_season = self._season
 
-        # 自定义识别
         if self._formaterHandler:
-            # 开始集、结束集、PART
             begin_ep, end_ep, part = self._formaterHandler.split_episode(
                 file_name=source_path.name, file_meta=current_meta
             )
@@ -227,7 +239,9 @@ class _TransferCandidatePlanner:
         return current_meta
 
     def _is_allowed_transfer_item(self, item: FileItem, _is_bluray_dir: bool) -> bool:
-        """筛选单文件模式额外读取的字幕/音频，保持模板和屏蔽词语义。"""
+        """
+        筛选单文件模式额外读取的字幕/音频，保持模板和屏蔽词语义。
+        """
         if self._continue_callback and not self._continue_callback():
             raise OperationInterrupted()
         if self._has_episode_format_template and self._formaterHandler and not self._formaterHandler.match(item.name):
@@ -340,12 +354,16 @@ class _TransferCandidatePlanner:
         return main_fileitems, extra_items
 
     def _is_music_cover_candidate(self, item: FileItem) -> bool:
-        """封面只随音乐主文件同步，影视批次及关闭附加文件同步时不接纳图片。"""
+        """
+        封面只随音乐主文件同步，影视批次及关闭附加文件同步时不接纳图片。
+        """
         return (self._sync_extra_files and not self._has_reliable_video_source()
                 and self._chain._is_music_cover_file(item))
 
     def _infer_music_batch_type(self, items: List[Tuple[FileItem, bool]]) -> None:
-        """未指定类型的纯音频请求仍建立音乐主文件索引，混合影视目录保持原类型。"""
+        """
+        未指定类型的纯音频请求仍建立音乐主文件索引，混合影视目录保持原类型。
+        """
         if (self._batch_mtype is None and not self._has_reliable_video_source()
                 and any(self._chain._is_audio_file(item) for item, _ in items)
                 and not any(bluray or self._chain._is_media_file(item, None) for item, bluray in items)):
@@ -355,7 +373,9 @@ class _TransferCandidatePlanner:
             self, items: List[Tuple[FileItem, bool]], planned: List[Tuple[FileItem, bool]],
             seen: set[Tuple[str, str]], inherited: Dict[Tuple[str, str], MetaBase],
     ) -> None:
-        """保留未匹配的普通附件，音乐歌词和封面必须已获得主文件归属。"""
+        """
+        保留未匹配的普通附件，音乐歌词和封面必须已获得主文件归属。
+        """
         for item, is_bluray_dir in items:
             if self._chain._is_music_cover_file(item) and self._chain._get_file_key(item) not in inherited:
                 continue
@@ -541,7 +561,9 @@ class _TransferCandidatePlanner:
 
 
 def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) -> dict[str, Any]:
-    """按实际整理结果投影预览项，失败阶段与恢复动作保留原始裁决。"""
+    """
+    按实际整理结果投影预览项，失败阶段与恢复动作保留原始裁决。
+    """
     from app.application.transfer.feedback import classify_transfer_failure
 
     item_meta = task.meta
@@ -587,10 +609,14 @@ def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) 
 
 
 class _TransferSubmissionCollector:
-    """按当前请求收集真实阶段回执，不改变任务、重试或结算的所有权。"""
+    """
+    按当前请求收集真实阶段回执，不改变任务、重试或结算的所有权。
+    """
 
     def __init__(self, enabled: bool = False, source: Optional[FileItem] = None) -> None:
-        """普通整理调用默认关闭回执，维持原有字符串返回契约。"""
+        """
+        普通整理调用默认关闭回执，维持原有字符串返回契约。
+        """
         self.enabled = enabled
         self.source = source
         self.items: list[dict[str, Any]] = []
@@ -600,7 +626,9 @@ class _TransferSubmissionCollector:
         self._preview_rejections: list[dict[str, Any]] = []
 
     def record_music_package_preview(self, fileitem: FileItem, message: str, *, preview: bool) -> None:
-        """保留尚未生成任务的音乐包拒绝项，混合目录也能逐文件显示能力边界。"""
+        """
+        保留尚未生成任务的音乐包拒绝项，混合目录也能逐文件显示能力边界。
+        """
         if not preview:
             return
         self._preview_rejections.append({
@@ -612,7 +640,9 @@ class _TransferSubmissionCollector:
         })
 
     def expect(self, fileitems: list[tuple[FileItem, bool]]) -> None:
-        """保留候选快照，取消发生后仍能说明哪些文件没有被执行。"""
+        """
+        保留候选快照，取消发生后仍能说明哪些文件没有被执行。
+        """
         if self.enabled:
             self._pending.update({(item.storage, item.path): item for item, _bluray in fileitems})
 
@@ -622,7 +652,9 @@ class _TransferSubmissionCollector:
             message: Optional[str] = None,
             *, target_dir: Optional[Path] = None,
     ) -> None:
-        """在准入、历史跳过或重试决策发生时记录回执。"""
+        """
+        在准入、历史跳过或重试决策发生时记录回执。
+        """
         if not self.enabled:
             return
         self._pending.pop((fileitem.storage, fileitem.path), None)
@@ -634,12 +666,16 @@ class _TransferSubmissionCollector:
         })
 
     def record_history_skip(self, fileitem: FileItem) -> None:
-        """逐项保留跳过回执，总提示只累计数量，避免大目录产生冗长的文件名列表。"""
+        """
+        逐项保留跳过回执，总提示只累计数量，避免大目录产生冗长的文件名列表。
+        """
         self._skipped_history_count += 1
         self.record(fileitem, "skipped", f"已跳过成功整理记录：{fileitem.name}")
 
     def capture(self, task: TransferTask, transferinfo: TransferInfo) -> None:
-        """暂存执行结果，等终态原子结算确认后再公布 completed。"""
+        """
+        暂存执行结果，等终态原子结算确认后再公布 completed。
+        """
         if self.enabled:
             self._results[id(task)] = transferinfo
 
@@ -647,7 +683,9 @@ class _TransferSubmissionCollector:
             self, task: TransferTask, success: bool, message: str,
             *, durable_state: Optional[str],
     ) -> None:
-        """只有已确认的终态可报告完成，未确认终态保留后台重试状态。"""
+        """
+        只有已确认的终态可报告完成，未确认终态保留后台重试状态。
+        """
         if not self.enabled:
             return
         info = self._results.pop(id(task), None)
@@ -680,7 +718,9 @@ class _TransferSubmissionCollector:
             self, success: bool, errors: list[str], *, preview: bool,
             preview_items: list[dict[str, Any]],
     ) -> tuple[bool, Union[str, dict[str, Any]]]:
-        """保持预览与旧调用返回值，同时让管理界面收到完整执行回执。"""
+        """
+        保持预览与旧调用返回值，同时让管理界面收到完整执行回执。
+        """
         message = "、".join(errors[:2]) + (f"，等{len(errors)}个文件错误！" if len(errors) > 2 else "")
         if self._skipped_history_count:
             message = "；".join(filter(None, [f"已跳过 {self._skipped_history_count} 条成功整理记录", message]))

@@ -1,4 +1,6 @@
-"""持久整理步骤执行、探测与检查点推进。"""
+"""
+持久整理步骤执行、探测与检查点推进。
+"""
 
 import time
 import traceback
@@ -47,18 +49,26 @@ from app.schemas.types import (
 
 
 class _TransferRetryDeferred(RuntimeError):
-    """表示已把确定失败交回唯一持久重试调度器。"""
+    """
+    表示已把确定失败交回唯一持久重试调度器。
+    """
 
 
 class _TransferManualReviewRequired(RuntimeError):
-    """表示外部结果无法严格判定，任务已隔离等待人工复核。"""
+    """
+    表示外部结果无法严格判定，任务已隔离等待人工复核。
+    """
 
 
 class _TransferRetryExhausted(RuntimeError):
-    """表示步骤重试预算耗尽，任务可进入原子失败结算。"""
+    """
+    表示步骤重试预算耗尽，任务可进入原子失败结算。
+    """
 
     def __init__(self, message: str, snapshot: TransferExecutionSnapshot) -> None:
-        """保存失败原因和数据库建立的结算检查点。"""
+        """
+        保存失败原因和数据库建立的结算检查点。
+        """
         super().__init__(message)
         self.snapshot = snapshot
 
@@ -67,7 +77,9 @@ def _download_history_media_type(
         history_type: Optional[str],
         fallback: Optional[MediaType],
 ) -> Optional[MediaType]:
-    """使用下载历史身份类型；缺少有效类型时回退到整理调用提示。"""
+    """
+    使用下载历史身份类型；缺少有效类型时回退到整理调用提示。
+    """
     try:
         media_type = MediaType(history_type)
     except (TypeError, ValueError):
@@ -76,7 +88,9 @@ def _download_history_media_type(
 
 
 class _DurableTransferStepRunner:
-    """以稳定顺序、lease 和 attempt fencing 执行整理外部步骤。"""
+    """
+    以稳定顺序、lease 和 attempt fencing 执行整理外部步骤。
+    """
 
     _RETRY_DELAY_SECONDS = 30
 
@@ -88,7 +102,9 @@ class _DurableTransferStepRunner:
             checkpoint_fingerprint: str,
             repository: TransferExecutionRepository,
     ) -> None:
-        """绑定单个任务的持久执行命令与全局步骤序号。"""
+        """
+        绑定单个任务的持久执行命令与全局步骤序号。
+        """
         self._task_id = task_id
         self._lease_token = lease_token
         self._checkpoint_fingerprint = checkpoint_fingerprint
@@ -114,7 +130,9 @@ class _DurableTransferStepRunner:
 
     @staticmethod
     def _retry_due_at() -> str:
-        """生成固定退避后的 UTC 调度时间。"""
+        """
+        生成固定退避后的 UTC 调度时间。
+        """
         return (
             datetime.now(timezone.utc)
             + timedelta(seconds=_DurableTransferStepRunner._RETRY_DELAY_SECONDS)
@@ -127,7 +145,9 @@ class _DurableTransferStepRunner:
             execute: Callable[[], TransferStepResult],
             observe: Callable[[], TransferOperationObservation],
     ) -> TransferStepResult:
-        """在事务外执行副作用，异常后先探测结果再决定重试或人工复核。"""
+        """
+        在事务外执行副作用，异常后先探测结果再决定重试或人工复核。
+        """
         try:
             result = execute()
         except Exception as error:
@@ -204,7 +224,9 @@ class _DurableTransferStepRunner:
             execute: Callable[[], TransferStepResult],
             observe: Callable[[], TransferOperationObservation],
     ) -> TransferStepResult:
-        """幂等消费一个步骤，遗留 STARTED 必须先取得严格观察结论。"""
+        """
+        幂等消费一个步骤，遗留 STARTED 必须先取得严格观察结论。
+        """
         intent = TransferStepIntent.create(
             task_id=self._task_id,
             checkpoint_fingerprint=self._checkpoint_fingerprint,
@@ -277,7 +299,9 @@ class _DurableTransferStepRunner:
         return self._execute_attempt(step=step, execute=execute, observe=observe)
 
     def checkpoint(self, transferinfo: TransferInfo) -> TransferExecutionCheckpoint:
-        """提交足以独立重放终态结算的聚合执行结果。"""
+        """
+        提交足以独立重放终态结算的聚合执行结果。
+        """
         outcome = (
             "overwrite_skipped"
             if transferinfo.overwrite_skipped
@@ -306,7 +330,9 @@ class _DurableTransferStepRunner:
 
 
 class TransferExecutionOwner(_TransferOwnerBase):
-    """持有整理准入租约、外部步骤执行与结果检查点。"""
+    """
+    持有整理准入租约、外部步骤执行与结果检查点。
+    """
 
     def _TransferChain__handle_transfer_execution_error(
             self,
@@ -315,7 +341,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
             *,
             preview: bool,
     ) -> Tuple[bool, str]:
-        """在插件可替换执行入口之外收口异常，防止未记账失败无限回放。"""
+        """
+        在插件可替换执行入口之外收口异常，防止未记账失败无限回放。
+        """
         if (not preview and not task.terminal_settled and task.admission_task_id and task.lease_token
                 and not isinstance(error, (TransferAdmissionConflictError, TransferLeaseLostError,
                                            TransferExecutionConflictError, TransferExecutionLeaseLostError,
@@ -351,7 +379,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
             self,
             admission: TransferAdmission,
     ) -> None:
-        """把仓储 claim 加入续期集合，覆盖恢复构造阶段的同步 I/O。"""
+        """
+        把仓储 claim 加入续期集合，覆盖恢复构造阶段的同步 I/O。
+        """
         if (
                 admission.lease_owner != self._worker_owner_id
                 or not admission.lease_token
@@ -371,7 +401,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
             task: TransferTask,
             admission: TransferAdmission,
     ) -> None:
-        """校验仓储 claim 投影并把 token 私有绑定到执行任务。"""
+        """
+        校验仓储 claim 投影并把 token 私有绑定到执行任务。
+        """
         if admission.task_id != task.admission_task_id:
             raise TransferLeaseLostError(
                 f"整理任务 claim 投影无效：{admission.task_id}"
@@ -389,7 +421,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
             task: TransferTask,
             task_id: str,
     ) -> None:
-        """取得已准入任务的唯一租约，并绑定到内存任务。"""
+        """
+        取得已准入任务的唯一租约，并绑定到内存任务。
+        """
         claimed = cast(
             Optional[TransferAdmission],
             self._transfer_admissions.claim_task(
@@ -407,7 +441,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
             raise
 
     def _TransferChain__admit_transfer(self, task: TransferTask) -> TransferAdmission:
-        """持久化源文件并在内存入队前取得执行租约。"""
+        """
+        持久化源文件并在内存入队前取得执行租约。
+        """
         fileitem = task.fileitem if task else None
         if not fileitem or not fileitem.storage or not fileitem.path:
             raise ValueError("整理任务缺少源文件身份")
@@ -427,7 +463,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
         return admission
 
     def _TransferChain__claim_task_for_execution(self, task: TransferTask) -> None:
-        """校验队列任务既有租约，并为兼容旧队列项补取唯一租约。"""
+        """
+        校验队列任务既有租约，并为兼容旧队列项补取唯一租约。
+        """
         if task.preview:
             return
         self._TransferChain__ensure_lease_runtime_state()
@@ -442,7 +480,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
     def _TransferChain__handle_transfer(
             self, task: TransferTask, callback: Optional[Callable] = None
     ) -> Optional[Tuple[bool, str]]:
-        """恢复准入时的 CUE 策略并执行，统一记录 checkpoint 前的失败或异常。"""
+        """
+        恢复准入时的 CUE 策略并执行，统一记录 checkpoint 前的失败或异常。
+        """
         try:
             cue_enabled = cast(Optional[bool], task.planning_input.options.get("music_cue_enable")) if task.planning_input else None
             with use_music_cue(cue_enabled):
@@ -457,7 +497,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
 
     @staticmethod
     def _recognize_task_meta(task: TransferTask, *, restore_history: bool = True) -> Optional[Union[MediaInfo, MusicInfo]]:
-        """按任务限定的来源和类型识别元数据，仅在历史语义兼容时恢复其分类。"""
+        """
+        按任务限定的来源和类型识别元数据，仅在历史语义兼容时恢复其分类。
+        """
         options: dict[str, Any] = {"obtain_images": True}
         if task.media_source:
             options["media_source"] = task.media_source
@@ -478,7 +520,6 @@ class TransferExecutionOwner(_TransferOwnerBase):
             if task.plan_checkpoint is not None:
                 return self._TransferChain__handle_planned_transfer(task, callback)
             refresh_music_retry_context(self, task)
-            # 识别
             transferhis = self.transfer_history_repository
             # 显式标注联合：下面既会赋回音乐识别结果（MusicInfo），也会赋回影视识别
             # 结果（MediaInfo），不标注时会被推断成其中一种，另一种就成了假错误
@@ -487,10 +528,8 @@ class TransferExecutionOwner(_TransferOwnerBase):
             need_obtain_images = False
             if not mediainfo:
                 download_history = task.download_history
-                # 下载用户
                 if download_history:
                     task.username = download_history.username
-                    # 识别媒体信息
                     history_year_conflict = self._is_movie_year_conflict(
                         task.meta, download_history
                     )
@@ -576,26 +615,22 @@ class TransferExecutionOwner(_TransferOwnerBase):
                     mediainfo_changed = True
 
             if mediainfo_changed:
-                # 更新任务信息
                 task.mediainfo = mediainfo
-                # 更新队列任务
                 if not self.jobview.migrate_task(task):
                     logger.info(f"{task.fileitem.name} 已存在整理任务，跳过重复处理")
                     return False, f"{task.fileitem.name} 已在整理队列中"
 
-            # 获取集数据
             if (
                     task.mediainfo.type == MediaType.TV
                     and task.mediainfo.tmdb_id
                     and not task.episodes_info
                     and not task.planning_context_restored
             ):
-                # 判断注意season为0的情况
+                # 第零季表示特别篇，不能按空值回退为第一季。
                 season_num = task.mediainfo.season
                 if season_num is None and task.meta.season_seq:
                     if task.meta.season_seq.isdigit():
                         season_num = int(task.meta.season_seq)
-                # 默认值1
                 if season_num is None:
                     season_num = 1
                 task.episodes_info = TmdbChain().tmdb_episodes(
@@ -604,7 +639,6 @@ class TransferExecutionOwner(_TransferOwnerBase):
                     episode_group=task.mediainfo.episode_group,
                 )
 
-            # 查询整理目标目录
             if not task.target_directory:
                 if task.target_path:
                     # 指定目标路径，`手动整理`场景下使用，忽略源目录匹配，使用指定目录匹配
@@ -636,14 +670,13 @@ class TransferExecutionOwner(_TransferOwnerBase):
                     return cast(Tuple[bool, str], callback(task, transferinfo))
                 return transferinfo.success, transferinfo.message or ""
 
-            # 正在处理
             self.jobview.running_task(task)
 
             # 广播事件，请示额外的源、目标存储支持。
             source_oper = self._TransferChain__select_storage_oper(task.fileitem.storage)
             target_oper = self._TransferChain__select_storage_oper(task.target_storage)
 
-            # 纯规划先提交 durable checkpoint，任何文件副作用只能发生在提交之后。
+            # 纯规划先提交 持久执行检查点，任何文件副作用只能发生在提交之后。
             transferinfo = self._plan_checkpoint_and_execute(
                 task,
                 source_oper=source_oper,
@@ -660,6 +693,5 @@ class TransferExecutionOwner(_TransferOwnerBase):
             return transferinfo.success, transferinfo.message
 
         finally:
-            # 移除已完成的任务
             self.jobview.try_remove_job(task)
             self._finish_scrape_batch_task(task)
