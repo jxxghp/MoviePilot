@@ -2,7 +2,7 @@
 
 ## General Principles
 
-- Preserve the style of the surrounding file. When in doubt, read neighboring code first.
+- Preserve the surrounding implementation style. Comments and docstrings always follow [08 — Comments and Documentation Style](08-comment-styles.md), even when neighboring code uses an older style.
 - Prefer the smallest correct change. Do not introduce a new abstraction layer without a clear payoff.
 - Do not add features, refactors, or abstractions beyond what the task requires.
 - Do not add error handling or validation for scenarios that cannot happen. Trust internal code and framework guarantees; only validate at system boundaries (user input, external API responses).
@@ -27,6 +27,17 @@
 - Do not define ad-hoc `dict` return types for API responses — define a schema class.
 - Settings and deployment configuration live in `ConfigModel` / `Settings` in `app/runtime/config.py` using `pydantic-settings`.
 - Use `model_validator` for cross-field validation logic.
+- Every Pydantic model requires a Chinese multiline class docstring, every declared model field requires a Chinese `Field(description=...)`, and validators and explicit methods require Chinese multiline docstrings. Ordinary `#` comments and class-level `:param:` entries do not replace Schema field descriptions. Comment migration must preserve defaults, constraints, aliases, and serialization behavior.
+
+---
+
+## Comments and Structured Contracts
+
+- All comment prose must be Chinese. Every docstring uses multiline triple double quotes with opening and closing delimiters on separate lines.
+- Use `:param name:`, `:return:`, and `:raises ExceptionType:` for parameters, results, and exceptions, not Google-style `Args:` / `Returns:` sections.
+- Every dataclass requires class and per-field documentation: `:param:` for initialization inputs, `:ivar:` for non-initialization instance attributes, and `:cvar:` for class variables. Explicitly defined methods also require documentation.
+- Every Protocol requires documentation for its class, members, methods, and properties. Methods explain parameters, results, and applicable exceptions, side effects, and implementation constraints. Private types and test scaffolding are not exempt.
+- Module headers, ordinary classes and functions, special Pydantic members, ordinary comments, and review requirements follow [08 — Comments and Documentation Style](08-comment-styles.md); do not introduce local formats.
 
 ---
 
@@ -70,14 +81,14 @@ Within each group, sort alphabetically. Do not use wildcard imports (`from modul
 - `logger.exception(...)` records at ERROR level and includes the current traceback in console output by default. File and resource logs receive the formatted ERROR message through the usual routing. An explicit `exc_info` value follows standard-library logging semantics.
 
 ```python
-# Correct
+# 保留失败原因，便于定位外部调用问题
 try:
     result = self.do_work()
 except Exception as err:
     logger.error(f"Failed to do work: {str(err)}")
     return None
 
-# Wrong — swallowing silently
+# 错误示例：直接吞掉异常会掩盖失败原因
 try:
     result = self.do_work()
 except:
@@ -127,4 +138,4 @@ except:
 - Do not add noisy markers like `# change starts here`, `# important`, or `# this is a fix`.
 - Do not write comments that restate what the code already clearly says.
 
-*Last Updated: 2026-08-19*
+*Last Updated: 2026-10-17*
