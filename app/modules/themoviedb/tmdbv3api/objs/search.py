@@ -1,12 +1,10 @@
 from typing import Any
-
 from urllib.parse import quote
 
 from ..tmdb import TMDb
 
 
 class Search(TMDb):
-    """提供 TMDB 搜索接口的同步与异步封装。"""
     """提供电影、剧集、人物及其他实体的同步和异步搜索。"""
 
     _urls = {
