@@ -1,3 +1,7 @@
+"""
+向事件总线发送工作流执行事件。
+"""
+
 from app.runtime.events import eventmanager
 from app.schemas.types import ChainEventType
 from app.schemas.workflow import ActionContext, ActionParams
@@ -24,6 +28,11 @@ class SendEventAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """
+返回动作是否已标记为完成。
+
+        :return: 动作完成标志的当前值
+        """
         return self.done
 
     def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:

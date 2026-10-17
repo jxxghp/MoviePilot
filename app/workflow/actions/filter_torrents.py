@@ -1,3 +1,7 @@
+"""
+根据动作参数筛选工作流中的资源列表。
+"""
+
 from typing import List, Optional
 
 from pydantic import Field
@@ -38,7 +42,9 @@ class FilterTorrentsAction(BaseAction):
     }
 
     def __init__(self, action_id: str):
-        """初始化过滤后资源集合。"""
+        """
+        初始化过滤后资源集合。
+        """
         super().__init__(action_id)
         self._torrents = []
 
@@ -48,7 +54,9 @@ class FilterTorrentsAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        """返回资源过滤是否已完成。"""
+        """
+        返回资源过滤是否已完成。
+        """
         return self.done
 
     def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:

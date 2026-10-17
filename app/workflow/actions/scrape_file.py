@@ -1,3 +1,7 @@
+"""
+为工作流中的文件刮削媒体资料与图片。
+"""
+
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.storage import StorageChain
@@ -35,6 +39,11 @@ class ScrapeFileAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """
+返回文件刮削过程是否未记录错误。
+
+        :return: 未遇到刮削错误时为 True
+        """
         return not self._has_error
 
     def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:

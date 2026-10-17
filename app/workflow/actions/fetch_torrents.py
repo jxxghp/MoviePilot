@@ -1,3 +1,7 @@
+"""
+从站点搜索候选资源并写入工作流上下文。
+"""
+
 import random
 import time
 from typing import List, Optional, cast
@@ -39,7 +43,9 @@ class FetchTorrentsAction(BaseAction):
     }
 
     def __init__(self, action_id: str) -> None:
-        """为当前动作建立独立的搜索结果集合。"""
+        """
+        为当前动作建立独立的搜索结果集合。
+        """
         super().__init__(action_id)
         self._torrents: list[WorkflowContext] = []
 
@@ -49,7 +55,9 @@ class FetchTorrentsAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        """以动作完成状态报告执行结果。"""
+        """
+        以动作完成状态报告执行结果。
+        """
         return self.done
 
     def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
@@ -121,5 +129,7 @@ class FetchTorrentsAction(BaseAction):
 
     @staticmethod
     def _to_workflow_context(context: SearchContext) -> WorkflowContext:
-        """把领域搜索结果投影为工作流传输上下文。"""
+        """
+        把领域搜索结果投影为工作流传输上下文。
+        """
         return cast(WorkflowContext, WorkflowContext.model_validate(context.to_dict()))

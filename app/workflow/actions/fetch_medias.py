@@ -1,3 +1,7 @@
+"""
+从配置来源获取媒体列表并写入工作流上下文。
+"""
+
 from typing import List, Optional
 
 from pydantic import Field
@@ -120,6 +124,11 @@ class FetchMediasAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """
+返回媒体来源读取过程是否未记录错误。
+
+        :return: 未遇到读取错误时为 True
+        """
         return not self._has_error
 
     def __get_source(self, source: str):
