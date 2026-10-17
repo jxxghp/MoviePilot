@@ -320,7 +320,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         验证识别参数。
 
         :param meta: 标题解析元数据
-        :param tmdbid: TMDB ID
+        :param tmdbid: 显式指定的 TMDB 媒体标识；为空时需要可用的标题元数据
         :param media_source: 请求级识别数据源
         :return: 参数是否可用于TMDB识别
         """

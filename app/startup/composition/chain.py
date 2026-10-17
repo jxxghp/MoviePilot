@@ -79,7 +79,7 @@ _event_manager_factory: Callable[[], EventManager] = EventManager
 
 def execute_legacy_transfer_command(**kwargs: Any) -> Any:
     """
-    把旧 Chain ABI 延迟转入唯一 TransferChain durable command。
+    将旧 Chain 整理接口延迟转发到 TransferChain 的唯一持久化命令。
     """
     from app.chain.transfer.facade import TransferChain
 

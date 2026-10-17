@@ -74,7 +74,7 @@ def get_scoped_session() -> scoped_session:
     """
     获取线程局部的会话注册表，首次调用时创建。
 
-    :return: scoped_session
+    :return: 按线程保存同步会话的注册表；调用方使用 remove 释放当前线程会话
     """
     global _scoped_session
     if _scoped_session is None:
@@ -106,9 +106,9 @@ def get_scoped_session() -> scoped_session:
 # postgresql 模块、Alembic 迁移脚本）走的是直接导入，不受 __all__ 影响。
 def SessionFactory() -> Session:  # noqa: N802
     """
-    创建一个同步会话，引擎在首次调用时才建立。
+    创建一个同步数据库会话，引擎在首次调用时才建立。
 
-    :return: Session
+    :return: 新建会话；提交、回滚和关闭由调用方负责
     """
     return get_session_factory()()
 
@@ -117,16 +117,16 @@ def AsyncSessionFactory() -> AsyncSession:  # noqa: N802
     """
     创建一个异步会话，全局异步引擎在首次调用时才建立。
 
-    :return: AsyncSession
+    :return: 新建异步会话；提交、回滚和关闭由调用方负责
     """
     return get_async_session_factory()()
 
 
 def ScopedSession() -> Session:  # noqa: N802
     """
-    取当前线程的会话，引擎在首次调用时才建立。
+    取得当前线程绑定的同步会话，引擎在首次调用时才建立。
 
-    :return: Session
+    :return: 当前线程复用的同步会话；应通过会话注册表 remove 释放
     """
     return get_scoped_session()()
 
@@ -242,12 +242,11 @@ async def _acquire_fallback_slot() -> None:
 @asynccontextmanager
 async def async_session_scope() -> AsyncGenerator[AsyncSession, None]:
     """
-    获取异步数据库会话。
+    提供按当前事件循环选择连接池的异步会话作用域。
 
-    这是异步会话的唯一入口：池化与配额都在这里收口，调用方无需感知
-    当前运行在哪个事件循环上。
+    非主池回退连接先取得并发配额，退出时释放；会话自动关闭，不自动提交事务。
 
-    :return: AsyncSession
+    :yields: 本次作用域独占的异步会话
     """
     engine, pooled = _resolve_async_engine()
     if not pooled:
@@ -262,9 +261,9 @@ async def async_session_scope() -> AsyncGenerator[AsyncSession, None]:
 
 def get_db() -> Generator[Session, None, None]:
     """
-    获取数据库会话，用于WEB请求
+    为 HTTP 请求提供同步数据库会话，并在依赖退出时关闭。
 
-    :return: Session
+    :yields: 本次请求使用的同步会话；事务提交或回滚由调用方负责
     """
     db = None
     try:
@@ -277,9 +276,9 @@ def get_db() -> Generator[Session, None, None]:
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    获取异步数据库会话，用于WEB请求
+    为 HTTP 请求提供受连接池与并发配额管理的异步会话。
 
-    :return: AsyncSession
+    :yields: 本次请求使用的异步会话；依赖退出时自动关闭，不自动提交事务
     """
     async with async_session_scope() as session:
         yield session

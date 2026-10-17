@@ -99,7 +99,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
     @property
     def _install_file(self) -> Path:
         """
-        返回 Docker root worker 或本地 CLI 消费的安装意图文件路径。
+        返回 Docker 特权更新进程 或本地 CLI 消费的安装意图文件路径。
         """
         return self._root / "install.json"
 

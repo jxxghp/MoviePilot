@@ -397,7 +397,7 @@ class Jellyfin:
         而用户级 `Users/{user}/Items` 查询会折叠版本，与 Jellyfin 页面显示一致。
         仅在用户视图不可用或没有可识别媒体库时回退到 `Items/Counts`。
 
-        :return: MovieCount SeriesCount EpisodeCount
+        :return: 电影、剧集、单集及音乐数量统计；未配置服务或查询失败时返回空统计
         """
         if not self._host or not self._apikey:
             return _SchemaStatistic()

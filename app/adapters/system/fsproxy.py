@@ -64,6 +64,8 @@ class FileSystemProxy:
                  stall_timeout: Optional[float] = None):
         """
 
+        初始化文件系统代理状态，子进程在首次操作时按需启动。
+
         :param timeout: 单次快操作的超时秒数，None 表示实时跟随系统设置
         :param stall_timeout: 长耗时操作两次进度上报之间的最长间隔秒数，
                               None 表示实时跟随系统设置
@@ -74,9 +76,6 @@ class FileSystemProxy:
         self._selector: Optional[selectors.BaseSelector] = None
         self._lock = threading.Lock()
 
-    # ------------------------------------------------------------------ #
-    # 对外操作
-    # ------------------------------------------------------------------ #
 
     def stat(self, path: Path) -> Dict[str, Any]:
         """
@@ -124,7 +123,7 @@ class FileSystemProxy:
 
         :param path: 目标目录
         :param max_check: 文件数上限，超过即提前结束
-        :return: {"file_count", "dir_count"}
+        :return: 文件与目录数量字典，分别使用 file_count 和 dir_count 键
         """
         return self._call("count_entries", path=str(path), max_check=max_check)
 
@@ -264,9 +263,6 @@ class FileSystemProxy:
         with self._lock:
             self._shutdown()
 
-    # ------------------------------------------------------------------ #
-    # 内部实现
-    # ------------------------------------------------------------------ #
 
     @property
     def _timeout(self) -> float:

@@ -19,7 +19,7 @@ class Workflow(Base):
     """
     工作流表
     """
-    # ID
+    # 工作流记录的数据库主键。
     id = get_id_column()
     # 名称
     name: Mapped[str] = mapped_column(String, index=True, nullable=False)

@@ -98,9 +98,9 @@ class TransferHistory(Base):
     sample_rate: Mapped[Optional[int]] = mapped_column(Integer)
     # 实际码率（bps）
     bitrate: Mapped[Optional[int]] = mapped_column(Integer)
-    # Sxx
+    # 已整理媒体的季范围文本，使用 Sxx 格式。
     seasons: Mapped[Optional[str]] = mapped_column(String)
-    # Exx
+    # 已整理媒体的集范围文本，使用 Exx 格式。
     episodes: Mapped[Optional[str]] = mapped_column(String)
     # 海报
     image: Mapped[Optional[str]] = mapped_column(String)

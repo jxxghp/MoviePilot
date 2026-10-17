@@ -41,9 +41,9 @@ class DownloadHistory(Base):
     media_id: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
     music_type: Mapped[Optional[str]] = mapped_column(String)
-    # Sxx
+    # 下载资源的季范围文本，使用 Sxx 格式。
     seasons: Mapped[Optional[str]] = mapped_column(String)
-    # Exx
+    # 下载资源的集范围文本，使用 Exx 格式。
     episodes: Mapped[Optional[str]] = mapped_column(String)
     # 背景图
     image: Mapped[Optional[str]] = mapped_column(String)

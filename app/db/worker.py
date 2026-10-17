@@ -150,7 +150,7 @@ class DatabaseWorker:
             self._record_depth()
             raise
 
-        # 不能直接 wrap native Future：其结果转发可能先于完成记账，晚注册回调还会立即执行。
+        # 不能直接包装原始 Future：其结果转发可能先于完成记账，晚注册回调还会立即执行。
         wrapped: asyncio.Future[object] = loop.create_future()
         with self._state_lock:
             self._futures[future] = (wrapped, item)

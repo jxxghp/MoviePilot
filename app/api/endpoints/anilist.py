@@ -41,7 +41,7 @@ async def anilist_trending(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> list[_SchemaMediaInfo]:
     """
-    查询 AniList TRENDING NOW 榜单
+    查询 AniList 当前趋势榜单。
     """
     medias = await AniListChain().async_trending(page=page, count=count)
     return _serialize_medias(medias)
@@ -58,7 +58,7 @@ async def anilist_popular_this_season(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> list[_SchemaMediaInfo]:
     """
-    查询 AniList POPULAR THIS SEASON 榜单
+    查询 AniList 本季热门榜单。
     """
     medias = await AniListChain().async_popular_this_season(page=page, count=count)
     return _serialize_medias(medias)

@@ -179,7 +179,7 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
 
 def build_host_module_registry() -> CapabilityRegistry:
     """
-    从现有物理模块包构建 import-free Host Module Registry。
+    扫描现有物理模块包的声明，构建无需导入实现的宿主模块注册表。
     """
     registry = CapabilityRegistry.discover(
         (_MODULE_ROOT,),

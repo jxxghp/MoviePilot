@@ -392,7 +392,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         获取插件数据
         :param key: 数据key
-        :param plugin_id: plugin_id
+        :param plugin_id: 数据所属插件标识；为空时使用当前插件类名
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
@@ -416,7 +416,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         删除插件数据
         :param key: 数据key
-        :param plugin_id: plugin_id
+        :param plugin_id: 数据所属插件标识；为空时使用当前插件类名
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__

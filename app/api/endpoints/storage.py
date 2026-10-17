@@ -207,7 +207,7 @@ def list_files(
     :param fileitem: 文件项
     :param sort: 排序方式，name:按名称排序，time:按修改时间排序
     :param keyword: 通配符过滤，支持 * 和 ?，如 *.mkv、movie?.*
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     :return: 所有目录和文件
     """
     return _list_files(fileitem=fileitem, sort=sort, keyword=keyword)
@@ -265,7 +265,7 @@ def mkdir(
 
     :param fileitem: 文件项
     :param name: 目录名称
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     if not name:
         return _SchemaResponse(success=False)
@@ -281,7 +281,7 @@ def delete(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_acti
     删除文件或目录
 
     :param fileitem: 文件项
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     result = StorageChain().delete_file(fileitem)
     if result:
@@ -307,7 +307,7 @@ def download(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_ac
     下载文件或目录
 
     :param fileitem: 文件项
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     # 临时目录
     tmp_file = StorageChain().download_file(fileitem)
@@ -330,10 +330,10 @@ def download(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_ac
 )
 def image(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)) -> Any:
     """
-    下载文件或目录
+    读取存储中的图片并作为 JPEG 响应返回。
 
     :param fileitem: 文件项
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     # 临时目录
     tmp_file = StorageChain().download_file(fileitem)
@@ -355,7 +355,7 @@ def rename(
     :param fileitem: 文件项
     :param new_name: 新名称
     :param recursive: 是否递归修改
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     if not new_name:
         return _SchemaResponse(success=False, message="新名称为空")

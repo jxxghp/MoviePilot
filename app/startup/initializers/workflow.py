@@ -8,14 +8,14 @@ from app.workflow import WorkflowManager
 
 def configure_workflow_ports() -> None:
     """
-    在工作流生命周期启动阶段登记 concrete manager provider。
+    在工作流启动阶段登记具体管理器的创建函数。
     """
     configure_workflow_runtime(lambda: WorkflowManager())
 
 
 def reset_workflow_ports() -> None:
     """
-    清除工作流 manager provider，支持重复 lifespan。
+    清除工作流管理器创建函数，以支持重复启动和关闭。
     """
     reset_workflow_runtime()
 

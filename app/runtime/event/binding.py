@@ -92,7 +92,7 @@ class EventBindingResolver:
         ``func.<locals>.handler``，与装饰器包装方法 ``SiteStatistic.<locals>.
         wrapper`` 无法靠限定名区分，需按调用约定兜底：签名首参为 self/cls
         才视为类方法声明。模块卸载后残留的类方法一旦被 unbound 直调，会把
-        event 吞进 self 触发 missing event TypeError，因此必须跳过等待重载自愈。
+        事件对象被当作 self 接收后会触发缺少 event 参数的 TypeError，因此先跳过并等待重载恢复。
         """
         parts = handler.__qualname__.split(".")
         if len(parts) < 2:

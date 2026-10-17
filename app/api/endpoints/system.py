@@ -833,7 +833,7 @@ async def _get_logging_impl(
 
     async def event_generator():
         """
-        只为原始日志行添加 SSE data framing。
+        仅将原始日志行包装为 SSE 的 data 消息。
         """
         try:
             async for line in source:

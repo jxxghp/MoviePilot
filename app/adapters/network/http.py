@@ -476,6 +476,7 @@ class RequestUtils:
         accept_type: str = None,
     ):
         """
+        配置同步 HTTP 客户端，并按需创建由本实例管理的持久会话。
 
         :param headers: 请求头部信息
         :param ua: User-Agent字符串
@@ -1238,6 +1239,7 @@ class AsyncRequestUtils:
         keepalive_expiry: int = _DEFAULT_KEEPALIVE_EXPIRY,
     ):
         """
+        配置异步 HTTP 客户端选项，外部传入的客户端由调用方管理。
 
         :param headers: 请求头部信息
         :param ua: User-Agent字符串

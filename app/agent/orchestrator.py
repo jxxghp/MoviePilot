@@ -2283,7 +2283,6 @@ class MoviePilotAgent:
                 *([SteeringMiddleware()] if self._steering_inbox.running else []),
                 output_middleware,
                 *invocation_middlewares,
-                # Skills
                 skills_middleware,
                 # Jobs 任务管理
                 JobsMiddleware(

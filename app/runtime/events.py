@@ -81,6 +81,8 @@ class Event:
                  priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
                  correlation_id: Optional[str] = None):
         """
+        归一化事件类型并创建携带关联标识的事件对象。
+
         :param event_type: 事件的类型，支持 EventType 或 ChainEventType
         :param event_data: 可选，事件携带的数据，默认为空字典
         :param priority: 可选，事件的优先级，默认为 10

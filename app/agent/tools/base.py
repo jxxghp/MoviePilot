@@ -310,7 +310,7 @@ _blocking_executor_accepting = True
 
 def _discard_blocking_future(future: ConcurrentFuture[Any]) -> None:
     """
-    在同步调用到达终态后撤销 Future 与 retiring executor owner。
+    在同步调用结束后撤销 Future 登记，并释放不再持有任务的退役执行器记录。
     """
     with _blocking_executor_lock:
         executor = _blocking_futures.pop(future, None)

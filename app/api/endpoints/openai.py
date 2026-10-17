@@ -276,7 +276,7 @@ def _get_collecting_agent_type() -> type:
 
 def _sse_payload(data: dict) -> str:
     """
-    保留旧测试入口并委托独立 OpenAI SSE wire mapper。
+    保留旧测试入口并委托独立的 OpenAI SSE 协议转换器。
     """
     return encode_data_event(data)
 
@@ -414,7 +414,7 @@ async def _stream_response(
 
 def _is_manager_unavailable(error: BaseException) -> bool:
     """
-    识别 manager acceptance gate 的稳定错误，不导入完整编排模块。
+    识别管理器请求接纳检查的稳定错误，不导入完整编排模块。
     """
     return getattr(error, "code", None) == "agent_manager_unavailable"
 

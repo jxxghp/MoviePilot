@@ -457,7 +457,7 @@ def query_name(
         if media_path:
             new_name = media_path.name
         else:
-            # fallback
+            # 模板未提供媒体根目录时，沿用已有父目录层级推导名称。
             parents = Path(new_path).parents
             if len(parents) > 2:
                 new_name = parents[1].name

@@ -65,7 +65,7 @@ def _materialize_entrypoint(capability_id: str) -> Any:
 
 def get_agent_manager() -> Any:
     """
-    返回 canonical Agent Manager；关闭门禁生效后稳定拒绝首用。
+    返回标准 Agent 管理器；关闭门禁生效后拒绝首次初始化。
     """
     return _materialize_entrypoint(AGENT_MANAGER_CAPABILITY_ID)
 
@@ -111,7 +111,7 @@ async def activate_agent_service(*, retry: bool = False) -> Any | None:
 
 def get_running_agent_manager() -> Any | None:
     """
-    只读返回 RUNNING Agent Service；未构建 Runtime 时不触发声明发现。
+    只读返回处于 RUNNING 状态的 Agent 服务；未构建运行时时不触发声明发现。
     """
     with _runtime_lock:
         runtime = _agent_runtime

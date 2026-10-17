@@ -790,7 +790,7 @@ async def _initialize_modules() -> HostRuntime:
     )
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     configure_security_access()
-    # DoH
+    # 初始化加密 DNS 解析能力。
     configure_doh_composition()
     # 站点管理
     sites_helper = SitesHelper()

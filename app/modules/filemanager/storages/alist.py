@@ -124,7 +124,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         获取API URL。
 
         :param path: API路径
-        :return: API URL
+        :return: 基础地址与接口路径组合后的完整请求地址
         """
         return UrlUtils.adapt_request_url(self.__get_base_url, path)
 

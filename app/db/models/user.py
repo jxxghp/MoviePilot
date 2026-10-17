@@ -18,7 +18,7 @@ class User(Base):
     用户表
     """
 
-    # ID
+    # 用户记录的数据库主键。
     id = get_id_column()
     # 用户名，唯一值
     name: Mapped[str] = mapped_column(String, nullable=False)

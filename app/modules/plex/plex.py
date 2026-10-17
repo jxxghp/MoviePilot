@@ -728,7 +728,7 @@ class Plex:
         按 Plex 条目实际具备的字段构造媒体信息，兼容艺人、专辑和曲目。
 
         :param item: Plex媒体项目
-        :return: MediaServerItem
+        :return: 标准媒体条目，包含播放状态和路径；输入为空时返回 None
         """
         if not item:
             return None

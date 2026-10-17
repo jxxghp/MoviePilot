@@ -1,5 +1,5 @@
 """
-Agent canonical entrypoint 的 Capability Runtime 适配器。
+将 Agent 标准入口接入能力运行时的适配器。
 """
 
 from __future__ import annotations
@@ -234,7 +234,7 @@ def build_agent_capability_registry(
     roots: Iterable[Path | str] | None = None,
 ) -> CapabilityRegistry:
     """
-    发现 data-only Agent manifests，不导入编排器、Provider 或工具实现。
+    发现只包含声明数据的 Agent 能力清单，不导入编排器、提供方或工具实现。
     """
     registry = CapabilityRegistry.discover(
         tuple(roots) if roots is not None else (_DEFAULT_CAPABILITY_ROOT,),

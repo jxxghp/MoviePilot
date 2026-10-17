@@ -114,7 +114,7 @@ _managed_resource_runtime: Optional[ManagedResourceRuntime] = None
 
 def configure_managed_resource_runtime(runtime: ManagedResourceRuntime) -> None:
     """
-    由启动组合层注入唯一的 Managed Resource Runtime。
+    由启动组合层注入唯一的托管资源运行时。
     """
     if runtime is None:
         raise ValueError("Managed Resource Runtime 不能为空")

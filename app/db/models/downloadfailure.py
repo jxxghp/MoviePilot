@@ -30,9 +30,9 @@ class DownloadFailure(Base):
     # 媒体数据源与原生ID
     media_source: Mapped[Optional[str]] = mapped_column(String)
     media_id: Mapped[Optional[str]] = mapped_column(String)
-    # Sxx
+    # 失败资源的季范围文本，使用 Sxx 格式。
     seasons: Mapped[Optional[str]] = mapped_column(String)
-    # Exx
+    # 失败资源的集范围文本，使用 Exx 格式。
     episodes: Mapped[Optional[str]] = mapped_column(String)
     # 站点ID
     site: Mapped[Optional[int]] = mapped_column(Integer)

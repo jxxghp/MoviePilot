@@ -39,7 +39,7 @@ class PassKey(Base):
     用户PassKey凭证表
     """
 
-    # ID
+    # 本地凭证记录的数据库主键。
     id = get_id_column()
     # 用户ID
     user_id: Mapped[int] = mapped_column(

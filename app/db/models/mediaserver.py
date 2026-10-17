@@ -25,7 +25,7 @@ class MediaServerItem(Base):
     server: Mapped[Optional[str]] = mapped_column(String)
     # 媒体库ID
     library: Mapped[Optional[str]] = mapped_column(String)
-    # ID
+    # 媒体服务器分配的条目标识。
     item_id: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 类型
     item_type: Mapped[Optional[str]] = mapped_column(String)

@@ -265,11 +265,16 @@ def retry(
     logger: Any = None,
 ) -> Callable[[Callable[_Params, _Result]], Callable[_Params, _Result]]:
     """
-    :param ExceptionToCheck: 需要捕获的异常
-    :param tries: 重试次数
-    :param delay: 延迟时间
-    :param backoff: 延迟倍数
-    :param logger: 日志对象
+    为同步或异步函数提供按异常类型筛选的退避重试装饰器。
+
+    最后一次尝试的异常直接向上传播；同步函数阻塞等待，异步函数使用异步等待。
+
+    :param ExceptionToCheck: 允许重试的异常类型或类型元组；ImmediateException 始终直接传播
+    :param tries: 总尝试次数，包含首次调用；小于等于 1 时仍调用一次
+    :param delay: 首次失败后的等待秒数，默认 3 秒
+    :param backoff: 每次重试后等待时间的乘数，默认 2
+    :param logger: 可选日志对象；未提供时将重试提示写入标准输出
+    :return: 保留原调用参数和结果语义的装饰器
     """
 
     def deco_retry(f: Callable[_Params, _Result]) -> Callable[_Params, _Result]:

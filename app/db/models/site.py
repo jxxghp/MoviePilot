@@ -29,13 +29,13 @@ class Site(Base):
     pri: Mapped[Optional[int]] = mapped_column(Integer, default=1)
     # RSS地址，未启用
     rss: Mapped[Optional[str]] = mapped_column(String)
-    # Cookie
+    # 站点认证请求使用的 Cookie 文本。
     cookie: Mapped[Optional[str]] = mapped_column(String)
     # 站点请求使用的浏览器标识。
     ua: Mapped[Optional[str]] = mapped_column(String)
-    # ApiKey
+    # 站点接口认证使用的 API 密钥。
     apikey: Mapped[Optional[str]] = mapped_column(String)
-    # Token
+    # 站点接口认证使用的令牌。
     token: Mapped[Optional[str]] = mapped_column(String)
     # 是否使用代理 0-否，1-是
     proxy: Mapped[Optional[int]] = mapped_column(Integer)

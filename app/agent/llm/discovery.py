@@ -600,7 +600,7 @@ class _ProviderDiscovery:
         按解析后的凭证创建 Bedrock boto3 客户端，Bearer 方式注入 Authorization 头
 
         :param service_name: boto3 服务名（bedrock 或 bedrock-runtime）
-        :param region: AWS Region
+        :param region: AWS 服务区域标识，如 us-east-1
         :param credentials: `_parse_bedrock_credentials` 的解析结果
         :param base_url: 用户配置的 Base URL，非标准端点（PrivateLink/FIPS 等）时透传给 boto3
         :param use_proxy: 是否使用系统代理

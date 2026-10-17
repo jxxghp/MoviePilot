@@ -485,11 +485,11 @@ class StreamingHandler:
 
     async def _stop_streaming(self) -> Tuple[bool, str]:
         """
-        停止流式输出。执行最后一次刷新确保所有内容都已发送。
-        :return: (all_sent, final_text)
-                 all_sent: 是否已经通过流式编辑将最终完整内容发送给了用户
-                           （True 表示调用方无需再额外发送消息）
-                 final_text: 流式发送的完整文本内容（用于调用方保存消息记录）
+        停止流式输出，完成最后刷新并清理本轮发送状态。
+
+        成功交付后清空缓冲区；未交付的当前消息片段保留给常规发送回退，已发送的前段不再重复。
+
+        :return: 是否已完整交付及最终文本；完整交付时调用方无需再发送，未完整交付时文本为空
         """
         if not self._streaming_enabled:
             return False, ""

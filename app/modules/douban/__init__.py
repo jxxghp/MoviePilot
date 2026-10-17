@@ -1716,7 +1716,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         处理IMDBID查询结果。
 
         :param result: IMDBID查询返回的结果
-        :param imdbid: IMDB ID
+        :param imdbid: 用于关联查询结果的 IMDb 媒体标识
         :return: 处理后的结果，None表示无结果
         """
         if result:

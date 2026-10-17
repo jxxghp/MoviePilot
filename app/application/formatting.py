@@ -111,11 +111,13 @@ class FormatParser(object):
     def __init__(self, eformat: str, details: Optional[str] = None, part: Optional[str] = None,
                  offset: Optional[str] = None, key: Optional[str] = "ep") -> None:
         """
-        :params eformat: 格式化字符串
-        :params details: 格式化详情
-        :params part: 分集
-        :params offset: 偏移量 -10/EP*2
-        :prams key: EP关键字
+        编译剧集定位模板并解析集数范围、分段和偏移规则。
+
+        :param eformat: 用于识别文件名中集数位置的模板；为空时不预编译
+        :param details: 限定集数或范围，如 1、1,10 或 1-10；为空时不限定
+        :param part: 指定分段标识；为空时不指定
+        :param offset: 集数偏移表达式，如 -10 或 EP*2；为空时保留原集数
+        :param key: 模板中的集数关键字，默认 ep
         """
         self._format = eformat
         self._start_ep: Optional[Union[int, str]] = None

@@ -1,5 +1,5 @@
 """
-AMLL capability manifest 使用的惰性模块入口。
+AMLL 能力清单使用的惰性模块入口。
 """
 
 from importlib import import_module

@@ -229,7 +229,7 @@ def _add_action_argument_rules(action: str, schema: dict[str, Any]) -> None:
 
 def _build_arguments_schema(action: str, spec: Any) -> dict[str, Any]:
     """
-    把一个 action 的脚本合同转换为 MCP arguments schema。
+    把指定 action 的脚本参数契约转换为 MCP 参数结构。
     """
     contract = spec.to_dict(action)
     properties = {
