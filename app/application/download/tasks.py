@@ -1,4 +1,6 @@
-"""下载任务查询与控制应用服务。"""
+"""
+下载任务查询与控制应用服务。
+"""
 
 from typing import Any, Callable, List, Optional
 
@@ -10,7 +12,9 @@ from app.schemas.types import TorrentStatus
 
 
 class DownloadTaskService:
-    """通过下载器和历史端口查询、启停及删除下载任务。"""
+    """
+    通过下载器和历史端口查询、启停及删除下载任务。
+    """
 
     def __init__(
         self,
@@ -23,7 +27,9 @@ class DownloadTaskService:
         stop_torrents: Callable[..., bool],
         remove_torrents: Callable[..., bool],
     ) -> None:
-        """注入下载器操作和历史读取端口。"""
+        """
+        注入下载器操作和历史读取端口。
+        """
         self._list_torrents = list_torrents
         self._get_history_by_hashes = get_history_by_hashes
         self._start_torrents = start_torrents
@@ -31,7 +37,9 @@ class DownloadTaskService:
         self._remove_torrents = remove_torrents
 
     def downloading(self, name: Optional[str] = None) -> List[DownloaderTorrent]:
-        """查询下载中任务，并附加对应下载历史的媒体与用户信息。"""
+        """
+        查询下载中任务，并附加对应下载历史的媒体与用户信息。
+        """
         torrents = self._list_torrents(
             downloader=name,
             status=TorrentStatus.DOWNLOADING,
@@ -67,7 +75,9 @@ class DownloadTaskService:
         operation: str,
         name: Optional[str] = None,
     ) -> bool:
-        """按 start/stop 操作控制单个下载任务。"""
+        """
+        按 start/stop 操作控制单个下载任务。
+        """
         if operation == "start":
             return self._start_torrents(hashs=[hash_str], downloader=name)
         if operation == "stop":
@@ -79,12 +89,16 @@ class DownloadTaskService:
         hash_str: str,
         name: Optional[str] = None,
     ) -> bool:
-        """删除单个下载任务。"""
+        """
+        删除单个下载任务。
+        """
         return self._remove_torrents(hashs=[hash_str], downloader=name)
 
 
 class DownloadTaskMutationService:
-    """执行单个下载任务的受控高级修改。"""
+    """
+    执行单个下载任务的受控高级修改。
+    """
 
     def __init__(
         self,
@@ -94,7 +108,9 @@ class DownloadTaskMutationService:
         set_downloading: Callable[..., bool],
         update_torrent: Callable[..., dict[str, bool]],
     ) -> None:
-        """注入下载器查询和修改端口。"""
+        """
+        注入下载器查询和修改端口。
+        """
         self._list_torrents = list_torrents
         self._set_tags = set_tags
         self._set_downloading = set_downloading
@@ -102,14 +118,18 @@ class DownloadTaskMutationService:
 
     @staticmethod
     def _normalize_list(values: Optional[list[str]]) -> Optional[list[str]]:
-        """移除字符串列表中的空项。"""
+        """
+        移除字符串列表中的空项。
+        """
         if values is None:
             return None
         return [str(value).strip() for value in values if str(value).strip()]
 
     @staticmethod
     def _result(operation: str, success: bool, message: str) -> dict[str, Any]:
-        """构造一个稳定的子操作响应。"""
+        """
+        构造一个稳定的子操作响应。
+        """
         return {
             "operation": operation,
             "success": success,
@@ -131,7 +151,9 @@ class DownloadTaskMutationService:
         ratio_limit: Optional[float] = None,
         seeding_time_limit: Optional[int] = None,
     ) -> dict[str, Any]:
-        """校验并执行启停、标签、限速、Tracker 与保存位置修改。"""
+        """
+        校验并执行启停、标签、限速、Tracker 与保存位置修改。
+        """
         validate_torrent_hash(hash_value)
         if action not in {None, "start", "stop"}:
             raise ValueError("action 只支持 start 或 stop")
