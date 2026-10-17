@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""AnySearch CLI - Unified search client for AnySearch API."""
+"""
+通过 AnySearch API 执行搜索、目录查询和网页正文提取。
+"""
 
 import argparse
 import io
@@ -17,14 +19,11 @@ ENDPOINT = "https://api.anysearch.com/mcp"
 
 
 def _load_env():
-    """Load API keys from .env files near the skill.
+    """
+    从 Skill 附近的 .env 文件加载 API 密钥。
 
-    The documented priority is:
-    --api_key > .env file > environment variable > anonymous.
-
-    Use utf-8-sig so .env files saved by Windows Notepad with a BOM are parsed
-    correctly. The .env value intentionally overrides an existing environment
-    variable to match the documented priority order.
+    有效优先级为命令行 --api_key、.env、环境变量，最后是匿名访问。
+    使用 utf-8-sig 读取，以兼容带 BOM 的文件；.env 值按此顺序覆盖环境变量。
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     for env_path in [os.path.join(script_dir, ".env"), os.path.join(script_dir, "..", ".env")]:
@@ -111,7 +110,11 @@ def _parse_json_list(value: str) -> list:
 
 
 def cmd_search(args):
-    """Execute search (general or vertical)."""
+    """
+    执行通用搜索或指定领域的垂直搜索。
+
+    :param args: 命令行解析出的查询、领域、结果上限和 API 密钥
+    """
     arguments = {"query": args.query}
 
     if args.domain:
@@ -132,7 +135,11 @@ def cmd_search(args):
 
 
 def cmd_get_sub_domains(args):
-    """List available sub_domains for given domain(s)."""
+    """
+    列出指定领域可用的子领域。
+
+    :param args: 命令行指定的单个或多个领域及 API 密钥
+    """
     arguments = {}
     if args.domains:
         arguments["domains"] = _parse_json_list(args.domains)
@@ -146,7 +153,11 @@ def cmd_get_sub_domains(args):
 
 
 def cmd_extract(args):
-    """Fetch and extract full page content from a URL."""
+    """
+    获取指定 URL 并提取完整网页正文。
+
+    :param args: 命令行传入的页面地址和 API 密钥
+    """
     url = args.url or getattr(args, "url_opt", None)
     if not url:
         print("Error: url is required", file=sys.stderr)
@@ -238,7 +249,11 @@ def _repair_json_object(s: str) -> dict:
 
 
 def cmd_batch_search(args):
-    """Execute multiple search queries in parallel (2-5 queries)."""
+    """
+    批量提交一至五个搜索查询。
+
+    :param args: 命令行提供的查询列表和 API 密钥
+    """
     query_items = getattr(args, "query_items", None) or []
     raw = args.queries or getattr(args, "queries_opt", None)
 
@@ -278,6 +293,11 @@ def cmd_batch_search(args):
 
 # BEGIN GENERATED:DOC_SPEC
 def _render_doc():
+    """
+    根据共享模板渲染当前语言的接口说明。
+
+    :return: 已替换语言和领域占位符的说明文本
+    """
     import json as _json
     _dir = os.path.dirname(os.path.abspath(__file__))
     _shared = os.path.join(_dir, "shared")
@@ -294,10 +314,20 @@ def _render_doc():
 
 
 def cmd_doc(args):
+    """
+    输出当前语言的工具接口说明。
+
+    :param args: 解析后的命令行参数，此命令无需额外选项
+    """
     print(_render_doc())
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """
+    创建搜索、提取和接口说明命令的参数解析器。
+
+    :return: 配置完成的命令行解析器
+    """
     parser = argparse.ArgumentParser(
         prog="anysearch",
         description=(
@@ -458,6 +488,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main():
+    """
+    解析命令行并执行请求；未指定子命令时输出接口说明。
+    """
     parser = build_parser()
     args = parser.parse_args()
     if args.command is None:
