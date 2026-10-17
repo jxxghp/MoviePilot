@@ -1,7 +1,7 @@
 {
   "disposition_counts": {
     "alternate-auth-duplicate": 11,
-    "consolidated": 71,
+    "consolidated": 73,
     "gateway": 228,
     "provider-skill": 12,
     "stream_or_binary": 13,
@@ -2333,7 +2333,7 @@
   ],
   "gateway_operation_count": 231,
   "matched_gateway_http_route_count": 228,
-  "openapi_operation_count": 429,
+  "openapi_operation_count": 431,
   "operations": [
     {
       "disposition": "consolidated",
@@ -2866,6 +2866,18 @@
       "method": "GET",
       "operation_ids": [],
       "owner": "moviepilot-api",
+      "path": "/api/v1/douban/interests/{doubanid}/{type_name}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣短评",
+      "tags": [
+        "douban"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
       "path": "/api/v1/douban/person/credits/{person_id}",
       "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
       "summary": "人物参演作品",
@@ -2893,6 +2905,18 @@
       "path": "/api/v1/douban/recommend/{doubanid}/{type_name}",
       "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
       "summary": "豆瓣推荐电影/电视剧",
+      "tags": [
+        "douban"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/douban/reviews/{doubanid}/{type_name}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣影评",
       "tags": [
         "douban"
       ]

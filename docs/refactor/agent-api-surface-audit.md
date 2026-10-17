@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **429**
+- OpenAPI HTTP operations: **431**
 - Stable `moviepilot_api` operations: **231**
 - Exact HTTP routes used by the gateway: **229**
 - OpenAPI routes matched directly by the gateway: **228**
@@ -18,7 +18,7 @@
 | disposition | count | meaning |
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
-| `consolidated` | 71 | Source/UI route represented by a stable aggregate Agent operation. |
+| `consolidated` | 73 | Source/UI route represented by a stable aggregate Agent operation. |
 | `gateway` | 228 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 13 | Streaming or binary response owned by a direct client transport. |
@@ -320,9 +320,11 @@ Plugin ratings include this installation's own rating and require the same admin
 | `GET` | `/api/v1/discover/tmdb_movies` | discover | `consolidated` | moviepilot-api | 探索TMDB电影 |
 | `GET` | `/api/v1/discover/tmdb_tvs` | discover | `consolidated` | moviepilot-api | 探索TMDB剧集 |
 | `GET` | `/api/v1/douban/credits/{doubanid}/{type_name}` | douban | `consolidated` | moviepilot-api | 豆瓣演员阵容 |
+| `GET` | `/api/v1/douban/interests/{doubanid}/{type_name}` | douban | `consolidated` | moviepilot-api | 豆瓣短评 |
 | `GET` | `/api/v1/douban/person/credits/{person_id}` | douban | `consolidated` | moviepilot-api | 人物参演作品 |
 | `GET` | `/api/v1/douban/person/{person_id}` | douban | `consolidated` | moviepilot-api | 人物详情 |
 | `GET` | `/api/v1/douban/recommend/{doubanid}/{type_name}` | douban | `consolidated` | moviepilot-api | 豆瓣推荐电影/电视剧 |
+| `GET` | `/api/v1/douban/reviews/{doubanid}/{type_name}` | douban | `consolidated` | moviepilot-api | 豆瓣影评 |
 | `GET` | `/api/v1/douban/{doubanid}` | douban | `consolidated` | moviepilot-api | 查询豆瓣详情 |
 | `GET` | `/api/v1/download/` | download | `gateway` | download.tasks.active | 正在下载 |
 | `POST` | `/api/v1/download/` | download | `consolidated` | download.add | 添加下载（含媒体信息） |
