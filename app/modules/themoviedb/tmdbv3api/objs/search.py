@@ -1,9 +1,12 @@
+from typing import Any
+
 from urllib.parse import quote
 
 from ..tmdb import TMDb
 
 
 class Search(TMDb):
+    """提供 TMDB 搜索接口的同步与异步封装。"""
     """提供电影、剧集、人物及其他实体的同步和异步搜索。"""
 
     _urls = {
@@ -16,7 +19,7 @@ class Search(TMDb):
         "tv_shows": "/search/tv",
     }
 
-    def companies(self, term, page=1):
+    def companies(self, term: str, page: int=1) -> Any:
         """
         Search for companies.
         :param term: str
@@ -29,7 +32,7 @@ class Search(TMDb):
             key="results"
         )
 
-    def collections(self, term, page=1):
+    def collections(self, term: str, page: int=1) -> Any:
         """
         Search for collections.
         :param term: str
@@ -42,7 +45,7 @@ class Search(TMDb):
             key="results"
         )
 
-    def keywords(self, term, page=1):
+    def keywords(self, term: str, page: int=1) -> Any:
         """
         Search for keywords.
         :param term: str
@@ -55,7 +58,7 @@ class Search(TMDb):
             key="results"
         )
 
-    def movies(self, term, adult=None, region=None, year=None, release_year=None, page=1):
+    def movies(self, term: str, adult: bool | None=None, region: str | None=None, year: int | None=None, release_year: int | None=None, page: int=1) -> Any:
         """
         Search for movies.
         :param term: str
@@ -81,7 +84,7 @@ class Search(TMDb):
             key="results"
         )
 
-    def multi(self, term, adult=None, region=None, page=1):
+    def multi(self, term: str, adult: bool | None=None, region: str | None=None, page: int=1) -> Any:
         """
         Search multiple models in a single request.
         Multi search currently supports searching for movies, tv shows and people in a single request.
@@ -102,7 +105,7 @@ class Search(TMDb):
             key="results"
         )
 
-    def people(self, term, adult=None, region=None, page=1):
+    def people(self, term: str, adult: bool | None=None, region: str | None=None, page: int=1) -> Any:
         """
         Search for people.
         :param term: str
@@ -122,7 +125,7 @@ class Search(TMDb):
             key="results"
         )
 
-    def tv_shows(self, term, adult=None, release_year=None, page=1):
+    def tv_shows(self, term: str, adult: bool | None=None, release_year: int | None=None, page: int=1) -> Any:
         """
         Search for a TV show.
         :param term: str
@@ -143,7 +146,7 @@ class Search(TMDb):
         )
 
     # 异步版本方法
-    async def async_companies(self, term, page=1):
+    async def async_companies(self, term: str, page: int=1) -> Any:
         """
         Search for companies.（异步版本）
         :param term: str
@@ -156,7 +159,7 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_collections(self, term, page=1):
+    async def async_collections(self, term: str, page: int=1) -> Any:
         """
         Search for collections.（异步版本）
         :param term: str
@@ -169,7 +172,7 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_keywords(self, term, page=1):
+    async def async_keywords(self, term: str, page: int=1) -> Any:
         """
         Search for keywords.（异步版本）
         :param term: str
@@ -182,7 +185,7 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_people(self, term, adult=None, region=None, page=1):
+    async def async_people(self, term: str, adult: bool | None=None, region: str | None=None, page: int=1) -> Any:
         """
         Search for people.（异步版本）
         :param term: str
@@ -202,7 +205,7 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_multi(self, term, adult=None, region=None, page=1):
+    async def async_multi(self, term: str, adult: bool | None=None, region: str | None=None, page: int=1) -> Any:
         """
         Search multiple models in a single request.（异步版本）
         Multi search currently supports searching for movies, tv shows and people in a single request.
@@ -223,7 +226,7 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_movies(self, term, adult=None, region=None, year=None, release_year=None, page=1):
+    async def async_movies(self, term: str, adult: bool | None=None, region: str | None=None, year: int | None=None, release_year: int | None=None, page: int=1) -> Any:
         """
         Search for movies.（异步版本）
         :param term: str
@@ -250,7 +253,7 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_tv_shows(self, term, adult=None, release_year=None, page=1):
+    async def async_tv_shows(self, term: str, adult: bool | None=None, release_year: int | None=None, page: int=1) -> Any:
         """
         Search for a TV show.（异步版本）
         :param term: str
