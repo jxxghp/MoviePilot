@@ -24,14 +24,14 @@ class SearchSourcePage(BaseModel):  # type: ignore[misc]
     error: Optional[str] = None
 
 
-class SearchLastContextData(BaseModel):
+class SearchLastContextData(BaseModel):  # type: ignore[misc]
     """上一次搜索的请求参数与结果。"""
 
     params: dict[str, JsonData] = Field(default_factory=dict)
     results: list[Union[_Context, SubtitleInfo]] = Field(default_factory=list)
 
 
-class SearchRecommendStatusData(BaseModel):
+class SearchRecommendStatusData(BaseModel):  # type: ignore[misc]
     """AI 搜索结果推荐任务状态。"""
 
     status: Literal["disabled", "idle", "running", "completed", "error"]
