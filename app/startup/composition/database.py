@@ -1,4 +1,6 @@
-"""数据库治理能力的宿主组合根。"""
+"""
+数据库治理能力的宿主组合根。
+"""
 
 from __future__ import annotations
 
@@ -71,7 +73,12 @@ from app.runtime.settings import get_runtime_setting
 
 @dataclass(frozen=True, slots=True)
 class DatabaseRuntime:
-    """保存数据库 worker 与兼容写入口共享的事务执行器。"""
+    """
+    保存数据库 worker 与兼容写入口共享的事务执行器。
+
+    :param worker: 在专属线程执行同步数据库短事务的进程级 worker
+    :param transaction: 提供单次独占会话的写事务执行器
+    """
 
     worker: DatabaseWorker
     transaction: TransactionalWriteRunner
@@ -79,7 +86,13 @@ class DatabaseRuntime:
 
 @dataclass(frozen=True, slots=True)
 class DatabaseComposition:
-    """保存初始化器后续装配所需的数据库查询能力。"""
+    """
+    保存初始化器后续装配所需的数据库查询能力。
+
+    :param data_query: 已配置数据库访问端口的数据查询服务
+    :param plugin_persistence: 插件安装和身份持久化应用服务
+    :param workflow_query: 工作流定义与状态查询服务
+    """
 
     data_query: DataQueryService
     plugin_persistence: PluginPersistenceService
@@ -91,7 +104,9 @@ _database_runtime_starting = False
 
 
 async def start_database_runtime() -> DatabaseRuntime:
-    """启动进程唯一数据库 worker，并登记兼容写事务 runner。"""
+    """
+    启动进程唯一数据库 worker，并登记兼容写事务 runner。
+    """
     global _database_runtime, _database_runtime_starting
     if _database_runtime is not None or _database_runtime_starting:
         raise RuntimeError("数据库 runtime 已由当前进程持有")
@@ -115,7 +130,9 @@ async def start_database_runtime() -> DatabaseRuntime:
 
 
 async def stop_database_runtime() -> None:
-    """关闭数据库 worker；失败时保留 owner 供诊断和重试。"""
+    """
+    关闭数据库 worker；失败时保留 owner 供诊断和重试。
+    """
     global _database_runtime
     runtime = _database_runtime
     if runtime is not None:
@@ -124,12 +141,16 @@ async def stop_database_runtime() -> None:
 
 
 def database_runtime_active() -> bool:
-    """返回数据库 worker 是否仍由当前进程持有。"""
+    """
+    返回数据库 worker 是否仍由当前进程持有。
+    """
     return _database_runtime is not None
 
 
 def build_transactional_user_repository() -> TransactionalUserRepository:
-    """构造供 Chain、Agent 与进程级认证共享的短会话用户仓储。"""
+    """
+    构造供 Chain、Agent 与进程级认证共享的短会话用户仓储。
+    """
     return TransactionalUserRepository(
         sync_session=SessionFactory,
         async_session=async_session_scope,
@@ -141,7 +162,9 @@ def compose_database_services(
     runtime: DatabaseRuntime,
     system_config: SystemConfigOper,
 ) -> DatabaseComposition:
-    """组合查询、插件持久化与工作流查询所需实现。"""
+    """
+    组合查询、插件持久化与工作流查询所需实现。
+    """
     data_query_adapter = SqlAlchemyDataQueryAdapter(SessionFactory)
     data_query = DataQueryService(
         subscriptions=data_query_adapter,
@@ -170,24 +193,32 @@ def compose_database_services(
 
 
 def publish_database_services(composition: DatabaseComposition) -> None:
-    """一次性发布当前 lifespan 的查询与插件持久化服务。"""
+    """
+    一次性发布当前 lifespan 的查询与插件持久化服务。
+    """
     configure_data_query_service(composition.data_query)
     configure_plugin_persistence(composition.plugin_persistence)
     configure_workflow_query(composition.workflow_query)
 
 
 def configure_workflow_execution_composition() -> None:
-    """构造并发布使用短事务会话的工作流执行服务。"""
+    """
+    构造并发布使用短事务会话的工作流执行服务。
+    """
     configure_workflow_execution(TransactionalWorkflowExecutionService(SessionFactory))
 
 
 def reset_workflow_execution_composition() -> None:
-    """撤销当前 lifespan 发布的工作流执行服务。"""
+    """
+    撤销当前 lifespan 发布的工作流执行服务。
+    """
     reset_workflow_execution()
 
 
 def reset_database_services() -> None:
-    """撤销当前 lifespan 发布的全部数据库派生服务。"""
+    """
+    撤销当前 lifespan 发布的全部数据库派生服务。
+    """
     reset_database_governance()
     reset_transaction_runners()
     reset_workflow_query()
@@ -196,7 +227,9 @@ def reset_database_services() -> None:
 
 
 def build_database_governance() -> DatabaseGovernance:
-    """以缓存同步引擎为事实源构造一个完整数据库治理门面。"""
+    """
+    以缓存同步引擎为事实源构造一个完整数据库治理门面。
+    """
     engine = get_engine()
     dialect = engine.dialect.name
     backup_backend: DatabaseBackupBackend
@@ -208,7 +241,9 @@ def build_database_governance() -> DatabaseGovernance:
         raise RuntimeError(f"不支持的数据库类型：{dialect}")
 
     def backup_plugin_databases() -> None:
-        """为当前已建立的 SQLite 插件库创建独立制品。"""
+        """
+        为当前已建立的 SQLite 插件库创建独立制品。
+        """
         if dialect != "sqlite":
             return
         manager = get_existing_plugin_manager()
@@ -252,12 +287,16 @@ def build_database_governance() -> DatabaseGovernance:
 
 
 def configure_database() -> None:
-    """构造并登记宿主进程唯一的数据库治理门面。"""
+    """
+    构造并登记宿主进程唯一的数据库治理门面。
+    """
     configure_database_governance(build_database_governance())
 
 
 def read_backup_policy() -> BackupPolicy:
-    """读取一次可热更新的数据库备份目录与保留策略。"""
+    """
+    读取一次可热更新的数据库备份目录与保留策略。
+    """
     return BackupPolicy(
         root=get_runtime_setting("DATABASE_BACKUP_PATH"),
         retention_days=get_runtime_setting("DB_BACKUP_RETENTION_DAYS"),

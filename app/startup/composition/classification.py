@@ -1,4 +1,6 @@
-"""媒体分类策略的启动迁移、持久化适配和运行时组合。"""
+"""
+媒体分类策略的启动迁移、持久化适配和运行时组合。
+"""
 
 from __future__ import annotations
 
@@ -58,7 +60,13 @@ from app.schemas.types import SystemConfigKey
 
 @dataclass(frozen=True, slots=True)
 class ClassificationComposition:
-    """保存启动阶段构造的分类运行时及其一次性迁移状态。"""
+    """
+    保存启动阶段构造的分类运行时及其一次性迁移状态。
+
+    :param runtime: 媒体分类运行时和当前规则快照
+    :param execution: 负责按分类规则执行实际选择的服务
+    :param migrated: 本次启动是否完成旧分类配置迁移
+    """
 
     runtime: ClassificationRuntime
     execution: ClassificationExecutionService
@@ -72,7 +80,9 @@ def _composition(
     extension_facts_provider: ClassificationExtensionFactsProvider | None = None,
     enrichment: ClassificationEnrichmentPort | None = None,
 ) -> ClassificationComposition:
-    """为同一分类运行时构造唯一执行服务和组合结果。"""
+    """
+    为同一分类运行时构造唯一执行服务和组合结果。
+    """
     return ClassificationComposition(
         runtime=runtime,
         execution=ClassificationExecutionService(
@@ -256,7 +266,9 @@ async def compose_classification(
 
 
 def _load_legacy_yaml(path: Path) -> Mapping[str, Any]:
-    """读取保持声明顺序的 legacy YAML 映射，禁止在迁移期间写回文件。"""
+    """
+    读取保持声明顺序的 legacy YAML 映射，禁止在迁移期间写回文件。
+    """
     yaml_loader = ruamel.yaml.YAML(typ="safe")
     with path.open("r", encoding="utf-8", errors="replace") as file:
         value = yaml_loader.load(file)
@@ -268,7 +280,9 @@ def _load_legacy_yaml(path: Path) -> Mapping[str, Any]:
 
 
 def _legacy_config_snapshot(value: Mapping[str, Any]) -> CategoryConfig:
-    """为兼容 GET 保存可解析的旧配置快照；异常结构由迁移诊断负责说明。"""
+    """
+    为兼容 GET 保存可解析的旧配置快照；异常结构由迁移诊断负责说明。
+    """
     try:
         return cast(CategoryConfig, CategoryConfig.model_validate(value))
     except ValidationError:
@@ -282,7 +296,9 @@ def _issue(
     message: str,
     path: list[str],
 ) -> ClassificationValidationIssue:
-    """构造启动组合层统一使用的分类诊断。"""
+    """
+    构造启动组合层统一使用的分类诊断。
+    """
     return ClassificationValidationIssue(
         severity=severity,
         code=code,
@@ -292,7 +308,9 @@ def _issue(
 
 
 def _log_migration_issues(migration: LegacyClassificationMigrationResult) -> None:
-    """记录不阻止发布的 legacy 迁移提示。"""
+    """
+    记录不阻止发布的 legacy 迁移提示。
+    """
     for issue in migration.issues:
         if issue.severity == "warning":
             logger.warning(f"旧分类策略迁移提示 [{issue.code}]：{issue.message}")
@@ -301,7 +319,9 @@ def _log_migration_issues(migration: LegacyClassificationMigrationResult) -> Non
 def _migration_issues(
     diagnostics: tuple[LegacyClassificationDiagnostic, ...],
 ) -> tuple[ClassificationValidationIssue, ...]:
-    """把纯迁移诊断转换为运行时统一诊断 schema。"""
+    """
+    把纯迁移诊断转换为运行时统一诊断 schema。
+    """
     return tuple(
         ClassificationValidationIssue(
             severity=diagnostic.severity,

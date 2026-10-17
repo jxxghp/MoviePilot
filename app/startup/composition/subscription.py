@@ -1,4 +1,6 @@
-"""订阅事务作用域及提交后回调的组合装配。"""
+"""
+订阅事务作用域及提交后回调的组合装配。
+"""
 
 import asyncio
 import threading
@@ -57,7 +59,9 @@ def build_subscription_batch_writer(
     outbox: AsyncSubscriptionOutboxStager,
     dispatch_store: AsyncOutboxDispatchStore,
 ) -> SubscriptionBatchWritePort:
-    """组装复用请求级事务且在提交后结算 durable intents 的批量写端口。"""
+    """
+    组装复用请求级事务且在提交后结算 durable intents 的批量写端口。
+    """
     return SessionSubscriptionBatchWriter(
         repository=repository,
         unit_of_work=unit_of_work,
@@ -70,7 +74,9 @@ def build_subscription_batch_writer(
 def rule_group_mutation_scope(
     publish: SystemConfigPublisher,
 ) -> Iterator[SyncRuleGroupMutationService]:
-    """串行构造共享同步 Session 的规则定义与引用原子服务。"""
+    """
+    串行构造共享同步 Session 的规则定义与引用原子服务。
+    """
     _reference_mutation_lock.acquire()
     session = SessionFactory()
     try:
@@ -89,14 +95,18 @@ def rule_group_mutation_scope(
 async def async_rule_group_mutation_scope(
     publish: SystemConfigPublisher,
 ) -> AsyncIterator[AsyncRuleGroupMutationService]:
-    """非阻塞等待跨入口锁，并构造共享 AsyncSession 的规则原子服务。"""
+    """
+    非阻塞等待跨入口锁，并构造共享 AsyncSession 的规则原子服务。
+    """
     await asyncio.to_thread(_reference_mutation_lock.acquire)
     try:
         async with async_session_scope() as session:
             async def publish_async(
                 values: Mapping[SystemConfigKey, JsonData],
             ) -> None:
-                """适配同步快照发布器到异步命令提交后合同。"""
+                """
+                适配同步快照发布器到异步命令提交后合同。
+                """
                 publish(values)
 
             yield AsyncRuleGroupMutationService(
@@ -113,7 +123,9 @@ async def async_rule_group_mutation_scope(
 def site_reference_mutation_scope(
     publish: SystemConfigPublisher,
 ) -> Iterator[SyncSiteReferenceMutationService]:
-    """构造共享同步 Session 的 RSS 与订阅站点引用原子服务。"""
+    """
+    构造共享同步 Session 的 RSS 与订阅站点引用原子服务。
+    """
     _reference_mutation_lock.acquire()
     session = SessionFactory()
     try:
@@ -129,43 +141,59 @@ def site_reference_mutation_scope(
 
 
 async def _publish_modified(payload: dict[str, Any]) -> None:
-    """发布事务已提交的订阅修改事件。"""
+    """
+    发布事务已提交的订阅修改事件。
+    """
     await eventmanager.async_send_event(EventType.SubscribeModified, payload)
 
 
 def _publish_modified_sync(payload: dict[str, Any]) -> None:
-    """为同步 Chain 入口发布事务已提交的订阅修改事件。"""
+    """
+    为同步 Chain 入口发布事务已提交的订阅修改事件。
+    """
     eventmanager.send_event(EventType.SubscribeModified, payload)
 
 
 async def _publish_deleted(payload: dict[str, Any]) -> None:
-    """发布事务已提交的订阅删除事件。"""
+    """
+    发布事务已提交的订阅删除事件。
+    """
     await eventmanager.async_send_event(EventType.SubscribeDeleted, payload)
 
 
 def _publish_deleted_sync(payload: dict[str, Any]) -> None:
-    """为同步消息入口发布事务已提交的订阅删除事件。"""
+    """
+    为同步消息入口发布事务已提交的订阅删除事件。
+    """
     eventmanager.send_event(EventType.SubscribeDeleted, payload)
 
 
 async def _report_deleted(payload: Mapping[str, JsonData]) -> object:
-    """把删除统计端口的只读映射转换为服务端兼容的普通字典。"""
+    """
+    把删除统计端口的只读映射转换为服务端兼容的普通字典。
+    """
     return await MoviePilotServerHelper.async_sub_done_durable(dict(payload))
 
 
 def _report_deleted_sync(payload: Mapping[str, JsonData]) -> object:
-    """把同步删除统计端口的只读映射转换为服务端兼容的普通字典。"""
+    """
+    把同步删除统计端口的只读映射转换为服务端兼容的普通字典。
+    """
     return MoviePilotServerHelper.sub_done_durable(dict(payload))
 
 
 def _publish_completed(payload: dict[str, Any]) -> None:
-    """发布已提交的订阅完成事件。"""
+    """
+    发布已提交的订阅完成事件。
+    """
     eventmanager.send_event(EventType.SubscribeComplete, payload)
 
 
 @contextmanager
 def subscription_completion_scope() -> Iterator[CompleteSubscriptionCommand]:
-    """为同步完成链创建独占 Session、UoW 与 durable outbox。"""
+    """
+    为同步完成链创建独占 Session、UoW 与 durable outbox。
+    """
     session = SessionFactory()
     try:
         yield CompleteSubscriptionCommand(
@@ -181,7 +209,9 @@ def subscription_completion_scope() -> Iterator[CompleteSubscriptionCommand]:
 
 @asynccontextmanager
 async def subscription_mutation_scope() -> AsyncIterator[SubscriptionMutationService]:
-    """为非 HTTP 入口创建独占订阅修改会话、UoW 与 outbox。"""
+    """
+    为非 HTTP 入口创建独占订阅修改会话、UoW 与 outbox。
+    """
     async with async_session_scope() as session:
         yield SubscriptionMutationService(
             repository=SessionSubscriptionRepository(session),
@@ -197,7 +227,9 @@ async def subscription_mutation_scope() -> AsyncIterator[SubscriptionMutationSer
 
 @contextmanager
 def sync_subscription_mutation_scope() -> Iterator[SyncSubscriptionMutationService]:
-    """为同步 Chain 入口创建独占 Session、UoW 与 durable outbox。"""
+    """
+    为同步 Chain 入口创建独占 Session、UoW 与 durable outbox。
+    """
     session = SessionFactory()
     try:
         yield SyncSubscriptionMutationService(
@@ -213,7 +245,9 @@ def sync_subscription_mutation_scope() -> Iterator[SyncSubscriptionMutationServi
 
 @asynccontextmanager
 async def delete_subscribe_scope() -> AsyncIterator[DeleteSubscribeCommand]:
-    """为非 HTTP 入口创建独占订阅删除会话、UoW 与 outbox。"""
+    """
+    为非 HTTP 入口创建独占订阅删除会话、UoW 与 outbox。
+    """
     async with async_session_scope() as session:
         yield DeleteSubscribeCommand(
             repository=SessionSubscriptionRepository(session),
@@ -229,7 +263,9 @@ async def delete_subscribe_scope() -> AsyncIterator[DeleteSubscribeCommand]:
 
 @contextmanager
 def sync_delete_subscribe_scope() -> Iterator[SyncDeleteSubscribeCommand]:
-    """为同步消息入口创建独占 Session、UoW 与 durable outbox。"""
+    """
+    为同步消息入口创建独占 Session、UoW 与 durable outbox。
+    """
     session = SessionFactory()
     try:
         yield SyncDeleteSubscribeCommand(

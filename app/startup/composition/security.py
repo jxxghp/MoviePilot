@@ -1,4 +1,6 @@
-"""认证、用户与 PassKey 服务的启动组合。"""
+"""
+认证、用户与 PassKey 服务的启动组合。
+"""
 
 from dataclasses import dataclass
 from typing import cast
@@ -42,7 +44,15 @@ from app.startup.composition.database import build_transactional_user_repository
 
 @dataclass(frozen=True, slots=True)
 class SecurityComposition:
-    """保存认证领域运行时投影所需的持久化工厂。"""
+    """
+    保存认证领域运行时投影所需的持久化工厂。
+
+    :param user_repository: 按当前请求会话构造用户仓储的工厂
+    :param passkey_repository: 按当前请求会话构造通行密钥仓储的工厂
+    :param standalone_user: 为请求外独立操作构造用户仓储的工厂
+    :param system_config: 构造独立配置存储访问端口的工厂
+    :param passkey: 构造独立通行密钥存储访问端口的工厂
+    """
 
     user_repository: RepositoryFactory
     passkey_repository: RepositoryFactory
@@ -52,7 +62,9 @@ class SecurityComposition:
 
 
 def _backfill_superuser_setting(users: AuthUserRepository) -> None:
-    """用现有数据库管理员补全 V2 升级后缺失的 SUPERUSER。"""
+    """
+    用现有数据库管理员补全 V2 升级后缺失的 SUPERUSER。
+    """
     if str(get_runtime_setting("SUPERUSER") or "").strip():
         return
     user = users.get_active_superuser()
@@ -69,7 +81,9 @@ def _backfill_superuser_setting(users: AuthUserRepository) -> None:
 
 
 def configure_security_services() -> SecurityComposition:
-    """构造并登记认证、用户查询和 PassKey 服务。"""
+    """
+    构造并登记认证、用户查询和 PassKey 服务。
+    """
     users = build_transactional_user_repository()
     _backfill_superuser_setting(users)
     configure_user_lookups(
@@ -102,13 +116,17 @@ def configure_security_services() -> SecurityComposition:
 
 
 def configure_security_access() -> None:
-    """登记 Web 认证边界所需的令牌载荷和当前身份校验端口。"""
+    """
+    登记 Web 认证边界所需的令牌载荷和当前身份校验端口。
+    """
     set_superuser_token_payload_provider(build_superuser_token_payload)
     set_token_identity_validator(validate_token_identity)
 
 
 def reset_security_services() -> None:
-    """按发布逆序撤销认证、用户查询和 PassKey 服务。"""
+    """
+    按发布逆序撤销认证、用户查询和 PassKey 服务。
+    """
     reset_passkey_service()
     reset_passkey_challenge_cache()
     reset_auth_service()
@@ -116,6 +134,8 @@ def reset_security_services() -> None:
 
 
 def reset_security_access() -> None:
-    """撤销 Web 认证边界的令牌载荷和当前身份校验端口。"""
+    """
+    撤销 Web 认证边界的令牌载荷和当前身份校验端口。
+    """
     reset_superuser_token_payload_provider()
     reset_token_identity_validator()
