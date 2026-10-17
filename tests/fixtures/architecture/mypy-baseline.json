@@ -959,9 +959,18 @@
     "union-attr": 5
   },
   "app/modules/filemanager/storages/u115.py": {
-    "assignment": 1,
-    "no-untyped-call": 1,
-    "override": 2
+    "arg-type": 16,
+    "assignment": 7,
+    "attr-defined": 1,
+    "call-overload": 17,
+    "empty-body": 2,
+    "no-any-return": 6,
+    "no-untyped-call": 3,
+    "no-untyped-def": 5,
+    "operator": 2,
+    "override": 2,
+    "type-arg": 8,
+    "union-attr": 32
   },
   "app/modules/filemanager/transhandler.py": {
     "arg-type": 18,

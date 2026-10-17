@@ -941,6 +941,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             with self._request_utils.get_stream(
                 download_url, raise_exception=True
             ) as r:
+                if r is None:
+                    return None
                 r.raise_for_status()
                 downloaded_size = 0
 
