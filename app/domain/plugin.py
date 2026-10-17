@@ -1,4 +1,6 @@
-"""插件来源、代际与安装计划的纯领域规则。"""
+"""
+插件来源、代际与安装计划的纯领域规则。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ from packaging.version import InvalidVersion, Version
 
 LOCAL_PLUGIN_SOURCE_PREFIX = "local://"
 PLUGIN_SYSTEM_VERSION_FIELD = "system_version"
-# free-threaded 运行时（v3t）专用的插件声明字段；缺省视为兼容，只有显式 false 才拒绝
+# 无全局解释器锁运行时（v3t）专用的插件声明字段；缺省视为兼容，只有显式 false 才拒绝
 PLUGIN_FREE_THREADED_FIELD = "v3t"
 _PHYSICAL_PLUGIN_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 PLUGIN_GENERATION_COMPATIBILITY: dict[str, tuple[str, ...]] = {
@@ -22,7 +24,9 @@ PLUGIN_GENERATION_COMPATIBILITY: dict[str, tuple[str, ...]] = {
 
 
 def normalize_plugin_market_repo_url(repo_url: str) -> str | None:
-    """规范化 GitHub 插件市场地址，便于配置读取和请求去重。"""
+    """
+    规范化 GitHub 插件市场地址，便于配置读取和请求去重。
+    """
     value = str(repo_url or "").strip().rstrip("/")
     if not value:
         return None
@@ -42,7 +46,9 @@ def normalize_plugin_market_repo_url(repo_url: str) -> str | None:
 
 
 def split_plugin_market_repo_urls(value: str | None) -> list[str]:
-    """拆分插件市场配置并按大小写不敏感规则保持顺序去重。"""
+    """
+    拆分插件市场配置并按大小写不敏感规则保持顺序去重。
+    """
     repos: list[str] = []
     seen_repos: set[str] = set()
     for item in re.split(r"[\n,，]+", value or ""):
@@ -56,14 +62,21 @@ def split_plugin_market_repo_urls(value: str | None) -> list[str]:
 
 @dataclass(frozen=True, slots=True)
 class PluginReleaseInstallPlan:
-    """描述远端插件内容准备模式，不持有同步或异步 I/O 实现。"""
+    """
+    描述远端插件内容准备模式，不持有同步或异步 I/O 实现。
+
+    :param release_tag: 拟下载的发行标签；未选择发行包时为 None
+    :param fallback_to_filelist: 是否允许退回逐文件下载插件内容
+    """
 
     release_tag: str | None
     fallback_to_filelist: bool
 
 
 def is_physical_plugin_id(plugin_id: object) -> bool:
-    """判断值是否符合物理插件在市场、目录和来源身份中共用的 ID 规则。"""
+    """
+    判断值是否符合物理插件在市场、目录和来源身份中共用的 ID 规则。
+    """
     return bool(
         isinstance(plugin_id, str)
         and plugin_id == plugin_id.strip()
@@ -72,7 +85,9 @@ def is_physical_plugin_id(plugin_id: object) -> bool:
 
 
 def is_local_plugin_source(repo_url: str | None) -> bool:
-    """判断插件来源是否为宿主定义的不透明本地仓库标识。"""
+    """
+    判断插件来源是否为宿主定义的不透明本地仓库标识。
+    """
     return bool(repo_url and repo_url.startswith(LOCAL_PLUGIN_SOURCE_PREFIX))
 
 
@@ -82,7 +97,9 @@ def build_local_plugin_source(
     repo_path: str | None = None,
     package_generation: str | None = None,
 ) -> str:
-    """生成本地插件来源标识，不解释或访问其中的宿主路径。"""
+    """
+    生成本地插件来源标识，不解释或访问其中的宿主路径。
+    """
     repo_url = f"{LOCAL_PLUGIN_SOURCE_PREFIX}{quote(plugin_id, safe='')}"
     parameters: list[str] = []
     if repo_path:
@@ -93,7 +110,9 @@ def build_local_plugin_source(
 
 
 def parse_local_plugin_reference(repo_url: str) -> str | None:
-    """从不透明本地来源标识中提取插件 ID。"""
+    """
+    从不透明本地来源标识中提取插件 ID。
+    """
     if not is_local_plugin_source(repo_url):
         return None
     try:
@@ -105,7 +124,9 @@ def parse_local_plugin_reference(repo_url: str) -> str | None:
 
 
 def parse_local_plugin_path(repo_url: str) -> str | None:
-    """从本地来源标识中提取未解释的仓库路径字符串。"""
+    """
+    从本地来源标识中提取未解释的仓库路径字符串。
+    """
     if not is_local_plugin_source(repo_url):
         return None
     try:
@@ -116,7 +137,9 @@ def parse_local_plugin_path(repo_url: str) -> str | None:
 
 
 def parse_local_plugin_generation(repo_url: str) -> str | None:
-    """从本地来源标识中提取 package 代际。"""
+    """
+    从本地来源标识中提取 package 代际。
+    """
     if not is_local_plugin_source(repo_url):
         return None
     try:
@@ -127,7 +150,9 @@ def parse_local_plugin_generation(repo_url: str) -> str | None:
 
 
 def compatible_plugin_generations(current_generation: str | None) -> tuple[str, ...]:
-    """返回当前宿主允许读取的插件代际，按优先级去重。"""
+    """
+    返回当前宿主允许读取的插件代际，按优先级去重。
+    """
     if not current_generation:
         return ()
     return tuple(
@@ -145,7 +170,9 @@ def plugin_generation_candidates(
     *,
     current_generation: str | None,
 ) -> tuple[str, ...]:
-    """返回安装读取唯一的代际候选顺序，并把基础索引固定在末尾。"""
+    """
+    返回安装读取唯一的代际候选顺序，并把基础索引固定在末尾。
+    """
     preferred_generation = requested_generation or current_generation
     candidates = [preferred_generation]
     candidates.extend(
@@ -161,9 +188,10 @@ def is_plugin_generation_compatible(
     *,
     current_generation: str | None,
 ) -> bool:
-    """按当前代际、兼容代际和基础索引规则判断一个市场条目。
+    """
+    按当前代际、兼容代际和基础索引规则判断一个市场条目。
 
-    只回答代际问题。运行时（free-threaded）兼容性由
+    只回答代际问题。无全局解释器锁运行时兼容性由
     :func:`check_plugin_runtime_compatibility` 单独判断并标注给前端，
     不在这里把条目从目录里剔除——用户需要看到插件和不可用的原因，
     而不是插件凭空消失。
@@ -197,11 +225,13 @@ def check_plugin_runtime_compatibility(
     *,
     free_threaded: bool,
 ) -> tuple[bool, str]:
-    """检查插件声明与当前解释器运行时是否兼容，返回兼容状态和用户可读原因。
+    """
+    检查插件声明与当前解释器运行时是否兼容，返回兼容状态和用户可读原因。
 
     公开可调用：市场标注、安装准入和运行目录加载共用这一条判据，避免三处各写一份
     规则后出现"市场说能装、准入放行、加载又跳过"的分裂。当前只有 free-threaded
     一个维度，未声明该字段的插件一律保持兼容。
+
     :param plugin_info: 插件 package 条目
     :param free_threaded: 当前是否运行在 free-threaded 解释器上
     """
@@ -220,7 +250,9 @@ def check_plugin_system_version(
     *,
     current_version: str,
 ) -> tuple[bool, str]:
-    """检查插件声明的 MoviePilot PEP 440 版本范围。"""
+    """
+    检查插件声明的 MoviePilot PEP 440 版本范围。
+    """
     if not isinstance(plugin_info, Mapping):
         return True, ""
     raw_specifier = plugin_info.get(PLUGIN_SYSTEM_VERSION_FIELD)
@@ -261,7 +293,9 @@ def build_plugin_release_install_plan(
     release_items: Sequence[Mapping[str, Any]],
     current_version: str,
 ) -> tuple[PluginReleaseInstallPlan | None, str]:
-    """统一选择指定 Release、可回退当前 Release 或文件列表安装模式。"""
+    """
+    统一选择指定 Release、可回退当前 Release 或文件列表安装模式。
+    """
     is_release = metadata.get("release")
     plugin_version = metadata.get("version")
     if release_version:

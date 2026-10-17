@@ -1,3 +1,7 @@
+"""
+识别并规范化资源发布组与字幕组名称。
+"""
+
 from collections.abc import Callable, Iterable
 
 import regex as re
@@ -6,7 +10,9 @@ from app.foundation.singleton import Singleton
 
 
 def _empty_release_groups() -> tuple[str, ...]:
-    """启动装配前不添加自定义制作组规则。"""
+    """
+    启动装配前不添加自定义制作组规则。
+    """
     return ()
 
 
@@ -14,21 +20,24 @@ _release_groups_provider: Callable[[], Iterable[str] | None] = _empty_release_gr
 
 
 def configure_release_groups_provider(provider: Callable[[], Iterable[str] | None]) -> None:
-    """注入用户制作组来源，保持领域匹配器与配置持久化解耦。"""
+    """
+    注入用户制作组来源，保持领域匹配器与配置持久化解耦。
+    """
     global _release_groups_provider
     _release_groups_provider = provider
 
 
 def get_custom_release_groups() -> Iterable[str] | None:
-    """返回当前用户制作组原始配置。"""
+    """
+    返回当前用户制作组原始配置。
+    """
     return _release_groups_provider()
 
 
 class ReleaseGroupsMatcher(metaclass=Singleton):
     """
-    识别制作组、字幕组
+    识别制作组、字幕组。
     """
-    # 内置组
     RELEASE_GROUPS: dict[str, list[str]] = {
         "0ff": ['FF(?:(?:A|WE)B|CD|E(?:DU|B)|TV)'],
         "1pt": [],
@@ -100,7 +109,9 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
     }
 
     def __init__(self) -> None:
-        """构建内置制作组匹配规则及编译缓存。"""
+        """
+        构建内置制作组匹配规则及编译缓存。
+        """
         release_groups = []
         for site_groups in self.RELEASE_GROUPS.values():
             for release_group in site_groups:
@@ -132,6 +143,8 @@ class ReleaseGroupsMatcher(metaclass=Singleton):
 
     def match(self, title: str | None = None, groups: str | None = None) -> str:
         """
+        按用户规则和内置别名匹配制作组、字幕组。
+
         :param title: 资源标题或文件名
         :param groups: 制作组/字幕组
         :return: 匹配结果

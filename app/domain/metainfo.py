@@ -1,3 +1,7 @@
+"""
+统一媒体名称与路径解析入口，协调可选加速器和 Python 回退解析。
+"""
+
 import hashlib
 import logging
 from dataclasses import dataclass
@@ -96,7 +100,16 @@ _LEGACY_ID_KEYS = (
 
 @dataclass(frozen=True, slots=True)
 class _PreparedMetaInput:
-    """Python 回退解析的阶段输入，保留原文与预处理结果之间的明确边界。"""
+    """
+    Python 回退解析的阶段输入，保留原文与预处理结果之间的明确边界。
+
+    :param original_title: 未经识别词处理的原始标题
+    :param parsed_title: 完成预处理后交给 Python 解析器的标题
+    :param subtitle: 用于补充季集和资源信息的副标题；未提供时为 None
+    :param isfile: 输入是否为文件名或文件路径
+    :param apply_words: 实际应用的识别词记录，保持应用顺序
+    :param explicit_metainfo: 标题中显式声明的媒体身份和剧集组信息
+    """
 
     original_title: str
     parsed_title: str
@@ -165,6 +178,9 @@ def _rust_parse_options_cache_key(options: dict) -> str:
     digest = hashlib.blake2b(digest_size=16)
 
     def update(value) -> None:
+        """
+        将选项值及分隔符写入缓存摘要，避免相邻值直接拼接产生歧义。
+        """
         digest.update(repr(value).encode("utf-8"))
         digest.update(b"\0")
 
@@ -200,7 +216,6 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
                     normalized_id = legacy_match.group(0)
                     if normalized_id.isdigit() and normalized_id != "0":
                         legacy_identities[source] = normalized_id
-            # 查找媒体类型
             mtype = _BRACED_TYPE_RE.search(result)
             if mtype:
                 media_type = mtype.group(0)
@@ -208,25 +223,21 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
                     metainfo['type'] = MediaType.MOVIE
                 elif media_type == "tv":
                     metainfo['type'] = MediaType.TV
-            # 查找剧集组
             episode_group = _BRACED_EPISODE_GROUP_RE.search(result)
             if episode_group:
                 metainfo['episode_group'] = episode_group.group(1)
-            # 查找季信息
             begin_season = _BRACED_BEGIN_SEASON_RE.search(result)
             if begin_season and begin_season.group(0).isdigit():
                 metainfo['begin_season'] = int(begin_season.group(0))
             end_season = _BRACED_END_SEASON_RE.search(result)
             if end_season and end_season.group(0).isdigit():
                 metainfo['end_season'] = int(end_season.group(0))
-            # 查找集信息
             begin_episode = _BRACED_BEGIN_EPISODE_RE.search(result)
             if begin_episode and begin_episode.group(0).isdigit():
                 metainfo['begin_episode'] = int(begin_episode.group(0))
             end_episode = _BRACED_END_EPISODE_RE.search(result)
             if end_episode and end_episode.group(0).isdigit():
                 metainfo['end_episode'] = int(end_episode.group(0))
-            # 去除title中该部分
             if (
                 legacy_matches
                 or mtype
@@ -275,7 +286,6 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
     metainfo['media_source'] = media_source
     metainfo['media_id'] = media_id
 
-    # 计算季集总数
     _apply_range_total(metainfo, 'begin_season', 'end_season', 'total_season')
     _apply_range_total(metainfo, 'begin_episode', 'end_episode', 'total_episode')
     return title, _normalize_metainfo_identity(metainfo)
@@ -313,7 +323,9 @@ def _prepare_meta_input(
 
 
 def _apply_explicit_metainfo(meta: MetaBase, metainfo: Mapping[str, Any]) -> None:
-    """以显式标签覆盖推断字段，保持用户声明拥有最高优先级。"""
+    """
+    以显式标签覆盖推断字段，保持用户声明拥有最高优先级。
+    """
     media_source, media_id = resolve_media_identity(media=dict(metainfo))
     if media_source and media_id:
         meta.media_source = media_source
@@ -341,7 +353,9 @@ def _build_meta_info(
         subtitle: Optional[str] = None,
         custom_words: Optional[List[str]] = None,
 ) -> MetaBase:
-    """按准备、分类解析、显式覆盖三个阶段构造 Python MetaInfo。"""
+    """
+    按准备、分类解析、显式覆盖三个阶段构造 Python MetaInfo。
+    """
     prepared = _prepare_meta_input(title, subtitle, custom_words)
     meta = MetaAnime(
         prepared.parsed_title,
@@ -363,7 +377,9 @@ def _build_python_meta_info(
         subtitle: Optional[str] = None,
         custom_words: Optional[List[str]] = None,
 ) -> MetaBase:
-    """构造并完成 original_name 的纯 Python 参考解析结果。"""
+    """
+    构造并完成 original_name 的纯 Python 参考解析结果。
+    """
     meta = _build_meta_info(title=title, subtitle=subtitle, custom_words=custom_words)
     if meta.apply_words:
         original_meta = _build_meta_info(title=title, subtitle=subtitle)
@@ -506,13 +522,14 @@ def _requires_python_metainfo(
 def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None,
              force_video: bool = False, mtype: Optional[MediaType] = None) -> MetaBase:
     """
-    根据标题和副标题识别元数据
+    根据标题和副标题识别元数据。
+
     :param title: 标题、种子名、文件名
     :param subtitle: 副标题、描述
     :param custom_words: 自定义识别词列表
     :param force_video: 音频后缀的影视附加轨（如评论音轨）强制按视频解析，用于影视整理场景
     :param mtype: 已由调用方确定的媒体类型；音乐资源无文件后缀时也使用音乐解析器
-    :return: MetaAnime、MetaVideo、MetaMusic
+    :return: 解析得到的 MetaAnime、MetaVideo 或 MetaMusic 对象
     """
     # 媒体类型只选择解析器；音乐同样先应用用户识别词，影视附加音轨仍可强制按视频解析。
     audio_suffix = Path(title).suffix.lower() if title else ""
@@ -553,7 +570,8 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str]
 
 def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool = False) -> MetaBase:
     """
-    根据路径识别元数据
+    根据路径识别元数据。
+
     :param path: 路径
     :param custom_words: 自定义识别词列表
     :param force_video: 音频后缀的影视附加轨（如评论音轨）强制按视频解析，用于影视整理场景
@@ -584,22 +602,19 @@ def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool =
     file_meta = _build_python_meta_info(title=path.name, custom_words=custom_words)
     if should_use_parent_title_for_file_stem(path.stem, path.parent.name, file_meta):
         clear_parsed_title_for_parent_merge(file_meta)
-    # 上级目录元数据
     dir_meta = _build_python_meta_info(title=path.parent.name, custom_words=custom_words)
     if file_meta.type == MediaType.TV or dir_meta.type != MediaType.TV:
-        # 合并元数据
         file_meta.merge(dir_meta)
-    # 上上级目录元数据
     root_meta = _build_python_meta_info(title=path.parent.parent.name, custom_words=custom_words)
     if file_meta.type == MediaType.TV or root_meta.type != MediaType.TV:
-        # 合并元数据
         file_meta.merge(root_meta)
     return file_meta
 
 
 def is_anime(name: str) -> bool:
     """
-    判断是否为动漫
+    判断是否为动漫。
+
     :param name: 名称
     :return: 是否动漫
     """
@@ -618,7 +633,7 @@ def is_anime(name: str) -> bool:
 
 def find_metainfo(title: str) -> Tuple[str, dict]:
     """
-    从标题中提取媒体信息
+    从标题中提取媒体信息。
     """
     rust_result = None
     accelerator = get_metainfo_accelerator()

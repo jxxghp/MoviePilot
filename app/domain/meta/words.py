@@ -1,3 +1,7 @@
+"""
+解析和应用自定义识别词，处理替换、屏蔽与偏移规则。
+"""
+
 import ast
 import logging
 import operator
@@ -14,13 +18,17 @@ logger = logging.getLogger(__name__)
 
 
 def configure_custom_words_provider(provider: Callable[[], object]) -> None:
-    """注入用户识别词来源，领域层只负责解析和应用规则。"""
+    """
+    注入用户识别词来源，领域层只负责解析和应用规则。
+    """
     global _custom_words_provider
     _custom_words_provider = provider
 
 
 def get_custom_words() -> object:
-    """返回当前自定义识别词原始配置。"""
+    """
+    返回当前自定义识别词原始配置。
+    """
     return _custom_words_provider()
 
 
@@ -119,7 +127,7 @@ class WordsMatcher(metaclass=Singleton):
         预处理标题，支持三种格式
         1：屏蔽词
         2：被替换词 => 替换词
-        3：前定位词 <> 后定位词 >> 偏移量（EP）
+        3：前定位词 <> 后定位词 >> 偏移量（EP）。
         """
         title, _, appley_words = self.__prepare(title, None, custom_words)
         return title, appley_words
@@ -146,9 +154,10 @@ class WordsMatcher(metaclass=Singleton):
         subtitle: Optional[str],
         custom_words: Optional[List[str]] = None,
     ) -> Tuple[str, Optional[str], List[str]]:
-        """按识别词顺序处理标题，并在需要时更新副标题中的集数。"""
+        """
+        按识别词顺序处理标题，并在需要时更新副标题中的集数。
+        """
         appley_words = []
-        # 读取自定义识别词
         words: List[str] = custom_words or get_custom_words() or []
         for word in words:
             if not word or word.startswith("#"):
@@ -160,7 +169,6 @@ class WordsMatcher(metaclass=Singleton):
                 word_type, params = word_info
                 if word_type == "replace_and_offset":
                     thc, bthc, pyq, pyh, offsets = params
-                    # 替换词
                     title, message, state = self.__replace_regex(title, thc, bthc)
                     if state:
                         # 替换词成功再进行集偏移
@@ -173,7 +181,8 @@ class WordsMatcher(metaclass=Singleton):
                     title, subtitle, message, state = self.__episode_offset_with_subtitle(
                         title, subtitle, params[0], params[1], params[2]
                     )
-                else:  # block
+                # 未包含替换或偏移语法时，按屏蔽词处理
+                else:
                     title, message, state = self.__replace_regex(title, params[0], "")
 
                 if state:
@@ -209,7 +218,7 @@ class WordsMatcher(metaclass=Singleton):
     @staticmethod
     def __replace_regex(title: str, replaced: str, replace: str) -> Tuple[str, str, bool]:
         """
-        正则替换
+        正则替换。
         """
         try:
             replaced_re = _compile_custom_word_regex(r'%s' % replaced)
@@ -222,7 +231,7 @@ class WordsMatcher(metaclass=Singleton):
     @staticmethod
     def __episode_offset(title: str, front: str, back: str, offset: str) -> Tuple[str, str, bool]:
         """
-        集数偏移
+        集数偏移。
         """
         try:
             if back and not _compile_custom_word_regex(r'%s' % back).search(title):
@@ -240,10 +249,8 @@ class WordsMatcher(metaclass=Singleton):
             for episode_num_str in episode_nums_str:
                 episode_num_int = int(cn2an.cn2an(episode_num_str, "smart"))
                 episode_num_offset_int = calculate_episode_offset(offset, episode_num_int)
-                # 向前偏移
                 if episode_num_int > episode_num_offset_int:
                     offset_order_flag = True
-                # 向后偏移
                 elif episode_num_int < episode_num_offset_int:
                     offset_order_flag = False
                 episode_num_offset_str = _format_episode_offset(
@@ -295,7 +302,9 @@ class WordsMatcher(metaclass=Singleton):
 
     @staticmethod
     def __locators_match(text: str, front: str, back: str) -> bool:
-        """判断前后定位词是否在标题和副标题组成的上下文中同时出现。"""
+        """
+        判断前后定位词是否在标题和副标题组成的上下文中同时出现。
+        """
         try:
             if front and not _compile_custom_word_regex(front).search(text):
                 return False
@@ -307,7 +316,9 @@ class WordsMatcher(metaclass=Singleton):
 
     @staticmethod
     def __subtitle_episode_spans(subtitle: str) -> List[Tuple[int, int]]:
-        """提取副标题中会被 MetaBase 识别为集数的数字范围。"""
+        """
+        提取副标题中会被 MetaBase 识别为集数的数字范围。
+        """
         spans: List[Tuple[int, int]] = []
         patterns = (
             (_SUBTITLE_EPISODE_RANGE_RE, ("begin", "end")),
@@ -327,7 +338,9 @@ class WordsMatcher(metaclass=Singleton):
 
     @staticmethod
     def __episode_offset_subtitle(subtitle: str, offset: str) -> Tuple[str, str, bool]:
-        """只偏移副标题中的集数表达式，避免修改副标题里的季数或年份。"""
+        """
+        只偏移副标题中的集数表达式，避免修改副标题里的季数或年份。
+        """
         spans = WordsMatcher.__subtitle_episode_spans(subtitle)
         if not spans:
             return subtitle, "", False
