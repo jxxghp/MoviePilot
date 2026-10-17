@@ -1,3 +1,7 @@
+"""
+聚合媒体、音乐、种子和字幕的领域上下文与序列化契约。
+"""
+
 import re
 import typing
 from collections.abc import Mapping
@@ -1339,71 +1343,77 @@ class MusicArtistInfo:
 class TorrentInfo:
     """
     种子搜索结果信息。
+
+    :param site: 站点ID
+    :param site_name: 站点名称
+    :param site_cookie: 站点Cookie
+    :param site_ua: 站点UA
+    :param site_proxy: 站点是否使用代理
+    :param site_order: 站点优先级
+    :param site_downloader: 站点下载器
+    :param title: 种子名称
+    :param description: 种子副标题
+    :param media_source: 种子页面声明的媒体身份
+    :param media_id: 当前来源的原生媒体标识；缺失时为空
+    :param enclosure: 种子链接
+    :param page_url: 详情页面
+    :param size: 种子大小
+    :param seeders: 做种者
+    :param peers: 下载者
+    :param grabs: 完成者
+    :param pubdate: 发布时间
+    :param date_elapsed: 已过时间
+    :param freedate: 免费截止时间
+    :param uploadvolumefactor: 上传因子
+    :param downloadvolumefactor: 下载因子
+    :param hit_and_run: HR
+    :param labels: 种子标签
+    :param pri_order: 种子优先级
+    :param category: 种子分类 电影/电视剧/音乐
+    :param search_resource_id: 自动订阅分页搜索的内部候选标识，只用于提交结果与候选对应，不进入对外字典
     """
 
-    # 站点ID
     site: int = None
-    # 站点名称
     site_name: str = None
-    # 站点Cookie
     site_cookie: str = None
-    # 站点UA
     site_ua: str = None
-    # 站点是否使用代理
     site_proxy: bool = False
-    # 站点优先级
     site_order: int = 0
-    # 站点下载器
     site_downloader: str = None
-    # 种子名称
     title: str = None
-    # 种子副标题
     description: str = None
-    # 种子页面声明的媒体身份
     media_source: MediaSource = None
     media_id: str = None
-    # 种子链接
     enclosure: str = None
-    # 详情页面
     page_url: str = None
-    # 种子大小
     size: float = 0.0
-    # 做种者
     seeders: int = 0
-    # 下载者
     peers: int = 0
-    # 完成者
     grabs: int = 0
-    # 发布时间
     pubdate: str = None
-    # 已过时间
     date_elapsed: str = None
-    # 免费截止时间
     freedate: str = None
-    # 上传因子
     uploadvolumefactor: float = None
-    # 下载因子
     downloadvolumefactor: float = None
-    # HR
     hit_and_run: bool = False
-    # 种子标签
     labels: list = field(default_factory=list)
-    # 种子优先级
     pri_order: int = 0
-    # 种子分类 电影/电视剧/音乐
     category: str = None
-    # 自动订阅分页搜索的内部候选标识，只用于提交结果与候选对应，不进入对外字典
     search_resource_id: Optional[str] = None
 
     def __post_init__(self) -> None:
-        """将种子声明的媒体身份规范化为统一成对字段。"""
+        """
+        将种子声明的媒体身份规范化为统一成对字段。
+        """
         self.media_source, self.media_id = resolve_media_identity(media=self)
 
-    def __setattr__(self, name: str, value: Any):
-        """直接写入种子运行时字段，保留历史动态属性行为。"""
+    def __setattr__(self, name: str, value: Any) -> None:
+        """
+        直接写入种子运行时字段，保留历史动态属性行为。
+        """
         self.__dict__[name] = value
 
-    def __get_properties(self):
+    def __get_properties(self) -> list[str]:
         """
         获取属性列表
         """
@@ -1414,7 +1424,7 @@ class TorrentInfo:
                 property_names.append(member_name)
         return property_names
 
-    def from_dict(self, data: dict):
+    def from_dict(self, data: dict[str, Any]) -> None:
         """
         从字典中初始化
         """
@@ -1449,14 +1459,14 @@ class TorrentInfo:
         return free_strs.get('%.2f %.2f' % (upload_volume_factor, download_volume_factor), "未知")
 
     @property
-    def volume_factor(self):
+    def volume_factor(self) -> str:
         """
         返回促销信息
         """
         return self.get_free_string(self.uploadvolumefactor, self.downloadvolumefactor)
 
     @property
-    def freedate_diff(self):
+    def freedate_diff(self) -> str:
         """
         返回免费剩余时间
         """
@@ -1499,52 +1509,53 @@ class TorrentInfo:
 class SubtitleInfo:
     """
     字幕搜索结果信息。
+
+    :param site: 站点ID
+    :param site_name: 站点名称
+    :param site_cookie: 站点Cookie
+    :param site_ua: 站点UA
+    :param site_proxy: 站点是否使用代理
+    :param site_order: 站点优先级
+    :param title: 字幕标题
+    :param description: 字幕描述
+    :param enclosure: 字幕下载链接
+    :param page_url: 详情页面
+    :param language: 语言
+    :param language_icon: 语言图标
+    :param size: 字幕大小
+    :param pubdate: 发布时间
+    :param date_elapsed: 已过时间
+    :param grabs: 点击/下载次数
+    :param uploader: 上传者
+    :param report_url: 举报页面
+    :param torrent_id: 种子ID
+    :param subtitle_id: 字幕ID
+    :param file_name: 下载文件名
     """
 
-    # 站点ID
     site: int = None
-    # 站点名称
     site_name: str = None
-    # 站点Cookie
     site_cookie: str = None
-    # 站点UA
     site_ua: str = None
-    # 站点是否使用代理
     site_proxy: bool = False
-    # 站点优先级
     site_order: int = 0
-    # 字幕标题
     title: str = None
-    # 字幕描述
     description: str = None
-    # 字幕下载链接
     enclosure: str = None
-    # 详情页面
     page_url: str = None
-    # 语言
     language: str = None
-    # 语言图标
     language_icon: str = None
-    # 字幕大小
     size: float = 0.0
-    # 发布时间
     pubdate: str = None
-    # 已过时间
     date_elapsed: str = None
-    # 点击/下载次数
     grabs: int = 0
-    # 上传者
     uploader: str = None
-    # 举报页面
     report_url: str = None
-    # 种子ID
     torrent_id: str = None
-    # 字幕ID
     subtitle_id: str = None
-    # 下载文件名
     file_name: str = None
 
-    def __build_meta_info(self) -> Optional[dict]:
+    def __build_meta_info(self) -> Optional[dict[str, Any]]:
         """
         从字幕标题、文件名和描述中识别可展示的季集信息。
         """
@@ -1552,18 +1563,20 @@ class SubtitleInfo:
             if not title:
                 continue
             try:
-                meta_dict = MetaInfo(title=title, subtitle=self.description).to_dict()
+                meta_dict: dict[str, Any] = MetaInfo(title=title, subtitle=self.description).to_dict()
             except Exception:
                 continue
             if meta_dict.get("season_episode") or meta_dict.get("episode_list"):
                 return meta_dict
         return None
 
-    def __setattr__(self, name: str, value: Any):
-        """直接写入字幕运行时字段，保留历史动态属性行为。"""
+    def __setattr__(self, name: str, value: Any) -> None:
+        """
+        直接写入字幕运行时字段，保留历史动态属性行为。
+        """
         self.__dict__[name] = value
 
-    def from_dict(self, data: dict):
+    def from_dict(self, data: dict[str, Any]) -> None:
         """
         从字典中初始化。
         """
@@ -1587,33 +1600,92 @@ class SubtitleInfo:
 class MediaInfo:
     """
     统一媒体信息，负责聚合各元数据源的标准字段
+
+    :param media_source: 媒体主身份来源
+    :param media_id: 当前数据源原生 ID
+    :param scrape_source: 请求级刮削来源；为空时使用系统设置
+    :param type: 类型 电影、电视剧
+    :param title: 媒体标题
+    :param en_title: 英文标题
+    :param hk_title: 香港标题
+    :param tw_title: 台湾标题
+    :param sg_title: 新加坡标题
+    :param year: 年份
+    :param season: 季
+    :param tmdb_id: 数据源返回的辅助 ID，仅作为元数据输出，不参与通用身份传递或持久化
+    :param imdb_id: IMDb 辅助标识，不作为主身份
+    :param tvdb_id: TVDB 辅助标识，不作为主身份
+    :param tvdb_slug: TVDB 可读路径标识
+    :param douban_id: 豆瓣辅助标识，不作为主身份
+    :param bangumi_id: Bangumi 辅助标识，不作为主身份
+    :param anilist_id: AniList 辅助标识，不作为主身份
+    :param anidb_id: AniDB 辅助标识，不作为主身份
+    :param collection_id: 合集ID
+    :param original_language: 媒体原语种
+    :param original_title: 媒体原发行标题
+    :param release_date: 媒体发行日期
+    :param backdrop_path: 背景图片
+    :param poster_path: 海报图片
+    :param logo_path: LOGO
+    :param vote_average: 评分
+    :param overview: 描述
+    :param genre_ids: 风格ID
+    :param names: 所有别名和译名
+    :param seasons: 各季的剧集清单信息
+    :param season_info: 各季详情
+    :param season_years: 各季的年份
+    :param category: 兼容字段，过渡期始终与 library_category 同步
+    :param library_category: 自动分类或人工覆盖后的媒体库相对目录分类
+    :param metadata_category: 数据源提供的描述性分类
+    :param classification: 分类规则计算及人工覆盖的结果
+    :param classification_facts: 插件来源提交的受控扩展分类事实，统一收口时由宿主注册表校验
+    :param tmdb_info: TMDB 原始响应
+    :param douban_info: 豆瓣 原始响应
+    :param bangumi_info: Bangumi 原始响应
+    :param anilist_info: AniList 原始响应
+    :param directors: 导演
+    :param actors: 演员
+    :param adult: 是否成人内容
+    :param created_by: 创建人
+    :param episode_run_time: 集时长
+    :param genres: 风格
+    :param first_air_date: 首播日期
+    :param homepage: 首页
+    :param languages: 语种
+    :param last_air_date: 最后上映日期
+    :param networks: 流媒体平台
+    :param number_of_episodes: 集数
+    :param number_of_seasons: 季数
+    :param origin_country: 原产国
+    :param original_name: 原名
+    :param production_companies: 出品公司
+    :param production_countries: 出品国
+    :param spoken_languages: 语种
+    :param release_dates: 所有发行日期
+    :param status: 状态
+    :param tagline: 标签
+    :param vote_count: 评价数量
+    :param popularity: 流行度
+    :param runtime: 时长
+    :param next_episode_to_air: 下一集
+    :param content_rating: 内容分级
+    :param episode_groups: 全部剧集组
+    :param episode_group: 剧集组
     """
 
     # 内部标记：是否命中本地识别缓存，不参与序列化
     recognize_cache_hit = False
-    # 媒体主身份来源
     media_source: MediaSource = None
-    # 当前数据源原生 ID
     media_id: str = None
-    # 请求级刮削来源；为空时使用系统设置
     scrape_source: str = None
-    # 类型 电影、电视剧
     type: MediaType = None
-    # 媒体标题
     title: str = None
-    # 英文标题
     en_title: str = None
-    # 香港标题
     hk_title: str = None
-    # 台湾标题
     tw_title: str = None
-    # 新加坡标题
     sg_title: str = None
-    # 年份
     year: str = None
-    # 季
     season: int = None
-    # 数据源返回的辅助 ID，仅作为元数据输出，不参与通用身份传递或持久化
     tmdb_id: int = None
     imdb_id: str = None
     tvdb_id: int = None
@@ -1622,110 +1694,62 @@ class MediaInfo:
     bangumi_id: int = None
     anilist_id: int = None
     anidb_id: int = None
-    # 合集ID
     collection_id: int = None
-    # 媒体原语种
     original_language: str = None
-    # 媒体原发行标题
     original_title: str = None
-    # 媒体发行日期
     release_date: str = None
-    # 背景图片
     backdrop_path: str = None
-    # 海报图片
     poster_path: str = None
-    # LOGO
     logo_path: str = None
-    # 评分
     vote_average: float = None
-    # 描述
     overview: str = None
-    # 风格ID
     genre_ids: list = field(default_factory=list)
-    # 所有别名和译名
     names: list = field(default_factory=list)
-    # 各季的剧集清单信息
     seasons: Dict[int, list] = field(default_factory=dict)
-    # 各季详情
     season_info: List[dict] = field(default_factory=list)
-    # 各季的年份
     season_years: dict = field(default_factory=dict)
-    # 兼容字段，过渡期始终与 library_category 同步
     category: str = ""
-    # 自动分类或人工覆盖后的媒体库相对目录分类
     library_category: str = ""
-    # 数据源提供的描述性分类
     metadata_category: str = ""
     classification: ClassificationResult | None = None
-    # 插件来源提交的受控扩展分类事实，统一收口时由宿主注册表校验
     classification_facts: dict[str, ClassificationFactValue] = field(default_factory=dict)
-    # TMDB INFO
     tmdb_info: dict = field(default_factory=dict)
-    # 豆瓣 INFO
     douban_info: dict = field(default_factory=dict)
-    # Bangumi INFO
     bangumi_info: dict = field(default_factory=dict)
-    # AniList INFO
     anilist_info: dict = field(default_factory=dict)
-    # 导演
     directors: List[dict] = field(default_factory=list)
-    # 演员
     actors: List[dict] = field(default_factory=list)
-    # 是否成人内容
     adult: Optional[bool] = None
-    # 创建人
     created_by: list = field(default_factory=list)
-    # 集时长
     episode_run_time: list = field(default_factory=list)
-    # 风格
     genres: List[dict] = field(default_factory=list)
-    # 首播日期
     first_air_date: str = None
-    # 首页
     homepage: str = None
-    # 语种
     languages: list = field(default_factory=list)
-    # 最后上映日期
     last_air_date: str = None
-    # 流媒体平台
     networks: list = field(default_factory=list)
-    # 集数
     number_of_episodes: int = None
-    # 季数
     number_of_seasons: int = None
-    # 原产国
     origin_country: list = field(default_factory=list)
-    # 原名
     original_name: str = None
-    # 出品公司
     production_companies: list = field(default_factory=list)
-    # 出品国
     production_countries: list = field(default_factory=list)
-    # 语种
     spoken_languages: list = field(default_factory=list)
-    # 所有发行日期
     release_dates: list = field(default_factory=list)
-    # 状态
     status: str = None
-    # 标签
     tagline: str = None
-    # 评价数量
     vote_count: int = None
-    # 流行度
     popularity: float = None
-    # 时长
     runtime: int = None
-    # 下一集
     next_episode_to_air: dict = field(default_factory=dict)
-    # 内容分级
     content_rating: str = None
-    # 全部剧集组
     episode_groups: List[dict] = field(default_factory=list)
-    # 剧集组
     episode_group: str = None
 
-    def __post_init__(self):
-        """规范化媒体来源、来源投影和新旧分类字段。"""
+    def __post_init__(self) -> None:
+        """
+        规范化媒体来源、来源投影和新旧分类字段。
+        """
         self.media_source, self.media_id = resolve_media_identity(media=self)
         # 设置媒体信息
         if self.tmdb_info:
@@ -1748,8 +1772,10 @@ class MediaInfo:
         )
         self.__dict__["_category_semantics_ready"] = True
 
-    def __setattr__(self, name: str, value: Any):
-        """写入动态字段，并兼容旧调用方直接覆盖 category。"""
+    def __setattr__(self, name: str, value: Any) -> None:
+        """
+        写入动态字段，并兼容旧调用方直接覆盖 category。
+        """
         if (
             name in {"category", "library_category"}
             and self.__dict__.get("_category_semantics_ready")
@@ -1760,7 +1786,7 @@ class MediaInfo:
             return
         self.__dict__[name] = value
 
-    def __get_properties(self):
+    def __get_properties(self) -> list[str]:
         """
         获取属性列表
         """
@@ -1771,7 +1797,7 @@ class MediaInfo:
                 property_names.append(member_name)
         return property_names
 
-    def from_dict(self, data: dict):
+    def from_dict(self, data: dict[str, Any]) -> None:
         """
         从字典中初始化
         """
@@ -1798,72 +1824,96 @@ class MediaInfo:
         if isinstance(self.type, str):
             self.type = MediaType(self.type)
 
-    def set_category(self, cat: str):
-        """兼容旧入口，委托统一媒体库分类写入方法。"""
+    def set_category(self, cat: str) -> None:
+        """
+        兼容旧入口，委托统一媒体库分类写入方法。
+        """
         self.set_library_category(cat)
 
     def set_library_category(self, category: str | None) -> None:
-        """设置媒体库分类，并同步过渡期兼容 category 字段。"""
+        """
+        设置媒体库分类，并同步过渡期兼容 category 字段。
+        """
         self.library_category = category or ""
 
     def _apply_source_projection(self, values: dict[str, Any]) -> None:
-        """把来源 owner 返回的字段映射应用到当前领域对象。"""
+        """
+        把来源 owner 返回的字段映射应用到当前领域对象。
+        """
         for name, value in values.items():
             setattr(self, name, value)
 
-    def set_tmdb_info(self, info: dict):
-        """通过 TMDB 来源 owner 初始化统一媒体字段。"""
+    def set_tmdb_info(self, info: dict[str, Any]) -> None:
+        """
+        通过 TMDB 来源 owner 初始化统一媒体字段。
+        """
         self._apply_source_projection(_project_tmdb(vars(self), info))
 
-    def set_douban_info(self, info: dict):
-        """通过豆瓣来源 owner 初始化统一媒体字段。"""
+    def set_douban_info(self, info: dict[str, Any]) -> None:
+        """
+        通过豆瓣来源 owner 初始化统一媒体字段。
+        """
         self._apply_source_projection(_project_douban(vars(self), info))
 
     @staticmethod
-    def get_bangumi_media_type(info: dict) -> MediaType:
-        """兼容旧方法，委托 Bangumi 来源 owner 解析媒体类型。"""
+    def get_bangumi_media_type(info: dict[str, Any]) -> MediaType:
+        """
+        兼容旧方法，委托 Bangumi 来源 owner 解析媒体类型。
+        """
         from app.domain.projection.bangumi import resolve_media_type
 
         return resolve_media_type(info)
 
-    def set_bangumi_info(self, info: dict) -> None:
-        """通过 Bangumi 来源 owner 初始化统一媒体字段。"""
+    def set_bangumi_info(self, info: dict[str, Any]) -> None:
+        """
+        通过 Bangumi 来源 owner 初始化统一媒体字段。
+        """
         self._apply_source_projection(_project_bangumi(vars(self), info))
 
     @staticmethod
-    def get_anilist_media_type(info: dict) -> MediaType:
-        """兼容旧方法，委托 AniList 来源 owner 解析媒体类型。"""
+    def get_anilist_media_type(info: dict[str, Any]) -> MediaType:
+        """
+        兼容旧方法，委托 AniList 来源 owner 解析媒体类型。
+        """
         from app.domain.projection.anilist import resolve_media_type
 
         return resolve_media_type(info)
 
     @staticmethod
-    def _anilist_date(date_info: dict) -> Optional[str]:
-        """兼容旧私有补丁点，委托 AniList owner 格式化模糊日期。"""
+    def _anilist_date(date_info: dict[str, Any]) -> Optional[str]:
+        """
+        兼容旧私有补丁点，委托 AniList owner 格式化模糊日期。
+        """
         from app.domain.projection.anilist import format_date
 
         return format_date(date_info)
 
     @staticmethod
-    def _anilist_chinese_title(info: dict) -> Optional[str]:
-        """兼容旧私有补丁点，委托 AniList owner 选择中文标题。"""
+    def _anilist_chinese_title(info: dict[str, Any]) -> Optional[str]:
+        """
+        兼容旧私有补丁点，委托 AniList owner 选择中文标题。
+        """
         from app.domain.projection.anilist import select_chinese_title
 
         return select_chinese_title(info)
 
-    def set_anilist_info(self, info: dict) -> None:
-        """通过 AniList 来源 owner 初始化统一媒体字段。"""
+    def set_anilist_info(self, info: dict[str, Any]) -> None:
+        """
+        通过 AniList 来源 owner 初始化统一媒体字段。
+        """
         self._apply_source_projection(_project_anilist(vars(self), info))
 
     @property
-    def title_year(self):
-        """返回带年份的媒体标题。"""
+    def title_year(self) -> str:
+        """
+        返回带年份的媒体标题。
+        """
         if self.title:
             return "%s (%s)" % (self.title, self.year) if self.year else self.title
         return ""
 
     @property
-    def detail_link(self):
+    def detail_link(self) -> str:
         """
         TMDB媒体详情页地址
         """
@@ -1885,7 +1935,7 @@ class MediaInfo:
         return ""
 
     @property
-    def stars(self):
+    def stars(self) -> str:
         """
         返回评分星星个数
         """
@@ -1894,8 +1944,10 @@ class MediaInfo:
         return "".rjust(int(self.vote_average), "★")
 
     @property
-    def vote_star(self):
-        """返回适合消息展示的评分星级文本。"""
+    def vote_star(self) -> str:
+        """
+        返回适合消息展示的评分星级文本。
+        """
         if self.vote_average:
             return "评分：%s" % self.stars
         return ""
@@ -1936,7 +1988,7 @@ class MediaInfo:
         overview = (overview[:max_len] + placeholder) if len(overview) > max_len else overview
         return overview
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """
         返回字典
         """
@@ -1987,34 +2039,36 @@ class MediaInfo:
 class Context:
     """
     上下文对象
+
+    :param meta_info: 识别信息
+    :param media_info: 媒体信息
+    :param torrent_info: 种子信息
+    :param media_recognize_fail_count: 媒体识别失败次数
+    :param resource_source: 候选资源来源：rss、spider、search、unknown。
+    :param match_source: 候选匹配来源：MediaSource 枚举值、title、unknown。
+    :param candidate_recognized: 候选自身是否已经识别出有效媒体 ID。
+    :param media_info_is_target: 当前 media_info 是否为目标媒体回填，而不是候选自身识别结果。
+    :param match_status: 音乐资源的匹配等级及原因；待确认项不得绑定目标媒体身份。
+    :param match_reason: 音乐候选匹配或待确认的原因
+    :param allowed_episodes: 调用方对本候选允许下载的剧集集合，None 表示不限制，空集合表示拒绝交付任何集。
+    :param selected_episodes: 下载链实际提交的剧集集合；None 表示尚未执行下载选择。
+    :param confirmed_full_coverage: 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源。
+    :param music_track_keys: 下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度。
     """
 
-    # 识别信息
     meta_info: Optional[MetaBase] = None
-    # 媒体信息
     media_info: Optional[Union[MediaInfo, MusicInfo]] = None
-    # 种子信息
     torrent_info: TorrentInfo = None
-    # 媒体识别失败次数
     media_recognize_fail_count: int = 0
-    # 候选资源来源：rss、spider、search、unknown。
     resource_source: str = "unknown"
-    # 候选匹配来源：MediaSource 枚举值、title、unknown。
     match_source: str = "unknown"
-    # 候选自身是否已经识别出有效媒体 ID。
     candidate_recognized: bool = False
-    # 当前 media_info 是否为目标媒体回填，而不是候选自身识别结果。
     media_info_is_target: bool = False
-    # 音乐资源的匹配等级及原因；待确认项不得绑定目标媒体身份。
     match_status: Optional[str] = None
     match_reason: Optional[str] = None
-    # 调用方对本候选允许下载的剧集集合，None 表示不限制，空集合表示拒绝交付任何集。
     allowed_episodes: Optional[Set[int]] = None
-    # 下载链实际提交的剧集集合；None 表示尚未执行下载选择。
     selected_episodes: Optional[List[int]] = None
-    # 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源。
     confirmed_full_coverage: bool = False
-    # 下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度。
     music_track_keys: Optional[List[str]] = None
 
     def to_dict(self) -> dict[str, Any]:
