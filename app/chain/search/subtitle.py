@@ -1,4 +1,6 @@
-"""字幕搜索、匹配与结果投影 owner。"""
+"""
+字幕搜索、匹配与结果投影 owner。
+"""
 
 import asyncio
 import random
@@ -22,7 +24,9 @@ from app.schemas.types import (
 
 
 class SearchSubtitleOwner(_SearchOwnerBase):
-    """字幕搜索、匹配与结果投影 owner。"""
+    """
+    字幕搜索、匹配与结果投影 owner。
+    """
 
     async def async_search_subtitles_by_title(
         self,

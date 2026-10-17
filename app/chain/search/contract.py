@@ -1,4 +1,6 @@
-"""SearchChain owner 的静态组合合同。"""
+"""
+SearchChain 各职责组件的静态组合契约。
+"""
 
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -8,7 +10,9 @@ if TYPE_CHECKING:
     from app.domain.context import Context
 
     class _SearchOwnerBase(ChainBase):
-        """向类型检查器声明稳定 Facade 上的跨 owner 能力。"""
+        """
+        向类型检查器声明稳定门面中各职责组件共用的能力。
+        """
 
         _AI_INDICES_CACHE_KEY: str
         _RESULT_CACHE_KEY: str

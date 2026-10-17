@@ -1,4 +1,6 @@
-"""精确媒体搜索与同步异步编排 owner。"""
+"""
+精确媒体身份搜索的同步、异步与流式编排。
+"""
 
 from dataclasses import dataclass
 from typing import (
@@ -37,7 +39,9 @@ def _build_id_search_params(
     music_type: Optional[str],
     include_candidates: bool = False,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """构造同步、异步和流式 ID 搜索共享的识别与缓存参数。"""
+    """
+    构造同步、异步和流式 ID 搜索共享的识别与缓存参数。
+    """
     recognition_params = {
         "media_source": media_source,
         "media_id": media_id,
@@ -59,7 +63,9 @@ def _build_missing_media_map(
     mediainfo: MediaInfo,
     season: Optional[int],
 ) -> Optional[Dict[str, Dict[int, NotExistMediaInfo]]]:
-    """将指定季转换为统一的缺集搜索映射。"""
+    """
+    将指定季转换为统一的缺集搜索映射。
+    """
     if season is None:
         return None
     resolved_source, resolved_id = resolve_media_identity(media=mediainfo)
@@ -72,35 +78,56 @@ def _build_missing_media_map(
 
 @dataclass(frozen=True, slots=True)
 class _IdSearchCacheRequest:
-    """请求保存 ID 搜索参数并清理旧的 AI 推荐状态。"""
+    """
+    请求保存 ID 搜索参数并清理旧的 AI 推荐状态。
+
+    :param params: 媒体来源、原生标识、类型、季号、站点和搜索区域等缓存条件
+    """
 
     params: Dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class _IdSearchRecognizeRequest:
-    """请求通过媒体链识别一个来源原生 ID。"""
+    """
+    请求通过媒体链识别一个来源原生 ID。
+
+    :param params: 目标媒体来源、原生标识及媒体类型等识别参数
+    """
 
     params: Dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class _IdSearchProcessRequest:
-    """请求执行已识别媒体的精确资源搜索。"""
+    """
+    请求执行已识别媒体的精确资源搜索。
+
+    :param params: 已识别媒体、站点范围、搜索区域与缺集映射等搜索参数
+    """
 
     params: Dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class _IdSearchSaveRequest:
-    """请求持久化成功的 ID 搜索结果。"""
+    """
+    请求持久化成功的 ID 搜索结果。
+
+    :param contexts: 本次媒体身份搜索得到的资源上下文列表
+    """
 
     contexts: List[Context]
 
 
 @dataclass(frozen=True, slots=True)
 class _IdSearchResult:
-    """冻结 ID 搜索状态机结果与识别失败提示。"""
+    """
+    冻结 ID 搜索状态机结果与识别失败提示。
+
+    :param contexts: 媒体身份搜索完成后的资源上下文列表，失败或无结果时为空
+    :param warning: 识别失败等需要写入日志的提示，无需警告时为 None
+    """
 
     contexts: List[Context]
     warning: Optional[str] = None
@@ -124,7 +151,9 @@ def _id_search_resolution(
     cache_local: bool,
     failure_keyword: str,
 ) -> _IdSearchResolution:
-    """统一 ID 搜索的缓存、识别、处理、失败短路与结果保存顺序。"""
+    """
+    统一 ID 搜索的缓存、识别、处理、失败短路与结果保存顺序。
+    """
     if cache_local:
         yield _IdSearchCacheRequest(params=cache_params)
     mediainfo = cast(
@@ -155,12 +184,16 @@ def _id_search_resolution(
 
 
 class SearchMediaOwner(_SearchOwnerBase):
-    """精确媒体搜索与同步异步编排 owner。"""
+    """
+    精确媒体身份搜索的同步、异步与流式编排。
+    """
 
     def _run_id_search_sync(
         self, resolution: _IdSearchResolution
     ) -> _IdSearchResult:
-        """用同步 I/O 外壳驱动共享 ID 搜索状态机。"""
+        """
+        用同步 I/O 外壳驱动共享 ID 搜索状态机。
+        """
         response: object = None
         while True:
             try:
@@ -182,7 +215,9 @@ class SearchMediaOwner(_SearchOwnerBase):
     async def _run_id_search_async(
         self, resolution: _IdSearchResolution
     ) -> _IdSearchResult:
-        """用异步 I/O 外壳驱动共享 ID 搜索状态机。"""
+        """
+        用异步 I/O 外壳驱动共享 ID 搜索状态机。
+        """
         response: object = None
         while True:
             try:
@@ -362,7 +397,9 @@ class SearchMediaOwner(_SearchOwnerBase):
         filter_params: Optional[Dict[str, str]] = None, include_candidates: bool = False,
         candidate_filter: Optional[Callable[[List[Context]], List[Context]]] = None,
     ) -> List[Context]:
-        """通过所有媒体共用的状态机同步搜索，人工候选必须显式请求。"""
+        """
+        通过所有媒体共用的状态机同步搜索，人工候选必须显式请求。
+        """
         return SearchExecutionOwner.run(
             self, MediaSearchPlan(
                 mediainfo=mediainfo, keyword=keyword, no_exists=no_exists, sites=sites,
@@ -380,7 +417,9 @@ class SearchMediaOwner(_SearchOwnerBase):
         filter_params: Optional[Dict[str, str]] = None, include_candidates: bool = False,
         candidate_filter: Optional[Callable[[List[Context]], List[Context]]] = None,
     ) -> List[Context]:
-        """异步执行同一搜索状态机，站点查询使用非流式异步端口。"""
+        """
+        异步执行同一搜索状态机，站点查询使用非流式异步端口。
+        """
         plan = MediaSearchPlan(
             mediainfo=mediainfo, keyword=keyword, no_exists=no_exists, sites=sites,
             rule_groups=rule_groups, area=area, custom_words=custom_words,
@@ -400,7 +439,9 @@ class SearchMediaOwner(_SearchOwnerBase):
         filter_params: Optional[Dict[str, str]] = None, include_candidates: bool = False,
         candidate_filter: Optional[Callable[[List[Context]], List[Context]]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """逐站点发布统一搜索进度，并以同一结果处理器完成过滤与匹配。"""
+        """
+        逐站点发布统一搜索进度，并以同一结果处理器完成过滤与匹配。
+        """
         plan = MediaSearchPlan(
             mediainfo=mediainfo, keyword=keyword, no_exists=no_exists, sites=sites,
             rule_groups=rule_groups, area=area, custom_words=custom_words,

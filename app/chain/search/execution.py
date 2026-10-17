@@ -1,4 +1,6 @@
-"""所有媒体类型共用的资源搜索状态机与同步、异步 I/O 驱动。"""
+"""
+所有媒体类型共用的资源搜索状态机与同步、异步 I/O 驱动。
+"""
 
 import asyncio
 import random
@@ -21,7 +23,21 @@ from app.schemas.mediaserver import NotExistMediaInfo
 
 @dataclass(frozen=True, slots=True)
 class MediaSearchPlan:
-    """冻结搜索业务输入，媒体类型只在关键词和匹配策略中产生差异。"""
+    """
+    冻结搜索业务输入，媒体类型只在关键词和匹配策略中产生差异。
+
+    :param mediainfo: 已确定目标身份的影视或音乐信息，执行时复制后补全细节
+    :param keyword: 用户指定搜索词，None 时由目标媒体名称生成
+    :param no_exists: 按媒体键和季号组织的缺失集数范围，None 表示未限制缺集
+    :param sites: 限定搜索的站点主键；None 或空列表使用系统配置的搜索站点
+    :param rule_groups: 指定的优先级过滤规则组，None 时沿用对应搜索入口的默认选择
+    :param area: 站点搜索区域，默认 title；imdbid 使用 IMDb 标识查询
+    :param custom_words: 本轮标题解析使用的自定义识别词，None 表示未额外提供
+    :param filter_params: 质量、分辨率等附加过滤条件，None 表示不附加条件
+    :param include_candidates: 是否保留尚未确定精确匹配的候选资源，默认只保留已确认结果
+    :param candidate_filter: 匹配后对候选上下文列表施加的额外筛选函数，None 表示不额外筛选
+    :param rule_groups_signature: 动态规则选择的稳定快照，用于判断已保存搜索检查点是否失效
+    """
 
     mediainfo: MediaInfo | MusicInfo
     keyword: Optional[str] = None
@@ -33,13 +49,18 @@ class MediaSearchPlan:
     filter_params: Optional[Dict[str, str]] = None
     include_candidates: bool = False
     candidate_filter: Optional[Callable[[List[Context]], List[Context]]] = None
-    # 动态规则选择时用于检查点失效判断的稳定规则快照。
     rule_groups_signature: Optional[Any] = None
 
 
 @dataclass(frozen=True, slots=True)
 class _SearchStep:
-    """请求驱动器执行一次 I/O 或 CPU 操作，不在外壳重复媒体业务决策。"""
+    """
+    请求驱动器执行一次 I/O 或 CPU 操作，不在外壳重复媒体业务决策。
+
+    :param kind: 驱动动作：recognize 识别、supplement 补全、search 搜索、parse 解析
+    :param params: 当前动作交给驱动器的命名参数
+    :param search_count: 当前关键词的搜索轮次，从 0 开始，用于决定换词等待
+    """
 
     kind: Literal["recognize", "supplement", "search", "parse"]
     params: Dict[str, Any]
@@ -48,7 +69,14 @@ class _SearchStep:
 
 @dataclass(frozen=True, slots=True)
 class _SearchOutcome:
-    """记录最终结果、原始候选数量及各阶段诊断。"""
+    """
+    记录最终结果、原始候选数量及各阶段诊断。
+
+    :param contexts: 最终保留的资源上下文列表
+    :param candidate_count: 站点返回的原始候选资源总数
+    :param counts: 各筛选阶段或匹配原因的诊断计数
+    :param recognition_failed: 是否因目标媒体识别失败而提前结束
+    """
 
     contexts: List[Context]
     candidate_count: int = 0
@@ -57,12 +85,16 @@ class _SearchOutcome:
 
 
 def _has_subscription_budget(owner: _SearchOwnerBase) -> bool:
-    """识别已启用站点预算的订阅搜索，普通搜索保留原有查询策略。"""
+    """
+    识别已启用站点预算的订阅搜索，普通搜索保留原有查询策略。
+    """
     return isinstance(getattr(owner, "_subscription_site_budget", None), SubscriptionSiteBudget)
 
 
 def _keyword_delay(owner: _SearchOwnerBase, search_count: int) -> int:
-    """订阅已有逐站流控，不再叠加换词时的整轮随机等待。"""
+    """
+    订阅已有逐站流控，不再叠加换词时的整轮随机等待。
+    """
     if not search_count or _has_subscription_budget(owner):
         return 0
     return random.randint(1, 10)
@@ -71,7 +103,9 @@ def _keyword_delay(owner: _SearchOwnerBase, search_count: int) -> int:
 def _query_keywords(
     owner: _SearchOwnerBase, plan: MediaSearchPlan, mediainfo: MediaInfo | MusicInfo, keywords: List[str],
 ) -> List[str]:
-    """订阅按 IMDb ID 查询时只执行一轮，避免每个别名被投影成相同请求。"""
+    """
+    订阅按 IMDb ID 查询时只执行一轮，避免每个别名被投影成相同请求。
+    """
     if _has_subscription_budget(owner) and plan.area == "imdbid" and getattr(mediainfo, "imdb_id", None):
         return keywords[:1]
     return keywords
@@ -79,7 +113,9 @@ def _query_keywords(
 
 def _result_params(plan: MediaSearchPlan, mediainfo: MediaInfo | MusicInfo,
                    torrents: List[TorrentInfo], season_episodes: Any, counts: Counter[str]) -> Dict[str, Any]:
-    """为每次完整过滤建立统一参数，计数只描述当前累计候选而不重复叠加。"""
+    """
+    为每次完整过滤建立统一参数，计数只描述当前累计候选而不重复叠加。
+    """
     counts.clear()
     return {
         "torrents": torrents, "mediainfo": mediainfo, "keyword": plan.keyword,
@@ -91,7 +127,9 @@ def _result_params(plan: MediaSearchPlan, mediainfo: MediaInfo | MusicInfo,
 
 
 def _search_resolution(owner: _SearchOwnerBase, plan: MediaSearchPlan) -> Generator[_SearchStep, Any, _SearchOutcome]:
-    """统一准备、换词、最终过滤和提前停止，音乐没有独立的搜索循环。"""
+    """
+    统一准备、换词、最终过滤和提前停止，音乐没有独立的搜索循环。
+    """
     mediainfo = SearchPlanOwner._prepare_media_input(owner._copy_media_input(plan.mediainfo))
     logger.info(f"开始搜索资源，关键词：{plan.keyword or mediainfo.title} ...")
     if SearchPlanOwner._needs_media_details(mediainfo):
@@ -134,7 +172,9 @@ def _search_resolution(owner: _SearchOwnerBase, plan: MediaSearchPlan) -> Genera
 
 
 def _candidate_contexts(mediainfo: MediaInfo | MusicInfo, torrents: List[TorrentInfo]) -> List[Context]:
-    """原始预览仅展示资源自身解析信息，不提前绑定未经匹配的目标媒体。"""
+    """
+    原始预览仅展示资源自身解析信息，不提前绑定未经匹配的目标媒体。
+    """
     return [Context(
         meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description, mtype=mediainfo.type),
         torrent_info=torrent, resource_source="search", media_info_is_target=False,
@@ -143,11 +183,15 @@ def _candidate_contexts(mediainfo: MediaInfo | MusicInfo, torrents: List[Torrent
 
 
 class SearchExecutionOwner:
-    """通过相同的业务状态机驱动三种 I/O 模式，不按媒体类型重复实现。"""
+    """
+    通过相同的业务状态机驱动三种 I/O 模式，不按媒体类型重复实现。
+    """
 
     @staticmethod
     def run(owner: _SearchOwnerBase, plan: MediaSearchPlan, media_chain: MediaChain) -> List[Context]:
-        """同步驱动统一状态机，网络请求和结果解析均在当前同步调用中执行。"""
+        """
+        同步驱动统一状态机，网络请求和结果解析均在当前同步调用中执行。
+        """
         flow = _search_resolution(owner, plan)
         response: Any = None
         while True:
@@ -170,7 +214,9 @@ class SearchExecutionOwner:
 
     @staticmethod
     def _log_outcome(outcome: _SearchOutcome) -> None:
-        """以一致口径报告搜索失败或原始召回与最终保留数量。"""
+        """
+        以一致口径报告搜索失败或原始召回与最终保留数量。
+        """
         if outcome.recognition_failed:
             logger.error("媒体信息识别失败！")
         else:
@@ -179,7 +225,9 @@ class SearchExecutionOwner:
     @staticmethod
     async def _provider_events(owner: _SearchOwnerBase, step: _SearchStep,
                                streaming: bool) -> AsyncIterator[Dict[str, Any]]:
-        """只在 I/O 适配层区分普通请求和站点事件流。"""
+        """
+        只在 I/O 适配层区分普通请求和站点事件流。
+        """
         if delay := _keyword_delay(owner, step.search_count):
             await asyncio.sleep(delay)
         if streaming:
@@ -191,7 +239,9 @@ class SearchExecutionOwner:
     @staticmethod
     async def events(owner: _SearchOwnerBase, plan: MediaSearchPlan, media_chain: MediaChain,
                      streaming: bool = True) -> AsyncIterator[Dict[str, Any]]:
-        """异步和 SSE 复用同一驱动器，只有是否向调用方发送中间进度不同。"""
+        """
+        异步和 SSE 复用同一驱动器，只有是否向调用方发送中间进度不同。
+        """
         flow = _search_resolution(owner, plan)
         response: Any = None
         raw_count = 0
@@ -230,7 +280,9 @@ class SearchExecutionOwner:
 
     @staticmethod
     def _completion_events(outcome: _SearchOutcome, streaming: bool) -> Iterator[Dict[str, Any]]:
-        """只在状态机正常完成后统一发布结果，失败和提前关闭不会伪造完成状态。"""
+        """
+        只在状态机正常完成后统一发布结果，失败和提前关闭不会伪造完成状态。
+        """
         SearchExecutionOwner._log_outcome(outcome)
         if outcome.recognition_failed:
             yield {"type": "error", "success": False, "message": "媒体信息识别失败"}
