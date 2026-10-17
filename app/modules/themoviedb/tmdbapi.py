@@ -1,3 +1,7 @@
+"""
+TMDB 名称匹配计划、详情消歧及同步异步查询服务。
+"""
+
 import re
 import traceback
 from dataclasses import dataclass
@@ -18,16 +22,26 @@ _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class _MatchTarget(Enum):
-    """描述一次媒体匹配计划需要调用的真实 TMDB 查询。"""
+    """
+    描述一次媒体匹配计划需要调用的真实 TMDB 查询。
+    """
 
+    # 按名称与年份查询电影。
     MOVIE_NAME = "movie_name"
+    # 按名称与年份查询电视剧。
     TV_NAME = "tv_name"
+    # 按名称与目标季年份查询电视剧。
     TV_SEASON = "tv_season"
 
 
 @dataclass(frozen=True)
 class _MatchStep:
-    """冻结同步与异步入口共同消费的单步匹配计划。"""
+    """
+    冻结同步与异步入口共同消费的单步匹配计划。
+
+    :param target: 本步骤使用电影名称、电视剧名称或季信息查询
+    :param year: 本轮查询年份，None 表示不限制年份
+    """
 
     target: _MatchTarget
     year: Optional[str] = None
@@ -35,7 +49,12 @@ class _MatchStep:
 
 @dataclass(frozen=True)
 class _CandidatePlan:
-    """冻结标题直达结果和需要详情补全的候选顺序。"""
+    """
+    冻结标题直达结果和需要详情补全的候选顺序。
+
+    :param direct: 无需额外详情即可命中的候选，未找到时为 None
+    :param aliases: 需要补充详情后检查别名的候选，按尝试顺序保存
+    """
 
     direct: Optional[_MediaRecord]
     aliases: tuple[_MediaRecord, ...]
@@ -43,7 +62,12 @@ class _CandidatePlan:
 
 @dataclass(frozen=True)
 class _DetailRequest:
-    """描述候选决策继续推进前唯一允许执行的详情 I/O。"""
+    """
+    描述候选决策继续推进前唯一允许执行的详情 I/O。
+
+    :param mtype: 需要查询详情的媒体类型
+    :param tmdbid: 候选条目的 TMDB 标识
+    """
 
     mtype: MediaType
     tmdbid: int
@@ -51,13 +75,18 @@ class _DetailRequest:
 
 class TmdbApi:
     """
-    TMDB识别匹配
+    统一 TMDB 名称匹配、媒体详情投影和辅助信息查询。
+
+    同步与异步入口共享识别决策，保持类型消歧、年份回退和缓存语义一致。
     """
 
     def __init__(self, language: Optional[str] = None):
-        # TMDB主体
+        """
+        按统一语言创建 TMDB 基础及分类接口客户端。
+
+        :param language: 查询语言；未指定时使用运行配置
+        """
         self.tmdb = TMDb(language=language)
-        # TMDB查询对象
         self.search = Search(language=language)
         self.movie = Movie(language=language)
         self.tv = TV(language=language)
@@ -70,7 +99,12 @@ class TmdbApi:
 
     def search_multiis(self, title: str) -> List[_MediaRecord]:
         """
-        同时查询模糊匹配的电影、电视剧TMDB信息
+        同时查询模糊匹配的电影、电视剧TMDB信息。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param title: 待搜索标题，空值不发起查询
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not title:
             return []
@@ -79,7 +113,13 @@ class TmdbApi:
 
     def search_movies(self, title: str, year: str) -> List[_MediaRecord]:
         """
-        查询模糊匹配的所有电影TMDB信息
+        查询模糊匹配的当前页的电影TMDB信息。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param title: 待搜索标题，空值不发起查询
+        :param year: 作品上映或整剧首播年份，未指定时不按年份限制
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not title:
             return []
@@ -88,7 +128,13 @@ class TmdbApi:
 
     def search_tvs(self, title: str, year: str) -> List[_MediaRecord]:
         """
-        查询模糊匹配的所有电视剧TMDB信息
+        查询模糊匹配的当前页的电视剧TMDB信息。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param title: 待搜索标题，空值不发起查询
+        :param year: 作品上映或整剧首播年份，未指定时不按年份限制
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not title:
             return []
@@ -97,7 +143,12 @@ class TmdbApi:
 
     def search_persons(self, name: str) -> List[dict]:
         """
-        查询模糊匹配的所有人物TMDB信息
+        查询模糊匹配的当前页的人物TMDB信息。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param name: 待搜索或匹配的名称
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not name:
             return []
@@ -105,7 +156,12 @@ class TmdbApi:
 
     def search_collections(self, name: str) -> List[_MediaRecord]:
         """
-        查询模糊匹配的所有合集TMDB信息
+        查询模糊匹配的当前页的合集TMDB信息。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param name: 待搜索或匹配的名称
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not name:
             return []
@@ -114,7 +170,10 @@ class TmdbApi:
 
     def get_collection(self, collection_id: int) -> List[dict]:
         """
-        根据合集ID查询合集详情
+        根据合集ID查询合集详情。
+
+        :param collection_id: TMDB 电影合集标识
+        :return: 合集中的电影条目列表；无效标识或查询失败时为空列表，底层无响应时可能为 None
         """
         if not collection_id:
             return []
@@ -129,10 +188,11 @@ class TmdbApi:
     @staticmethod
     def __compare_names(file_name: str, tmdb_names: Any) -> bool:
         """
-        比较文件名是否匹配，忽略大小写和特殊字符
+        比较文件名是否匹配，忽略大小写和特殊字符。
+
         :param file_name: 识别的文件名或者种子名
         :param tmdb_names: TMDB返回的译名
-        :return: True or False
+        :return: 标题相符时返回 True，否则返回 False
         """
         if not file_name or not tmdb_names:
             return False
@@ -147,7 +207,9 @@ class TmdbApi:
 
     @staticmethod
     def _search_kwargs(title: str, year: Optional[str], mtype: MediaType) -> dict[str, str]:
-        """构造同步与异步搜索客户端共享的查询参数。"""
+        """
+        构造同步与异步搜索客户端共享的查询参数。
+        """
         kwargs = {"term": title}
         if year:
             kwargs["year" if mtype == MediaType.MOVIE else "release_year"] = year
@@ -155,7 +217,9 @@ class TmdbApi:
 
     @staticmethod
     def _project_multi_search_results(multis: List[_MediaRecord]) -> List[_MediaRecord]:
-        """过滤多类型搜索结果并投影为宿主媒体类型。"""
+        """
+        过滤多类型搜索结果并投影为宿主媒体类型。
+        """
         ret_infos = []
         for multi in multis:
             media_type = multi.get("media_type")
@@ -167,7 +231,9 @@ class TmdbApi:
 
     @staticmethod
     def _project_search_results(title: str, items: List[_MediaRecord], mtype: MediaType) -> List[_MediaRecord]:
-        """按媒体类型过滤标题并补齐统一类型字段。"""
+        """
+        按媒体类型过滤标题并补齐统一类型字段。
+        """
         title_field = "title" if mtype == MediaType.MOVIE else "name"
         ret_infos = []
         for item in items:
@@ -179,7 +245,9 @@ class TmdbApi:
 
     @staticmethod
     def _project_collections(collections: List[_MediaRecord]) -> List[_MediaRecord]:
-        """补齐合集查询结果的宿主类型与稳定身份。"""
+        """
+        补齐合集查询结果的宿主类型与稳定身份。
+        """
         for collection in collections:
             collection["media_type"] = MediaType.COLLECTION
             collection["collection_id"] = collection.get("id")
@@ -188,7 +256,7 @@ class TmdbApi:
     @staticmethod
     def _validate_match_params(name: str, search_obj: Any) -> bool:
         """
-        验证匹配方法的基本参数
+        验证匹配方法的基本参数。
         """
         if not search_obj:
             return False
@@ -199,7 +267,7 @@ class TmdbApi:
     @staticmethod
     def _generate_year_range(year: Optional[str]) -> List[Optional[str]]:
         """
-        生成年份范围用于匹配
+        生成年份范围用于匹配。
         """
         year_range = [year]
         if year:
@@ -215,7 +283,9 @@ class TmdbApi:
         season_year: Optional[str],
         season_number: Optional[int],
     ) -> tuple[_MatchStep, ...]:
-        """冻结名称、年份和季信息对应的有序查询计划。"""
+        """
+        冻结名称、年份和季信息对应的有序查询计划。
+        """
         if mtype != MediaType.TV:
             return tuple(
                 _MatchStep(_MatchTarget.MOVIE_NAME, search_year) for search_year in cls._generate_year_range(year)
@@ -230,7 +300,9 @@ class TmdbApi:
     def _match_resolution(
         cls, mtype: MediaType, plan: tuple[_MatchStep, ...]
     ) -> Generator[_MatchStep, Optional[_MediaRecord], Optional[_MediaRecord]]:
-        """统一推进匹配计划并在首个有效结果处短路。"""
+        """
+        统一推进匹配计划并在首个有效结果处短路。
+        """
         info: Optional[_MediaRecord] = {}
         for step in plan:
             info = yield step
@@ -248,7 +320,9 @@ class TmdbApi:
         season_number: Optional[int],
         group_seasons: Optional[List[_MediaRecord]],
     ) -> Optional[_MediaRecord]:
-        """通过同步客户端执行一条已冻结的匹配查询。"""
+        """
+        通过同步客户端执行一条已冻结的匹配查询。
+        """
         if step.target == _MatchTarget.TV_SEASON:
             assert step.year is not None and season_number is not None
             self._log_match_debug(mtype, name, step.year, season_number, season_year)
@@ -267,7 +341,9 @@ class TmdbApi:
         season_number: Optional[int],
         group_seasons: Optional[List[_MediaRecord]],
     ) -> Optional[_MediaRecord]:
-        """通过异步客户端执行一条已冻结的匹配查询。"""
+        """
+        通过异步客户端执行一条已冻结的匹配查询。
+        """
         if step.target == _MatchTarget.TV_SEASON:
             assert step.year is not None and season_number is not None
             self._log_match_debug(mtype, name, step.year, season_number, season_year)
@@ -286,7 +362,9 @@ class TmdbApi:
         season_number: Optional[int],
         group_seasons: Optional[List[_MediaRecord]],
     ) -> Optional[_MediaRecord]:
-        """同步执行共享匹配状态机请求的真实 I/O。"""
+        """
+        同步执行共享匹配状态机请求的真实 I/O。
+        """
         try:
             step = next(resolution)
         except StopIteration as result:
@@ -307,7 +385,9 @@ class TmdbApi:
         season_number: Optional[int],
         group_seasons: Optional[List[_MediaRecord]],
     ) -> Optional[_MediaRecord]:
-        """异步执行共享匹配状态机请求的真实 I/O。"""
+        """
+        异步执行共享匹配状态机请求的真实 I/O。
+        """
         try:
             step = next(resolution)
         except StopIteration as result:
@@ -330,7 +410,7 @@ class TmdbApi:
         season_year: Optional[str] = None,
     ) -> None:
         """
-        记录匹配调试日志
+        记录匹配调试日志。
         """
         if season_number is not None and season_year:
             logger.debug(f"正在识别{mtype.value}：{name}, 季集={season_number}, 季集年份={season_year} ...")
@@ -340,7 +420,7 @@ class TmdbApi:
     @staticmethod
     def _set_media_type(info: Optional[_MediaRecord], mtype: MediaType) -> Optional[_MediaRecord]:
         """
-        设置媒体类型
+        设置媒体类型。
         """
         if info:
             info["media_type"] = mtype
@@ -349,7 +429,7 @@ class TmdbApi:
     @staticmethod
     def _sort_multi_results(multis: List[_MediaRecord]) -> List[_MediaRecord]:
         """
-        按年份降序排列搜索结果，电影在前面
+        按年份降序排列搜索结果，电影在前面。
         """
         return sorted(
             multis,
@@ -363,7 +443,7 @@ class TmdbApi:
     @staticmethod
     def _convert_media_type(ret_info: _MediaRecord) -> _MediaRecord:
         """
-        转换媒体类型为MediaType枚举
+        转换媒体类型为MediaType枚举。
         """
         if ret_info and not isinstance(ret_info.get("media_type"), MediaType):
             ret_info["media_type"] = MediaType.MOVIE if ret_info.get("media_type") == "movie" else MediaType.TV
@@ -371,7 +451,9 @@ class TmdbApi:
 
     @staticmethod
     def _candidate_media_type(candidate: _MediaRecord) -> Optional[MediaType]:
-        """把 TMDB 多类型结果值收窄为可查询的宿主媒体类型。"""
+        """
+        把 TMDB 多类型结果值收窄为可查询的宿主媒体类型。
+        """
         media_type = candidate.get("media_type")
         if media_type in (MediaType.MOVIE, "movie"):
             return MediaType.MOVIE
@@ -381,14 +463,18 @@ class TmdbApi:
 
     @staticmethod
     def _title_fields(mtype: MediaType) -> tuple[str, str]:
-        """返回媒体类型对应的标题与原标题字段。"""
+        """
+        返回媒体类型对应的标题与原标题字段。
+        """
         if mtype == MediaType.MOVIE:
             return "title", "original_title"
         return "name", "original_name"
 
     @classmethod
     def _title_matches(cls, name: str, candidate: _MediaRecord, mtype: MediaType) -> bool:
-        """使用同一规则比较候选标题和原标题。"""
+        """
+        使用同一规则比较候选标题和原标题。
+        """
         return any(cls.__compare_names(name, candidate.get(field)) for field in cls._title_fields(mtype))
 
     @classmethod
@@ -399,7 +485,9 @@ class TmdbApi:
         items: List[_MediaRecord],
         year: Optional[str],
     ) -> _CandidatePlan:
-        """排序、过滤年份并冻结标题优先的候选匹配计划。"""
+        """
+        排序、过滤年份并冻结标题优先的候选匹配计划。
+        """
         date_field = "release_date" if mtype == MediaType.MOVIE else "first_air_date"
         candidates = sorted(
             items,
@@ -416,7 +504,9 @@ class TmdbApi:
 
     @classmethod
     def _build_multi_candidate_plan(cls, name: str, multis: List[_MediaRecord]) -> _CandidatePlan:
-        """冻结多类型结果的排序、标题优先和别名回退顺序。"""
+        """
+        冻结多类型结果的排序、标题优先和别名回退顺序。
+        """
         candidates = cls._sort_multi_results(multis)
         direct = next(
             (
@@ -430,7 +520,9 @@ class TmdbApi:
 
     @classmethod
     def _alias_matches(cls, name: str, candidate: Optional[_MediaRecord]) -> bool:
-        """判断详情候选的别名或译名是否与输入完全一致。"""
+        """
+        判断详情候选的别名或译名是否与输入完全一致。
+        """
         return bool(candidate and cls.__compare_names(name, candidate.get("names")))
 
     @classmethod
@@ -440,7 +532,9 @@ class TmdbApi:
         media_type_for: Callable[[_MediaRecord], Optional[MediaType]],
         accepts: Callable[[Optional[_MediaRecord]], bool],
     ) -> Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord]:
-        """用生成器统一候选短路、详情补全和首个命中决策。"""
+        """
+        用生成器统一候选短路、详情补全和首个命中决策。
+        """
         if plan.direct is not None:
             return plan.direct
         for candidate in plan.aliases:
@@ -459,7 +553,9 @@ class TmdbApi:
     def _name_resolution(
         cls, name: str, mtype: MediaType, plan: _CandidatePlan
     ) -> Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord]:
-        """构造标题搜索候选的别名详情决策。"""
+        """
+        构造标题搜索候选的别名详情决策。
+        """
         return cls._candidate_resolution(
             plan,
             lambda _candidate: mtype,
@@ -470,7 +566,9 @@ class TmdbApi:
     def _multi_resolution(
         cls, name: str, plan: _CandidatePlan
     ) -> Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord]:
-        """构造多类型候选的类型化详情决策。"""
+        """
+        构造多类型候选的类型化详情决策。
+        """
         return cls._candidate_resolution(
             plan,
             cls._candidate_media_type,
@@ -481,7 +579,9 @@ class TmdbApi:
         self,
         resolution: Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord],
     ) -> _MediaRecord:
-        """通过同步客户端执行生成器明确请求的详情 I/O。"""
+        """
+        通过同步客户端执行生成器明确请求的详情 I/O。
+        """
         try:
             request = next(resolution)
         except StopIteration as result:
@@ -497,7 +597,9 @@ class TmdbApi:
         self,
         resolution: Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord],
     ) -> _MediaRecord:
-        """通过异步客户端执行生成器明确请求的详情 I/O。"""
+        """
+        通过异步客户端执行生成器明确请求的详情 I/O。
+        """
         try:
             request = next(resolution)
         except StopIteration as result:
@@ -512,7 +614,8 @@ class TmdbApi:
     @staticmethod
     def __get_names(tmdb_info: _MediaRecord) -> List[str]:
         """
-        搜索tmdb中所有的标题和译名，用于名称匹配
+        搜索tmdb中所有的标题和译名，用于名称匹配。
+
         :param tmdb_info: TMDB信息
         :return: 所有译名的清单
         """
@@ -553,14 +656,17 @@ class TmdbApi:
         group_seasons: Optional[List[_MediaRecord]] = None,
     ) -> Optional[_MediaRecord]:
         """
-        搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息
-        :param name: 检索的名称
-        :param mtype: 类型：电影、电视剧
-        :param year: 年份，如要是季集需要是首播年份(first_air_date)
-        :param season_year: 当前季集年份
-        :param season_number: 季集，整数
-        :param group_seasons: 集数组信息
-        :return: TMDB的INFO，同时会将mtype赋值到media_type中
+        搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息。
+
+        按共享匹配计划依次尝试年份、季信息和别名回退，首个有效候选即返回。
+
+        :param name: 待搜索或匹配的名称
+        :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
+        :param year: 作品上映或整剧首播年份，未指定时不按年份限制
+        :param season_year: 目标季的首播年份，可为空
+        :param season_number: 目标季编号，0 表示特别篇，None 表示未指定
+        :param group_seasons: 已获取的剧集组季集信息，用于季年份匹配
+        :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
         if not self._validate_match_params(name, self.search):
             return None
@@ -576,7 +682,8 @@ class TmdbApi:
 
     def __search_movie_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
         """
-        根据名称查询电影TMDB匹配
+        根据名称查询电影TMDB匹配。
+
         :param name: 识别的文件名或种子名
         :param year: 电影上映日期
         :return: 匹配的媒体信息
@@ -601,7 +708,8 @@ class TmdbApi:
 
     def __search_tv_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
         """
-        根据名称查询电视剧TMDB匹配
+        根据名称查询电视剧TMDB匹配。
+
         :param name: 识别的文件名或者种子名
         :param year: 电视剧的首播年份
         :return: 匹配的媒体信息
@@ -631,7 +739,9 @@ class TmdbApi:
         season_number: int,
         group_seasons: Optional[List[_MediaRecord]],
     ) -> bool:
-        """判断详情中的指定季或集数组是否在目标年份首播。"""
+        """
+        判断详情中的指定季或集数组是否在目标年份首播。
+        """
         if group_seasons:
             for group_season in group_seasons:
                 if group_season.get("order") != season_number:
@@ -660,7 +770,9 @@ class TmdbApi:
         season_number: int,
         group_seasons: Optional[List[_MediaRecord]],
     ) -> bool:
-        """按标题、别名、首播年份和季年份判断剧集候选。"""
+        """
+        按标题、别名、首播年份和季年份判断剧集候选。
+        """
         if not candidate:
             return False
         if not (cls._title_matches(name, candidate, MediaType.TV) or cls._alias_matches(name, candidate)):
@@ -677,7 +789,9 @@ class TmdbApi:
         tvs: List[_MediaRecord],
         season_year: str,
     ) -> _CandidatePlan:
-        """冻结电视剧首播年份直达和详情回退候选顺序。"""
+        """
+        冻结电视剧首播年份直达和详情回退候选顺序。
+        """
         candidates = sorted(
             tvs,
             key=lambda item: item.get("first_air_date") or "0000-00-00",
@@ -703,7 +817,9 @@ class TmdbApi:
         season_number: int,
         group_seasons: Optional[List[_MediaRecord]],
     ) -> Generator[_DetailRequest, Optional[_MediaRecord], _MediaRecord]:
-        """构造剧集候选的标题、别名和季年份详情决策。"""
+        """
+        构造剧集候选的标题、别名和季年份详情决策。
+        """
         return cls._candidate_resolution(
             plan,
             lambda _candidate: MediaType.TV,
@@ -718,7 +834,8 @@ class TmdbApi:
         group_seasons: Optional[List[_MediaRecord]] = None,
     ) -> Optional[_MediaRecord]:
         """
-        根据电视剧的名称和季的年份及序号匹配TMDB
+        根据电视剧的名称和季的年份及序号匹配TMDB。
+
         :param name: 识别的文件名或者种子名
         :param season_year: 季的年份
         :param season_number: 季序号
@@ -745,9 +862,12 @@ class TmdbApi:
 
     def match_multi(self, name: str) -> Optional[_MediaRecord]:
         """
-        根据名称同时查询电影和电视剧，没有类型也没有年份时使用
-        :param name: 识别的文件名或种子名
-        :return: 匹配的媒体信息
+        根据名称同时查询电影和电视剧，没有类型也没有年份时使用。
+
+        按共享匹配计划依次尝试年份、季信息和别名回退，首个有效候选即返回。
+
+        :param name: 待搜索或匹配的名称
+        :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
         try:
             multis = self.search.multi(term=name) or []
@@ -769,7 +889,9 @@ class TmdbApi:
 
     @staticmethod
     def _info_lookup_types(mtype: Optional[MediaType]) -> tuple[MediaType, ...]:
-        """返回详情查询的稳定类型顺序，未知类型固定先剧集后电影。"""
+        """
+        返回详情查询的稳定类型顺序，未知类型固定先剧集后电影。
+        """
         if mtype == MediaType.MOVIE:
             return (MediaType.MOVIE,)
         if mtype == MediaType.TV:
@@ -782,7 +904,9 @@ class TmdbApi:
         tmdbid: int,
         details: dict[MediaType, Optional[_MediaRecord]],
     ) -> Optional[_MediaRecord]:
-        """从查询结果中统一判断类型、歧义和未命中状态。"""
+        """
+        从查询结果中统一判断类型、歧义和未命中状态。
+        """
         if mtype in (MediaType.MOVIE, MediaType.TV):
             tmdb_info = details.get(mtype)
             if tmdb_info:
@@ -806,7 +930,9 @@ class TmdbApi:
     def _info_resolution(
         cls, mtype: Optional[MediaType], tmdbid: int
     ) -> Generator[MediaType, Optional[_MediaRecord], Optional[_MediaRecord]]:
-        """统一推进详情类型查询顺序并完成歧义判断。"""
+        """
+        统一推进详情类型查询顺序并完成歧义判断。
+        """
         details: dict[MediaType, Optional[_MediaRecord]] = {}
         for detail_type in cls._info_lookup_types(mtype):
             details[detail_type] = yield detail_type
@@ -818,7 +944,9 @@ class TmdbApi:
         tmdbid: int,
         raise_on_connection_error: bool,
     ) -> Optional[_MediaRecord]:
-        """同步执行共享详情状态机请求的真实 I/O。"""
+        """
+        同步执行共享详情状态机请求的真实 I/O。
+        """
         try:
             detail_type = next(resolution)
         except StopIteration as result:
@@ -845,7 +973,9 @@ class TmdbApi:
         tmdbid: int,
         raise_on_connection_error: bool,
     ) -> Optional[_MediaRecord]:
-        """异步执行共享详情状态机请求的真实 I/O。"""
+        """
+        异步执行共享详情状态机请求的真实 I/O。
+        """
         try:
             detail_type = next(resolution)
         except StopIteration as result:
@@ -867,7 +997,9 @@ class TmdbApi:
                 return cast(Optional[_MediaRecord], result.value)
 
     def _project_info(self, tmdb_info: Optional[_MediaRecord]) -> Optional[_MediaRecord]:
-        """把 TMDB 详情统一投影为宿主识别所需字段。"""
+        """
+        把 TMDB 详情统一投影为宿主识别所需字段。
+        """
         if not tmdb_info:
             return tmdb_info
         tmdb_info["genre_ids"] = [genre.get("id") for genre in tmdb_info.get("genres") or []]
@@ -882,11 +1014,15 @@ class TmdbApi:
         self, mtype: Optional[MediaType], tmdbid: int, raise_on_connection_error: bool = False
     ) -> Optional[_MediaRecord]:
         """
-        给定TMDB号，查询一条媒体信息
-        :param mtype: 类型：电影、电视剧，为空时都查（此时用不上年份）
-        :param tmdbid: TMDB的ID，有tmdbid时优先使用tmdbid，否则使用年份和标题
-        :param raise_on_connection_error: 为True时，遇到TMDB连接失败（区别于404等业务错误）
-            将抛出TMDbConnectionError而不是吞掉返回None；默认False，与既有调用方行为完全一致
+        按 TMDB 标识查询详情，并补充规范类型、别名和分级。
+
+        类型未知时同时考虑电影和电视剧；详情身份仍存在歧义时不任意选取。
+
+        :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
+        :param tmdbid: TMDB 数字媒体标识
+        :param raise_on_connection_error: True 时重新抛出连接失败；默认 False 将其作为无结果返回
+        :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
+        :raises TMDbConnectionError: 开启连接错误传播且底层未取得响应
         """
         tmdb_info = self._run_info_sync(
             self._info_resolution(mtype, tmdbid),
@@ -898,13 +1034,13 @@ class TmdbApi:
     @staticmethod
     def __get_content_rating(tmdb_info: dict) -> Optional[str]:
         """
-        获得tmdb中的内容评级
+        获得tmdb中的内容评级。
+
         :param tmdb_info: TMDB信息
         :return: 内容评级
         """
         if not tmdb_info:
             return None
-        # dict[地区:分级]
         ratings = {}
         if results := (tmdb_info.get("release_dates") or {}).get("results"):
             """
@@ -960,12 +1096,12 @@ class TmdbApi:
     @staticmethod
     def __update_tmdbinfo_cn_title(tmdb_info: dict):
         """
-        更新TMDB信息中的中文名称
+        更新TMDB信息中的中文名称。
         """
 
         def __get_tmdb_chinese_title(tmdbinfo) -> Optional[str]:
             """
-            从别名中获取中文标题
+            从别名中获取中文标题。
             """
             if not tmdbinfo:
                 return None
@@ -982,21 +1118,17 @@ class TmdbApi:
                         return title
             return tmdbinfo.get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE else tmdbinfo.get("name")
 
-        # 原标题
         org_title = tmdb_info.get("title") \
             if tmdb_info.get("media_type") == MediaType.MOVIE \
             else tmdb_info.get("name")
-        # 查找中文名
         if not text_tools.contains_chinese(org_title):
             cn_title = __get_tmdb_chinese_title(tmdb_info)
             if cn_title and cn_title != org_title:
-                # 使用中文别名
                 if tmdb_info.get("media_type") == MediaType.MOVIE:
                     tmdb_info['title'] = cn_title
                 else:
                     tmdb_info['name'] = cn_title
             else:
-                # 使用新加坡名
                 sg_title = tmdb_info.get("sg_title")
                 if sg_title and sg_title != org_title and text_tools.contains_chinese(sg_title):
                     if tmdb_info.get("media_type") == MediaType.MOVIE:
@@ -1007,12 +1139,12 @@ class TmdbApi:
     @staticmethod
     def __update_tmdbinfo_extra_title(tmdb_info: dict):
         """
-        更新TMDB信息中的其它语种名称
+        更新TMDB信息中的其它语种名称。
         """
 
         def __get_tmdb_lang_title(tmdbinfo: dict, lang: Optional[str] = "US") -> Optional[str]:
             """
-            从译名中获取其它语种标题
+            从译名中获取其它语种标题。
             """
             if not tmdbinfo:
                 return None
@@ -1023,20 +1155,17 @@ class TmdbApi:
                         else translation.get("data", {}).get("name")
             return None
 
-        # 原标题
         org_title = (
             tmdb_info.get("original_title")
             if tmdb_info.get("media_type") == MediaType.MOVIE
             else tmdb_info.get("original_name")
         )
-        # 查找英文名
         if tmdb_info.get("original_language") == "en":
             tmdb_info['en_title'] = org_title
         else:
             en_title = __get_tmdb_lang_title(tmdb_info, "US")
             tmdb_info['en_title'] = en_title or org_title
 
-        # 查找香港台湾译名
         tmdb_info['hk_title'] = __get_tmdb_lang_title(tmdb_info, "HK")
         tmdb_info['tw_title'] = __get_tmdb_lang_title(tmdb_info, "TW")
 
@@ -1053,99 +1182,13 @@ class TmdbApi:
                                                                "external_ids",
                            raise_on_connection_error: bool = False) -> Optional[dict]:
         """
-        获取电影的详情
-        :param tmdbid: TMDB ID
-        :param raise_on_connection_error: 为True时TMDB连接失败会抛出TMDbConnectionError，
-            而不是像默认那样吞掉返回None；404等TMDB业务错误不受影响，始终返回None
-        :return: TMDB信息
-        """
-        """
-        {
-          "adult": false,
-          "backdrop_path": "/r9PkFnRUIthgBp2JZZzD380MWZy.jpg",
-          "belongs_to_collection": {
-            "id": 94602,
-            "name": "穿靴子的猫（系列）",
-            "poster_path": "/anHwj9IupRoRZZ98WTBvHpTiE6A.jpg",
-            "backdrop_path": "/feU1DWV5zMWxXUHJyAIk3dHRQ9c.jpg"
-          },
-          "budget": 90000000,
-          "genres": [
-            {
-              "id": 16,
-              "name": "动画"
-            },
-            {
-              "id": 28,
-              "name": "动作"
-            },
-            {
-              "id": 12,
-              "name": "冒险"
-            },
-            {
-              "id": 35,
-              "name": "喜剧"
-            },
-            {
-              "id": 10751,
-              "name": "家庭"
-            },
-            {
-              "id": 14,
-              "name": "奇幻"
-            }
-          ],
-          "homepage": "",
-          "id": 315162,
-          "imdb_id": "tt3915174",
-          "original_language": "en",
-          "original_title": "Puss in Boots: The Last Wish",
-          "overview": "时隔11年，臭屁自大又爱卖萌的猫大侠回来了！如今的猫大侠（安东尼奥·班德拉斯 配音），依旧幽默潇洒又不拘小节、数次“花式送命”后，九条命如今只剩一条，于是不得不请求自己的老搭档兼“宿敌”——迷人的软爪妞（萨尔玛·海耶克 配音）来施以援手来恢复自己的九条生命。",
-          "popularity": 8842.129,
-          "poster_path": "/rnn30OlNPiC3IOoWHKoKARGsBRK.jpg",
-          "production_companies": [
-            {
-              "id": 33,
-              "logo_path": "/8lvHyhjr8oUKOOy2dKXoALWKdp0.png",
-              "name": "Universal Pictures",
-              "origin_country": "US"
-            },
-            {
-              "id": 521,
-              "logo_path": "/kP7t6RwGz2AvvTkvnI1uteEwHet.png",
-              "name": "DreamWorks Animation",
-              "origin_country": "US"
-            }
-          ],
-          "production_countries": [
-            {
-              "iso_3166_1": "US",
-              "name": "United States of America"
-            }
-          ],
-          "release_date": "2022-12-07",
-          "revenue": 260725470,
-          "runtime": 102,
-          "spoken_languages": [
-            {
-              "english_name": "English",
-              "iso_639_1": "en",
-              "name": "English"
-            },
-            {
-              "english_name": "Spanish",
-              "iso_639_1": "es",
-              "name": "Español"
-            }
-          ],
-          "status": "Released",
-          "tagline": "",
-          "title": "穿靴子的猫2",
-          "video": false,
-          "vote_average": 8.614,
-          "vote_count": 2291
-        }
+        查询电影或电视剧详情，保留连接失败与空结果的区别。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param append_to_response: 逗号分隔的附加详情接口名称
+        :param raise_on_connection_error: True 时重新抛出连接失败；默认 False 将其作为无结果返回
+        :return: TMDB 详情；客户端不可用或无数据时为空字典，查询异常默认返回 None
+        :raises TMDbConnectionError: 开启连接错误传播且底层未取得响应
         """
         if not self.movie:
             return {}
@@ -1175,170 +1218,13 @@ class TmdbApi:
                                                             "episode_groups",
                         raise_on_connection_error: bool = False) -> Optional[dict]:
         """
-        获取电视剧的详情
-        :param tmdbid: TMDB ID
-        :param raise_on_connection_error: 为True时TMDB连接失败会抛出TMDbConnectionError，
-            而不是像默认那样吞掉返回None；404等TMDB业务错误不受影响，始终返回None
-        :return: TMDB信息
-        """
-        """
-        {
-          "adult": false,
-          "backdrop_path": "/uDgy6hyPd82kOHh6I95FLtLnj6p.jpg",
-          "created_by": [
-            {
-              "id": 35796,
-              "credit_id": "5e84f06a3344c600153f6a57",
-              "name": "Craig Mazin",
-              "gender": 2,
-              "profile_path": "/uEhna6qcMuyU5TP7irpTUZ2ZsZc.jpg"
-            },
-            {
-              "id": 1295692,
-              "credit_id": "5e84f03598f1f10016a985c0",
-              "name": "Neil Druckmann",
-              "gender": 2,
-              "profile_path": "/bVUsM4aYiHbeSYE1xAw2H5Z1ANU.jpg"
-            }
-          ],
-          "episode_run_time": [],
-          "first_air_date": "2023-01-15",
-          "genres": [
-            {
-              "id": 18,
-              "name": "剧情"
-            },
-            {
-              "id": 10765,
-              "name": "Sci-Fi & Fantasy"
-            },
-            {
-              "id": 10759,
-              "name": "动作冒险"
-            }
-          ],
-          "homepage": "https://www.hbo.com/the-last-of-us",
-          "id": 100088,
-          "in_production": true,
-          "languages": [
-            "en"
-          ],
-          "last_air_date": "2023-01-15",
-          "last_episode_to_air": {
-            "air_date": "2023-01-15",
-            "episode_number": 1,
-            "id": 2181581,
-            "name": "当你迷失在黑暗中",
-            "overview": "在一场全球性的流行病摧毁了文明之后，一个顽强的幸存者负责照顾一个 14 岁的小女孩，她可能是人类最后的希望。",
-            "production_code": "",
-            "runtime": 81,
-            "season_number": 1,
-            "show_id": 100088,
-            "still_path": "/aRquEWm8wWF1dfa9uZ1TXLvVrKD.jpg",
-            "vote_average": 8,
-            "vote_count": 33
-          },
-          "name": "最后生还者",
-          "next_episode_to_air": {
-            "air_date": "2023-01-22",
-            "episode_number": 2,
-            "id": 4071039,
-            "name": "虫草变异菌",
-            "overview": "",
-            "production_code": "",
-            "runtime": 55,
-            "season_number": 1,
-            "show_id": 100088,
-            "still_path": "/jkUtYTmeap6EvkHI4n0j5IRFrIr.jpg",
-            "vote_average": 10,
-            "vote_count": 1
-          },
-          "networks": [
-            {
-              "id": 49,
-              "name": "HBO",
-              "logo_path": "/tuomPhY2UtuPTqqFnKMVHvSb724.png",
-              "origin_country": "US"
-            }
-          ],
-          "number_of_episodes": 9,
-          "number_of_seasons": 1,
-          "origin_country": [
-            "US"
-          ],
-          "original_language": "en",
-          "original_name": "The Last of Us",
-          "overview": "不明真菌疫情肆虐之后的美国，被真菌感染的人都变成了可怕的怪物，乔尔（Joel）为了换回武器答应将小女孩儿艾莉（Ellie）送到指定地点，由此开始了两人穿越美国的漫漫旅程。",
-          "popularity": 5585.639,
-          "poster_path": "/nOY3VBFO0VnlN9nlRombnMTztyh.jpg",
-          "production_companies": [
-            {
-              "id": 3268,
-              "logo_path": "/tuomPhY2UtuPTqqFnKMVHvSb724.png",
-              "name": "HBO",
-              "origin_country": "US"
-            },
-            {
-              "id": 11073,
-              "logo_path": "/aCbASRcI1MI7DXjPbSW9Fcv9uGR.png",
-              "name": "Sony Pictures Television Studios",
-              "origin_country": "US"
-            },
-            {
-              "id": 23217,
-              "logo_path": "/kXBZdQigEf6QiTLzo6TFLAa7jKD.png",
-              "name": "Naughty Dog",
-              "origin_country": "US"
-            },
-            {
-              "id": 115241,
-              "logo_path": null,
-              "name": "The Mighty Mint",
-              "origin_country": "US"
-            },
-            {
-              "id": 119645,
-              "logo_path": null,
-              "name": "Word Games",
-              "origin_country": "US"
-            },
-            {
-              "id": 125281,
-              "logo_path": "/3hV8pyxzAJgEjiSYVv1WZ0ZYayp.png",
-              "name": "PlayStation Productions",
-              "origin_country": "US"
-            }
-          ],
-          "production_countries": [
-            {
-              "iso_3166_1": "US",
-              "name": "United States of America"
-            }
-          ],
-          "seasons": [
-            {
-              "air_date": "2023-01-15",
-              "episode_count": 9,
-              "id": 144593,
-              "name": "第 1 季",
-              "overview": "",
-              "poster_path": "/aUQKIpZZ31KWbpdHMCmaV76u78T.jpg",
-              "season_number": 1
-            }
-          ],
-          "spoken_languages": [
-            {
-              "english_name": "English",
-              "iso_639_1": "en",
-              "name": "English"
-            }
-          ],
-          "status": "Returning Series",
-          "tagline": "",
-          "type": "Scripted",
-          "vote_average": 8.924,
-          "vote_count": 601
-        }
+        查询电影或电视剧详情，保留连接失败与空结果的区别。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param append_to_response: 逗号分隔的附加详情接口名称
+        :param raise_on_connection_error: True 时重新抛出连接失败；默认 False 将其作为无结果返回
+        :return: TMDB 详情；客户端不可用或无数据时为空字典，查询异常默认返回 None
+        :raises TMDbConnectionError: 开启连接错误传播且底层未取得响应
         """
         if not self.tv:
             return {}
@@ -1359,67 +1245,11 @@ class TmdbApi:
 
     def get_tv_season_detail(self, tmdbid: int, season: int):
         """
-        获取电视剧季的详情
-        :param tmdbid: TMDB ID
-        :param season: 季，数字
-        :return: TMDB信息
-        """
-        """
-        {
-          "_id": "5e614cd3357c00001631a6ef",
-          "air_date": "2023-01-15",
-          "episodes": [
-            {
-              "air_date": "2023-01-15",
-              "episode_number": 1,
-              "id": 2181581,
-              "name": "当你迷失在黑暗中",
-              "overview": "在一场全球性的流行病摧毁了文明之后，一个顽强的幸存者负责照顾一个 14 岁的小女孩，她可能是人类最后的希望。",
-              "production_code": "",
-              "runtime": 81,
-              "season_number": 1,
-              "show_id": 100088,
-              "still_path": "/aRquEWm8wWF1dfa9uZ1TXLvVrKD.jpg",
-              "vote_average": 8,
-              "vote_count": 33,
-              "crew": [
-                {
-                  "job": "Writer",
-                  "department": "Writing",
-                  "credit_id": "619c370063536a00619a08ee",
-                  "adult": false,
-                  "gender": 2,
-                  "id": 35796,
-                  "known_for_department": "Writing",
-                  "name": "Craig Mazin",
-                  "original_name": "Craig Mazin",
-                  "popularity": 15.211,
-                  "profile_path": "/uEhna6qcMuyU5TP7irpTUZ2ZsZc.jpg"
-                },
-              ],
-              "guest_stars": [
-                {
-                  "character": "Marlene",
-                  "credit_id": "63c4ca5e5f2b8d00aed539fc",
-                  "order": 500,
-                  "adult": false,
-                  "gender": 1,
-                  "id": 1253388,
-                  "known_for_department": "Acting",
-                  "name": "Merle Dandridge",
-                  "original_name": "Merle Dandridge",
-                  "popularity": 21.679,
-                  "profile_path": "/lKwHdTtDf6NGw5dUrSXxbfkZLEk.jpg"
-                }
-              ]
-            },
-          ],
-          "name": "第 1 季",
-          "overview": "",
-          "id": 144593,
-          "poster_path": "/aUQKIpZZ31KWbpdHMCmaV76u78T.jpg",
-          "season_number": 1
-        }
+        获取电视剧季的详情。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :return: 目标季、单集或分组详情字典；无结果或查询失败时为空字典
         """
         if not self.season_obj:
             return {}
@@ -1433,10 +1263,12 @@ class TmdbApi:
 
     def get_tv_episode_detail(self, tmdbid: int, season: int, episode: int) -> dict:
         """
-        获取电视剧集的详情
-        :param tmdbid: TMDB ID
-        :param season: 季，数字
-        :param episode: 集，数字
+        获取电视剧集的详情。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :param episode: 目标集号，可选入口非零时表示单集
+        :return: 目标季、单集或分组详情字典；无结果或查询失败时为空字典
         """
         if not self.episode_obj:
             return {}
@@ -1450,9 +1282,10 @@ class TmdbApi:
 
     def discover_movies(self, params: dict) -> List[dict]:
         """
-        发现电影
-        :param params: 参数
-        :return:
+        发现电影。
+
+        :param params: 按 TMDB 发现接口命名的查询参数字典
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.discover:
             return []
@@ -1469,9 +1302,10 @@ class TmdbApi:
 
     def discover_tvs(self, params: dict) -> List[dict]:
         """
-        发现电视剧
-        :param params: 参数
-        :return:
+        发现电视剧。
+
+        :param params: 按 TMDB 发现接口命名的查询参数字典
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.discover:
             return []
@@ -1508,7 +1342,10 @@ class TmdbApi:
 
     def discover_trending(self, page: Optional[int] = 1) -> List[dict]:
         """
-        流行趋势
+        查询周趋势榜中的电影和电视剧。
+
+        :param page: 请求页码，从 1 开始
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.trending:
             return []
@@ -1539,7 +1376,11 @@ class TmdbApi:
 
     def get_movie_images(self, tmdbid: int, original_language: Optional[str] = None) -> dict:
         """
-        获取电影的图片
+        获取电影的图片。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param original_language: 媒体原始语言，加入图片语言回退列表
+        :return: 图片分类字典；无结果或查询失败时为空字典
         """
         if not self.movie:
             return {}
@@ -1557,7 +1398,11 @@ class TmdbApi:
 
     def get_tv_images(self, tmdbid: int, original_language: Optional[str] = None) -> dict:
         """
-        获取电视剧的图片
+        获取电视剧的图片。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param original_language: 媒体原始语言，加入图片语言回退列表
+        :return: 图片分类字典；无结果或查询失败时为空字典
         """
         if not self.tv:
             return {}
@@ -1575,7 +1420,10 @@ class TmdbApi:
 
     def get_movie_similar(self, tmdbid: int) -> List[dict]:
         """
-        获取电影的相似电影
+        获取电影的相似电影。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.movie:
             return []
@@ -1588,7 +1436,10 @@ class TmdbApi:
 
     def get_tv_similar(self, tmdbid: int) -> List[dict]:
         """
-        获取电视剧的相似电视剧
+        获取电视剧的相似电视剧。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.tv:
             return []
@@ -1601,7 +1452,10 @@ class TmdbApi:
 
     def get_movie_recommend(self, tmdbid: int) -> List[dict]:
         """
-        获取电影的推荐电影
+        获取电影的推荐电影。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.movie:
             return []
@@ -1614,7 +1468,10 @@ class TmdbApi:
 
     def get_tv_recommend(self, tmdbid: int) -> List[dict]:
         """
-        获取电视剧的推荐电视剧
+        获取电视剧的推荐电视剧。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.tv:
             return []
@@ -1627,7 +1484,14 @@ class TmdbApi:
 
     def get_movie_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
         """
-        获取电影的演职员列表
+        获取电影的演员列表。
+
+        仅取 cast 演员字段，不包含 crew 工作人员；拉取完整演员表后在本地分页。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param page: 请求页码，从 1 开始
+        :param count: 每页最多返回条数，演职员和作品在本地切片分页
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.movie:
             return []
@@ -1644,7 +1508,14 @@ class TmdbApi:
 
     def get_tv_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
         """
-        获取电视剧的演职员列表
+        获取电视剧的演员列表。
+
+        仅取 cast 演员字段，不包含 crew 工作人员；拉取完整演员表后在本地分页。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param page: 请求页码，从 1 开始
+        :param count: 每页最多返回条数，演职员和作品在本地切片分页
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.tv:
             return []
@@ -1661,7 +1532,12 @@ class TmdbApi:
 
     def get_tv_group_seasons(self, group_id: str) -> List[dict]:
         """
-        获取电视剧剧集组季集列表
+        获取电视剧剧集组季集列表。
+
+        保留剧集组顺序，并将每组 episode_number 重新编号为从 1 开始。
+
+        :param group_id: TMDB 剧集组标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.tv:
             return []
@@ -1685,7 +1561,11 @@ class TmdbApi:
 
     def get_tv_group_detail(self, group_id: str, season: int) -> dict:
         """
-        获取剧集组某个季的信息
+        获取剧集组某个季的信息。
+
+        :param group_id: TMDB 剧集组标识
+        :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :return: 目标季、单集或分组详情字典；无结果或查询失败时为空字典
         """
         group_seasons = self.get_tv_group_seasons(group_id)
         if not group_seasons:
@@ -1697,27 +1577,10 @@ class TmdbApi:
 
     def get_person_detail(self, person_id: int) -> dict:
         """
-        获取人物详情
-        {
-            "adult": false,
-            "also_known_as": [
-                "Michael Chen",
-                "Chen He",
-                "陈赫"
-            ],
-            "biography": "陈赫，xxx",
-            "birthday": "1985-11-09",
-            "deathday": null,
-            "gender": 2,
-            "homepage": "https://movie.douban.com/celebrity/1313841/",
-            "id": 1397016,
-            "imdb_id": "nm4369305",
-            "known_for_department": "Acting",
-            "name": "Chen He",
-            "place_of_birth": "Fuzhou，Fujian Province，China",
-            "popularity": 9.228,
-            "profile_path": "/2Bk39zVuoHUNHtpZ7LVg7OgkDd4.jpg"
-        }
+        查询人物详情。
+
+        :param person_id: TMDB 人物标识
+        :return: 人物详情字典；无结果或查询失败时为空字典
         """
         if not self.person:
             return {}
@@ -1730,7 +1593,14 @@ class TmdbApi:
 
     def get_person_credits(self, person_id: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
         """
-        获取人物参演作品
+        获取人物参演作品。
+
+        合并电影与电视剧的 cast 作品，按上映或首播日期倒序后在本地分页。
+
+        :param person_id: TMDB 人物标识
+        :param page: 请求页码，从 1 开始
+        :param count: 每页最多返回条数，演职员和作品在本地切片分页
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.person:
             return []
@@ -1740,7 +1610,6 @@ class TmdbApi:
             tvs = self.person.tv_credits(person_id=person_id) or {}
             cast = (movies.get('cast') or []) + (tvs.get('cast') or [])
             if cast:
-                # 按年份降序排列
                 cast = sorted(cast, key=lambda x: x.get('release_date') or x.get('first_air_date') or '1900-01-01',
                               reverse=True)
                 return cast[(page - 1) * count: page * count]
@@ -1751,16 +1620,16 @@ class TmdbApi:
 
     def clear_cache(self):
         """
-        清除缓存
+        清理发现结果缓存和同步 HTTP 响应缓存。
         """
         self.discover.discover_movies.cache_clear()
         self.discover.discover_tv_shows.cache_clear()
         self.tmdb.cache_clear()
 
-    # 私有异步方法
     async def __async_search_movie_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
         """
-        根据名称查询电影TMDB匹配（异步版本）
+        根据名称查询电影TMDB匹配（异步版本）。
+
         :param name: 识别的文件名或种子名
         :param year: 电影上映日期
         :return: 匹配的媒体信息
@@ -1785,7 +1654,8 @@ class TmdbApi:
 
     async def __async_search_tv_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
         """
-        根据名称查询电视剧TMDB匹配（异步版本）
+        根据名称查询电视剧TMDB匹配（异步版本）。
+
         :param name: 识别的文件名或者种子名
         :param year: 电视剧的首播年份
         :return: 匹配的媒体信息
@@ -1816,7 +1686,8 @@ class TmdbApi:
         group_seasons: Optional[List[_MediaRecord]] = None,
     ) -> Optional[_MediaRecord]:
         """
-        根据电视剧的名称和季的年份及序号匹配TMDB（异步版本）
+        根据电视剧的名称和季的年份及序号匹配TMDB（异步版本）。
+
         :param name: 识别的文件名或者种子名
         :param season_year: 季的年份
         :param season_number: 季序号
@@ -1851,11 +1722,13 @@ class TmdbApi:
                                                                            "external_ids",
                                        raise_on_connection_error: bool = False) -> Optional[dict]:
         """
-        获取电影的详情（异步版本）
-        :param tmdbid: TMDB ID
-        :param raise_on_connection_error: 为True时TMDB连接失败会抛出TMDbConnectionError，
-            而不是像默认那样吞掉返回None；404等TMDB业务错误不受影响，始终返回None
-        :return: TMDB信息
+        查询电影或电视剧详情，保留连接失败与空结果的区别。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param append_to_response: 逗号分隔的附加详情接口名称
+        :param raise_on_connection_error: True 时重新抛出连接失败；默认 False 将其作为无结果返回
+        :return: TMDB 详情；客户端不可用或无数据时为空字典，查询异常默认返回 None
+        :raises TMDbConnectionError: 开启连接错误传播且底层未取得响应
         """
         if not self.movie:
             return {}
@@ -1885,11 +1758,13 @@ class TmdbApi:
                                                                         "episode_groups",
                                     raise_on_connection_error: bool = False) -> Optional[dict]:
         """
-        获取电视剧的详情（异步版本）
-        :param tmdbid: TMDB ID
-        :param raise_on_connection_error: 为True时TMDB连接失败会抛出TMDbConnectionError，
-            而不是像默认那样吞掉返回None；404等TMDB业务错误不受影响，始终返回None
-        :return: TMDB信息
+        查询电影或电视剧详情，保留连接失败与空结果的区别。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param append_to_response: 逗号分隔的附加详情接口名称
+        :param raise_on_connection_error: True 时重新抛出连接失败；默认 False 将其作为无结果返回
+        :return: TMDB 详情；客户端不可用或无数据时为空字典，查询异常默认返回 None
+        :raises TMDbConnectionError: 开启连接错误传播且底层未取得响应
         """
         if not self.tv:
             return {}
@@ -1910,7 +1785,12 @@ class TmdbApi:
 
     async def async_search_multiis(self, title: str) -> List[_MediaRecord]:
         """
-        同时查询模糊匹配的电影、电视剧TMDB信息（异步版本）
+        同时查询模糊匹配的电影、电视剧TMDB信息（异步版本）。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param title: 待搜索标题，空值不发起查询
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not title:
             return []
@@ -1919,7 +1799,13 @@ class TmdbApi:
 
     async def async_search_movies(self, title: str, year: str) -> List[_MediaRecord]:
         """
-        查询模糊匹配的所有电影TMDB信息（异步版本）
+        查询模糊匹配的当前页的电影TMDB信息（异步版本）。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param title: 待搜索标题，空值不发起查询
+        :param year: 作品上映或整剧首播年份，未指定时不按年份限制
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not title:
             return []
@@ -1928,7 +1814,13 @@ class TmdbApi:
 
     async def async_search_tvs(self, title: str, year: str) -> List[_MediaRecord]:
         """
-        查询模糊匹配的所有电视剧TMDB信息（异步版本）
+        查询模糊匹配的当前页的电视剧TMDB信息（异步版本）。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param title: 待搜索标题，空值不发起查询
+        :param year: 作品上映或整剧首播年份，未指定时不按年份限制
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not title:
             return []
@@ -1939,7 +1831,12 @@ class TmdbApi:
             self, params: dict, raise_exception: bool = False
     ) -> List[dict]:
         """
-        发现电影（异步版本）
+        发现电影（异步版本）。
+
+        :param params: 按 TMDB 发现接口命名的查询参数字典
+        :param raise_exception: True 时重新抛出查询异常，False 时记录日志并返回空列表
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
+        :raises Exception: 开启异常传播且底层查询失败
         """
         if not params:
             return []
@@ -1958,7 +1855,12 @@ class TmdbApi:
             self, params: dict, raise_exception: bool = False
     ) -> List[dict]:
         """
-        发现电视剧（异步版本）
+        发现电视剧（异步版本）。
+
+        :param params: 按 TMDB 发现接口命名的查询参数字典
+        :param raise_exception: True 时重新抛出查询异常，False 时记录日志并返回空列表
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
+        :raises Exception: 开启异常传播且底层查询失败
         """
         if not params:
             return []
@@ -1975,7 +1877,12 @@ class TmdbApi:
 
     async def async_search_persons(self, name: str) -> List[dict]:
         """
-        查询模糊匹配的所有人物TMDB信息（异步版本）
+        查询模糊匹配的当前页的人物TMDB信息（异步版本）。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param name: 待搜索或匹配的名称
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not name:
             return []
@@ -1983,7 +1890,12 @@ class TmdbApi:
 
     async def async_search_collections(self, name: str) -> List[_MediaRecord]:
         """
-        查询模糊匹配的所有合集TMDB信息（异步版本）
+        查询模糊匹配的当前页的合集TMDB信息（异步版本）。
+
+        查询异常由调用方处理；不自动翻页。
+
+        :param name: 待搜索或匹配的名称
+        :return: 当前页的结果字典列表；关键词为空或无匹配时为空列表
         """
         if not name:
             return []
@@ -1992,7 +1904,10 @@ class TmdbApi:
 
     async def async_get_collection(self, collection_id: int) -> List[dict]:
         """
-        根据合集ID查询合集详情（异步版本）
+        根据合集ID查询合集详情（异步版本）。
+
+        :param collection_id: TMDB 电影合集标识
+        :return: 合集中的电影条目列表；无效标识或查询失败时为空列表，底层无响应时可能为 None
         """
         if not collection_id:
             return []
@@ -2014,14 +1929,17 @@ class TmdbApi:
         group_seasons: Optional[List[_MediaRecord]] = None,
     ) -> Optional[_MediaRecord]:
         """
-        搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息（异步版本）
-        :param name: 检索的名称
-        :param mtype: 类型：电影、电视剧
-        :param year: 年份，如要是季集需要是首播年份(first_air_date)
-        :param season_year: 当前季集年份
-        :param season_number: 季集，整数
-        :param group_seasons: 集数组信息
-        :return: TMDB的INFO，同时会将mtype赋值到media_type中
+        搜索tmdb中的媒体信息，匹配返回一条尽可能正确的信息（异步版本）。
+
+        按共享匹配计划依次尝试年份、季信息和别名回退，首个有效候选即返回。
+
+        :param name: 待搜索或匹配的名称
+        :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
+        :param year: 作品上映或整剧首播年份，未指定时不按年份限制
+        :param season_year: 目标季的首播年份，可为空
+        :param season_number: 目标季编号，0 表示特别篇，None 表示未指定
+        :param group_seasons: 已获取的剧集组季集信息，用于季年份匹配
+        :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
         if not self._validate_match_params(name, self.search):
             return None
@@ -2037,9 +1955,12 @@ class TmdbApi:
 
     async def async_match_multi(self, name: str) -> Optional[_MediaRecord]:
         """
-        根据名称同时查询电影和电视剧，没有类型也没有年份时使用（异步版本）
-        :param name: 识别的文件名或种子名
-        :return: 匹配的媒体信息
+        根据名称同时查询电影和电视剧，没有类型也没有年份时使用（异步版本）。
+
+        按共享匹配计划依次尝试年份、季信息和别名回退，首个有效候选即返回。
+
+        :param name: 待搜索或匹配的名称
+        :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
         """
         try:
             multis = await self.search.async_multi(term=name) or []
@@ -2063,11 +1984,15 @@ class TmdbApi:
         self, mtype: Optional[MediaType], tmdbid: int, raise_on_connection_error: bool = False
     ) -> Optional[_MediaRecord]:
         """
-        给定TMDB号，查询一条媒体信息（异步版本）
-        :param mtype: 类型：电影、电视剧，为空时都查（此时用不上年份）
-        :param tmdbid: TMDB的ID，有tmdbid时优先使用tmdbid，否则使用年份和标题
-        :param raise_on_connection_error: 为True时，遇到TMDB连接失败（区别于404等业务错误）
-            将抛出TMDbConnectionError而不是吞掉返回None；默认False，与既有调用方行为完全一致
+        按 TMDB 标识查询详情，并补充规范类型、别名和分级。
+
+        类型未知时同时考虑电影和电视剧；详情身份仍存在歧义时不任意选取。
+
+        :param mtype: 电影或电视剧类型；可选入口使用 None 表示未限定
+        :param tmdbid: TMDB 数字媒体标识
+        :param raise_on_connection_error: True 时重新抛出连接失败；默认 False 将其作为无结果返回
+        :return: 补齐 media_type 等字段的 TMDB 字典；无匹配、失败或无法消歧时返回空值
+        :raises TMDbConnectionError: 开启连接错误传播且底层未取得响应
         """
         tmdb_info = await self._run_info_async(
             self._info_resolution(mtype, tmdbid),
@@ -2078,10 +2003,11 @@ class TmdbApi:
 
     async def async_get_tv_season_detail(self, tmdbid: int, season: int):
         """
-        获取电视剧季的详情（异步版本）
-        :param tmdbid: TMDB ID
-        :param season: 季，数字
-        :return: TMDB信息
+        获取电视剧季的详情（异步版本）。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :return: 目标季、单集或分组详情字典；无结果或查询失败时为空字典
         """
         if not self.season_obj:
             return {}
@@ -2095,10 +2021,12 @@ class TmdbApi:
 
     async def async_get_tv_episode_detail(self, tmdbid: int, season: int, episode: int) -> dict:
         """
-        获取电视剧集的详情（异步版本）
-        :param tmdbid: TMDB ID
-        :param season: 季，数字
-        :param episode: 集，数字
+        获取电视剧集的详情（异步版本）。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :param episode: 目标集号，可选入口非零时表示单集
+        :return: 目标季、单集或分组详情字典；无结果或查询失败时为空字典
         """
         if not self.episode_obj:
             return {}
@@ -2114,7 +2042,12 @@ class TmdbApi:
             self, page: Optional[int] = 1, raise_exception: bool = False
     ) -> List[dict]:
         """
-        流行趋势（异步版本）
+        查询周趋势榜中的电影和电视剧。
+
+        :param page: 请求页码，从 1 开始
+        :param raise_exception: True 时重新抛出查询异常，False 时记录日志并返回空列表
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
+        :raises Exception: 开启异常传播且底层查询失败
         """
         if not self.trending:
             return []
@@ -2132,7 +2065,11 @@ class TmdbApi:
             self, tmdbid: int, original_language: Optional[str] = None
     ) -> dict:
         """
-        获取电影的图片（异步版本）
+        获取电影的图片（异步版本）。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param original_language: 媒体原始语言，加入图片语言回退列表
+        :return: 图片分类字典；无结果或查询失败时为空字典
         """
         if not self.movie:
             return {}
@@ -2152,7 +2089,11 @@ class TmdbApi:
             self, tmdbid: int, original_language: Optional[str] = None
     ) -> dict:
         """
-        获取电视剧的图片（异步版本）
+        获取电视剧的图片（异步版本）。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param original_language: 媒体原始语言，加入图片语言回退列表
+        :return: 图片分类字典；无结果或查询失败时为空字典
         """
         if not self.tv:
             return {}
@@ -2170,7 +2111,10 @@ class TmdbApi:
 
     async def async_get_movie_similar(self, tmdbid: int) -> List[dict]:
         """
-        获取电影的相似电影（异步版本）
+        获取电影的相似电影（异步版本）。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.movie:
             return []
@@ -2183,7 +2127,10 @@ class TmdbApi:
 
     async def async_get_tv_similar(self, tmdbid: int) -> List[dict]:
         """
-        获取电视剧的相似电视剧（异步版本）
+        获取电视剧的相似电视剧（异步版本）。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.tv:
             return []
@@ -2196,7 +2143,10 @@ class TmdbApi:
 
     async def async_get_movie_recommend(self, tmdbid: int) -> List[dict]:
         """
-        获取电影的推荐电影（异步版本）
+        获取电影的推荐电影（异步版本）。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.movie:
             return []
@@ -2209,7 +2159,10 @@ class TmdbApi:
 
     async def async_get_tv_recommend(self, tmdbid: int) -> List[dict]:
         """
-        获取电视剧的推荐电视剧（异步版本）
+        获取电视剧的推荐电视剧（异步版本）。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.tv:
             return []
@@ -2223,7 +2176,14 @@ class TmdbApi:
     async def async_get_movie_credits(self, tmdbid: int,
                                       page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
         """
-        获取电影的演职员列表（异步版本）
+        获取电影的演员列表（异步版本）。
+
+        仅取 cast 演员字段，不包含 crew 工作人员；拉取完整演员表后在本地分页。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param page: 请求页码，从 1 开始
+        :param count: 每页最多返回条数，演职员和作品在本地切片分页
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.movie:
             return []
@@ -2240,7 +2200,14 @@ class TmdbApi:
 
     async def async_get_tv_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
         """
-        获取电视剧的演职员列表（异步版本）
+        获取电视剧的演员列表（异步版本）。
+
+        仅取 cast 演员字段，不包含 crew 工作人员；拉取完整演员表后在本地分页。
+
+        :param tmdbid: TMDB 数字媒体标识
+        :param page: 请求页码，从 1 开始
+        :param count: 每页最多返回条数，演职员和作品在本地切片分页
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.tv:
             return []
@@ -2257,7 +2224,12 @@ class TmdbApi:
 
     async def async_get_tv_group_seasons(self, group_id: str) -> List[dict]:
         """
-        获取电视剧剧集组季集列表（异步版本）
+        获取电视剧剧集组季集列表（异步版本）。
+
+        保留剧集组顺序，并将每组 episode_number 重新编号为从 1 开始。
+
+        :param group_id: TMDB 剧集组标识
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.tv:
             return []
@@ -2281,7 +2253,11 @@ class TmdbApi:
 
     async def async_get_tv_group_detail(self, group_id: str, season: int) -> dict:
         """
-        获取剧集组某个季的信息（异步版本）
+        获取剧集组某个季的信息（异步版本）。
+
+        :param group_id: TMDB 剧集组标识
+        :param season: 目标季号，0 表示特别篇，None 在可选入口表示整剧
+        :return: 目标季、单集或分组详情字典；无结果或查询失败时为空字典
         """
         group_seasons = await self.async_get_tv_group_seasons(group_id)
         if not group_seasons:
@@ -2293,7 +2269,10 @@ class TmdbApi:
 
     async def async_get_person_detail(self, person_id: int) -> dict:
         """
-        获取人物详情（异步版本）
+        查询人物详情。
+
+        :param person_id: TMDB 人物标识
+        :return: 人物详情字典；无结果或查询失败时为空字典
         """
         if not self.person:
             return {}
@@ -2307,7 +2286,14 @@ class TmdbApi:
     async def async_get_person_credits(self, person_id: int,
                                        page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
         """
-        获取人物参演作品（异步版本）
+        获取人物参演作品（异步版本）。
+
+        合并电影与电视剧的 cast 作品，按上映或首播日期倒序后在本地分页。
+
+        :param person_id: TMDB 人物标识
+        :param page: 请求页码，从 1 开始
+        :param count: 每页最多返回条数，演职员和作品在本地切片分页
+        :return: 当前请求的结果列表；无结果或查询失败时为空列表
         """
         if not self.person:
             return []
@@ -2317,7 +2303,6 @@ class TmdbApi:
             tvs = await self.person.async_tv_credits(person_id=person_id) or {}
             cast = (movies.get('cast') or []) + (tvs.get('cast') or [])
             if cast:
-                # 按年份降序排列
                 cast = sorted(cast, key=lambda x: x.get('release_date') or x.get('first_air_date') or '1900-01-01',
                               reverse=True)
                 return cast[(page - 1) * count: page * count]
@@ -2328,7 +2313,7 @@ class TmdbApi:
 
     def close(self):
         """
-        关闭连接
+        依次关闭各 TMDB 客户端的同步会话。
         """
         for client in (
             self.tmdb,
