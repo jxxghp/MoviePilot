@@ -943,8 +943,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9577,
-  "edge_sha256": "b1cfcf12ea107d56fd487eded370ea8c0f6247b82de2b40b1c5fa0f7f0c56c8f",
+  "edge_count": 9578,
+  "edge_sha256": "e9f69a76995895778a4de3de1f769996922e06a6bb4c14c0e14626c9444af954",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5811,9 +5811,9 @@
     "app.chain.transfer.filter -> app.runtime.log",
     "app.chain.transfer.filter -> app.runtime.settings",
     "app.chain.transfer.filter -> app.schemas",
+    "app.chain.transfer.filter -> app.schemas.file",
     "app.chain.transfer.filter -> app.schemas.transfer",
     "app.chain.transfer.filter -> app.schemas.types",
-    "app.chain.transfer.filter -> app.schemas.workflow",
     "app.chain.transfer.format -> app.application",
     "app.chain.transfer.format -> app.application.configuration",
     "app.chain.transfer.format -> app.application.formatting",
@@ -10467,6 +10467,7 @@
     "app.workflow.actions.invoke_plugin -> app.runtime",
     "app.workflow.actions.invoke_plugin -> app.runtime.log",
     "app.workflow.actions.invoke_plugin -> app.schemas",
+    "app.workflow.actions.invoke_plugin -> app.schemas.common",
     "app.workflow.actions.invoke_plugin -> app.schemas.workflow",
     "app.workflow.actions.invoke_plugin -> app.workflow",
     "app.workflow.actions.invoke_plugin -> app.workflow.actions",
