@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+验证 HDDolby 用户信息、未读消息与无有效用户标识时的请求边界。
+"""
+
 from app.modules.indexer.parser.hddolby import HDDolbySiteUserInfo
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 
@@ -30,6 +34,9 @@ def _build_parser(site_cookie: str = "") -> HDDolbySiteUserInfo:
 
 
 def test_hddolby_parse_user_base_info_reads_unread_count():
+    """
+    用户基础信息解析保留用户标识、名称和未读消息数量。
+    """
     parser = _build_parser()
     parser._parse_user_base_info(USER_DATA_JSON)
 
@@ -39,6 +46,9 @@ def test_hddolby_parse_user_base_info_reads_unread_count():
 
 
 def test_hddolby_skips_message_body_without_cookie():
+    """
+    缺少 Cookie 时不获取未读消息正文。
+    """
     parser = _build_parser(site_cookie="")
     parser.message_unread = 1
 
@@ -48,6 +58,9 @@ def test_hddolby_skips_message_body_without_cookie():
 
 
 def test_hddolby_reads_message_body_via_nexus_when_cookie_present(monkeypatch):
+    """
+    存在 Cookie 时通过 NexusPHP 解析流程读取未读消息正文。
+    """
     parser = _build_parser(site_cookie="c_secure_uid=1")
     parser.message_unread = 1
 
@@ -68,7 +81,13 @@ def test_hddolby_reads_message_body_via_nexus_when_cookie_present(monkeypatch):
 
 
 def test_parser_skips_detail_and_seeding_requests_without_valid_userid(monkeypatch):
+    """
+    无法取得有效用户标识时，不请求用户详情和做种列表。
+    """
     class DummyParser(HDDolbySiteUserInfo):
+        """
+        模拟已登录但用户标识缺失的站点解析器，检测多余请求。
+        """
         def _parse_site_page(self, html_text: str):
             self._user_detail_page = "userdetails.php?id="
             self._user_basic_page = None
