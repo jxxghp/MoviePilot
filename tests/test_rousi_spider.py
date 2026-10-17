@@ -279,6 +279,25 @@ def test_user_parser_ignores_non_string_registration_time(
     assert parser.join_at is None
 
 
+def test_user_parser_handles_non_mapping_message_data(monkeypatch):
+    """消息接口返回非对象 data 时按空分页处理，避免迭代非法结构。"""
+    parser = _build_user_parser()
+    parser.token = "rousi-token"
+
+    monkeypatch.setattr(
+        "app.modules.indexer.parser.rousi.RequestUtils",
+        lambda **_kwargs: SimpleNamespace(
+            get_res=lambda **_params: _FakeResponse({"code": 0, "data": []}),
+            post_res=lambda **_params: _FakeResponse({"code": 0}),
+        ),
+    )
+
+    parser._pase_unread_msgs()
+
+    assert parser.message_unread == 0
+    assert parser.message_unread_contents == []
+
+
 def test_site_connectivity_uses_peergo_personal_api_key(monkeypatch):
     """Rousi 连接测试应以 Bearer 个人 API Key 请求兼容资料接口。"""
     captured = {}
