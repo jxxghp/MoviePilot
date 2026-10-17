@@ -1,3 +1,7 @@
+"""
+适配宿主操作系统、进程、文件系统与设备身份查询。
+"""
+
 import asyncio
 import datetime
 import hashlib
@@ -38,7 +42,7 @@ from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryI
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
 from app.schemas.dashboard import ProcessInfo as _SchemaProcessInfo
 
-# Linux amd64/arm64 UAPI: _IOR(BTRFS_IOCTL_MAGIC, 31, struct btrfs_ioctl_fs_info_args)
+# Linux amd64/arm64 的用户空间接口定义：_IOR(BTRFS_IOCTL_MAGIC, 31, struct btrfs_ioctl_fs_info_args)
 _BTRFS_IOC_FS_INFO = 0x8400941F
 _BTRFS_FS_INFO_SIZE = 1024
 _BTRFS_FSID_OFFSET = 16
@@ -173,7 +177,9 @@ class SystemUtils:
 
     @staticmethod
     def _decode_subprocess_output(value: object) -> str:
-        """把 subprocess 的文本或字节输出统一成可脱敏的字符串。"""
+        """
+        把 subprocess 的文本或字节输出统一成可脱敏的字符串。
+        """
         if value is None:
             return ""
         if isinstance(value, bytes):
@@ -186,7 +192,9 @@ class SystemUtils:
             communication_task: "asyncio.Task[tuple[bytes, bytes]]",
             grace_seconds: float = 5,
     ) -> None:
-        """终止安装子进程及其同组子进程，并确保句柄已回收。"""
+        """
+        终止安装子进程及其同组子进程，并确保句柄已回收。
+        """
         process_tree = SystemUtils._process_tree(process.pid)
         if process.returncode is None:
             try:
@@ -249,7 +257,9 @@ class SystemUtils:
 
     @staticmethod
     def _process_tree(pid: int) -> list[psutil.Process]:
-        """收集安装进程及其后代，避免构建进程继续写运行环境。"""
+        """
+        收集安装进程及其后代，避免构建进程继续写运行环境。
+        """
         try:
             parent = psutil.Process(pid)
             return [parent, *parent.children(recursive=True)]
@@ -258,7 +268,9 @@ class SystemUtils:
 
     @staticmethod
     def _alive_processes(processes: list[psutil.Process]) -> list[psutil.Process]:
-        """返回仍可能执行外部副作用的进程，忽略已退出和僵尸进程。"""
+        """
+        返回仍可能执行外部副作用的进程，忽略已退出和僵尸进程。
+        """
         alive = []
         seen_pids = set()
         for process in processes:
@@ -277,7 +289,9 @@ class SystemUtils:
             processes: list[psutil.Process],
             timeout: float,
     ) -> list[psutil.Process]:
-        """在事件循环中有界等待整棵进程树退出，并返回残留进程。"""
+        """
+        在事件循环中有界等待整棵进程树退出，并返回残留进程。
+        """
         deadline = asyncio.get_running_loop().time() + max(timeout, 0)
         while True:
             alive = SystemUtils._alive_processes(processes)
@@ -293,7 +307,9 @@ class SystemUtils:
             processes: list[psutil.Process],
             force: bool = False,
     ) -> None:
-        """向进程树发送终止或强制结束信号。"""
+        """
+        向进程树发送终止或强制结束信号。
+        """
         for child in reversed(processes):
             try:
                 (child.kill if force else child.terminate)()
@@ -307,7 +323,9 @@ class SystemUtils:
             safe_command: Optional[list[str]] = None,
             timeout: Optional[float] = 300,
     ) -> Tuple[bool, str]:
-        """异步执行可取消的子进程，超时或取消时回收整个进程组。"""
+        """
+        异步执行可取消的子进程，超时或取消时回收整个进程组。
+        """
         display_command = safe_command or command
         process: Optional[asyncio.subprocess.Process] = None
         communication_task: Optional["asyncio.Task[tuple[bytes, bytes]]"] = None
@@ -529,6 +547,7 @@ class SystemUtils:
                    min_filesize: int = 0, recursive: bool = True) -> List[Path]:
         """
         获取目录下所有指定扩展名的文件（包括子目录）
+
         :param directory: 指定的父目录
         :param extensions: 需要包含的扩展名列表，例如 ['mkv', 'mp4']
         :param min_filesize: 文件最低大小，单位 MB
@@ -805,7 +824,9 @@ class SystemUtils:
 
     @staticmethod
     def _get_btrfs_fsid(dir_path: Path) -> Optional[bytes]:
-        """读取目录所属 Btrfs 文件系统的 FSID，无法确认时返回 None。"""
+        """
+        读取目录所属 Btrfs 文件系统的 FSID，无法确认时返回 None。
+        """
         if not sys.platform.startswith("linux") or fcntl is None \
                 or not (SystemUtils.is_x86_64() or SystemUtils.is_aarch64()):
             return None
@@ -952,7 +973,9 @@ class SystemUtils:
 
     @staticmethod
     def _operating_system_name() -> str:
-        """返回适合在仪表板展示的操作系统名称。"""
+        """
+        返回适合在仪表板展示的操作系统名称。
+        """
         if SystemUtils.is_windows():
             return platform.platform()
         if SystemUtils.is_macos():
@@ -1032,7 +1055,8 @@ class SystemUtils:
         import time
         # 获取初始网络统计
         net_io_1 = psutil.net_io_counters()
-        time.sleep(1)  # 等待1秒
+        # 退出探测每秒重试一次，避免忙等。
+        time.sleep(1)
         # 获取1秒后的网络统计
         net_io_2 = psutil.net_io_counters()
 
@@ -1074,6 +1098,7 @@ class SystemUtils:
     ) -> bool:
         """
         检测是否为网络文件系统
+
         :param directory: 目录路径
         :param include_local_fuse: 是否将本地 FUSE 挂载视为挂载文件系统
         :return: 是否为网络文件系统
@@ -1088,10 +1113,11 @@ class SystemUtils:
                     output = result.stdout.lower()
                     # 以下本地文件系统含有fuse关键字
                     local_fs = [
-                        "fuse.shfs",  # Unraid
-                        "zfuse.zfsv",  # 极空间(zfuse.zfsv2、zfuse.zfsv3、...)
+                        # Unraid 的本地 FUSE 文件系统
+                        "fuse.shfs",
+                        # 极空间的本地 FUSE 文件系统，例如 zfuse.zfsv2 和 zfuse.zfsv3
+                        "zfuse.zfsv",
                         "fuseblk",
-                        # TBD
                     ]
                     if (
                             not include_local_fuse
@@ -1197,7 +1223,8 @@ class SystemUtils:
             """
             try:
                 mac_address = uuid.getnode()
-                if (mac_address >> 40) % 2:  # 检查是否是虚拟MAC地址
+                # 过滤常见虚拟网卡地址，避免把临时设备当作宿主身份。
+                if (mac_address >> 40) % 2:
                     raise ValueError("MAC地址可能是虚拟地址")
                 mac_str = f"{mac_address:012x}"
                 return hashlib.sha256(mac_str.encode("utf-8")).hexdigest()

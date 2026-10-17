@@ -1,3 +1,7 @@
+"""
+按运行时配置提供可选 Rust 加速入口，并按调用契约处理不可用和失败回退。
+"""
+
 import logging
 from functools import lru_cache
 from typing import List, Optional, Tuple
@@ -8,7 +12,8 @@ from app.runtime.settings import get_runtime_setting
 
 try:
     import moviepilot_rust as _moviepilot_rust
-except Exception as err:  # pragma: no cover - 取决于运行环境是否安装 Rust 扩展
+# 取决于运行环境是否安装 Rust 扩展
+except Exception as err:  # pragma: no cover
     _moviepilot_rust = None
     _import_error = err
 else:
@@ -16,12 +21,16 @@ else:
 
 
 def _rust_accel_enabled() -> bool:
-    """读取 Rust 开关快照，组合根未装配时回退旧 Settings。"""
+    """
+    读取 Rust 开关快照，组合根未装配时回退旧 Settings。
+    """
     return bool(get_runtime_setting('RUST_ACCEL'))
 
 
 def is_required() -> bool:
-    """free-threaded 运行时必须使用不会重新启用 GIL 的 Rust 快路径。"""
+    """
+    free-threaded 运行时必须使用不会重新启用 GIL 的 Rust 快路径。
+    """
     return is_free_threaded_runtime()
 
 
@@ -219,7 +228,8 @@ def parse_metamusic(
         artists: Optional[List[str]] = None,
         year: Optional[int] = None,
 ) -> Optional[dict]:
-    """使用 Rust 解析音乐资源标题，旧扩展不支持时返回 None。
+    """
+    使用 Rust 解析音乐资源标题，旧扩展不支持时返回 None。
 
     :param title: 音乐资源标题或文件主干名
     :param artists: 调用方已有的高可信艺术家列表
