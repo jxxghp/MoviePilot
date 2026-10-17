@@ -114,7 +114,7 @@ class WeChat:
         if not self._access_token:
             token_flag = False
         else:
-            if (datetime.now() - self._access_token_time).seconds >= self._expires_in:
+            if (datetime.now() - self._access_token_time).total_seconds() >= self._expires_in:
                 token_flag = False
 
         if not token_flag or force:
@@ -647,7 +647,8 @@ class WeChat:
         """
         提交企业微信 JSON 请求并处理令牌过期。
 
-        错误码 42001 会刷新令牌并触发重试；无响应和非 200 响应抛出异常。
+        错误码 40014、41001、42001 均表示令牌不可用，会强制刷新令牌并触发重试；
+        无响应和非 200 响应抛出异常。
 
         :param url: 可包含 access_token 占位符的接口地址
         :param req_json: 需要序列化为 JSON 的请求体
@@ -669,9 +670,9 @@ class WeChat:
         if ret_json.get("errcode") == 0:
             return True
         else:
-            if ret_json.get("errcode") == 42001:
+            if ret_json.get("errcode") in (40014, 41001, 42001):
                 self.__get_access_token(force=True)
-                error_msg = (f"access_token 已过期，尝试重新获取 access_token,"
+                error_msg = (f"access_token 已失效，尝试重新获取 access_token,"
                              f"errcode: {ret_json.get('errcode')}, errmsg: {ret_json.get('errmsg')}")
                 raise RetryException(error_msg)
             else:
