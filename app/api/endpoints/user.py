@@ -1,6 +1,6 @@
 import base64
 import re
-from typing import Annotated, Any, List, Union
+from typing import Annotated, Any, List
 
 from fastapi import Body, Depends, File, HTTPException, Response, UploadFile
 
