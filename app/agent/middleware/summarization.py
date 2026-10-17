@@ -1,4 +1,6 @@
-"""Agent 会话上下文压缩中间件。"""
+"""
+Agent 会话上下文压缩中间件。
+"""
 
 from collections.abc import Awaitable, Callable
 from importlib import import_module
@@ -47,16 +49,22 @@ try:
 except ImportError:
 
     def _internal_call_metadata() -> dict[str, Any]:
-        """旧版 LangChain 没有内部模型调用的流式过滤标记。"""
+        """
+        旧版 LangChain 没有内部模型调用的流式过滤标记。
+        """
         return {}
 
 
 class ContextSummarizationError(RuntimeError):
-    """摘要不可用且原有会话上下文未被替换。"""
+    """
+    摘要不可用且原有会话上下文未被替换。
+    """
 
 
 class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
-    """摘要失败时中止状态更新，避免永久丢失既有会话上下文。"""
+    """
+    摘要失败时中止状态更新，避免永久丢失既有会话上下文。
+    """
 
     _ERROR_MESSAGE = "会话上下文压缩失败，原有上下文已保留，请稍后重试"
     _UNSUMMARIZABLE_MESSAGE = (
@@ -82,7 +90,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         trim_tokens_to_summarize: int | None = _DEFAULT_TRIM_TOKENS_TO_SUMMARIZE,
         **deprecated_kwargs: Any,
     ) -> None:
-        """按 MoviePilot 的默认压缩策略构建摘要中间件。"""
+        """
+        按 MoviePilot 的默认压缩策略构建摘要中间件。
+        """
         super().__init__(
             model=model,
             trigger=trigger,
@@ -95,7 +105,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
 
     @classmethod
     def _require_valid_summary(cls, summary: str) -> str:
-        """拒绝无法继续承载会话上下文的空摘要。"""
+        """
+        拒绝无法继续承载会话上下文的空摘要。
+        """
         if not summary:
             raise ContextSummarizationError(cls._ERROR_MESSAGE)
         return summary
@@ -103,7 +115,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
     def _prepare_summary_input(
         self, messages_to_summarize: list[AnyMessage]
     ) -> str:
-        """复用 LangChain 裁剪策略生成摘要模型输入。"""
+        """
+        复用 LangChain 裁剪策略生成摘要模型输入。
+        """
         trimmed_messages = self._trim_messages_for_summary(messages_to_summarize)
         if not trimmed_messages:
             raise ContextSummarizationError(self._UNSUMMARIZABLE_MESSAGE)
@@ -112,7 +126,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
     def _trim_messages_for_summary(
         self, messages: list[AnyMessage]
     ) -> list[AnyMessage]:
-        """保留初始任务并为只有工具结果尾部的历史提供摘要回退。"""
+        """
+        保留初始任务并为只有工具结果尾部的历史提供摘要回退。
+        """
         trimmed_messages = super()._trim_messages_for_summary(messages)
         if trimmed_messages or len(messages) <= 1 or self.trim_tokens_to_summarize is None:
             return trimmed_messages
@@ -163,14 +179,18 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
     def _partition_messages(
         messages: list[AnyMessage], cutoff_index: int
     ) -> tuple[list[AnyMessage], list[AnyMessage]]:
-        """显式标注摘要分区的返回类型，避免外部中间件类型缺失扩散。"""
+        """
+        显式标注摘要分区的返回类型，避免外部中间件类型缺失扩散。
+        """
         return cast(
             tuple[list[AnyMessage], list[AnyMessage]],
             SummarizationMiddleware._partition_messages(messages, cutoff_index),
         )
 
     def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
-        """同步摘要失败时保持原图状态。"""
+        """
+        同步摘要失败时保持原图状态。
+        """
         formatted_messages = self._prepare_summary_input(messages_to_summarize)
         summary_model = getattr(self, "_summary_model", self.model)
         try:
@@ -188,7 +208,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         return self._require_valid_summary(response.text.strip())
 
     async def _acreate_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
-        """异步摘要失败时保持原图状态。"""
+        """
+        异步摘要失败时保持原图状态。
+        """
         formatted_messages = self._prepare_summary_input(messages_to_summarize)
         summary_model = getattr(self, "_summary_model", self.model)
         try:
@@ -214,7 +236,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         minimum_cutoff: int = 1,
         strict_token_limit: bool = False,
     ) -> tuple[list[AnyMessage], list[AnyMessage]] | None:
-        """按 token 上限拆分历史，并保持 LangChain 的工具调用事务边界。"""
+        """
+        按 token 上限拆分历史，并保持 LangChain 的工具调用事务边界。
+        """
         self._ensure_message_ids(messages)
         if self.token_counter(messages) <= token_limit:
             return (
@@ -267,7 +291,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
     def partition_for_retention(
         self, messages: list[AnyMessage]
     ) -> tuple[list[AnyMessage], list[AnyMessage]] | None:
-        """按摘要器既有触发和保留策略拆分历史。"""
+        """
+        按摘要器既有触发和保留策略拆分历史。
+        """
         self._ensure_message_ids(messages)
         total_tokens = self.token_counter(messages)
         if not self._should_summarize(messages, total_tokens):
@@ -284,7 +310,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         minimum_cutoff: int = 1,
         token_limit: int | None = None,
     ) -> tuple[list[AnyMessage], list[AnyMessage]] | None:
-        """至少摘要一段旧历史，同时保留最新完整消息事务。"""
+        """
+        至少摘要一段旧历史，同时保留最新完整消息事务。
+        """
         for candidate in range(max(1, minimum_cutoff), len(messages)):
             cutoff_index = self._find_safe_cutoff_point(messages, candidate)
             if (
@@ -305,7 +333,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         *,
         minimum_cutoff: int,
     ) -> tuple[list[AnyMessage], list[AnyMessage]] | None:
-        """保留无法满足软预算时的最新完整消息事务。"""
+        """
+        保留无法满足软预算时的最新完整消息事务。
+        """
         for candidate in range(len(messages) - 1, minimum_cutoff - 1, -1):
             cutoff_index = self._find_safe_cutoff_point(messages, candidate)
             if (
@@ -317,31 +347,43 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
 
     @staticmethod
     def _contains_unsummarized_message(messages: list[AnyMessage]) -> bool:
-        """确认待摘要段包含可推进上下文的原始消息。"""
+        """
+        确认待摘要段包含可推进上下文的原始消息。
+        """
         return any(
             message.additional_kwargs.get("lc_source") != "summarization"
             for message in messages
         )
 
     def build_summary_messages(self, summary: str) -> list[AnyMessage]:
-        """将摘要转换为 LangChain 约定的可识别历史消息。"""
+        """
+        将摘要转换为 LangChain 约定的可识别历史消息。
+        """
         return self._build_new_messages(summary)
 
     def ensure_message_ids(self, messages: list[AnyMessage]) -> None:
-        """为压缩后消息补齐 LangGraph reducer 所需的稳定 ID。"""
+        """
+        为压缩后消息补齐 LangGraph reducer 所需的稳定 ID。
+        """
         self._ensure_message_ids(messages)
 
     def create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
-        """通过 MoviePilot 的失败保护合同生成同步摘要。"""
+        """
+        通过 MoviePilot 的失败保护合同生成同步摘要。
+        """
         return self._create_summary(messages_to_summarize)
 
     async def acreate_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
-        """通过 MoviePilot 的失败保护合同生成异步摘要。"""
+        """
+        通过 MoviePilot 的失败保护合同生成异步摘要。
+        """
         return await self._acreate_summary(messages_to_summarize)
 
 
 class FinalRequestCompactionMiddleware(AgentMiddleware):
-    """按最终模型请求预算压缩历史，并在模型成功后原子提交新状态。"""
+    """
+    按最终模型请求预算压缩历史，并在模型成功后原子提交新状态。
+    """
 
     _COMPACTION_ANCHOR_KEY = "moviepilot_compaction_anchor_id"
     # count_tokens_approximately 只估算 LangChain 消息，无法看见 provider 对工具
@@ -367,7 +409,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
 
     @classmethod
     def _conservative_estimate(cls, budget: dict[str, Any]) -> int | None:
-        """给近似 token 估算增加序列化安全余量，缺失估算时保持未知。"""
+        """
+        给近似 token 估算增加序列化安全余量，缺失估算时保持未知。
+        """
         estimated_tokens = budget.get("estimated_input_tokens")
         if type(estimated_tokens) is not int or estimated_tokens < 0:
             return None
@@ -380,7 +424,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         return ceil(estimated_tokens * factor)
 
     def _should_compact(self, budget: dict[str, Any]) -> bool:
-        """以最终请求实际模型窗口判断是否需要压缩。"""
+        """
+        以最终请求实际模型窗口判断是否需要压缩。
+        """
         estimated_tokens = self._conservative_estimate(budget)
         context_window = budget.get("context_window_tokens")
         return (
@@ -392,7 +438,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
     def _compaction_partition(
         self, request: ModelRequest
     ) -> tuple[list[AnyMessage], list[AnyMessage]] | None:
-        """最终输入达到阈值时，拆分需要摘要和需要原样保留的消息。"""
+        """
+        最终输入达到阈值时，拆分需要摘要和需要原样保留的消息。
+        """
         messages = list(request.messages)
         try:
             budget = UsageMiddleware.estimate_request(request)
@@ -445,7 +493,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
     def _should_skip_after_current_turn_compaction(
         cls, messages: list[AnyMessage], budget: dict[str, Any]
     ) -> bool:
-        """同轮只在新工具结果已使请求超窗时再次压缩。"""
+        """
+        同轮只在新工具结果已使请求超窗时再次压缩。
+        """
         for message in reversed(messages):
             anchor_id = message.additional_kwargs.get(cls._COMPACTION_ANCHOR_KEY)
             if not isinstance(anchor_id, str):
@@ -480,7 +530,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
     def _build_compacted_messages(
         self, summary: str, preserved_messages: list[AnyMessage]
     ) -> list[AnyMessage]:
-        """构造摘要与近期历史，并记录本轮压缩输入边界。"""
+        """
+        构造摘要与近期历史，并记录本轮压缩输入边界。
+        """
         summary_messages = self.summarizer.build_summary_messages(summary)
         if summary_messages:
             self.summarizer.ensure_message_ids(summary_messages)
@@ -507,7 +559,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         preserved_messages: list[AnyMessage],
         summary: str,
     ) -> tuple[list[AnyMessage], tuple[list[AnyMessage], list[AnyMessage]] | None]:
-        """复核压缩后的最终预算，并计算一次更小的近期历史分区。"""
+        """
+        复核压缩后的最终预算，并计算一次更小的近期历史分区。
+        """
         compacted_messages = self._build_compacted_messages(summary, preserved_messages)
         compacted_budget = UsageMiddleware.estimate_request(
             request.override(messages=compacted_messages)
@@ -549,7 +603,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
     def _require_within_window(
         self, request: ModelRequest, compacted_messages: list[AnyMessage]
     ) -> None:
-        """禁止把已知仍超过主模型窗口的请求发送给 provider。"""
+        """
+        禁止把已知仍超过主模型窗口的请求发送给 provider。
+        """
         budget = UsageMiddleware.estimate_request(
             request.override(messages=compacted_messages)
         )
@@ -563,7 +619,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
             raise ContextSummarizationError(self._UNCOMPRESSIBLE_REQUEST)
 
     def _prepare_messages(self, request: ModelRequest) -> list[AnyMessage] | None:
-        """同步生成摘要与需要原样保留的近期消息。"""
+        """
+        同步生成摘要与需要原样保留的近期消息。
+        """
         partition = self._compaction_partition(request)
         if partition is None:
             return None
@@ -587,7 +645,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
     async def _aprepare_messages(
         self, request: ModelRequest
     ) -> list[AnyMessage] | None:
-        """异步生成摘要与需要原样保留的近期消息。"""
+        """
+        异步生成摘要与需要原样保留的近期消息。
+        """
         partition = self._compaction_partition(request)
         if partition is None:
             return None
@@ -612,7 +672,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
     def _with_state_update(
         response: ModelResponse, compacted_messages: list[AnyMessage]
     ) -> ExtendedModelResponse:
-        """主模型成功后一次性替换历史，同时保留本次模型结果。"""
+        """
+        主模型成功后一次性替换历史，同时保留本次模型结果。
+        """
         return ExtendedModelResponse(
             model_response=response,
             command=Command(
@@ -631,7 +693,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         request: ModelRequest,
         handler: Callable[[ModelRequest], ModelResponse],
     ) -> ModelResponse | ExtendedModelResponse:
-        """同步压缩最终请求；模型失败时不提交摘要状态。"""
+        """
+        同步压缩最终请求；模型失败时不提交摘要状态。
+        """
         compacted_messages = self._prepare_messages(request)
         if compacted_messages is None:
             return handler(request)
@@ -643,7 +707,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelResponse | ExtendedModelResponse:
-        """异步压缩最终请求；模型失败时不提交摘要状态。"""
+        """
+        异步压缩最终请求；模型失败时不提交摘要状态。
+        """
         compacted_messages = await self._aprepare_messages(request)
         if compacted_messages is None:
             return await handler(request)

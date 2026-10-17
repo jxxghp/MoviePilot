@@ -1,4 +1,6 @@
-"""把运行中用户消息作为真实 HumanMessage 注入下一次模型调用。"""
+"""
+把运行中用户消息作为真实 HumanMessage 注入下一次模型调用。
+"""
 
 from __future__ import annotations
 
@@ -20,7 +22,9 @@ STEERING_CONTEXT_INSTRUCTION = (
 
 
 def _to_human_message(message: SteeringMessage) -> HumanMessage:
-    """将 steering 传输对象转换成可持久化、可审计的标准用户消息。"""
+    """
+    将 steering 传输对象转换成可持久化、可审计的标准用户消息。
+    """
     payload = {
         "message": message.text,
         "input": {"mode": "text", "steering": True},
@@ -42,11 +46,15 @@ def _to_human_message(message: SteeringMessage) -> HumanMessage:
 
 
 class SteeringMiddleware(AgentMiddleware):  # type: ignore[misc]
-    """在模型请求边界消费会话 inbox，避免并发启动第二条 Agent 图。"""
+    """
+    在模型请求边界消费会话 inbox，避免并发启动第二条 Agent 图。
+    """
 
     @staticmethod
     def _can_inject(messages: list[Any]) -> bool:
-        """工具调用尚未交付时不插入用户消息，保持 AI/Tool 配对协议完整。"""
+        """
+        工具调用尚未交付时不插入用户消息，保持 AI/Tool 配对协议完整。
+        """
         return not (messages and isinstance(messages[-1], AIMessage) and bool(messages[-1].tool_calls))
 
     @staticmethod
@@ -54,7 +62,9 @@ class SteeringMiddleware(AgentMiddleware):  # type: ignore[misc]
         request: ModelRequest[Any],
         messages: tuple[SteeringMessage, ...],
     ) -> ModelRequest[Any]:
-        """把已消费消息写入图状态和本次模型请求，确保可持久化且只出现一次。"""
+        """
+        把已消费消息写入图状态和本次模型请求，确保可持久化且只出现一次。
+        """
         if not messages:
             return request
         injected = [_to_human_message(message) for message in messages]
@@ -70,7 +80,9 @@ class SteeringMiddleware(AgentMiddleware):  # type: ignore[misc]
         request: ModelRequest[Any],
         consume: Callable[[], tuple[SteeringMessage, ...]],
     ) -> ModelRequest[Any]:
-        """同步消费并装配消息；工具调用未完成时保留队列等待下一次请求。"""
+        """
+        同步消费并装配消息；工具调用未完成时保留队列等待下一次请求。
+        """
         if not self._can_inject(list(request.messages)):
             return request
         inbox = current_steering_inbox()
@@ -82,7 +94,9 @@ class SteeringMiddleware(AgentMiddleware):  # type: ignore[misc]
         request: ModelRequest[Any],
         handler: Callable[[ModelRequest[Any]], ModelResponse[Any]],
     ) -> ModelResponse[Any]:
-        """同步模型调用前注入真实 HumanMessage，不增加 LangGraph 递归节点。"""
+        """
+        同步模型调用前注入真实 HumanMessage，不增加 LangGraph 递归节点。
+        """
         inbox = current_steering_inbox()
         consume = inbox.consume_nowait if inbox is not None else lambda: ()
         return handler(self._prepare_request(request, consume))
@@ -92,7 +106,9 @@ class SteeringMiddleware(AgentMiddleware):  # type: ignore[misc]
         request: ModelRequest[Any],
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any]:
-        """异步模型调用前原子注入真实 HumanMessage，不启动并行 Agent。"""
+        """
+        异步模型调用前原子注入真实 HumanMessage，不启动并行 Agent。
+        """
         inbox = current_steering_inbox()
         if not self._can_inject(list(request.messages)) or inbox is None:
             return await handler(request)

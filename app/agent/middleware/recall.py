@@ -1,4 +1,6 @@
-"""保存压缩前与工具截断前的消息，并提供会话检索工具 session_search。"""
+"""
+保存压缩前与工具截断前的消息，并提供会话检索工具 session_search。
+"""
 
 import json
 import re
@@ -36,7 +38,9 @@ deleted messages and unavailable indexes never prove the source or event does no
 
 
 def _time_bound(value: str) -> float | None:
-    """接受 ISO 日期和 7d/24h/2w 相对时间，before 为开区间。"""
+    """
+    接受 ISO 日期和 7d/24h/2w 相对时间，before 为开区间。
+    """
     if not value.strip():
         return None
     relative = re.fullmatch(r'(\d+)\s*(h|d|w)', value.strip(), re.IGNORECASE)
@@ -47,23 +51,27 @@ def _time_bound(value: str) -> float | None:
 
 
 class SearchHistoryInput(BaseModel):  # type: ignore[misc]
-    """检索参数只描述查询，不暴露可跨用户访问的 profile 或数据库路径。"""
+    """
+    检索参数只描述查询，不暴露可跨用户访问的 profile 或数据库路径。
+    """
 
-    query: str = Field(default='', max_length=1024, description='FTS5 keywords, quoted phrases, AND/OR/NOT or prefix*. Omit to browse.')
-    session_id: str = Field(default='', max_length=255, description='Read a returned session; add around_message_id to scroll.')
-    around_message_id: int = Field(default=0, ge=0, description='Exact match_message_id or a message id from a previous window.')
-    window: int = Field(default=5, ge=1, le=20, description='Messages on either side of the scroll anchor.')
-    limit: int = Field(default=3, ge=1, le=10, description='Maximum discovery sessions.')
-    sort: Literal['', 'newest', 'oldest'] = Field(default='', description='Omit for BM25 relevance; time ordering for where we left off/how it started.')
-    detail: Literal['adaptive', 'full'] = Field(default='adaptive', description='Adaptive expands only the top result; full expands every result.')
-    role_filter: str = Field(default='user,assistant', max_length=64, description='Comma-separated roles. Include tool for full tool-result search.')
-    after: str = Field(default='', max_length=40, description='Session start lower bound: ISO date/datetime or 7d/24h/2w.')
-    before: str = Field(default='', max_length=40, description='Exclusive session start upper bound.')
-    exclude_session_ids: list[str] = Field(default_factory=list, max_length=20, description='Already inspected sessions; their lineage is excluded.')
+    query: str = Field(default='', max_length=1024, description="FTS5 关键词、引号短语、AND/OR/NOT 或前缀通配；省略时浏览历史")
+    session_id: str = Field(default='', max_length=255, description="读取已返回的会话标识；配合 around_message_id 滚动查看消息")
+    around_message_id: int = Field(default=0, ge=0, description="精确的 match_message_id 或上一窗口中的消息标识；0 表示未指定锚点")
+    window: int = Field(default=5, ge=1, le=20, description="滚动锚点两侧各返回的消息数，默认 5，范围为 1 至 20")
+    limit: int = Field(default=3, ge=1, le=10, description="发现阶段最多返回的会话数，默认 3，范围为 1 至 10")
+    sort: Literal['', 'newest', 'oldest'] = Field(default='', description="省略或空值按 BM25 相关性排序；newest 和 oldest 按时间定位最近进展或起点")
+    detail: Literal['adaptive', 'full'] = Field(default='adaptive', description="adaptive 只展开最相关结果，full 展开全部结果")
+    role_filter: str = Field(default='user,assistant', max_length=64, description="逗号分隔的消息角色，默认 user,assistant；加入 tool 可检索完整工具结果")
+    after: str = Field(default='', max_length=40, description="会话开始时间下界，接受 ISO 日期、时间或 7d、24h、2w 等相对时间")
+    before: str = Field(default='', max_length=40, description="会话开始时间上界，不包含该时刻")
+    exclude_session_ids: list[str] = Field(default_factory=list, max_length=20, description="已经检查过的会话标识，同时排除其关联会话链")
 
     @model_validator(mode='after')  # type: ignore[misc]
     def validate_modes(self) -> 'SearchHistoryInput':
-        """锚点必须属于显式会话；角色与时间条件在查询前验证。"""
+        """
+        锚点必须属于显式会话；角色与时间条件在查询前验证。
+        """
         if self.around_message_id and not self.session_id:
             raise ValueError('around_message_id 需要 session_id')
         roles = {role.strip() for role in self.role_filter.split(',') if role.strip()}
@@ -78,10 +86,14 @@ class SearchHistoryInput(BaseModel):  # type: ignore[misc]
 
 
 class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
-    """身份绑定到宿主会话，工具只能查询；原始证据和可执行上下文独立保存。"""
+    """
+    身份绑定到宿主会话，工具只能查询；原始证据和可执行上下文独立保存。
+    """
 
     def __init__(self, service: RecallService, user_id: str, session: RecallSession) -> None:
-        """绑定用户和元数据，复用已编译图时不会把新用户身份写进旧工具。"""
+        """
+        绑定用户和元数据，复用已编译图时不会把新用户身份写进旧工具。
+        """
         self._service, self._user_id, self._session = service, user_id, session
         self._seen: set[str] = set()
         self._active_message_ids: set[str] = set()
@@ -93,7 +105,9 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     async def _archive(self, messages: list[BaseMessage], raw: dict[str, str] | None = None,
                        call: dict[str, Any] | None = None) -> None:
-        """完整脱敏在 worker 内执行；归档失败不能把已成功的工具副作用变成失败重放。"""
+        """
+        完整脱敏在 worker 内执行；归档失败不能把已成功的工具副作用变成失败重放。
+        """
         batch = []
         for message in messages:
             if message.id and message.id in self._seen:
@@ -118,14 +132,18 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
             logger.warning('历史消息归档未完成: %s', type(error).__name__)
 
     async def abefore_model(self, state: dict[str, Any], runtime: Any) -> None:
-        """在最终请求压缩前保存原始消息。"""
+        """
+        在最终请求压缩前保存原始消息。
+        """
         del runtime
         messages = state.get('messages', [])
         self._active_message_ids = {message.id for message in messages if message.id}
         await self._archive(messages)
 
     async def aafter_model(self, state: dict[str, Any], runtime: Any) -> None:
-        """基于已提交图状态标记实际移出的原文，同时保存最终回复。"""
+        """
+        基于已提交图状态标记实际移出的原文，同时保存最终回复。
+        """
         del runtime
         messages = state.get('messages', [])
         kept = {message.id for message in messages if message.id}
@@ -139,12 +157,16 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
         await self._archive(messages)
 
     async def awrap_tool_call(self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], Awaitable[Any]]) -> Any:
-        """组合现有输出 recorder，在内置工具截断之前保留正文，外层引用行为不变。"""
+        """
+        组合现有输出 recorder，在内置工具截断之前保留正文，外层引用行为不变。
+        """
         previous = TOOL_RESULT_RECORDER.get()
         raw: dict[str, str] = {}
 
         def record(name: str, text: str) -> dict[str, Any]:
-            """捕获本次调用原文，同时保留宿主 read_tool_result 的引用回执。"""
+            """
+            捕获本次调用原文，同时保留宿主 read_tool_result 的引用回执。
+            """
             raw[name] = text
             return previous(name, text) if previous else {}
 
@@ -159,11 +181,15 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
             TOOL_RESULT_RECORDER.reset(token)
 
     async def awrap_model_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
-        """最终请求注入检索说明；原文可见性只由已提交图状态更新。"""
+        """
+        最终请求注入检索说明；原文可见性只由已提交图状态更新。
+        """
         return await handler(request.override(system_message=append_to_system_message(request.system_message, HISTORY_PROMPT)))
 
     async def session_search(self, **kwargs: Any) -> str:
-        """四种形态返回实际消息，不生成检索摘要；身份与当前会话不可由模型覆盖。"""
+        """
+        四种形态返回实际消息，不生成检索摘要；身份与当前会话不可由模型覆盖。
+        """
         args = SearchHistoryInput(**kwargs)
         query = RecallQuery(query=args.query, session_id=args.session_id, around_message_id=args.around_message_id,
                             window=args.window, limit=args.limit, sort=args.sort, detail=args.detail,

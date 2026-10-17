@@ -1,4 +1,6 @@
-"""子代理终端只读共享输入与单次调用作用域。"""
+"""
+子代理终端只读共享输入与单次调用作用域。
+"""
 
 import json
 from collections.abc import AsyncIterator
@@ -17,25 +19,31 @@ from app.agent.terminal.ownership import (
 
 
 def _default_actions() -> list[Literal["read", "wait"]]:
-    """每条授权独立创建动作列表，默认仅可读取或等待父终端。"""
+    """
+    每条授权独立创建动作列表，默认仅可读取或等待父终端。
+    """
     return ["read", "wait"]
 
 
 class SubAgentTerminalGrant(BaseModel):  # type: ignore[misc]
-    """父任务明确授予子代理的单个终端读取能力，不扩大只读策略。"""
+    """
+    父任务明确授予子代理的单个终端读取能力，不扩大只读策略。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    session_id: str = Field(..., min_length=1, description="Terminal session owned by the parent task.")
+    session_id: str = Field(..., min_length=1, description="父任务拥有的终端会话标识")
     actions: list[Literal["read", "wait"]] = Field(
         default_factory=_default_actions,
         min_length=1,
-        description="Explicit read-only actions to share; writes and process control cannot be delegated.",
+        description="明确共享的只读动作 read 或 wait；写入及进程控制不能委派",
     )
 
 
 def _normalize_grants(terminal_sessions: list[SubAgentTerminalGrant]) -> dict[str, frozenset[str]]:
-    """合并同一父句柄的只读动作，直调入口也执行与工具 schema 相同的校验。"""
+    """
+    合并同一父句柄的只读动作，直调入口也执行与工具 schema 相同的校验。
+    """
     grants: dict[str, frozenset[str]] = {}
     for value in terminal_sessions:
         grant = SubAgentTerminalGrant.model_validate(value)
@@ -50,7 +58,9 @@ async def subagent_terminal_scope(
     user_id: str,
     terminal_sessions: Optional[list[SubAgentTerminalGrant]] = None,
 ) -> AsyncIterator[str]:
-    """每次子图调用独立绑定能力；授权失败不调用模型，结束仅撤销子任务能力。"""
+    """
+    每次子图调用独立绑定能力；授权失败不调用模型，结束仅撤销子任务能力。
+    """
     grants = _normalize_grants(terminal_sessions or [])
     parent = current_terminal_scope()
     if parent is not None or grants:

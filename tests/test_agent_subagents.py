@@ -1,3 +1,7 @@
+"""
+验证子 Agent 工具选择、策略中间件和任务工具装配。
+"""
+
 import asyncio
 import json
 from pathlib import Path
@@ -25,7 +29,9 @@ from app.agent.tools.tags import ToolTag
 
 
 def test_create_subagent_middlewares_registers_task_tool():
-    """子代理中间件应向主 Agent 注册 task 委派工具。"""
+    """
+    子代理中间件应向主 Agent 注册 task 委派工具。
+    """
     model = FakeListChatModel(responses=["ok"])
 
     middlewares, task_tools = create_subagent_middlewares(
@@ -42,14 +48,16 @@ def test_create_subagent_middlewares_registers_task_tool():
         SUBAGENT_CONTROL_TOOL_NAME,
     ]
     assert "general-purpose" in task_tools[0].description
-    assert task_tools[0].description.count("Available subagents:") == 1
+    assert task_tools[0].description.count("可用子智能体：") == 1
     assert "action=start" in task_tools[1].description
     assert "action=wait" in task_tools[1].description
     assert "action=pipeline" in task_tools[1].description
 
 
 def test_general_subagent_tools_are_selected_by_tags():
-    """通用子代理应根据只读标签筛选工具，而不是依赖工具名名单。"""
+    """
+    通用子代理应根据只读标签筛选工具，而不是依赖工具名名单。
+    """
     model = FakeListChatModel(responses=["ok"])
     tools = [
         SimpleNamespace(
@@ -87,7 +95,9 @@ def test_general_subagent_tools_are_selected_by_tags():
 
 
 def test_subagent_graph_registers_policy_middleware_as_outermost():
-    """懒加载的子代理图必须继承宿主上下文并先经过 policy middleware。"""
+    """
+    懒加载的子代理图必须继承宿主上下文并先经过 policy middleware。
+    """
     model = FakeListChatModel(responses=["ok"])
     context = ToolPolicyContext(
         session_id="subagent-session",
@@ -121,7 +131,9 @@ def test_subagent_graph_registers_policy_middleware_as_outermost():
 
 
 def test_general_subagent_selects_code_and_settings_tools():
-    """通用子代理应能读取代码、目录、设置和命令诊断工具。"""
+    """
+    通用子代理应能读取代码、目录、设置和命令诊断工具。
+    """
     model = FakeListChatModel(responses=["ok"])
     tools = [
         SimpleNamespace(
@@ -169,7 +181,9 @@ def test_general_subagent_selects_code_and_settings_tools():
 
 
 def test_builtin_tools_declare_tags_in_implementation():
-    """所有内置工具实现都应显式声明 tags。"""
+    """
+    所有内置工具实现都应显式声明 tags。
+    """
     impl_dir = Path(__file__).resolve().parents[1] / "app" / "agent" / "tools" / "impl"
     missing_tools = []
     for path in sorted(impl_dir.glob("*.py")):
@@ -185,7 +199,9 @@ def test_builtin_tools_declare_tags_in_implementation():
 
 
 def test_task_tool_call_reports_streaming_execution():
-    """task 子代理工具执行时应使用统一的工具显示策略。"""
+    """
+    task 子代理工具执行时应使用统一的工具显示策略。
+    """
 
     async def _run_test():
         calls = []
@@ -229,7 +245,9 @@ def test_task_tool_call_reports_streaming_execution():
 
 
 def test_task_middleware_sanitizes_its_own_logs():
-    """子代理中间件读取任务参数和异常写日志时必须脱敏。"""
+    """
+    子代理中间件读取任务参数和异常写日志时必须脱敏。
+    """
 
     async def _run_test():
         secret_marker = "subagent-secret-marker-7316"
@@ -273,7 +291,9 @@ def test_task_middleware_sanitizes_its_own_logs():
 
 
 def test_control_tool_call_reports_streaming_execution():
-    """subagent_task 子代理工具执行时应使用统一的工具显示策略。"""
+    """
+    subagent_task 子代理工具执行时应使用统一的工具显示策略。
+    """
 
     async def _run_test():
         calls = []
@@ -325,7 +345,9 @@ def test_control_tool_call_reports_streaming_execution():
 
 
 def test_control_tool_starts_tasks_concurrently_and_waits():
-    """异步子代理管控工具应批量启动任务，并在 wait 时收集结果。"""
+    """
+    异步子代理管控工具应批量启动任务，并在 wait 时收集结果。
+    """
 
     async def _run_test():
         model = FakeListChatModel(responses=["ok"])
@@ -386,7 +408,9 @@ def test_control_tool_starts_tasks_concurrently_and_waits():
 
 
 def test_control_tool_updates_task_with_same_id_after_bounded_cancel():
-    """update 应取消旧任务、复用 task_id 并把新描述交给子代理。"""
+    """
+    update 应取消旧任务、复用 task_id 并把新描述交给子代理。
+    """
 
     async def _run_test():
         model = FakeListChatModel(responses=["ok"])
@@ -425,7 +449,9 @@ def test_control_tool_updates_task_with_same_id_after_bounded_cancel():
 
 
 def test_control_tool_pipeline_passes_previous_results_to_next_step():
-    """管道模式应顺序执行子代理，并把上一步结果作为下一步私有上下文。"""
+    """
+    管道模式应顺序执行子代理，并把上一步结果作为下一步私有上下文。
+    """
 
     async def _run_test():
         model = FakeListChatModel(responses=["ok"])
@@ -488,7 +514,9 @@ def test_control_tool_pipeline_passes_previous_results_to_next_step():
 
 
 def test_control_tool_pipeline_stops_after_failed_step():
-    """管道模式遇到失败步骤时应中断后续子代理。"""
+    """
+    管道模式遇到失败步骤时应中断后续子代理。
+    """
 
     async def _run_test():
         model = FakeListChatModel(responses=["ok"])
@@ -542,7 +570,9 @@ def test_control_tool_pipeline_stops_after_failed_step():
 
 
 def test_control_tool_pipeline_timeout_is_bounded_when_task_ignores_cancel():
-    """管道步骤忽略取消时，等待上限仍必须按时返回失败。"""
+    """
+    管道步骤忽略取消时，等待上限仍必须按时返回失败。
+    """
 
     async def _run_test():
         model = FakeListChatModel(responses=["ok"])
@@ -593,7 +623,9 @@ def test_control_tool_pipeline_timeout_is_bounded_when_task_ignores_cancel():
 
 
 def test_after_agent_cancels_unfinished_tasks():
-    """Agent 结束时应取消仍在运行的异步子代理任务。"""
+    """
+    Agent 结束时应取消仍在运行的异步子代理任务。
+    """
 
     async def _run_test():
         model = FakeListChatModel(responses=["ok"])
