@@ -196,6 +196,8 @@
         "owner": "$source",
         "reason": "运行期 import 仅用于响应类型、协议解析或兼容补丁，uses 为空或不获取网络能力。",
         "facts": [
+          {"source": "app.adapters.external.server", "target": "httpx2", "kind": "raw_transport", "fingerprint": "e9aeb562213af38c644c457850853bba9f3043c56e710c3adde98adc6a4b9dba"},
+          {"source": "app.adapters.external.server", "target": "requests", "kind": "raw_transport", "fingerprint": "e8c747a7a4e96c3b1dc102bf49a37881cc674bcfb17b98693cac966afc3c3037"},
           {"source": "app.adapters.external.plugin.client", "target": "httpx2", "kind": "raw_transport", "fingerprint": "2d249b0906bc7f8fa29f569d6bcc5667d4290a551b1a06bcdf85e09ec50a793d"},
           {"source": "app.adapters.external.plugin.client", "target": "requests", "kind": "raw_transport", "fingerprint": "b5239e7eee9c23569b7fec66791e56bcc226db86a8d09ee7fc58d3ba8bc14f09"},
           {"source": "app.modules.emby.emby", "target": "requests", "kind": "raw_transport", "fingerprint": "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31"},

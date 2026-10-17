@@ -66,6 +66,8 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.doctor.checks", "urllib.request"),
     },
     "type_or_compat_only": {
+        ("app.adapters.external.server", "httpx2"),
+        ("app.adapters.external.server", "requests"),
         ("app.adapters.external.plugin.client", "httpx2"),
         ("app.adapters.external.plugin.client", "requests"),
         ("app.modules.emby.emby", "requests"),
@@ -86,6 +88,8 @@ FROZEN_EGRESS_REASON_BY_EDGE = {
 }
 FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.adapters.cache.redis", "redis"): "49f0b28ef731b25aa772d6887febd762d03b981a1f52d6dfc8dff82f2f489f81",
+    ("app.adapters.external.server", "httpx2"): "e9aeb562213af38c644c457850853bba9f3043c56e710c3adde98adc6a4b9dba",
+    ("app.adapters.external.server", "requests"): "e8c747a7a4e96c3b1dc102bf49a37881cc674bcfb17b98693cac966afc3c3037",
     ("app.adapters.external.plugin.client", "httpx2"): "2d249b0906bc7f8fa29f569d6bcc5667d4290a551b1a06bcdf85e09ec50a793d",
     ("app.adapters.external.plugin.client", "requests"): "b5239e7eee9c23569b7fec66791e56bcc226db86a8d09ee7fc58d3ba8bc14f09",
     ("app.adapters.network.browser", "cloakbrowser"): "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173",

@@ -2,15 +2,13 @@
 MoviePilot 中心服务的传输适配、响应解析与兼容入口。
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import platform
 from collections.abc import Coroutine
 from typing import (
     TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional,
-    ParamSpec, Protocol, Tuple, TypeVar, Union, cast,
+    ParamSpec, Protocol, Tuple, TypeVar, Union, cast, no_type_check,
 )
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
@@ -882,7 +880,8 @@ class MoviePilotServerHelper:
         return cls._post_json(cls._server_url(cls._SUBSCRIBE_DONE_PATH), payload, timeout=5)
 
     @classmethod
-    async def async_subscribe_done(cls, payload: Dict[str, Any]) -> Optional[AsyncResponse]:
+    @no_type_check
+    async def async_subscribe_done(cls, payload: Dict[str, Any]):
         """
         异步完成订阅统计，并返回可检查 HTTP 状态的响应对象。
         """
