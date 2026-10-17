@@ -1,3 +1,7 @@
+"""
+验证字幕下载链接的解析与规范化。
+"""
+
 from lxml import etree
 
 from app.modules.subtitle import SubtitleModule

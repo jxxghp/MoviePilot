@@ -1,4 +1,6 @@
-"""站点查询应用服务的稳定快照投影契约测试。"""
+"""
+站点查询应用服务的稳定快照投影契约测试。
+"""
 
 from unittest.mock import Mock
 
@@ -8,7 +10,9 @@ from app.schemas.site import SiteUserData
 
 
 def test_userdata_latest_sync_projects_snapshot_to_dto() -> None:
-    """同步站点用户数据查询只消费脱离 Session 的稳定快照。"""
+    """
+    同步站点用户数据查询只消费脱离 Session 的稳定快照。
+    """
     record = SiteUserDataSnapshot(
         id=1,
         domain="site.example",

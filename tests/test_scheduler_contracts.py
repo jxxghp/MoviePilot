@@ -1,4 +1,6 @@
-"""Scheduler 声明、catalog 与 execution state 测试。"""
+"""
+Scheduler 声明、catalog 与 execution state 测试。
+"""
 
 import asyncio
 from unittest.mock import MagicMock
@@ -15,7 +17,9 @@ from app.application.scheduling import (
 
 
 def test_job_spec_exports_complete_legacy_state() -> None:
-    """每个声明必须显式暴露 owner、overlap、timeout、manual 和 recovery。"""
+    """
+    每个声明必须显式暴露 owner、overlap、timeout、manual 和 recovery。
+    """
     state = JobSpec(
         "outbox",
         "恢复副作用",
@@ -33,7 +37,9 @@ def test_job_spec_exports_complete_legacy_state() -> None:
 
 
 def test_job_catalog_rejects_duplicate_ids() -> None:
-    """重复 job ID 在 APScheduler 注册前即失败。"""
+    """
+    重复 job ID 在 APScheduler 注册前即失败。
+    """
     spec = JobSpec("same", "相同", MagicMock(), "test")
 
     with pytest.raises(ValueError, match="不得重复"):
@@ -41,7 +47,9 @@ def test_job_catalog_rejects_duplicate_ids() -> None:
 
 
 def test_execution_state_skips_overlap_and_records_terminal_state() -> None:
-    """统一 execution state 保持旧的跳过重入并记录失败终态。"""
+    """
+    统一 execution state 保持旧的跳过重入并记录失败终态。
+    """
     state = JobSpec("job", "任务", MagicMock(), "test").to_runtime_state()
 
     assert JobExecutionState.begin(state, "start") is True
@@ -56,11 +64,15 @@ def test_execution_state_skips_overlap_and_records_terminal_state() -> None:
 
 @pytest.mark.asyncio
 async def test_execution_state_cancels_coroutine_after_timeout() -> None:
-    """声明的 timeout 必须取消协程并向 Facade 抛出超时。"""
+    """
+    声明的 timeout 必须取消协程并向 Facade 抛出超时。
+    """
     cancelled = asyncio.Event()
 
     async def wait_forever() -> None:
-        """模拟只能由取消信号结束的协程任务。"""
+        """
+        模拟只能由取消信号结束的协程任务。
+        """
         try:
             await asyncio.Event().wait()
         finally:
@@ -73,7 +85,9 @@ async def test_execution_state_cancels_coroutine_after_timeout() -> None:
 
 
 def test_manual_job_declares_restart_policy() -> None:
-    """只允许人工触发的任务必须显式声明重启后不自动补跑。"""
+    """
+    只允许人工触发的任务必须显式声明重启后不自动补跑。
+    """
     state = JobSpec(
         "manual",
         "人工任务",

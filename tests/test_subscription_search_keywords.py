@@ -1,4 +1,6 @@
-"""订阅换词策略减少重复等待和 IMDb 请求，同时保留普通搜索行为。"""
+"""
+订阅换词策略减少重复等待和 IMDb 请求，同时保留普通搜索行为。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -18,7 +20,9 @@ from app.schemas.types import MediaType
 def test_subscription_queries_skip_round_wait_and_duplicate_imdb_requests(
     monkeypatch, mode, subscription, area, imdb_id,
 ):
-    """真实执行循环在无命中时也不重复 IMDb 请求，缺 ID 和普通搜索仍完整换词。"""
+    """
+    真实执行循环在无命中时也不重复 IMDb 请求，缺 ID 和普通搜索仍完整换词。
+    """
     chain = object.__new__(SearchChain)
     chain.runtime_config = SimpleNamespace(search_multiple_name=True)
     aliases = ["Main Title", "Original Title", "Another Title"]
@@ -32,24 +36,34 @@ def test_subscription_queries_skip_round_wait_and_duplicate_imdb_requests(
     sleeps = []
 
     def search(**kwargs):
-        """在站点 I/O 边界记录最终检索词，所有查询都返回空结果。"""
+        """
+        在站点 I/O 边界记录最终检索词，所有查询都返回空结果。
+        """
         queries.append(chain._torrent_keyword(kwargs["keyword"], kwargs["mediainfo"], kwargs["area"]))
         return []
 
     async def async_search(**kwargs):
-        """异步查询使用同一站点边界替身。"""
+        """
+        异步查询使用同一站点边界替身。
+        """
         return search(**kwargs)
 
     async def stream(**kwargs):
-        """流式查询发布与同步查询相同的空页。"""
+        """
+        流式查询发布与同步查询相同的空页。
+        """
         yield {"items": search(**kwargs)}
 
     async def supplement(mediainfo):
-        """隔离外部媒体补充请求。"""
+        """
+        隔离外部媒体补充请求。
+        """
         return mediainfo
 
     async def sleep(delay):
-        """记录异步等待时间而不让测试实际睡眠。"""
+        """
+        记录异步等待时间而不让测试实际睡眠。
+        """
         sleeps.append(delay)
 
     monkeypatch.setattr(media, "MediaChain", lambda: SimpleNamespace(
@@ -69,7 +83,9 @@ def test_subscription_queries_skip_round_wait_and_duplicate_imdb_requests(
         result = asyncio.run(chain.async_process(target, area=area))
     else:
         async def collect():
-            """从流式完成事件读取最终搜索结果。"""
+            """
+            从流式完成事件读取最终搜索结果。
+            """
             return [event async for event in chain.async_process_stream(target, area=area)]
 
         result = asyncio.run(collect())[-1]["contexts"]

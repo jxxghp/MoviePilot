@@ -1,4 +1,6 @@
-"""文件存储适配器运行时设置读取回归测试。"""
+"""
+文件存储适配器运行时设置读取回归测试。
+"""
 
 from unittest.mock import patch
 
@@ -18,7 +20,9 @@ from app.modules.filemanager.storages.rclone import Rclone
     ],
 )
 def test_storage_snapshot_setting_is_read_at_use_time(storage_type, setting_key) -> None:
-    """已创建的存储实例也必须读取配置变更后的最新目录检查开关。"""
+    """
+    已创建的存储实例也必须读取配置变更后的最新目录检查开关。
+    """
     state = {setting_key: False}
     with patch(
         f"{storage_type.__module__}.get_runtime_setting",

@@ -1,4 +1,6 @@
-"""订阅下载取消边界、普通失败语义与账本移除迁移测试。"""
+"""
+订阅下载取消边界、普通失败语义与账本移除迁移测试。
+"""
 
 from __future__ import annotations
 
@@ -29,16 +31,22 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class _FakeTorrentHelper:
-    """返回固定种子目录和文件清单，隔离真实 bencode 解析。"""
+    """
+    返回固定种子目录和文件清单，隔离真实 bencode 解析。
+    """
 
     @staticmethod
     def get_fileinfo_from_torrent_content(_content):
-        """返回单文件种子结构。"""
+        """
+        返回单文件种子结构。
+        """
         return "Demo.Show.S01", ["Demo.Show.S01E01.mkv"]
 
 
 def _download_chain() -> DownloadChain:
-    """构造只执行下载提交边界的 Chain 测试实例。"""
+    """
+    构造只执行下载提交边界的 Chain 测试实例。
+    """
     chain = DownloadChain.__new__(DownloadChain)
     chain.download_history_repository = MagicMock()
     chain.download_history_repository.get_by_media_identity.return_value = []
@@ -55,7 +63,9 @@ def _download_chain() -> DownloadChain:
 
 
 def _context() -> Context:
-    """构造具有稳定媒体和 torrent 身份的电视剧候选。"""
+    """
+    构造具有稳定媒体和 torrent 身份的电视剧候选。
+    """
     return Context(
         meta_info=MetaInfo("Demo Show S01E01"),
         media_info=MediaInfo(
@@ -78,7 +88,9 @@ def _context() -> Context:
 
 @pytest.fixture(autouse=True)
 def _submission_dependencies(monkeypatch):
-    """固定目录、媒体补全和种子解析，避免触发外部模块。"""
+    """
+    固定目录、媒体补全和种子解析，避免触发外部模块。
+    """
     monkeypatch.setattr(
         "app.application.directory.DirectoryHelper.get_download_dirs",
         lambda _self: [SimpleNamespace(
@@ -97,7 +109,9 @@ def _submission_dependencies(monkeypatch):
 
 
 def test_download_chain_uses_normal_submission_for_each_execution() -> None:
-    """下载边界不保留本地提交账本，由下载器处理相同 torrent 的复用。"""
+    """
+    下载边界不保留本地提交账本，由下载器处理相同 torrent 的复用。
+    """
     chain = _download_chain()
     chain.download = MagicMock(return_value=("qb", "hash-1", "Original", "accepted"))
     governance = SubscriptionDownloadGovernance()
@@ -123,7 +137,9 @@ def test_download_chain_uses_normal_submission_for_each_execution() -> None:
 
 
 def test_download_chain_retries_after_downloader_exception() -> None:
-    """下载器异常不冻结后续执行，下一轮仍按普通下载合同重新提交。"""
+    """
+    下载器异常不冻结后续执行，下一轮仍按普通下载合同重新提交。
+    """
     chain = _download_chain()
     chain.download = MagicMock(side_effect=[
         TimeoutError("response timeout"),
@@ -153,7 +169,9 @@ def test_download_chain_retries_after_downloader_exception() -> None:
 
 
 def test_download_chain_retries_after_local_settlement_failure() -> None:
-    """本地结算异常直接失败，下一轮不依赖补偿状态即可重新执行。"""
+    """
+    本地结算异常直接失败，下一轮不依赖补偿状态即可重新执行。
+    """
     chain = _download_chain()
     chain.download = MagicMock(return_value=("qb", "hash-2", "Original", "accepted"))
     chain._settle_download_success.side_effect = [RuntimeError("history unavailable"), None]
@@ -181,7 +199,9 @@ def test_download_chain_retries_after_local_settlement_failure() -> None:
 
 
 def test_download_chain_records_explicit_rejection_as_normal_failure() -> None:
-    """下载器明确拒绝仍写入既有资源失败冷却，不建立提交恢复状态。"""
+    """
+    下载器明确拒绝仍写入既有资源失败冷却，不建立提交恢复状态。
+    """
     chain = _download_chain()
     chain.download = MagicMock(return_value=("qb", None, "Original", "downloader rejected"))
 
@@ -199,7 +219,9 @@ def test_download_chain_records_explicit_rejection_as_normal_failure() -> None:
 
 
 def test_download_chain_cancels_before_external_side_effect() -> None:
-    """取消在下载器边界前生效时不得创建下载任务或成功事实。"""
+    """
+    取消在下载器边界前生效时不得创建下载任务或成功事实。
+    """
     chain = _download_chain()
     chain.download = MagicMock()
     governance = SubscriptionDownloadGovernance(cancelled=lambda: True)
@@ -218,12 +240,16 @@ def test_download_chain_cancels_before_external_side_effect() -> None:
 
 
 def test_download_chain_marks_side_effect_boundary_before_downloader_call() -> None:
-    """下载器调用前必须标记副作用起点，使晚到取消按真实执行结果收口。"""
+    """
+    下载器调用前必须标记副作用起点，使晚到取消按真实执行结果收口。
+    """
     chain = _download_chain()
     order: list[str] = []
 
     def download(**_kwargs):
-        """记录下载器调用顺序并返回成功结果。"""
+        """
+        记录下载器调用顺序并返回成功结果。
+        """
         order.append("download")
         return "qb", "hash-3", "Original", "accepted"
 
@@ -245,7 +271,9 @@ def test_download_chain_marks_side_effect_boundary_before_downloader_call() -> N
 
 
 def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -> None:
-    """提交策略必须使用当前订阅和重算缺集，而不是直接消费准备阶段快照。"""
+    """
+    提交策略必须使用当前订阅和重算缺集，而不是直接消费准备阶段快照。
+    """
     prepared = SubscriptionSnapshot(
         id=7,
         name="Demo Show",
@@ -271,10 +299,14 @@ def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -
     captured = {}
 
     class _FakeDownloadChain:
-        """捕获提交策略传入的当前事实与治理上下文。"""
+        """
+        捕获提交策略传入的当前事实与治理上下文。
+        """
 
         def batch_download(self, **kwargs):
-            """记录一次批量提交并返回当前缺集。"""
+            """
+            记录一次批量提交并返回当前缺集。
+            """
             captured.update(kwargs)
             return [], kwargs["no_exists"]
 
@@ -327,7 +359,9 @@ def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -
 
 
 def test_subscription_policy_discards_candidates_after_filter_change(monkeypatch) -> None:
-    """准备后筛选合同变化时必须放弃旧候选，不允许用旧快照提交。"""
+    """
+    准备后筛选合同变化时必须放弃旧候选，不允许用旧快照提交。
+    """
     prepared = SubscriptionSnapshot(
         id=7,
         name="Demo Show",
@@ -362,7 +396,9 @@ def test_subscription_download_ledger_removal_migration_is_reversible(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """3.0.25 删除旧账本；降级只恢复结构，不伪造已删除的运行状态。"""
+    """
+    3.0.25 删除旧账本；降级只恢复结构，不伪造已删除的运行状态。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
     create_ledger = importlib.import_module("database.versions.e1b6d4f8a2c7_3_0_21")
     add_delivery_scope = importlib.import_module("database.versions.a7d9e2c4f6b1_3_0_23")

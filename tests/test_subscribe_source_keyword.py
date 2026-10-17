@@ -1,7 +1,11 @@
+"""
+验证订阅下载来源关键字的编码与解析。
+"""
+
 import json
 from types import SimpleNamespace
 
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.schemas.types import MediaType
 
 

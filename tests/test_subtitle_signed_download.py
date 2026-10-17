@@ -1,3 +1,7 @@
+"""
+验证字幕下载签名、权限和过期校验。
+"""
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -74,6 +78,9 @@ def test_subtitle_title_search_response_signs_enclosure(monkeypatch):
     """
 
     class FakeSearchChain:
+        """
+        提供固定字幕候选，验证响应链接签名而不查询真实来源。
+        """
         async def async_search_subtitles_by_title(self, **_kwargs):
             return [
                 SubtitleInfo(
@@ -141,6 +148,9 @@ def test_subtitle_search_sse_events_sign_enclosures(monkeypatch):
     """
 
     class FakeSearchChain:
+        """
+        提供固定字幕候选，验证响应链接签名而不查询真实来源。
+        """
         def async_search_subtitles_by_title_stream(self, **_kwargs):
             async def source():
                 for event_type in ("append", "replace", "done"):
@@ -185,6 +195,9 @@ def test_download_subtitle_rejects_unsigned_enclosure(monkeypatch):
     """
 
     class FakeDownloadChain:
+        """
+        替代字幕下载链，隔离文件下载并记录接口调用。
+        """
         def download_subtitle(self, **_kwargs):
             return True, "不应下载", ["unsafe.srt"]
 
@@ -207,6 +220,9 @@ def test_download_subtitle_rejects_other_purpose_signature(monkeypatch):
     """
 
     class FakeDownloadChain:
+        """
+        替代字幕下载链，隔离文件下载并记录接口调用。
+        """
         def download_subtitle(self, **_kwargs):
             return True, "不应下载", ["unsafe.srt"]
 
@@ -232,6 +248,9 @@ def test_download_subtitle_cleans_url_and_uses_server_site_request_fields(monkey
     signed_url = SecurityUtils.sign_url(SUBTITLE_URL, purpose=SUBTITLE_PURPOSE)
 
     class FakeSiteQuery:
+        """
+        提供站点查询结果，验证签名下载的身份和权限边界。
+        """
         def get(self, site_id):
             assert site_id == SUBTITLE_SITE_ID
             return SimpleNamespace(cookie="server-cookie=1", ua="ServerUA", proxy=True)
@@ -240,6 +259,9 @@ def test_download_subtitle_cleans_url_and_uses_server_site_request_fields(monkey
             return self.get(site_id)
 
     class FakeDownloadChain:
+        """
+        替代字幕下载链，隔离文件下载并记录接口调用。
+        """
         def download_subtitle(self, **kwargs):
             captured.update(kwargs)
             return True, "字幕下载成功", ["/downloads/Demo.Movie.2026.zh-cn.srt"]

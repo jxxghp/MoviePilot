@@ -1,4 +1,6 @@
-"""搜索站点游标与旧排期升级回归。"""
+"""
+搜索站点游标与旧排期升级回归。
+"""
 
 import importlib
 from datetime import datetime, timedelta, timezone
@@ -9,7 +11,9 @@ from alembic.operations import Operations
 
 
 def test_search_cursor_migration_preserves_cooldown_and_running_tasks(monkeypatch):
-    """只提前未开始的自动排期，冷却、停止、新增保护期和在途任务保持原状。"""
+    """
+    只提前未开始的自动排期，冷却、停止、新增保护期和在途任务保持原状。
+    """
     migration = importlib.import_module("database.versions.a9c3e7f1b5d8_3_0_31")
     engine = sa.create_engine("sqlite://")
     metadata = sa.MetaData()

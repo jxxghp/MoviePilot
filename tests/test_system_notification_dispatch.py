@@ -1,6 +1,9 @@
-"""系统内部用户消息分发与异步立即发送的上下文传播测试。"""
+"""
+系统内部用户消息分发与异步立即发送的上下文传播测试。
+"""
 
-# ruff: noqa: E402 - 可选三方模块必须在导入消息链前完成隔离。
+# 可选三方模块必须在导入消息链前完成隔离。
+# ruff: noqa: E402
 
 import asyncio
 from unittest.mock import patch
@@ -26,7 +29,9 @@ from app.schemas.message import Message
 
 
 def _internal_message() -> Message:
-    """构造以系统内部用户为收件人的消息。"""
+    """
+    构造以系统内部用户为收件人的消息。
+    """
     return Message(
         userid=SYSTEM_INTERNAL_USER_ID,
         username="admin",
@@ -36,7 +41,9 @@ def _internal_message() -> Message:
 
 
 def test_internal_userid_identity_helpers() -> None:
-    """系统内部用户标识的判定与归一化。"""
+    """
+    系统内部用户标识的判定与归一化。
+    """
     assert is_internal_user_id(SYSTEM_INTERNAL_USER_ID)
     assert is_internal_user_id(" System ")
     assert normalize_internal_user_id(SYSTEM_INTERNAL_USER_ID) is None
@@ -44,7 +51,9 @@ def test_internal_userid_identity_helpers() -> None:
 
 
 def test_post_message_normalizes_internal_userid_before_queueing() -> None:
-    """入队前应把系统内部用户归一化为空，不进入事件与队列载荷。"""
+    """
+    入队前应把系统内部用户归一化为空，不进入事件与队列载荷。
+    """
     chain = MessageChain()
     message = _internal_message()
 
@@ -70,7 +79,9 @@ def test_post_message_normalizes_internal_userid_before_queueing() -> None:
 
 
 def test_send_direct_message_normalizes_internal_userid() -> None:
-    """直接发送时同样归一化系统内部用户。"""
+    """
+    直接发送时同样归一化系统内部用户。
+    """
     chain = MessageChain()
 
     with patch.object(chain, "run_module") as run_module:
@@ -81,7 +92,9 @@ def test_send_direct_message_normalizes_internal_userid() -> None:
 
 
 class _FakeLoop:
-    """同步模拟 asyncio 的 executor 提交，并记录提交时的上下文。"""
+    """
+    同步模拟 asyncio 的 executor 提交，并记录提交时的上下文。
+    """
 
     def __init__(self, loop):
         self.called = False
@@ -89,12 +102,15 @@ class _FakeLoop:
         self.submission_correlation_id = None
 
     def run_in_executor(self, _executor, func, *args):
-        """立即执行 worker 调用并返回已完成 Future。"""
+        """
+        立即执行 worker 调用并返回已完成 Future。
+        """
         self.called = True
         self.submission_correlation_id = get_correlation_id()
         future = self.loop.create_future()
         try:
             func(*args)
+        # 捕获工作线程中的全部失败并回传主测试进行断言。
         except BaseException as error:  # pylint: disable=broad-exception-caught
             future.set_exception(error)
         else:
@@ -104,7 +120,9 @@ class _FakeLoop:
 
 @pytest.mark.asyncio
 async def test_async_send_message_uses_executor_for_immediate_send() -> None:
-    """异步立即发送不能在事件循环里直接执行同步渠道回调。"""
+    """
+    异步立即发送不能在事件循环里直接执行同步渠道回调。
+    """
     manager = MessageQueueManager()
     fake_loop = _FakeLoop(asyncio.get_running_loop())
     observed = []
@@ -127,7 +145,9 @@ async def test_async_send_message_uses_executor_for_immediate_send() -> None:
 
 @pytest.mark.asyncio
 async def test_async_send_message_preserves_call_context() -> None:
-    """异步立即发送的同步渠道回调应保留当前请求关联 ID。"""
+    """
+    异步立即发送的同步渠道回调应保留当前请求关联 ID。
+    """
     observed = []
     manager = MessageQueueManager()
     with patch.object(

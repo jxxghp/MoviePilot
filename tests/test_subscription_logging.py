@@ -1,4 +1,6 @@
-"""订阅日志的上下文隔离、权限、原文输出及文件生命周期回归。"""
+"""
+订阅日志的上下文隔离、权限、原文输出及文件生命周期回归。
+"""
 
 import asyncio
 import io
@@ -21,7 +23,9 @@ from app.startup.composition.system import _FileLogAdapter
 
 @pytest.fixture(name="captured")
 def fixture_captured(monkeypatch, tmp_path):
-    """在内存中捕获文件路由，隔离全局等级及控制台输出。"""
+    """
+    在内存中捕获文件路由，隔离全局等级及控制台输出。
+    """
     entries = []
     monkeypatch.setattr(LoggerManager, "_writer", SimpleNamespace(write_log=lambda *args: entries.append(args)))
     monkeypatch.setattr(LoggerManager, "_log_path", tmp_path)
@@ -32,7 +36,9 @@ def fixture_captured(monkeypatch, tmp_path):
 
 
 def test_debug_routes_to_subscription_without_enabling_main_log(captured):
-    """单订阅 DEBUG 独立落盘；主日志仍只接收原等级，专属摘要不污染主日志。"""
+    """
+    单订阅 DEBUG 独立落盘；主日志仍只接收原等级，专属摘要不污染主日志。
+    """
     logger.debug("outside")
     with bind_log_scope("subscriptions", 7, "run-7", "manual"):
         logger.debug("分辨率不符合要求")
@@ -44,7 +50,9 @@ def test_debug_routes_to_subscription_without_enabling_main_log(captured):
 
 
 def test_nested_context_and_exception_restore_previous_subscription(captured):
-    """不同资源嵌套和异常退出恢复外层 ID，同资源嵌套复用原轮次。"""
+    """
+    不同资源嵌套和异常退出恢复外层 ID，同资源嵌套复用原轮次。
+    """
     with bind_log_scope("subscriptions", 1, "outer", "rss"):
         with bind_log_scope("subscriptions", 1, "ignored", "inline"):
             logger.debug("same")
@@ -59,12 +67,18 @@ def test_nested_context_and_exception_restore_previous_subscription(captured):
 
 
 def test_parallel_tasks_and_context_aware_threads_do_not_mix_logs(captured):
-    """交错协程及受控线程池继承各自 ID，写入队列前已固定日志路由。"""
+    """
+    交错协程及受控线程池继承各自 ID，写入队列前已固定日志路由。
+    """
     async def run():
-        """制造协程交错和线程边界，保留真实上下文传播。"""
+        """
+        制造协程交错和线程边界，保留真实上下文传播。
+        """
         with ThreadPoolExecutor(max_workers=2) as pool:
             async def task(subscription_id):
-                """绑定每条订阅后跨越任务切换和线程提交。"""
+                """
+                绑定每条订阅后跨越任务切换和线程提交。
+                """
                 with bind_log_scope("subscriptions", subscription_id, f"run-{subscription_id}", "manual"):
                     await asyncio.sleep(0)
                     await asyncio.wrap_future(submit_with_context(pool, logger.debug, f"订阅 {subscription_id}"))
@@ -83,14 +97,18 @@ def test_parallel_tasks_and_context_aware_threads_do_not_mix_logs(captured):
     "magnet:?xt=urn:btih:SECRET",
 ])
 def test_subscription_write_preserves_original_message(captured, message):
-    """订阅文件保留原始消息，包括凭据和下载链接。"""
+    """
+    订阅文件保留原始消息，包括凭据和下载链接。
+    """
     with bind_log_scope("subscriptions", 1, "run", "manual"):
         logger.debug(message)
     assert captured[0][1].endswith(message)
 
 
 def test_detail_limits_preserve_error_and_summary(captured):
-    """详情数量和重复次数都有上限，但错误及结束摘要始终保留。"""
+    """
+    详情数量和重复次数都有上限，但错误及结束摘要始终保留。
+    """
     with bind_log_scope("subscriptions", 1, "run", "rss") as scope:
         for _ in range(10):
             logger.debug("重复原因")
@@ -107,7 +125,9 @@ def test_detail_limits_preserve_error_and_summary(captured):
 
 @pytest.fixture(name="file_writer")
 def fixture_file_writer():
-    """只构造同步文件输出状态，避免本组文件回归创建后台线程或修改 singleton。"""
+    """
+    只构造同步文件输出状态，避免本组文件回归创建后台线程或修改 singleton。
+    """
     writer = object.__new__(NonBlockingFileHandler)
     writer._handlers_lock = threading.RLock()
     writer._state_lock = threading.RLock()
@@ -119,7 +139,9 @@ def fixture_file_writer():
 
 
 def test_subscription_handlers_are_bounded_and_rotation_is_small(file_writer, tmp_path, monkeypatch):
-    """大量订阅有界复用句柄，每份日志采用独立的小容量滚动策略。"""
+    """
+    大量订阅有界复用句柄，每份日志采用独立的小容量滚动策略。
+    """
     monkeypatch.setattr(log_module, "_SCOPED_LOG_MAX_BYTES", 200)
     for subscription_id in range(1, 45):
         path = tmp_path / "subscriptions" / f"{subscription_id}.log"
@@ -134,7 +156,9 @@ def test_subscription_handlers_are_bounded_and_rotation_is_small(file_writer, tm
 
 
 def test_directory_quota_preserves_active_file_and_other_files(file_writer, tmp_path, monkeypatch):
-    """总容量清理只删除旧订阅日志，保留当前日志和目录内其他文件。"""
+    """
+    总容量清理只删除旧订阅日志，保留当前日志和目录内其他文件。
+    """
     directory = tmp_path / "subscriptions"
     directory.mkdir()
     for name in ("1.log", "1.log.1", "2.log", "notes.txt"):
@@ -149,12 +173,16 @@ def test_directory_quota_preserves_active_file_and_other_files(file_writer, tmp_
 
 @pytest.fixture(name="adapter")
 def fixture_adapter(tmp_path):
-    """提供只指向临时日志目录的真实文件读取适配器。"""
+    """
+    提供只指向临时日志目录的真实文件读取适配器。
+    """
     return _FileLogAdapter(SimpleNamespace(get=lambda _key: tmp_path))
 
 
 def test_file_cursor_handles_first_write_partial_line_and_rotation(adapter, tmp_path):
-    """首次无文件、分段写行和换 inode 的轮转都不遗漏或重复已完成的行。"""
+    """
+    首次无文件、分段写行和换 inode 的轮转都不遗漏或重复已完成的行。
+    """
     path = tmp_path / "subscriptions" / "1.log"
     assert adapter._log_chunk(path, None, 50) == ([], None)
     path.parent.mkdir()
@@ -172,7 +200,9 @@ def test_file_cursor_handles_first_write_partial_line_and_rotation(adapter, tmp_
 
 
 def test_subscription_symlink_cannot_read_another_log(adapter, tmp_path):
-    """即使符号链接仍在日志根内，也不能绕过订阅 ID 读取其他日志。"""
+    """
+    即使符号链接仍在日志根内，也不能绕过订阅 ID 读取其他日志。
+    """
     (tmp_path / "subscriptions").mkdir()
     secret = tmp_path / "moviepilot.log"
     secret.write_text("private")
@@ -191,9 +221,13 @@ def test_subscription_symlink_cannot_read_another_log(adapter, tmp_path):
     ("alice", "bob", True, True), (None, "alice", True, False),
 ])
 def test_subscription_log_access_matches_owner_scope(owner, username, admin, allowed):
-    """普通用户仅能看自己的订阅，管理员也不能查询不存在的 ID。"""
+    """
+    普通用户仅能看自己的订阅，管理员也不能查询不存在的 ID。
+    """
     async def get_public(_id):
-        """只返回本用例设置的订阅归属。"""
+        """
+        只返回本用例设置的订阅归属。
+        """
         return SimpleNamespace(username=owner) if owner else None
     query = SimpleNamespace(get_public=get_public)
     user = SimpleNamespace(username=username, super_user=admin)
@@ -206,17 +240,25 @@ def test_subscription_log_access_matches_owner_scope(owner, username, admin, all
 
 
 def test_download_preserves_requested_subscription_log(monkeypatch):
-    """下载路径由服务端 ID 构造，ZIP 保留原文且不混入其他订阅。"""
+    """
+    下载路径由服务端 ID 构造，ZIP 保留原文且不混入其他订阅。
+    """
     collected = []
     async def get_public(_id):
-        """返回已授权 owner。"""
+        """
+        返回已授权 owner。
+        """
         return SimpleNamespace(username="alice")
     async def collect(name):
-        """记录服务端构造的日志集合并返回含旧凭据的文本。"""
+        """
+        记录服务端构造的日志集合并返回含旧凭据的文本。
+        """
         collected.append(name)
         return [LogFileData("1.log", b"Cookie: SECRET\nreason\n")]
     async def authorize(subscription_id, user, _runtime):
-        """复用真实归属校验，仅替换短会话装配。"""
+        """
+        复用真实归属校验，仅替换短会话装配。
+        """
         await subexecution._require_subscription_log_access(subscription_id, SimpleNamespace(get_public=get_public), user)
     monkeypatch.setattr(subexecution, "_authorize_subscription_logs", authorize)
     response = asyncio.run(subexecution.download_subscription_logs(
@@ -224,7 +266,9 @@ def test_download_preserves_requested_subscription_log(monkeypatch):
         SimpleNamespace(system=SimpleNamespace(collect_logs=collect)),
     ))
     async def body():
-        """消费流响应以检查真实归档内容。"""
+        """
+        消费流响应以检查真实归档内容。
+        """
         return b"".join([chunk async for chunk in response.body_iterator])
     archive = zipfile.ZipFile(io.BytesIO(asyncio.run(body())))
     assert collected == ["subscriptions/1"]
@@ -233,18 +277,24 @@ def test_download_preserves_requested_subscription_log(monkeypatch):
 
 
 def test_log_permission_checks_release_session_before_streaming():
-    """每次 SSE 授权仅短暂打开一个会话，成功和拒绝路径都立即关闭。"""
+    """
+    每次 SSE 授权仅短暂打开一个会话，成功和拒绝路径都立即关闭。
+    """
     from app.application.subscription.contract import SubscriptionSnapshot
     states = []
     async def sessions():
-        """记录权限检查所持有会话的完整生命周期。"""
+        """
+        记录权限检查所持有会话的完整生命周期。
+        """
         states.append("open")
         try:
             yield object()
         finally:
             states.append("close")
     async def async_get(_id):
-        """提供可投影的真实订阅快照。"""
+        """
+        提供可投影的真实订阅快照。
+        """
         return SubscriptionSnapshot(id=1, name="测试", type="电影", username="alice")
     runtime = SimpleNamespace(subscription=SimpleNamespace(
         async_session=sessions, repository=lambda _session: SimpleNamespace(async_get=async_get),
@@ -257,32 +307,44 @@ def test_log_permission_checks_release_session_before_streaming():
 
 
 def test_sse_waits_for_first_log_and_stops_after_owner_changes(monkeypatch):
-    """保留真实 SSE 编码，验证空流心跳、首次日志与权限撤销停止。"""
+    """
+    保留真实 SSE 编码，验证空流心跳、首次日志与权限撤销停止。
+    """
     clock = [0.0]
     checks = []
     async def authorize(_id, _user, _runtime):
-        """第二次归属检查模拟订阅已被删除或转移。"""
+        """
+        第二次归属检查模拟订阅已被删除或转移。
+        """
         checks.append(True)
         if len(checks) > 1:
             raise HTTPException(status_code=404)
     async def is_disconnected():
-        """模拟连接始终在线。"""
+        """
+        模拟连接始终在线。
+        """
         return False
     async def source(disconnected):
-        """在空文件心跳后输出一次日志，再触发权限轮询。"""
+        """
+        在空文件心跳后输出一次日志，再触发权限轮询。
+        """
         assert not await disconnected()
         yield ""
         yield "下载 https://example.com/?token=SECRET"
         clock[0] = 6.0
         assert await disconnected()
     async def follow(_path, _length, disconnected):
-        """遵守 SystemLogPort 的异步返回迭代器契约。"""
+        """
+        遵守 SystemLogPort 的异步返回迭代器契约。
+        """
         return source(disconnected)
     monkeypatch.setattr(subexecution, "_authorize_subscription_logs", authorize)
     monkeypatch.setattr(subexecution, "verify_resource_token", lambda _token: SimpleNamespace())
     monkeypatch.setattr(subexecution.time, "monotonic", lambda: clock[0])
     async def run():
-        """消费路由输出，确认 SSE framing 和原文输出。"""
+        """
+        消费路由输出，确认 SSE framing 和原文输出。
+        """
         response = await subexecution.get_subscription_logs(
             SimpleNamespace(is_disconnected=is_disconnected, cookies={"MoviePilot": "resource-token"}),
             1, 100, SimpleNamespace(username="alice", super_user=False),
@@ -296,7 +358,9 @@ def test_sse_waits_for_first_log_and_stops_after_owner_changes(monkeypatch):
 
 
 def test_log_routes_require_resource_cookie_and_positive_subscription_id():
-    """两个新路由必须使用浏览器资源身份，不能通过日志路径参数绕过归属。"""
+    """
+    两个新路由必须使用浏览器资源身份，不能通过日志路径参数绕过归属。
+    """
     from app.adapters.web.security.access import verify_resource_token
     routes = {route.path: route for route in subexecution.router.routes}
     for path in ("/{subscription_id}/logs", "/{subscription_id}/logs/download"):
@@ -308,7 +372,9 @@ def test_log_routes_require_resource_cookie_and_positive_subscription_id():
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_unsuccessful_reset_does_not_report_success(captured, monkeypatch, asynchronous):
-    """更新阶段未取得快照时，日志不能把未提交的重置描述为成功。"""
+    """
+    更新阶段未取得快照时，日志不能把未提交的重置描述为成功。
+    """
     from unittest.mock import AsyncMock
 
     from app.application.subscription.contract import SubscriptionSnapshot
@@ -325,12 +391,18 @@ def test_unsuccessful_reset_does_not_report_success(captured, monkeypatch, async
 
 
 def test_plain_text_log_view_preserves_original_content(monkeypatch):
-    """新窗口文本查看与实时流、下载一样返回原始日志。"""
+    """
+    新窗口文本查看与实时流、下载一样返回原始日志。
+    """
     content = "Cookie: SECRET\n下载 https://example.com/?passkey=SECRET\n"
     async def authorize(*_args):
-        """本用例只隔离已由其他测试覆盖的权限装配。"""
+        """
+        本用例只隔离已由其他测试覆盖的权限装配。
+        """
     async def read(logfile):
-        """按服务器构造的订阅路径返回原始文本。"""
+        """
+        按服务器构造的订阅路径返回原始文本。
+        """
         assert logfile == "subscriptions/1.log"
         return content
     monkeypatch.setattr(subexecution, "_authorize_subscription_logs", authorize)

@@ -1,10 +1,12 @@
-"""订阅文件统计相关测试"""
+"""
+订阅文件统计相关测试
+"""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.application.subscription.contract import SubscriptionSnapshot
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.modules.filemanager.module import FileManagerModule
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.types import MediaType

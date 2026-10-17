@@ -1,3 +1,7 @@
+"""
+验证订阅修改事件的事实内容与触发时机。
+"""
+
 from app.schemas.event import SubscribeModifiedEventData
 
 

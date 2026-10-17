@@ -1,4 +1,6 @@
-"""订阅搜索检查点的任务租约、版本 CAS 与凭据排除回归。"""
+"""
+订阅搜索检查点的任务租约、版本 CAS 与凭据排除回归。
+"""
 
 from datetime import datetime, timedelta, timezone
 

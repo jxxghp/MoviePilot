@@ -1,4 +1,6 @@
-"""用户场景驱动的智能收集、中断后重拉第一页与页数上限回归。"""
+"""
+用户场景驱动的智能收集、中断后重拉第一页与页数上限回归。
+"""
 
 from app.domain.search import (
     SearchCollection,
@@ -76,7 +78,9 @@ def test_every_gap_longer_than_threshold_still_advances_between_refreshes():
 
 
 def test_twenty_pages_are_scanned_then_the_cap_stops_the_source():
-    """第 20 页后释放收集屏障，但不把预算结束当成真实末页。"""
+    """
+    第 20 页后释放收集屏障，但不把预算结束当成真实末页。
+    """
     collection = SearchCollection({"E1"}, {"A": SearchSourceCursor()})
     source = collection.sources["A"]
     for page in range(20):
@@ -140,7 +144,9 @@ def test_deeper_page_with_newer_episode_restores_normal_collection():
 
 
 def test_full_search_keeps_unseen_episodes_behind_the_page_barrier():
-    """完整搜索不能由前页最大集号推断后页没有资源，并提前释放目标。"""
+    """
+    完整搜索不能由前页最大集号推断后页没有资源，并提前释放目标。
+    """
     collection = SearchCollection({"1:3"}, {"A": SearchSourceCursor(), "B": SearchSourceCursor()})
     page = [released("ep1", 1)]
     collection.observe(page)

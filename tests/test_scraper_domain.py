@@ -1,10 +1,16 @@
+"""
+验证刮削文档领域生成与 NFO 读写语义。
+"""
+
 import importlib
 
 from app.domain.scraper import NfoReader
 
 
 def test_nfo_reader_reads_values_after_scraper_consolidation(tmp_path):
-    """合并后的 scraper 模块应继续读取单值和重复 NFO 元素。"""
+    """
+    合并后的 scraper 模块应继续读取单值和重复 NFO 元素。
+    """
     nfo_path = tmp_path / "movie.nfo"
     nfo_path.write_text(
         "<movie><title>MoviePilot</title><genre>剧情</genre><genre>音乐</genre></movie>",
@@ -21,7 +27,9 @@ def test_nfo_reader_reads_values_after_scraper_consolidation(tmp_path):
 
 
 def test_legacy_nfo_import_reuses_scraper_module():
-    """旧插件 NFO 导入路径应映射到合并后的 scraper 模块。"""
+    """
+    旧插件 NFO 导入路径应映射到合并后的 scraper 模块。
+    """
     legacy = importlib.import_module("app.helper.nfo")
     canonical = importlib.import_module("app.domain.scraper")
 

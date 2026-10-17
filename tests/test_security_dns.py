@@ -1,4 +1,6 @@
-"""安全 URL 的 DNS Port 与系统适配器回归测试。"""
+"""
+安全 URL 的 DNS Port 与系统适配器回归测试。
+"""
 
 from __future__ import annotations
 
@@ -23,22 +25,30 @@ from app.sdk.network import SecurityUtils as SdkSecurityUtils
 
 
 class _FakeResolver:
-    """记录同步和异步调用并返回固定地址的测试 DNS 端口。"""
+    """
+    记录同步和异步调用并返回固定地址的测试 DNS 端口。
+    """
 
     def __init__(self, addresses: Optional[Sequence[str]]) -> None:
-        """保存固定解析结果。"""
+        """
+        保存固定解析结果。
+        """
         self.addresses = addresses
         self.sync_calls = 0
         self.async_calls = 0
 
     def resolve(self, hostname: str) -> Optional[Sequence[str]]:
-        """记录同步解析调用。"""
+        """
+        记录同步解析调用。
+        """
         assert hostname
         self.sync_calls += 1
         return self.addresses
 
     async def async_resolve(self, hostname: str) -> Optional[Sequence[str]]:
-        """记录异步解析调用。"""
+        """
+        记录异步解析调用。
+        """
         assert hostname
         self.async_calls += 1
         return self.addresses
@@ -46,14 +56,18 @@ class _FakeResolver:
 
 @pytest.fixture
 def restore_dns_resolver() -> Iterator[None]:
-    """用例结束后恢复测试引导已装配的系统 resolver。"""
+    """
+    用例结束后恢复测试引导已装配的系统 resolver。
+    """
     previous = configure_dns_resolver(_FakeResolver(("93.184.216.34",)))
     yield
     reset_dns_resolver(previous)
 
 
 def test_dns_port_is_runtime_checkable_by_structure() -> None:
-    """系统适配器必须满足 Application 声明的窄端口。"""
+    """
+    系统适配器必须满足 Application 声明的窄端口。
+    """
     resolver: DnsResolver = SocketDnsResolver()
     assert callable(resolver.resolve)
     assert callable(resolver.async_resolve)
@@ -62,7 +76,9 @@ def test_dns_port_is_runtime_checkable_by_structure() -> None:
 def test_security_utils_sdk_identity_and_zero_argument_construction(
     restore_dns_resolver: None,
 ) -> None:
-    """插件 SDK 继续导出同一 SecurityUtils 类，零参构造仍可调用公开方法。"""
+    """
+    插件 SDK 继续导出同一 SecurityUtils 类，零参构造仍可调用公开方法。
+    """
     assert SdkSecurityUtils is SecurityUtils
     assert SecurityUtils().is_safe_url(
         "https://assets.example.com/poster.jpg",
@@ -74,7 +90,9 @@ def test_security_utils_sdk_identity_and_zero_argument_construction(
 def test_unconfigured_dns_resolver_fails_without_lazy_adapter_import(
     restore_dns_resolver: None,
 ) -> None:
-    """未装配 DNS 端口时 hostname 校验应稳定失败，不得懒加载 Adapter。"""
+    """
+    未装配 DNS 端口时 hostname 校验应稳定失败，不得懒加载 Adapter。
+    """
     reset_dns_resolver()
 
     assert not SecurityUtils.is_safe_url(
@@ -89,7 +107,9 @@ def test_unconfigured_dns_resolver_fails_without_lazy_adapter_import(
 def test_reconfigure_dns_resolver_clears_cached_result(
     restore_dns_resolver: None,
 ) -> None:
-    """切换 resolver 后不得继续使用旧实现填充的安全结果。"""
+    """
+    切换 resolver 后不得继续使用旧实现填充的安全结果。
+    """
     public = _FakeResolver(("93.184.216.34",))
     private = _FakeResolver(("127.0.0.1",))
     configure_dns_resolver(public)
@@ -113,7 +133,9 @@ def test_reconfigure_dns_resolver_clears_cached_result(
 def test_async_security_check_uses_only_async_dns_port(
     restore_dns_resolver: None,
 ) -> None:
-    """异步安全校验不得回退同步 DNS I/O。"""
+    """
+    异步安全校验不得回退同步 DNS I/O。
+    """
     resolver = _FakeResolver(("93.184.216.34",))
     configure_dns_resolver(resolver)
 
@@ -133,20 +155,28 @@ def test_async_security_check_uses_only_async_dns_port(
 def test_async_dns_inflight_locks_are_isolated_between_event_loop_threads(
     restore_dns_resolver: None,
 ) -> None:
-    """两个线程各自运行 event loop 时不得共享 asyncio.Lock 或互相挂死。"""
+    """
+    两个线程各自运行 event loop 时不得共享 asyncio.Lock 或互相挂死。
+    """
     rendezvous = threading.Barrier(2)
     state_lock = threading.Lock()
 
     class _TwoLoopResolver(_FakeResolver):
-        """要求两个事件循环同时进入解析端口的并发测试 resolver。"""
+        """
+        要求两个事件循环同时进入解析端口的并发测试 resolver。
+        """
 
         def __init__(self) -> None:
-            """初始化解析计数和事件循环身份集合。"""
+            """
+            初始化解析计数和事件循环身份集合。
+            """
             super().__init__(("93.184.216.34",))
             self.loop_ids: set[int] = set()
 
         async def async_resolve(self, hostname: str) -> Optional[Sequence[str]]:
-            """记录当前 loop，并等待另一线程也进入解析端口。"""
+            """
+            记录当前 loop，并等待另一线程也进入解析端口。
+            """
             assert hostname
             with state_lock:
                 self.async_calls += 1
@@ -161,7 +191,9 @@ def test_async_dns_inflight_locks_are_isolated_between_event_loop_threads(
     errors: list[BaseException] = []
 
     def run_check() -> None:
-        """在当前工作线程独立创建并关闭一个事件循环。"""
+        """
+        在当前工作线程独立创建并关闭一个事件循环。
+        """
         try:
             result = asyncio.run(
                 SecurityUtils.is_safe_url_async(
@@ -170,7 +202,8 @@ def test_async_dns_inflight_locks_are_isolated_between_event_loop_threads(
                     block_private=True,
                 )
             )
-        except BaseException as error:  # noqa: BLE001 - 测试需收集线程异常
+        # 测试需收集线程异常。
+        except BaseException as error:  # noqa: BLE001
             errors.append(error)
         else:
             results.append(result)
@@ -192,15 +225,21 @@ def test_async_dns_inflight_locks_are_isolated_between_event_loop_threads(
 def test_reconfigure_during_resolution_rejects_stale_cache_write(
     restore_dns_resolver: None,
 ) -> None:
-    """旧 resolver 的迟到结果不得覆盖并发装配的新 resolver 缓存。"""
+    """
+    旧 resolver 的迟到结果不得覆盖并发装配的新 resolver 缓存。
+    """
     started = threading.Event()
     release = threading.Event()
 
     class _BlockingResolver(_FakeResolver):
-        """等待测试放行后才返回旧代际地址。"""
+        """
+        等待测试放行后才返回旧代际地址。
+        """
 
         def resolve(self, hostname: str) -> Optional[Sequence[str]]:
-            """通知查询已开始，并等待 resolver 切换完成。"""
+            """
+            通知查询已开始，并等待 resolver 切换完成。
+            """
             self.sync_calls += 1
             started.set()
             assert release.wait(timeout=2)
@@ -239,7 +278,9 @@ def test_reconfigure_during_resolution_rejects_stale_cache_write(
 def test_failed_dns_port_result_is_negative_cached(
     restore_dns_resolver: None,
 ) -> None:
-    """解析失败仍进入负向缓存，避免短期内重复调用 Adapter。"""
+    """
+    解析失败仍进入负向缓存，避免短期内重复调用 Adapter。
+    """
     resolver = _FakeResolver(None)
     configure_dns_resolver(resolver)
 
@@ -254,7 +295,9 @@ def test_failed_dns_port_result_is_negative_cached(
 
 
 def test_socket_dns_resolver_sync_normalizes_all_addresses(monkeypatch) -> None:
-    """同步 Adapter 返回全部规范地址，不在 Application 内执行 socket I/O。"""
+    """
+    同步 Adapter 返回全部规范地址，不在 Application 内执行 socket I/O。
+    """
     monkeypatch.setattr(
         socket,
         "getaddrinfo",
@@ -271,13 +314,19 @@ def test_socket_dns_resolver_sync_normalizes_all_addresses(monkeypatch) -> None:
 
 
 def test_socket_dns_resolver_async_uses_current_loop(monkeypatch) -> None:
-    """异步 Adapter 使用事件循环 resolver，并把系统失败规范为 None。"""
+    """
+    异步 Adapter 使用事件循环 resolver，并把系统失败规范为 None。
+    """
     async def run() -> None:
-        """在当前循环内替换 resolver，确保测试不触发真实 DNS。"""
+        """
+        在当前循环内替换 resolver，确保测试不触发真实 DNS。
+        """
         loop = asyncio.get_running_loop()
 
         async def fail(*_args, **_kwargs):
-            """模拟系统 DNS 失败。"""
+            """
+            模拟系统 DNS 失败。
+            """
             raise socket.gaierror()
 
         monkeypatch.setattr(loop, "getaddrinfo", fail)
@@ -287,7 +336,9 @@ def test_socket_dns_resolver_async_uses_current_loop(monkeypatch) -> None:
 
 
 def test_application_security_url_has_no_direct_dns_operation() -> None:
-    """Application 安全模块不得重新调用 socket 或事件循环 getaddrinfo。"""
+    """
+    Application 安全模块不得重新调用 socket 或事件循环 getaddrinfo。
+    """
     source = Path(security_url.__file__).read_text(encoding="utf-8")
     assert "socket.getaddrinfo(" not in source
     assert ".getaddrinfo(" not in source

@@ -1,3 +1,7 @@
+"""
+验证MoviePilot 服务端通信与响应解析。
+"""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -17,7 +21,9 @@ from app.schemas.types import MediaSource
 
 @contextmanager
 def _runtime_settings(**values):
-    """按键覆盖中心服务测试配置，其余读取继续委托真实只读端口。"""
+    """
+    按键覆盖中心服务测试配置，其余读取继续委托真实只读端口。
+    """
     original = server_module.get_runtime_setting
     with patch.object(
         server_module,
@@ -229,7 +235,9 @@ def test_is_admin_user_returns_false_without_server_permission():
 
 
 def test_subscribe_statistic_payload_only_keeps_server_contract():
-    """订阅统计载荷应删除本地运行列和所有旧专用媒体 ID。"""
+    """
+    订阅统计载荷应删除本地运行列和所有旧专用媒体 ID。
+    """
     payload = MoviePilotServerHelper._build_subscribe_statistic_payload(
         {
             "id": 1,
@@ -252,7 +260,9 @@ def test_subscribe_statistic_payload_only_keeps_server_contract():
 
 
 def test_subscribe_share_payload_only_keeps_server_contract():
-    """订阅分享载荷应保留分享配置并剔除本地下载状态。"""
+    """
+    订阅分享载荷应保留分享配置并剔除本地下载状态。
+    """
     payload = MoviePilotServerHelper._build_subscribe_share_payload(
         {
             "share_title": "Share",
@@ -280,7 +290,9 @@ def test_subscribe_share_payload_only_keeps_server_contract():
 
 
 def test_subscribe_payload_rejects_incomplete_unified_identity():
-    """中心服务载荷不得再从旧专用 ID 推导主身份。"""
+    """
+    中心服务载荷不得再从旧专用 ID 推导主身份。
+    """
     assert (
         MoviePilotServerHelper._build_subscribe_statistic_payload(
             {
@@ -294,7 +306,9 @@ def test_subscribe_payload_rejects_incomplete_unified_identity():
 
 
 def test_durable_subscribe_report_treats_disabled_sharing_as_success():
-    """用户关闭统计分享时，durable intent 应视为无需远端投递。"""
+    """
+    用户关闭统计分享时，durable intent 应视为无需远端投递。
+    """
     with (
         _runtime_settings(SUBSCRIBE_STATISTIC_SHARE=False),
         patch.object(

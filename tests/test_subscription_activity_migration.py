@@ -1,4 +1,6 @@
-"""订阅业务活动的升级回放、旧历史与双数据库建表合同。"""
+"""
+订阅业务活动的升级回放、旧历史与双数据库建表合同。
+"""
 
 import importlib
 
@@ -14,14 +16,18 @@ from app.db.models.subscribehistory import SubscribeHistory
 
 
 def _migration(monkeypatch, connection):
-    """把迁移绑定到独立测试数据库。"""
+    """
+    把迁移绑定到独立测试数据库。
+    """
     migration = importlib.import_module("database.versions.e6a4c9f20813_subscription_activity")
     monkeypatch.setattr(migration, "op", Operations(MigrationContext.configure(connection)))
     return migration
 
 
 def test_activity_migration_backfills_only_active_identity_and_does_not_invent_events(monkeypatch):
-    """已有整数 ID 和业务内容保持不变，升级前历史不会关联新的同 ID 订阅。"""
+    """
+    已有整数 ID 和业务内容保持不变，升级前历史不会关联新的同 ID 订阅。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         connection.execute(sa.text("CREATE TABLE subscribe (id INTEGER PRIMARY KEY, name TEXT)"))
@@ -44,7 +50,9 @@ def test_activity_migration_backfills_only_active_identity_and_does_not_invent_e
 
 
 def test_activity_migration_accepts_fresh_model_tables(monkeypatch):
-    """全新模型建表之后再次执行升级不会重复创建列或索引。"""
+    """
+    全新模型建表之后再次执行升级不会重复创建列或索引。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         for model in (Subscribe, SubscribeHistory, SubscribeActivity):
@@ -55,7 +63,9 @@ def test_activity_migration_accepts_fresh_model_tables(monkeypatch):
 
 
 def test_activity_model_compiles_for_postgresql():
-    """事件身份和 JSON 明细使用 PostgreSQL 支持的稳定列类型。"""
+    """
+    事件身份和 JSON 明细使用 PostgreSQL 支持的稳定列类型。
+    """
     ddl = str(CreateTable(SubscribeActivity.__table__).compile(dialect=postgresql.dialect()))
     assert "tracking JSON NOT NULL" in ddl
     assert "event_id VARCHAR(64) NOT NULL" in ddl

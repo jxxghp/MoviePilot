@@ -1,4 +1,6 @@
-"""多站点媒体搜索必须在提前停止前向英文站点提交可用关键词。"""
+"""
+多站点媒体搜索必须在提前停止前向英文站点提交可用关键词。
+"""
 
 import asyncio
 from concurrent.futures import Future
@@ -18,7 +20,9 @@ from app.schemas.types import MediaType
 def _assert_english_site_is_searched_before_chinese_match_stops_search(
     monkeypatch: pytest.MonkeyPatch, mode: str,
 ) -> None:
-    """中文站点首轮命中时，英文站点及其续页仍应使用英文名完成同轮查询。"""
+    """
+    中文站点首轮命中时，英文站点及其续页仍应使用英文名完成同轮查询。
+    """
     chain = object.__new__(SearchChain)
     chain.runtime_config = SimpleNamespace(search_threadpool_size=2, search_multiple_name=False)
     media = MediaInfo(tmdb_id=157336, title="星际穿越", en_title="Interstellar",
@@ -28,13 +32,17 @@ def _assert_english_site_is_searched_before_chinese_match_stops_search(
     continuations: list[tuple[int, str]] = []
 
     def submit(function: Any, *args: Any, **kwargs: Any) -> Future[Any]:
-        """就地执行同步任务，避免测试引入真实线程池生命周期。"""
+        """
+        就地执行同步任务，避免测试引入真实线程池生命周期。
+        """
         future: Future[Any] = Future()
         future.set_result(function(*args, **kwargs))
         return future
 
     def search_site(*, site: dict[str, Any], keyword: str, page: int, **_kwargs: Any) -> list[TorrentInfo]:
-        """模拟英文站拒绝中文、两站第一页各返回一条可匹配资源。"""
+        """
+        模拟英文站拒绝中文、两站第一页各返回一条可匹配资源。
+        """
         requests.append((site["id"], keyword, page))
         if page or (site["id"] == 2 and keyword != "Interstellar"):
             return []
@@ -42,12 +50,16 @@ def _assert_english_site_is_searched_before_chinese_match_stops_search(
                             enclosure=f"https://site{site['id']}.example/download?id=1")]
 
     def should_continue(*, site: dict[str, Any], keyword: str, page_results: list[TorrentInfo]) -> bool:
-        """记录分页判定使用的关键词，确保它与实际请求一致。"""
+        """
+        记录分页判定使用的关键词，确保它与实际请求一致。
+        """
         continuations.append((site["id"], keyword))
         return bool(page_results)
 
     def parse_result(*, torrents: list[TorrentInfo], **_kwargs: Any) -> list[Context]:
-        """把两站资源标记为已匹配，触发首轮结束后的提前停止。"""
+        """
+        把两站资源标记为已匹配，触发首轮结束后的提前停止。
+        """
         return [Context(torrent_info=torrent, media_info=media) for torrent in torrents]
 
     media_chain = SimpleNamespace(
@@ -72,7 +84,9 @@ def _assert_english_site_is_searched_before_chinese_match_stops_search(
     chain._parse_result = parse_result
 
     async def stream_results() -> list[dict[str, Any]]:
-        """收集流式入口最终结果，确保中间预览不影响提前停止判断。"""
+        """
+        收集流式入口最终结果，确保中间预览不影响提前停止判断。
+        """
         return [event async for event in chain.async_process_stream(mediainfo=media, sites=[1, 2])]
 
     if mode == "sync":
@@ -95,22 +109,30 @@ def _assert_english_site_is_searched_before_chinese_match_stops_search(
 
 
 def test_sync_english_site_is_searched_before_early_stop(monkeypatch: pytest.MonkeyPatch) -> None:
-    """同步搜索必须先完成英文站点查询再决定是否停止换词。"""
+    """
+    同步搜索必须先完成英文站点查询再决定是否停止换词。
+    """
     _assert_english_site_is_searched_before_chinese_match_stops_search(monkeypatch, "sync")
 
 
 def test_async_english_site_is_searched_before_early_stop(monkeypatch: pytest.MonkeyPatch) -> None:
-    """异步搜索必须先完成英文站点查询再决定是否停止换词。"""
+    """
+    异步搜索必须先完成英文站点查询再决定是否停止换词。
+    """
     _assert_english_site_is_searched_before_chinese_match_stops_search(monkeypatch, "async")
 
 
 def test_stream_english_site_is_searched_before_early_stop(monkeypatch: pytest.MonkeyPatch) -> None:
-    """流式搜索必须保留英文站点资源和一致的最终过滤结果。"""
+    """
+    流式搜索必须保留英文站点资源和一致的最终过滤结果。
+    """
     _assert_english_site_is_searched_before_chinese_match_stops_search(monkeypatch, "stream")
 
 
 def test_site_language_fallback_preserves_search_boundaries() -> None:
-    """仅为拒绝中文的站点替换媒体名称，IMDb、英文原词和无媒体输入保持原样。"""
+    """
+    仅为拒绝中文的站点替换媒体名称，IMDb、英文原词和无媒体输入保持原样。
+    """
     media = MediaInfo(en_title="Interstellar", original_title="Original title", names=["Alias"])
     english = {"language": "en"}
     assert provider_module._site_keyword(english, "星际穿越", media) == "Interstellar"

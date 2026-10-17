@@ -1,4 +1,6 @@
-"""站点类型化边界、canonical 依赖与文件布局门禁。"""
+"""
+站点类型化边界、canonical 依赖与文件布局门禁。
+"""
 
 import ast
 from pathlib import Path
@@ -21,14 +23,18 @@ CANONICAL_CONSUMER_PATHS = (
 
 
 def _python_paths(root: Path) -> list[Path]:
-    """返回 canonical 消费边界内的 Python 源文件。"""
+    """
+    返回 canonical 消费边界内的 Python 源文件。
+    """
     if root.is_file():
         return [root]
     return sorted(root.rglob("*.py"))
 
 
 def _annotation_contains_any(annotation: ast.expr | None) -> bool:
-    """判断跨层类型注解是否仍以 Any 隐藏数据合同。"""
+    """
+    判断跨层类型注解是否仍以 Any 隐藏数据合同。
+    """
     return annotation is not None and any(
         isinstance(node, ast.Name) and node.id == "Any"
         for node in ast.walk(annotation)
@@ -36,7 +42,9 @@ def _annotation_contains_any(annotation: ast.expr | None) -> bool:
 
 
 def _is_frozen_slotted_dataclass(node: ast.ClassDef) -> bool:
-    """判断 DTO 是否声明为不可变且使用 slots 的数据类。"""
+    """
+    判断 DTO 是否声明为不可变且使用 slots 的数据类。
+    """
     for decorator in node.decorator_list:
         if not isinstance(decorator, ast.Call):
             continue
@@ -56,7 +64,9 @@ def _is_frozen_slotted_dataclass(node: ast.ClassDef) -> bool:
 
 
 def test_site_contract_uses_frozen_dtos_and_typed_ports() -> None:
-    """站点四类快照、写 DTO 和 Query/Write/Repository 必须完整类型化。"""
+    """
+    站点四类快照、写 DTO 和 Query/Write/Repository 必须完整类型化。
+    """
     tree = ast.parse(
         SITE_CONTRACT_PATH.read_text(encoding="utf-8-sig"),
         filename=str(SITE_CONTRACT_PATH),
@@ -107,7 +117,9 @@ def test_site_contract_uses_frozen_dtos_and_typed_ports() -> None:
 
 
 def test_site_canonical_consumers_do_not_import_raw_persistence() -> None:
-    """宿主消费者不得导入 SiteOper 或站点四张表的 ORM 类型。"""
+    """
+    宿主消费者不得导入 SiteOper 或站点四张表的 ORM 类型。
+    """
     forbidden_modules = {
         "app.db.oper.site",
         "app.db.models.site",
@@ -149,7 +161,9 @@ def test_site_canonical_consumers_do_not_import_raw_persistence() -> None:
 
 
 def test_site_application_has_one_typed_contract_without_any_ports() -> None:
-    """Site 子包不得保留重复 Repository 或 Any 型跨层合同。"""
+    """
+    Site 子包不得保留重复 Repository 或 Any 型跨层合同。
+    """
     retired_classes = {
         "SiteQueryRepository",
         "SiteMutationRepository",
@@ -186,7 +200,9 @@ def test_site_application_has_one_typed_contract_without_any_ports() -> None:
 
 
 def test_site_adapter_public_surface_has_no_any_annotations() -> None:
-    """事务与请求级 Site adapter 的公开方法必须实现类型化端口。"""
+    """
+    事务与请求级 Site adapter 的公开方法必须实现类型化端口。
+    """
     path = APP_ROOT / "db" / "adapters" / "site.py"
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     adapter_names = {"TransactionalSiteRepository", "SessionSiteRepository"}
@@ -227,7 +243,9 @@ def test_site_adapter_public_surface_has_no_any_annotations() -> None:
 
 
 def test_chain_runtime_context_owns_typed_site_repository() -> None:
-    """Chain 站点仓储必须由显式运行上下文注入，旧数据 locator 不得存在。"""
+    """
+    Chain 站点仓储必须由显式运行上下文注入，旧数据 locator 不得存在。
+    """
     path = APP_ROOT / "application" / "chain" / "context.py"
     tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
     context = next(
@@ -246,7 +264,9 @@ def test_chain_runtime_context_owns_typed_site_repository() -> None:
 
 
 def test_site_files_use_single_word_owners_without_package_reexports() -> None:
-    """Site contract 与 adapter 使用单词文件，应用包根不得复制宿主导出面。"""
+    """
+    Site contract 与 adapter 使用单词文件，应用包根不得复制宿主导出面。
+    """
     assert SITE_CONTRACT_PATH.is_file()
     assert (APP_ROOT / "db" / "adapters" / "site.py").is_file()
     assert not (SITE_APPLICATION_PACKAGE / "site_contract.py").exists()

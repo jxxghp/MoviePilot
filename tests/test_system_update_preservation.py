@@ -1,4 +1,6 @@
-"""检查结果与下载状态交错、旧资源暂存包恢复的回归测试。"""
+"""
+检查结果与下载状态交错、旧资源暂存包恢复的回归测试。
+"""
 
 import json
 import threading
@@ -12,7 +14,9 @@ from app.adapters.system import update as update_module
 
 @pytest.fixture
 def manager(monkeypatch, tmp_path):
-    """隔离更新目录、运行版本和配置，避免访问真实资源与运行状态。"""
+    """
+    隔离更新目录、运行版本和配置，避免访问真实资源与运行状态。
+    """
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.1.4")
     monkeypatch.setattr(update_module, "get_resource_versions", lambda: ("3.0.5", "3.0.19"))
     monkeypatch.setattr(
@@ -32,9 +36,13 @@ def manager(monkeypatch, tmp_path):
 def test_check_cannot_overwrite_concurrent_download_or_install(
     monkeypatch, manager, target, state, result
 ):
-    """检查请求阻塞期间发生的状态转换，在成功、无更新及失败响应后均须保留。"""
+    """
+    检查请求阻塞期间发生的状态转换，在成功、无更新及失败响应后均须保留。
+    """
     def response(*_args, **_kwargs):
-        """在请求返回前模拟另一个执行者推进下载或安装。"""
+        """
+        在请求返回前模拟另一个执行者推进下载或安装。
+        """
         manager._download_active = state == "downloading"
         manager._write_item(
             target, state=state, version="v3.1.5" if target == "application" else "20",
@@ -67,7 +75,9 @@ def test_check_cannot_overwrite_concurrent_download_or_install(
 
 @pytest.fixture
 def prepared_resources(monkeypatch, manager):
-    """创建当前平台完整资源包及可信摘要，复现旧检查留下的 available 状态。"""
+    """
+    创建当前平台完整资源包及可信摘要，复现旧检查留下的 available 状态。
+    """
     names = ["user.sites.v3.bin", "sites.cpython-test.so"]
     monkeypatch.setattr(
         update_module.ResourceHelper, "_get_needed_files", classmethod(lambda cls: names),
@@ -91,7 +101,9 @@ def prepared_resources(monkeypatch, manager):
 def test_recover_prepared_resources_and_install_without_downloading(
     monkeypatch, manager, prepared_resources
 ):
-    """跨进程恢复后，定时及手动检查、重复下载按钮均保留制品，可继续确认安装。"""
+    """
+    跨进程恢复后，定时及手动检查、重复下载按钮均保留制品，可继续确认安装。
+    """
     request = Mock(side_effect=AssertionError("已下载资源不应重新检查或下载"))
     monkeypatch.setattr(update_module.ResourceHelper, "get_update_info", request)
     monkeypatch.setattr(manager, "_check_application", lambda: None)
@@ -113,7 +125,9 @@ def test_recover_prepared_resources_and_install_without_downloading(
 
 @pytest.mark.parametrize("invalid", ["missing", "modified", "incomplete", "version", "path"])
 def test_unusable_prepared_resources_are_not_restored(manager, prepared_resources, invalid):
-    """残缺、被修改、越界或版本不匹配的资源包不能恢复成可安装状态。"""
+    """
+    残缺、被修改、越界或版本不匹配的资源包不能恢复成可安装状态。
+    """
     path = manager._resource_dir / prepared_resources[0]["name"]
     if invalid == "missing":
         path.unlink()
@@ -132,7 +146,9 @@ def test_unusable_prepared_resources_are_not_restored(manager, prepared_resource
 
 
 def test_applied_resources_clear_recoverable_package(monkeypatch, manager, prepared_resources):
-    """外部安装已达到目标时，应清理旧资源清单并保留主程序制品。"""
+    """
+    外部安装已达到目标时，应清理旧资源清单并保留主程序制品。
+    """
     monkeypatch.setattr(update_module, "get_resource_versions", lambda: ("3.0.5", "3.0.20"))
     item = next(item for item in manager.get_status().updates if item.type == "resources")
     assert item.state == "idle"

@@ -1,3 +1,7 @@
+"""
+验证下载路径与存储目录之间的映射。
+"""
+
 from pathlib import Path
 from typing import Iterator, Union
 from unittest.mock import PropertyMock, patch
@@ -13,62 +17,88 @@ PAYLOAD = b"safe-download\n"
 
 
 def _noop_progress(_percent: Union[int, float]) -> None:
-    """忽略测试中的进度更新。"""
+    """
+    忽略测试中的进度更新。
+    """
     return None
 
 
 class _FakeAliPanStream:
-    """模拟阿里云盘下载流。"""
+    """
+    模拟阿里云盘下载流。
+    """
 
     def __init__(self, payload: bytes) -> None:
         self._payload = payload
 
     def raise_for_status(self) -> None:
-        """模拟响应状态检查。"""
+        """
+        模拟响应状态检查。
+        """
         return None
 
     def iter_content(self, chunk_size: int) -> Iterator[bytes]:
-        """返回下载内容分块。"""
+        """
+        返回下载内容分块。
+        """
         yield self._payload
 
     def __enter__(self) -> "_FakeAliPanStream":
-        """进入上下文。"""
+        """
+        进入上下文。
+        """
         return self
 
     def __exit__(self, *args: object) -> None:
-        """退出上下文。"""
+        """
+        退出上下文。
+        """
         return None
 
 
 class _FakeU115Stream:
-    """模拟 115 下载流。"""
+    """
+    模拟 115 下载流。
+    """
 
     def __init__(self, payload: bytes) -> None:
         self._payload = payload
 
     def raise_for_status(self) -> None:
-        """模拟响应状态检查。"""
+        """
+        模拟响应状态检查。
+        """
         return None
 
     def iter_content(self, chunk_size: int) -> Iterator[bytes]:
-        """返回下载内容分块。"""
+        """
+        返回下载内容分块。
+        """
         yield self._payload
 
     def close(self) -> None:
-        """模拟关闭响应流。"""
+        """
+        模拟关闭响应流。
+        """
         return None
 
     def __enter__(self) -> "_FakeU115Stream":
-        """进入上下文。"""
+        """
+        进入上下文。
+        """
         return self
 
     def __exit__(self, *args: object) -> None:
-        """退出上下文。"""
+        """
+        退出上下文。
+        """
         return None
 
 
 class _FakeU115RequestUtils:
-    """模拟 115 存储持有的统一 HTTP 请求边界。"""
+    """
+    模拟 115 存储持有的统一 HTTP 请求边界。
+    """
 
     def __init__(self, payload: bytes) -> None:
         self._payload = payload
@@ -80,18 +110,24 @@ class _FakeU115RequestUtils:
         *,
         raise_exception: bool,
     ) -> _FakeU115Stream:
-        """返回伪造的下载流。"""
+        """
+        返回伪造的下载流。
+        """
         self.requests.append((url, raise_exception))
         return _FakeU115Stream(self._payload)
 
 
 class _FakeRcloneProcess:
-    """模拟 rclone 子进程。"""
+    """
+    模拟 rclone 子进程。
+    """
 
     stdout: list[str] = []
 
     def wait(self) -> int:
-        """返回成功退出码。"""
+        """
+        返回成功退出码。
+        """
         return 0
 
 
@@ -106,7 +142,9 @@ class _FakeRcloneProcess:
 def test_build_download_path_strips_remote_directory_segments(
     tmp_path: Path, name: str, expected: str
 ) -> None:
-    """本地下载路径应剥离远端文件名中的目录片段。"""
+    """
+    本地下载路径应剥离远端文件名中的目录片段。
+    """
     storage = Rclone.__new__(Rclone)
     fileitem = schemas.FileItem(path=f"/remote/{expected}", name=name)
 
@@ -120,7 +158,9 @@ def test_build_download_path_strips_remote_directory_segments(
 def test_build_download_path_rejects_unsafe_filename(
     tmp_path: Path, name: str
 ) -> None:
-    """本地下载路径应拒绝无法安全落盘的文件名。"""
+    """
+    本地下载路径应拒绝无法安全落盘的文件名。
+    """
     storage = Rclone.__new__(Rclone)
     fileitem = schemas.FileItem(path="/remote/proof.txt", name=name)
 
@@ -128,7 +168,9 @@ def test_build_download_path_rejects_unsafe_filename(
 
 
 def test_alipan_download_writes_sanitized_filename(tmp_path: Path) -> None:
-    """阿里云盘下载应将路径穿越文件名写入目标目录内。"""
+    """
+    阿里云盘下载应将路径穿越文件名写入目标目录内。
+    """
     alipan = AliPan.__new__(AliPan)
     alipan.chunk_size = 8192
     fileitem = schemas.FileItem(
@@ -168,7 +210,9 @@ def test_alipan_download_writes_sanitized_filename(tmp_path: Path) -> None:
 
 
 def test_u115_download_writes_sanitized_filename(tmp_path: Path) -> None:
-    """115 下载应将路径穿越文件名写入目标目录内。"""
+    """
+    115 下载应将路径穿越文件名写入目标目录内。
+    """
     u115 = U115Pan.__new__(U115Pan)
     u115.chunk_size = 8192
     request_utils = _FakeU115RequestUtils(PAYLOAD)
@@ -210,7 +254,9 @@ def test_u115_download_writes_sanitized_filename(tmp_path: Path) -> None:
 
 
 def test_rclone_download_uses_sanitized_target_path(tmp_path: Path) -> None:
-    """rclone 下载应把清洗后的本地路径传给 copyto。"""
+    """
+    rclone 下载应把清洗后的本地路径传给 copyto。
+    """
     storage = Rclone.__new__(Rclone)
     fileitem = schemas.FileItem(
         storage="rclone",

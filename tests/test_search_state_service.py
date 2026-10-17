@@ -1,4 +1,6 @@
-"""搜索状态应用服务测试。"""
+"""
+搜索状态应用服务测试。
+"""
 
 import asyncio
 
@@ -7,7 +9,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def test_search_state_normalizes_identity_and_preserves_cache_contract():
-    """搜索参数保存后应保留媒体身份和前端原有字段。"""
+    """
+    搜索参数保存后应保留媒体身份和前端原有字段。
+    """
     saved = []
     service = SearchStateService(
         save_cache=lambda value, key: saved.append((key, value)),
@@ -49,15 +53,21 @@ def test_search_state_normalizes_identity_and_preserves_cache_contract():
 
 
 def test_search_state_async_paths_use_injected_ports():
-    """异步保存和读取必须只使用注入的缓存端口。"""
+    """
+    异步保存和读取必须只使用注入的缓存端口。
+    """
     saved = {}
 
     async def save(value, key):
-        """记录异步缓存写入。"""
+        """
+        记录异步缓存写入。
+        """
         saved[key] = value
 
     async def load(key):
-        """返回异步缓存内容。"""
+        """
+        返回异步缓存内容。
+        """
         return saved.get(key)
 
     service = SearchStateService(

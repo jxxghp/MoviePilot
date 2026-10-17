@@ -1,3 +1,7 @@
+"""
+验证媒体搜索来源选择与结果身份保留。
+"""
+
 import asyncio
 from typing import Optional
 from unittest.mock import AsyncMock, Mock, patch
@@ -15,7 +19,9 @@ from app.schemas.workflow import MediaInfo as SchemaMediaInfo
 
 
 def test_media_source_normalization_accepts_plugin_source() -> None:
-    """来源规范化应同时支持内置别名和插件扩展标识。"""
+    """
+    来源规范化应同时支持内置别名和插件扩展标识。
+    """
     assert normalize_media_source(" Plugin_Source ") == MediaSource("plugin_source")
     assert normalize_media_source("tmdb") == MediaSource.TMDB
     assert normalize_media_source("plugin source:invalid") is None
@@ -26,7 +32,9 @@ def test_media_source_normalization_accepts_plugin_source() -> None:
     "mango_tv", "migu_video", "tencent_video", "iqiyi",
 ])
 def test_plugin_media_sources_preserve_exact_identifiers(source_id: str) -> None:
-    """插件来源不再属于内置枚举，也不替插件转换来源别名。"""
+    """
+    插件来源不再属于内置枚举，也不替插件转换来源别名。
+    """
     source = normalize_media_source(source_id)
     assert source is MediaSource(source_id)
     assert source.value == source_id
@@ -34,7 +42,9 @@ def test_plugin_media_sources_preserve_exact_identifiers(source_id: str) -> None
 
 
 def test_resolve_anilist_search_params_preserves_identity() -> None:
-    """精确搜索参数应保留枚举来源和原生 ID。"""
+    """
+    精确搜索参数应保留枚举来源和原生 ID。
+    """
     params, message = asyncio.run(
         search_endpoint._resolve_media_search_params(
             MediaSource.AniList,
@@ -64,7 +74,9 @@ def test_resource_search_rejects_invalid_identity_before_chain(
         media_source: Optional[MediaSource],
         media_id: str,
 ) -> None:
-    """半身份、空白或零值 ID 应在进入搜索链及其本地缓存前被拒绝。"""
+    """
+    半身份、空白或零值 ID 应在进入搜索链及其本地缓存前被拒绝。
+    """
     search_chain = Mock(side_effect=AssertionError("无效身份不应创建搜索链"))
     monkeypatch.setattr(search_endpoint, "SearchChain", search_chain)
 
@@ -95,22 +107,32 @@ def test_resource_search_forwards_music_identity(
         media_source: MediaSource,
         media_id: str,
 ) -> None:
-    """音乐资源搜索应传递统一身份及音乐实体类型。"""
+    """
+    音乐资源搜索应传递统一身份及音乐实体类型。
+    """
     captured = {}
 
     class FakeTorrent:
-        """提供资源搜索响应需要的最小种子对象。"""
+        """
+        提供资源搜索响应需要的最小种子对象。
+        """
 
         @staticmethod
         def to_dict() -> dict:
-            """返回可序列化的测试种子。"""
+            """
+            返回可序列化的测试种子。
+            """
             return {"title": "Album result"}
 
     class FakeSearchChain:
-        """记录精确资源搜索收到的参数。"""
+        """
+        记录精确资源搜索收到的参数。
+        """
 
         async def async_search_by_id(self, **kwargs):
-            """保存搜索参数并返回单条测试结果。"""
+            """
+            保存搜索参数并返回单条测试结果。
+            """
             captured.update(kwargs)
             return [FakeTorrent()]
 
@@ -134,14 +156,20 @@ def test_resource_search_forwards_music_identity(
 
 
 def test_subtitle_search_forwards_anilist_identity(monkeypatch) -> None:
-    """字幕精确搜索应把 AniList 统一身份传给搜索链。"""
+    """
+    字幕精确搜索应把 AniList 统一身份传给搜索链。
+    """
     captured = {}
 
     class FakeSearchChain:
-        """记录字幕搜索收到的参数。"""
+        """
+        记录字幕搜索收到的参数。
+        """
 
         async def async_search_subtitles_by_id(self, **kwargs):
-            """保存搜索参数并返回空结果。"""
+            """
+            保存搜索参数并返回空结果。
+            """
             captured.update(kwargs)
             return []
 
@@ -161,7 +189,9 @@ def test_subtitle_search_forwards_anilist_identity(monkeypatch) -> None:
 
 
 def test_media_detail_forwards_unified_identity(monkeypatch) -> None:
-    """媒体详情应只向识别链传递来源和原生 ID。"""
+    """
+    媒体详情应只向识别链传递来源和原生 ID。
+    """
     media = MediaInfo(
         media_source=MediaSource.AniList,
         media_id="154587",
@@ -192,7 +222,9 @@ def test_media_detail_forwards_unified_identity(monkeypatch) -> None:
 
 
 def test_media_detail_does_not_fallback_for_explicit_identity(monkeypatch) -> None:
-    """明确身份识别失败时不能按标题切换到其他来源。"""
+    """
+    明确身份识别失败时不能按标题切换到其他来源。
+    """
     media_chain = Mock()
     media_chain.async_recognize_media = AsyncMock(return_value=None)
     media_chain.async_recognize_by_meta = AsyncMock(
@@ -214,7 +246,9 @@ def test_media_detail_does_not_fallback_for_explicit_identity(monkeypatch) -> No
 
 
 def test_media_detail_rejects_zero_identity_before_chain(monkeypatch) -> None:
-    """媒体详情的零值原生 ID 不得进入识别链。"""
+    """
+    媒体详情的零值原生 ID 不得进入识别链。
+    """
     media_chain = Mock(side_effect=AssertionError("零值身份不应创建媒体链"))
     monkeypatch.setattr(media_endpoint, "MediaChain", media_chain)
 
@@ -232,7 +266,9 @@ def test_media_detail_rejects_zero_identity_before_chain(monkeypatch) -> None:
 
 
 def test_media_seasons_rejects_zero_identity_before_external_chain(monkeypatch) -> None:
-    """季信息接口收到零值身份时不得调用 TMDB 或通用识别链。"""
+    """
+    季信息接口收到零值身份时不得调用 TMDB 或通用识别链。
+    """
     tmdb_chain = Mock(side_effect=AssertionError("零值身份不应创建 TMDB 链"))
     media_chain = Mock(side_effect=AssertionError("零值身份不应创建媒体链"))
     monkeypatch.setattr(media_endpoint, "TmdbChain", tmdb_chain)
@@ -264,7 +300,9 @@ def test_explicit_tmdb_endpoints_reject_zero_before_external_chain(
         endpoint,
         kwargs: dict,
 ) -> None:
-    """本文件内的明确 TMDB 辅助入口不得把零值 ID 传给外部链。"""
+    """
+    本文件内的明确 TMDB 辅助入口不得把零值 ID 传给外部链。
+    """
     tmdb_chain = Mock(side_effect=AssertionError("零值身份不应创建 TMDB 链"))
     media_chain = Mock(side_effect=AssertionError("零值身份不应创建媒体链"))
     monkeypatch.setattr(media_endpoint, "TmdbChain", tmdb_chain)
@@ -307,7 +345,9 @@ def test_media_seasons_uses_source_episode_count(
         media_kwargs: dict,
         episode_count: int,
 ) -> None:
-    """非 TMDB 来源应使用自身集数构造季信息。"""
+    """
+    非 TMDB 来源应使用自身集数构造季信息。
+    """
     media = MediaInfo(**media_kwargs)
     media_chain = Mock()
     media_chain.async_recognize_media = AsyncMock(return_value=media)
@@ -334,7 +374,9 @@ def test_media_seasons_uses_source_episode_count(
 
 
 def test_media_seasons_does_not_fallback_for_explicit_identity(monkeypatch) -> None:
-    """明确身份查询失败时季信息接口应直接返回空列表。"""
+    """
+    明确身份查询失败时季信息接口应直接返回空列表。
+    """
     media_chain = Mock()
     media_chain.async_recognize_media = AsyncMock(return_value=None)
     media_chain.async_recognize_by_meta = AsyncMock(
@@ -357,7 +399,9 @@ def test_media_seasons_does_not_fallback_for_explicit_identity(monkeypatch) -> N
 
 
 def test_subscribe_add_does_not_fallback_for_explicit_identity() -> None:
-    """同步新增订阅的显式身份识别失败后不能按标题换源。"""
+    """
+    同步新增订阅的显式身份识别失败后不能按标题换源。
+    """
     media_chain = Mock()
     media_chain.recognize_media.return_value = None
     media_chain.recognize_by_meta.return_value = None
@@ -379,7 +423,9 @@ def test_subscribe_add_does_not_fallback_for_explicit_identity() -> None:
 
 
 def test_subscribe_async_add_does_not_fallback_for_explicit_identity() -> None:
-    """异步新增订阅的显式身份识别失败后不能按标题换源。"""
+    """
+    异步新增订阅的显式身份识别失败后不能按标题换源。
+    """
     media_chain = Mock()
     media_chain.async_recognize_media = AsyncMock(return_value=None)
     media_chain.async_recognize_by_meta = AsyncMock(return_value=None)

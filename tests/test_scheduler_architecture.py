@@ -5,6 +5,7 @@ Scheduler 同名包职责与兼容边界门禁。
 import ast
 from pathlib import Path
 
+# 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.scheduler import Scheduler, SchedulerChain  # pylint: disable=no-name-in-module
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

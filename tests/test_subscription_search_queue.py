@@ -1,4 +1,6 @@
-"""订阅搜索持久队列、single-flight、租约和取消测试。"""
+"""
+订阅搜索持久队列、single-flight、租约和取消测试。
+"""
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -14,7 +16,9 @@ from app.db.models.subscriptionsearch import SubscriptionSearchTask
 
 
 def _repository(tmp_path):
-    """构造使用独立 SQLite 文件的事务型搜索队列。"""
+    """
+    构造使用独立 SQLite 文件的事务型搜索队列。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'search-queue.db'}")
     Base.metadata.create_all(engine)
     return TransactionalSubscriptionSearchRepository(sessionmaker(bind=engine)), engine
@@ -22,14 +26,18 @@ def _repository(tmp_path):
 
 @pytest.mark.asyncio
 async def test_search_queue_async_enqueue_uses_async_session(tmp_path):
-    """异步新增订阅应通过 AsyncSession 入队，并可由同步消费者继续认领。"""
+    """
+    异步新增订阅应通过 AsyncSession 入队，并可由同步消费者继续认领。
+    """
     database_path = tmp_path / "async-search-queue.db"
     async_engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
     async_factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
 
     @asynccontextmanager
     async def async_session_scope():
-        """为测试队列提供独立异步会话。"""
+        """
+        为测试队列提供独立异步会话。
+        """
         async with async_factory() as session:
             yield session
 
@@ -58,7 +66,9 @@ async def test_search_queue_async_enqueue_uses_async_session(tmp_path):
 
 
 def test_search_queue_coalesces_active_subscription_and_raises_priority(tmp_path):
-    """重叠入口只保留一个活动任务，手工请求可提高优先级。"""
+    """
+    重叠入口只保留一个活动任务，手工请求可提高优先级。
+    """
     repository, _engine = _repository(tmp_path)
 
     scheduled = repository.enqueue(
@@ -89,7 +99,9 @@ def test_search_queue_coalesces_active_subscription_and_raises_priority(tmp_path
 
 
 def test_search_queue_claims_each_subscription_only_after_its_available_at(tmp_path):
-    """逐订阅到期时间必须持久化，未到期任务不能占用同步 worker。"""
+    """
+    逐订阅到期时间必须持久化，未到期任务不能占用同步 worker。
+    """
     repository, _engine = _repository(tmp_path)
     now = datetime.now(timezone.utc)
     ready_at = (now - timedelta(seconds=1)).isoformat(timespec="seconds")
@@ -125,7 +137,9 @@ def test_search_queue_claims_each_subscription_only_after_its_available_at(tmp_p
 
 
 def test_manual_search_promotes_scheduled_new_subscription(tmp_path):
-    """用户主动搜索应立即唤醒仍在编辑等待期的新订阅任务。"""
+    """
+    用户主动搜索应立即唤醒仍在编辑等待期的新订阅任务。
+    """
     repository, engine = _repository(tmp_path)
     later_at = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(timespec="seconds")
     automatic = repository.enqueue(
@@ -158,7 +172,9 @@ def test_manual_search_promotes_scheduled_new_subscription(tmp_path):
 
 
 def test_search_queue_recovers_expired_lease_with_same_task_identity(tmp_path):
-    """进程遗留的过期 running 任务应以新 token 恢复且 attempt 单调递增。"""
+    """
+    进程遗留的过期 running 任务应以新 token 恢复且 attempt 单调递增。
+    """
     repository, engine = _repository(tmp_path)
     repository.enqueue(subscription_ids=(3,), source="fallback", priority=10)
     first = repository.claim_next(owner="worker-a", lease_seconds=900)
@@ -180,7 +196,9 @@ def test_search_queue_recovers_expired_lease_with_same_task_identity(tmp_path):
 
 
 def test_search_queue_phase_update_requires_current_lease(tmp_path):
-    """过期执行者不得覆盖当前任务的用户可见阶段。"""
+    """
+    过期执行者不得覆盖当前任务的用户可见阶段。
+    """
     repository, _engine = _repository(tmp_path)
     repository.enqueue(subscription_ids=(30,), source="manual", priority=100)
     task = repository.claim_next(owner="worker-a")
@@ -208,7 +226,9 @@ def test_search_queue_phase_update_requires_current_lease(tmp_path):
 
 
 def test_search_queue_defers_site_budget_conflict_until_retry_time(tmp_path):
-    """站点预算冲突应释放任务租约并保留同一任务等待后续恢复。"""
+    """
+    站点预算冲突应释放任务租约并保留同一任务等待后续恢复。
+    """
     repository, engine = _repository(tmp_path)
     enqueued = repository.enqueue(subscription_ids=(31,), source="fallback", priority=10)
     running = repository.claim_next(owner="worker-a")
@@ -249,7 +269,9 @@ def test_search_queue_defers_site_budget_conflict_until_retry_time(tmp_path):
 
 
 def test_search_queue_cancel_finishes_queued_and_running_tasks(tmp_path):
-    """取消立即终止未发请求任务，运行中任务在租约边界收口。"""
+    """
+    取消立即终止未发请求任务，运行中任务在租约边界收口。
+    """
     repository, engine = _repository(tmp_path)
     enqueued = repository.enqueue(
         subscription_ids=(4, 5),
@@ -283,7 +305,9 @@ def test_search_queue_cancel_finishes_queued_and_running_tasks(tmp_path):
 
 
 def test_search_queue_finishes_batch_with_aggregated_failure(tmp_path):
-    """单任务失败不阻止后续任务，但批次最终暴露聚合失败。"""
+    """
+    单任务失败不阻止后续任务，但批次最终暴露聚合失败。
+    """
     repository, _engine = _repository(tmp_path)
     enqueued = repository.enqueue(
         subscription_ids=(6, 7),
@@ -313,7 +337,9 @@ def test_search_queue_finishes_batch_with_aggregated_failure(tmp_path):
 
 
 def test_search_queue_aggregates_skipped_tasks_without_marking_success(tmp_path):
-    """跳过任务应单独计数并让批次暴露 skipped 聚合终态。"""
+    """
+    跳过任务应单独计数并让批次暴露 skipped 聚合终态。
+    """
     repository, _engine = _repository(tmp_path)
     enqueued = repository.enqueue(
         subscription_ids=(10, 11),
@@ -345,7 +371,9 @@ def test_search_queue_aggregates_skipped_tasks_without_marking_success(tmp_path)
 
 
 def test_search_queue_keeps_manual_work_ahead_of_aged_fallback(tmp_path):
-    """用户主动搜索始终先于定时检查，避免点击后长时间没有反馈。"""
+    """
+    用户主动搜索始终先于定时检查，避免点击后长时间没有反馈。
+    """
     repository, engine = _repository(tmp_path)
     repository.enqueue(subscription_ids=(8,), source="fallback", priority=10)
     aged_at = (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat(timespec="seconds")
@@ -365,7 +393,9 @@ def test_search_queue_keeps_manual_work_ahead_of_aged_fallback(tmp_path):
 
 
 def test_retry_sites_survive_reopen_and_admission_wait_without_stale_error(tmp_path):
-    """站点游标跨重建仓储和准入等待保留，真正恢复时清除上轮等待提示。"""
+    """
+    站点游标跨重建仓储和准入等待保留，真正恢复时清除上轮等待提示。
+    """
     repository, engine = _repository(tmp_path)
     repository.enqueue(subscription_ids=(701,), source="fallback", priority=10)
     first = repository.claim_next(owner="before-restart")
@@ -396,7 +426,9 @@ def test_retry_sites_survive_reopen_and_admission_wait_without_stale_error(tmp_p
 
 
 def test_manual_search_restarts_full_scope_but_automatic_merge_keeps_cursor(tmp_path):
-    """自动调度合并保留进度，用户主动重搜可包含新配置的站点。"""
+    """
+    自动调度合并保留进度，用户主动重搜可包含新配置的站点。
+    """
     repository, engine = _repository(tmp_path)
     repository.enqueue(subscription_ids=(702,), source="fallback", priority=10)
     first = repository.claim_next(owner="worker")
@@ -418,7 +450,9 @@ def test_manual_search_restarts_full_scope_but_automatic_merge_keeps_cursor(tmp_
 @pytest.mark.parametrize("running", [False, True])
 @pytest.mark.parametrize("source,priority", [("fallback", 10), ("new", 50), ("manual", 120)])
 def test_new_search_cycle_refreshes_only_waiting_site_scope(tmp_path, running, source, priority):
-    """新周期重搜等待任务的完整站点，不能覆盖在途游标或丢失原手动优先级。"""
+    """
+    新周期重搜等待任务的完整站点，不能覆盖在途游标或丢失原手动优先级。
+    """
     repository, engine = _repository(tmp_path)
     original = repository.enqueue(subscription_ids=(703,), source=source, priority=priority)
     first = repository.claim_next(owner="initial")
@@ -455,7 +489,9 @@ def test_new_search_cycle_refreshes_only_waiting_site_scope(tmp_path, running, s
 
 
 def test_queue_activity_records_one_request_and_closes_queued_cancel(tmp_path):
-    """合并请求只有一条活动，未执行的取消同事务收口等待状态。"""
+    """
+    合并请求只有一条活动，未执行的取消同事务收口等待状态。
+    """
     from app.db.models.subscribe import Subscribe
     from app.db.models.subscribeactivity import SubscribeActivity
 
@@ -478,7 +514,9 @@ def test_queue_activity_records_one_request_and_closes_queued_cancel(tmp_path):
 
 
 def test_activity_failure_does_not_undo_terminal_queue_state(tmp_path, monkeypatch):
-    """活动结算失败不能回滚已确认的任务终态或使下载重复执行。"""
+    """
+    活动结算失败不能回滚已确认的任务终态或使下载重复执行。
+    """
     from app.db.models.subscribe import Subscribe
     from app.db.oper.subscribeactivity import SubscribeActivityOper
 
@@ -492,7 +530,9 @@ def test_activity_failure_does_not_undo_terminal_queue_state(tmp_path, monkeypat
     task = repository.claim_next(owner="worker")
 
     def failed_save(*_args):
-        """模拟活动表写入故障。"""
+        """
+        模拟活动表写入故障。
+        """
         raise RuntimeError("activity storage unavailable")
 
     monkeypatch.setattr(SubscribeActivityOper, "save", failed_save)
@@ -502,7 +542,9 @@ def test_activity_failure_does_not_undo_terminal_queue_state(tmp_path, monkeypat
 
 
 def test_coalesced_activity_updates_schedule_without_replacing_request_time(tmp_path):
-    """手工提前排队会同步新的计划时刻，保留同一活动和最初请求时刻。"""
+    """
+    手工提前排队会同步新的计划时刻，保留同一活动和最初请求时刻。
+    """
     from app.db.models.subscribe import Subscribe
     from app.db.models.subscribeactivity import SubscribeActivity
 

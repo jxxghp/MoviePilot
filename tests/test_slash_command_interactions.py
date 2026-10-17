@@ -2,7 +2,8 @@
 斜杠命令交互路由测试。
 """
 
-# ruff: noqa: E402 - 可选运行时依赖必须在导入消息 Chain 前完成隔离。
+# 可选运行时依赖必须在导入消息 Chain 前完成隔离。
+# ruff: noqa: E402
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

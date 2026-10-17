@@ -1,4 +1,6 @@
-"""站点连通性测试链路的数据库回归测试。"""
+"""
+站点连通性测试链路的数据库回归测试。
+"""
 
 from unittest.mock import Mock
 
@@ -10,7 +12,9 @@ from app.schemas.site import SiteUserData
 
 
 def test_site_connectivity_records_result_without_injected_session(db, monkeypatch):
-    """默认站点端口完成测试后应提交统计，而不是对空会话调用 execute。"""
+    """
+    默认站点端口完成测试后应提交统计，而不是对空会话调用 execute。
+    """
     db.watermark(Site, SiteStatistic)
     db.add(Site(
         name="连通性测试站点",
@@ -33,7 +37,9 @@ def test_site_connectivity_records_result_without_injected_session(db, monkeypat
 
 
 def test_resource_login_path_uses_generic_connectivity_test(db, monkeypatch):
-    """站点资源声明登录页后，通用检测应访问该页且不修改站点快照。"""
+    """
+    站点资源声明登录页后，通用检测应访问该页且不修改站点快照。
+    """
     db.watermark(Site, SiteStatistic)
     db.add(Site(
         name="资源路径站点",
@@ -44,10 +50,14 @@ def test_resource_login_path_uses_generic_connectivity_test(db, monkeypatch):
     observed: list[SiteSnapshot] = []
 
     class _SitesHelper:
-        """为资源路径测试提供最小站点索引器接口。"""
+        """
+        为资源路径测试提供最小站点索引器接口。
+        """
 
         def get_indexer(self, domain: str) -> dict:
-            """返回测试站点的登录页配置。"""
+            """
+            返回测试站点的登录页配置。
+            """
             assert domain == "resource-path.test"
             return {"login_path": "index.php"}
 
@@ -65,7 +75,9 @@ def test_resource_login_path_uses_generic_connectivity_test(db, monkeypatch):
 
 
 def test_failed_userdata_is_not_persisted_as_a_successful_refresh(monkeypatch):
-    """解析器未取得用户身份时不得写入空数据或发送刷新成功事件。"""
+    """
+    解析器未取得用户身份时不得写入空数据或发送刷新成功事件。
+    """
     chain = object.__new__(SiteChain)
     chain.site_repository = Mock()
     chain.eventmanager = Mock()

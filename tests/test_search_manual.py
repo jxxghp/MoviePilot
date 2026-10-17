@@ -1,4 +1,6 @@
-"""Web 手动分页：后端缓存页摘要并恢复过期比较依据，页号与重试由客户端持有。"""
+"""
+Web 手动分页：后端缓存页摘要并恢复过期比较依据，页号与重试由客户端持有。
+"""
 
 import asyncio
 import threading
@@ -18,13 +20,17 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.fixture
 def page_clock(monkeypatch):
-    """使用可控时钟隔离页摘要缓存，验证失效后的上一页补取。"""
+    """
+    使用可控时钟隔离页摘要缓存，验证失效后的上一页补取。
+    """
     from app.runtime import cache as cache_module
 
     clock = [0.0]
     original = cache_module.MemoryTLRUCache.__init__
     def initialize(cache, *args, **kwargs):
-        """让测试缓存的过期判断统一使用可控时钟。"""
+        """
+        让测试缓存的过期判断统一使用可控时钟。
+        """
         original(cache, *args, **kwargs, timer=lambda: clock[0])
     monkeypatch.setattr(cache_module.MemoryTLRUCache, "__init__", initialize)
     monkeypatch.setattr(cache_module.MemoryBackend, "_region_caches", {})
@@ -34,7 +40,9 @@ def page_clock(monkeypatch):
 
 @pytest.fixture
 def manual_owner(monkeypatch, page_clock):
-    """构造离线搜索来源和保存边界，记录页请求并模拟失败。"""
+    """
+    构造离线搜索来源和保存边界，记录页请求并模拟失败。
+    """
     owner = SearchChain()
     sites = [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]
     monkeypatch.setattr(owner, "_sync_indexers", lambda ids: [site for site in sites if not ids or site["id"] in ids])
@@ -43,13 +51,17 @@ def manual_owner(monkeypatch, page_clock):
     saved = []
     monkeypatch.setattr(owner, "save_last_search_params", lambda **params: saved.append(params))
     async def save_results(contexts):
-        """记录首次搜索的保存行为，避免写入真实缓存。"""
+        """
+        记录首次搜索的保存行为，避免写入真实缓存。
+        """
         saved.append(len(contexts))
     monkeypatch.setattr(owner, "_async_save_results", save_results)
     calls = []
     failures = set()
     def request(**params):
-        """按来源和页号构造结果，同时报告真实搜索观察字段。"""
+        """
+        按来源和页号构造结果，同时报告真实搜索观察字段。
+        """
         site, page = params["site"]["id"], params["page"]
         calls.append((site, params["keyword"], page))
         failed = (site, page) in failures
@@ -62,18 +74,24 @@ def manual_owner(monkeypatch, page_clock):
 
 
 async def events(iterator):
-    """消费完整事件流，供最终页结果和来源状态断言使用。"""
+    """
+    消费完整事件流，供最终页结果和来源状态断言使用。
+    """
     return [item async for item in iterator]
 
 
 def site_facts(result):
-    """从最终状态中提取支持独立翻页的站点来源。"""
+    """
+    从最终状态中提取支持独立翻页的站点来源。
+    """
     return [item for item in result[-1]["sources"] if decode_source(item["source"])[0] != "plugin"]
 
 
 @pytest.fixture
 def blocked_site(manual_owner, monkeypatch):
-    """阻塞首个站点，其他站点即时完成，用同步信号验证并发和取消收口。"""
+    """
+    阻塞首个站点，其他站点即时完成，用同步信号验证并发和取消收口。
+    """
     from app.runtime import tasks as tasks_module
 
     owner, _, _ = manual_owner
@@ -85,7 +103,9 @@ def blocked_site(manual_owner, monkeypatch):
     original = owner.search_site_torrents
 
     def request(**params):
-        """让排序靠前的站点等待释放，证明快站点不受它阻塞。"""
+        """
+        让排序靠前的站点等待释放，证明快站点不受它阻塞。
+        """
         if params["site"]["id"] != 1:
             return original(**params)
         started.set()
@@ -102,7 +122,9 @@ def blocked_site(manual_owner, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_media_search_mock_overrides_cached_instance_method(manual_owner, monkeypatch):
-    """单例缓存了实例级原方法时，mock 仍覆盖该方法并隔离真实网络请求。"""
+    """
+    单例缓存了实例级原方法时，mock 仍覆盖该方法并隔离真实网络请求。
+    """
     recognizer = manual_module.MediaChain()
     monkeypatch.setattr(recognizer, "async_recognize_media", recognizer.async_recognize_media)
     media = MediaInfo(media_source=MediaSource.TMDB, media_id="1", tmdb_id=1, type=MediaType.TV,
@@ -125,7 +147,9 @@ async def test_media_search_mock_overrides_cached_instance_method(manual_owner, 
 async def test_fast_site_preview_arrives_before_slow_site_and_final_page(
     manual_owner, blocked_site, monkeypatch, media_search, transport,
 ):
-    """标题和精确搜索均先展示快站点，最终过滤前不提交来源页号。"""
+    """
+    标题和精确搜索均先展示快站点，最终过滤前不提交来源页号。
+    """
     owner, calls, (_, saved) = manual_owner
     started, release, finished, registry = blocked_site
     params = {"keyword": "Show"}
@@ -174,7 +198,9 @@ async def test_fast_site_preview_arrives_before_slow_site_and_final_page(
 
 @pytest.mark.asyncio
 async def test_closing_preview_waits_for_inflight_workers_without_committing_page(manual_owner, blocked_site):
-    """离开搜索流时等待在途同步请求收尾，不写最终结果和翻页状态。"""
+    """
+    离开搜索流时等待在途同步请求收尾，不写最终结果和翻页状态。
+    """
     owner, _, (_, saved) = manual_owner
     started, release, finished, registry = blocked_site
     stream = SearchManualOwner.events(owner, params={"keyword": "Show"})
@@ -210,14 +236,20 @@ async def test_title_search_keeps_unrestricted_mteam_categories_and_explicit_typ
     plugin_types = []
 
     class FakeRequest:
-        """回放 M-Team 的分类与分页响应，不访问真实站点。"""
+        """
+        回放 M-Team 的分类与分页响应，不访问真实站点。
+        """
 
         def __init__(self, **_params):
-            """接受原传输层参数以保持索引器调用协议。"""
+            """
+            接受原传输层参数以保持索引器调用协议。
+            """
             pass
 
         def post_res(self, _url=None, json=None, **_params):
-            """用分类和页号生成可重复的离线搜索响应。"""
+            """
+            用分类和页号生成可重复的离线搜索响应。
+            """
             requests.append(json)
             count = 1 if json["categories"] == MTorrentSpider._movie_category else 3
             offset = (json["pageNumber"] - 1) * count
@@ -259,7 +291,9 @@ async def test_title_search_keeps_unrestricted_mteam_categories_and_explicit_typ
 
 @pytest.mark.asyncio
 async def test_first_request_loads_page_zero_of_every_source_and_saves_last_search(manual_owner):
-    """首页并发请求各来源，但完成页事实仍保持来源顺序。"""
+    """
+    首页并发请求各来源，但完成页事实仍保持来源顺序。
+    """
     owner, calls, (_, saved) = manual_owner
     result = await events(SearchManualOwner.events(owner, params={"keyword": "Show"}))
     assert sorted(calls) == [(1, "Show", 0), (2, "Show", 0)]
@@ -289,7 +323,9 @@ async def test_continuation_restores_previous_page_and_keeps_last_search(manual_
 @pytest.mark.asyncio
 @pytest.mark.parametrize("pageable", [True, False])
 async def test_failed_source_keeps_its_page_for_retry_without_hiding_other_sources(manual_owner, monkeypatch, pageable):
-    """来源失败不影响其他来源，重试只请求原失败页。"""
+    """
+    来源失败不影响其他来源，重试只请求原失败页。
+    """
     owner, calls, (failures, _) = manual_owner
     monkeypatch.setattr(owner, "get_search_page_size", lambda **_params: 100 if pageable else None)
     failures.add((1, 0))
@@ -320,7 +356,9 @@ async def test_alias_fallback_only_on_first_page_and_source_keeps_actual_keyword
 
 @pytest.mark.asyncio
 async def test_zero_display_rows_still_have_more(manual_owner, monkeypatch):
-    """标题预览和最终结果都为空时，原始页事实仍允许继续加载。"""
+    """
+    标题预览和最终结果都为空时，原始页事实仍允许继续加载。
+    """
     from app.chain.search.manual import _ManualPage
 
     owner, _, _ = manual_owner
@@ -374,7 +412,9 @@ async def test_site_without_pagination_has_only_the_first_page(manual_owner, mon
 @pytest.mark.asyncio
 @pytest.mark.parametrize("filter_all", [False, True])
 async def test_raw_page_signature_stops_only_the_identical_adjacent_page(manual_owner, monkeypatch, filter_all):
-    """原始页摘要独立于展示过滤，仅相邻页完全重复时结束来源。"""
+    """
+    原始页摘要独立于展示过滤，仅相邻页完全重复时结束来源。
+    """
     from app.chain.search.manual import _ManualPage
 
     owner, calls, _ = manual_owner
@@ -409,7 +449,9 @@ async def test_raw_page_signature_stops_only_the_identical_adjacent_page(manual_
 
 @pytest.mark.asyncio
 async def test_pages_beyond_the_cap_are_not_requested(manual_owner):
-    """手动分页只能请求第 0–19 页，到第 20 页不发请求，第 19 页后不可继续。"""
+    """
+    手动分页只能请求第 0–19 页，到第 20 页不发请求，第 19 页后不可继续。
+    """
     owner, calls, _ = manual_owner
     result = await events(SearchManualOwner.events(owner, params={
         "keyword": "Show", "page": 20, "source": encode_source("1", "Show")}))
@@ -432,7 +474,9 @@ async def test_invalid_source_is_rejected(manual_owner):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("season,expected", [(None, [0, 1, 2]), (0, [0]), (1, [1]), (2, [2])])
 async def test_media_page_keeps_original_season_filter(manual_owner, monkeypatch, season, expected):
-    """手动精确搜索复用原季范围；过滤后的条数不改变原始页事实。"""
+    """
+    手动精确搜索复用原季范围；过滤后的条数不改变原始页事实。
+    """
     from unittest.mock import AsyncMock
 
     from app.domain.context import MediaInfo

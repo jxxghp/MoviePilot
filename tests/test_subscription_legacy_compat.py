@@ -1,4 +1,6 @@
-"""旧订阅 Oper 插件导入、签名和无 Session 行为门禁。"""
+"""
+旧订阅 Oper 插件导入、签名和无 Session 行为门禁。
+"""
 
 import asyncio
 import importlib
@@ -19,7 +21,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def test_legacy_subscription_imports_target_one_private_sdk_facade() -> None:
-    """两个旧模块与 Oper 包根只经同一私有 Legacy SDK 解析。"""
+    """
+    两个旧模块与 Oper 包根只经同一私有 Legacy SDK 解析。
+    """
     subscribe_alias = MODULE_ALIASES["app.db.subscribe_oper"]
     history_alias = MODULE_ALIASES["app.db.subscribehistory_oper"]
     legacy_subscribe = importlib.import_module("app.db.subscribe_oper")
@@ -47,7 +51,9 @@ def test_legacy_subscription_imports_target_one_private_sdk_facade() -> None:
 
 
 def test_legacy_subscription_oper_preserves_plugin_method_signatures() -> None:
-    """官方插件使用的订阅读写方法与旧历史分页入口保持调用 ABI。"""
+    """
+    官方插件使用的订阅读写方法与旧历史分页入口保持调用 ABI。
+    """
     legacy = importlib.import_module("app.db.subscribe_oper")
 
     add = inspect.signature(legacy.SubscribeOper.add)
@@ -70,12 +76,16 @@ def test_legacy_subscription_oper_preserves_plugin_method_signatures() -> None:
 
 
 def test_legacy_subscription_facade_unwraps_typed_write_contract(monkeypatch) -> None:
-    """旧 facade 回调 raw Oper 前必须在兼容边界解包 typed 写 DTO。"""
+    """
+    旧 facade 回调 raw Oper 前必须在兼容边界解包 typed 写 DTO。
+    """
     legacy = importlib.import_module("app.db.subscribe_oper")
     captured = {}
 
     def fake_add(self, identity, payload, username=None, after_commit=None):
-        """记录 Legacy facade 解包后的 raw Oper 参数。"""
+        """
+        记录 Legacy facade 解包后的 raw Oper 参数。
+        """
         captured.update({
             "self": self,
             "identity": identity,
@@ -89,7 +99,9 @@ def test_legacy_subscription_facade_unwraps_typed_write_contract(monkeypatch) ->
     oper = object.__new__(legacy.SubscribeOper)
 
     def callback(_subscribe_id):
-        """模拟提交后的插件回调。"""
+        """
+        模拟提交后的插件回调。
+        """
         return True
 
     result = oper.add(
@@ -120,7 +132,9 @@ def test_legacy_subscription_facade_unwraps_typed_write_contract(monkeypatch) ->
 
 
 def test_legacy_subscription_opers_preserve_no_session_behavior(db) -> None:
-    """旧插件不注入 Session 也可列举、更新订阅并异步读取历史。"""
+    """
+    旧插件不注入 Session 也可列举、更新订阅并异步读取历史。
+    """
     db.watermark(Subscribe, SubscribeHistory)
     subscribe = Subscribe(
         name="兼容订阅",

@@ -1,4 +1,6 @@
-"""系统管理应用服务的用例分支与端口委托测试。"""
+"""
+系统管理应用服务的用例分支与端口委托测试。
+"""
 
 from contextlib import asynccontextmanager, nullcontext
 from types import SimpleNamespace
@@ -18,7 +20,9 @@ from app.schemas.types import SystemConfigKey
 
 
 def _build_service() -> tuple[SystemService, SimpleNamespace]:
-    """构造全部外部端口可观测的系统应用服务。"""
+    """
+    构造全部外部端口可观测的系统应用服务。
+    """
     settings = Mock()
     settings.get.return_value = None
     system_config = Mock()
@@ -66,7 +70,9 @@ def _build_service() -> tuple[SystemService, SimpleNamespace]:
 
     @asynccontextmanager
     async def rule_group_mutation():
-        """提供规则组原子变更端口的异步上下文。"""
+        """
+        提供规则组原子变更端口的异步上下文。
+        """
         yield mutation
 
     dependencies = SimpleNamespace(
@@ -103,7 +109,9 @@ def _build_service() -> tuple[SystemService, SimpleNamespace]:
 
 @pytest.mark.anyio
 async def test_system_service_delegates_read_only_queries() -> None:
-    """日志、服务端、Release 和运行能力查询只委托对应端口。"""
+    """
+    日志、服务端、Release 和运行能力查询只委托对应端口。
+    """
     service, dependencies = _build_service()
     disconnected = AsyncMock(return_value=False)
 
@@ -121,7 +129,9 @@ async def test_system_service_delegates_read_only_queries() -> None:
 
 @pytest.mark.anyio
 async def test_update_environment_rejects_validation_and_partial_failure() -> None:
-    """批量设置必须在校验失败或部分写入失败时返回结构化失败。"""
+    """
+    批量设置必须在校验失败或部分写入失败时返回结构化失败。
+    """
     service, dependencies = _build_service()
     dependencies.llm.validate.return_value = "LLM 工具不可用"
 
@@ -145,7 +155,9 @@ async def test_update_environment_rejects_validation_and_partial_failure() -> No
 
 @pytest.mark.anyio
 async def test_update_environment_publishes_successful_batch() -> None:
-    """全部设置写入成功后只发布一次成功键集合。"""
+    """
+    全部设置写入成功后只发布一次成功键集合。
+    """
     service, dependencies = _build_service()
     dependencies.settings.update_many.return_value = {"PORT": (True, "ok")}
 
@@ -170,7 +182,9 @@ async def test_update_environment_publishes_successful_batch() -> None:
 async def test_sync_plugin_market_rejects_invalid_sources(
     url: str | None, fetched: MarketFetchResult | None, message: str
 ) -> None:
-    """Wiki 同步拒绝非受信地址、传输失败和空清单。"""
+    """
+    Wiki 同步拒绝非受信地址、传输失败和空清单。
+    """
     service, dependencies = _build_service()
     if fetched is not None:
         dependencies.market.fetch.return_value = fetched
@@ -183,7 +197,9 @@ async def test_sync_plugin_market_rejects_invalid_sources(
 
 @pytest.mark.anyio
 async def test_sync_plugin_market_merges_case_insensitive_repositories() -> None:
-    """市场仓库按来源顺序去重，持久化成功后发布规范化值。"""
+    """
+    市场仓库按来源顺序去重，持久化成功后发布规范化值。
+    """
     service, dependencies = _build_service()
     dependencies.settings.get.return_value = "https://github.com/A/repo/, local/repo"
     dependencies.settings.update.return_value = (True, "saved")
@@ -208,7 +224,9 @@ async def test_sync_plugin_market_merges_case_insensitive_repositories() -> None
 
 @pytest.mark.anyio
 async def test_update_setting_routes_runtime_and_persistent_values() -> None:
-    """运行设置走 settings，系统配置走持久化端口并过滤空列表项。"""
+    """
+    运行设置走 settings，系统配置走持久化端口并过滤空列表项。
+    """
     service, dependencies = _build_service()
     dependencies.settings.contains.side_effect = lambda key: key == "PORT"
     dependencies.settings.update.return_value = (None, "unchanged")
@@ -240,7 +258,9 @@ async def test_update_setting_preserves_persistent_write_result(
     expected_success: bool,
     publishes_event: bool,
 ) -> None:
-    """通用系统配置写入只把明确 False 映射为失败并抑制失败事件。"""
+    """
+    通用系统配置写入只把明确 False 映射为失败并抑制失败事件。
+    """
     service, dependencies = _build_service()
     dependencies.settings.contains.return_value = False
     dependencies.system_config.async_set_with_normalized_value.side_effect = None
@@ -266,7 +286,9 @@ async def test_update_setting_preserves_persistent_write_result(
 
 @pytest.mark.anyio
 async def test_update_setting_rejects_invalid_normalized_value() -> None:
-    """旧设置入口必须把目录规范化错误作为可见失败返回且不写库。"""
+    """
+    旧设置入口必须把目录规范化错误作为可见失败返回且不写库。
+    """
     service, dependencies = _build_service()
     dependencies.settings.contains.return_value = False
     dependencies.system_config.async_set_with_normalized_value.side_effect = ValueError(
@@ -283,7 +305,9 @@ async def test_update_setting_rejects_invalid_normalized_value() -> None:
 
 @pytest.mark.anyio
 async def test_update_setting_applies_rule_groups_and_reports_mutation_rejection() -> None:
-    """规则组使用原子 mutation，插件写入拒绝应转换为稳定结果。"""
+    """
+    规则组使用原子 mutation，插件写入拒绝应转换为稳定结果。
+    """
     service, dependencies = _build_service()
     dependencies.settings.contains.return_value = False
     key = SystemConfigKey.UserFilterRuleGroups.value
@@ -307,7 +331,9 @@ async def test_update_setting_applies_rule_groups_and_reports_mutation_rejection
 
 
 def test_system_control_operations_cover_supported_and_rejected_paths() -> None:
-    """重启与开发更新必须同时校验模式和受管运行环境。"""
+    """
+    重启与开发更新必须同时校验模式和受管运行环境。
+    """
     service, dependencies = _build_service()
 
     assert service.restart().success is True
@@ -322,7 +348,9 @@ def test_system_control_operations_cover_supported_and_rejected_paths() -> None:
 
 
 def test_update_download_and_install_report_state_machine_results() -> None:
-    """下载与安装应映射状态机失败，并在重启失败时撤销安装请求。"""
+    """
+    下载与安装应映射状态机失败，并在重启失败时撤销安装请求。
+    """
     service, dependencies = _build_service()
     dependencies.updates.download.return_value = SystemUpdateStatus(
         state="failed", current_version="v3.0.0", error="download failed"
@@ -345,7 +373,9 @@ def test_update_download_and_install_report_state_machine_results() -> None:
 
 
 def test_combined_install_requests_only_one_restart() -> None:
-    """合并安装通过一个端口调用提交全部目标，只请求一次宿主重启。"""
+    """
+    合并安装通过一个端口调用提交全部目标，只请求一次宿主重启。
+    """
     service, dependencies = _build_service()
     dependencies.updates.prepare_install.return_value = (True, "prepared all")
     dependencies.control.restart.return_value = (True, "restarting")
@@ -355,7 +385,9 @@ def test_combined_install_requests_only_one_restart() -> None:
 
 
 def test_combined_download_reports_resource_failure() -> None:
-    """聚合主程序成功时仍必须把资源检查或下载失败反馈给调用方。"""
+    """
+    聚合主程序成功时仍必须把资源检查或下载失败反馈给调用方。
+    """
     service, dependencies = _build_service()
     dependencies.updates.download.return_value = SystemUpdateStatus(
         state="ready", current_version="v3.0.0", updates=[
@@ -370,7 +402,9 @@ def test_combined_download_reports_resource_failure() -> None:
 
 
 def test_system_service_normalizes_repository_and_rule_group_inputs() -> None:
-    """仓库与规则组辅助函数必须复制有效输入并保持稳定去重顺序。"""
+    """
+    仓库与规则组辅助函数必须复制有效输入并保持稳定去重顺序。
+    """
     assert SystemService._split_repos(" A/,a,B " ) == ["A", "B"]
     assert SystemService._merge_repos(["A"], ["a/", "B/"]) == ["A", "B"]
     assert SystemService._dict_list(None) == []

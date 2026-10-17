@@ -1,4 +1,6 @@
-"""完整页驱动验证实际补集、过滤兜底和逐页识别成本。"""
+"""
+完整页驱动验证实际补集、过滤兜底和逐页识别成本。
+"""
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -179,7 +181,9 @@ def test_movie_smart_boundary_and_complete_upgrade_search(owner, monkeypatch, fu
 
 
 def test_whole_season_uses_trusted_range_or_complete_scan(owner):
-    """整季展开为真实集号后仍保留完整搜索，未知集数沿用整季目标。"""
+    """
+    整季展开为真实集号后仍保留完整搜索，未知集数沿用整季目标。
+    """
     from app.chain.search.scan import search_targets
     season_plan = plan([])
     season_plan.no_exists["tmdb:1"][1].total_episode = 1200
@@ -191,7 +195,9 @@ def test_whole_season_uses_trusted_range_or_complete_scan(owner):
 
 
 def test_whole_season_waits_for_late_pack_across_sites_and_checkpoint(owner, monkeypatch):
-    """散集关闭、站点冷却和检查点恢复都不能先于后页整季包提交。"""
+    """
+    散集关闭、站点冷却和检查点恢复都不能先于后页整季包提交。
+    """
     from app.application.search.session import SearchSessionSnapshot, encode_search_state
     from app.application.site.observation import SiteSearchObservation
     from app.chain.search.scan import ScanPage
@@ -208,7 +214,9 @@ def test_whole_season_waits_for_late_pack_across_sites_and_checkpoint(owner, mon
     cooling = {"active": True}
 
     def fetch(_sources, key, page, **_params):
-        """第二站点下一页暂时冷却，其他来源可继续推进到末页。"""
+        """
+        第二站点下一页暂时冷却，其他来源可继续推进到末页。
+        """
         if key == "2:Show" and page == 1 and cooling["active"]:
             retry = (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(timespec="seconds")
             return ScanPage([], SiteSearchObservation(), retry, "cooldown")
@@ -221,7 +229,9 @@ def test_whole_season_waits_for_late_pack_across_sites_and_checkpoint(owner, mon
     submitted = []
 
     def submit(items, ready):
-        """所有来源搜完才统一交给既有下载择优入口。"""
+        """
+        所有来源搜完才统一交给既有下载择优入口。
+        """
         assert all(source.exhausted for source in scan.collection.sources.values())
         submitted.append(({item.torrent_info.description for item in items}, ready))
         return ready
@@ -245,7 +255,9 @@ def test_whole_season_waits_for_late_pack_across_sites_and_checkpoint(owner, mon
 
 
 def test_whole_season_without_complete_pack_still_submits_parts_at_the_end(owner, monkeypatch):
-    """搜完没有整季包时照常下载散集，保留逐集结算而不丢弃候选。"""
+    """
+    搜完没有整季包时照常下载散集，保留逐集结算而不丢弃候选。
+    """
     season_plan = plan([])
     season_plan.no_exists["tmdb:1"][1].total_episode = 2
     calls = pages(owner, monkeypatch, {0: [torrent(1)], 1: [torrent(2)]})
@@ -257,12 +269,16 @@ def test_whole_season_without_complete_pack_still_submits_parts_at_the_end(owner
 
 
 def test_full_mode_checks_aliases_when_first_name_only_has_older_episodes(owner, monkeypatch):
-    """前一名称只找到旧集时，完整模式仍须翻完并尝试后续名称。"""
+    """
+    前一名称只找到旧集时，完整模式仍须翻完并尝试后续名称。
+    """
     monkeypatch.setattr(owner, "_prepare_params", lambda **_params: (None, ["First", "Alias"]))
     calls = []
 
     def request(**params):
-        """第一个名称没有目标集，第二个名称才找到它。"""
+        """
+        第一个名称没有目标集，第二个名称才找到它。
+        """
         calls.append((params["keyword"], params["page"]))
         items = [] if params["page"] else [torrent(1 if params["keyword"] == "First" else 3)]
         report_site_search_outcome(attempted=True, outcome="success")
@@ -277,7 +293,9 @@ def test_full_mode_checks_aliases_when_first_name_only_has_older_episodes(owner,
 
 
 def test_whole_season_restarts_old_smart_checkpoint_and_keeps_submitted_targets(owner, monkeypatch):
-    """旧智能模式检查点需重搜以补齐整季候选，已经提交的集数仍保留。"""
+    """
+    旧智能模式检查点需重搜以补齐整季候选，已经提交的集数仍保留。
+    """
     from app.application.search.session import SearchSessionSnapshot, encode_search_state
 
     old = SearchScan(owner=owner, plan=plan([1, 2]))
@@ -324,7 +342,9 @@ def test_unchanged_resource_recognized_once_even_when_repeated(owner, monkeypatc
 
 
 def test_twelve_hundred_episodes_with_multiple_versions(owner, monkeypatch):
-    """20 页范围内仍能收集 1200 集的多版本候选，不在最后一页遗漏提交。"""
+    """
+    20 页范围内仍能收集 1200 集的多版本候选，不在最后一页遗漏提交。
+    """
     data = {page: [torrent(episode, version) for episode in range(page * 60 + 1, (page + 1) * 60 + 1)
                    for version in (1, 2)] for page in range(20)}
     calls = pages(owner, monkeypatch, data)
@@ -336,7 +356,9 @@ def test_twelve_hundred_episodes_with_multiple_versions(owner, monkeypatch):
 
 
 def test_twenty_page_cap_ends_the_round_and_does_not_repeat(owner, monkeypatch):
-    """达到 20 页后结束本轮，仍缺集也不会重新扫描已达上限的来源。"""
+    """
+    达到 20 页后结束本轮，仍缺集也不会重新扫描已达上限的来源。
+    """
     # 页面出现更新的集，缺失的 1200 属于站点已收录范围，需要一直翻到上限。
     calls = pages(owner, monkeypatch, {page: [torrent(1300, page + 1)] for page in range(125)})
     scan = SearchScan(owner=owner, plan=plan([1200]))
@@ -444,7 +466,9 @@ def test_site_window_wait_keeps_cursor(owner, monkeypatch):
 
 
 def test_site_rate_limit_window_defers_retry_until_window_refresh(owner, monkeypatch):
-    """站点触发计数窗口限流时按窗口长度退避，不能继续用秒级冷却反复重试。"""
+    """
+    站点触发计数窗口限流时按窗口长度退避，不能继续用秒级冷却反复重试。
+    """
     monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [
         {"id": 1, "name": "test", "parser": "mTorrent",
          "limit_interval": 3600, "limit_count": 25, "limit_seconds": 20}
@@ -469,14 +493,18 @@ def test_site_rate_limit_window_defers_retry_until_window_refresh(owner, monkeyp
 
 
 def test_scan_persists_local_rate_limit_window_on_site_budget(owner, monkeypatch):
-    """本地流控退避必须写入站点预算，让其它订阅在窗口内共享同一冷却。"""
+    """
+    本地流控退避必须写入站点预算，让其它订阅在窗口内共享同一冷却。
+    """
     from app.application.subscription.sitebudget import SiteBudgetClaim, SubscriptionSiteBudget
     from app.runtime.stop import ProcessStopState
 
     captured = {}
 
     class _Repository:
-        """发放独占租约并记录收口参数。"""
+        """
+        发放独占租约并记录收口参数。
+        """
 
         def claim_site(self, *, site_id, owner, lease_seconds, minimum_interval=0):
             del owner, lease_seconds, minimum_interval
@@ -516,7 +544,9 @@ def test_scan_persists_local_rate_limit_window_on_site_budget(owner, monkeypatch
 
 
 def test_defer_ignores_expired_retries_and_terminal_sources(owner, monkeypatch):
-    """失败或耗尽来源的检查点残留不能覆盖仍活跃来源的冷却时间。"""
+    """
+    失败或耗尽来源的检查点残留不能覆盖仍活跃来源的冷却时间。
+    """
     from app.application.subscription.sitebudget import SubscriptionSearchDeferred
 
     monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [
@@ -542,7 +572,9 @@ def test_defer_ignores_expired_retries_and_terminal_sources(owner, monkeypatch):
 
 
 def test_defer_uses_request_interval_when_all_retries_expired(owner):
-    """所有冷却都已过期时至少等待一个请求间隔再交还订阅队列。"""
+    """
+    所有冷却都已过期时至少等待一个请求间隔再交还订阅队列。
+    """
     from app.application.subscription.sitebudget import SubscriptionSearchDeferred
 
     scan = SearchScan(owner=owner, plan=plan([1]))
@@ -779,7 +811,9 @@ def test_failed_episode_falls_back_and_uses_a_later_page_candidate_after_sources
 @pytest.mark.parametrize("field,value", [("media_id", "2"), ("media_source", MediaSource.Douban),
                                         ("episode_group", "alternate")])
 def test_changed_media_checkpoint_drops_old_settled_episodes(owner, monkeypatch, field, value):
-    """新作品即使有相同季集号，也不能继承旧作品的提交事实。"""
+    """
+    新作品即使有相同季集号，也不能继承旧作品的提交事实。
+    """
     from app.application.search.session import SearchSessionSnapshot, encode_search_state
 
     calls = pages(owner, monkeypatch, {0: [torrent(1), torrent(2)]})
@@ -798,7 +832,9 @@ def test_changed_media_checkpoint_drops_old_settled_episodes(owner, monkeypatch,
 
 
 def test_same_media_changed_keyword_keeps_settled_episodes(owner, monkeypatch):
-    """同作品改关键词可从首页重搜，但已提交的集仍不重复下载。"""
+    """
+    同作品改关键词可从首页重搜，但已提交的集仍不重复下载。
+    """
     from dataclasses import replace
 
     from app.application.search.session import SearchSessionSnapshot, encode_search_state
@@ -816,7 +852,9 @@ def test_same_media_changed_keyword_keeps_settled_episodes(owner, monkeypatch):
 
 
 def test_checkpoint_requires_media_identity(owner):
-    """检查点必须携带媒体身份，不再用搜索合同兼容缺少该字段的旧格式。"""
+    """
+    检查点必须携带媒体身份，不再用搜索合同兼容缺少该字段的旧格式。
+    """
     from app.application.search.session import SearchSessionSnapshot, encode_search_state
 
     scan = SearchScan(owner=owner, plan=plan([1, 2]))
@@ -904,6 +942,9 @@ def test_unchanged_checkpoint_is_not_written_again(owner, monkeypatch):
     from app.application.search.session import SearchSessionSnapshot
 
     class Repository:
+        """
+        保存搜索扫描检查点的内存仓库，验证创建与更新调用。
+        """
         def __init__(self):
             self.writes = 0
 
@@ -964,7 +1005,9 @@ def test_candidate_whose_page_keeps_failing_is_dropped_after_limited_retries(own
 
 
 def _restored_ticket_scan(owner, monkeypatch, first_page, refetched):
-    """第 0 页的候选带临时票据（不入检查点），恢复后由 refetched 模拟重取原页的结果。"""
+    """
+    第 0 页的候选带临时票据（不入检查点），恢复后由 refetched 模拟重取原页的结果。
+    """
     from app.application.search.session import SearchSessionSnapshot, encode_search_state
     from app.application.site.observation import SiteSearchObservation
     from app.chain.search.scan import ScanPage

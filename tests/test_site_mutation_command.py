@@ -1,3 +1,7 @@
+"""
+验证站点修改命令的校验和持久化委托。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -10,7 +14,9 @@ from app.schemas.site import Site
 
 
 def _command(**overrides):
-    """构造可观察站点写用例及其依赖。"""
+    """
+    构造可观察站点写用例及其依赖。
+    """
     repository = Mock()
     repository.get_by_id = AsyncMock(return_value=object())
     repository.async_get_by_domain = AsyncMock(return_value=None)
@@ -37,7 +43,9 @@ def _command(**overrides):
 
 @pytest.mark.asyncio
 async def test_create_site_commits_before_updated_event():
-    """新增站点必须先提交，再发布站点更新事件。"""
+    """
+    新增站点必须先提交，再发布站点更新事件。
+    """
     calls = []
     command, dependencies = _command(
         unit_of_work=Mock(
@@ -62,12 +70,16 @@ async def test_create_site_commits_before_updated_event():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("commit_fails", [False, True])
 async def test_site_commit_invalidates_images_only_after_success(monkeypatch, commit_fails):
-    """图片授权只在提交成功后失效，并先于站点事件发布。"""
+    """
+    图片授权只在提交成功后失效，并先于站点事件发布。
+    """
     calls = []
     monkeypatch.setattr(site_mutation.site_image_domains, "invalidate", lambda: calls.append("invalidate"))
 
     async def commit():
-        """模拟提交成功或失败，记录真实调用顺序。"""
+        """
+        模拟提交成功或失败，记录真实调用顺序。
+        """
         calls.append("commit")
         if commit_fails:
             raise RuntimeError("commit failed")
@@ -87,7 +99,9 @@ async def test_site_commit_invalidates_images_only_after_success(monkeypatch, co
 
 @pytest.mark.asyncio
 async def test_create_site_ignores_schema_identity_field():
-    """手动新增站点应忽略请求 Schema 自动补出的空主键。"""
+    """
+    手动新增站点应忽略请求 Schema 自动补出的空主键。
+    """
     command, dependencies = _command()
 
     result = await command.create(
@@ -101,7 +115,9 @@ async def test_create_site_ignores_schema_identity_field():
 
 @pytest.mark.asyncio
 async def test_update_site_returns_legacy_not_found_without_writes():
-    """更新不存在站点时保持失败响应且不产生事务或事件。"""
+    """
+    更新不存在站点时保持失败响应且不产生事务或事件。
+    """
     repository = Mock()
     repository.get_by_id = AsyncMock(return_value=None)
     command, dependencies = _command(repository=repository)
@@ -116,7 +132,9 @@ async def test_update_site_returns_legacy_not_found_without_writes():
 
 @pytest.mark.asyncio
 async def test_set_cookie_updates_only_cookie_fields_after_commit():
-    """浏览器 Cookie 精细写入不得覆盖其他站点配置，并须先提交再发事件。"""
+    """
+    浏览器 Cookie 精细写入不得覆盖其他站点配置，并须先提交再发事件。
+    """
     site = SimpleNamespace(
         domain="demo.example",
         name="Demo",
@@ -154,7 +172,9 @@ async def test_set_cookie_updates_only_cookie_fields_after_commit():
 
 @pytest.mark.asyncio
 async def test_delete_site_commit_failure_rolls_back_without_event():
-    """删除提交失败时必须回滚且不得发送 SiteDeleted。"""
+    """
+    删除提交失败时必须回滚且不得发送 SiteDeleted。
+    """
     unit_of_work = Mock()
     unit_of_work.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
     unit_of_work.rollback = AsyncMock()
@@ -169,7 +189,9 @@ async def test_delete_site_commit_failure_rolls_back_without_event():
 
 @pytest.mark.asyncio
 async def test_update_priorities_uses_one_transaction():
-    """批量站点优先级必须由一个请求级事务统一提交。"""
+    """
+    批量站点优先级必须由一个请求级事务统一提交。
+    """
     command, dependencies = _command()
     priorities = [{"id": 1, "pri": 2}, {"id": 2, "pri": 1}]
 

@@ -1,4 +1,6 @@
-"""站点搜索请求间隔调度测试。"""
+"""
+站点搜索请求间隔调度测试。
+"""
 
 import pytest
 
@@ -7,9 +9,13 @@ from app.chain.search import provider
 
 @pytest.fixture(autouse=True)
 def reset_site_request_schedule():
-    """隔离进程级站点预约状态。"""
+    """
+    隔离进程级站点预约状态。
+    """
+    # 清理进程内站点限流状态，避免前后用例互相影响。
     provider._site_next_request_at.clear()  # pylint: disable=protected-access
     yield
+    # 清理进程内站点限流状态，避免前后用例互相影响。
     provider._site_next_request_at.clear()  # pylint: disable=protected-access
 
 

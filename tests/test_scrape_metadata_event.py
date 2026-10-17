@@ -1,3 +1,7 @@
+"""
+验证元数据刮削事件的参数和插件处理边界。
+"""
+
 from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -14,7 +18,9 @@ from app.schemas.types import EventType, MediaType
 
 @pytest.fixture
 def scraping_chain() -> Generator[ScrapingChain, None, None]:
-    """构造隔离的刮削链，避免单例状态影响事件测试。"""
+    """
+    构造隔离的刮削链，避免单例状态影响事件测试。
+    """
     key = (ScrapingChain, (), frozenset())
     previous = ScrapingChain._instances.pop(key, None)
     chain = ScrapingChain()
@@ -31,7 +37,9 @@ def test_tv_season_scrape_event_includes_series_root(
     scraping_chain: ScrapingChain,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """电视剧整理事件以季目录为根时也应刮削剧集根目录。"""
+    """
+    电视剧整理事件以季目录为根时也应刮削剧集根目录。
+    """
     season_item = schemas.FileItem(
         path="/tv/Show/Season 1",
         name="Season 1",
@@ -43,7 +51,9 @@ def test_tv_season_scrape_event_includes_series_root(
     scraping_chain.storagechain.is_bluray_folder.return_value = False
 
     def get_file_item(storage: str, path: Path) -> schemas.FileItem:
-        """构造事件目录收集所需的文件项。"""
+        """
+        构造事件目录收集所需的文件项。
+        """
         item_path = Path(path)
         return schemas.FileItem(
             storage=storage,

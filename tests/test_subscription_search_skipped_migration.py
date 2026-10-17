@@ -1,4 +1,6 @@
-"""订阅搜索批次跳过计数的 Alembic 可逆迁移测试。"""
+"""
+订阅搜索批次跳过计数的 Alembic 可逆迁移测试。
+"""
 
 import importlib
 
@@ -10,7 +12,9 @@ MIGRATION = "database.versions.b6c1d9e4a7f2_3_0_24"
 
 
 def _bind_migration(monkeypatch, connection):
-    """把跳过计数迁移绑定到隔离 SQLite 连接。"""
+    """
+    把跳过计数迁移绑定到隔离 SQLite 连接。
+    """
     migration = importlib.import_module(MIGRATION)
     monkeypatch.setattr(
         migration,
@@ -21,7 +25,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def test_subscription_search_skipped_count_migration_is_reversible(monkeypatch) -> None:
-    """存量批次获得零默认值，迁移可重复执行并完整回滚。"""
+    """
+    存量批次获得零默认值，迁移可重复执行并完整回滚。
+    """
     engine = sa.create_engine("sqlite://")
     metadata = sa.MetaData()
     batch = sa.Table(

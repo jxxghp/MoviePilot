@@ -1,4 +1,6 @@
-"""订阅搜索队列接入、锁隔离和批次失败治理测试。"""
+"""
+订阅搜索队列接入、锁隔离和批次失败治理测试。
+"""
 
 import threading
 from dataclasses import replace
@@ -33,35 +35,51 @@ from app.schemas.types import MediaType
 
 
 class _ForbiddenLock:
-    """正式队列路径若仍访问 Match 全局锁则立即失败。"""
+    """
+    正式队列路径若仍访问 Match 全局锁则立即失败。
+    """
 
     def acquire(self, **_kwargs):
-        """禁止搜索队列取得历史长锁。"""
+        """
+        禁止搜索队列取得历史长锁。
+        """
         raise AssertionError("持久搜索队列不应取得 Match 全局锁")
 
     def release(self):
-        """禁止搜索队列释放从未取得的历史长锁。"""
+        """
+        禁止搜索队列释放从未取得的历史长锁。
+        """
         raise AssertionError("持久搜索队列不应释放 Match 全局锁")
 
 
 class _SubscriptionRepository:
-    """为搜索队列返回稳定的多订阅快照。"""
+    """
+    为搜索队列返回稳定的多订阅快照。
+    """
 
     def __init__(self, subscribes: list[SubscriptionSnapshot]) -> None:
-        """保存各订阅的不可变测试快照。"""
+        """
+        保存各订阅的不可变测试快照。
+        """
         self._subscribes = {subscribe.id: subscribe for subscribe in subscribes}
 
     def list(self, _state: str = None) -> list[SubscriptionSnapshot]:
-        """返回全部测试订阅。"""
+        """
+        返回全部测试订阅。
+        """
         return list(self._subscribes.values())
 
     def get(self, subscribe_id: int) -> SubscriptionSnapshot | None:
-        """按 ID 返回任务执行时重新读取的订阅。"""
+        """
+        按 ID 返回任务执行时重新读取的订阅。
+        """
         return self._subscribes.get(subscribe_id)
 
 
 def _subscribe(subscribe_id: int) -> SubscriptionSnapshot:
-    """构造越过新增保护期的活动电影订阅。"""
+    """
+    构造越过新增保护期的活动电影订阅。
+    """
     return SubscriptionSnapshot(
         id=subscribe_id,
         name=f"治理电影 {subscribe_id}",
@@ -75,7 +93,9 @@ def _subscribe(subscribe_id: int) -> SubscriptionSnapshot:
 
 
 def _chain(tmp_path, subscribes: list[SubscriptionSnapshot]):
-    """构造注入持久队列且不初始化其他 Chain 依赖的搜索实例。"""
+    """
+    构造注入持久队列且不初始化其他 Chain 依赖的搜索实例。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'search-governance.db'}")
     Base.metadata.create_all(engine)
     chain = object.__new__(SubscribeChain)
@@ -92,7 +112,9 @@ def _chain(tmp_path, subscribes: list[SubscriptionSnapshot]):
 
 
 def _make_tasks_ready(monkeypatch) -> None:
-    """让治理测试中的持久任务立即到期，避免依赖真实随机时钟。"""
+    """
+    让治理测试中的持久任务立即到期，避免依赖真实随机时钟。
+    """
     ready_at = "1970-01-01T00:00:00+00:00"
     monkeypatch.setattr(
         "app.chain.subscribe.search._search_task_available_at",
@@ -103,7 +125,9 @@ def _make_tasks_ready(monkeypatch) -> None:
 
 
 def test_fallback_task_schedule_jitters_once_for_large_batch(monkeypatch):
-    """千条订阅共享一次启动抖动，不能再累计成数日空等。"""
+    """
+    千条订阅共享一次启动抖动，不能再累计成数日空等。
+    """
     now = datetime(2026, 9, 3, 1, 2, 3, tzinfo=timezone.utc)
     jitter = Mock(return_value=12)
     monkeypatch.setattr("app.chain.subscribe.search.random.randint", jitter)
@@ -114,7 +138,9 @@ def test_fallback_task_schedule_jitters_once_for_large_batch(monkeypatch):
 
 
 def test_inline_fallback_search_preserves_site_pressure_stagger(tmp_path, monkeypatch):
-    """无持久队列的兼容宿主仍须在每条自动兜底订阅前错峰。"""
+    """
+    无持久队列的兼容宿主仍须在每条自动兜底订阅前错峰。
+    """
     subscribes = [_subscribe(20), _subscribe(21)]
     chain = _chain(tmp_path, subscribes)
     del chain.subscription_search_repository
@@ -137,7 +163,9 @@ def test_inline_fallback_search_preserves_site_pressure_stagger(tmp_path, monkey
 
 
 def test_successful_sites_remain_available_to_next_due_subscription(tmp_path, monkeypatch):
-    """正常站点请求不能让同批下一条到期订阅漏掉目标站点。"""
+    """
+    正常站点请求不能让同批下一条到期订阅漏掉目标站点。
+    """
     subscribes = [_subscribe(40), _subscribe(41)]
     chain = _chain(tmp_path, subscribes)
     _make_tasks_ready(monkeypatch)
@@ -147,16 +175,21 @@ def test_successful_sites_remain_available_to_next_due_subscription(tmp_path, mo
     calls = []
 
     def search_site_torrents(*, site, **_kwargs):
-        """记录真实发出的站点请求并发布正常完成观察结果。"""
+        """
+        记录真实发出的站点请求并发布正常完成观察结果。
+        """
         calls.append((current_subscription_id, site["id"]))
         report_site_search_outcome(attempted=True, outcome="success")
         return [f"torrent-{current_subscription_id}-{site['id']}"]
 
     def process(subscribe, current_searchchain, **_kwargs):
-        """让每条到期订阅访问同一组完整目标站点。"""
+        """
+        让每条到期订阅访问同一组完整目标站点。
+        """
         nonlocal current_subscription_id
         current_subscription_id = subscribe.id
         for site_id in (11, 12):
+            # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
             current_searchchain._search_site_torrents_with_budget(  # pylint: disable=protected-access
                 site={"id": site_id, "name": f"Site {site_id}"},
                 keyword=subscribe.name,
@@ -181,14 +214,18 @@ def test_successful_sites_remain_available_to_next_due_subscription(tmp_path, mo
 
 
 def test_fallback_queue_executes_without_match_global_lock(tmp_path, monkeypatch):
-    """R/P 兜底搜索在持久队列中执行，不受日常 Match 长锁阻塞。"""
+    """
+    R/P 兜底搜索在持久队列中执行，不受日常 Match 长锁阻塞。
+    """
     subscribes = [_subscribe(1), _subscribe(2)]
     chain = _chain(tmp_path, subscribes)
     _make_tasks_ready(monkeypatch)
     processed = []
 
     def process(subscribe, _searchchain, *, execution_context):
-        """记录每条任务独立的订阅执行上下文。"""
+        """
+        记录每条任务独立的订阅执行上下文。
+        """
         processed.append((subscribe.id, execution_context))
         return subscribe
 
@@ -215,7 +252,9 @@ def test_fallback_queue_executes_without_match_global_lock(tmp_path, monkeypatch
 def test_due_search_restores_healthy_sites_while_ordinary_resume_keeps_scope(
     tmp_path, monkeypatch, scheduled_interval,
 ):
-    """到期轮次恢复完整站点和插件源，普通合并仍只补查未完成的站点。"""
+    """
+    到期轮次恢复完整站点和插件源，普通合并仍只补查未完成的站点。
+    """
     subscribe = replace(
         _subscribe(91),
         last_search=(datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(timespec="seconds"),
@@ -240,7 +279,9 @@ def test_due_search_restores_healthy_sites_while_ordinary_resume_keeps_scope(
     searched_sites = []
 
     def collect(_self, **kwargs):
-        """记录实际 provider 选择的站点，同时隔离外部请求。"""
+        """
+        记录实际 provider 选择的站点，同时隔离外部请求。
+        """
         searched_sites.extend(site["id"] for site in kwargs["indexer_sites"])
         return {}
 
@@ -248,7 +289,9 @@ def test_due_search_restores_healthy_sites_while_ordinary_resume_keeps_scope(
     monkeypatch.setattr("app.chain.search.provider.ProgressHelper", Mock())
 
     def process(item, current_searchchain, *, execution_context):
-        """记录真实消费者为本轮 provider 注入的范围，禁止外部搜索。"""
+        """
+        记录真实消费者为本轮 provider 注入的范围，禁止外部搜索。
+        """
         scopes.append((
             execution_context.resuming_sites,
             execution_context.task_id,
@@ -267,14 +310,18 @@ def test_due_search_restores_healthy_sites_while_ordinary_resume_keeps_scope(
 
 
 def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monkeypatch):
-    """单订阅异常不得中止批次后续任务，聚合终态必须暴露失败。"""
+    """
+    单订阅异常不得中止批次后续任务，聚合终态必须暴露失败。
+    """
     subscribes = [_subscribe(3), _subscribe(4)]
     chain = _chain(tmp_path, subscribes)
     _make_tasks_ready(monkeypatch)
     processed = []
 
     def process(subscribe, _searchchain, **_kwargs):
-        """让首条失败并保持第二条正常完成。"""
+        """
+        让首条失败并保持第二条正常完成。
+        """
         processed.append(subscribe.id)
         if subscribe.id == 3:
             raise RuntimeError("provider timeout")
@@ -303,12 +350,16 @@ def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monke
 
 
 def test_site_search_failure_logs_without_internal_traceback(tmp_path, monkeypatch):
-    """可预期的站点聚合失败仍标记任务失败，但不输出误导性的内部堆栈。"""
+    """
+    可预期的站点聚合失败仍标记任务失败，但不输出误导性的内部堆栈。
+    """
     chain = _chain(tmp_path, [_subscribe(15)])
     _make_tasks_ready(monkeypatch)
 
     def process(*_args, **_kwargs):
-        """通过正式聚合助手制造站点失败。"""
+        """
+        通过正式聚合助手制造站点失败。
+        """
         raise_subscription_site_budget_failures(
             ("站点 Generic 搜索失败：站点请求或页面解析失败",)
         )
@@ -339,13 +390,17 @@ def test_site_search_failure_logs_without_internal_traceback(tmp_path, monkeypat
 
 
 def test_inline_site_search_failure_logs_without_internal_traceback(tmp_path, monkeypatch):
-    """兼容内联搜索遇到站点聚合失败时也不得输出内部堆栈。"""
+    """
+    兼容内联搜索遇到站点聚合失败时也不得输出内部堆栈。
+    """
     chain = _chain(tmp_path, [_subscribe(16)])
     del chain.subscription_search_repository
     monkeypatch.setattr(chain, "_wait_before_scheduled_search", lambda *_args: None)
 
     def process(*_args, **_kwargs):
-        """通过正式聚合助手制造内联站点失败。"""
+        """
+        通过正式聚合助手制造内联站点失败。
+        """
         raise_subscription_site_budget_failures(
             ("站点 Generic 搜索失败：站点请求或页面解析失败",)
         )
@@ -370,7 +425,9 @@ def test_inline_site_search_failure_logs_without_internal_traceback(tmp_path, mo
 
 
 def test_site_budget_conflict_requeues_task_without_batch_failure(tmp_path, monkeypatch):
-    """站点预算冲突应自动排队重试，不能把订阅批次置为失败。"""
+    """
+    站点预算冲突应自动排队重试，不能把订阅批次置为失败。
+    """
     subscribe = _subscribe(5)
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -402,13 +459,17 @@ def test_site_budget_conflict_requeues_task_without_batch_failure(tmp_path, monk
 
 
 def test_search_logs_one_readable_start_and_finish_summary(tmp_path, monkeypatch):
-    """Search INFO 只保留用户能直接读懂的开始和结束摘要。"""
+    """
+    Search INFO 只保留用户能直接读懂的开始和结束摘要。
+    """
     subscribes = [_subscribe(50), _subscribe(51)]
     chain = _chain(tmp_path, subscribes)
     _make_tasks_ready(monkeypatch)
 
     def process(subscribe, _searchchain, **_kwargs):
-        """让一条任务失败并保持下一条正常收口。"""
+        """
+        让一条任务失败并保持下一条正常收口。
+        """
         if subscribe.id == 50:
             raise RuntimeError("provider timeout")
         return subscribe
@@ -433,7 +494,9 @@ def test_search_logs_one_readable_start_and_finish_summary(tmp_path, monkeypatch
 
 
 def test_search_logs_subscription_admission_release_failure(tmp_path, monkeypatch):
-    """Search 无法释放订阅 owner 时必须即时告警并写入轮次摘要。"""
+    """
+    Search 无法释放订阅 owner 时必须即时告警并写入轮次摘要。
+    """
     subscribe = _subscribe(52)
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -460,7 +523,9 @@ def test_search_logs_subscription_admission_release_failure(tmp_path, monkeypatc
 
 
 def test_queued_search_logs_failed_finish_summary_when_callback_raises(tmp_path, monkeypatch):
-    """排队搜索开始后的外围异常仍须输出失败结束摘要。"""
+    """
+    排队搜索开始后的外围异常仍须输出失败结束摘要。
+    """
     chain = _chain(tmp_path, [_subscribe(53)])
     _make_tasks_ready(monkeypatch)
     info_logs = []
@@ -477,7 +542,9 @@ def test_queued_search_logs_failed_finish_summary_when_callback_raises(tmp_path,
 
 
 def test_resume_search_logs_failed_finish_summary_when_drain_raises(tmp_path, monkeypatch):
-    """恢复消费开始后的外围异常仍须输出失败结束摘要。"""
+    """
+    恢复消费开始后的外围异常仍须输出失败结束摘要。
+    """
     chain = _chain(tmp_path, [_subscribe(54)])
     info_logs = []
     monkeypatch.setattr(subscribe_search.logger, "info", info_logs.append)
@@ -495,7 +562,9 @@ def test_resume_search_logs_failed_finish_summary_when_drain_raises(tmp_path, mo
 
 
 def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp_path, monkeypatch):
-    """索引器吞错后仍须失败收口当前任务，并继续处理后续订阅。"""
+    """
+    索引器吞错后仍须失败收口当前任务，并继续处理后续订阅。
+    """
     subscribes = [_subscribe(13), _subscribe(14)]
     chain = _chain(tmp_path, subscribes)
     _make_tasks_ready(monkeypatch)
@@ -504,7 +573,9 @@ def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp
     processed = []
 
     def execute_search(_site, _request):
-        """首条站点请求模拟被 IndexerModule 吞掉的 HTTP 429。"""
+        """
+        首条站点请求模拟被 IndexerModule 吞掉的 HTTP 429。
+        """
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -534,8 +605,11 @@ def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp
     searchchain.search_site_torrents = object.__new__(IndexerModule).search_torrents
 
     def process(subscribe, current_searchchain, **_kwargs):
-        """让每条任务经过同一预算包装，并把观察到的站点失败抛给队列。"""
+        """
+        让每条任务经过同一预算包装，并把观察到的站点失败抛给队列。
+        """
         processed.append(subscribe.id)
+        # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
         current_searchchain._search_site_torrents_with_budget(  # pylint: disable=protected-access
             site={
                 "id": 31 if subscribe.id == 13 else 32,
@@ -570,7 +644,9 @@ def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp
 
 
 def test_same_subscription_conflict_is_skipped_without_waiting(tmp_path, monkeypatch):
-    """Match 已持有同一订阅时，Search 本轮完成为跳过且不进入业务处理。"""
+    """
+    Match 已持有同一订阅时，Search 本轮完成为跳过且不进入业务处理。
+    """
     subscribe = _subscribe(6)
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -599,7 +675,9 @@ def test_same_subscription_conflict_is_skipped_without_waiting(tmp_path, monkeyp
 
 
 def test_manual_search_waits_for_same_subscription_then_continues(tmp_path, monkeypatch):
-    """手动搜索遇到同一订阅正在处理时应稍后自动继续，而不是结束为跳过。"""
+    """
+    手动搜索遇到同一订阅正在处理时应稍后自动继续，而不是结束为跳过。
+    """
     subscribe = _subscribe(61)
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -636,7 +714,9 @@ def test_manual_search_waits_for_same_subscription_then_continues(tmp_path, monk
 
 
 def test_recent_new_subscription_is_scheduled_instead_of_skipped(tmp_path, monkeypatch):
-    """新订阅的一分钟编辑窗口应保留任务并在到时后自动继续。"""
+    """
+    新订阅的一分钟编辑窗口应保留任务并在到时后自动继续。
+    """
     subscribe = replace(
         _subscribe(62),
         state="N",
@@ -664,7 +744,9 @@ def test_recent_new_subscription_is_scheduled_instead_of_skipped(tmp_path, monke
 
 
 def test_new_subscription_post_commit_creates_scheduled_search(tmp_path):
-    """订阅保存后应立即写入自动搜索计划，无需等待五分钟扫描。"""
+    """
+    订阅保存后应立即写入自动搜索计划，无需等待五分钟扫描。
+    """
     subscribe = replace(
         _subscribe(64),
         state="N",
@@ -686,7 +768,9 @@ def test_new_subscription_post_commit_creates_scheduled_search(tmp_path):
 
 
 def test_manual_search_bypasses_new_subscription_edit_wait(tmp_path, monkeypatch):
-    """用户主动点击搜索时不受新订阅编辑等待时间限制。"""
+    """
+    用户主动点击搜索时不受新订阅编辑等待时间限制。
+    """
     subscribe = replace(
         _subscribe(63),
         date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -706,7 +790,9 @@ def test_manual_search_bypasses_new_subscription_edit_wait(tmp_path, monkeypatch
 @pytest.mark.parametrize("queued", [False, True])
 @pytest.mark.parametrize("state", ["N", "R"])
 def test_automatic_search_stops_when_paused_after_admission(tmp_path, monkeypatch, queued, state):
-    """自动任务已选取或取得执行权后暂停，也不能开始搜索或恢复订阅。"""
+    """
+    自动任务已选取或取得执行权后暂停，也不能开始搜索或恢复订阅。
+    """
     subscribe = replace(_subscribe(9), state=state)
     paused = replace(subscribe, state="S")
     chain = _chain(tmp_path, [subscribe])
@@ -740,7 +826,9 @@ def test_automatic_search_stops_when_paused_after_admission(tmp_path, monkeypatc
 
 
 def test_new_subscription_paused_during_edit_window_does_not_search_after_reopen(tmp_path, monkeypatch):
-    """新订阅保存后暂停，即使保护期结束并恢复队列，也不能搜索下载。"""
+    """
+    新订阅保存后暂停，即使保护期结束并恢复队列，也不能搜索下载。
+    """
     subscribe = replace(_subscribe(64), state="N", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     chain = _chain(tmp_path, [subscribe])
     batch_id = chain._SubscribeChain__queue_new_subscription_search(subscribe.id)
@@ -768,7 +856,9 @@ def test_new_subscription_paused_during_edit_window_does_not_search_after_reopen
 @pytest.mark.parametrize("queued", [False, True])
 @pytest.mark.parametrize("state", ["N", "R"])
 def test_running_automatic_search_observes_pause_and_preserves_state(tmp_path, monkeypatch, queued, state):
-    """搜索途中暂停会触发安全退出，旧的新建快照不能在清理时恢复订阅。"""
+    """
+    搜索途中暂停会触发安全退出，旧的新建快照不能在清理时恢复订阅。
+    """
     subscribe = replace(_subscribe(9), state=state)
     chain = _chain(tmp_path, [subscribe])
     if not queued:
@@ -779,7 +869,9 @@ def test_running_automatic_search_observes_pause_and_preserves_state(tmp_path, m
     monkeypatch.setattr(chain, "_wait_before_scheduled_search", Mock())
 
     def process(item, _searchchain, *, execution_context):
-        """在搜索已开始后暂停，验证执行上下文能重读状态。"""
+        """
+        在搜索已开始后暂停，验证执行上下文能重读状态。
+        """
         assert execution_context.allow_paused_search is False
         assert execution_context.should_stop() is False
         chain.subscription_repository._subscribes[item.id] = replace(item, state="S")
@@ -799,7 +891,9 @@ def test_running_automatic_search_observes_pause_and_preserves_state(tmp_path, m
 @pytest.mark.parametrize("queued", [False, True])
 @pytest.mark.parametrize("manual", [False, True])
 def test_targeted_paused_search_preserves_subscription_state(tmp_path, monkeypatch, queued, manual):
-    """插件及手动指定补搜均能执行一次，未产生下载时不能擅自恢复订阅。"""
+    """
+    插件及手动指定补搜均能执行一次，未产生下载时不能擅自恢复订阅。
+    """
     subscribe = replace(_subscribe(9), state="S")
     chain = _chain(tmp_path, [subscribe])
     if not queued:
@@ -823,7 +917,9 @@ def test_targeted_paused_search_preserves_subscription_state(tmp_path, monkeypat
 
 
 def test_scheduled_search_does_not_enqueue_paused_subscription(tmp_path, monkeypatch):
-    """暂停订阅不进入常规状态选取，放行已有任务不能生成新的自动搜索。"""
+    """
+    暂停订阅不进入常规状态选取，放行已有任务不能生成新的自动搜索。
+    """
     subscribe = replace(_subscribe(9), state="S")
     chain = _chain(tmp_path, [subscribe])
     chain.subscription_repository.list = Mock(
@@ -842,7 +938,9 @@ def test_scheduled_search_does_not_enqueue_paused_subscription(tmp_path, monkeyp
 
 @pytest.mark.parametrize("cancelled", [False, True])
 def test_paused_search_survives_queue_reopen_unless_cancelled(tmp_path, monkeypatch, cancelled):
-    """暂停后的持久任务跨消费者恢复继续执行，显式取消仍阻止搜索。"""
+    """
+    暂停后的持久任务跨消费者恢复继续执行，显式取消仍阻止搜索。
+    """
     subscribe = _subscribe(9)
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -865,7 +963,9 @@ def test_paused_search_survives_queue_reopen_unless_cancelled(tmp_path, monkeypa
 
 
 def test_cleanup_failures_cannot_leak_subscription_admission(tmp_path, monkeypatch):
-    """站点预算和状态清理都失败时仍必须释放当前订阅 owner。"""
+    """
+    站点预算和状态清理都失败时仍必须释放当前订阅 owner。
+    """
     subscribe = replace(_subscribe(7), state="N")
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -882,7 +982,9 @@ def test_cleanup_failures_cannot_leak_subscription_admission(tmp_path, monkeypat
     searchchain = Mock()
 
     def configure_site_budget(budget):
-        """仅让释放站点预算的清理步骤失败。"""
+        """
+        仅让释放站点预算的清理步骤失败。
+        """
         if budget is None:
             raise RuntimeError("budget cleanup failed")
 
@@ -902,7 +1004,9 @@ def test_cleanup_failures_cannot_leak_subscription_admission(tmp_path, monkeypat
 
 
 def test_search_state_reset_stays_inside_subscription_admission(tmp_path, monkeypatch):
-    """N 到 R 的本地状态写回完成前不能让 Match 接管同一订阅。"""
+    """
+    N 到 R 的本地状态写回完成前不能让 Match 接管同一订阅。
+    """
     subscribe = replace(_subscribe(8), state="N")
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -914,7 +1018,9 @@ def test_search_state_reset_stays_inside_subscription_admission(tmp_path, monkey
     competing_leases = []
 
     def apply_update(*_args, **_kwargs):
-        """在状态写回时探测同一订阅仍由 Search 持有。"""
+        """
+        在状态写回时探测同一订阅仍由 Search 持有。
+        """
         competing_leases.append(
             chain._subscription_execution_admission.try_acquire(
                 subscription_id=subscribe.id,
@@ -939,7 +1045,9 @@ def test_search_state_reset_stays_inside_subscription_admission(tmp_path, monkey
 
 
 def test_late_cancel_completes_when_download_side_effect_already_started(tmp_path, monkeypatch):
-    """取消晚于下载器副作用边界时按真实结果完成，不能伪装成未执行取消。"""
+    """
+    取消晚于下载器副作用边界时按真实结果完成，不能伪装成未执行取消。
+    """
     subscribe = _subscribe(5)
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -948,7 +1056,9 @@ def test_late_cancel_completes_when_download_side_effect_already_started(tmp_pat
     monkeypatch.setattr(queue, "is_cancel_requested", lambda _task_id: next(cancel_checks))
 
     def process(item, _searchchain, *, execution_context):
-        """模拟当前任务复用或完成下载后才收到取消。"""
+        """
+        模拟当前任务复用或完成下载后才收到取消。
+        """
         execution_context.mark_download_started()
         return item
 
@@ -964,7 +1074,9 @@ def test_late_cancel_completes_when_download_side_effect_already_started(tmp_pat
 
 
 def test_system_stop_requeues_task_after_search_returns(tmp_path, monkeypatch):
-    """系统停机应阻止后续副作用，并把未完成任务退回可恢复队列。"""
+    """
+    系统停机应阻止后续副作用，并把未完成任务退回可恢复队列。
+    """
     subscribe = _subscribe(10)
     chain = _chain(tmp_path, [subscribe])
     stop_state = SimpleNamespace(is_system_stopped=False)
@@ -972,7 +1084,9 @@ def test_system_stop_requeues_task_after_search_returns(tmp_path, monkeypatch):
     _make_tasks_ready(monkeypatch)
 
     def process(item, _searchchain, *, execution_context):
-        """模拟站点搜索返回部分候选时进程进入停止阶段。"""
+        """
+        模拟站点搜索返回部分候选时进程进入停止阶段。
+        """
         stop_state.is_system_stopped = True
         assert execution_context.should_stop() is True
         return item
@@ -997,7 +1111,9 @@ def test_system_stop_requeues_task_after_search_returns(tmp_path, monkeypatch):
 
 
 def test_system_stop_completes_when_download_side_effect_already_started(tmp_path, monkeypatch):
-    """停机晚于下载器副作用边界时必须终结任务，避免重启后重复提交。"""
+    """
+    停机晚于下载器副作用边界时必须终结任务，避免重启后重复提交。
+    """
     subscribe = _subscribe(11)
     chain = _chain(tmp_path, [subscribe])
     stop_state = SimpleNamespace(is_system_stopped=False)
@@ -1005,7 +1121,9 @@ def test_system_stop_completes_when_download_side_effect_already_started(tmp_pat
     _make_tasks_ready(monkeypatch)
 
     def process(item, _searchchain, *, execution_context):
-        """模拟下载器已接收任务后进程进入停止阶段。"""
+        """
+        模拟下载器已接收任务后进程进入停止阶段。
+        """
         execution_context.mark_download_started()
         stop_state.is_system_stopped = True
         return item
@@ -1025,7 +1143,9 @@ def test_system_stop_completes_when_download_side_effect_already_started(tmp_pat
 
 
 def test_ttl_expiry_after_normal_return_marks_task_and_batch_failed(tmp_path, monkeypatch):
-    """正常返回也必须检查执行 TTL，未提交下载时按失败收口。"""
+    """
+    正常返回也必须检查执行 TTL，未提交下载时按失败收口。
+    """
     subscribe = _subscribe(15)
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -1055,7 +1175,9 @@ def test_ttl_expiry_after_normal_return_marks_task_and_batch_failed(tmp_path, mo
 
 
 def test_ttl_expiry_after_download_started_completes_with_actual_result(tmp_path, monkeypatch):
-    """TTL 晚于下载器副作用边界时按实际结果完成，避免下轮重复提交。"""
+    """
+    TTL 晚于下载器副作用边界时按实际结果完成，避免下轮重复提交。
+    """
     subscribe = _subscribe(16)
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -1066,7 +1188,9 @@ def test_ttl_expiry_after_download_started_completes_with_actual_result(tmp_path
     )
 
     def process(item, _searchchain, *, execution_context):
-        """模拟下载器已接收任务后搜索链正常返回。"""
+        """
+        模拟下载器已接收任务后搜索链正常返回。
+        """
         execution_context.mark_download_started()
         return item
 
@@ -1083,7 +1207,9 @@ def test_ttl_expiry_after_download_started_completes_with_actual_result(tmp_path
 
 
 def test_site_budget_ttl_expiry_marks_task_and_batch_failed(tmp_path, monkeypatch):
-    """站点预算观察到执行 TTL 到期时必须失败收口，不能伪装成用户取消。"""
+    """
+    站点预算观察到执行 TTL 到期时必须失败收口，不能伪装成用户取消。
+    """
     subscribe = _subscribe(12)
     chain = _chain(tmp_path, [subscribe])
     _make_tasks_ready(monkeypatch)
@@ -1094,7 +1220,9 @@ def test_site_budget_ttl_expiry_marks_task_and_batch_failed(tmp_path, monkeypatc
     )
 
     def process(_item, _searchchain, *, execution_context):
-        """模拟站点预算将协作超时传播为搜索取消异常。"""
+        """
+        模拟站点预算将协作超时传播为搜索取消异常。
+        """
         assert execution_context.should_stop() is True
         raise SubscriptionSearchCancelled("订阅搜索已取消")
 
