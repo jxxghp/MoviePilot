@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""发布和同步 MoviePilot 本地插件到 GitHub 仓库。"""
+"""
+发布和同步 MoviePilot 本地插件到 GitHub 仓库。
+"""
 
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ from typing import Any, Optional
 
 
 DEFAULT_BRANCH = "main"
+# GitHub 单次 HTTP 请求的超时时间，单位为秒。
 DEFAULT_TIMEOUT = 60
 GITHUB_API_BASE = "https://api.github.com"
 USER_AGENT = "MoviePilot-Plugin-Publisher"
@@ -26,7 +29,9 @@ COMMANDS_REQUIRE_LOCAL_PLUGIN = {"preview", "push", "pull"}
 
 
 def _find_project_root() -> Path:
-    """从运行环境或目录标记定位 MoviePilot 程序目录。"""
+    """
+    从运行环境或目录标记定位 MoviePilot 程序目录。
+    """
     candidates = []
     configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
     if configured_root:
@@ -83,7 +88,13 @@ DEFAULT_EXCLUDES = (
 
 @dataclass
 class FileState:
-    """表示一个本地或远端文件的内容状态。"""
+    """
+    表示一个本地或远端文件的内容状态。
+
+    :param path: 插件仓库中的相对文件路径
+    :param content: 文件的原始字节内容
+    :param sha: 远端文件当前的 Git 对象标识；本地文件可为 None
+    """
 
     path: str
     content: bytes
@@ -91,13 +102,24 @@ class FileState:
 
     @property
     def sha256(self) -> str:
-        """返回文件内容的 SHA256 摘要。"""
+        """
+        返回文件内容的 SHA256 摘要。
+        """
         return hashlib.sha256(self.content).hexdigest()
 
 
 @dataclass
 class ChangeSet:
-    """保存一次插件同步对比得到的差异集合。"""
+    """
+    保存一次插件同步对比得到的差异集合。
+
+    :param create: 同步目标端尚不存在、需要创建的文件路径；推送目标为远端，拉取目标为本地
+    :param update: 同步目标端需要用来源内容覆盖的文件路径
+    :param delete: 推送时允许删除的远端多余文件路径；拉取不删除本地文件
+    :param same: 本地与远端内容一致的文件路径
+    :param rejected: 因校验规则拒绝同步的路径及原因
+    :param conflicts: 拉取时本地与远端内容不同且未允许强制覆盖的文件路径
+    """
 
     create: list[str] = field(default_factory=list)
     update: list[str] = field(default_factory=list)
@@ -107,7 +129,9 @@ class ChangeSet:
     conflicts: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        """转换为可序列化的字典。"""
+        """
+        转换为可序列化的字典。
+        """
         return {
             "create": sorted(self.create),
             "update": sorted(self.update),
@@ -128,31 +152,44 @@ class ChangeSet:
 
 @dataclass
 class Layout:
-    """描述 MoviePilot 插件仓库的 package 与插件目录布局。"""
+    """
+    描述 MoviePilot 插件仓库的 package 与插件目录布局。
+
+    :param package_file: 仓库根目录使用的插件清单文件名
+    :param plugin_root: 插件源码所在的目录名
+    """
 
     package_file: str
     plugin_root: str
 
     @property
     def version(self) -> str:
-        """返回布局版本标识。"""
+        """
+        返回布局版本标识。
+        """
         if self.plugin_root == "plugins.v2":
             return "v2"
         return "legacy"
 
 
 class GitHubError(RuntimeError):
-    """GitHub API 调用失败。"""
+    """
+    GitHub API 调用失败。
+    """
 
     def __init__(self, status: int, message: str):
-        """初始化 GitHub 错误。"""
+        """
+        初始化 GitHub 错误。
+        """
         super().__init__(message)
         self.status = status
         self.message = message
 
 
 class GitHubClient:
-    """基于 GitHub Contents API 的轻量客户端。"""
+    """
+    基于 GitHub Contents API 的轻量客户端。
+    """
 
     def __init__(
         self,
@@ -163,7 +200,9 @@ class GitHubClient:
         timeout: int = DEFAULT_TIMEOUT,
         proxy: str = "",
     ) -> None:
-        """初始化客户端配置。"""
+        """
+        初始化客户端配置。
+        """
         self.repo = normalize_repo(repo)
         self.branch = branch
         self.api_base = api_base.rstrip("/")
@@ -352,7 +391,7 @@ class GitHubClient:
 
     def repo_exists(self) -> bool:
         """
-        检查目标仓库是否存在或当前 token 是否可访问。
+        检查目标仓库是否存在或当前令牌是否可访问。
 
         :return: 仓库存在或可访问时返回 True
         """
@@ -454,6 +493,7 @@ def load_request_utils_class() -> type:
         root = _find_project_root()
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
+        # 仅在项目目录已定位后加载宿主网络实现，仓库外运行时允许后续回退。
         from app.adapters.network.http import RequestUtils  # pylint: disable=import-outside-toplevel
 
         return RequestUtils
@@ -462,21 +502,29 @@ def load_request_utils_class() -> type:
 
 
 class FallbackResponse:
-    """提供与 requests.Response 相近的最小响应接口。"""
+    """
+    提供与 requests.Response 相近的最小响应接口。
+    """
 
     def __init__(self, status_code: int, content: bytes):
-        """初始化响应内容。"""
+        """
+        初始化响应内容。
+        """
         self.status_code = status_code
         self.content = content
         self.text = content.decode("utf-8", errors="replace")
 
     def close(self) -> None:
-        """关闭响应，兼容 requests.Response 接口。"""
+        """
+        关闭响应，兼容 requests.Response 接口。
+        """
         return None
 
 
 class FallbackRequestUtils:
-    """仓库外运行时使用的最小 HTTP 客户端。"""
+    """
+    仓库外运行时使用的最小 HTTP 客户端。
+    """
 
     def __init__(
         self,
@@ -484,7 +532,9 @@ class FallbackRequestUtils:
         proxies: Optional[dict[str, str]] = None,
         timeout: int = DEFAULT_TIMEOUT,
     ) -> None:
-        """初始化请求配置。"""
+        """
+        初始化请求配置。
+        """
         self.headers = headers or {}
         self.proxies = proxies or {}
         self.timeout = timeout
@@ -506,6 +556,7 @@ class FallbackRequestUtils:
         :param raise_exception: 是否抛出请求异常
         :return: 响应对象或 None
         """
+        # 只有宿主网络实现不可用时才加载此独立运行回退。
         import urllib.request  # pylint: disable=import-outside-toplevel
 
         handlers = []
@@ -551,11 +602,11 @@ def parse_github_error(raw: str) -> str:
 
 def resolve_token(repo: str, explicit_token: str = "") -> str:
     """
-    解析 GitHub token，优先使用显式参数、仓库专属 token、环境变量与 MoviePilot settings。
+    解析 GitHub 令牌，优先使用显式参数、仓库专属令牌、环境变量与 MoviePilot settings。
 
     :param repo: owner/repo
-    :param explicit_token: 命令行传入的 token
-    :return: token 字符串
+    :param explicit_token: 命令行传入的令牌
+    :return: 令牌字符串
     """
     if explicit_token:
         return explicit_token
@@ -575,11 +626,11 @@ def resolve_token(repo: str, explicit_token: str = "") -> str:
 
 def repo_token_from_settings(settings: Any, repo: str) -> str:
     """
-    从 MoviePilot settings.REPO_GITHUB_TOKEN 中读取仓库专属 token。
+    从 MoviePilot settings.REPO_GITHUB_TOKEN 中读取仓库专属令牌。
 
     :param settings: MoviePilot settings 对象
     :param repo: owner/repo
-    :return: token 字符串
+    :return: 令牌字符串
     """
     if not settings:
         return ""
@@ -602,6 +653,7 @@ def load_moviepilot_settings() -> Any:
         root = _find_project_root()
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
+        # 先补充项目路径，再尝试读取宿主令牌和代理配置。
         from app.runtime.config import settings  # pylint: disable=import-outside-toplevel
 
         return settings
@@ -1200,7 +1252,7 @@ def build_context(args: argparse.Namespace, require_token: bool = False) -> dict
     根据命令行参数构建运行上下文。
 
     :param args: 命令行参数
-    :param require_token: 是否要求可写 token
+    :param require_token: 是否要求提供认证令牌；实际仓库写权限由 GitHub 校验
     :return: 运行上下文
     """
     repo = normalize_repo(args.repo)
