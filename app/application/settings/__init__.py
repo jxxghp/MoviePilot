@@ -1,4 +1,6 @@
-"""系统设置应用服务和静态合同的兼容懒加载门面。"""
+"""
+系统设置应用服务和静态合同的兼容懒加载门面。
+"""
 
 from importlib import import_module as _import_module
 from typing import Any as _Any
@@ -82,7 +84,9 @@ __all__ = sorted(_EXPORTS)
 
 
 def __getattr__(name: str) -> _Any:
-    """按公开清单延迟解析设置服务和合同符号。"""
+    """
+    按公开清单延迟解析设置服务和合同符号。
+    """
     contract = _EXPORTS.get(name)
     if contract is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -93,5 +97,7 @@ def __getattr__(name: str) -> _Any:
 
 
 def __dir__() -> list[str]:
-    """返回兼容门面公开的设置符号清单。"""
+    """
+    返回兼容门面公开的设置符号清单。
+    """
     return sorted({*globals(), *_EXPORTS})

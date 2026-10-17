@@ -1,4 +1,6 @@
-"""系统设置元数据、查询更新语义和敏感值脱敏能力。"""
+"""
+系统设置元数据、查询更新语义和敏感值脱敏能力。
+"""
 
 import copy
 import hashlib
@@ -27,7 +29,9 @@ SystemSettingPublisher = Callable[[Any, Any], Awaitable[None]]
 
 
 class SystemSettingConflictError(ValueError):
-    """表示条件更新所依据的系统配置快照已经过期。"""
+    """
+    表示条件更新所依据的系统配置快照已经过期。
+    """
 
 
 GROUP_ALIASES = {
@@ -95,7 +99,9 @@ _RUNTIME_SETTINGS_UPDATE_LOCK = threading.RLock()
 
 
 def _normalize_token(value: str) -> str:
-    """把键名或别名转换为大小写和连字符无关的比较形式。"""
+    """
+    把键名或别名转换为大小写和连字符无关的比较形式。
+    """
     return str(value).strip().lower().replace("-", "_")
 
 
@@ -118,7 +124,9 @@ SINGLE_KEY_GROUP_ALIASES = {
 
 
 def normalize_group(group: Optional[str]) -> str:
-    """解析内置分类别名或来源目录中的精确分类名。"""
+    """
+    解析内置分类别名或来源目录中的精确分类名。
+    """
     if not group:
         return "all"
     token = _normalize_token(group)
@@ -132,7 +140,9 @@ def normalize_group(group: Optional[str]) -> str:
 
 
 def resolve_setting_spec(setting_key: Optional[str]) -> Optional[SettingSpec]:
-    """把精确键名、枚举名或单键分组别名解析为统一的设置定义。"""
+    """
+    把精确键名、枚举名或单键分组别名解析为统一的设置定义。
+    """
 
     if not setting_key:
         return None
@@ -145,7 +155,9 @@ def resolve_setting_spec(setting_key: Optional[str]) -> Optional[SettingSpec]:
 
 
 def list_setting_specs(group: Optional[str] = "all", keyword: Optional[str] = None) -> list[SettingSpec]:
-    """按分组和关键字筛选可查询的设置项。"""
+    """
+    按分组和关键字筛选可查询的设置项。
+    """
 
     normalized_group = normalize_group(group)
     if normalized_group == "all":
@@ -172,13 +184,17 @@ def list_setting_specs(group: Optional[str] = "all", keyword: Optional[str] = No
 
 
 def get_default_list_match_field(setting_key: str) -> Optional[str]:
-    """返回合同声明的列表项默认匹配字段。"""
+    """
+    返回合同声明的列表项默认匹配字段。
+    """
     spec = ALL_SETTING_SPECS.get(setting_key)
     return spec.default_match_field if spec else None
 
 
 def redact_secret_value(value: Any, *, redact_scalar: bool = False) -> Any:
-    """递归脱敏配置值中的密钥、Cookie、Token 等敏感字段。"""
+    """
+    递归脱敏配置值中的密钥、Cookie、Token 等敏感字段。
+    """
     if isinstance(value, dict):
         return {
             key: "***" if is_secret_setting_key(str(key)) else redact_secret_value(item, redact_scalar=redact_scalar)
@@ -192,7 +208,9 @@ def redact_secret_value(value: Any, *, redact_scalar: bool = False) -> Any:
 
 
 def _contains_secret_field(value: Any) -> bool:
-    """递归判断一个配置值是否包含命名为敏感字段的成员。"""
+    """
+    递归判断一个配置值是否包含命名为敏感字段的成员。
+    """
     if isinstance(value, dict):
         return any(
             is_secret_setting_key(str(key)) or _contains_secret_field(item)
@@ -204,12 +222,16 @@ def _contains_secret_field(value: Any) -> bool:
 
 
 def should_redact_setting(spec: SettingSpec, value: Any) -> bool:
-    """判断某项设置在默认查询响应中是否需要脱敏。"""
+    """
+    判断某项设置在默认查询响应中是否需要脱敏。
+    """
     return spec.sensitive or is_secret_setting_key(spec.key) or _contains_secret_field(value)
 
 
 def redact_setting_value(spec: SettingSpec, value: Any) -> Any:
-    """按设置结构脱敏，保留复杂配置中的非敏感匹配字段。"""
+    """
+    按设置结构脱敏，保留复杂配置中的非敏感匹配字段。
+    """
     if not should_redact_setting(spec, value):
         return value
     redact_scalar = is_secret_setting_key(spec.key) or not isinstance(value, (dict, list))
@@ -217,7 +239,9 @@ def redact_setting_value(spec: SettingSpec, value: Any) -> Any:
 
 
 def build_setting_revision(value: Any) -> str:
-    """为当前完整配置值生成稳定且不暴露原文的并发修订标识。"""
+    """
+    为当前完整配置值生成稳定且不暴露原文的并发修订标识。
+    """
     serialized = json.dumps(
         value,
         ensure_ascii=False,
@@ -230,7 +254,9 @@ def build_setting_revision(value: Any) -> str:
 
 
 def _system_config_mutation(key: Any) -> ContextManager[None]:
-    """解析配置 mutation 上下文，并保留旧 settings 模块的替换兼容性。"""
+    """
+    解析配置 mutation 上下文，并保留旧 settings 模块的替换兼容性。
+    """
     from app.application import settings as settings_facade
 
     mutation = getattr(settings_facade, "plugin_system_config_mutation")
@@ -238,7 +264,9 @@ def _system_config_mutation(key: Any) -> ContextManager[None]:
 
 
 def _schema_allows_null(schema: dict[str, Any]) -> bool:
-    """判断一个自包含 JSON Schema 是否允许 null。"""
+    """
+    判断一个自包含 JSON Schema 是否允许 null。
+    """
     schema_type = schema.get("type")
     if schema_type == "null" or (isinstance(schema_type, list) and "null" in schema_type):
         return True
@@ -250,7 +278,9 @@ def _schema_allows_null(schema: dict[str, Any]) -> bool:
 
 
 def _summarize_setting_value(value: Any, *, redacted: bool = False) -> dict[str, Any]:
-    """生成有界值摘要，避免配置列表和字典挤占响应上下文。"""
+    """
+    生成有界值摘要，避免配置列表和字典挤占响应上下文。
+    """
     summary: dict[str, Any] = {
         "has_value": value is not None,
         "value_type": type(value).__name__,
@@ -275,7 +305,9 @@ def _summarize_setting_value(value: Any, *, redacted: bool = False) -> dict[str,
 
 
 def _catalog_item(spec: SettingSpec) -> dict[str, Any]:
-    """投影适合批量扫描的轻量设置合同摘要。"""
+    """
+    投影适合批量扫描的轻量设置合同摘要。
+    """
     return {
         "setting_key": spec.key,
         "source": spec.source,
@@ -297,7 +329,9 @@ def _catalog_item(spec: SettingSpec) -> dict[str, Any]:
 
 
 class SystemSettingsService:
-    """提供 Agent 与管理 API 共用的受控系统设置查询和更新。"""
+    """
+    提供 Agent 与管理 API 共用的受控系统设置查询和更新。
+    """
 
     def __init__(
         self,
@@ -305,13 +339,17 @@ class SystemSettingsService:
         system_config: SystemConfigService,
         publish_config_changed: SystemSettingPublisher,
     ) -> None:
-        """注入部署设置、持久化配置和配置事件发布端口。"""
+        """
+        注入部署设置、持久化配置和配置事件发布端口。
+        """
         self._runtime_settings = runtime_settings
         self._system_config = system_config
         self._publish_config_changed = publish_config_changed
 
     def _load(self, spec: SettingSpec) -> Any:
-        """按设置来源读取当前值。"""
+        """
+        按设置来源读取当前值。
+        """
         if spec.source == "settings":
             return self._runtime_settings.get(spec.key)
         return self._system_config.get(spec.systemconfig_key)
@@ -324,7 +362,9 @@ class SystemSettingsService:
         sensitive: bool,
         include_schema: bool,
     ) -> dict[str, Any]:
-        """返回由静态合同声明的设置结构、写入边界和来源信息。"""
+        """
+        返回由静态合同声明的设置结构、写入边界和来源信息。
+        """
         schema = build_value_schema(spec)
         definition = {
             "description": spec.description,
@@ -365,7 +405,9 @@ class SystemSettingsService:
         offset: int = 0,
         limit: int = 100,
     ) -> dict[str, Any]:
-        """分页列出轻量设置合同，不读取或返回当前配置值。"""
+        """
+        分页列出轻量设置合同，不读取或返回当前配置值。
+        """
         if source not in {None, "settings", "systemconfig"}:
             raise ValueError("source 仅支持 settings 或 systemconfig")
         if offset < 0:
@@ -392,7 +434,9 @@ class SystemSettingsService:
         include_value: bool = True,
         show_secrets: bool = False,
     ) -> dict[str, Any]:
-        """返回一个设置的完整合同、当前 revision 和可选脱敏值。"""
+        """
+        返回一个设置的完整合同、当前 revision 和可选脱敏值。
+        """
         spec = resolve_setting_spec(setting_key)
         if spec is None:
             raise ValueError(f"系统设置项 '{setting_key}' 不存在")
@@ -431,7 +475,9 @@ class SystemSettingsService:
         include_values: Optional[bool] = None,
         show_secrets: bool = False,
     ) -> dict[str, Any]:
-        """保留旧查询入口，并投影增强后的合同和 revision。"""
+        """
+        保留旧查询入口，并投影增强后的合同和 revision。
+        """
         if setting_key:
             should_include_values = include_values if include_values is not None else True
             item = self.describe(
@@ -485,7 +531,9 @@ class SystemSettingsService:
 
     @staticmethod
     def _normalize_systemconfig_value(value: Any) -> Any:
-        """将只含空项的列表折叠为空配置。"""
+        """
+        将只含空项的列表折叠为空配置。
+        """
         if isinstance(value, list):
             filtered = [item for item in value if item is not None]
             return filtered or None
@@ -493,7 +541,9 @@ class SystemSettingsService:
 
     @classmethod
     def _normalize_comparison_value(cls, spec: SettingSpec, value: Any) -> Any:
-        """按专用 API 的公开投影规范化条件更新比较值。"""
+        """
+        按专用 API 的公开投影规范化条件更新比较值。
+        """
         normalized = cls._normalize_systemconfig_value(value)
         if spec.systemconfig_key == SystemConfigKey.CustomIdentifiers and isinstance(normalized, list):
             identifiers = [item for item in normalized if isinstance(item, str)]
@@ -508,7 +558,9 @@ class SystemSettingsService:
         match_field: Optional[str],
         match_value: Any,
     ) -> tuple[Optional[str], Any]:
-        """解析列表项修改使用的稳定匹配字段和值。"""
+        """
+        解析列表项修改使用的稳定匹配字段和值。
+        """
         resolved_field = match_field or get_default_list_match_field(spec.key)
         resolved_value = match_value
         if isinstance(value, dict):
@@ -533,7 +585,9 @@ class SystemSettingsService:
         match_field: Optional[str],
         match_value: Any,
     ) -> Any:
-        """按显式更新语义构造下一配置值。"""
+        """
+        按显式更新语义构造下一配置值。
+        """
         if operation == "replace":
             return value
         if operation == "merge_dict":
@@ -579,7 +633,9 @@ class SystemSettingsService:
         *,
         allow_managed_write: bool,
     ) -> None:
-        """按合同拒绝通用写入和未声明的更新语义。"""
+        """
+        按合同拒绝通用写入和未声明的更新语义。
+        """
         if not spec.generic_write_allowed and not allow_managed_write:
             preferred = ", ".join(spec.preferred_operation_ids)
             if preferred:
@@ -606,7 +662,9 @@ class SystemSettingsService:
         match_field: Optional[str],
         match_value: Any,
     ) -> Any:
-        """构造、规范化并按完整合同验证数据库设置候选值。"""
+        """
+        构造、规范化并按完整合同验证数据库设置候选值。
+        """
         next_value = self._prepare_next_value(
             spec,
             current_value,
@@ -634,7 +692,9 @@ class SystemSettingsService:
         enforce_expected_value: bool = False,
         allow_managed_write: bool = False,
     ) -> dict[str, Any]:
-        """按合同和 revision 原子更新设置，并发布统一配置变更事件。"""
+        """
+        按合同和 revision 原子更新设置，并发布统一配置变更事件。
+        """
         spec = resolve_setting_spec(setting_key)
         if spec is None:
             raise ValueError(f"系统设置项 '{setting_key}' 不存在")
@@ -678,7 +738,9 @@ class SystemSettingsService:
                 )
 
                 def mutate(current_value: Any) -> tuple[tuple[Any, Any, bool], Any]:
-                    """在配置写锁内校验 revision 或旧值并构造合法结果。"""
+                    """
+                    在配置写锁内校验 revision 或旧值并构造合法结果。
+                    """
                     if (
                         expected_revision is not None
                         and build_setting_revision(current_value) != expected_revision

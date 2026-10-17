@@ -1,4 +1,6 @@
-"""中心服务订阅和工作流分享用例。"""
+"""
+中心服务订阅和工作流分享用例。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,13 @@ from app.application.workflow import WorkflowSnapshot
 
 @dataclass(frozen=True, slots=True)
 class _ShareMetadata:
-    """冻结订阅与工作流分享共用的用户填写元数据。"""
+    """
+    冻结订阅与工作流分享共用的用户填写元数据。
+
+    :param title: 用户填写的分享标题
+    :param comment: 用户填写的分享说明
+    :param user: 对外展示的分享者名称
+    """
 
     title: str
     comment: str
@@ -21,7 +29,9 @@ class _ShareMetadata:
 
 
 class ServerSharingService:
-    """协调本地订阅、工作流读取与中心服务分享传输。"""
+    """
+    协调本地订阅、工作流读取与中心服务分享传输。
+    """
 
     SUBSCRIBE_FIELDS = frozenset({
         "share_title", "share_comment", "share_user", "share_uid", "name",
@@ -51,7 +61,9 @@ class ServerSharingService:
             subscribe_cache_clearer: Callable[[], None],
             workflow_cache_clearer: Callable[[], None],
     ) -> None:
-        """保存本地数据端口、中心服务传输端口和缓存失效端口。"""
+        """
+        保存本地数据端口、中心服务传输端口和缓存失效端口。
+        """
         self._subscribe_provider = subscribe_provider
         self._async_subscribe_provider = async_subscribe_provider
         self._workflow_provider = workflow_provider
@@ -66,13 +78,17 @@ class ServerSharingService:
         self._workflow_cache_clearer = workflow_cache_clearer
 
     def build_subscribe_payload(self, item: Optional[dict[str, object]]) -> Optional[dict[str, object]]:
-        """构造订阅分享载荷并隔离本地字段和旧专用 ID。"""
+        """
+        构造订阅分享载荷并隔离本地字段和旧专用 ID。
+        """
         payload: dict[str, object] | None = build_subscribe_payload(item, self.SUBSCRIBE_FIELDS)
         return payload
 
     @staticmethod
     def prepare_workflow(workflow: WorkflowSnapshot) -> dict[str, object]:
-        """移除本地字段并把动作和流程编码为中心服务兼容格式。"""
+        """
+        移除本地字段并把动作和流程编码为中心服务兼容格式。
+        """
         workflow_dict = asdict(workflow)
         workflow_dict.pop("id", None)
         workflow_dict.pop("context", None)
@@ -84,7 +100,9 @@ class ServerSharingService:
     def validate_workflow(
         workflow: Optional[WorkflowSnapshot],
     ) -> tuple[bool, str]:
-        """验证工作流存在且同时包含动作与流程。"""
+        """
+        验证工作流存在且同时包含动作与流程。
+        """
         if not workflow:
             return False, "工作流不存在"
         if not workflow.actions or not workflow.flows:
@@ -96,13 +114,17 @@ class ServerSharingService:
         enabled: bool,
         kind: str,
     ) -> Optional[tuple[bool, str]]:
-        """统一共享开关拒绝结果，同时保持不同实体的用户提示。"""
+        """
+        统一共享开关拒绝结果，同时保持不同实体的用户提示。
+        """
         if enabled:
             return None
         return False, f"当前没有开启{kind}数据共享功能"
 
     def _share_fields(self, metadata: _ShareMetadata) -> dict[str, str]:
-        """统一生成分享标题、备注、用户和当前宿主身份字段。"""
+        """
+        统一生成分享标题、备注、用户和当前宿主身份字段。
+        """
         return {
             "share_title": metadata.title,
             "share_comment": metadata.comment,
@@ -115,7 +137,9 @@ class ServerSharingService:
         subscribe: Any,
         metadata: _ShareMetadata,
     ) -> tuple[Optional[dict[str, object]], str]:
-        """统一订阅存在性、宿主字段投影和媒体身份完整性校验。"""
+        """
+        统一订阅存在性、宿主字段投影和媒体身份完整性校验。
+        """
         if not subscribe:
             return None, "订阅不存在"
         payload = self.build_subscribe_payload({
@@ -129,7 +153,9 @@ class ServerSharingService:
         workflow: Optional[WorkflowSnapshot],
         metadata: _ShareMetadata,
     ) -> tuple[Optional[dict[str, object]], str]:
-        """统一工作流完整性校验和中心服务载荷投影。"""
+        """
+        统一工作流完整性校验和中心服务载荷投影。
+        """
         valid, message = self.validate_workflow(workflow)
         if not valid or workflow is None:
             return None, message
@@ -147,7 +173,9 @@ class ServerSharingService:
             share_comment: str,
             share_user: str,
     ) -> tuple[bool, str]:
-        """同步读取并分享指定订阅。"""
+        """
+        同步读取并分享指定订阅。
+        """
         disabled = self._sharing_disabled(enabled, "订阅")
         if disabled is not None:
             return disabled
@@ -171,7 +199,9 @@ class ServerSharingService:
             share_comment: str,
             share_user: str,
     ) -> tuple[bool, str]:
-        """异步读取并分享指定订阅。"""
+        """
+        异步读取并分享指定订阅。
+        """
         disabled = self._sharing_disabled(enabled, "订阅")
         if disabled is not None:
             return disabled
@@ -195,7 +225,9 @@ class ServerSharingService:
             share_comment: str,
             share_user: str,
     ) -> tuple[bool, str]:
-        """同步读取并分享指定工作流。"""
+        """
+        同步读取并分享指定工作流。
+        """
         disabled = self._sharing_disabled(enabled, "工作流")
         if disabled is not None:
             return disabled
@@ -219,7 +251,9 @@ class ServerSharingService:
             share_comment: str,
             share_user: str,
     ) -> tuple[bool, str]:
-        """异步读取并分享指定工作流。"""
+        """
+        异步读取并分享指定工作流。
+        """
         disabled = self._sharing_disabled(enabled, "工作流")
         if disabled is not None:
             return disabled
