@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from app.adapters.system.host import SystemUtils
 from app.application.transfer.workflow import TransferTask
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 
