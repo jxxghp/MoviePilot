@@ -41,13 +41,13 @@ from app.domain.music import (
 )
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
     MediaType,
 )
-from app.schemas.file import FileItem
 
 
 class NetworkFilesystemPort(Protocol):
