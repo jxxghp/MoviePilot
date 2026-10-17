@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from app.runtime.log import logger
 
 
-class _Torrent(TypedDict):
+class TorrentData(TypedDict):
     """rTorrent 多调用结果映射，保留现有下载器字典字段。"""
 
     hash: str
@@ -28,6 +28,16 @@ class _Torrent(TypedDict):
     is_open: Union[int, float]
     ratio: float
     content_path: str
+    progress: float
+
+
+class TorrentFileData(TypedDict):
+    """rTorrent 文件索引和分块进度的字典合同。"""
+
+    id: int
+    name: str
+    size: Union[int, float]
+    priority: Union[int, float]
     progress: float
 
 
@@ -218,7 +228,7 @@ class Rtorrent:
         ids: Optional[Union[str, list[str]]] = None,
         status: Optional[str] = None,
         tags: Optional[Union[str, list[str]]] = None,
-    ) -> Tuple[List[_Torrent], bool]:
+    ) -> Tuple[List[TorrentData], bool]:
         """
         获取种子列表
         :return: 种子列表, 是否发生异常
@@ -245,9 +255,9 @@ class Rtorrent:
             ]
             # 获取所有种子
             results = self._proxy.d.multicall2("", "main", *fields)
-            torrents: list[_Torrent] = []
+            torrents: list[TorrentData] = []
             for r in _rpc_rows(results):
-                torrent: _Torrent = {
+                torrent: TorrentData = {
                     "hash": _rpc_text(r[0]),
                     "name": _rpc_text(r[1]),
                     "total_size": _rpc_number(r[2]),
@@ -301,7 +311,7 @@ class Rtorrent:
 
     def get_completed_torrents(
         self, ids: Optional[Union[str, list[str]]] = None, tags: Optional[Union[str, list[str]]] = None
-    ) -> Optional[List[_Torrent]]:
+    ) -> Optional[List[TorrentData]]:
         """
         获取已完成的种子
         """
@@ -314,7 +324,7 @@ class Rtorrent:
 
     def get_downloading_torrents(
         self, ids: Optional[Union[str, list[str]]] = None, tags: Optional[Union[str, list[str]]] = None
-    ) -> Optional[List[_Torrent]]:
+    ) -> Optional[List[TorrentData]]:
         """
         获取正在下载的种子
         """
@@ -444,7 +454,7 @@ class Rtorrent:
             logger.error(f"删除种子出错：{str(err)}")
             return False
 
-    def get_files(self, tid: str) -> Optional[List[Dict[str, object]]]:
+    def get_files(self, tid: str) -> Optional[List[TorrentFileData]]:
         """
         获取种子文件列表
         """
@@ -462,14 +472,14 @@ class Rtorrent:
                 "f.completed_chunks=",
                 "f.size_chunks=",
             )
-            result: list[dict[str, object]] = []
+            result: list[TorrentFileData] = []
             for idx, f in enumerate(_rpc_rows(files)):
                 result.append(
                     {
                         "id": idx,
-                        "name": f[0],
-                        "size": f[1],
-                        "priority": f[2],
+                        "name": _rpc_text(f[0]),
+                        "size": _rpc_number(f[1]),
+                        "priority": _rpc_number(f[2]),
                         "progress": _rpc_integer(f[3]) / _rpc_integer(f[4]) * 100 if _rpc_integer(f[4]) > 0 else 0,
                     }
                 )
@@ -479,7 +489,7 @@ class Rtorrent:
             return None
 
     def set_files(
-        self, torrent_hash: Optional[str] = None, file_ids: Optional[list[Union[int, str]]] = None, priority: int = 0
+        self, torrent_hash: Optional[str] = None, file_ids: Optional[Union[list[int], list[str]]] = None, priority: int = 0
     ) -> bool:
         """
         设置下载文件的优先级，priority为0为不下载，priority为1为普通

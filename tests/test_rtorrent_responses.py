@@ -54,7 +54,7 @@ def test_malformed_multicall_keeps_error_contract(client, payload):
     assert client.get_torrents() == ([], True)
 
 
-@pytest.mark.parametrize("index,value", [(0, 12), (2, "1000"), (9, ["tag"]), (12, {})])
+@pytest.mark.parametrize("index,value", [(0, 12), (2, "1000"), (9, ["tag"]), (12, {"invalid": True})])
 def test_invalid_torrent_fields_keep_error_contract(client, torrent_row, index, value):
     """身份、算术和标签字段不接受不符合 XML-RPC 合同的类型。"""
     torrent_row[index] = value
