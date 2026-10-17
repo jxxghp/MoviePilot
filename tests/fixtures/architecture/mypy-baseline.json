@@ -294,10 +294,6 @@
     "attr-defined": 1,
     "no-untyped-call": 2
   },
-  "app/api/endpoints/auth.py": {
-    "arg-type": 1,
-    "misc": 1
-  },
   "app/api/endpoints/bangumi.py": {
     "attr-defined": 1,
     "no-untyped-call": 3,
@@ -401,10 +397,6 @@
     "return-value": 1,
     "type-arg": 5
   },
-  "app/api/endpoints/storage.py": {
-    "assignment": 1,
-    "attr-defined": 1
-  },
   "app/api/endpoints/subscribe.py": {
     "arg-type": 11,
     "assignment": 3,
@@ -435,8 +427,6 @@
   "app/api/servarr.py": {
     "arg-type": 2,
     "assignment": 1,
-    "attr-defined": 1,
-    "index": 3,
     "no-any-return": 1,
     "type-arg": 1,
     "union-attr": 1
@@ -512,9 +502,6 @@
     "no-any-return": 1,
     "return-value": 1,
     "type-arg": 7
-  },
-  "app/application/servarr.py": {
-    "valid-type": 2
   },
   "app/application/site/sites.pyi": {
     "type-arg": 7
@@ -655,10 +642,6 @@
   "app/chain/subscribe/notify.py": {
     "no-untyped-call": 2,
     "union-attr": 6
-  },
-  "app/chain/subscribe/policy.py": {
-    "arg-type": 1,
-    "union-attr": 1
   },
   "app/chain/subscribe/query.py": {
     "arg-type": 5,
@@ -1678,9 +1661,6 @@
   "app/schemas/music.py": {
     "misc": 10
   },
-  "app/schemas/notification.py": {
-    "misc": 2
-  },
   "app/schemas/openai.py": {
     "misc": 23
   },
@@ -1690,12 +1670,6 @@
   },
   "app/schemas/response.py": {
     "misc": 3
-  },
-  "app/schemas/rule.py": {
-    "misc": 2
-  },
-  "app/schemas/search.py": {
-    "misc": 2
   },
   "app/schemas/servarr.py": {
     "misc": 18
