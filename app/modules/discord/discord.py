@@ -56,8 +56,8 @@ class Discord:
         DISCORD_BOT_TOKEN: Optional[str] = None,
         DISCORD_GUILD_ID: Optional[Union[str, int]] = None,
         DISCORD_CHANNEL_ID: Optional[Union[str, int]] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         创建客户端和专用事件循环，注册回调并启动后台线程。
 
@@ -89,7 +89,7 @@ class Discord:
         intents.messages = True
         intents.guilds = True
 
-        self._client: Optional[discord.Client] = discord.Client(
+        self._client: discord.Client = discord.Client(
             intents=intents, proxy=get_runtime_setting('PROXY_HOST')
         )
         self._tree: Optional[app_commands.CommandTree] = app_commands.CommandTree(self._client)
@@ -104,7 +104,7 @@ class Discord:
         ] = {}
         self._broadcast_channel = None
         self._bot_user_id: Optional[int] = None
-        self._typing_tasks: Dict[str, asyncio.Task] = {}
+        self._typing_tasks: Dict[str, asyncio.Task[None]] = {}
         self._typing_stop_events: Dict[str, asyncio.Event] = {}
         self._typing_lifecycle_lock = asyncio.Lock()
         self._typing_accepting = True
@@ -112,24 +112,26 @@ class Discord:
         self._typing_initial_delay_seconds = 1
         self._typing_max_duration_seconds = 10 * 60
         self._typing_stop_timeout_seconds = 1
-        self._registered_commands: Optional[Dict[str, dict]] = None
+        self._registered_commands: Optional[Dict[str, dict[str, Any]]] = None
 
         self._register_events()
         self._start()
 
     @staticmethod
     def _to_int(val: Optional[Union[str, int]]) -> Optional[int]:
+        """
+        解析频道或服务器标识，空值和非法数字文本返回 None。
+        """
         try:
             return int(val) if val is not None and str(val).strip() else None
         except ValueError:
             return None
 
-    def _register_events(self):
+    def _register_events(self) -> None:
         """
         注册登录、普通消息和按钮交互回调，并维护原频道回复路由。
         """
-        @self._client.event
-        async def on_ready():
+        async def on_ready() -> None:
             """
             标记登录就绪，并同步此前缓存的斜杠命令。
             """
@@ -142,8 +144,9 @@ class Discord:
                 except Exception as err:
                     logger.error(f"同步 Discord 斜杠命令失败：{err}")
 
-        @self._client.event
-        async def on_message(message: discord.Message):
+        self._client.event(on_ready)
+
+        async def on_message(message: discord.Message) -> None:
             """
             忽略机器人消息，将允许处理的消息及附件转交统一入口。
             """
@@ -191,8 +194,9 @@ class Discord:
                 ]
             await self._post_to_ds(payload)
 
-        @self._client.event
-        async def on_interaction(interaction: discord.Interaction):
+        self._client.event(on_message)
+
+        async def on_interaction(interaction: discord.Interaction) -> None:
             """
             确认按钮交互，记录原频道并转交回调载荷。
             """
@@ -236,21 +240,23 @@ class Discord:
                 }
                 await self._post_to_ds(payload)
 
-    def _start(self):
+        self._client.event(on_interaction)
+
+    def _start(self) -> None:
         """
         启动并持有 Discord 客户端专用事件循环线程。
         """
         if self._thread:
             return
 
-        def runner():
+        def runner() -> None:
             """
             在线程内运行客户端，并在退出前回收本实例拥有的异步任务。
             """
             loop = self._loop
             client = self._client
             asyncio.set_event_loop(loop)
-            start_task: Optional[asyncio.Task] = None
+            start_task: Optional[asyncio.Task[None]] = None
             try:
                 if not self._stop_requested.is_set():
                     start_task = loop.create_task(client.start(self._token))
@@ -329,7 +335,7 @@ class Discord:
         """
         return self._ready_event.is_set() and self._client is not None
 
-    def register_commands(self, commands: Dict[str, dict]) -> bool:
+    def register_commands(self, commands: Dict[str, dict[str, Any]]) -> bool:
         """
         注册 Discord 斜杠命令。
 
@@ -511,11 +517,11 @@ class Discord:
         image: Optional[str] = None,
         userid: Optional[str] = None,
         link: Optional[str] = None,
-        buttons: Optional[List[List[dict]]] = None,
+        buttons: Optional[List[List[dict[str, str]]]] = None,
         original_message_id: Optional[Union[int, str]] = None,
         original_chat_id: Optional[str] = None,
         mtype: Optional["MessageType"] = None,
-    ) -> Optional[bool]:
+    ) -> Union[bool, Tuple[bool, Optional[Dict[str, str]]]]:
         """
         在专用事件循环中发送或编辑通知，最多等待 30 秒。
 
@@ -578,7 +584,7 @@ class Discord:
         userid: Optional[str] = None,
         file_name: Optional[str] = None,
         original_chat_id: Optional[str] = None,
-    ) -> Optional[bool]:
+    ) -> Union[bool, Tuple[bool, Optional[Dict[str, str]]]]:
         """
         在专用事件循环中上传本地文件，最多等待 30 秒。
 
@@ -617,7 +623,7 @@ class Discord:
         medias: List[MediaInfo],
         userid: Optional[str] = None,
         title: Optional[str] = None,
-        buttons: Optional[List[List[dict]]] = None,
+        buttons: Optional[List[List[dict[str, str]]]] = None,
         original_message_id: Optional[Union[int, str]] = None,
         original_chat_id: Optional[str] = None,
     ) -> Optional[bool]:
@@ -659,7 +665,7 @@ class Discord:
         torrents: List[Context],
         userid: Optional[str] = None,
         title: Optional[str] = None,
-        buttons: Optional[List[List[dict]]] = None,
+        buttons: Optional[List[List[dict[str, str]]]] = None,
         original_message_id: Optional[Union[int, str]] = None,
         original_chat_id: Optional[str] = None,
     ) -> Optional[bool]:
@@ -943,9 +949,9 @@ class Discord:
                 if error:
                     logger.debug(f"Discord typing 任务异常结束：{error}")
 
-            for typing_key, task in owners.items():
-                if task is None or task.done():
-                    if self._typing_tasks.get(typing_key) is task:
+            for typing_key, owned_task in owners.items():
+                if owned_task is None or owned_task.done():
+                    if self._typing_tasks.get(typing_key) is owned_task:
                         self._typing_tasks.pop(typing_key, None)
                     self._typing_stop_events.pop(typing_key, None)
 
@@ -977,7 +983,7 @@ class Discord:
         image: Optional[str],
         userid: Optional[str],
         link: Optional[str],
-        buttons: Optional[List[List[dict]]],
+        buttons: Optional[List[List[dict[str, str]]]],
         original_message_id: Optional[Union[int, str]],
         original_chat_id: Optional[str],
         mtype: Optional["MessageType"] = None,
@@ -1094,8 +1100,8 @@ class Discord:
         self,
         embeds: List[discord.Embed],
         userid: Optional[str],
-        buttons: Optional[List[List[dict]]],
-        fallback_buttons: Optional[List[List[dict]]],
+        buttons: Optional[List[List[dict[str, str]]]],
+        fallback_buttons: Optional[List[List[dict[str, str]]]],
         original_message_id: Optional[Union[int, str]],
         original_chat_id: Optional[str],
     ) -> bool:
@@ -1198,11 +1204,14 @@ class Discord:
         仅下载、整理、订阅和手动通知解析“字段：值”；书名括号、URL 和时间中的冒号
         保留为普通正文，避免错误切分。未提供详情链接时使用项目主页。
         """
-        fields: List[Dict[str, str]] = []
+        fields: List[Dict[str, Union[str, bool]]] = []
         desc_lines: List[str] = []
         should_parse_fields = mtype in PARSE_FIELD_TYPES if mtype else False
 
         def _collect_spans(s: str, left: str, right: str) -> List[Tuple[int, int]]:
+            """
+            收集成对括号区间，供正文字段解析排除标题中的冒号。
+            """
             spans: List[Tuple[int, int]] = []
             start = 0
             while True:
@@ -1216,7 +1225,10 @@ class Discord:
                 start = r_idx + 1
             return spans
 
-        def _find_colon_index(s: str, m: re.Match) -> Optional[int]:
+        def _find_colon_index(s: str, m: re.Match[str]) -> Optional[int]:
+            """
+            返回匹配字段中首个中英文冒号的位置。
+            """
             segment = s[m.start(): m.end()]
             for i, ch in enumerate(segment):
                 if ch in (":", "："):
@@ -1366,11 +1378,11 @@ class Discord:
         return embeds
 
     @staticmethod
-    def _build_default_buttons(count: int) -> List[List[dict]]:
+    def _build_default_buttons(count: int) -> List[List[dict[str, str]]]:
         """
         为列表生成数字选择按钮，最多 5 行、每行 5 个。
         """
-        buttons: List[List[dict]] = []
+        buttons: List[List[dict[str, str]]] = []
         max_rows = 5
         max_per_row = 5
         capped = min(count, max_rows * max_per_row)
@@ -1385,7 +1397,7 @@ class Discord:
 
     @staticmethod
     def _build_view(
-        buttons: Optional[List[List[dict]]], link: Optional[str] = None
+        buttons: Optional[List[List[dict[str, str]]]], link: Optional[str] = None
     ) -> Optional[discord.ui.View]:
         """
         构建无本地超时的按钮视图，最多保留前 5 行、每行 5 个按钮。
@@ -1428,7 +1440,7 @@ class Discord:
 
     async def _resolve_channel(
         self, userid: Optional[str] = None, chat_id: Optional[str] = None
-    ):
+    ) -> Optional[Union[discord.abc.GuildChannel, discord.abc.PrivateChannel, discord.Thread]]:
         """
         按回复上下文和配置优先级解析发送频道。
 

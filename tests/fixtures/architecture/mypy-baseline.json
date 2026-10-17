@@ -806,16 +806,6 @@
     "truthy-function": 1,
     "type-arg": 8
   },
-  "app/modules/discord/discord.py": {
-    "assignment": 1,
-    "dict-item": 1,
-    "misc": 2,
-    "no-untyped-call": 2,
-    "no-untyped-def": 8,
-    "return-value": 2,
-    "type-arg": 14,
-    "union-attr": 18
-  },
   "app/modules/douban/__init__.py": {
     "assignment": 23,
     "empty-body": 1,
