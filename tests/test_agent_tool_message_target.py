@@ -110,7 +110,7 @@ def test_send_tool_message_backfills_original_chat_id():
 
 def test_tool_context_includes_original_chat_id():
     """工具共享上下文应携带当前会话的原会话 ID。"""
-    from app.agent import MoviePilotAgent
+    from app.agent import MoviePilotAgent  # pylint: disable=no-name-in-module
 
     agent = MoviePilotAgent(
         session_id="session-1",

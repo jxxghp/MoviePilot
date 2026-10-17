@@ -19,7 +19,7 @@ from app.db.models.message import Message
 from app.db.models.siteuserdata import SiteUserData
 from app.db.models.transferhistory import TransferHistory
 from app.runtime.config import settings
-from app.scheduler import SchedulerChain
+from app.scheduler import SchedulerChain  # pylint: disable=no-name-in-module
 
 
 class DataCleanupChainTest(unittest.TestCase):
