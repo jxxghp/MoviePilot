@@ -345,7 +345,7 @@ class MoviePilotToolsManager:
         return value
 
     @staticmethod
-    def _parse_array_string(value: str, key: str, item_type: str = "string") -> list:
+    def _parse_array_string(value: str, key: str, item_type: str = "string") -> list[object]:
         """
         将逗号分隔的字符串解析为列表，并根据 item_type 转换元素类型
         """

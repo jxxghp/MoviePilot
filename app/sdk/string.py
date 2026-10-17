@@ -58,7 +58,6 @@ from app.foundation.url import (
 )
 from app.foundation.version import compare_version
 
-
 ReturnT = TypeVar("ReturnT")
 
 

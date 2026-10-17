@@ -19,8 +19,8 @@ from app.application.mediaserver import MediaServerQueryService
 from app.application.transfer.execution import TransferExecutionRepository
 from app.chain.storage import StorageChain
 from app.runtime.events import eventmanager
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.types import EventType
-from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.startup.composition.context import HostRuntime
 
 

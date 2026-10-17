@@ -24,6 +24,7 @@ from app.chain.mediaserver import MediaServerChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
 from app.schemas.mediaserver import MediaServerExistingEpisodes as _SchemaMediaServerExistingEpisodes
@@ -36,7 +37,6 @@ from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInf
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 

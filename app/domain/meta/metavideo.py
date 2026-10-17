@@ -5,7 +5,7 @@
 import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional
+from typing import Optional, Sequence
 
 from Pinyin2Hanzi import is_pinyin
 
@@ -199,7 +199,7 @@ class MetaVideo(MetaBase):
     _audio_encode_pattern = re.compile(r"(%s)" % _audio_encode_re, re.IGNORECASE)
     _fps_pattern = re.compile(r"(%s)" % _fps_re, re.IGNORECASE)
 
-    def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
+    def __init__(self, title: str, subtitle: Optional[str] = None, isfile: bool = False):
         """
         初始化。
 
@@ -207,7 +207,7 @@ class MetaVideo(MetaBase):
         :param subtitle: 副标题
         :param isfile: 是否是文件名
         """
-        super().__init__(title, subtitle, isfile)
+        super().__init__(title, subtitle or "", isfile)
         if not title:
             return
         original_title = title
@@ -258,7 +258,7 @@ class MetaVideo(MetaBase):
                     or DIY_TITLE_RE.search(original_title):
                 self.resource_type = f"{self.resource_type} DIY"
         # 解析副标题，只要季和集
-        self.init_subtitle(self.org_string)
+        self.init_subtitle(self.org_string or "")
         if not self._subtitle_flag and self.subtitle:
             self.init_subtitle(self.subtitle)
         # 去掉名字中不需要的干扰字符，过短的纯数字不要
@@ -283,7 +283,7 @@ class MetaVideo(MetaBase):
         token: str,
         tokens: Tokens,
         streaming_platforms: StreamingPlatforms,
-        media_exts: list,
+        media_exts: Sequence[str],
         state: _VideoParseState,
     ) -> None:
         """
@@ -337,7 +337,7 @@ class MetaVideo(MetaBase):
                 return False
         return True
 
-    def __fix_name(self, name: Optional[str]):
+    def __fix_name(self, name: Optional[str]) -> Optional[str]:
         """
         去掉名字中不需要的干扰字符。
         """
@@ -363,7 +363,7 @@ class MetaVideo(MetaBase):
     def __init_name(
         self,
         token: Optional[str],
-        media_exts: list,
+        media_exts: Sequence[str],
         state: _VideoParseState,
     ) -> bool:
         """
@@ -544,12 +544,12 @@ class MetaVideo(MetaBase):
                     and self.resource_pix[-1] not in 'kpi':
                 self.resource_pix = "%sp" % self.resource_pix
             return True
-        re_res = self._resources_pix_pattern2.search(token)
-        if re_res:
+        pix_match = self._resources_pix_pattern2.search(token)
+        if pix_match:
             state.remember(_VideoTokenKind.PIX)
             state.stop_name = True
             if not self.resource_pix:
-                self.resource_pix = re_res.group(1).lower()
+                self.resource_pix = pix_match.group(1).lower()
             return True
         return False
 

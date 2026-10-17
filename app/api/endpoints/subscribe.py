@@ -73,9 +73,11 @@ from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import IdData as _SchemaIdData
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
+from app.schemas.subscribe import Subscribe as _SchemaSubscribe
 from app.schemas.subscribe import SubscribeDeletionResult as _SchemaSubscribeDeletionResult
 from app.schemas.subscribe import SubscribeShare as _SchemaSubscribeShare
 from app.schemas.subscribe import SubscribeShareStatistics as _SchemaSubscribeShareStatistics
@@ -88,8 +90,6 @@ from app.schemas.types import (
     MediaType,
     SystemConfigKey,
 )
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
-from app.schemas.workflow import Subscribe as _SchemaSubscribe
 
 router = ResponseAPIRouter()
 router.routes.extend(subscribe_maintenance_router.routes)

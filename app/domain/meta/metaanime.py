@@ -5,6 +5,7 @@
 import logging
 import re
 import traceback
+from typing import Optional
 
 import anitopy
 
@@ -47,20 +48,23 @@ class MetaAnime(MetaBase):
     _fps_pattern = re.compile(r"(%s)" % _fps_re, re.IGNORECASE)
 
     @staticmethod
-    def _parse_season_number(value):
+    def _parse_season_number(value: object) -> Optional[int]:
         """
         解析第三方动漫季号，仅接受整数或纯数字字符串并保留数值 0。
+
+        :param value: anitopy 返回的季号字段
+        :return: 可解析的季号；字段缺失或格式不符时返回 None
         """
         if value is None:
             return None
         text = str(value).strip()
         return int(text) if text.isdigit() else None
 
-    def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
+    def __init__(self, title: str, subtitle: Optional[str] = None, isfile: bool = False):
         """
         解析动漫标题并补充季集、字幕组和媒体规格。
         """
-        super().__init__(title, subtitle, isfile)
+        super().__init__(title, subtitle or "", isfile)
         if not title:
             return
         try:
@@ -200,7 +204,7 @@ class MetaAnime(MetaBase):
                     self.audio_encode = self.audio_encode[0]
                 self.__init_anime_fps(anitopy_info, original_title)
                 # 解析副标题，只要季和集
-                self.init_subtitle(self.org_string)
+                self.init_subtitle(self.org_string or "")
                 if not self._subtitle_flag and self.subtitle:
                     self.init_subtitle(self.subtitle)
             if not self.type:
@@ -208,7 +212,7 @@ class MetaAnime(MetaBase):
         except Exception as e:
             logger.error(f"解析动漫信息失败：{str(e)} - {traceback.format_exc()}")
 
-    def __init_anime_fps(self, anitopy_info: dict, original_title: str):
+    def __init_anime_fps(self, anitopy_info: dict[str, object], original_title: str) -> None:
         """
         从原始标题中提取帧率信息，与MetaVideo保持完全一致的实现。
         """
@@ -223,7 +227,7 @@ class MetaAnime(MetaBase):
                 self.fps = int(fps_value)
 
     @staticmethod
-    def __prepare_title(title: str):
+    def __prepare_title(title: str) -> str:
         """
         对命名进行预处理。
         """

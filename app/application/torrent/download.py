@@ -308,7 +308,7 @@ class TorrentHelper:
     种子帮助类
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化种子失败地址缓存
         """

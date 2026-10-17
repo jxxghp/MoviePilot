@@ -39,6 +39,8 @@ from app.chain.transfer.facade import TransferChain
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.common import NameData as _SchemaNameData
+from app.schemas.file import FileItem
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -57,8 +59,6 @@ from app.schemas.transfer import TransferManualReviewRequest as _SchemaTransferM
 from app.schemas.transfer import TransferManualReviewTaskData as _SchemaTransferManualReviewTaskData
 from app.schemas.transfer import TransferQueuePageData as _SchemaTransferQueuePageData
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
-from app.schemas.workflow import FileItem
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 router = ResponseAPIRouter()
 

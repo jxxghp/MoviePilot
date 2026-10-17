@@ -124,14 +124,14 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             return
         self.init()
 
-    def get_reload_name(self):
+    def get_reload_name(self) -> str:
         """
 返回配置重载日志中使用的服务名称。
         """
         return "目录监控"
 
     def save_snapshot(self, storage: str, snapshot: Dict, file_count: int = 0,
-                      last_snapshot_time: Optional[float] = None):
+                      last_snapshot_time: Optional[float] = None) -> None:
         """
         保存快照到文件缓存。
         """

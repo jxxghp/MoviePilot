@@ -12,9 +12,10 @@ from app.chain.recommend import RecommendChain
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.context import MediaInfo
 from app.schemas.event import RecommendSourceEventData
 from app.schemas.types import ChainEventType
-from app.schemas.workflow import ActionContext, ActionParams, MediaInfo
+from app.schemas.workflow import ActionContext, ActionParams
 from app.workflow.actions import BaseAction
 
 
@@ -39,7 +40,7 @@ class FetchMediasAction(BaseAction):
     def __init__(self, action_id: str):
         super().__init__(action_id)
 
-        self._medias = []
+        self._medias: list[MediaInfo] = []
         self._has_error = False
         self.__inner_sources = [
             {

@@ -372,7 +372,7 @@ def _start_ai_redo_task(
         ),
     )
 
-    async def runner():
+    async def runner() -> None:
         """
         执行已登记的后台整理重试并更新进度，保证异常也能收口。
         """
@@ -435,7 +435,7 @@ def _start_batch_ai_redo_task(
         ),
     )
 
-    async def runner():
+    async def runner() -> None:
         """
         执行已登记的后台整理重试并更新进度，保证异常也能收口。
         """

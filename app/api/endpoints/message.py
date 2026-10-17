@@ -124,7 +124,7 @@ def _format_notification_clear_time(value: int) -> Optional[str]:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp))
 
 
-def start_message_chain(body: Any, form: Any, args: Any):
+def start_message_chain(body: Any, form: Any, args: Any) -> None:
     """
     启动链式任务
     """
@@ -136,7 +136,7 @@ async def user_message(
     task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     request: Request,
     _: _SchemaTokenPayload = Depends(verify_apitoken),
-):
+) -> _SchemaResponse[None]:
     """
     用户消息响应；推荐通过 X-API-KEY 请求头传递 API_TOKEN，查询参数 token 仅保留兼容。
     """
@@ -178,7 +178,7 @@ async def web_message(
     request: Request,
     text: Optional[str] = None,
     current_user: ApiPrincipal = Depends(get_current_active_superuser),
-):
+) -> _SchemaResponse[None]:
     """
     WEB消息响应
     """
@@ -231,7 +231,7 @@ async def get_notification_message(
     service: MessageQueryService = Depends(get_message_query_service),
     page: Optional[int] = 1,
     count: Optional[int] = 20,
-):
+) -> List[_SchemaMessageHistoryItem]:
     """
     获取系统发送的通知消息列表。
     """
@@ -254,7 +254,7 @@ async def get_notification_message(
 async def clear_notification_message(
     scope: _SchemaMessageClearScope = _SchemaMessageClearScope.All,
     _: _SchemaTokenPayload = Depends(verify_token),
-):
+) -> _SchemaResponse[_SchemaMessageClearData]:
     """
     记录通知中心清理时间，后续通知历史查询会在服务端过滤。
     """
@@ -343,7 +343,7 @@ def incoming_verify(
     token: Optional[str] = None,
     echostr: Optional[str] = None,
     msg_signature: Optional[str] = None,
-    timestamp: Union[str, int] = None,
+    timestamp: Optional[Union[str, int]] = None,
     nonce: Optional[str] = None,
     source: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_apitoken),
@@ -367,7 +367,7 @@ def incoming_verify(
 )
 async def subscribe(
     subscription: _SchemaSubscription, _: _SchemaTokenPayload = Depends(verify_token)
-):
+) -> _SchemaResponse[None]:
     """
     客户端webpush通知订阅
     """
@@ -383,7 +383,7 @@ async def subscribe(
 def send_notification(
     payload: _SchemaSubscriptionMessage,
     _: ApiPrincipal = Depends(get_current_active_superuser),
-):
+) -> _SchemaResponse[None]:
     """
     发送webpush通知；会推送到全部已订阅浏览器，因此仅限超级管理员调用
     """

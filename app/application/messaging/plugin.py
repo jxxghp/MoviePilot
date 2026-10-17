@@ -9,7 +9,7 @@ from threading import Lock
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 from app.application.messaging.interaction import InteractionContext, MessageGateway
-from app.schemas.message import Message
+from app.schemas.message import IncomingMessage, Message
 from app.schemas.types import EventType, NotificationChannel
 
 
@@ -18,7 +18,7 @@ class PluginEventPublisher(Protocol):
     声明插件输入交互所需的同步事件发布端口。
     """
 
-    def send_event(self, event_type: EventType, payload: dict) -> Any:
+    def send_event(self, event_type: EventType, payload: dict[str, object]) -> Any:
         """
         同步发布插件输入事件，并返回宿主事件分发结果。
 
@@ -78,7 +78,7 @@ class PluginInputInteractionManager:
 
     EXPIRED_GRACE_SECONDS = 300
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化活动输入会话、用户渠道索引和过期墓碑。
         """
@@ -246,7 +246,8 @@ class PluginInputInteractionManager:
             self._cleanup_locked()
             key, request_id = self._find_key_and_request_id_locked(user_id, channel, source, chat_id)
             if request_id:
-                self._by_user_channel.pop(key, None)
+                if key is not None:
+                    self._by_user_channel.pop(key, None)
                 return self._by_id.pop(request_id, None)
             expired_key, request = self._find_expired_key_and_request_locked(user_id, channel, source, chat_id)
             if expired_key:
@@ -272,9 +273,11 @@ class PluginInputInteractionManager:
             if request_id:
                 request = self._by_id.get(request_id)
                 if not request:
-                    self._by_user_channel.pop(key, None)
+                    if key is not None:
+                        self._by_user_channel.pop(key, None)
                 elif request.expires_at < datetime.now():
-                    self._by_user_channel.pop(key, None)
+                    if key is not None:
+                        self._by_user_channel.pop(key, None)
                     self._by_id.pop(request_id, None)
                     if request.prompt_message_id:
                         return None, None
@@ -287,13 +290,15 @@ class PluginInputInteractionManager:
                 ):
                     return None, None
                 else:
-                    self._by_user_channel.pop(key, None)
+                    if key is not None:
+                        self._by_user_channel.pop(key, None)
                     self._by_id.pop(request_id, None)
                     return request, "active"
             self._cleanup_locked()
             key, request = self._find_expired_key_and_request_locked(user_id, channel, source, chat_id)
             if request:
-                self._expired_by_user_channel.pop(key, None)
+                if key is not None:
+                    self._expired_by_user_channel.pop(key, None)
                 if request.prompt_message_id:
                     return None, None
                 return request, "expired"
@@ -452,9 +457,9 @@ class PluginInputInteractionHandler:
             context: InteractionContext,
             text: str,
             reply_to_message_id: Optional[Union[str, int]] = None,
-            images=None,
-            audio_refs=None,
-            files=None,
+            images: Optional[List[IncomingMessage.MessageImage]] = None,
+            audio_refs: Optional[List[str]] = None,
+            files: Optional[List[IncomingMessage.MessageAttachment]] = None,
             has_audio_input: bool = False,
     ) -> bool:
         """

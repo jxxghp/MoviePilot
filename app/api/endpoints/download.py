@@ -32,6 +32,9 @@ from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
+from app.schemas.context import SubtitleInfo as _SchemaSubtitleInfo
+from app.schemas.context import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
 from app.schemas.download import DownloadDirectory as _SchemaDownloadDirectory
 from app.schemas.download import DownloadSourceClassificationData as _SchemaDownloadSourceClassificationData
@@ -40,12 +43,10 @@ from app.schemas.download import DownloadTaskUpdateData as _SchemaDownloadTaskUp
 from app.schemas.download import DownloadTaskUpdateRequest as _SchemaDownloadTaskUpdateRequest
 from app.schemas.download import SubtitleDownloadData as _SchemaSubtitleDownloadData
 from app.schemas.file import FileURI as _SchemaFileURI
+from app.schemas.music import MusicInfo as _SchemaMusicInfo
 from app.schemas.response import Response as _SchemaResponse
-from app.schemas.search import SubtitleInfo as _SchemaSubtitleInfo
-from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.transfer import DownloaderTorrent as _SchemaDownloaderTorrent
-from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
 from app.schemas.types import (
     MUSIC_ARTIST_COLLECTION_CATEGORY,
     MUSIC_ENTITY_ARTIST,
@@ -55,7 +56,6 @@ from app.schemas.types import (
     MusicTargetEntityType,
     SystemConfigKey,
 )
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 

@@ -551,8 +551,8 @@ class DirectoryHelper:
         return root / relative_parts[0] if relative_parts else root
 
     def get_dir(self, media: Optional[DirectoryMedia], include_unsorted: Optional[bool] = False,
-                storage: Optional[str] = None, src_path: Path = None,
-                target_storage: Optional[str] = None, dest_path: Path = None
+                storage: Optional[str] = None, src_path: Optional[Path] = None,
+                target_storage: Optional[str] = None, dest_path: Optional[Path] = None
                 ) -> Optional[_SchemaTransferDirectoryConf]:
         """
         根据媒体信息获取下载目录、媒体库目录配置

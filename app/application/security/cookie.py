@@ -524,7 +524,7 @@ class CookieHelper(CookieLoginFormMixin):
                            password: str,
                            two_step_code: Optional[str] = None,
                            proxies: Optional[dict] = None,
-                           timeout: int = None) -> Tuple[Optional[str], Optional[str], str]:
+                           timeout: Optional[int] = None) -> Tuple[Optional[str], Optional[str], str]:
         """
         获取站点 Cookie、User-Agent 和兼容错误消息。
         """
@@ -543,7 +543,7 @@ class CookieHelper(CookieLoginFormMixin):
                                  password: str,
                                  two_step_code: Optional[str] = None,
                                  proxies: Optional[dict] = None,
-                                 timeout: int = None) -> Tuple[Optional[str], Optional[str], str]:
+                                 timeout: Optional[int] = None) -> Tuple[Optional[str], Optional[str], str]:
         """
         获取站点cookie和ua。
 

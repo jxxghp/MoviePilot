@@ -20,13 +20,13 @@ from app.chain.recommend import RecommendChain
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.schemas.music import MusicAlbumInfo as _SchemaMusicAlbumInfo
 from app.schemas.music import MusicArtistInfo as _SchemaMusicArtistInfo
+from app.schemas.music import MusicInfo as _SchemaMusicInfo
 from app.schemas.music import MusicLibraryStatus as _SchemaMusicLibraryStatus
 from app.schemas.music import MusicLibraryStatusRequest as _SchemaMusicLibraryStatusRequest
 from app.schemas.music import MusicRecognitionCacheData as _SchemaMusicRecognitionCacheData
 from app.schemas.music import MusicRecognizeRequest as _SchemaMusicRecognizeRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
 from app.schemas.types import MediaSource, MediaType
 
 router = ResponseAPIRouter()

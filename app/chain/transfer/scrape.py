@@ -9,11 +9,11 @@ from app.chain._contracts import TransferMixinHost
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MusicInfo
 from app.runtime.loop import main_loop_registry
+from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     EventType,
 )
-from app.schemas.workflow import FileItem
 
 
 class ScrapeBatchMixin(_TransferOwnerBase):
@@ -25,7 +25,7 @@ class ScrapeBatchMixin(_TransferOwnerBase):
 
     def _send_metadata_scrape_event(
             self, task: TransferTask, transferinfo: TransferInfo
-    ):
+    ) -> None:
         """
         发送元数据刮削事件，保持对外事件载荷兼容。
         """
@@ -80,7 +80,7 @@ class ScrapeBatchMixin(_TransferOwnerBase):
             ]
         return payload
 
-    def _register_scrape_batch_task(self, task: TransferTask):
+    def _register_scrape_batch_task(self, task: TransferTask) -> None:
         """
         登记批次任务。刮削事件只在批次关闭且任务全部完成后统一发送。
         """
@@ -97,7 +97,7 @@ class ScrapeBatchMixin(_TransferOwnerBase):
             )
             batch["pending"].add(task.fileitem.path)
 
-    def _close_scrape_batch(self, batch_id: Optional[str]):
+    def _close_scrape_batch(self, batch_id: Optional[str]) -> None:
         """
         标记批次不再接收新任务，并尝试发送已聚合的刮削事件。
         """
@@ -115,7 +115,7 @@ class ScrapeBatchMixin(_TransferOwnerBase):
             batch["closed"] = True
         self._flush_scrape_batch_if_ready(batch_id)
 
-    def _record_scrape_target(self, task: TransferTask, transferinfo: TransferInfo):
+    def _record_scrape_target(self, task: TransferTask, transferinfo: TransferInfo) -> None:
         """
         记录批次内需要刮削的目标文件，按目标媒体根目录聚合。
         """
@@ -168,7 +168,7 @@ class ScrapeBatchMixin(_TransferOwnerBase):
                         "mediainfo": task.mediainfo,
                     }
 
-    def _finish_scrape_batch_task(self, task: TransferTask):
+    def _finish_scrape_batch_task(self, task: TransferTask) -> None:
         """
         标记批次内单个任务已结束。
         """
@@ -181,7 +181,7 @@ class ScrapeBatchMixin(_TransferOwnerBase):
             batch["pending"].discard(task.fileitem.path)
         self._flush_scrape_batch_if_ready(task.transfer_batch_id)
 
-    def _flush_scrape_batch_if_ready(self, batch_id: Optional[str]):
+    def _flush_scrape_batch_if_ready(self, batch_id: Optional[str]) -> None:
         """
         批次任务全部结束后释放成功通知等待，并发送聚合后的刮削事件。
         """

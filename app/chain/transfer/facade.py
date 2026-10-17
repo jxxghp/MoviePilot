@@ -44,12 +44,13 @@ class TransferChain(
     """
 
     @classmethod
-    def _transfer_media_chain(cls):
+    def _transfer_media_chain(cls) -> MediaChain:
         """
         为整理 mixin 提供可替换的媒体识别构造点。
         """
         from . import filter as transfer_filter
-        return (transfer_filter.MediaChain or MediaChain)()
+        factory = getattr(transfer_filter, "MediaChain", None) or MediaChain
+        return factory()
 
     @classmethod
     def _transfer_storage_chain(cls) -> StorageChain:
@@ -57,10 +58,11 @@ class TransferChain(
         为整理 mixin 提供可替换的存储构造点。
         """
         from . import records as transfer_records
-        return (transfer_records.StorageChain or StorageChain)()
+        factory = getattr(transfer_records, "StorageChain", None) or StorageChain
+        return factory()
 
     @classmethod
-    def _transfer_subscribe_chain(cls):
+    def _transfer_subscribe_chain(cls) -> ChainBase:
         """
         为整理 mixin 提供可替换的订阅构造点。
         """

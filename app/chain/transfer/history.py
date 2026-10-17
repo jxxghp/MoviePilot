@@ -20,6 +20,7 @@ from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
+from app.schemas.file import FileItem
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import EpisodeFormat, TransferInfo
@@ -31,7 +32,6 @@ from app.schemas.types import (
     MessageType,
     NotificationChannel,
 )
-from app.schemas.workflow import FileItem
 
 
 def _recognize_manual_media(
@@ -102,15 +102,15 @@ class TransferHistoryOwner(_TransferOwnerBase):
             self,
             arg_str: str,
             channel: NotificationChannel,
-            userid: Union[str, int] = None,
+            userid: Optional[Union[str, int]] = None,
             source: Optional[str] = None,
-    ):
+    ) -> None:
         """
         远程重新整理，参数为历史记录 ID，或媒体来源、原生 ID 与类型。
         """
         from app.runtime.errors import public_error_message
 
-        def args_error():
+        def args_error() -> None:
             self.post_message(
                 Message(
                     channel=channel,
@@ -332,7 +332,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
             episodes_info: Optional[List[TmdbEpisode]] = None,
             username: Optional[str] = None,
             buttons: Optional[list[list[dict[str, Any]]]] = None,
-    ):
+    ) -> None:
         """
         通过入库通知模板发送单文件或聚合后的成功结果，不预填标题和正文。
 
@@ -451,7 +451,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
         return False
 
     def _can_delete_torrent(
-            self, download_hash: str, downloader: str, transfer_exclude_words
+            self, download_hash: str, downloader: str, transfer_exclude_words: list[str]
     ) -> bool:
         """
         检查是否可以删除种子文件
