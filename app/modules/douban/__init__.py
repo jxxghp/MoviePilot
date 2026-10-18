@@ -2015,10 +2015,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
         recommend = self.doubanapi.movie_recommendations(subject_id=doubanid)
-        if recommend:
-            items = recommend.get("items") or []
-            return [MediaInfo(douban_info=info) for info in items if isinstance(info, dict)]
-        return []
+        return self._process_recommendations(recommend)
 
     def douban_tv_recommend(self, doubanid: str) -> List[MediaInfo]:
         """
@@ -2028,10 +2025,20 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
         recommend = self.doubanapi.tv_recommendations(subject_id=doubanid)
-        if recommend:
-            items = recommend.get("items") or []
-            return [MediaInfo(douban_info=info) for info in items if isinstance(info, dict)]
-        return []
+        return self._process_recommendations(recommend)
+
+    @staticmethod
+    def _process_recommendations(
+            recommend: Optional[Union[dict[str, Any], list[dict[str, Any]]]],
+    ) -> List[MediaInfo]:
+        """
+        将豆瓣推荐列表或携带 items 的响应投影为媒体列表。
+
+        :param recommend: 推荐接口原生列表或兼容的分页字典；无响应时为 None
+        :return: 保持原顺序的媒体列表，跳过非字典条目且不修改缓存响应
+        """
+        items = (recommend.get("items") or []) if isinstance(recommend, dict) else (recommend or [])
+        return [MediaInfo(douban_info=info) for info in items if isinstance(info, dict)]
 
     @staticmethod
     def _process_comment_author(doubaninfo: Optional[dict[str, Any]]) -> Optional[_SchemaMediaCommentAuthor]:
@@ -2270,10 +2277,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
         recommend = await self.doubanapi.async_movie_recommendations(subject_id=doubanid)
-        if recommend:
-            items = recommend.get("items") or []
-            return [MediaInfo(douban_info=info) for info in items if isinstance(info, dict)]
-        return []
+        return self._process_recommendations(recommend)
 
     async def async_douban_tv_recommend(self, doubanid: str) -> List[MediaInfo]:
         """
@@ -2283,10 +2287,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
         recommend = await self.doubanapi.async_tv_recommendations(subject_id=doubanid)
-        if recommend:
-            items = recommend.get("items") or []
-            return [MediaInfo(douban_info=info) for info in items if isinstance(info, dict)]
-        return []
+        return self._process_recommendations(recommend)
 
     async def async_douban_movie_interests(self, doubanid: str, start: int = 0,
                                            count: int = 20) -> _SchemaMediaCommentPage:

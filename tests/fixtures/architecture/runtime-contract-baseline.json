@@ -4408,7 +4408,7 @@
         "start"
       ],
       "result_contract": "MediaCommentPage",
-      "result_shape": "mapping",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -4448,7 +4448,7 @@
         "start"
       ],
       "result_contract": "MediaReviewPage",
-      "result_shape": "mapping",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -4527,7 +4527,7 @@
         "start"
       ],
       "result_contract": "MediaCommentPage",
-      "result_shape": "mapping",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -4567,7 +4567,7 @@
         "start"
       ],
       "result_contract": "MediaReviewPage",
-      "result_shape": "mapping",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -5615,7 +5615,7 @@
         "start"
       ],
       "result_contract": "MediaCommentPage",
-      "result_shape": "mapping",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -5655,7 +5655,7 @@
         "start"
       ],
       "result_contract": "MediaReviewPage",
-      "result_shape": "mapping",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -5734,7 +5734,7 @@
         "start"
       ],
       "result_contract": "MediaCommentPage",
-      "result_shape": "mapping",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -5774,7 +5774,7 @@
         "start"
       ],
       "result_contract": "MediaReviewPage",
-      "result_shape": "mapping",
+      "result_shape": "model",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",

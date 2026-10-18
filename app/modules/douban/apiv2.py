@@ -1389,9 +1389,9 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def movie_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                              ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
+                              ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[Union[dict[str, Any], list[dict[str, Any]]]]:
         """
-        电影推荐。
+        电影推荐，保留原生列表或携带 items 的字典响应。
 
         :param subject_id: 豆瓣条目原生标识
         :param start: 从 0 开始的条目偏移量，不是页码
@@ -1403,9 +1403,9 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_movie_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                          ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
+                                          ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[Union[dict[str, Any], list[dict[str, Any]]]]:
         """
-        电影推荐（异步版本）。
+        电影推荐（异步版本），保留原生列表或携带 items 的字典响应。
 
         :param subject_id: 豆瓣条目原生标识
         :param start: 从 0 开始的条目偏移量，不是页码
@@ -1417,9 +1417,9 @@ class DoubanApi(metaclass=WeakSingleton):
                                                    start=start, count=count, _ts=ts)
 
     def tv_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                           ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
+                           ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[Union[dict[str, Any], list[dict[str, Any]]]]:
         """
-        电视剧推荐。
+        电视剧推荐，保留原生列表或携带 items 的字典响应。
 
         :param subject_id: 豆瓣条目原生标识
         :param start: 从 0 开始的条目偏移量，不是页码
@@ -1431,9 +1431,9 @@ class DoubanApi(metaclass=WeakSingleton):
                                        start=start, count=count, _ts=ts)
 
     async def async_tv_recommendations(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                                       ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
+                                       ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[Union[dict[str, Any], list[dict[str, Any]]]]:
         """
-        电视剧推荐（异步版本）。
+        电视剧推荐（异步版本），保留原生列表或携带 items 的字典响应。
 
         :param subject_id: 豆瓣条目原生标识
         :param start: 从 0 开始的条目偏移量，不是页码

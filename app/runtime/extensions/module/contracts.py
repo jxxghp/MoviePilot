@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
 
+from pydantic import BaseModel
+
 
 class ModuleResultAggregation(StrEnum):
     """
@@ -32,7 +34,9 @@ class ModuleResultAggregation(StrEnum):
 
 class ModuleResultShape(StrEnum):
     """
-    描述模块 provider 返回值的基础 Python 形状。
+    描述模块 provider 返回值的基础 Python 形状或模型对象。
+
+    MODEL 用于 Pydantic 分页等模型对象，MAPPING 仍只接受字典。
     """
 
     # 接受任意结果形状
@@ -43,6 +47,7 @@ class ModuleResultShape(StrEnum):
     STRING = "string"
     # 结果应为键值映射
     MAPPING = "mapping"
+    MODEL = "model"
     # 结果应为布尔值
     BOOLEAN = "boolean"
     # 结果应为字节序列
@@ -699,7 +704,7 @@ _METHOD_CONTRACTS = {
         family="douban",
         input_contract="DoubanCommentRequest",
         result_contract="MediaCommentPage",
-        result_shape=ModuleResultShape.MAPPING,
+        result_shape=ModuleResultShape.MODEL,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("doubanid", "start", "count"),
     ),
@@ -707,7 +712,7 @@ _METHOD_CONTRACTS = {
         family="douban",
         input_contract="DoubanCommentRequest",
         result_contract="MediaCommentPage",
-        result_shape=ModuleResultShape.MAPPING,
+        result_shape=ModuleResultShape.MODEL,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("doubanid", "start", "count"),
     ),
@@ -715,7 +720,7 @@ _METHOD_CONTRACTS = {
         family="douban",
         input_contract="DoubanCommentRequest",
         result_contract="MediaReviewPage",
-        result_shape=ModuleResultShape.MAPPING,
+        result_shape=ModuleResultShape.MODEL,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("doubanid", "start", "count"),
     ),
@@ -723,7 +728,7 @@ _METHOD_CONTRACTS = {
         family="douban",
         input_contract="DoubanCommentRequest",
         result_contract="MediaReviewPage",
-        result_shape=ModuleResultShape.MAPPING,
+        result_shape=ModuleResultShape.MODEL,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("doubanid", "start", "count"),
     ),
@@ -1965,6 +1970,7 @@ def diagnose_module_result(method: str, result: Any) -> tuple[str, ...]:
         ModuleResultShape.LIST: isinstance(result, list),
         ModuleResultShape.STRING: isinstance(result, str),
         ModuleResultShape.MAPPING: isinstance(result, dict),
+        ModuleResultShape.MODEL: isinstance(result, BaseModel),
         ModuleResultShape.BOOLEAN: isinstance(result, bool),
         ModuleResultShape.BYTES: isinstance(result, bytes),
     }

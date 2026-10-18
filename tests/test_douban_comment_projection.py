@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.modules.douban import DoubanModule
+from app.runtime.extensions.module.contracts import diagnose_module_result
 
 
 def _module() -> DoubanModule:
@@ -180,6 +181,10 @@ def test_sync_and_async_entries_share_projection(
     async_result = asyncio.run(getattr(module, async_method)("100", start=5, count=10))
 
     assert sync_result == async_result
+    assert diagnose_module_result(sync_method, sync_result) == ()
+    assert diagnose_module_result(async_method, async_result) == ()
+    assert diagnose_module_result(sync_method, {}) == ("unexpected-result:model:dict",)
+    assert diagnose_module_result(async_method, []) == ("unexpected-result:model:list",)
     getattr(module.doubanapi, client_method).assert_called_once_with(
         subject_id="100", start=5, count=10
     )
