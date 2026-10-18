@@ -13,7 +13,7 @@ from mutagen.flac import FLAC, Picture
 from PIL import Image
 
 from app.application.settings.contract import ALL_SETTING_SPECS, build_value_schema
-from app.application.transfer.workflow import TransferPlanningInput
+from app.application.transfer.workflow import TransferPlanningInput, TransferTask
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.transfer.request import _TransferCandidatePlanner
@@ -26,7 +26,7 @@ from app.runtime.config import ConfigModel, Settings, settings
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import MediaType
+from app.schemas.types import EventType, MediaType
 from tests.test_transfer_sync_extra_files import bind_empty_history_repositories, make_fileitem, make_transfer_chain
 
 
@@ -43,14 +43,14 @@ def _tagged_audio(directory, name="01.flac", album="Album"):
     return path
 
 
-def _planner(chain, item, sync=True, mtype=MediaType.MUSIC):
+def _planner(chain, item, sync=True, mtype=MediaType.MUSIC, automatic=False):
     """
-    构造真实候选规划器，保留同目录匹配与附加文件开关。
+    构造真实候选规划器，区分通用附件同步和自动音乐封面同步。
     """
     return _TransferCandidatePlanner(
         chain, meta=None, season=None, formater=None, batch_mtype=mtype, mediainfo=None,
         continue_callback=None, has_episode_format_template=False, transfer_exclude_words=[],
-        download_hash=None, sync_extra_files=sync, fileitem=item,
+        download_hash=None, sync_extra_files=sync, fileitem=item, sync_music_covers=automatic,
     )
 
 
@@ -81,7 +81,8 @@ def test_music_cover_enters_directory_and_single_transfer_only_when_sync_enabled
         assert context.related_main_keys[chain._get_file_key(cover)] == chain._get_file_key(audio)
 
 
-def test_music_cover_does_not_borrow_identity_from_different_albums_or_video(tmp_path):
+@pytest.mark.parametrize("automatic", [False, True])
+def test_music_cover_does_not_borrow_identity_from_different_albums_or_video(tmp_path, automatic):
     """
     同目录多发行存在歧义时不关联封面，影视批次也不会吸收图片。
     """
@@ -92,16 +93,20 @@ def test_music_cover_does_not_borrow_identity_from_different_albums_or_video(tmp
     bind_empty_history_repositories(chain)
     context = chain._prepare_music_batch_context([(first, False), (second, False), (cover, False)], MediaType.MUSIC)
     assert chain._get_file_key(cover) not in context.related_main_keys
-    assert not _planner(chain, first, mtype=MediaType.TV)._is_music_cover_candidate(cover)
-    assert _planner(chain, cover)._plan_file_items([(cover, False)])[0] == []
+    assert not _planner(chain, first, mtype=MediaType.TV, automatic=automatic)._is_music_cover_candidate(cover)
+    assert _planner(chain, cover, automatic=automatic)._plan_file_items([(cover, False)])[0] == []
 
 
 @pytest.mark.parametrize("single", [False, True])
 @pytest.mark.parametrize("mtype", [None, MediaType.MUSIC])
 @pytest.mark.parametrize("enabled", [False, True])
-def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, single, mtype, enabled):
+@pytest.mark.parametrize("manual,sync,selected", [
+    (False, False, False), (True, True, False), (True, False, False),
+    (False, False, True), (True, False, True),
+])
+def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, single, mtype, enabled, manual, sync, selected):
     """
-    公开整理入口遵守全局开关，开启时封面复用主音轨身份而不单独在线识别。
+    自动目录与单文件请求默认带入封面，手动请求保留同步选项且均遵守全局开关。
     """
     monkeypatch.setattr(settings, "MUSIC_LOCAL_COVER_ENABLE", enabled)
     audio = _tagged_audio(tmp_path / "source")
@@ -136,15 +141,45 @@ def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, s
         return TransferInfo(success=True, fileitem=task.fileitem, target_item=task.fileitem)
 
     monkeypatch.setattr(chain, "_plan_checkpoint_and_execute", preview)
-    success, result = chain.do_transfer(
+    transfer = chain._run_transfer_workflow if selected else chain.do_transfer
+    success, result = transfer(
         fileitem=storage.get_item(audio if single else audio.parent),
         target_directory=TransferDirectoryConf(library_storage="local", library_path=str(tmp_path / "library")),
-        mtype=mtype, sync_extra_files=True, force=True, preview=True,
+        mtype=mtype, manual=manual, sync_extra_files=sync, force=True, preview=True,
+        **({"selected_fileitems": [storage.get_item(audio)]} if selected else {}),
     )
     assert success, result
-    assert [task.fileitem.path for task in tasks] == ([str(audio), str(cover)] if enabled else [str(audio)])
+    with_cover = enabled and (sync or not manual and not selected)
+    assert [task.fileitem.path for task in tasks] == ([str(audio), str(cover)] if with_cover else [str(audio)])
     assert all(task.mediainfo.album == "Album" for task in tasks)
-    assert result["summary"] == {"total": 2 if enabled else 1, "success": 2 if enabled else 1, "failed": 0}
+    assert result["summary"] == {"total": 2 if with_cover else 1, "success": 2 if with_cover else 1, "failed": 0}
+
+
+def test_music_scrape_waits_for_cover_transfer_completion():
+    """
+    音轨先完成时仍等待封面任务，图片就绪后才发出只含音轨的刮削事件。
+    """
+    chain = make_transfer_chain()
+    chain.eventmanager = Mock()
+    info = MusicInfo(title="Song", album="Album", artists=["Artist"])
+    audio = TransferTask(fileitem=make_fileitem("/source/01.flac"), mediainfo=info,
+                         meta=MetaMusic(title="Song", album="Album"), transfer_batch_id="album")
+    cover = audio.model_copy(update={"fileitem": make_fileitem("/source/cover.jpg")})
+    for task in (audio, cover):
+        chain._register_scrape_batch_task(task)
+    chain._record_scrape_target(audio, TransferInfo(
+        success=True, need_scrape=True, target_diritem=FileItem(storage="local", path="/library/Album", type="dir"),
+        file_list_new=["/library/Album/01.flac"],
+    ))
+    chain._close_scrape_batch("album")
+    chain._finish_scrape_batch_task(audio)
+    chain.eventmanager.send_event.assert_not_called()
+    chain._finish_scrape_batch_task(cover)
+    chain.eventmanager.send_event.assert_called_once()
+    event, payload = chain.eventmanager.send_event.call_args.args
+    assert event == EventType.MetadataScrape
+    assert payload["file_list"] == ["/library/Album/01.flac"]
+    assert not chain._scrape_batches
 
 
 @pytest.mark.parametrize("mode", ["copy", "link", "move"])

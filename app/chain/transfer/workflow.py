@@ -536,7 +536,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param manual: 是否手动整理
         :param preview: 是否仅预览
         :param reorganize: 是否清理已有成功记录后重新整理
-        :param sync_extra_files: 是否在整理主视频文件时同步整理同媒体附加文件
+        :param sync_extra_files: 是否同步整理同媒体附加文件；自动音乐封面另受本地封面开关控制
         :param cleanup_dest_fileitem: 确认存在待整理任务后需要清理的旧目标文件
         :param continue_callback: 继续处理回调
         :param recovery_admission: 内部恢复调用绑定的既有 持久化 记录
@@ -600,6 +600,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             download_hash=download_hash,
             sync_extra_files=bool(sync_extra_files),
             fileitem=fileitem,
+            sync_music_covers=not manual and selected_fileitems is None,
         )
 
         try:
