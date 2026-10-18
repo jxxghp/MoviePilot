@@ -18,6 +18,7 @@ from app.agent.memory import MemoryManager
 from app.agent.middleware.patching import PatchToolCallsMiddleware
 from app.agent.middleware.plan import PLAN_SNAPSHOT_KEY
 from app.agent.orchestrator import MoviePilotAgent
+from tests.agent_graph import publish_graph
 
 
 class _InterruptedGraph:
@@ -114,12 +115,12 @@ async def test_failure_preserves_completed_receipts_and_marks_unknown_outcomes(r
     original = _completed_tool_messages()
     graph = _InterruptedGraph(original)
     agent._create_agent = AsyncMock(return_value=graph)
-    agent._compiled_agent_bundle = SimpleNamespace(models=())
+    publish_graph(agent)
 
     result, _ = await agent._execute_agent(original[:1])
 
     assert result == "智能助手执行失败，请稍后重试"
-    assert agent._compiled_agent_bundle is None
+    assert agent._graphs.current is None
     recovered = await agent._memory.async_get_agent_messages(agent.session_id, agent.user_id)
     receipts = [message for message in recovered if isinstance(message, ToolMessage)]
     assert receipts[0].content == original[2].content
@@ -151,7 +152,7 @@ async def test_cancellation_preserves_snapshot_and_still_propagates(recovery_age
     agent._should_stream = lambda: streaming
     graph = _InterruptedGraph(_completed_tool_messages(), blocked=True)
     agent._create_agent = AsyncMock(return_value=graph)
-    agent._compiled_agent_bundle = SimpleNamespace(models=())
+    publish_graph(agent)
     execution = asyncio.create_task(agent._execute_agent(graph.messages[:1]))
     await graph.started.wait()
     execution.cancel()
@@ -159,7 +160,7 @@ async def test_cancellation_preserves_snapshot_and_still_propagates(recovery_age
     with pytest.raises(asyncio.CancelledError):
         await execution
 
-    assert agent._compiled_agent_bundle is None
+    assert agent._graphs.current is None
     recovered = await agent._memory.async_get_agent_messages(agent.session_id, agent.user_id)
     assert "already-created" in str(messages_to_dict(recovered))
     assert "取消" in recovered[-1].content
@@ -210,12 +211,12 @@ async def test_snapshot_failure_does_not_replace_original_error(recovery_agent, 
         agent._get_recursion_limit = lambda: int("invalid configuration")
     if failure == "persistence":
         agent._memory.async_save_agent_messages = AsyncMock(side_effect=RuntimeError("save failed"))
-    agent._compiled_agent_bundle = SimpleNamespace(models=())
+    publish_graph(agent)
 
     result, _ = await agent._execute_agent(graph.messages[:1])
 
     assert result == "智能助手执行失败，请稍后重试"
-    assert agent._compiled_agent_bundle is None
+    assert agent._graphs.current is None
     agent.stream_handler.stop_streaming.assert_awaited_once()
 
 
@@ -269,7 +270,7 @@ async def test_second_cancellation_during_snapshot_still_invalidates_graph(recov
     agent, persistence = recovery_agent
     graph = _InterruptedGraph(_completed_tool_messages(), blocked=True)
     agent._create_agent = AsyncMock(return_value=graph)
-    agent._compiled_agent_bundle = SimpleNamespace(models=())
+    publish_graph(agent)
     saving = asyncio.Event()
 
     async def block_save(**_kwargs):
@@ -289,7 +290,7 @@ async def test_second_cancellation_during_snapshot_still_invalidates_graph(recov
     with pytest.raises(asyncio.CancelledError):
         await execution
 
-    assert agent._compiled_agent_bundle is None
+    assert agent._graphs.current is None
     agent.stream_handler.stop_streaming.assert_awaited_once()
 
 

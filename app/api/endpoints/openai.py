@@ -49,6 +49,7 @@ from app.schemas.openai import OpenAIUsage as _SchemaOpenAIUsage
 from app.schemas.types import NotificationChannel
 
 if TYPE_CHECKING:
+    from app.agent.graph import AgentGraphCache
     from app.agent.manager import AgentManager
     from app.agent.orchestrator import MoviePilotAgent
 
@@ -70,7 +71,11 @@ OpenAIStreamEvent = str | dict[str, str] | None
 class _CollectingMoviePilotAgentMixin:
     """
     捕获 Agent 最终输出，避免再通过消息渠道二次发送。
+
+    :ivar _graphs: 运行时 Agent 基类提供的会话图资源 owner
     """
+
+    _graphs: AgentGraphCache
 
     def __init__(self, *args, stream_mode: bool = False, **kwargs):
         """
@@ -107,7 +112,7 @@ class _CollectingMoviePilotAgentMixin:
         self.stream_handler = _get_openai_streaming_handler_type()()
         self.stream_handler.bind_queue(event_queue)
         # 已编译工具持有旧 handler；identity 变化时必须重建图和工具目录。
-        self._compiled_agent_bundle = None
+        self._graphs.retire()
 
     def release_protocol_request(
         self,

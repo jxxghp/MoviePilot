@@ -584,7 +584,7 @@ def _agent_type() -> type:
             保留原始执行图的观察引用，生产失败恢复清缓存后仍可导出失败轨迹。
             """
             graph = await super()._create_agent(streaming=streaming)
-            self.evaluation_bundle = self._compiled_agent_bundle
+            self.evaluation_bundle = self._graphs.current
             return graph
 
         async def _initialize_llm(self, streaming: bool = False) -> Any:

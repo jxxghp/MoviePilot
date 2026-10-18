@@ -374,6 +374,29 @@ def test_agent_manager_uses_focused_owner_modules_and_precise_facade():
     assert "from app.agent.orchestrator import AgentManager" not in startup_source
 
 
+def test_agent_graph_resources_have_one_owner() -> None:
+    """
+    图资源只归 graph 所有，执行对象不得重新建立平行资源集合或私有兼容导出。
+    """
+    graph_path = APP_ROOT / "agent" / "graph.py"
+    assert graph_path.is_file()
+    graph_tree = _parse_source(graph_path)
+    assert {node.name for node in graph_tree.body if isinstance(node, ast.ClassDef)} == {
+        "GraphResources", "CompiledAgentBundle", "AgentGraphCache",
+    }
+    orchestrator_path = APP_ROOT / "agent" / "orchestrator.py"
+    orchestrator = orchestrator_path.read_text(encoding="utf-8")
+    for retired in ("_compiled_agent_bundle", "_retired_llm_models", "self._subagent_middlewares",
+                    "def _cache_agent", "def _release_llm_models", "class _CompiledAgentBundle"):
+        assert retired not in orchestrator
+    assert "from app.agent.graph import AgentGraphCache, CompiledAgentBundle" in orchestrator
+    assert not any(
+        isinstance(node, ast.ImportFrom) and node.module == "app.agent.orchestrator"
+        for node in ast.walk(graph_tree)
+    )
+    assert "app/agent/graph.py" in (PROJECT_ROOT / "docs/rules/05-architecture.md").read_text(encoding="utf-8")
+
+
 def test_mcp_schema_projection_has_one_pure_owner() -> None:
     """
     MCP schema 投影使用单词 owner，且不引入运行时或端点依赖。

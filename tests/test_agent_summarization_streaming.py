@@ -40,6 +40,7 @@ from app.agent.middleware.summarization import (
     FinalRequestCompactionMiddleware,
 )
 from app.agent.middleware.usage import UsageMiddleware
+from tests.agent_graph import publish_graph
 
 
 class _FakeLLM:
@@ -1338,7 +1339,7 @@ def test_summary_failure_preserves_database_history():
         user_id=user_id,
         memory=isolated_memory,
     )
-    agent._compiled_agent_bundle = SimpleNamespace(models=())
+    publish_graph(agent)
     agent._should_stream = lambda: False
     agent._create_agent = AsyncMock(return_value=_FailingGraph())
     agent.stream_handler = SimpleNamespace(stop_streaming=AsyncMock(return_value=(False, "")))
@@ -1352,7 +1353,7 @@ def test_summary_failure_preserves_database_history():
     isolated_memory.clear_memory(session_id, user_id)
     recovered_messages = isolated_memory.get_agent_messages(session_id, user_id)
     assert result == "智能助手执行失败，请稍后重试"
-    assert agent._compiled_agent_bundle is None
+    assert agent._graphs.current is None
     assert [message.content for message in recovered_messages] == ["数据库中的旧事实"]
     send_usage_event.assert_called_once()
     assert not send_usage_event.call_args.args[1].success
