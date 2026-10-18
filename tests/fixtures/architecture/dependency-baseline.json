@@ -211,7 +211,7 @@
         "bindings": [
           "import:httpx2 as httpx2"
         ],
-        "fingerprint": "73879afc31531cc27241f21e0edf3b8e493a7d9aef973d0c2e28165d006e631d",
+        "fingerprint": "cf347be42a531743cdae292eecd31f714be16ad13584a88f49a9102688262682",
         "kind": "raw_transport",
         "source": "app.adapters.network.http",
         "target": "httpx2",
@@ -225,8 +225,8 @@
           "AsyncRequestUtils.get_stream._open_stream|call:AsyncClient",
           "AsyncRequestUtils.get_stream._open_stream|call:Timeout",
           "AsyncRequestUtils.get_stream._open_stream|call:stream",
-          "_get_shared_async_transport|call:AsyncHTTPTransport",
-          "_get_shared_async_transport|call:Limits",
+          "_create_shared_async_transport|call:AsyncHTTPTransport",
+          "_create_shared_async_transport|call:Limits",
           "_h2_proxy_breaker_key|call:URL"
         ]
       },
@@ -1096,6 +1096,8 @@
     "app.adapters.network.feishu -> app.runtime.log",
     "app.adapters.network.http -> app.runtime",
     "app.adapters.network.http -> app.runtime.correlation",
+    "app.adapters.network.http -> app.runtime.log",
+    "app.adapters.network.http -> app.runtime.tasks",
     "app.adapters.network.webpush -> app.adapters",
     "app.adapters.network.webpush -> app.adapters.network",
     "app.adapters.network.webpush -> app.adapters.network.http",

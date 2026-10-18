@@ -23,6 +23,15 @@ are forbidden.
 - User-Agent headers
 - Retry logic
 
+The shared asynchronous transport tracks consecutive `PoolTimeout` failures per
+event loop and configuration. After three failures it replaces that pool for
+subsequent requests and logs the recovery. Responses and other request errors
+reset the count. It does not replay the failed request. The retired pool closes
+after its existing client contexts exit, including streaming reads and
+cancellation. While a retired pool remains unclosed, the same configuration
+cannot rotate again, bounding the active generations to two. Caller-owned
+clients retain their own transport lifecycle.
+
 ```python
 # 此处展示适配器实现；应用服务和业务链通过注入的接口访问网络能力
 from app.adapters.network.http import RequestUtils
