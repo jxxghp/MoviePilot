@@ -974,8 +974,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9579,
-  "edge_sha256": "fbbb828033ea217b8461f87d24cba67d08d93086bac88007f6445dbf34ec2eb2",
+  "edge_count": 9587,
+  "edge_sha256": "c95b2c94aa5c65c69b1374ca4e0014241e841d8520004141ba39e12f3052286a",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1300,6 +1300,13 @@
     "app.agent.code.result -> app.agent.policy.sanitizer",
     "app.agent.contracts -> app.schemas",
     "app.agent.contracts -> app.schemas.types",
+    "app.agent.graph -> app.agent",
+    "app.agent.graph -> app.agent.llm",
+    "app.agent.graph -> app.agent.llm.helper",
+    "app.agent.graph -> app.agent.tools",
+    "app.agent.graph -> app.agent.tools.catalog",
+    "app.agent.graph -> app.runtime",
+    "app.agent.graph -> app.runtime.log",
     "app.agent.guardrails.controller -> app.agent",
     "app.agent.guardrails.controller -> app.agent.guardrails",
     "app.agent.guardrails.controller -> app.agent.guardrails.results",
@@ -1679,6 +1686,7 @@
     "app.agent.orchestrator -> app.agent",
     "app.agent.orchestrator -> app.agent.callback",
     "app.agent.orchestrator -> app.agent.contracts",
+    "app.agent.orchestrator -> app.agent.graph",
     "app.agent.orchestrator -> app.agent.learning",
     "app.agent.orchestrator -> app.agent.learning.session",
     "app.agent.orchestrator -> app.agent.llm",
@@ -10557,7 +10565,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1123,
+  "module_count": 1124,
   "modules": [
     "app",
     "app.adapters",
@@ -10632,6 +10640,7 @@
     "app.agent.code.manager",
     "app.agent.code.result",
     "app.agent.contracts",
+    "app.agent.graph",
     "app.agent.guardrails",
     "app.agent.guardrails.completion",
     "app.agent.guardrails.controller",

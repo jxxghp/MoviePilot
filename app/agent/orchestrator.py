@@ -4,7 +4,6 @@
 
 import asyncio
 import hashlib
-import inspect
 import json
 import re
 import time
@@ -28,6 +27,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
+from app.agent.graph import AgentGraphCache, CompiledAgentBundle
 from app.agent.learning.session import LearningSession
 from app.agent.llm.helper import LLMHelper
 from app.agent.llm.tools import ServerToolRegistry
@@ -285,35 +285,6 @@ class _SessionUsageSnapshot:
         }
 
 
-@dataclass
-class _CompiledAgentBundle:
-    """
-    会话内可复用的 Agent 图及其构造签名。
-
-    :param signature: 构造模型、工具和运行图时使用的配置签名，供复用判断
-    :param agent: 已编译且可复用的 Agent 执行图
-    :param streaming: 该执行图是否按流式模式构造
-    :param created_at: 本次执行图构造完成的时间
-    :param tool_catalog: 主智能体使用的工具目录快照；尚未提供时为 None
-    :param subagent_catalog: 子智能体使用的工具目录快照；尚未提供时为 None
-    :param plugin_revision: 构造时插件工具目录修订号；-1 表示尚未记录
-    :param mcp_config_signature: 构造时外部 MCP 配置签名；尚未记录时为空字符串
-    :param catalog_checked_at: 最近检查工具目录是否变化的时间；未检查时为 None
-    :param models: 本执行图持有的模型实例，用于统一释放客户端资源
-    """
-
-    signature: tuple[Any, ...]
-    agent: Any
-    streaming: bool
-    created_at: datetime
-    tool_catalog: Optional[ToolCatalogSnapshot] = None
-    subagent_catalog: Optional[ToolCatalogSnapshot] = None
-    plugin_revision: int = -1
-    mcp_config_signature: str = ""
-    catalog_checked_at: Optional[datetime] = None
-    models: tuple[Any, ...] = ()
-
-
 class _ThinkTagStripper:
     """
     流式剥离 <think>...</think> 标签的辅助类。
@@ -562,9 +533,7 @@ class MoviePilotAgent:
         self._llm_runtime_config: Optional[Dict[str, Any]] = None
         self._llm_provider_selection: Dict[str, Any] = {}
         self._agent_started_at: Optional[datetime] = None
-        self._compiled_agent_bundle: Optional[_CompiledAgentBundle] = None
-        self._retired_llm_models: list[Any] = []
-        self._subagent_middlewares: tuple[Any, ...] = ()
+        self._graphs = AgentGraphCache(models_in_use=self._learning_models_in_use)
         self._shutdown_started = False
         self._last_agent_cache_hit = False
 
@@ -712,16 +681,15 @@ class MoviePilotAgent:
         """
         if not str(message or "").strip():
             return ""
-        model = await self._initialize_llm(streaming=False)
-        try:
+        async with self._graphs.build() as resources:
+            model = await self._initialize_llm(streaming=False)
+            resources.own_model(model)
             response = await model.ainvoke(
                 [
                     SystemMessage(content=AGENT_CHAT_TITLE_PROMPT),
                     HumanMessage(content=self._build_chat_title_message(message)),
                 ]
             )
-        finally:
-            await self._release_llm_models((model,))
         content = LLMHelper.extract_text_content(getattr(response, "content", response))
         title = self._parse_chat_title_response(content)
         if not self._is_valid_chat_title(title):
@@ -1877,71 +1845,9 @@ class MoviePilotAgent:
 
         return get_tool_factory().catalog_factory_revision()
 
-    def _get_cached_agent(self, signature: tuple[Any, ...], streaming: bool) -> Optional[Any]:
-        """
-        按签名读取当前会话已编译的 Agent 图。
-        """
-        bundle = self._compiled_agent_bundle
-        if bundle and bundle.streaming == streaming and bundle.signature == signature:
-            return bundle.agent
-        return None
-
-    @staticmethod
-    def _seal_subagent_middleware_instances(
-        middlewares: tuple[Any, ...],
-    ) -> None:
-        """
-        同步封住子代理控制器的新任务入口，不等待既有任务退出。
-        """
-        for middleware in middlewares:
-            seal = getattr(middleware, "seal", None)
-            if not callable(seal):
-                continue
-            try:
-                seal()
-            except Exception as error:
-                logger.debug(f"封住子代理中间件失败: {error}")
-
-    @staticmethod
-    async def _close_subagent_middleware_instances(
-        middlewares: tuple[Any, ...],
-    ) -> tuple[Any, ...]:
-        """
-        关闭子代理控制器，并返回仍持有未收敛任务的实例。
-        """
-        pending_middlewares = []
-        for middleware in middlewares:
-            close = getattr(middleware, "close", None)
-            if not callable(close):
-                continue
-            try:
-                result = close()
-                if inspect.isawaitable(result):
-                    result = await result
-                if result is False:
-                    pending_middlewares.append(middleware)
-            except Exception as error:
-                logger.debug(f"关闭子代理中间件失败: {error}")
-                pending_middlewares.append(middleware)
-        return tuple(pending_middlewares)
-
-    @staticmethod
-    def _merge_subagent_middleware_owners(
-        *groups: tuple[Any, ...],
-    ) -> tuple[Any, ...]:
-        """
-        按对象身份合并当前图与延迟收敛控制器的 owner 集合。
-        """
-        merged = []
-        for group in groups:
-            for middleware in group:
-                if not any(middleware is existing for existing in merged):
-                    merged.append(middleware)
-        return tuple(merged)
-
     def begin_shutdown(self) -> None:
         """
-        在任何异步等待前封住当前 Agent 的子代理提交和终端作用域。
+        在任何异步等待前封住图资源、后台复盘和终端作用域。
         """
         if self._learning:
             self._learning.seal()
@@ -1949,86 +1855,20 @@ class MoviePilotAgent:
         for scope in self._scheduled_terminal_scopes:
             scope.seal()
         self._shutdown_started = True
-        self._seal_subagent_middleware_instances(self._subagent_middlewares)
+        self._graphs.seal()
 
-    async def _cache_agent(
-        self,
-        *,
-        signature: tuple[Any, ...],
-        agent: Any,
-        streaming: bool,
-        tool_catalog: ToolCatalogSnapshot,
-        subagent_catalog: ToolCatalogSnapshot,
-        mcp_config_signature: str,
-        subagent_middlewares: tuple[Any, ...] = (),
-        models: tuple[Any, ...] = (),
-    ) -> Any:
+    def _learning_models_in_use(self) -> bool:
         """
-        保存当前会话可复用的 Agent 图。
+        后台复盘尚未退出时保留可能与其共享客户端的退休模型。
         """
-        previous_middlewares = tuple(
-            middleware
-            for middleware in self._subagent_middlewares
-            if not any(middleware is replacement for replacement in subagent_middlewares)
-        )
-        if self._shutdown_started:
-            self._seal_subagent_middleware_instances(subagent_middlewares)
-        if self._compiled_agent_bundle:
-            self._retired_llm_models.extend(self._compiled_agent_bundle.models)
-        pending_middlewares = await self._close_subagent_middleware_instances(previous_middlewares)
-        self._compiled_agent_bundle = _CompiledAgentBundle(
-            signature=signature,
-            agent=agent,
-            streaming=streaming,
-            created_at=datetime.now(),
-            tool_catalog=tool_catalog,
-            subagent_catalog=subagent_catalog,
-            plugin_revision=tool_catalog.plugin_revision,
-            mcp_config_signature=mcp_config_signature,
-            catalog_checked_at=datetime.now(),
-            models=models,
-        )
-        self._subagent_middlewares = self._merge_subagent_middleware_owners(
-            pending_middlewares,
-            subagent_middlewares,
-        )
-        await self._release_retired_llm_models(consumers_closed=not pending_middlewares)
-        return agent
-
-    async def _release_llm_models(self, models: tuple[Any, ...]) -> bool:
-        """
-        释放已无消费者的模型；关闭失败或清理被取消时保留模型供下一次清理。
-        """
-        for model in models:
-            if not any(model is existing for existing in self._retired_llm_models):
-                self._retired_llm_models.append(model)
-        for model in models:
-            if await LLMHelper.close_llm(model):
-                self._retired_llm_models = [item for item in self._retired_llm_models if item is not model]
-        return not self._retired_llm_models
-
-    async def _release_retired_llm_models(self, *, consumers_closed: bool) -> bool:
-        """
-        等子代理及共享模型的后台复盘退出后，再释放旧图连接。
-        """
-        learning_run = self._learning.run if self._learning else None
-        learning_active = bool(learning_run and learning_run.task and not learning_run.task.done())
-        if not consumers_closed or learning_active:
-            return not self._retired_llm_models
-        return await self._release_llm_models(tuple(self._retired_llm_models))
+        run = self._learning.run if self._learning else None
+        return bool(run and run.task and not run.task.done())
 
     async def _invalidate_cached_agent(self) -> bool:
         """
-        使当前图失效，未收敛的消费者及其模型连接继续由 Agent 持有。
+        使图失效，由图资源 owner 保留未退出消费者和关闭失败的连接。
         """
-        subagent_middlewares = self._subagent_middlewares
-        if self._compiled_agent_bundle:
-            self._retired_llm_models.extend(self._compiled_agent_bundle.models)
-        self._compiled_agent_bundle = None
-        pending_middlewares = await self._close_subagent_middleware_instances(subagent_middlewares)
-        self._subagent_middlewares = pending_middlewares
-        models_closed = await self._release_retired_llm_models(consumers_closed=not pending_middlewares)
-        return not pending_middlewares and models_closed
+        return await self._graphs.invalidate()
 
     @staticmethod
     def _latest_turn_messages(messages: List[BaseMessage]) -> List[BaseMessage]:
@@ -2123,259 +1963,234 @@ class MoviePilotAgent:
         创建 LangGraph Agent（使用 create_agent + SummarizationMiddleware）
         :param streaming: 是否启用流式输出
         """
-        temporary_subagent_middlewares: tuple[Any, ...] = ()
-        temporary_models: list[Any] = []
-        pending_middlewares: tuple[Any, ...] = ()
         try:
-            runtime_config = await self._resolve_llm_runtime_config()
-            plugin_revision = _get_plugin_tools_revision()
-            mcp_config_signature = agent_mcp_manager.config_signature()
-            cached_bundle = self._compiled_agent_bundle
-            catalog_is_fresh = bool(
-                cached_bundle
-                and cached_bundle.streaming == streaming
-                and cached_bundle.tool_catalog is not None
-                and cached_bundle.subagent_catalog is not None
-                and cached_bundle.plugin_revision == plugin_revision
-                and cached_bundle.mcp_config_signature == mcp_config_signature
-                and cached_bundle.catalog_checked_at is not None
-                and (datetime.now() - cached_bundle.catalog_checked_at).total_seconds()
-                < self.TOOL_CATALOG_REFRESH_SECONDS
-            )
-            if catalog_is_fresh:
+            async with self._graphs.build() as resources:
+                runtime_config = await self._resolve_llm_runtime_config()
+                plugin_revision = _get_plugin_tools_revision()
+                mcp_config_signature = agent_mcp_manager.config_signature()
+                cached_bundle = self._graphs.current
+                catalog_is_fresh = bool(
+                    cached_bundle
+                    and cached_bundle.streaming == streaming
+                    and cached_bundle.tool_catalog is not None
+                    and cached_bundle.subagent_catalog is not None
+                    and cached_bundle.plugin_revision == plugin_revision
+                    and cached_bundle.mcp_config_signature == mcp_config_signature
+                    and cached_bundle.catalog_checked_at is not None
+                    and (datetime.now() - cached_bundle.catalog_checked_at).total_seconds()
+                    < self.TOOL_CATALOG_REFRESH_SECONDS
+                )
+                if catalog_is_fresh:
+                    bundle_signature = await self._agent_bundle_signature(
+                        streaming,
+                        tool_catalog=cached_bundle.tool_catalog,
+                        subagent_catalog=cached_bundle.subagent_catalog,
+                    )
+                    cached_agent = self._graphs.get(bundle_signature, streaming)
+                    self._last_agent_cache_hit = bool(cached_agent)
+                    if cached_agent:
+                        logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
+                        return cached_agent
+                web_search_resolution = ServerToolRegistry.resolve_web_search(
+                    provider=str(runtime_config.get("provider") or ""),
+                    model=str(runtime_config.get("model") or ""),
+                    mode=runtime_config.get("web_search_mode"),
+                    api_protocol=runtime_config.get("api_protocol"),
+                    base_url=runtime_config.get("base_url"),
+                )
+                base_tool_catalog, base_subagent_catalog = self._initialize_local_tool_catalogs()
+                mcp_specs = await agent_mcp_manager.list_enabled_tool_specs()
+                local_tools = self._filter_local_web_search_tools(
+                    base_tool_catalog.tools,
+                    enabled=web_search_resolution.use_local_web_search,
+                )
+                mcp_tools = await self._initialize_mcp_tools(specs=mcp_specs)
+                tools = [*local_tools, *mcp_tools]
+                local_subagent_tools = self._filter_local_web_search_tools(
+                    base_subagent_catalog.tools,
+                    enabled=web_search_resolution.use_local_web_search,
+                )
+                subagent_mcp_tools = await self._initialize_subagent_mcp_tools(specs=mcp_specs)
+                subagent_catalog = ToolCatalogSnapshot.from_tools(
+                    [*local_subagent_tools, *subagent_mcp_tools],
+                    plugin_revision=base_subagent_catalog.plugin_revision,
+                    factory_revision=base_subagent_catalog.factory_revision,
+                ).require_unique()
+                subagent_tools = [*local_subagent_tools, *subagent_mcp_tools]
+                # 系统提示词
+                system_prompt = prompt_manager.get_agent_prompt(channel=self.channel)
+
+                # LLM 模型（用于 agent 执行）
+                agent_model = await self._initialize_llm(streaming=streaming)
+                resources.own_model(agent_model)
+                self._sync_model_profile(agent_model)
+                # 供应商原生工具不进入本地 ToolNode，宿主策略只覆盖 client-side tools。
+                server_tools = LLMHelper.get_server_tools(agent_model)
+
+                # 为内部模型调用准备非流式 LLM，避免与用户流式回复复用同一实例。
+                non_streaming_model = agent_model if not streaming else await self._initialize_llm(streaming=False)
+                if non_streaming_model is not agent_model:
+                    resources.own_model(non_streaming_model)
+                skills_middleware = SkillsMiddleware(
+                    sources=[str(agent_runtime_manager.skills_dir)],
+                    bundled_skills_dir=str(get_runtime_setting("ROOT_PATH") / "skills"),
+                    stream_handler=self.stream_handler,
+                )
+                skill_tools = list(getattr(skills_middleware, "tools", []) or [])
+                user_memory_dir = agent_runtime_manager.get_user_memory_dir(self.user_id)
+                memory_middleware = MemoryMiddleware(
+                    memory_dir=str(agent_runtime_manager.memory_dir),
+                    user_memory_dir=str(user_memory_dir) if user_memory_dir else None,
+                    store=self._learning.tools.memory if self._learning else None,
+                    stream_handler=self.stream_handler,
+                )
+                memory_tools = list(getattr(memory_middleware, "tools", []) or [])
+                learning_middleware = LearningMiddleware(self._learning) if self._learning is not None and self._learning_enabled() else None
+                if learning_middleware:
+                    memory_tools.extend(learning_middleware.tools)
+                recall_service = getattr(self._data, "recall", None)
+                recall_middlewares = []
+                if recall_service and build_user_memory_key(self.user_id):
+                    history_session = await self._recall_session(agent_model)
+                    if history_session is not None:
+                        recall_middlewares.append(RecallMiddleware(recall_service, str(self.user_id), history_session))
+                memory_tools.extend(tool for middleware in recall_middlewares for tool in middleware.tools)
+                policy_context = self._build_policy_context()
+                subagent_middlewares, subagent_task_tools = create_subagent_middlewares(
+                    model=non_streaming_model,
+                    tools=subagent_tools,
+                    server_tools=server_tools,
+                    stream_handler=self.stream_handler,
+                    policy_context=policy_context.for_subagent(),
+                    catalog=subagent_catalog,
+                )
+                resources.own_middlewares(subagent_middlewares)
+                plan_middleware = PlanMiddleware()
+                output_middleware = ToolOutputMiddleware(policy_context)
+                invocation_repository = getattr(self._data, "invocations", None)
+                invocation_middlewares = [InvocationMiddleware(policy_context, invocation_repository, tools)] if invocation_repository else []
+                internal_tools = [
+                    *skill_tools, *memory_tools, *subagent_task_tools, *plan_middleware.tools,
+                    *output_middleware.tools,
+                    *(tool for middleware in invocation_middlewares for tool in middleware.tools),
+                ]
+                tool_selector = self._initialize_tool_selector(tools, internal_tools, non_streaming_model)
+                # 严格目录必须覆盖 LangGraph ToolNode 可执行的全部 client-side 工具。
+                tool_catalog = ToolCatalogSnapshot.from_tools(
+                    [
+                        *local_tools,
+                        *mcp_tools,
+                        *internal_tools,
+                        *(tool_selector.tools if tool_selector else []),
+                    ],
+                    plugin_revision=base_tool_catalog.plugin_revision,
+                    factory_revision=base_tool_catalog.factory_revision,
+                ).require_unique()
                 bundle_signature = await self._agent_bundle_signature(
                     streaming,
-                    tool_catalog=cached_bundle.tool_catalog,
-                    subagent_catalog=cached_bundle.subagent_catalog,
+                    tool_catalog=tool_catalog,
+                    subagent_catalog=subagent_catalog,
                 )
-                cached_agent = self._get_cached_agent(bundle_signature, streaming)
+                cached_agent = self._graphs.get(bundle_signature, streaming)
                 self._last_agent_cache_hit = bool(cached_agent)
                 if cached_agent:
+                    # 签名相同表示已编译图中的精确工具实例仍有效；新建快照仅用于复核。
+                    cached_bundle.catalog_checked_at = datetime.now()
                     logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
                     return cached_agent
-            web_search_resolution = ServerToolRegistry.resolve_web_search(
-                provider=str(runtime_config.get("provider") or ""),
-                model=str(runtime_config.get("model") or ""),
-                mode=runtime_config.get("web_search_mode"),
-                api_protocol=runtime_config.get("api_protocol"),
-                base_url=runtime_config.get("base_url"),
-            )
-            base_tool_catalog, base_subagent_catalog = self._initialize_local_tool_catalogs()
-            mcp_specs = await agent_mcp_manager.list_enabled_tool_specs()
-            local_tools = self._filter_local_web_search_tools(
-                base_tool_catalog.tools,
-                enabled=web_search_resolution.use_local_web_search,
-            )
-            mcp_tools = await self._initialize_mcp_tools(specs=mcp_specs)
-            tools = [*local_tools, *mcp_tools]
-            local_subagent_tools = self._filter_local_web_search_tools(
-                base_subagent_catalog.tools,
-                enabled=web_search_resolution.use_local_web_search,
-            )
-            subagent_mcp_tools = await self._initialize_subagent_mcp_tools(specs=mcp_specs)
-            subagent_catalog = ToolCatalogSnapshot.from_tools(
-                [*local_subagent_tools, *subagent_mcp_tools],
-                plugin_revision=base_subagent_catalog.plugin_revision,
-                factory_revision=base_subagent_catalog.factory_revision,
-            ).require_unique()
-            subagent_tools = [*local_subagent_tools, *subagent_mcp_tools]
-            # 系统提示词
-            system_prompt = prompt_manager.get_agent_prompt(channel=self.channel)
-
-            # LLM 模型（用于 agent 执行）
-            agent_model = await self._initialize_llm(streaming=streaming)
-            temporary_models.append(agent_model)
-            self._sync_model_profile(agent_model)
-            # 供应商原生工具不进入本地 ToolNode，宿主策略只覆盖 client-side tools。
-            server_tools = LLMHelper.get_server_tools(agent_model)
-
-            # 为内部模型调用准备非流式 LLM，避免与用户流式回复复用同一实例。
-            non_streaming_model = agent_model if not streaming else await self._initialize_llm(streaming=False)
-            if non_streaming_model is not agent_model:
-                temporary_models.append(non_streaming_model)
-            skills_middleware = SkillsMiddleware(
-                sources=[str(agent_runtime_manager.skills_dir)],
-                bundled_skills_dir=str(get_runtime_setting("ROOT_PATH") / "skills"),
-                stream_handler=self.stream_handler,
-            )
-            skill_tools = list(getattr(skills_middleware, "tools", []) or [])
-            user_memory_dir = agent_runtime_manager.get_user_memory_dir(self.user_id)
-            memory_middleware = MemoryMiddleware(
-                memory_dir=str(agent_runtime_manager.memory_dir),
-                user_memory_dir=str(user_memory_dir) if user_memory_dir else None,
-                store=self._learning.tools.memory if self._learning else None,
-                stream_handler=self.stream_handler,
-            )
-            memory_tools = list(getattr(memory_middleware, "tools", []) or [])
-            learning_middleware = LearningMiddleware(self._learning) if self._learning is not None and self._learning_enabled() else None
-            if learning_middleware:
-                memory_tools.extend(learning_middleware.tools)
-            recall_service = getattr(self._data, "recall", None)
-            recall_middlewares = []
-            if recall_service and build_user_memory_key(self.user_id):
-                history_session = await self._recall_session(agent_model)
-                if history_session is not None:
-                    recall_middlewares.append(RecallMiddleware(recall_service, str(self.user_id), history_session))
-            memory_tools.extend(tool for middleware in recall_middlewares for tool in middleware.tools)
-            policy_context = self._build_policy_context()
-            subagent_middlewares, subagent_task_tools = create_subagent_middlewares(
-                model=non_streaming_model,
-                tools=subagent_tools,
-                server_tools=server_tools,
-                stream_handler=self.stream_handler,
-                policy_context=policy_context.for_subagent(),
-                catalog=subagent_catalog,
-            )
-            temporary_subagent_middlewares = tuple(subagent_middlewares)
-            plan_middleware = PlanMiddleware()
-            output_middleware = ToolOutputMiddleware(policy_context)
-            invocation_repository = getattr(self._data, "invocations", None)
-            invocation_middlewares = [InvocationMiddleware(policy_context, invocation_repository, tools)] if invocation_repository else []
-            internal_tools = [
-                *skill_tools, *memory_tools, *subagent_task_tools, *plan_middleware.tools,
-                *output_middleware.tools,
-                *(tool for middleware in invocation_middlewares for tool in middleware.tools),
-            ]
-            tool_selector = self._initialize_tool_selector(tools, internal_tools, non_streaming_model)
-            # 严格目录必须覆盖 LangGraph ToolNode 可执行的全部 client-side 工具。
-            tool_catalog = ToolCatalogSnapshot.from_tools(
-                [
-                    *local_tools,
-                    *mcp_tools,
-                    *internal_tools,
-                    *(tool_selector.tools if tool_selector else []),
-                ],
-                plugin_revision=base_tool_catalog.plugin_revision,
-                factory_revision=base_tool_catalog.factory_revision,
-            ).require_unique()
-            bundle_signature = await self._agent_bundle_signature(
-                streaming,
-                tool_catalog=tool_catalog,
-                subagent_catalog=subagent_catalog,
-            )
-            cached_agent = self._get_cached_agent(bundle_signature, streaming)
-            self._last_agent_cache_hit = bool(cached_agent)
-            if cached_agent:
-                # 签名相同表示已编译图中的精确工具实例仍有效；新建快照仅用于复核。
-                cached_bundle.catalog_checked_at = datetime.now()
-                pending_middlewares = await self._close_subagent_middleware_instances(temporary_subagent_middlewares)
-                self._subagent_middlewares = self._merge_subagent_middleware_owners(
-                    self._subagent_middlewares,
-                    pending_middlewares,
+                summarization_middleware = SummarizationMiddleware(
+                    model=non_streaming_model,
+                    trigger=("fraction", 0.85),
+                    keep=("messages", 20),
                 )
-                temporary_subagent_middlewares = ()
-                logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
-                return cached_agent
-            summarization_middleware = SummarizationMiddleware(
-                model=non_streaming_model,
-                trigger=("fraction", 0.85),
-                keep=("messages", 20),
-            )
 
-            # 中间件
-            guardrails = ToolGuardrailsMiddleware(policy_context)
-            policy_middleware = AgentPolicyMiddleware(
-                context=policy_context, catalog=tool_catalog, tools=tools, guardrails=guardrails,
-            )
-            code_middleware = CodeExecutionMiddleware(policy_middleware)
-            middlewares = [
-                # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
-                policy_middleware,
-                code_middleware,
-                # 运行中补充消息只在模型回合边界进入同一张图，不启动并行 Agent。
-                *([SteeringMiddleware()] if self._steering_inbox.running else []),
-                output_middleware,
-                *invocation_middlewares,
-                skills_middleware,
-                # Jobs 任务管理
-                JobsMiddleware(
-                    sources=[str(agent_runtime_manager.jobs_dir)],
-                ),
-                # 运行时人格与核心规则
-                RuntimeConfigMiddleware(),
-                # 计划独立保存，最终请求压缩仍计入其系统上下文预算。
-                plan_middleware,
-                # 稳定偏好与原始会话证据分别管理。
-                memory_middleware,
-                *recall_middlewares,
-                # 以工具原文及模型请求顺序检测循环，外层归档仍保留真实回执。
-                guardrails,
-                *([learning_middleware] if learning_middleware else []),
-                # 错误工具调用修复
-                PatchToolCallsMiddleware(),
-                # 子代理委派
-                *subagent_middlewares,
-            ]
-
-            # 工具选择
-            if tool_selector is not None:
-                middlewares.append(tool_selector)
-            middlewares.append(CodeCaptureMiddleware(code_middleware))
-
-            # 所有压缩都在最终请求边界完成，避免主模型失败前写入摘要状态。
-            middlewares.append(
-                FinalRequestCompactionMiddleware(
-                    summarizer=summarization_middleware,
+                # 中间件
+                guardrails = ToolGuardrailsMiddleware(policy_context)
+                policy_middleware = AgentPolicyMiddleware(
+                    context=policy_context, catalog=tool_catalog, tools=tools, guardrails=guardrails,
                 )
-            )
-            middlewares.append(VisionMiddleware())
-            if learning_middleware:
-                middlewares.append(LearningCaptureMiddleware(learning_middleware.session))
+                code_middleware = CodeExecutionMiddleware(policy_middleware)
+                middlewares = [
+                    # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
+                    policy_middleware,
+                    code_middleware,
+                    # 运行中补充消息只在模型回合边界进入同一张图，不启动并行 Agent。
+                    *([SteeringMiddleware()] if self._steering_inbox.running else []),
+                    output_middleware,
+                    *invocation_middlewares,
+                    skills_middleware,
+                    # Jobs 任务管理
+                    JobsMiddleware(
+                        sources=[str(agent_runtime_manager.jobs_dir)],
+                    ),
+                    # 运行时人格与核心规则
+                    RuntimeConfigMiddleware(),
+                    # 计划独立保存，最终请求压缩仍计入其系统上下文预算。
+                    plan_middleware,
+                    # 稳定偏好与原始会话证据分别管理。
+                    memory_middleware,
+                    *recall_middlewares,
+                    # 以工具原文及模型请求顺序检测循环，外层归档仍保留真实回执。
+                    guardrails,
+                    *([learning_middleware] if learning_middleware else []),
+                    # 错误工具调用修复
+                    PatchToolCallsMiddleware(),
+                    # 子代理委派
+                    *subagent_middlewares,
+                ]
 
-            # 预算观察器必须位于最内层，才能看到动态 system 和最终筛选后的工具。
-            middlewares.append(
-                UsageMiddleware(
-                    on_usage=self._record_usage,
-                    on_request_budget=self._record_request_budget,
-                    next_request_sequence=self._next_request_sequence,
+                # 工具选择
+                if tool_selector is not None:
+                    middlewares.append(tool_selector)
+                middlewares.append(CodeCaptureMiddleware(code_middleware))
+
+                # 所有压缩都在最终请求边界完成，避免主模型失败前写入摘要状态。
+                middlewares.append(
+                    FinalRequestCompactionMiddleware(
+                        summarizer=summarization_middleware,
+                    )
                 )
-            )
+                middlewares.append(VisionMiddleware())
+                if learning_middleware:
+                    middlewares.append(LearningCaptureMiddleware(learning_middleware.session))
 
-            agent = create_agent(
-                model=agent_model,
-                tools=[
-                    *tools,
-                    *skill_tools,
-                    *memory_tools,
-                    *server_tools,
-                ],
-                system_prompt=system_prompt,
-                middleware=middlewares,
-                checkpointer=InMemorySaver(),
-            )
-            cached_agent = await self._cache_agent(
-                signature=bundle_signature,
-                agent=agent,
-                streaming=streaming,
-                tool_catalog=tool_catalog,
-                subagent_catalog=subagent_catalog,
-                mcp_config_signature=mcp_config_signature,
-                subagent_middlewares=tuple(subagent_middlewares),
-                models=tuple(temporary_models),
-            )
-            temporary_subagent_middlewares = ()
-            temporary_models = []
-            return cached_agent
-        except asyncio.CancelledError:
-            pending_middlewares = await self._close_subagent_middleware_instances(temporary_subagent_middlewares)
-            self._subagent_middlewares = self._merge_subagent_middleware_owners(
-                self._subagent_middlewares,
-                pending_middlewares,
-            )
+                # 预算观察器必须位于最内层，才能看到动态 system 和最终筛选后的工具。
+                middlewares.append(
+                    UsageMiddleware(
+                        on_usage=self._record_usage,
+                        on_request_budget=self._record_request_budget,
+                        next_request_sequence=self._next_request_sequence,
+                    )
+                )
+
+                agent = create_agent(
+                    model=agent_model,
+                    tools=[
+                        *tools,
+                        *skill_tools,
+                        *memory_tools,
+                        *server_tools,
+                    ],
+                    system_prompt=system_prompt,
+                    middleware=middlewares,
+                    checkpointer=InMemorySaver(),
+                )
+                self._graphs.publish(CompiledAgentBundle(
+                    signature=bundle_signature,
+                    agent=agent,
+                    streaming=streaming,
+                    created_at=datetime.now(),
+                    tool_catalog=tool_catalog,
+                    subagent_catalog=subagent_catalog,
+                    plugin_revision=tool_catalog.plugin_revision,
+                    mcp_config_signature=mcp_config_signature,
+                    catalog_checked_at=datetime.now(),
+                    resources=resources,
+                ))
+                return agent
+        except Exception as error:
+            logger.error(f"创建 Agent 失败: {error}")
             raise
-        except Exception as e:
-            pending_middlewares = await self._close_subagent_middleware_instances(temporary_subagent_middlewares)
-            self._subagent_middlewares = self._merge_subagent_middleware_owners(
-                self._subagent_middlewares,
-                pending_middlewares,
-            )
-            logger.error(f"创建 Agent 失败: {e}")
-            raise
-        finally:
-            if pending_middlewares:
-                self._retired_llm_models.extend(temporary_models)
-            else:
-                await self._release_llm_models(tuple(temporary_models))
 
     async def process(
         self,

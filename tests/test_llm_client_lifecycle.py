@@ -4,7 +4,6 @@ LLM 独占 HTTP 客户端必须随请求和 Agent 图确定性释放。
 
 import asyncio
 import json
-from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -14,8 +13,9 @@ import pytest
 from app.agent import orchestrator as agent_module
 from app.agent.llm import helper as llm_module
 from app.agent.llm.helper import LLMHelper, LLMTestError, LLMTestTimeout
-from app.agent.orchestrator import MoviePilotAgent, _CompiledAgentBundle
+from app.agent.orchestrator import MoviePilotAgent
 from app.agent.tools.catalog import ToolCatalogSnapshot
+from tests.agent_graph import publish_graph
 
 
 @pytest.fixture
@@ -34,16 +34,6 @@ def _model(*, failure=None):
         http_client=SimpleNamespace(close=Mock(), is_closed=False),
         http_async_client=SimpleNamespace(aclose=AsyncMock(), is_closed=False),
         ainvoke=AsyncMock(return_value=SimpleNamespace(content="OK"), side_effect=failure),
-    )
-
-
-def _bundle(model):
-    """
-    构造持有实际模型 owner 的已编译图快照。
-    """
-    return _CompiledAgentBundle(
-        signature=("old",), agent=object(), streaming=False,
-        created_at=datetime.now(), models=(model,),
     )
 
 
@@ -91,13 +81,9 @@ async def test_graph_replacement_closes_only_retired_clients():
     """
     old_model, new_model = _model(), _model()
     agent = MoviePilotAgent(session_id="replace-clients", user_id="1")
-    agent._compiled_agent_bundle = _bundle(old_model)
-    catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="test")
-    await agent._cache_agent(
-        signature=("new",), agent=object(), streaming=False,
-        tool_catalog=catalog, subagent_catalog=catalog, mcp_config_signature="",
-        models=(new_model,),
-    )
+    publish_graph(agent, models=(old_model,))
+    publish_graph(agent, models=(new_model,))
+    await agent._graphs.collect()
     old_model.http_async_client.aclose.assert_awaited_once()
     new_model.http_async_client.aclose.assert_not_awaited()
     assert await agent._invalidate_cached_agent() is True
@@ -113,8 +99,7 @@ async def test_unfinished_subagent_retains_model_until_cleanup_converges():
     """
     model = _model()
     agent = MoviePilotAgent(session_id="pending-clients", user_id="1")
-    agent._compiled_agent_bundle = _bundle(model)
-    agent._subagent_middlewares = (SimpleNamespace(close=AsyncMock(side_effect=[False, True])),)
+    publish_graph(agent, models=(model,), middlewares=(SimpleNamespace(close=AsyncMock(side_effect=[False, True])),))
     assert await agent._invalidate_cached_agent() is False
     model.http_async_client.aclose.assert_not_awaited()
     assert await agent._invalidate_cached_agent() is True
@@ -128,7 +113,7 @@ async def test_unfinished_learning_retains_model_until_task_finishes():
     """
     model = _model()
     agent = MoviePilotAgent(session_id="learning-clients", user_id="1")
-    agent._compiled_agent_bundle = _bundle(model)
+    publish_graph(agent, models=(model,))
     task = asyncio.get_running_loop().create_future()
     agent._learning = SimpleNamespace(run=SimpleNamespace(task=task))
     assert await agent._invalidate_cached_agent() is False
@@ -146,7 +131,7 @@ async def test_close_failure_retains_owner_and_still_closes_other_client():
     model = _model()
     model.http_async_client.aclose.side_effect = [RuntimeError("close failed"), None]
     agent = MoviePilotAgent(session_id="retry-clients", user_id="1")
-    agent._compiled_agent_bundle = _bundle(model)
+    publish_graph(agent, models=(model,))
     assert await agent._invalidate_cached_agent() is False
     model.http_client.close.assert_called_once()
     assert await agent._invalidate_cached_agent() is True

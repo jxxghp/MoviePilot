@@ -114,8 +114,7 @@
     "no-any-return": 6,
     "no-untyped-def": 6,
     "type-arg": 12,
-    "union-attr": 3,
-    "var-annotated": 1
+    "union-attr": 3
   },
   "app/agent/skills/registry.py": {
     "misc": 3,

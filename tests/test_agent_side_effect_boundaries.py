@@ -29,7 +29,7 @@ from app.agent.terminal.manager import _TerminalSessionManager
 from app.agent.terminal.ownership import current_terminal_scope
 from app.agent.terminal.session import _TerminalSession
 from app.agent.tools.base import MoviePilotTool
-from app.agent.tools.catalog import ToolCatalogSnapshot
+from tests.agent_graph import publish_graph
 
 pytestmark = pytest.mark.usefixtures("terminal_scope")
 
@@ -327,12 +327,12 @@ async def test_agent_cleanup_closes_subagent_middlewares() -> None:
             """
             closed.append(True)
 
-    agent._subagent_middlewares = (_Middleware(),)
+    bundle = publish_graph(agent, middlewares=(_Middleware(),))
 
     assert await agent.cleanup() is True
 
     assert closed == [True]
-    assert agent._subagent_middlewares == ()
+    assert bundle.resources.empty
 
 
 @pytest.mark.anyio
@@ -343,22 +343,14 @@ async def test_agent_cache_replacement_closes_previous_subagent_middleware() -> 
     agent = MoviePilotAgent(session_id="session-1", user_id="user-1")
     old_middleware = SimpleNamespace(close=AsyncMock())
     new_middleware = SimpleNamespace(close=AsyncMock())
-    catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
-    agent._subagent_middlewares = (old_middleware,)
+    publish_graph(agent, middlewares=(old_middleware,))
 
-    await agent._cache_agent(
-        signature=("new",),
-        agent=object(),
-        streaming=False,
-        tool_catalog=catalog,
-        subagent_catalog=catalog,
-        mcp_config_signature="mcp-config",
-        subagent_middlewares=(new_middleware,),
-    )
+    bundle = publish_graph(agent, middlewares=(new_middleware,))
+    await agent._graphs.collect()
 
     old_middleware.close.assert_awaited_once()
     new_middleware.close.assert_not_awaited()
-    assert agent._subagent_middlewares == (new_middleware,)
+    assert tuple(bundle.resources.middlewares.values()) == (new_middleware,)
 
 
 @pytest.mark.anyio
@@ -369,8 +361,7 @@ async def test_agent_execution_failure_closes_cached_subagent_middleware() -> No
     agent = MoviePilotAgent(session_id="session-1", user_id="user-1")
     middleware = SimpleNamespace(close=AsyncMock())
     graph = SimpleNamespace(ainvoke=AsyncMock(side_effect=RuntimeError("failed")))
-    agent._compiled_agent_bundle = SimpleNamespace(agent=graph, models=())
-    agent._subagent_middlewares = (middleware,)
+    bundle = publish_graph(agent, graph=graph, middlewares=(middleware,))
     agent._should_stream = lambda: False
     agent._create_agent = AsyncMock(return_value=graph)
     agent._dispatch_execution_notice = AsyncMock()
@@ -380,8 +371,8 @@ async def test_agent_execution_failure_closes_cached_subagent_middleware() -> No
 
     assert result == "智能助手执行失败，请稍后重试"
     middleware.close.assert_awaited_once()
-    assert agent._compiled_agent_bundle is None
-    assert agent._subagent_middlewares == ()
+    assert agent._graphs.current is None
+    assert bundle.resources.empty
 
 
 def test_subagent_control_middleware_close_is_idempotent() -> None:
@@ -478,13 +469,13 @@ async def test_agent_cleanup_retains_nonconverged_subagent_middleware() -> None:
         seal=MagicMock(),
         close=AsyncMock(side_effect=[False, True]),
     )
-    agent._subagent_middlewares = (middleware,)
+    bundle = publish_graph(agent, middlewares=(middleware,))
 
     assert await agent.cleanup() is False
-    assert agent._subagent_middlewares == (middleware,)
+    assert tuple(bundle.resources.middlewares.values()) == (middleware,)
 
     assert await agent.cleanup() is True
-    assert agent._subagent_middlewares == ()
+    assert bundle.resources.empty
     assert middleware.seal.call_count == 2
     assert middleware.close.await_count == 2
 

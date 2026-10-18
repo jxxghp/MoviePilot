@@ -304,6 +304,8 @@ import asyncio
 import json
 import sys
 import types
+from datetime import datetime
+from unittest.mock import Mock
 
 sites = types.ModuleType("app.application.site.sites")
 sites.SitesHelper = type("SitesHelper", (), {})
@@ -311,12 +313,13 @@ sites.__file__ = "<test-stub>"
 sys.modules["app.application.site.sites"] = sites
 
 from app.api.endpoints import openai
+from app.agent.graph import AgentGraphCache, CompiledAgentBundle, GraphResources
 
 class RuntimeAgent:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         self.stream_handler = object()
-        self._compiled_agent_bundle = object()
+        self._graphs = AgentGraphCache(models_in_use=lambda: False)
 
 class TestStreamingHandler(openai._OpenAIStreamingHandlerMixin):
     pass
@@ -327,11 +330,23 @@ agent = agent_type(session_id="stable", user_id="api")
 first_queue = asyncio.Queue()
 second_queue = asyncio.Queue()
 
+resources = GraphResources()
+consumer = Mock(close=Mock(return_value=True))
+resources.own_middlewares([consumer])
+agent._graphs.publish(CompiledAgentBundle(
+    signature=("old",), agent=object(), streaming=False,
+    created_at=datetime.now(), resources=resources,
+))
 agent.configure_protocol_request(stream_mode=True, event_queue=first_queue)
+invalidated = agent._graphs.current is None
+retained = not resources.empty
+asyncio.run(agent._graphs.collect())
 handler = agent.stream_handler
 handler._event_queue.put_nowait("first")
-compiled_bundle = object()
-agent._compiled_agent_bundle = compiled_bundle
+compiled_bundle = CompiledAgentBundle(
+    signature=("new",), agent=object(), streaming=True, created_at=datetime.now(),
+)
+agent._graphs.publish(compiled_bundle)
 
 agent.configure_protocol_request(stream_mode=True, event_queue=second_queue)
 agent.release_protocol_request(first_queue)
@@ -339,8 +354,11 @@ handler._event_queue.put_nowait("second")
 agent.release_protocol_request(second_queue)
 
 print(json.dumps({
+    "invalidated": invalidated,
+    "retained_until_collection": retained,
+    "consumer_closes": consumer.close.call_count,
     "same_handler": agent.stream_handler is handler,
-    "same_bundle": agent._compiled_agent_bundle is compiled_bundle,
+    "same_bundle": agent._graphs.current is compiled_bundle,
     "first": first_queue.get_nowait(),
     "first_empty": first_queue.empty(),
     "second": second_queue.get_nowait(),
@@ -352,6 +370,9 @@ print(json.dumps({
     )
 
     assert result == {
+        "invalidated": True,
+        "retained_until_collection": True,
+        "consumer_closes": 1,
         "same_handler": True,
         "same_bundle": True,
         "first": "first",
@@ -432,7 +453,6 @@ class RuntimeAgent:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         self.stream_handler = object()
-        self._compiled_agent_bundle = None
 
     async def process(self, _prompt, **_kwargs):
         return "runtime reply"

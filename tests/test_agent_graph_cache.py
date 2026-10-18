@@ -11,12 +11,13 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.contracts import ReplyMode
+from app.agent.graph import CompiledAgentBundle
 from app.agent.mcp import AgentMcpToolSpec
 from app.agent.middleware.invocation import GET_TOOL_EXECUTION_NAME
 from app.agent.middleware.output import READ_TOOL_RESULT_NAME
 from app.agent.middleware.plan import PLAN_TOOL_NAME
 from app.agent.middleware.selection import TOOL_DISCOVERY_NAME
-from app.agent.orchestrator import MoviePilotAgent, _CompiledAgentBundle
+from app.agent.orchestrator import MoviePilotAgent
 from app.agent.tools.catalog import (
     ToolCatalogSnapshot,
     ToolIdentityAmbiguousError,
@@ -103,7 +104,7 @@ async def test_create_agent_reuses_cached_graph_when_signature_matches():
     cached_graph = object()
     catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     agent = MoviePilotAgent(session_id="cache-hit", user_id="user-1")
-    agent._compiled_agent_bundle = _CompiledAgentBundle(
+    agent._graphs.publish(CompiledAgentBundle(
         signature=("sig",),
         agent=cached_graph,
         streaming=False,
@@ -113,7 +114,7 @@ async def test_create_agent_reuses_cached_graph_when_signature_matches():
         plugin_revision=0,
         mcp_config_signature="mcp-config",
         catalog_checked_at=datetime.now(),
-    )
+    ))
 
     with (
         patch.object(
@@ -146,7 +147,7 @@ async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
     cached_graph = object()
     catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     agent = MoviePilotAgent(session_id="catalog-cache-hit", user_id="user-1")
-    agent._compiled_agent_bundle = _CompiledAgentBundle(
+    agent._graphs.publish(CompiledAgentBundle(
         signature=("sig",),
         agent=cached_graph,
         streaming=False,
@@ -156,7 +157,7 @@ async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
         plugin_revision=0,
         mcp_config_signature="mcp-config",
         catalog_checked_at=datetime.now(),
-    )
+    ))
 
     with (
         patch.object(
@@ -197,7 +198,7 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
     catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     expired_at = datetime.now() - timedelta(minutes=5)
     agent = MoviePilotAgent(session_id="catalog-refresh", user_id="user-1")
-    agent._compiled_agent_bundle = _CompiledAgentBundle(
+    agent._graphs.publish(CompiledAgentBundle(
         signature=("sig",),
         agent=cached_graph,
         streaming=False,
@@ -207,7 +208,7 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
         plugin_revision=0,
         mcp_config_signature="mcp-config",
         catalog_checked_at=expired_at,
-    )
+    ))
     fake_llm = SimpleNamespace(
         _llm_type="openai-chat",
         model="fake",
@@ -283,7 +284,7 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
         graph = await agent._create_agent(streaming=False)
 
     assert graph is cached_graph
-    assert agent._compiled_agent_bundle.catalog_checked_at > expired_at
+    assert agent._graphs.current.catalog_checked_at > expired_at
     temporary_middleware.close.assert_awaited_once()
     fake_llm.http_client.close.assert_called_once()
     fake_llm.http_async_client.aclose.assert_awaited_once()
