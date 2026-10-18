@@ -127,6 +127,34 @@ def test_torrentleech_video_search_uses_requested_category_contract(monkeypatch)
     assert torrents[0]["category"] == MediaType.MOVIE.value
 
 
+def test_torrentleech_untyped_search_uses_generic_url(monkeypatch):
+    """
+    未指定媒体类型时应搜索全部分类且不附加分类标记。
+    """
+    captured = {}
+
+    def fake_get_res(_request, url: str, **_kwargs):
+        """
+        记录默认搜索地址并回放固定响应。
+        """
+        captured["url"] = url
+        return _FakeResponse()
+
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.torrentleech.RequestUtils.get_res",
+        fake_get_res,
+    )
+
+    error, torrents = TorrentLeech(_build_indexer()).search(keyword="Artist Album")
+
+    assert not error
+    assert captured["url"] == (
+        "https://www.torrentleech.org/torrents/browse/list/query/Artist%20Album"
+    )
+    assert len(torrents) == 1
+    assert "category" not in torrents[0]
+
+
 def test_torrentleech_async_music_search_uses_same_contract(monkeypatch):
     """
     TorrentLeech 异步音乐搜索应复用同步搜索的分类契约。

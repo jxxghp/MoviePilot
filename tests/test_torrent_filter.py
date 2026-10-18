@@ -157,6 +157,20 @@ def test_filter_torrents_keeps_lazy_priority_level_parsing():
     assert torrent.pri_order == 100
 
 
+def test_unknown_rule_operator_has_no_match():
+    """
+    未识别的布尔运算符不应被当成命中的过滤规则。
+    """
+    module = _build_filter_module("KEEP", {"KEEP": {"include": "Movie"}})
+    torrent = TorrentInfo(title="Movie", description="")
+
+    result = module._FilterModule__match_group(
+        torrent, ["KEEP", "xor", "KEEP"], None
+    )
+
+    assert result is None
+
+
 def test_filter_torrents_keeps_sequential_rule_group_semantics():
     """
     多个规则组应按顺序逐轮过滤。
