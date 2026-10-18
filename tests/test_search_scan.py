@@ -7,12 +7,28 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.application.site.observation import report_site_search_outcome, report_site_search_page
+from app.application.search.session import SearchSessionSnapshot, encode_search_state
+from app.application.site.observation import SiteSearchObservation, report_site_search_outcome, report_site_search_page
+from app.application.subscription.sitebudget import (
+    SiteBudgetClaim,
+    SubscriptionSearchDeferred,
+    SubscriptionSiteBudget,
+    SubscriptionSiteBudgetUnavailable,
+)
+from app.chain.search import scan as scan_module
 from app.chain.search.execution import MediaSearchPlan
 from app.chain.search.facade import SearchChain
 from app.chain.search.result import TorrentHelper
-from app.chain.search.scan import AUTOMATIC_REQUEST_INTERVAL, SearchScan, SearchSources
+from app.chain.search.scan import (
+    AUTOMATIC_REQUEST_INTERVAL,
+    BUDGET_DEFERRAL_LIMIT,
+    BUDGET_DEFERRAL_SECONDS,
+    ScanPage,
+    SearchScan,
+    SearchSources,
+)
 from app.domain.context import MediaInfo, TorrentInfo
+from app.runtime.stop import runtime_stop_state
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType
 
@@ -685,12 +701,12 @@ def test_language_or_capability_skip_keeps_existing_non_failure_semantics(owner,
     assert scan.collection.remaining == {"1:1"}
 
 
-def test_opaque_ticket_recovery_submits_first_page_before_waiting_and_does_not_repeat_it_after_restart(owner, monkeypatch):
+def test_opaque_ticket_recovery_submits_first_page_before_waiting_and_does_not_repeat_it_after_restart(
+    owner, monkeypatch, scan_clock,
+):
     """
     不透明下载凭据恢复时先提交首页可用目标，重启后不重复提交。
     """
-    from datetime import datetime, timedelta, timezone
-
     from app.application.search.session import SearchSessionSnapshot, encode_search_state
     from app.application.site.observation import SiteSearchObservation
     from app.application.subscription.sitebudget import SubscriptionSearchDeferred
@@ -706,14 +722,20 @@ def test_opaque_ticket_recovery_submits_first_page_before_waiting_and_does_not_r
         assert initial.step(source)
     assert initial.step("plugin:Show")
     def restore(_method, **params):
+        """
+        恢复候选事实，缺失票据交给原页重取。
+        """
         item = TorrentInfo(**params["record"])
         return item if item.enclosure or params.get("allow_missing") else None
     monkeypatch.setattr(owner, "run_module", restore)
     calls = []
     cooling = {"active": True}
     def fetch(_sources, _key, page, **_params):
+        """
+        第二页等待一次冷却，其余页面直接返回票据。
+        """
         if page == 1 and cooling["active"]:
-            retry = (datetime.now(timezone.utc) + timedelta(seconds=10)).isoformat()
+            retry = (scan_clock["now"] + timedelta(seconds=10)).isoformat()
             return ScanPage([], SiteSearchObservation(), retry, "cooldown")
         calls.append(page)
         return ScanPage(data[page], SiteSearchObservation(True, "success", raw_count=1))
@@ -728,6 +750,7 @@ def test_opaque_ticket_recovery_submits_first_page_before_waiting_and_does_not_r
     payload = encode_search_state(restored.state())
     assert "do-not-store" not in payload
     cooling["active"] = False
+    scan_clock["now"] = datetime.fromisoformat(restored.retry[source]) + timedelta(seconds=1)
     resumed = SearchScan(owner=owner, plan=plan([2]), full=True,
                          snapshot=SearchSessionSnapshot("round", 1, payload))
     resumed.run(lambda _items, goals: batches.append(goals) or goals)
@@ -1185,3 +1208,259 @@ def test_recovered_candidate_is_filtered_again_before_submission(owner, monkeypa
     submitted = []
     scan.choose({"1:1"}, lambda items, ready: submitted.extend(items) or set())
     assert submitted == []
+
+
+class _StubSiteBudget(SubscriptionSiteBudget):
+    """
+    按站点模拟预算：故障站点始终长冷却推迟，健康站点立即放行。
+    """
+
+    def __init__(self, deferred_site_id: int, retry_seconds: float) -> None:
+        """
+        保存故障站点和每次预算等待的秒数，不连接预算数据库。
+        """
+        super().__init__(repository=None, owner="test", cancelled=lambda: False, stop_state=runtime_stop_state)
+        self.deferred_site_id = deferred_site_id
+        self.retry_seconds = retry_seconds
+
+    def acquire(self, site_id: int, *, minimum_interval: float = 0) -> SiteBudgetClaim:
+        """
+        故障站点返回冷却时间，其余站点直接取得测试租约。
+        """
+        if site_id == self.deferred_site_id:
+            retry_at = (scan_module.datetime.now(timezone.utc)
+                        + timedelta(seconds=self.retry_seconds)).isoformat(timespec="seconds")
+            raise SubscriptionSiteBudgetUnavailable(site_id=site_id, retry_at=retry_at, wait_reason="cooldown")
+        return SiteBudgetClaim(site_id=site_id, acquired=True, retry_at="",
+                               consecutive_failures=0, lease_token="stub")
+
+    def record_request(self, site_id: int, candidate_count: int) -> None:
+        """
+        测试不落库，忽略请求指标。
+        """
+        return None
+
+    def record_success(self, site_id: int) -> None:
+        """
+        测试不落库，忽略成功指标。
+        """
+        return None
+
+    def finish(self, claim: SiteBudgetClaim, observation, *, deferral_seconds: float = 0) -> bool:
+        """
+        测试不落库，直接收口租约。
+        """
+        return True
+
+
+@pytest.fixture
+def scan_clock(monkeypatch):
+    """
+    使用可推进的 UTC 时钟验证冷却到期，不实际等待或清除重试状态。
+    """
+    clock = {"now": datetime.now(timezone.utc).replace(microsecond=500000)}
+
+    class Clock(datetime):
+        """
+        返回测试控制的时刻，保留标准时间文本的解析行为。
+        """
+
+        @classmethod
+        def now(cls, tz=None):
+            """
+            返回带指定时区的当前测试时间。
+            """
+            return clock["now"].astimezone(tz)
+
+    monkeypatch.setattr(scan_module, "datetime", Clock)
+    return clock
+
+
+def test_budget_deferred_dead_site_settles_and_releases_cached_candidates(owner, monkeypatch, scan_clock):
+    """
+    永久预算冷却的站点在本轮结算后放行"全部来源才提交"的屏障，缓存候选得以提交；
+    结算只在本轮有效，下一轮该站点重新参与搜索。
+    """
+    monkeypatch.setattr(owner, "_sync_indexers",
+                        lambda _sites: [{"id": 1, "name": "test", "parser": "mTorrent"},
+                                        {"id": 2, "name": "dead", "parser": "mTorrent"}])
+    site_pages = {(1, 0): [torrent(1)], (1, 1): []}
+
+    def request(**params):
+        """
+        健康站点提供候选和末页证据，故障站点由预算拦截。
+        """
+        values = site_pages.get((params["site"]["id"], params["page"]), [])
+        report_site_search_outcome(attempted=True, outcome="success")
+        report_site_search_page(raw_count=len(values))
+        return values
+
+    monkeypatch.setattr(owner, "search_site_torrents", request)
+    monkeypatch.setattr(owner, "_subscription_site_budget",
+                        _StubSiteBudget(deferred_site_id=2, retry_seconds=3600.0), raising=False)
+
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    submitted = []
+
+    def submit(contexts, ready):
+        """
+        记录屏障放行后真正提交的候选。
+        """
+        submitted.extend(contexts)
+        return ready
+
+    # 按保存的重试时间推进时钟，并恢复检查点，模拟持久队列再次唤醒。
+    for _ in range(5):
+        scan.run(submit)
+        if scan.ended:
+            break
+        if scan.retry:
+            scan_clock["now"] = datetime.fromisoformat(min(scan.retry.values())) + timedelta(seconds=1)
+        snapshot = SearchSessionSnapshot("round", 0, encode_search_state(scan.state()))
+        scan = SearchScan(owner=owner, plan=plan([1]), snapshot=snapshot)
+
+    deferred_keys = [key for key in scan.collection.sources if key.startswith("2:")]
+    assert deferred_keys
+    assert all(scan.collection.sources[key].failed for key in deferred_keys)
+    assert all(scan.collection.sources[key].budget_deferrals >= BUDGET_DEFERRAL_LIMIT for key in deferred_keys)
+    assert scan.collection.settled == {"1:1"}
+    assert submitted
+    assert scan.ended is True
+
+
+def test_short_budget_wait_does_not_settle_source(owner, monkeypatch):
+    """
+    秒级预算等待（请求间隔、并发租约）属于健康站点噪声，不得计数或结算来源。
+    """
+    monkeypatch.setattr(owner, "_subscription_site_budget",
+                        _StubSiteBudget(deferred_site_id=1, retry_seconds=11.0), raising=False)
+
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    submitted = []
+
+    def submit(contexts, ready):
+        """
+        记录是否错误放行了仍在短等待的来源。
+        """
+        submitted.extend(contexts)
+        return ready
+
+    for _ in range(5):
+        scan.run(submit)
+        scan.retry.clear()
+
+    key = next(key for key in scan.collection.sources if key.startswith("1:"))
+    source = scan.collection.sources[key]
+    assert source.failed is False
+    assert source.budget_deferrals == 0
+    assert submitted == []
+    assert scan.ended is False
+
+
+def test_exact_long_cooldown_counts_after_timestamp_truncation(owner, monkeypatch, scan_clock):
+    """
+    预算时间保存到秒，恰好达到长冷却门槛时不能因当前时间的小数部分漏计。
+    """
+    fixed_now = scan_clock["now"]
+    retry_at = (fixed_now + timedelta(seconds=BUDGET_DEFERRAL_SECONDS)).isoformat(timespec="seconds")
+    monkeypatch.setattr(SearchSources, "fetch", lambda *_args, **_kwargs: ScanPage(
+        [], SiteSearchObservation(), retry_at, "cooldown"))
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    scan.step("1:Show")
+    assert scan.collection.sources["1:Show"].budget_deferrals == 1
+
+
+@pytest.mark.parametrize("ticket_count", [1, 2])
+def test_ticket_recovery_long_cooldown_is_bounded_across_checkpoints(owner, monkeypatch, scan_clock, ticket_count):
+    """
+    缓存候选重取票据也必须有限等待；恢复检查点后保留计数并继续提交可用候选。
+    """
+    scan, _ = _restored_ticket_scan(owner, monkeypatch, [torrent(1, version)
+                                                      for version in range(1, ticket_count + 2)], [])
+    backup_key = next(key for key, saved in scan.candidates.items()
+                      if saved["torrent"]["description"] == f"1-{ticket_count + 1}")
+    scan.candidates[backup_key]["torrent"]["enclosure"] = "https://site.example/download?id=backup"
+    requests = []
+
+    def fetch(_sources, _key, page, **_params):
+        """
+        模拟原页重取持续受站点长冷却阻塞。
+        """
+        requests.append(page)
+        retry_at = (scan_clock["now"] + timedelta(hours=1)).isoformat(timespec="seconds")
+        return ScanPage([], SiteSearchObservation(), retry_at, "cooldown")
+
+    monkeypatch.setattr(SearchSources, "fetch", fetch)
+    submitted = []
+
+    def submit(items, goals):
+        """
+        记录实际可用候选并结算目标。
+        """
+        submitted.extend(item.torrent_info.description for item in items)
+        return goals
+
+    for version in range(BUDGET_DEFERRAL_LIMIT - 1):
+        with pytest.raises(SubscriptionSearchDeferred) as error:
+            scan.run(submit)
+        assert error.value.wait_reason == "cooldown"
+        assert error.value.site_ids == (1,)
+        assert datetime.fromisoformat(error.value.retry_at) > scan_clock["now"] + timedelta(minutes=59)
+        snapshot = SearchSessionSnapshot("round", version, encode_search_state(scan.state()))
+        scan = SearchScan(owner=owner, plan=plan([1, 2]), full=True, snapshot=snapshot)
+        with pytest.raises(SubscriptionSearchDeferred):
+            scan.run(submit)
+        assert len(requests) == version + 1
+        scan_clock["now"] = datetime.fromisoformat(error.value.retry_at) + timedelta(seconds=1)
+    scan.run(submit)
+    assert len(requests) == BUDGET_DEFERRAL_LIMIT
+    assert submitted == [f"1-{ticket_count + 1}"]
+    assert scan.ended
+
+
+def test_successful_ticket_recovery_resets_budget_wait_count(owner, monkeypatch):
+    """
+    原页成功取回票据后清零等待计数，后续页不继承此前冷却。
+    """
+    scan, _ = _restored_ticket_scan(owner, monkeypatch, [torrent(1)], [torrent(1)])
+    scan.collection.sources["1:Show"].budget_deferrals = BUDGET_DEFERRAL_LIMIT - 1
+    scan.run(lambda _items, goals: goals)
+    assert scan.collection.sources["1:Show"].budget_deferrals == 0
+    assert scan.collection.settled == {"1:1"}
+
+
+@pytest.mark.parametrize("wait_reason, seconds, expected", [
+    ("cooldown", 11, 1), ("busy", 3600, 1), ("cooldown", 3600, 2),
+])
+def test_budget_wait_count_restores_and_success_resets(owner, monkeypatch, wait_reason, seconds, expected):
+    """
+    检查点保留长冷却累计，短等待与忙碌不加计数，成功取页后清零。
+    """
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    scan.collection.sources["1:Show"].budget_deferrals = 1
+    snapshot = SearchSessionSnapshot("round", 0, encode_search_state(scan.state()))
+    scan = SearchScan(owner=owner, plan=plan([1]), snapshot=snapshot)
+    retry_at = (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat(timespec="seconds")
+    monkeypatch.setattr(SearchSources, "fetch", lambda *_args, **_kwargs: ScanPage(
+        [], SiteSearchObservation(), retry_at, wait_reason))
+    scan.step("1:Show")
+    assert scan.collection.sources["1:Show"].budget_deferrals == expected
+    pages(owner, monkeypatch, {0: []})
+    monkeypatch.setattr(SearchSources, "fetch", lambda *_args, **_kwargs: ScanPage(
+        [], SiteSearchObservation(True, "success", raw_count=0)))
+    scan.step("1:Show")
+    assert scan.collection.sources["1:Show"].budget_deferrals == 0
+    assert SearchScan(owner=owner, plan=plan([1])).collection.sources["1:Show"].budget_deferrals == 0
+
+
+def test_legacy_checkpoint_defaults_budget_wait_count_to_zero(owner):
+    """
+    没有预算计数的旧检查点仍可恢复，不会重启或提前结算来源。
+    """
+    state = SearchScan(owner=owner, plan=plan([1])).state()
+    for source in state["collection"]["sources"].values():
+        source.pop("budget_deferrals")
+    snapshot = SearchSessionSnapshot("round", 0, encode_search_state(state))
+    scan = SearchScan(owner=owner, plan=plan([1]), snapshot=snapshot)
+    assert not scan.restart
+    assert all(source.budget_deferrals == 0 and not source.failed for source in scan.collection.sources.values())

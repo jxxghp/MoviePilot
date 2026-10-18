@@ -68,6 +68,7 @@ class SearchSourceCursor:
     :param page_limit: 当前来源页数上限；未指定时使用全局上限
     :param matched_work: 作品匹配不局限于当前缺集；见过同作品的其他季集也不能按异常查询提前停止
     :param unmatched_pages: 从未匹配目标作品时连续出现的明确不匹配页数
+    :param budget_deferrals: 本轮因站点预算长冷却被推迟的次数；达到上限后本轮结算该来源，跨轮重新累计
     """
 
     next_page: int = 0
@@ -85,6 +86,7 @@ class SearchSourceCursor:
     page_limit: Optional[int] = None
     matched_work: bool = False
     unmatched_pages: int = 0
+    budget_deferrals: int = 0
 
     @property
     def limit_reached(self) -> bool:

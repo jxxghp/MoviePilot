@@ -52,6 +52,11 @@ RESTART_AFTER_SECONDS = 36 * 3600
 _CHECKPOINT_FORMAT = 3
 # 重取临时下载票据所在原页连续失败达到该次数后放弃该候选，避免一个候选卡住整个订阅。
 RECOVERY_ATTEMPTS = 3
+# 单个来源本轮因站点预算长冷却被推迟达到该次数后结算该来源：检查点随本轮结束删除，下一轮重新尝试，
+# 既打破"全部来源结束才提交"的屏障死锁，也不永久拉黑偶尔不可用的站点。
+BUDGET_DEFERRAL_LIMIT = 3
+# 只累计不短于该秒数的冷却推迟；请求间隔与并发租约的秒级等待是健康站点噪声，不计入。
+BUDGET_DEFERRAL_SECONDS = 600.0
 
 
 def search_targets(plan: MediaSearchPlan) -> set[str]:
@@ -439,9 +444,7 @@ class SearchScan:
         result = self.sources.fetch(key, page, budget=self._budget())
         observation = result.observation
         if result.retry_at:
-            self.retry[key] = result.retry_at
-            self.retry_reasons[key] = result.wait_reason or "busy"
-            source.error = observation.error
+            self._record_budget_wait(key, result)
             self.checkpoint()
             return False
         self.retry.pop(key, None)
@@ -473,6 +476,7 @@ class SearchScan:
                 logger.warning(f"{self.media.title_year} 搜索来源 {key} 连续 {UNMATCHED_PAGE_LIMIT} 页明确不匹配目标作品，"
                                "本轮停止该来源，继续处理其他来源候选")
             source.failure_outcome = None
+            source.budget_deferrals = 0
             self.retry.pop(key, None)
             self.retry_reasons.pop(key, None)
             self.live.update(contexts)
@@ -484,6 +488,32 @@ class SearchScan:
                 source.page_limit = 1
         self.checkpoint()
         return bool(accepted)
+
+    def _record_budget_wait(self, key: str, result: ScanPage) -> None:
+        """
+        翻页与候选票据恢复共享来源长冷却计数，达到上限后仅停止本轮来源。
+
+        :param key: 当前页或待恢复候选所属的搜索来源
+        :param result: 携带重试时间和等待原因的页面结果
+        """
+        source = self.collection.sources[key]
+        wait_reason = result.wait_reason or "busy"
+        self.retry[key] = cast(str, result.retry_at)
+        self.retry_reasons[key] = wait_reason
+        source.error = result.observation.error
+        if wait_reason == "cooldown":
+            # 预算时间保存到秒，当前时间使用相同精度，避免恰好 600 秒的冷却被小数部分排除。
+            deferral_seconds = (datetime.fromisoformat(cast(str, result.retry_at))
+                                - datetime.now(timezone.utc).replace(microsecond=0)).total_seconds()
+            if deferral_seconds >= BUDGET_DEFERRAL_SECONDS:
+                source.budget_deferrals += 1
+        if source.budget_deferrals >= BUDGET_DEFERRAL_LIMIT:
+            source.failure_outcome = "deferred"
+            source.failed = True
+            self.retry.pop(key, None)
+            self.retry_reasons.pop(key, None)
+            logger.warning(f"{self.media.title_year} 搜索来源 {key} 本轮 {source.budget_deferrals} 次等待站点预算未果，"
+                           "跳过该来源以提交已收集候选，下一轮将重新搜索")
 
     def _candidate_context(self, key: str) -> Optional[Context]:
         """
@@ -537,11 +567,23 @@ class SearchScan:
         """
         record = self.candidates[key]
         source, page = record["source"], record["page"]
+        cursor = self.collection.sources[source]
+        if cursor.budget_deferrals >= BUDGET_DEFERRAL_LIMIT:
+            del self.candidates[key]
+            self.checkpoint()
+            return None
+        retry_at = self.retry.get(source)
+        if retry_at and retry_at > datetime.now(timezone.utc).isoformat(timespec="seconds"):
+            self._defer(waiting_source=source)
         result = self.sources.fetch(source, page, budget=self._budget())
         if result.retry_at:
-            self.retry[source] = result.retry_at
-            self.retry_reasons[source] = result.wait_reason or "busy"
-            self._defer()
+            self._record_budget_wait(source, result)
+            if cursor.budget_deferrals < BUDGET_DEFERRAL_LIMIT:
+                self._defer(waiting_source=source)
+            # 临时票据尚未恢复时不能下载；放弃该候选，让仍可用的次优候选继续提交。
+            del self.candidates[key]
+            self.checkpoint()
+            return None
         if result.observation.outcome != "success":
             failures = self.recovery_failures.get(key, 0) + 1
             if failures < RECOVERY_ATTEMPTS:
@@ -554,6 +596,7 @@ class SearchScan:
                            f"{result.observation.error or '请求未成功'}")
             self.checkpoint()
             return None
+        cursor.budget_deferrals = 0
         self.recovery_failures.pop(key, None)
         self.retry.pop(source, None)
         self.retry_reasons.pop(source, None)
@@ -649,13 +692,17 @@ class SearchScan:
         self._add_sources(all_names=bool(self.owner.runtime_config.search_multiple_name))
         self.checkpoint()
 
-    def _defer(self) -> None:
+    def _defer(self, *, waiting_source: Optional[str] = None) -> None:
         """
         按仍可搜索来源的有效冷却时间交还队列，避免过期检查点让任务立即重领。
+
+        :param waiting_source: 等待恢复候选票据的来源；即使已搜到末页也必须保留该来源的冷却
         """
         now = datetime.now(timezone.utc)
         now_at = now.isoformat(timespec="seconds")
         active_sources = self.collection.active_sources(full=self.full)
+        if waiting_source is not None and waiting_source not in active_sources:
+            active_sources.append(waiting_source)
         active = set(active_sources)
         self.retry = {key: retry_at for key, retry_at in self.retry.items()
                       if key in active and retry_at > now_at}
