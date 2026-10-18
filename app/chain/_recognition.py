@@ -900,7 +900,7 @@ class RecognitionMixin:
     @classmethod
     def _media_info_from_plugin(
             cls,
-            event_data: dict[str, Any],
+            event_data: object,
             is_music: bool,
             mtype: Optional[MediaType] = None,
             music_type: Optional[str] = None,

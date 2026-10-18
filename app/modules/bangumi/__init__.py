@@ -275,7 +275,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     def recognize_media(
         self,
-        meta: MetaBase = None,
+        meta: Optional[MetaBase] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         **kwargs,
@@ -311,7 +311,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     async def async_recognize_media(
         self,
-        meta: MetaBase = None,
+        meta: Optional[MetaBase] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         **kwargs,

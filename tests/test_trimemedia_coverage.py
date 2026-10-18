@@ -10,6 +10,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.modules.trimemedia import api as trimemedia_api
+from app.modules.trimemedia.module import TrimeMediaModule
 from app.modules.trimemedia.trimemedia import TrimeMedia
 from app.schemas.types import MediaSource
 
@@ -135,3 +136,17 @@ def test_get_resume_builds_play_item_and_get_image_cookies(monkeypatch):
         "Trim-MC-token": "token",
         "Trim-MC-access": "access",
     }
+
+
+def test_module_image_cookies_returns_none_when_no_instance_owns_image(monkeypatch):
+    """
+    所有飞牛实例均拒绝图片地址时，模块不提供其它实例的授权凭据。
+
+    :param monkeypatch: 隔离模块实例目录
+    """
+    module = TrimeMediaModule()
+    server = SimpleNamespace(get_image_cookies=Mock(return_value=None))
+    monkeypatch.setattr(module, "get_instances", lambda: {"first": server})
+
+    assert module.mediaserver_image_cookies(image_url="https://other.example/poster.jpg") is None
+    server.get_image_cookies.assert_called_once_with("https://other.example/poster.jpg")

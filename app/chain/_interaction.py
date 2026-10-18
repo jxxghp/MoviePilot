@@ -2,10 +2,16 @@
 业务处理链到消息交互处理器的统一委托。
 """
 
-from typing import Optional, Tuple, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 from app.chain._contracts import InteractionMixinHost
 from app.schemas.types import NotificationChannel
+
+if TYPE_CHECKING:
+    from app.application.messaging.site import SiteInteractionHandler
+    from app.application.messaging.subscribe import SubscribeInteractionHandler
 
 
 class InteractionChainMixin:
@@ -25,9 +31,9 @@ class InteractionChainMixin:
     __mixin_host_protocol__ = InteractionMixinHost
 
     # 交互处理器类，子类注入（如 SubscribeInteractionHandler / SiteInteractionHandler）
-    _interaction_handler_type: type = None
+    _interaction_handler_type: Optional[type[SiteInteractionHandler | SubscribeInteractionHandler]] = None
 
-    def _interaction_handler(self):
+    def _interaction_handler(self) -> SiteInteractionHandler | SubscribeInteractionHandler:
         """
         构造交互处理器实例，由子类按各自业务动作注入实现。
         """
@@ -36,10 +42,10 @@ class InteractionChainMixin:
     def remote_list(
             self,
             arg_str: str = "",
-            channel: NotificationChannel = None,
-            userid: Union[str, int] = None,
+            channel: Optional[NotificationChannel] = None,
+            userid: Optional[Union[str, int]] = None,
             source: Optional[str] = None,
-    ):
+    ) -> object:
         """
         斜杠命令统一入口，委托交互处理器。
         """
@@ -52,7 +58,10 @@ class InteractionChainMixin:
         """
         解析斜杠命令按钮回调。
         """
-        return cls._interaction_handler_type.parse_callback(callback_data)
+        handler_type = cls._interaction_handler_type
+        if handler_type is None:
+            raise AttributeError("'NoneType' object has no attribute 'parse_callback'")
+        return handler_type.parse_callback(callback_data)
 
     def handle_callback_interaction(
             self,

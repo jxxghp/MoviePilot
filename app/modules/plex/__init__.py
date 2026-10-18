@@ -2,7 +2,7 @@
 Plex 模块，将认证、媒体库查询和播放事件接入统一媒体服务器接口。
 """
 
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple, Union
 
 from app.application.mediaserver import MusicMediaServerHelper
 from app.domain.context import MediaInfo
@@ -75,7 +75,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             except Exception as err:
                 logger.error(f"停止Plex模块实例失败：{err}")
 
-    def _test_server(self, server, name: Optional[str]) -> Optional[str]:
+    def _test_server(self, server: Plex, name: Optional[str]) -> Optional[str]:
         """
         Plex 用媒体库列表探测连接状态。
         """
@@ -85,7 +85,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             return f"无法连接Plex服务器：{name}"
         return None
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         模块不提供额外的初始化开关。
         """
@@ -106,6 +106,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         if not credentials or credentials.grant_type != "password":
             return None
         # 确定要认证的服务器列表
+        servers: Iterable[tuple[Optional[str], Plex]]
         if service_name:
             # 如果指定了服务名，获取该服务实例
             servers = [(service_name, server)] if (server := self.get_instance(service_name)) else []
@@ -146,7 +147,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         """
         source = args.get("source")
         if source:
-            server: Plex = self.get_instance(source)
+            server = self.get_instance(source)
             if not server:
                 return None
             result = server.get_webhook_message(form)
@@ -171,6 +172,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param server: 指定实例名称，省略时依次查询全部实例
         :return: 存在信息，电视剧结果包含季集映射；没有匹配记录时返回 None
         """
+        servers: Iterable[tuple[Optional[str], Optional[Plex]]]
         if server:
             servers = [(server, self.get_instance(server))]
         else:
@@ -244,8 +246,9 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param server: 实例名称，省略时查询全部实例
         :return: 统计列表；指定实例不存在时返回 None，每个有效统计的用户数固定记为 1
         """
+        servers: Iterable[Plex]
         if server:
-            server_obj: Plex = self.get_instance(server)
+            server_obj = self.get_instance(server)
             if not server_obj:
                 return None
             servers = [server_obj]
@@ -261,7 +264,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         return media_statistics
 
     def mediaserver_librarys(self, server: Optional[str] = None, hidden: Optional[bool] = False,
-                             **kwargs) -> Optional[List[_SchemaMediaServerLibrary]]:
+                             **kwargs: object) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         查询可用的电影、剧集和音乐库。
 
@@ -270,13 +273,13 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
         :return: 统一媒体库列表；实例不可用或库目录查询失败时返回 None
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_librarys(hidden)
         return None
 
     def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
-                          limit: Optional[int] = -1) -> Optional[Generator]:
+                          limit: Optional[int] = -1) -> Optional[Generator[Optional[_SchemaMediaServerItem], None, None]]:
         """
         返回媒体库同步条目的生成器。
 
@@ -286,7 +289,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param limit: 本次最多读取条目数；None 或 -1 表示分页读取剩余全部条目
         :return: 统一条目生成器；实例不存在时返回 None，迭代中的查询错误向上传播
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_items(library_id, start_index, limit)
         return None
@@ -299,7 +302,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param library_id: 媒体库ID
         :return: 媒体条目总数，查询失败时返回None
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_items_count(library_id)
         return None
@@ -312,7 +315,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
         :return: 统一媒体模型；实例不存在、条目无效或查询失败时返回 None
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_iteminfo(item_id)
         return None
@@ -326,7 +329,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
         :return: 季集列表；实例不存在时返回 None，无可用季集时返回空列表
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
@@ -338,7 +341,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         ) for season, episodes in seasoninfo.items()]
 
     def mediaserver_playing(self, server: str, count: Optional[int] = 20,
-                            **kwargs) -> Optional[List[_SchemaMediaServerPlayItem]]:
+                            **kwargs: object) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询同步范围内的继续观看列表。
 
@@ -347,13 +350,13 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
         :return: 继续观看条目列表；实例不可用或无法读取媒体库范围时返回 None
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_resume(num=count)
 
     def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
-                           **kwargs) -> Optional[List[_SchemaMediaServerPlayItem]]:
+                           **kwargs: object) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询同步范围内最近新增的媒体。
 
@@ -362,7 +365,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
         :return: 最新媒体列表；实例不可用或无法读取媒体库范围时返回 None
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_latest(num=count)
@@ -371,7 +374,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                                   server: Optional[str] = None,
                                   count: Optional[int] = 20,
                                   username: Optional[str] = None,
-                                  **kwargs
+                                  **kwargs: object
                                   ) -> List[str]:
         """
         为最新电影和电视剧查找可直接访问的外部背景图。
@@ -382,7 +385,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
         :return: 外部图片 URL 列表；不回退含 Plex 访问令牌的本地图片，无可用图片时返回空列表
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return []
 
@@ -406,7 +409,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
         :return: 条目播放 URL；实例不存在时返回 None
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_play_url(item_id)
@@ -421,7 +424,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param season: 目标季号
         :return: 集号到 Plex 条目路径的映射；实例不存在时返回 None，无分集或查询失败时返回空映射
         """
-        server_obj: Plex = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_season_episode_ids(str(item_id), season)

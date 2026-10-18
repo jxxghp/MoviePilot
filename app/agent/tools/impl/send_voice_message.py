@@ -10,7 +10,8 @@ from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.schemas.message import Message, MessageType
+from app.schemas.message import Message
+from app.schemas.types import MessageType
 
 
 class SendVoiceMessageInput(BaseModel):
@@ -69,7 +70,7 @@ class SendVoiceMessageTool(MoviePilotTool):
             message = message[:40] + "..."
         return f"发送语音回复: {message}"
 
-    async def run(self, message: str, **kwargs) -> str:
+    async def run(self, message: str, **kwargs: object) -> str:
         """
         合成语音并发送到当前对话渠道，不支持时回退为文字。
         """
@@ -106,21 +107,21 @@ class SendVoiceMessageTool(MoviePilotTool):
         )
 
         await self.send_message(
-            Message(
-                channel=self._channel,
-                source=self._source,
-                mtype=MessageType.Agent,
-                userid=self._user_id,
-                username=self._username,
-                text=message,
-                voice_path=voice_path,
-                voice_caption=(
+            Message.model_validate({
+                "channel": self._channel,
+                "source": self._source,
+                "mtype": MessageType.Agent,
+                "userid": self._user_id,
+                "username": self._username,
+                "text": message,
+                "voice_path": voice_path,
+                "voice_caption": (
                     message
                     if voice_path and get_runtime_setting('AUDIO_OUTPUT_INCLUDE_TEXT')
                     else None
                 ),
-                save_history=False,
-            )
+                "save_history": False,
+            })
         )
         self._agent_context["user_reply_sent"] = True
         self._agent_context["reply_mode"] = "voice" if used_voice else "text_fallback"

@@ -3,7 +3,7 @@
 """
 
 import json
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from app.adapters.network.webpush import WebPushDeliveryError, send_webpush
 from app.modules import _MessageBase, _ModuleBase
@@ -14,7 +14,7 @@ from app.schemas.message import Message
 from app.schemas.types import ModuleType, NotificationChannel
 
 
-class WebPushModule(_ModuleBase, _MessageBase):
+class WebPushModule(_ModuleBase, _MessageBase[object]):
     """
     通过浏览器 Web Push 通道发送通知消息。
     """
@@ -54,7 +54,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
         """
         return 6
 
-    def stop(self):
+    def stop(self) -> None:
         """
         Web Push 模块没有需要释放的长连接资源。
         """
@@ -68,13 +68,15 @@ class WebPushModule(_ModuleBase, _MessageBase):
         """
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         Web Push 使用全局 VAPID 配置，不提供模块级设置。
+
+        :return: 始终为 None，表示不检查模块级配置项
         """
         pass
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> None:
         """
         向匹配通知配置的浏览器订阅逐个投递消息。
 
@@ -96,7 +98,7 @@ class WebPushModule(_ModuleBase, _MessageBase):
                 return
             try:
                 if message.title:
-                    caption = message.title
+                    caption: Optional[str] = message.title
                     content = message.text
                 else:
                     caption = message.text

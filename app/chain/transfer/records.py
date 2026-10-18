@@ -3,7 +3,7 @@
 """
 
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
+from typing import Callable, Dict, List, Literal, Optional, Tuple, TypeVar, Union, cast
 
 from app.application.classification.reference import (
     apply_persisted_classification_snapshot,
@@ -28,10 +28,10 @@ from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.foundation import text as text_tools
+from app.schemas.file import FileItem
 from app.schemas.types import (
     MediaType,
 )
-from app.schemas.workflow import FileItem
 
 from .retry import _request_durable_transfer_retry
 
@@ -241,8 +241,10 @@ class HistoryMatchMixin(_TransferOwnerBase):
     def _optional_attr_equal(
             source: MetaBase,
             target: MetaBase,
-            attr: str,
-            normalizer: Callable = None,
+            attr: Literal[
+                "year", "begin_season", "end_season", "begin_episode", "end_episode"
+            ],
+            normalizer: Optional[Callable[[Union[int, str]], Union[int, str]]] = None,
     ) -> bool:
         """
         比较可选识别字段。
@@ -250,8 +252,8 @@ class HistoryMatchMixin(_TransferOwnerBase):
         字段两边都没有识别到时不参与判断；只要任意一边识别到了，就要求两边值一致，
         避免把同名不同年份或不同季集的附加文件误归到当前主视频。
         """
-        source_value = getattr(source, attr, None)
-        target_value = getattr(target, attr, None)
+        source_value: Optional[Union[int, str]] = getattr(source, attr, None)
+        target_value: Optional[Union[int, str]] = getattr(target, attr, None)
         if source_value is None and target_value is None:
             return True
         if source_value is None or target_value is None:
@@ -576,7 +578,7 @@ class ManualHistoryMixin(_TransferOwnerBase):
         ):
             if not isinstance(history.dest_fileitem, dict):
                 return False, "目标文件历史数据无效，请删除该整理记录后从文件管理重新整理"
-            dest_fileitem = FileItem(**history.dest_fileitem)
+            dest_fileitem = FileItem.model_validate(history.dest_fileitem)
             storage_chain = StorageChain()
             if (
                     storage_chain.exists(dest_fileitem)

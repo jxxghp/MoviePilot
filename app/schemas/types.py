@@ -151,24 +151,26 @@ class MediaSource(str, Enum):
         normalized = value.strip().casefold()
         normalized = _MEDIA_SOURCE_VALUE_ALIASES.get(normalized, normalized)
         known_member = cls._value2member_map_.get(normalized)
-        if known_member:
+        if isinstance(known_member, cls):
             return known_member
         if not _MEDIA_SOURCE_IDENTIFIER_RE.fullmatch(normalized):
             return None
         member = str.__new__(cls, normalized)
         member._name_ = normalized
         member._value_ = normalized
-        cls._value2member_map_.setdefault(normalized, member)
-        return cls._value2member_map_[normalized]
+        known_member = cls._value2member_map_.setdefault(normalized, member)
+        if isinstance(known_member, cls):
+            return known_member
+        return None
 
     @classmethod
     def __get_pydantic_json_schema__(
             cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler,
-    ) -> dict:
+    ) -> dict[str, object]:
         """
         在 OpenAPI 中声明可扩展标识格式，避免把内置成员误写成完整白名单。
         """
-        schema = handler(core_schema)
+        schema: dict[str, object] = handler(core_schema)
         schema.pop("enum", None)
         schema["pattern"] = MEDIA_SOURCE_IDENTIFIER_PATTERN
         schema["examples"] = [source.value for source in cls]
@@ -179,7 +181,7 @@ class MediaSource(str, Enum):
 MediaSourceSelection = Union[MediaSource, Tuple[MediaSource, ...]]
 
 
-def media_type_to_agent(value) -> Optional[str]:
+def media_type_to_agent(value: object) -> Optional[str]:
     """
     将枚举、Agent 键或数据库枚举值统一转换为 Agent 媒体类型。
     """
@@ -825,7 +827,7 @@ class NameValueEnum(Enum):
     """
 
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value: object) -> Optional["NameValueEnum"]:
         """
         在直接按值查找失败后，尝试按忽略大小写的成员名称匹配。
 

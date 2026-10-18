@@ -72,7 +72,7 @@ class FileSystemProxy:
         """
         self._timeout_override = timeout
         self._stall_timeout_override = stall_timeout
-        self._process: Optional[subprocess.Popen] = None
+        self._process: Optional[subprocess.Popen[bytes]] = None
         self._selector: Optional[selectors.BaseSelector] = None
         self._lock = threading.Lock()
 
@@ -165,7 +165,7 @@ class FileSystemProxy:
         :param chunk_size: 分块大小
         :return: 成功时为 {"copied", "total"}，被取消或通信失败时为 False
         """
-        payload = {"src": str(src), "dst": str(dst)}
+        payload: dict[str, str | int] = {"src": str(src), "dst": str(dst)}
         if chunk_size:
             payload["chunk_size"] = chunk_size
         if not self._enabled():
@@ -256,7 +256,7 @@ class FileSystemProxy:
         """
         return self._call("rmtree", path=str(path))
 
-    def close(self):
+    def close(self) -> None:
         """
         关闭代理进程。
         """
@@ -353,7 +353,7 @@ class FileSystemProxy:
             return True
         raise ValueError(f"unknown op: {op}")
 
-    def _call(self, op: str, **payload) -> Any:
+    def _call(self, op: str, **payload: object) -> Any:
         """
         执行一次代理调用。
 
@@ -467,7 +467,7 @@ class FileSystemProxy:
             f"文件系统操作超过 {timeout} 秒无响应，挂载可能已无响应"
         )
 
-    def _ensure_worker(self):
+    def _ensure_worker(self) -> None:
         """
         确保代理进程可用，不可用时重新启动。
         """
@@ -492,7 +492,7 @@ class FileSystemProxy:
             self._selector.register(self._process.stdout, selectors.EVENT_READ)
         logger.debug(f"文件系统代理进程已启动: pid={self._process.pid}")
 
-    def _shutdown(self):
+    def _shutdown(self) -> None:
         """
         回收代理进程。冻在挂载上的进程用 SIGKILL，且不无限等待它消失
         ——否则「可放弃的代理」又变回一次不可放弃的阻塞。

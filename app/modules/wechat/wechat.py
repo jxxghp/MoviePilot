@@ -63,7 +63,8 @@ class WeChat:
     _upload_media_url = "cgi-bin/media/upload?access_token={access_token}&type={media_type}"
 
     def __init__(self, WECHAT_CORPID: Optional[str] = None, WECHAT_APP_SECRET: Optional[str] = None,
-                 WECHAT_APP_ID: Optional[str] = None, WECHAT_PROXY: Optional[str] = None, **kwargs):
+                 WECHAT_APP_ID: Optional[str] = None, WECHAT_PROXY: Optional[str] = None,
+                 **kwargs: object) -> None:
         """
         读取应用凭据并立即尝试获取访问令牌。
 
@@ -92,7 +93,7 @@ class WeChat:
         if self._corpid and self._appsecret and self._appid:
             self.__get_access_token()
 
-    def get_state(self):
+    def get_state(self) -> bool:
         """
         通过缓存或刷新访问令牌检查应用可用性。
 
@@ -186,7 +187,7 @@ class WeChat:
 
         return content_chunks
 
-    def __send_message(self, title: str, text: Optional[str] = None,
+    def __send_message(self, title: Optional[str], text: Optional[str] = None,
                        userid: Optional[str] = None, link: Optional[str] = None) -> bool:
         """
         分块发送文本，任一分块失败即终止后续发送。
@@ -204,6 +205,7 @@ class WeChat:
             formatted_text = text.replace("\n\n", "\n")
             content = f"{title}\n{formatted_text}"
         else:
+            assert title is not None
             content = title
         if link:
             content = f"{content}\n点击查看：{link}"
@@ -231,7 +233,7 @@ class WeChat:
                 return False
         return True
 
-    def __send_image_message(self, title: str, text: str, image_url: str,
+    def __send_image_message(self, title: Optional[str], text: Optional[str], image_url: str,
                              userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送包含单篇文章的图文消息。
@@ -268,7 +270,7 @@ class WeChat:
             logger.error(f"发送图文消息失败：{e}")
             return False
 
-    def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None,
+    def send_msg(self, title: Optional[str], text: Optional[str] = None, image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         获取访问令牌后发送文本或图文消息。
@@ -679,7 +681,7 @@ class WeChat:
                 logger.error(f"发送请求失败，错误信息：{ret_json.get('errmsg')}")
                 return False
 
-    def create_menus(self, commands: Dict[str, dict]):
+    def create_menus(self, commands: Dict[str, dict]) -> None:
         """
         按命令分类创建应用菜单，忽略没有分类的命令。
 
@@ -719,7 +721,7 @@ class WeChat:
         except Exception as e:
             logger.error(f"创建菜单失败：{e}")
 
-    def delete_menus(self):
+    def delete_menus(self) -> None:
         """
         请求删除当前应用菜单，异常只记录日志。
         """

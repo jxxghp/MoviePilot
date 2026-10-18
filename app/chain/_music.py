@@ -26,7 +26,6 @@ from app.chain._contracts import MusicSubscribeMixinHost
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.domain.context import Context, MediaInfo, MusicInfo
-from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.music import match_music_resource, music_album_download_matches
@@ -36,6 +35,7 @@ from app.schemas.common import JsonData
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
+    MUSIC_SUBSCRIBABLE_TYPES,
     MediaType,
     SystemConfigKey,
 )

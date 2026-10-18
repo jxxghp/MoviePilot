@@ -9,17 +9,10 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Self, Set, Union
 
-# 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
-import yaml  # type: ignore[import-untyped]
-
-# 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
-from yaml.constructor import ConstructorError  # type: ignore[import-untyped]
-
-# 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
-from yaml.events import AliasEvent  # type: ignore[import-untyped]
-
-# 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
-from yaml.nodes import MappingNode  # type: ignore[import-untyped]
+import yaml
+from yaml.constructor import ConstructorError
+from yaml.events import AliasEvent
+from yaml.nodes import MappingNode
 
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import (
@@ -44,8 +37,7 @@ from app.schemas.types import (
 )
 
 
-# PyYAML 缺少类型元数据，继承 SafeLoader 时保留现有基类检查豁免。
-class _LyricsfileSafeLoader(yaml.SafeLoader):  # type: ignore[misc]
+class _LyricsfileSafeLoader(yaml.SafeLoader):
     """
     在 SafeLoader 基础上拒绝 Lyricsfile 规范禁止的重复映射键。
     """
@@ -1744,7 +1736,10 @@ class TorrentInfo:
         self.media_source, self.media_id = resolve_media_identity(media=self)
 
     @staticmethod
-    def get_free_string(upload_volume_factor: float, download_volume_factor: float) -> str:
+    def get_free_string(
+        upload_volume_factor: Optional[float],
+        download_volume_factor: Optional[float],
+    ) -> str:
         """
         将上传与下载计费倍率转换为站点促销标签。
 
@@ -2270,31 +2265,64 @@ class MediaInfo:
             return "评分：%s" % self.stars
         return ""
 
-    def get_backdrop_image(self, default: bool = False):
+    @typing.overload
+    def get_backdrop_image(self) -> str:
+        ...
+
+    @typing.overload
+    def get_backdrop_image(self, default: bool) -> Union[str, bool]:
+        ...
+
+    def get_backdrop_image(self, default: bool = False) -> Union[str, bool]:
         """
         返回背景图片地址。
+
+        :param default: 图片缺失时的回退标记，默认返回空字符串
+        :return: 缩放后的背景地址；缺失时返回回退标记或空字符串
         """
         if self.backdrop_path:
             return self.backdrop_path.replace("original", "w500")
         return default or ""
 
-    def get_message_image(self, default: Optional[bool] = None):
+    @typing.overload
+    def get_message_image(self) -> str:
+        ...
+
+    @typing.overload
+    def get_message_image(self, default: Optional[bool]) -> Union[str, bool]:
+        ...
+
+    def get_message_image(self, default: Optional[bool] = None) -> Union[str, bool]:
         """
-        返回消息图片地址。
+        返回消息图片地址，优先使用背景图，再回退到海报。
+
+        :param default: 两种图片均缺失时的回退标记，默认返回空字符串
+        :return: 缩放后的图片地址；缺失时返回回退标记或空字符串
         """
         if self.backdrop_path:
             return self.backdrop_path.replace("original", "w500")
         return self.get_poster_image(default=default)
 
-    def get_poster_image(self, default: Optional[bool] = None):
+    @typing.overload
+    def get_poster_image(self) -> str:
+        ...
+
+    @typing.overload
+    def get_poster_image(self, default: Optional[bool]) -> Union[str, bool]:
+        ...
+
+    def get_poster_image(self, default: Optional[bool] = None) -> Union[str, bool]:
         """
         返回海报图片地址。
+
+        :param default: 图片缺失时的回退标记，默认返回空字符串
+        :return: 缩放后的海报地址；缺失时返回回退标记或空字符串
         """
         if self.poster_path:
             return self.poster_path.replace("original", "w500")
         return default or ""
 
-    def get_overview_string(self, max_len: Optional[int] = 140):
+    def get_overview_string(self, max_len: int = 140) -> str:
         """
         按指定长度截取媒体简介。
 

@@ -2,7 +2,7 @@
 极影视媒体服务器模块，将客户端能力适配为统一媒体服务器接口。
 """
 
-from typing import Any, Generator, List, Optional, Tuple, Union
+from typing import Any, Generator, Iterable, List, Optional, Tuple, Union
 
 from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.zspace.zspace import ZSpace
@@ -60,13 +60,13 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         """
         return 6
 
-    def stop(self):
+    def stop(self) -> None:
         """
         该客户端没有需要额外停止的后台资源。
         """
         pass
 
-    def _test_server(self, server, name: Optional[str]) -> Optional[str]:
+    def _test_server(self, server: ZSpace, name: Optional[str]) -> Optional[str]:
         """
         极影视用重连结果与用户信息探测连接状态。
         """
@@ -76,7 +76,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
             return f"无法连接{self.get_name()}服务器：{name}"
         return None
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         模块不提供额外的初始化开关。
         """
@@ -93,7 +93,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         """
         source = args.get("source")
         if source:
-            server: ZSpace = self.get_instance(source)
+            server = self.get_instance(source)
             if not server:
                 return None
             result = server.get_webhook_message(form, args)
@@ -115,8 +115,9 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param server: 目标实例名称，省略时汇总全部实例
         :return: 统计列表；明确指定的实例不存在时返回 None
         """
+        servers: Iterable[ZSpace]
         if server:
-            server_obj: ZSpace = self.get_instance(server)
+            server_obj = self.get_instance(server)
             if not server_obj:
                 return None
             servers = [server_obj]
@@ -142,13 +143,13 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param hidden: 是否隐藏同步范围外的媒体库
         :return: 媒体库列表；实例不存在或查询失败时返回 None
         """
-        server_obj: ZSpace = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_librarys(username=username, hidden=hidden)
         return None
 
     def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
-                          limit: Optional[int] = -1) -> Optional[Generator]:
+                          limit: Optional[int] = -1) -> Optional[Generator[Optional[_SchemaMediaServerItem], None, None]]:
         """
         返回媒体库同步条目的迭代器。
 
@@ -158,7 +159,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param limit: None 或 -1 表示分批读取全部；其他值只请求一页
         :return: 条目生成器，合集会展开；实例不存在时返回 None，请求失败可能提前结束迭代
         """
-        server_obj: ZSpace = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_items(library_id, start_index, limit)
         return None
@@ -171,7 +172,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param library_id: 媒体库标识
         :return: 服务端总数；实例不存在或查询失败时返回 None
         """
-        server_obj: ZSpace = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_items_count(library_id)
         return None
@@ -184,7 +185,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param item_id: 极影视条目标识
         :return: 统一媒体模型；实例不可用或查询失败时返回 None
         """
-        server_obj: ZSpace = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_iteminfo(item_id)
         return None
@@ -198,7 +199,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param item_id: 极影视条目标识
         :return: 季集列表；实例不存在时返回 None，客户端未返回季集时为空列表
         """
-        server_obj: ZSpace = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
@@ -219,7 +220,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param username: 目标用户名，空值使用当前用户
         :return: 统一播放列表；实例不可用或查询失败时返回 None
         """
-        server_obj: ZSpace = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_resume(num=count, username=username)
@@ -232,7 +233,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param item_id: 极影视条目标识
         :return: 网页 URL；实例不存在时返回 None
         """
-        server_obj: ZSpace = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_play_url(item_id)
@@ -247,7 +248,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param username: 目标用户名，空值使用当前用户
         :return: 统一播放列表；实例不可用或查询失败时返回 None
         """
-        server_obj: ZSpace = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_latest(num=count, username=username)
@@ -267,7 +268,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         :param remote: 是否优先使用外网播放地址
         :return: 带登录令牌的图片链接列表；实例不存在或无匹配图片时为空列表
         """
-        server_obj: ZSpace = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return []
 

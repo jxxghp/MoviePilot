@@ -123,7 +123,7 @@ class SendMessageTool(MoviePilotTool):
         title: Optional[str] = None,
         image_url: Optional[str] = None,
         rich_message: Optional[str] = None,
-        **kwargs,
+        **kwargs: object,
     ) -> str:
         """
         发送消息到当前会话渠道。
@@ -137,18 +137,18 @@ class SendMessageTool(MoviePilotTool):
         )
         try:
             await self.send_message(
-                Message(
-                    channel=self._channel,
-                    source=self._source,
-                    mtype=MessageType.Other,
-                    userid=self._user_id,
-                    username=self._username,
-                    title=title,
-                    text=text,
-                    image=image_url,
-                    rich_message=rich_message,
-                    save_history=False,
-                )
+                Message.model_validate({
+                    "channel": self._channel,
+                    "source": self._source,
+                    "mtype": MessageType.Other,
+                    "userid": self._user_id,
+                    "username": self._username,
+                    "title": title,
+                    "text": text,
+                    "image": image_url,
+                    "rich_message": rich_message,
+                    "save_history": False,
+                })
             )
             self._agent_context["user_reply_sent"] = True
             self._agent_context["reply_mode"] = "send_message"

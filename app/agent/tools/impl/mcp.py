@@ -4,13 +4,16 @@
 
 import hashlib
 import json
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import Field, PrivateAttr
 
 from app.agent.mcp import AgentMcpToolSpec, agent_mcp_manager
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
+
+if TYPE_CHECKING:
+    from app.agent.callback import StreamingHandler
 
 
 class McpExternalTool(MoviePilotTool):
@@ -57,13 +60,13 @@ class McpExternalTool(MoviePilotTool):
         )
         self._spec = spec
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: object) -> Optional[str]:
         """
         根据 MCP 工具信息生成友好的提示消息。
         """
         return f"调用 MCP 工具: {self._spec.server.name}/{self._spec.name}"
 
-    async def run(self, **kwargs) -> str:
+    async def run(self, **kwargs: object) -> str:
         """
         调用外部 MCP 工具。
 
@@ -127,14 +130,14 @@ async def create_external_mcp_tools(
     channel: Optional[str] = None,
     source: Optional[str] = None,
     username: Optional[str] = None,
-    stream_handler=None,
-    agent_context: Optional[dict] = None,
+    stream_handler: Optional["StreamingHandler"] = None,
+    agent_context: Optional[dict[str, object]] = None,
     specs: Optional[list[AgentMcpToolSpec]] = None,
 ) -> list[McpExternalTool]:
     """
     创建当前已启用的外部 MCP Agent 工具列表。
     """
-    tools = []
+    tools: list[McpExternalTool] = []
     current_specs = specs
     if current_specs is None:
         current_specs = await agent_mcp_manager.list_enabled_tool_specs()

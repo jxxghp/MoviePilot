@@ -17,9 +17,8 @@ from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.telegram.telegram import Telegram
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage, Message, MessageResponse
-from app.schemas.notification import NotificationChannel
 from app.schemas.system import NotificationConf
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
     NotificationChannel.Telegram,
@@ -92,7 +91,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         """
         return self._stop_service_instances()
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         保留设置初始化钩子，实例配置由通知服务管理。
         """
@@ -127,8 +126,9 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             return None
 
         # 兼容某些转发链路使用 Telegram Update 外壳
-        if "message" in message and isinstance(message.get("message"), dict):
-            message = message.get("message")
+        nested_message = message.get("message")
+        if isinstance(nested_message, dict):
+            message = nested_message
 
         if message:
             if "callback_query" in message:
@@ -455,7 +455,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             rich_text = f'{rich_text}\n\n[查看详情](<{link}>)'
         return rich_text
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> None:
         """
         向符合通知规则的实例发送文件、语音或文本图文。
 
@@ -477,7 +477,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 if not userid:
                     logger.warn("用户没有指定 Telegram用户ID，消息无法发送")
                     return
-            client: Telegram = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             result = None
             if client:
                 if message.file_path:
@@ -536,7 +536,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: Telegram = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(
                     title=message.title,
@@ -561,7 +561,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: Telegram = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(
                     title=message.title,
@@ -596,7 +596,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         for conf in self.get_configs().values():
             if source != conf.name:
                 continue
-            client: Telegram = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 result = client.delete_msg(message_id=message_id, chat_id=chat_id)
                 if result:
@@ -634,7 +634,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         for conf in self.get_configs().values():
             if source != conf.name:
                 continue
-            client: Telegram = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 result = client.edit_msg(
                     chat_id=chat_id,
@@ -674,7 +674,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         client_config = self.get_config(source)
         if not client_config:
             return None
-        client: Telegram = self.get_instance(client_config.name)
+        client = self.get_instance(client_config.name)
         if not client:
             return None
         started = client.start_typing(chat_id=chat_id, userid=userid)
@@ -717,7 +717,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         client_config = self.get_config(source)
         if not client_config:
             return False
-        client: Telegram = self.get_instance(client_config.name)
+        client = self.get_instance(client_config.name)
         if not client:
             return False
         return client.stop_typing(chat_id=chat_id, userid=userid)
@@ -739,7 +739,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 if not userid:
                     logger.warn("用户没有指定 Telegram用户ID，消息无法发送")
                     return None
-            client: Telegram = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 if message.voice_path:
                     result = client.send_voice(

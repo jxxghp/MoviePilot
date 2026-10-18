@@ -23,7 +23,9 @@ from app.schemas.category import (
     ClassificationCategory,
     ClassificationCondition,
     ClassificationConditionGroup,
+    ClassificationFactScalar,
     ClassificationFieldDefinition,
+    ClassificationMediaType,
     ClassificationOperator,
     ClassificationPolicy,
     ClassificationPolicyState,
@@ -45,7 +47,7 @@ _DEFAULT_MUSIC_CATEGORIES = (
     ("music.single", "Single", ("Single",)),
 )
 
-_DEFAULT_MEDIA_CATEGORIES = (
+_DEFAULT_MEDIA_CATEGORIES: tuple[tuple[str, ClassificationMediaType, str, tuple[str, ...]], ...] = (
     ("movie.animation", "电影", "动画电影", ("动画电影",)),
     ("movie.chinese", "电影", "华语电影", ("华语电影",)),
     ("movie.foreign", "电影", "外语电影", ("外语电影",)),
@@ -398,7 +400,7 @@ def with_default_music_classification(policy: ClassificationPolicy) -> Classific
                 when=ClassificationCondition(
                     field=field,
                     operator=operator,
-                    value=value,
+                    value=list[ClassificationFactScalar](value) if isinstance(value, list) else value,
                 ),
                 target=ClassificationTarget(category_id=category_id),
             )

@@ -16,9 +16,9 @@ from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 # 路径锁缓存的软容量上限；全部锁都被占用时允许暂时超过
 _MAX_FOLDER_LOCKS = 4096
@@ -62,13 +62,13 @@ class Rclone(StorageBase):
         """
         return bool(get_runtime_setting('RCLONE_SNAPSHOT_CHECK_FOLDER_MODTIME'))
 
-    def init_storage(self):
+    def init_storage(self) -> None:
         """
         保留初始化钩子；rclone 进程按每次操作启动。
         """
         pass
 
-    def set_config(self, conf: dict):
+    def set_config(self, conf: dict) -> None:
         """
         先持久化存储配置，再将配置内容写入指定本地文件。
 
@@ -402,7 +402,7 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】重命名文件失败：{err}")
         return False
 
-    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         调用 copyto 下载远端文件并回调进度。
 
@@ -435,7 +435,7 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
-            last_progress = 0
+            last_progress = 0.0
             for line in process.stdout:
                 if line:
                     progress = self.__parse_rclone_progress(line)
@@ -492,7 +492,7 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
-            last_progress = 0
+            last_progress = 0.0
             for line in process.stdout:
                 if line:
                     progress = self.__parse_rclone_progress(line)
@@ -569,7 +569,7 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
-            last_progress = 0
+            last_progress = 0.0
             for line in process.stdout:
                 if line:
                     progress = self.__parse_rclone_progress(line)
@@ -621,7 +621,7 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
-            last_progress = 0
+            last_progress = 0.0
             for line in process.stdout:
                 if line:
                     progress = self.__parse_rclone_progress(line)

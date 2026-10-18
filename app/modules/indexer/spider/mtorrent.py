@@ -25,7 +25,7 @@ class MTorrentSpider:
     _indexerid = None
     _domain = None
     _url = None
-    _name = ""
+    _name: Optional[str] = ""
     _proxy = None
     _cookie = None
     _ua = None
@@ -121,7 +121,7 @@ class MTorrentSpider:
         registered_domain = site_rules.extract_domain(domain_url)
         return f"api.{registered_domain}" if registered_domain else host
 
-    def __get_params(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> dict[str, Any]:
+    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0) -> dict[str, object]:
         """
         获取请求参数。
         """
@@ -148,7 +148,7 @@ class MTorrentSpider:
         """
         解析搜索结果。
         """
-        torrents = []
+        torrents: list[dict[str, object]] = []
         if not results:
             return torrents
 
@@ -225,7 +225,7 @@ class MTorrentSpider:
         logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
         return True, []
 
-    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0,
+    def search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
                search_type: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         搜索种子或字幕。
@@ -255,7 +255,7 @@ class MTorrentSpider:
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0,
+    async def async_search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
                            search_type: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索种子或字幕。
@@ -535,9 +535,9 @@ class MTorrentSpider:
         return False, await self.__async_parse_subtitle_rows(self.__get_subtitle_rows(payload))
 
     @staticmethod
-    def __find_imdbid(imdb: str) -> str:
+    def __find_imdbid(imdb: Optional[str]) -> str:
         """
-        从imdb链接中提取imdbid。
+        从 IMDb 链接中提取标识；输入为空时返回空字符串。
         """
         if imdb:
             m = re.search(r"tt\d+", imdb)
@@ -575,9 +575,12 @@ class MTorrentSpider:
             return uploadvolumefactor_dict.get(discount, 1)
         return 1
 
-    def __get_download_url(self, torrent_id: str) -> str:
+    def __get_download_url(self, torrent_id: object) -> str:
         """
-        获取下载链接，返回base64编码的json字符串及URL。
+        获取下载链接，返回 base64 编码的 JSON 字符串及 URL。
+
+        :param torrent_id: 按站点响应原样写入下载配方的种子 ID
+        :return: 当前认证参数和下载地址组成的配方字符串
         """
         url = self._downloadurl % self._api_domain
         params = {

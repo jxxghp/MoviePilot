@@ -607,7 +607,7 @@ class NotificationMixin:
     def edit_message(
             self,
             channel: NotificationChannel,
-            source: str,
+            source: Optional[str],
             message_id: Union[str, int],
             chat_id: Union[str, int],
             text: str,
@@ -619,7 +619,7 @@ class NotificationMixin:
         编辑已发送的消息
 
         :param channel: 消息渠道
-        :param source: 消息源（指定特定的消息模块）
+        :param source: 消息源；None 时按渠道模块现有规则匹配
         :param message_id: 消息ID
         :param chat_id: 聊天ID
         :param text: 新的消息内容

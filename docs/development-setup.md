@@ -248,6 +248,9 @@ Ruff/Mypy 基线只允许收紧，不接受新增诊断或类型错误增长；�
 `files=` 维护。Mypy 完整 ratchet 固定按 Linux/Python 3.14 分析。Coverage job 在 `v3` PR/push
 运行，按 `tests/run.py` 的分片合同执行并合并报告，除 `app/plugins` 外全部 `app` 文件按逐文件
 低水位检查，存量只能提升，新文件必须达到 80%。
+逐文件治理以 `mypy.ini` 的严格清单和
+`tests/fixtures/architecture/mypy-baseline.json` 的逐文件、逐错误码低水位为准；
+尚未清零的文件须先确认实际合同和适用门禁，不以定向扫描结果宣称交付。
 每个 Coverage 分片预算为 15 分钟（测试 step 为 10 分钟），报告与 ratchet 为 10 分钟；不得靠
 跳过测试或产物规避超时。Coverage 只接受 GitHub Actions 的 Ubuntu/Python 3.14、locked
 依赖和全量测试工件，本机 macOS 报告仅供诊断，不得写入并提交 canonical baseline。

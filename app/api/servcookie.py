@@ -5,7 +5,8 @@
 import gzip
 import hmac
 import json
-from typing import Annotated, Callable, Optional
+from collections.abc import Callable, Coroutine
+from typing import Annotated, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
@@ -47,7 +48,7 @@ class GzipRoute(APIRoute):
     为 CookieCloud 路由注入 gzip 请求对象。
     """
 
-    def get_route_handler(self) -> Callable:
+    def get_route_handler(self) -> Callable[[Request], Coroutine[object, object, Response]]:
         """
         返回支持 gzip 请求体的路由处理器。
         """
@@ -194,6 +195,7 @@ def get_decrypted_cookie_data(
             return None
     else:
         return None
+    return None
 
 
 @cookie_router.get("/get/{uuid}", response_model=_SchemaCookieEncryptedPayload)

@@ -8,9 +8,35 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.api.endpoints.recommend import tmdb_movies, tmdb_trending, tmdb_tvs
+from app.api.endpoints.recommend import source, tmdb_movies, tmdb_trending, tmdb_tvs
 from app.modules.themoviedb.tmdbapi import TmdbApi
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbException
+from app.schemas.event import RecommendMediaSource, RecommendSourceEventData
+
+
+def test_recommend_source_uses_chain_event_result() -> None:
+    """
+    推荐来源读取链式事件返回的载荷，保留处理器替换整个模型的行为。
+    """
+    source_item = RecommendMediaSource(name="扩展来源", api_path="/recommend/custom", type="movie")
+    event_data = RecommendSourceEventData(extra_sources=[source_item])
+    with patch(
+        "app.api.endpoints.recommend.eventmanager.send_event",
+        return_value=SimpleNamespace(event_data=event_data),
+    ):
+        assert source(_=SimpleNamespace(username="alice")) == [source_item]
+
+
+def test_recommend_source_rejects_invalid_chain_event_result() -> None:
+    """
+    违约的链式事件载荷继续抛出属性错误，避免掩盖插件错误。
+    """
+    with patch(
+        "app.api.endpoints.recommend.eventmanager.send_event",
+        return_value=SimpleNamespace(event_data={"extra_sources": []}),
+    ):
+        with pytest.raises(AttributeError):
+            source(_=SimpleNamespace(username="alice"))
 
 
 @pytest.mark.asyncio

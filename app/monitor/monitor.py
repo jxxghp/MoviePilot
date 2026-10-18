@@ -79,9 +79,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         self._scheduler_shutdown_thread: Optional[threading.Thread] = None
         self._scheduler_shutdown_succeeded = False
         # 本地目录监控服务
-        self._watchers = []
+        self._watchers: list[LocalDirectoryWatcher] = []
         # 已请求停止但尚未退出的 watcher，只保留 owner 身份，不再参与健康检查
-        self._retired_watchers = []
+        self._retired_watchers: list[LocalDirectoryWatcher] = []
         # 本地目录监控列表读写锁
         self._watcher_lock = Lock()
         # 启动失败待重试的本地监控配置
@@ -124,14 +124,14 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             return
         self.init()
 
-    def get_reload_name(self):
+    def get_reload_name(self) -> str:
         """
 返回配置重载日志中使用的服务名称。
         """
         return "目录监控"
 
     def save_snapshot(self, storage: str, snapshot: Dict, file_count: int = 0,
-                      last_snapshot_time: Optional[float] = None):
+                      last_snapshot_time: Optional[float] = None) -> None:
         """
         保存快照到文件缓存。
         """
@@ -165,7 +165,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         return SnapshotStore.adjust_interval(file_count)
 
     @staticmethod
-    def compare_snapshots(old_snapshot: Dict, new_snapshot: Dict) -> Dict[str, List]:
+    def compare_snapshots(
+        old_snapshot: dict[str, object], new_snapshot: dict[str, object]
+    ) -> dict[str, list[str]]:
         """
         比对快照，找出变化的文件。
         """
@@ -592,9 +594,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         for key, state in results.items():
             if state is RecoveryState.COMPLETED:
                 continue
-            watcher = rebuilds.get(key)
-            if watcher is not None:
-                self.__enter_isolation(watcher)
+            recovered_watcher = rebuilds.get(key)
+            if recovered_watcher is not None:
+                self.__enter_isolation(recovered_watcher)
             else:
                 # 探测与重试驱动超时不升级为隔离：它们跨多个目录，无法归因到
                 # 具体挂载，下个周期由执行器的 BUSY 判定自动跳过，不会泄漏线程
@@ -979,14 +981,20 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         if not self.__accepting_work():
             return
         # 整理文件
-        handle_kwargs = {
-            "storage": "local",
-            "event_path": Path(event_path),
-            "file_size": file_size,
-        }
+        event_file_path = Path(event_path)
         if file_modify_time is not None:
-            handle_kwargs["file_modify_time"] = file_modify_time
-        self._dispatcher.handle_file(**handle_kwargs)
+            self._dispatcher.handle_file(
+                storage="local",
+                event_path=event_file_path,
+                file_size=file_size,
+                file_modify_time=file_modify_time,
+            )
+        else:
+            self._dispatcher.handle_file(
+                storage="local",
+                event_path=event_file_path,
+                file_size=file_size,
+            )
 
     def event_unreadable(self, event_path: Path) -> None:
         """

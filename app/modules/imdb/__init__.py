@@ -418,7 +418,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     @staticmethod
     def _person_credit(
         credit: ImdbCredit, *, director: bool = False
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, object]]:
         """
         把 IMDb 演职员条目转换为统一演职员摘要。
         """
@@ -526,8 +526,8 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             media_info.runtime = max(1, round(title.runtime_seconds / 60))
             media_info.episode_run_time = [media_info.runtime]
 
-        directors: list[dict] = []
-        actors: list[dict] = []
+        directors: list[dict[str, object]] = []
+        actors: list[dict[str, object]] = []
         for credit in credits:
             category = (credit.category or "").upper()
             if category == "DIRECTOR":
@@ -551,7 +551,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         media_info.directors = directors[:3]
         media_info.actors = actors[:12]
 
-        season_info: dict[int, dict] = {}
+        season_info: dict[int, dict[str, object]] = {}
         for season in seasons:
             if not season.season or not season.season.isdigit():
                 continue
@@ -680,7 +680,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         media_id: Optional[str] = None,
         episode_group: Optional[str] = None,
         cache: bool = True,
-        **kwargs,
+        **kwargs: object,
     ) -> Optional[MediaInfo]:
         """
         按明确 IMDb 身份或标题线索识别影视媒体。
@@ -717,7 +717,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         media_id: Optional[str] = None,
         episode_group: Optional[str] = None,
         cache: bool = True,
-        **kwargs,
+        **kwargs: object,
     ) -> Optional[MediaInfo]:
         """
         异步按明确 IMDb 身份或标题线索识别影视媒体。
@@ -845,7 +845,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         mediainfo: MediaInfo,
         season: Optional[int] = None,
         episode: Optional[int] = None,
-        **kwargs,
+        **kwargs: object,
     ) -> Optional[str]:
         """
         为选择 IMDb 刮削来源的媒体生成 NFO。
@@ -870,7 +870,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         mediainfo: MediaInfo,
         season: Optional[int] = None,
         episode: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, str]]:
         """
         为选择 IMDb 刮削来源的媒体生成图片清单。
 

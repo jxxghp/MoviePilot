@@ -16,8 +16,7 @@ from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.vocechat.vocechat import VoceChat
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage, Message
-from app.schemas.notification import NotificationChannel
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
     NotificationChannel.VoceChat,
@@ -95,7 +94,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
         """
         return 4
 
-    def stop(self):
+    def stop(self) -> None:
         """
         VoceChat 客户端无需额外停止操作。
         """

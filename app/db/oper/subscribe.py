@@ -815,7 +815,10 @@ class SubscribeOper(DbOper):
         """
         异步更新订阅使用的过滤规则组。
         """
-        return await self.async_update(sid, {"filter_groups": filter_groups})
+        subscribe = await self.async_get(sid)
+        if subscribe:
+            await self._stage_async_update(subscribe, {"filter_groups": filter_groups})
+        return subscribe
 
     def update(self, sid: int, payload: Mapping[str, JsonData]) -> Optional[Subscribe]:
         """

@@ -173,9 +173,11 @@ class TheTvDbModule(_ModuleBase):
         except Exception as e:
             return False, str(e)
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         TVDB 随宿主启动，无需额外的模块开关。
+
+        :return: 始终为 None，表示不检查配置项
         """
         pass
 
@@ -411,7 +413,7 @@ class TheTvDbModule(_ModuleBase):
         candidates = await self._async_load_auxiliary_candidates(lookup)
         return self._resolve_auxiliary_candidates(mediainfo, candidates)
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """
         清除缓存。
         """

@@ -1843,7 +1843,7 @@
           "b21a96beb9e6c37b7ab8878fb39dd00a19e9b4ff8ed7e5b0d20a51e597ffe27b"
         ],
         "producer_fingerprints": [
-          "7802616f8618b6328d856c94c08fdcb6271254e3958491e12ca9a194013e31b7"
+          "2ef8b218a9fbfd1cec66c4092b54195b04f9c7a27dbbaea89b31caec1e409d55"
         ]
       },
       "EventType.HistoryDeleted": {
@@ -2053,10 +2053,10 @@
         "events": [
           "EventType.DownloadFileDeleted"
         ],
-        "fingerprint": "7802616f8618b6328d856c94c08fdcb6271254e3958491e12ca9a194013e31b7",
+        "fingerprint": "2ef8b218a9fbfd1cec66c4092b54195b04f9c7a27dbbaea89b31caec1e409d55",
         "invalid": false,
         "method": "send_event",
-        "qualname": "get_transfer_history_mutation_command",
+        "qualname": "get_transfer_history_mutation_command.publish_download_file_deleted",
         "receiver_kind": "canonical_singleton"
       },
       {

@@ -376,7 +376,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
         ret_status = True
         ret_message = ""
 
-        def __notify():
+        def __notify() -> None:
             """
             完成时发送消息、移除任务等
             """
@@ -729,7 +729,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
             download_hash: Optional[str],
             downloader: Optional[str],
             history_exists: bool = True,
-    ):
+    ) -> None:
         """
         当同一种子的任务都已结束且种子已完成下载时，回写下载器已整理标签。
         """
@@ -804,7 +804,9 @@ class TransferSettlementOwner(_TransferOwnerBase):
         self._TransferChain__release_task_claim(task)
         return True
 
-    def _TransferChain__fail_transfer_task(self, task: TransferTask, error: object = "整理任务处理失败"):
+    def _TransferChain__fail_transfer_task(
+            self, task: TransferTask, error: object = "整理任务处理失败"
+    ) -> None:
         """
         清理作业视图，并在执行冲突时原子删除 持久化 恢复证据。
         """

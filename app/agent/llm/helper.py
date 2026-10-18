@@ -19,6 +19,8 @@ from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
 
 if TYPE_CHECKING:
+    import httpx
+
     from app.agent.llm.tools import ServerToolResolution
 
 
@@ -30,7 +32,7 @@ class LLMTestError(RuntimeError):
     LLM 测试调用异常，附带请求耗时。
     """
 
-    def __init__(self, message: str, duration_ms: int | None = None):
+    def __init__(self, message: str, duration_ms: int | None = None) -> None:
         """
         保存测试错误与本次请求耗时。
         """
@@ -43,7 +45,7 @@ class LLMTestTimeout(TimeoutError):
     LLM 测试调用超时，附带请求耗时。
     """
 
-    def __init__(self, message: str, duration_ms: int | None = None):
+    def __init__(self, message: str, duration_ms: int | None = None) -> None:
         """
         保存超时错误与本次请求耗时。
         """
@@ -51,7 +53,7 @@ class LLMTestTimeout(TimeoutError):
         self.duration_ms = duration_ms
 
 
-def _patch_gemini_thought_signature():
+def _patch_gemini_thought_signature() -> None:
     """
     修复 langchain-google-genai 中 Gemini 2.5 思考模型的 thought_signature 兼容问题。
 
@@ -197,7 +199,7 @@ def _build_httpx_client(
         *,
         async_client: bool = False,
         timeout: float | None = None,
-):
+) -> "httpx.Client | httpx.AsyncClient":
     """
     构造显式代理策略的 httpx 客户端。
 
@@ -394,7 +396,7 @@ def _patch_interleaved_reasoning_request_support(
     setattr(model_cls, patch_marker, True)
 
 
-def _patch_openai_interleaved_reasoning_content_support():
+def _patch_openai_interleaved_reasoning_content_support() -> None:
     """
     修补 OpenAI-compatible 模型的 interleaved reasoning 内容回传。
 
@@ -468,7 +470,7 @@ def _patch_openai_interleaved_reasoning_content_support():
     logger.debug("已修补 langchain-openai interleaved reasoning_content 回传兼容性")
 
 
-def _patch_openai_responses_instructions_support():
+def _patch_openai_responses_instructions_support() -> None:
     """
     修补 langchain-openai 在使用 use_responses_api=True 时，
     提取 system 消息为顶层 instructions 字段。
@@ -545,7 +547,7 @@ def _patch_openai_responses_instructions_support():
     logger.debug("已修补 langchain-openai responses API 的 instructions 兼容性")
 
 
-def _patch_openai_responses_empty_output_support():
+def _patch_openai_responses_empty_output_support() -> None:
     """
     修补 langchain-openai Responses API 流式完成事件 output 为空的兼容性。
 
@@ -570,7 +572,7 @@ def _patch_openai_responses_empty_output_support():
         logger.warning("langchain-openai 缺少 Responses API 结果构造函数，无法修补 output")
         return
 
-    def _clone_response_with_empty_output(response):
+    def _clone_response_with_empty_output(response: object) -> object:
         """
         复制 Responses 对象，把缺失 output 规整为空列表。
         """

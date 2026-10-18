@@ -7,7 +7,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Protocol, Union
+from typing import Any, Optional, Protocol, Union, cast
 
 from app.application.service import ServiceBaseHelper
 from app.domain.context import MusicInfo
@@ -311,14 +311,14 @@ class MusicMediaServerHelper:
     _name_pattern = re.compile(r"[\W_]+", re.UNICODE)
 
     @classmethod
-    def normalize_name(cls, value: Optional[str]) -> str:
+    def normalize_name(cls, value: object) -> str:
         """
-        忽略大小写、空白和标点，生成用于音乐名称精确比较的稳定文本。
+        将来源字段转成文本后忽略大小写、空白和标点，用于精确比较。
         """
         return cls._name_pattern.sub("", str(value or "").casefold())
 
     @classmethod
-    def same_name(cls, left: Optional[str], right: Optional[str]) -> bool:
+    def same_name(cls, left: object, right: object) -> bool:
         """
         判断两个非空音乐名称在规范化后是否完全一致。
         """
@@ -444,7 +444,7 @@ class MusicMediaServerHelper:
         note = item.note if isinstance(item.note, Mapping) else {}
         is_album = getattr(mediainfo, "music_type", None) == MUSIC_ENTITY_ALBUM
         target_title = getattr(mediainfo, "title", None)
-        actual_title = item.title
+        actual_title: object = item.title
         if is_album:
             target_title = getattr(mediainfo, "album", None) or target_title
             actual_title = note.get("album") or actual_title
@@ -470,7 +470,10 @@ class MusicMediaServerHelper:
             return True
         try:
             expected_tracks = int(getattr(mediainfo, "total_tracks", None) or 0)
-            actual_tracks = int(note.get("song_count") or 0)
+            song_count = note.get("song_count") or 0
+            if isinstance(song_count, (dict, list)):
+                return False
+            actual_tracks = int(song_count)
         except (TypeError, ValueError):
             return False
         return expected_tracks > 0 and actual_tracks >= expected_tracks
@@ -539,7 +542,7 @@ def format_emby_family_item(
         }
         if include_server_id:
             fields["server_id"] = item.get("ServerId")
-        return _SchemaMediaServerItem(**fields)
+        return cast(_SchemaMediaServerItem, _SchemaMediaServerItem.model_validate(fields))
     except Exception as error:
         logger.error(error)
         return None

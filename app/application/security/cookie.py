@@ -15,6 +15,29 @@ from app.runtime.log import logger
 CookieResult = Tuple[Optional[str], Optional[str], str]
 
 
+class CookiePageContentPort(Protocol):
+    """
+    声明登录页源码读取和加载等待所需的页面能力。
+    """
+
+    def wait_for_load_state(self, state: str, *, timeout: int) -> None:
+        """
+        等待页面进入指定加载状态。
+
+        :param state: 目标加载状态
+        :param timeout: 最长等待时间，单位为毫秒
+        """
+        ...
+
+    def content(self) -> str:
+        """
+        读取当前页面源码，导航期间的异常由实现方抛出。
+
+        :return: 页面 HTML 源码
+        """
+        ...
+
+
 class CookieBrowserPort(Protocol):
     """
     声明站点登录用例所需的受控浏览器执行能力。
@@ -451,7 +474,8 @@ class CookieHelper(CookieLoginFormMixin):
     _MAX_CAPTCHA_ATTEMPTS = 3
 
     @staticmethod
-    def get_page_content(page: Any, retries: int = 3, interval: float = 1.0) -> Optional[str]:
+    def get_page_content(page: CookiePageContentPort, retries: int = 3,
+                         interval: float = 1.0) -> Optional[str]:
         """
         获取页面源码，页面跳转中（如登录前后的重定向）会导致 page.content() 抛出
         "Unable to retrieve content because the page is navigating" 异常，等待加载完成后重试。
@@ -482,9 +506,12 @@ class CookieHelper(CookieLoginFormMixin):
         return None
 
     @staticmethod
-    def parse_cookies(cookies: list) -> str:
+    def parse_cookies(cookies: list[object]) -> str:
         """
         将浏览器 Cookie 列表转成请求头字符串，并忽略不完整条目。
+
+        :param cookies: 浏览器返回的 Cookie 条目；非字典或缺少名称、值的条目会跳过
+        :return: 用分号分隔的 Cookie 请求头；没有有效条目时返回空字符串
         """
         if not cookies:
             return ""
@@ -523,10 +550,18 @@ class CookieHelper(CookieLoginFormMixin):
                            username: str,
                            password: str,
                            two_step_code: Optional[str] = None,
-                           proxies: Optional[dict] = None,
-                           timeout: int = None) -> Tuple[Optional[str], Optional[str], str]:
+                           proxies: Optional[dict[str, object]] = None,
+                           timeout: Optional[int] = None) -> Tuple[Optional[str], Optional[str], str]:
         """
         获取站点 Cookie、User-Agent 和兼容错误消息。
+
+        :param url: 站点登录地址
+        :param username: 登录用户名
+        :param password: 登录密码
+        :param two_step_code: 可选的二步验证码或密钥
+        :param proxies: 浏览器代理配置；None 表示不指定代理
+        :param timeout: 浏览器超时时间，单位为秒；None 使用实现默认值
+        :return: Cookie、User-Agent 和错误说明；失败时保留原有空值与错误文本
         """
         return self._get_site_cookie_ua_impl(
             url=url,
@@ -542,8 +577,8 @@ class CookieHelper(CookieLoginFormMixin):
                                  username: str,
                                  password: str,
                                  two_step_code: Optional[str] = None,
-                                 proxies: Optional[dict] = None,
-                                 timeout: int = None) -> Tuple[Optional[str], Optional[str], str]:
+                                 proxies: Optional[dict[str, object]] = None,
+                                 timeout: Optional[int] = None) -> Tuple[Optional[str], Optional[str], str]:
         """
         获取站点cookie和ua。
 

@@ -72,24 +72,38 @@ SENSITIVE_PATTERNS = (
 )
 
 
+def _runtime_path(key: str) -> Path:
+    """
+    读取诊断使用的路径配置，并拒绝违反运行配置契约的值。
+
+    :param key: 已声明为 Path 的运行配置名称
+    :return: 对应的路径对象
+    :raises TypeError: 配置提供方返回非路径值
+    """
+    value = get_runtime_setting(key)
+    if not isinstance(value, Path):
+        raise TypeError(f"运行配置 {key} 必须是 Path")
+    return value
+
+
 def _backend_runtime_file() -> Path:
-    return get_runtime_setting('TEMP_PATH') / "moviepilot.runtime.json"
+    return _runtime_path('TEMP_PATH') / "moviepilot.runtime.json"
 
 
 def _frontend_runtime_file() -> Path:
-    return get_runtime_setting('TEMP_PATH') / "moviepilot.frontend.runtime.json"
+    return _runtime_path('TEMP_PATH') / "moviepilot.frontend.runtime.json"
 
 
 def _backend_stdio_log_file() -> Path:
-    return get_runtime_setting('LOG_PATH') / "moviepilot.stdout.log"
+    return _runtime_path('LOG_PATH') / "moviepilot.stdout.log"
 
 
 def _backend_app_log_file() -> Path:
-    return get_runtime_setting('LOG_PATH') / "moviepilot.log"
+    return _runtime_path('LOG_PATH') / "moviepilot.log"
 
 
 def _frontend_stdio_log_file() -> Path:
-    return get_runtime_setting('LOG_PATH') / "moviepilot.frontend.stdout.log"
+    return _runtime_path('LOG_PATH') / "moviepilot.frontend.stdout.log"
 
 
 class DoctorRunnerProtocol:
@@ -532,13 +546,14 @@ def _frontend_dir() -> Path:
     """
     优先使用程序目录下已存在的 public 目录，否则按绝对或相对配置解析前端路径。
     """
-    root_public = get_runtime_setting('ROOT_PATH') / "public"
+    root = _runtime_path('ROOT_PATH')
+    root_public = root / "public"
     configured = Path(get_runtime_setting('FRONTEND_PATH'))
     if root_public.exists():
         return root_public
     if configured.is_absolute():
         return configured
-    return get_runtime_setting('ROOT_PATH') / configured
+    return root / configured
 
 
 def _unlink_if_requested(runner: DoctorRunnerProtocol, path: Path) -> bool:

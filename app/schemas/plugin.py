@@ -116,7 +116,7 @@ class PluginInstance(BaseModel):
         """
         return self.instance_id == self.source_plugin_id
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
+    # mypy 尚不识别 computed_field 与 property 叠加时的装饰器顺序。
     @_computed_field(  # type: ignore[prop-decorator, misc]
         description="实例实现模式：virtual 为共享源码的分身，host 为源插件本体自身",
     )

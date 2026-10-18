@@ -46,8 +46,8 @@ class QQBot:
             QQ_OPENID: Optional[str] = None,
             QQ_GROUP_OPENID: Optional[str] = None,
             name: Optional[str] = None,
-            **kwargs,
-    ):
+            **kwargs: object,
+    ) -> None:
         """
         保存机器人配置、恢复已互动对象，并启动后台网关线程。
 
@@ -61,7 +61,7 @@ class QQBot:
         :param kwargs: 兼容额外配置字段，当前不使用
         """
         self._gateway_stop = None
-        self._gateway_thread = None
+        self._gateway_thread: Optional[threading.Thread] = None
         self._gateway_ws_holder: list = []
         if not QQ_APP_ID or not QQ_APP_SECRET:
             logger.error("QQ Bot 配置不完整：缺少 AppID 或 AppSecret")
@@ -82,7 +82,7 @@ class QQBot:
         self._filecache = FileCache()
         self._load_known_targets()
         # 已处理的消息 ID，用于去重（避免同一条消息重复处理）
-        self._processed_msg_ids: set = set()
+        self._processed_msg_ids: set[object] = set()
         self._max_processed_ids = 1000
 
         self._gateway_stop = threading.Event()
@@ -210,7 +210,9 @@ class QQBot:
         """
         return self._ready
 
-    def _get_target(self, userid: Optional[str] = None, targets: Optional[dict] = None) -> tuple:
+    def _get_target(
+        self, userid: Optional[str] = None, targets: Optional[dict] = None
+    ) -> tuple[Optional[str], bool]:
         """
         按显式接收人、目标字典、默认配置的顺序选择发送目标。
 
@@ -304,7 +306,7 @@ class QQBot:
             image: Optional[str] = None,
             link: Optional[str] = None,
             formatted_text: Optional[str] = None,
-    ) -> tuple:
+    ) -> tuple[str, bool]:
         """
         将通知标题、正文、图片和链接拼接为 QQ Markdown。
 

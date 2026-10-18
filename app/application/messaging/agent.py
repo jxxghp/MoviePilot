@@ -26,8 +26,7 @@ from typing import (
     cast,
 )
 
-# aiofiles 未提供此项目可用的类型声明，保留异步文件访问接口。
-import aiofiles  # type: ignore[import-untyped]
+import aiofiles
 
 from app.application import agent as agent_application
 from app.application.agent import is_audio_input_available, transcribe_audio

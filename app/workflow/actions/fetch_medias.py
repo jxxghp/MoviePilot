@@ -12,9 +12,10 @@ from app.chain.recommend import RecommendChain
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.context import MediaInfo
 from app.schemas.event import RecommendSourceEventData
 from app.schemas.types import ChainEventType
-from app.schemas.workflow import ActionContext, ActionParams, MediaInfo
+from app.schemas.workflow import ActionContext, ActionParams
 from app.workflow.actions import BaseAction
 
 
@@ -39,7 +40,7 @@ class FetchMediasAction(BaseAction):
     def __init__(self, action_id: str):
         super().__init__(action_id)
 
-        self._medias = []
+        self._medias: list[MediaInfo] = []
         self._has_error = False
         self.__inner_sources = [
             {
@@ -140,14 +141,14 @@ class FetchMediasAction(BaseAction):
                 return s
         return None
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         获取媒体数据，填充到medias
         """
-        params = FetchMediasParams(**params)
+        action_params = FetchMediasParams.model_validate(params)
         try:
-            if params.source_type == "ranking":
-                for api_path in params.sources:
+            if action_params.source_type == "ranking":
+                for api_path in action_params.sources:
                     if runtime_stop_state.is_workflow_stopped(workflow_id):
                         break
                     source = self.__get_source(api_path)
@@ -177,14 +178,14 @@ class FetchMediasAction(BaseAction):
                 # 调用内部API获取数据
                 runtime_config = get_chain_runtime_config_snapshot()
                 api_url = (
-                    f"http://127.0.0.1:{runtime_config.api_port}{params.api_path}"
+                    f"http://127.0.0.1:{runtime_config.api_port}{action_params.api_path}"
                     f"?token={runtime_config.api_token}"
                 )
                 res = RequestUtils(timeout=15).post_res(api_url)
                 if res:
                     results = res.json()
                     if results:
-                        logger.info(f"{params.api_path} 获取到 {len(results)} 条数据")
+                        logger.info(f"{action_params.api_path} 获取到 {len(results)} 条数据")
                         self._medias.extend([MediaInfo(**r) for r in results])
         except Exception as e:
             logger.error(f"获取媒体数据失败: {e}")

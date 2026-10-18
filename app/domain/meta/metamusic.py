@@ -1340,8 +1340,8 @@ class MetaMusic(MetaBase):
             artist = track.album_artist or (track.artists[0] if track.artists else None)
             if artist:
                 artist_votes[artist] = artist_votes.get(artist, 0) + 1
-        majority_album = max(album_votes, key=album_votes.get) if album_votes else None
-        majority_artist = max(artist_votes, key=artist_votes.get) if artist_votes else None
+        majority_album = max(album_votes, key=lambda key: album_votes[key]) if album_votes else None
+        majority_artist = max(artist_votes, key=lambda key: artist_votes[key]) if artist_votes else None
         threshold = max(2, len(tracks) // 2)
         album = majority_album if majority_album and album_votes[majority_album] >= threshold else None
         artist = majority_artist if majority_artist and artist_votes[majority_artist] >= threshold else None

@@ -15,9 +15,9 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 # SMB SDK（smbclient/smbprotocol/spnego）约 12MB，存储发现会导入全部存储实现，
 # 因此各方法内按需导入，未配置 SMB 时不加载
@@ -72,7 +72,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         return True
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         加载当前 SMB 配置并尝试建立连接。
         """
@@ -87,7 +87,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
         self._init_connection()
 
-    def _init_connection(self):
+    def _init_connection(self) -> None:
         """
         按当前配置建立连接，清除上次状态以免配置无效时继续使用旧共享。
         """
@@ -168,7 +168,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         server = f"\\\\{self._host}"
         self._server_path = server if self._multi_share else f"{server}\\{names[0].strip()}"
 
-    def _test_connection(self):
+    def _test_connection(self) -> None:
         """
         测试SMB连接。
         """
@@ -286,7 +286,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                 modify_time=int(time.time()),
             )
 
-    def init_storage(self):
+    def init_storage(self) -> None:
         """
         保存或重置配置后清理旧会话并重新连接，即使配置未变或上次连接失败。
         """
@@ -565,7 +565,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】删除失败 - 未知错误: {fileitem.path} - {e}")
             return False
 
-    def _recursive_delete(self, smb_path: str):
+    def _recursive_delete(self, smb_path: str) -> None:
         """
         递归删除目录及其所有内容。
         """
@@ -646,7 +646,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】重命名失败: {e}")
             return False
 
-    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         分块读取 SMB 文件到本地路径并报告进度。
 
@@ -893,7 +893,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】获取存储使用情况失败: {e}")
             return None
 
-    def __del__(self):
+    def __del__(self) -> None:
         """
         已连接实例回收时尽力清空 smbclient 的进程级连接缓存。
         """

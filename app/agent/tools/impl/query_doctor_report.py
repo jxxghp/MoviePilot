@@ -59,7 +59,7 @@ class QueryDoctorReportTool(MoviePilotTool):
         description="工具输入参数的验证模型或 JSON Schema",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: object) -> Optional[str]:
         """
         根据查询参数生成友好的提示消息。
         """
@@ -105,7 +105,7 @@ class QueryDoctorReportTool(MoviePilotTool):
         self,
         deep: Optional[bool] = False,
         include_details: Optional[bool] = True,
-        **kwargs,
+        **kwargs: object,
     ) -> str:
         """
         运行只读 Doctor 诊断并返回 JSON 字符串。

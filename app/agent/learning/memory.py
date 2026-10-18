@@ -129,7 +129,12 @@ class MemoryStore:
         """
         if request.operations:
             return request.operations
-        return [MemoryOperation(action=request.action, content=request.content, old_text=request.old_text, new_text=request.new_text)]
+        return [MemoryOperation.model_validate({
+            'action': request.action,
+            'content': request.content,
+            'old_text': request.old_text,
+            'new_text': request.new_text,
+        })]
 
     def _validate(self, target: str, raw: str, entries: list[str], operations: list[MemoryOperation],
                   batch: bool, pinned: list[str | None] | None = None) -> tuple[list[str], list[str | None]]:

@@ -2,7 +2,7 @@
 插件目录、生命周期和数据投影应用能力。
 """
 
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 from anyio import to_thread
 
@@ -110,11 +110,11 @@ def _merge_plugin_source_metadata(plugin: Any, source_plugin: Any) -> Any:
     return plugin
 
 
-def _map_plugins_by_id(plugins: list[Any]) -> dict[str, Any]:
+def _map_plugins_by_id(plugins: Iterable[object]) -> dict[object, object]:
     """
     按插件 ID 建立稳定映射，保留同 ID 首个候选来源。
     """
-    plugin_map: dict[str, Any] = {}
+    plugin_map: dict[object, object] = {}
     for plugin in plugins:
         plugin_id = getattr(plugin, "id", None)
         if plugin_id and plugin_id not in plugin_map:

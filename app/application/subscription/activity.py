@@ -260,7 +260,11 @@ class SubscriptionActivityRun:
                     "resource_id": key, "title": title, "site": str(getattr(torrent, "site_name", "") or ""),
                     "decision": decision, "reason": reason,
                 }
-            self.details["resources"] = sorted(self._resources.values(), key=lambda item: -_decision_rank(str(item["decision"])))
+            resources: list[dict[str, JsonData]] = sorted(
+                self._resources.values(),
+                key=lambda item: -_decision_rank(str(item["decision"])),
+            )
+            self.details["resources"] = cast(JsonData, resources)
             self.details["resources_omitted"] = max(0, len(self._related) - DETAIL_LIMIT)
 
     def _make_detail_room(self, key: str, decision: str) -> None:

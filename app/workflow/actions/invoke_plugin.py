@@ -48,17 +48,17 @@ class InvokePluginAction(BaseAction):
         """
         执行插件定义的动作
         """
-        params = InvokePluginParams(**params)
-        if not params.plugin_id or not params.action_id:
+        action_params = InvokePluginParams.model_validate(params)
+        if not action_params.plugin_id or not action_params.action_id:
             return context
         try:
             plugin_manager = get_plugin_manager()
             # 只给了插件 ID 而该插件已有分身时，必须先裁决默认调用目标：按登记顺序
             # 取第一个会让同一条工作流在不同时刻落到不同实例，执行结果不可复现
-            resolved_plugin_id = plugin_manager.resolve_plugin_call_target(params.plugin_id)
+            resolved_plugin_id = plugin_manager.resolve_plugin_call_target(action_params.plugin_id)
             plugin_actions = plugin_manager.get_plugin_actions(resolved_plugin_id)
             if not plugin_actions:
-                logger.error(f"插件不存在: {params.plugin_id}")
+                logger.error(f"插件不存在: {action_params.plugin_id}")
                 return context
             actions = plugin_actions[0].get("actions", [])
             # 插件公开动作契约使用 ``id``；读取旧插件声明时保留 action_id 回退，避免已保存工作流失效。
@@ -67,15 +67,15 @@ class InvokePluginAction(BaseAction):
                     action
                     for action in actions
                     if (action.get("id") or action.get("action_id"))
-                    == params.action_id
+                    == action_params.action_id
                 ),
                 None,
             )
             if not action or not action.get("func"):
-                logger.error(f"插件动作不存在: {params.plugin_id} - {params.action_id}")
+                logger.error(f"插件动作不存在: {action_params.plugin_id} - {action_params.action_id}")
                 return context
             # 执行插件动作
-            self._success, context = action["func"](context, **params.action_params)
+            self._success, context = action["func"](context, **action_params.action_params)
         except Exception as e:
             self._success = False
             logger.error(f"调用插件动作失败: {e}")

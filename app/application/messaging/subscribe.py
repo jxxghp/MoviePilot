@@ -7,6 +7,7 @@ from typing import Any, Callable, List, Optional, Protocol, Tuple, Union
 
 from app.application.messaging.interaction import (
     MessageGateway,
+    PendingSlashInteraction,
     SlashInteractionManager,
     build_navigation_buttons,
     format_markdown_table,
@@ -108,10 +109,10 @@ class SubscribeInteractionHandler:
     def remote_list(
             self,
             arg_str: str = "",
-            channel: NotificationChannel = None,
-            userid: Union[str, int] = None,
+            channel: Optional[NotificationChannel] = None,
+            userid: Optional[Union[str, int]] = None,
             source: Optional[str] = None,
-    ):
+    ) -> None:
         """
         /subscribes 统一入口。
         """
@@ -231,9 +232,9 @@ class SubscribeInteractionHandler:
 
     def handle_text_interaction(
             self,
-            channel: NotificationChannel,
-            source: str,
-            userid: Union[str, int],
+            channel: Optional[NotificationChannel],
+            source: Optional[str],
+            userid: Optional[Union[str, int]],
             username: str,
             text: str,
     ) -> bool:
@@ -244,9 +245,9 @@ class SubscribeInteractionHandler:
 
     def _handle_text_interaction(
             self,
-            channel: NotificationChannel,
-            source: str,
-            userid: Union[str, int],
+            channel: Optional[NotificationChannel],
+            source: Optional[str],
+            userid: Optional[Union[str, int]],
             username: str,
             text: str,
     ) -> bool:
@@ -450,10 +451,10 @@ class SubscribeInteractionHandler:
 
     def _render_subscribe_interaction(
             self,
-            request,
-            channel: NotificationChannel,
+            request: PendingSlashInteraction,
+            channel: Optional[NotificationChannel],
             source: Optional[str],
-            userid: Union[str, int],
+            userid: Optional[Union[str, int]],
             username: Optional[str],
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
@@ -615,9 +616,9 @@ class SubscribeInteractionHandler:
 
     def _run_refresh_action(
             self,
-            channel: NotificationChannel,
-            source: str,
-            userid: Union[str, int],
+            channel: Optional[NotificationChannel],
+            source: Optional[str],
+            userid: Optional[Union[str, int]],
             username: str,
     ) -> None:
         """
@@ -645,9 +646,9 @@ class SubscribeInteractionHandler:
 
     def _run_metadata_refresh_action(
             self,
-            channel: NotificationChannel,
-            source: str,
-            userid: Union[str, int],
+            channel: Optional[NotificationChannel],
+            source: Optional[str],
+            userid: Optional[Union[str, int]],
             username: str,
     ) -> None:
         """
@@ -683,9 +684,9 @@ class SubscribeInteractionHandler:
     def _run_search_action(
             self,
             arg_str: str,
-            channel: NotificationChannel,
-            source: str,
-            userid: Union[str, int],
+            channel: Optional[NotificationChannel],
+            source: Optional[str],
+            userid: Optional[Union[str, int]],
             username: str,
     ) -> Tuple[bool, str]:
         """

@@ -19,10 +19,11 @@ from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
-from app.domain.context import MusicInfo
+from app.domain.context import MediaInfo, MusicInfo
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import get_task_registry
+from app.schemas.file import FileItem
 from app.schemas.message import Message
 from app.schemas.types import (
     MediaSource,
@@ -30,7 +31,6 @@ from app.schemas.types import (
     NotificationChannel,
     ReplyMode,
 )
-from app.schemas.workflow import FileItem
 
 
 def _request_durable_transfer_retry(
@@ -78,7 +78,7 @@ class FailedRetryMixin(_TransferOwnerBase):
     @staticmethod
     def build_failed_transfer_buttons(
             history_id: Optional[int],
-    ) -> Optional[List[List[dict]]]:
+    ) -> Optional[List[List[dict[str, str]]]]:
         """
         构建整理失败通知的操作按钮。
         """
@@ -277,10 +277,10 @@ class FailedRetryMixin(_TransferOwnerBase):
 
         redo_prompt = build_manual_redo_prompt(history)
 
-        async def _run_ai_takeover():
+        async def _run_ai_takeover() -> None:
             final_output = ""
 
-            def _capture_output(text_output: str):
+            def _capture_output(text_output: str) -> None:
                 nonlocal final_output
                 final_output = text_output or ""
 
@@ -362,7 +362,7 @@ class FailedRetryMixin(_TransferOwnerBase):
     def _re_transfer(
             self,
             logid: int,
-            mtype: MediaType = None,
+            mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
     ) -> Tuple[bool, str]:
@@ -394,6 +394,7 @@ class FailedRetryMixin(_TransferOwnerBase):
         src_path = Path(history.src)
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
+        mediainfo: MediaInfo | MusicInfo | None
         if explicit_identity:
             mediainfo = MediaChain().recognize_media(
                 mtype=mtype,
@@ -409,6 +410,7 @@ class FailedRetryMixin(_TransferOwnerBase):
             if mediainfo and not isinstance(mediainfo, MusicInfo):
                 self.obtain_images(mediainfo=mediainfo)
         elif history.media_source and history.media_id:
+            history_type: Optional[MediaType]
             try:
                 history_type = mtype or MediaType(history.type)
             except ValueError:
@@ -455,14 +457,14 @@ class FailedRetryMixin(_TransferOwnerBase):
         elif history.dest_fileitem:
             if not isinstance(history.dest_fileitem, dict):
                 return False, "目标文件历史数据无效"
-            dest_fileitem = FileItem(**history.dest_fileitem)
+            dest_fileitem = FileItem.model_validate(history.dest_fileitem)
             StorageChain().delete_file(dest_fileitem)
 
         if history.src_fileitem:
             if not isinstance(history.src_fileitem, dict):
                 return False, "源文件历史数据无效"
             state, errmsg = self.do_transfer(
-                fileitem=FileItem(**history.src_fileitem),
+                fileitem=FileItem.model_validate(history.src_fileitem),
                 mediainfo=mediainfo,
                 mtype=mtype,
                 media_source=media_source,

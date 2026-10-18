@@ -294,7 +294,7 @@ def _issue(
     severity: Literal["error", "warning"],
     code: str,
     message: str,
-    path: list[str],
+    path: list[str | int],
 ) -> ClassificationValidationIssue:
     """
     构造启动组合层统一使用的分类诊断。

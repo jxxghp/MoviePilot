@@ -7,6 +7,7 @@ from app.chain.scraping import ScrapingChain
 from app.chain.storage import StorageChain
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.file import FileItem
 from app.schemas.workflow import ActionContext, ActionParams
 from app.workflow.actions import BaseAction
 
@@ -28,9 +29,14 @@ class ScrapeFileAction(BaseAction):
         "outputs": [{"name": "fileitems", "label": "文件", "kind": "list"}],
     }
 
-    def __init__(self, action_id: str):
+    def __init__(self, action_id: str) -> None:
+        """
+        建立当前动作的已刮削文件集合与错误状态。
+
+        :param action_id: 当前工作流动作的标识
+        """
         super().__init__(action_id)
-        self._scraped_files = []
+        self._scraped_files: list[FileItem] = []
         self._has_error = False
 
     name = "刮削文件"
@@ -40,15 +46,20 @@ class ScrapeFileAction(BaseAction):
     @property
     def success(self) -> bool:
         """
-返回文件刮削过程是否未记录错误。
+        返回文件刮削过程是否未记录错误。
 
         :return: 未遇到刮削错误时为 True
         """
         return not self._has_error
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
-        刮削fileitems中的所有文件
+        刮削上下文中的文件并记录成功项。
+
+        :param workflow_id: 当前工作流标识，用于检查停止状态与缓存
+        :param params: 动作参数；此动作沿用上下文中的文件列表
+        :param context: 包含待刮削文件的工作流上下文
+        :return: 原工作流上下文，动作状态由成功数与失败数更新
         """
         # 失败次数
         _failed_count = 0

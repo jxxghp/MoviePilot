@@ -286,10 +286,11 @@ class SyncRuleGroupMutationService:
         ):
             raise RuleGroupMutationConflictError("规则组已被其他请求修改，请重新读取后再试")
         if original_definitions != definitions:
+            definition_payload = list[JsonData](definitions)
             self._configuration.stage_set(
-                SystemConfigKey.UserFilterRuleGroups, definitions
+                SystemConfigKey.UserFilterRuleGroups, definition_payload
             )
-            changes[SystemConfigKey.UserFilterRuleGroups] = definitions
+            changes[SystemConfigKey.UserFilterRuleGroups] = definition_payload
 
         if custom_rules is not None:
             assert expected_custom_rules is not None
@@ -305,11 +306,12 @@ class SyncRuleGroupMutationService:
                     "自定义规则已被其他请求修改，请重新读取后再试"
                 )
             if original_custom_rules != custom_definitions:
+                custom_payload = list[JsonData](custom_definitions)
                 self._configuration.stage_set(
                     SystemConfigKey.CustomFilterRules,
-                    custom_definitions,
+                    custom_payload,
                 )
-                changes[SystemConfigKey.CustomFilterRules] = custom_definitions
+                changes[SystemConfigKey.CustomFilterRules] = custom_payload
 
         for key in _RULE_GROUP_LIST_CONFIG_KEYS:
             original = self._configuration.get_for_update(key)
@@ -317,8 +319,9 @@ class SyncRuleGroupMutationService:
                 original, previous_name, current_name, valid_names
             )
             if list_updated != (original or []):
-                self._configuration.stage_set(key, list_updated)
-                changes[key] = list_updated
+                list_payload = list[JsonData](list_updated)
+                self._configuration.stage_set(key, list_payload)
+                changes[key] = list_payload
 
         for key in _RULE_GROUP_DEFAULT_CONFIG_KEYS:
             original = self._configuration.get_for_update(key)
@@ -339,7 +342,7 @@ class SyncRuleGroupMutationService:
                 continue
             self._subscriptions.stage_update(
                 subscription.id,
-                SubscriptionPatch({"filter_groups": updated}),
+                SubscriptionPatch({"filter_groups": list[JsonData](updated)}),
             )
             subscription_changes.append(_subscription_change(subscription, updated))
         return RuleGroupMutation(changes, tuple(subscription_changes))
@@ -424,10 +427,11 @@ class AsyncRuleGroupMutationService:
         ):
             raise RuleGroupMutationConflictError("规则组已被其他请求修改，请重新读取后再试")
         if original_definitions != definitions:
+            definition_payload = list[JsonData](definitions)
             await self._configuration.async_stage_set(
-                SystemConfigKey.UserFilterRuleGroups, definitions
+                SystemConfigKey.UserFilterRuleGroups, definition_payload
             )
-            changes[SystemConfigKey.UserFilterRuleGroups] = definitions
+            changes[SystemConfigKey.UserFilterRuleGroups] = definition_payload
 
         if custom_rules is not None:
             assert expected_custom_rules is not None
@@ -445,11 +449,12 @@ class AsyncRuleGroupMutationService:
                     "自定义规则已被其他请求修改，请重新读取后再试"
                 )
             if original_custom_rules != custom_definitions:
+                custom_payload = list[JsonData](custom_definitions)
                 await self._configuration.async_stage_set(
                     SystemConfigKey.CustomFilterRules,
-                    custom_definitions,
+                    custom_payload,
                 )
-                changes[SystemConfigKey.CustomFilterRules] = custom_definitions
+                changes[SystemConfigKey.CustomFilterRules] = custom_payload
 
         for key in _RULE_GROUP_LIST_CONFIG_KEYS:
             original = await self._configuration.async_get_for_update(key)
@@ -457,8 +462,9 @@ class AsyncRuleGroupMutationService:
                 original, previous_name, current_name, valid_names
             )
             if list_updated != (original or []):
-                await self._configuration.async_stage_set(key, list_updated)
-                changes[key] = list_updated
+                list_payload = list[JsonData](list_updated)
+                await self._configuration.async_stage_set(key, list_payload)
+                changes[key] = list_payload
 
         for key in _RULE_GROUP_DEFAULT_CONFIG_KEYS:
             original = await self._configuration.async_get_for_update(key)
@@ -480,7 +486,7 @@ class AsyncRuleGroupMutationService:
                 continue
             await self._subscriptions.async_stage_update(
                 subscription.id,
-                SubscriptionPatch({"filter_groups": updated}),
+                SubscriptionPatch({"filter_groups": list[JsonData](updated)}),
             )
             subscription_changes.append(_subscription_change(subscription, updated))
         return RuleGroupMutation(changes, tuple(subscription_changes))

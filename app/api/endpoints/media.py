@@ -23,26 +23,26 @@ from app.application.module import get_module_manager
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.tmdb import TmdbChain
-from app.domain.context import Context, MusicInfo
+from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import is_music_media_source, normalize_music_type, parse_media_source_selection
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.schemas.category import CategoryConfig as _SchemaCategoryConfig
 from app.schemas.category import MediaCategoryMap as _SchemaMediaCategoryMap
+from app.schemas.context import Context as _SchemaContext
 from app.schemas.context import MediaDetailResult as _SchemaMediaDetailResult
 from app.schemas.context import MediaEpisodeGroup as _SchemaMediaEpisodeGroup
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.context import MediaSearchResults as _SchemaMediaSearchResults
 from app.schemas.context import MediaSeason as _SchemaMediaSeason
 from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicEntityType
-from app.schemas.workflow import Context as _SchemaContext
-from app.schemas.workflow import FileItem as _SchemaFileItem
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 
@@ -501,6 +501,8 @@ def _scrape_impl(
         return _SchemaResponse(success=success, message=message)
 
     chain = MediaChain()
+    meta_info: Optional[MetaBase]
+    media_info: Optional[Union[MediaInfo, MusicInfo]]
     if normalized_media_id:
         meta_info = MetaInfoPath(Path(fileitem.path))
         media_info = chain.recognize_media(
@@ -611,9 +613,15 @@ async def group_seasons(
     count: CompatibleCountParam = None,
 ) -> Any:
     """
-    查询剧集组季信息（themoviedb）
+    查询 TMDB 剧集组季信息。
+
+    :param episode_group: 剧集组原生标识
+    :param _: 已验证的访问令牌
+    :param page: 兼容客户端的分页参数，此接口不据此分页
+    :param count: 兼容客户端的数量参数，此接口不据此截断
+    :return: 剧集组季信息；标识无效时返回空列表
     """
-    _, normalized_group_id = resolve_media_identity(
+    _resolved_source, normalized_group_id = resolve_media_identity(
         media_source=MediaSource.TMDB,
         media_id=episode_group,
     )
@@ -657,14 +665,24 @@ async def seasons(
     media_source: Optional[MediaSource] = None,
     media_id: Optional[str] = None,
     title: Optional[str] = None,
-    year: str = None,
-    season: int = None,
+    year: Optional[str] = None,
+    season: Optional[int] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> Any:
     """
-    查询媒体季信息
+    按明确媒体身份或标题查询季信息。
+
+    :param media_source: 可选的媒体来源，需与媒体 ID 成对提供
+    :param media_id: 来源内的原生媒体标识
+    :param title: 未提供媒体身份时用于识别的标题
+    :param year: 标题识别使用的可选年份
+    :param season: 可选的目标季号
+    :param _: 已验证的访问令牌
+    :param page: 兼容客户端的分页参数，此接口不据此分页
+    :param count: 兼容客户端的数量参数，此接口不据此截断
+    :return: 匹配的季信息；未识别到媒体时返回空列表
     """
     if media_source is not None or media_id is not None:
         normalized_source, normalized_media_id = resolve_media_identity(

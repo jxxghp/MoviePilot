@@ -42,6 +42,7 @@ _prepare_direct_execution_import_path()
 import signal
 import threading
 from pathlib import Path
+from types import FrameType
 from typing import Optional
 
 import setproctitle
@@ -83,7 +84,7 @@ class MoviePilotServer(uvicorn.Server):
     在 Uvicorn 开始优雅退出前发布应用协作停止标志
     """
 
-    def handle_exit(self, sig, frame) -> None:
+    def handle_exit(self, sig: int, frame: Optional[FrameType]) -> None:
         """
 收到退出信号时先通知业务任务收尾，再交给 Uvicorn 处理。
 
@@ -161,7 +162,7 @@ def request_shutdown() -> None:
         Server.should_exit = True
 
 
-def start_tray():
+def start_tray() -> None:
     """
     启动托盘图标
     """
@@ -172,14 +173,14 @@ def start_tray():
     if not SystemUtils.is_windows():
         return
 
-    def open_web():
+    def open_web() -> None:
         """
         调用浏览器打开前端页面
         """
         import webbrowser
         webbrowser.open(f"http://localhost:{get_runtime_setting('NGINX_PORT')}")
 
-    def quit_app():
+    def quit_app() -> None:
         """
         退出程序
         """
@@ -205,7 +206,7 @@ def start_tray():
     threading.Thread(target=TrayIcon.run, daemon=True).start()
 
 
-def signal_handler(signum, frame):
+def signal_handler(signum: int, frame: Optional[FrameType]) -> None:
     """
     信号处理函数，用于优雅停止服务
     """

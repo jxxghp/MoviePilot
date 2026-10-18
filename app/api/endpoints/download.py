@@ -32,6 +32,9 @@ from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
+from app.schemas.context import SubtitleInfo as _SchemaSubtitleInfo
+from app.schemas.context import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
 from app.schemas.download import DownloadDirectory as _SchemaDownloadDirectory
 from app.schemas.download import DownloadSourceClassificationData as _SchemaDownloadSourceClassificationData
@@ -40,12 +43,10 @@ from app.schemas.download import DownloadTaskUpdateData as _SchemaDownloadTaskUp
 from app.schemas.download import DownloadTaskUpdateRequest as _SchemaDownloadTaskUpdateRequest
 from app.schemas.download import SubtitleDownloadData as _SchemaSubtitleDownloadData
 from app.schemas.file import FileURI as _SchemaFileURI
+from app.schemas.music import MusicInfo as _SchemaMusicInfo
 from app.schemas.response import Response as _SchemaResponse
-from app.schemas.search import SubtitleInfo as _SchemaSubtitleInfo
-from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.transfer import DownloaderTorrent as _SchemaDownloaderTorrent
-from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
 from app.schemas.types import (
     MUSIC_ARTIST_COLLECTION_CATEGORY,
     MUSIC_ENTITY_ARTIST,
@@ -55,7 +56,6 @@ from app.schemas.types import (
     MusicTargetEntityType,
     SystemConfigKey,
 )
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 
@@ -133,7 +133,8 @@ def _resolve_add_media(
     media_id: str | None,
     music_type: MusicTargetEntityType | None,
     allow_unrecognized: bool,
-) -> tuple[MetaBase | None, MediaInfo | MusicInfo | None, _SchemaResponse | None]:
+) -> tuple[MetaBase | None, MediaInfo | MusicInfo | None,
+           _SchemaResponse[_SchemaDownloadAddedData] | None]:
     """
     校验媒体身份并为无媒体信息下载构建识别上下文。
     """
@@ -506,9 +507,14 @@ async def classify_source(
 )
 async def clients(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
-    查询可用下载器
+    查询已启用的下载器名称与类型。
+
+    :param _: 已验证的访问令牌
+    :param page: 兼容客户端的分页参数，此接口不据此分页
+    :param count: 兼容客户端的数量参数，此接口不据此截断
+    :return: 已启用下载器的名称和类型列表
     """
-    downloaders: List[dict] = get_configured_system_config().get(SystemConfigKey.Downloaders)
+    downloaders: List[dict[str, object]] = get_configured_system_config().get(SystemConfigKey.Downloaders)
     if downloaders:
         return [{"name": d.get("name"), "type": d.get("type")} for d in downloaders if d.get("enabled")]
     return []

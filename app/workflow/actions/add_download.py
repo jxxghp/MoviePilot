@@ -67,7 +67,7 @@ class AddDownloadAction(BaseAction):
         """
         将工作流资源还原为下载链所需的领域上下文并添加下载任务。
         """
-        action_params = AddDownloadParams(**params)
+        action_params = AddDownloadParams.model_validate(params)
         _started = False
         for t in self._iter_resources(workflow_id, context):
             torrent_info = t.torrent_info

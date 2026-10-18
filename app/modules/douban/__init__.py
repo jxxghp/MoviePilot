@@ -171,7 +171,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self.doubanapi = DoubanApi()
         self.scraper = DoubanScraper()
 
-    def stop(self):
+    def stop(self) -> None:
         """
         关闭豆瓣同步 HTTP 客户端。
         """
@@ -968,8 +968,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                     media.season = meta.begin_season
         return ret_medias
 
-    def _recognize_media_core(self, meta: MetaBase = None,
-                              mtype: MediaType = None,
+    def _recognize_media_core(self, meta: Optional[MetaBase] = None,
+                              mtype: Optional[MediaType] = None,
                               doubanid: Optional[str] = None,
                               douban_info_func=None,
                               match_doubaninfo_func=None,
@@ -1025,8 +1025,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                         break
         return self._project_video_recognition(plan, info)
 
-    async def _async_recognize_media_core(self, meta: MetaBase = None,
-                                          mtype: MediaType = None,
+    async def _async_recognize_media_core(self, meta: Optional[MetaBase] = None,
+                                          mtype: Optional[MediaType] = None,
                                           doubanid: Optional[str] = None,
                                           async_douban_info_func=None,
                                           async_match_doubaninfo_func=None,
@@ -1157,8 +1157,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             )
         return mediainfo
 
-    def recognize_media(self, meta: MetaBase = None,
-                        mtype: MediaType = None,
+    def recognize_media(self, meta: Optional[MetaBase] = None,
+                        mtype: Optional[MediaType] = None,
                         media_source: Optional[MediaSource] = None,
                         media_id: Optional[str] = None,
                         **kwargs) -> Optional[MediaInfo]:
@@ -1197,8 +1197,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             **kwargs
         )
 
-    async def async_recognize_media(self, meta: MetaBase = None,
-                                    mtype: MediaType = None,
+    async def async_recognize_media(self, meta: Optional[MetaBase] = None,
+                                    mtype: Optional[MediaType] = None,
                                     media_source: Optional[MediaSource] = None,
                                     media_id: Optional[str] = None,
                                     **kwargs) -> Optional[MediaInfo]:
@@ -1327,7 +1327,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
 
     @rate_limit_exponential(source="douban_info")
-    def douban_info(self, doubanid: str, mtype: MediaType = None, raise_exception: bool = True) -> Optional[dict]:
+    def douban_info(self, doubanid: str, mtype: Optional[MediaType] = None, raise_exception: bool = True) -> Optional[dict]:
         """
         获取豆瓣信息。
 
@@ -1348,7 +1348,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return None
 
     @rate_limit_exponential(source="douban_info")
-    async def async_douban_info(self, doubanid: str, mtype: MediaType = None,
+    async def async_douban_info(self, doubanid: str, mtype: Optional[MediaType] = None,
                                 raise_exception: bool = True) -> Optional[dict]:
         """
         获取豆瓣信息（异步版本）。
@@ -1793,8 +1793,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     @retry(Exception, 5, 3, 3, logger=logger)
     @rate_limit_exponential(source="match_doubaninfo")
-    def match_doubaninfo(self, name: str, imdbid: str = None,
-                         mtype: MediaType = None, year: str = None, season: int = None,
+    def match_doubaninfo(self, name: str, imdbid: Optional[str] = None,
+                         mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None,
                          raise_exception: bool = False) -> dict:
         """
         搜索和匹配豆瓣信息。
@@ -1823,8 +1823,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     @retry(Exception, 5, 3, 3, logger=logger)
     @rate_limit_exponential(source="match_doubaninfo")
-    async def async_match_doubaninfo(self, name: str, imdbid: str = None,
-                                     mtype: MediaType = None, year: str = None, season: int = None,
+    async def async_match_doubaninfo(self, name: str, imdbid: Optional[str] = None,
+                                     mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None,
                                      raise_exception: bool = False) -> dict:
         """
         搜索和匹配豆瓣信息（异步版本）。
@@ -1888,7 +1888,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         return self.scraper.get_metadata_nfo(mediainfo=mediainfo, season=season)
 
-    def metadata_img(self, mediainfo: MediaInfo, season: int = None, episode: int = None) -> Optional[dict]:
+    def metadata_img(self, mediainfo: MediaInfo, season: Optional[int] = None, episode: Optional[int] = None) -> Optional[dict]:
         """
         获取图片名称和url。
 
@@ -1975,7 +1975,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
         return self._process_douban_images(mediainfo, info)
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """
         清除缓存。
         """

@@ -24,9 +24,9 @@ def run_gateway(
     config_name: str,
     get_token_fn: Callable[[str, str], str],
     get_gateway_url_fn: Callable[[str], str],
-    on_message_fn: Callable[[dict], None],
+    on_message_fn: Callable[[dict[str, object]], None],
     stop_event: threading.Event,
-    ws_holder: List,
+    ws_holder: List[websocket.WebSocketApp],
 ) -> None:
     """
     在后台线程中运行 Gateway WebSocket 连接。
@@ -159,9 +159,13 @@ def run_gateway(
                 heartbeat_thread = generation_thread
                 generation_thread.start()
 
-    def on_ws_message(ws, message):
+    def on_ws_message(ws: websocket.WebSocketApp, message: str) -> None:
         """
         处理当前 WebSocket 连接收到的 QQ Gateway 消息。
+
+        :param ws: 当前收发消息的 WebSocket 连接
+        :param message: 网关送达的 JSON 文本
+        :return: 无返回值；有效消息交给上层回调
         """
         nonlocal last_seq, attempt
         try:
@@ -252,15 +256,28 @@ def run_gateway(
             logger.warning(f"[QQ Gateway:{config_name}] Invalid session")
             ws.close()
 
-    def on_ws_error(_, error):
+    def on_ws_error(_: websocket.WebSocketApp, error: object) -> None:
         """
         记录当前 WebSocket 连接上报的错误。
+
+        :param _: 触发错误的 WebSocket 连接
+        :param error: 客户端报告的异常或错误信息
+        :return: 无返回值
         """
         logger.error(f"[QQ Gateway:{config_name}] WebSocket error: {error}")
 
-    def on_ws_close(ws, close_status_code, close_msg):
+    def on_ws_close(
+        ws: websocket.WebSocketApp,
+        close_status_code: int | None,
+        close_msg: str | None,
+    ) -> None:
         """
         失效当前连接及其心跳代次，但不在回调线程等待。
+
+        :param ws: 已关闭的 WebSocket 连接
+        :param close_status_code: 服务端关闭码；异常断开时可能缺失
+        :param close_msg: 服务端关闭原因；异常断开时可能缺失
+        :return: 无返回值
         """
         logger.info(f"[QQ Gateway:{config_name}] WebSocket closed: {close_status_code} {close_msg}")
         # close 回调可能由 stop() 调用线程触发，只发信号，统一由 Gateway 线程等待终态。

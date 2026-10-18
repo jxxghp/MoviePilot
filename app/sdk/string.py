@@ -4,7 +4,7 @@
 
 from functools import wraps
 from inspect import signature
-from typing import Callable
+from typing import Callable, TypeVar
 
 from app.domain.episode import compact_numbers, format_ranges
 from app.domain.site import extract_domain, urls_match
@@ -58,16 +58,31 @@ from app.foundation.url import (
 )
 from app.foundation.version import compare_version
 
+ReturnT = TypeVar("ReturnT")
 
-def _legacy_alias(function: Callable, **keyword_aliases: str) -> Callable:
+
+def _legacy_alias(
+    function: Callable[..., ReturnT], **keyword_aliases: str
+) -> Callable[..., ReturnT]:
     """
     创建支持旧关键字名称的静态方法转发器。
+
+    旧参数名由运行时映射，调用参数无法用固定静态签名表示；
+    转发器保留原函数的返回类型和供插件反射使用的历史签名。
+
+    :param function: 已拆分到实际所属模块的实现函数
+    :param keyword_aliases: 旧参数名到当前参数名的映射
+    :return: 兼容旧关键字调用且保留原结果类型的函数
     """
 
     @wraps(function)
-    def call(*args, **kwargs):
+    def call(*args: object, **kwargs: object) -> ReturnT:
         """
         把旧关键字转换为 canonical 参数后调用真实实现。
+
+        :param args: 原样传递的位置参数
+        :param kwargs: 可包含旧参数名的关键字参数
+        :return: 真实实现返回的结果
         """
         for legacy_name, canonical_name in keyword_aliases.items():
             if legacy_name in kwargs:
@@ -78,20 +93,27 @@ def _legacy_alias(function: Callable, **keyword_aliases: str) -> Callable:
         canonical_name: legacy_name
         for legacy_name, canonical_name in keyword_aliases.items()
     }
-    call.__signature__ = signature(function).replace(
-        parameters=[
-            parameter.replace(
-                name=canonical_to_legacy.get(parameter.name, parameter.name)
-            )
-            for parameter in signature(function).parameters.values()
-        ]
+    setattr(
+        call,
+        "__signature__",
+        signature(function).replace(
+            parameters=[
+                parameter.replace(
+                    name=canonical_to_legacy.get(parameter.name, parameter.name)
+                )
+                for parameter in signature(function).parameters.values()
+            ]
+        ),
     )
     return call
 
 
-def _legacy_md5_hash(data) -> str:
+def _legacy_md5_hash(data: object) -> str:
     """
     保持 StringUtils.md5_hash 对空值和对象文本化的历史语义。
+
+    :param data: 待计算摘要的对象；空值保持旧接口的空字符串结果
+    :return: 对象文本的 MD5 摘要，或空字符串
     """
     if not data:
         return ""

@@ -17,7 +17,8 @@ from app.runtime.capabilities.model import (
     CapabilitySpec,
 )
 from app.runtime.capabilities.runtime import CapabilityRuntime
-from app.runtime.events import Event, EventHandlerBinding, eventmanager
+from app.runtime.event.binding import EventHandlerBinding
+from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.module.adapter import (
     HOST_MODULE_KIND,
     MODULE_ENABLE_SETTING,
@@ -306,7 +307,7 @@ class ModuleManager(metaclass=Singleton):
         return True, "模块不支持测试"
 
     @staticmethod
-    def check_setting(setting: Optional[tuple]) -> bool:
+    def check_setting(setting: Optional[tuple[str, object]]) -> bool:
         """
         保留旧模块开关的 truthy 与 membership 判定语义。
         """
@@ -338,7 +339,7 @@ class ModuleManager(metaclass=Singleton):
             if (instance := self._runtime.get_running(spec.id)) is not None
         )
 
-    def get_running_modules(self, method: str) -> Generator:
+    def get_running_modules(self, method: str) -> Generator[object, None, None]:
         """
         返回实现了指定方法的运行模块快照。
         """
@@ -347,7 +348,7 @@ class ModuleManager(metaclass=Singleton):
             if callable(candidate) and ObjectUtils.check_method(candidate):
                 yield module
 
-    def get_running_type_modules(self, module_type: ModuleType) -> Generator:
+    def get_running_type_modules(self, module_type: ModuleType) -> Generator[object, None, None]:
         """
         返回指定类型的运行模块快照。
         """
@@ -355,7 +356,7 @@ class ModuleManager(metaclass=Singleton):
             if module.get_type() == module_type:
                 yield module
 
-    def get_running_subtype_module(self, module_subtype: SubType) -> Generator:
+    def get_running_subtype_module(self, module_subtype: SubType) -> Generator[object, None, None]:
         """
         返回指定子类型的运行模块快照。
         """

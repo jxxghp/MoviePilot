@@ -2,7 +2,7 @@
 Jellyfin 模块，将媒体库查询和事件解析接入统一媒体服务器接口。
 """
 
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple, Union
 
 from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.jellyfin.jellyfin import Jellyfin
@@ -59,13 +59,15 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         """
         return 2
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         由媒体服务器实例配置控制启用，不声明独立模块开关。
+
+        :return: 始终为 None，表示不检查模块级配置项
         """
         pass
 
-    def stop(self):
+    def stop(self) -> None:
         """
         保留模块停止入口；本实现没有额外停止动作。
         """
@@ -82,7 +84,7 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         """
         source = args.get("source")
         if source:
-            server: Jellyfin = self.get_instance(source)
+            server = self.get_instance(source)
             if not server:
                 return None
             result = server.get_webhook_message(body)
@@ -104,8 +106,9 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param server: 服务器配置名称；省略时汇总全部实例
         :return: 统计列表；指定实例不存在时返回 None，无法获取统计的实例被跳过
         """
+        servers: Iterable[Jellyfin]
         if server:
-            server_obj: Jellyfin = self.get_instance(server)
+            server_obj = self.get_instance(server)
             if not server_obj:
                 return None
             servers = [server_obj]
@@ -131,13 +134,13 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param hidden: 是否隐藏未选入同步配置的库
         :return: 统一媒体库列表；实例不可用或查询失败时返回 None
         """
-        server_obj: Jellyfin = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_librarys(username=username, hidden=hidden)
         return None
 
     def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
-                          limit: Optional[int] = -1) -> Optional[Generator]:
+                          limit: Optional[int] = -1) -> Optional[Generator[Optional[_SchemaMediaServerItem], None, None]]:
         """
         返回媒体库条目的迭代器，按需分页并递归展开目录。
 
@@ -147,7 +150,7 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param limit: 当前层请求数量；None 或 -1 不限制，子目录递归读取全部条目
         :return: 统一媒体条目的生成器；实例不存在时返回 None，迭代时的读取错误向调用方传播
         """
-        server_obj: Jellyfin = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_items(library_id, start_index, limit)
         return None
@@ -160,7 +163,7 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param library_id: 媒体库ID
         :return: 媒体条目总数，查询失败时返回None
         """
-        server_obj: Jellyfin = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_items_count(library_id)
         return None
@@ -173,7 +176,7 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param item_id: Jellyfin 条目标识
         :return: 统一条目模型；实例、条目不存在或请求失败时返回 None
         """
-        server_obj: Jellyfin = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_iteminfo(item_id)
         return None
@@ -187,7 +190,7 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param item_id: Jellyfin 条目标识
         :return: 按季组织的集号列表；实例不存在时返回 None，无分集数据或查询失败时返回空列表
         """
-        server_obj: Jellyfin = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
@@ -209,7 +212,7 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
         :return: 继续观看条目列表；实例不可用或查询失败时返回 None
         """
-        server_obj: Jellyfin = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_resume(num=count, username=username)
@@ -222,7 +225,7 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param item_id: Jellyfin 条目标识
         :return: 播放 URL；实例不存在时返回 None
         """
-        server_obj: Jellyfin = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_play_url(item_id)
@@ -237,7 +240,7 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param season: 季号
         :return: 集号到条目 ID 的映射，服务器不可用或无数据时返回 None
         """
-        server_obj: Jellyfin = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_season_episode_ids(str(item_id), season)
@@ -252,7 +255,7 @@ class JellyfinModule(_MediaServerModuleBase[Jellyfin]):
         :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
         :return: 最新媒体列表；实例不可用或查询失败时返回 None
         """
-        server_obj: Jellyfin = self.get_instance(server)
+        server_obj = self.get_instance(server)
         if not server_obj:
             return None
         return server_obj.get_latest(num=count, username=username)

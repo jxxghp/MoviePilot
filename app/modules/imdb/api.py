@@ -583,7 +583,7 @@ class ImdbApi:
         """
         title = cls._first_title(data) or {}
         values = (title.get("episodes") or {}).get("seasons") or []
-        return [ImdbSeason(season=str(item["number"])) for item in values]
+        return [ImdbSeason.model_validate({"season": str(item["number"])}) for item in values]
 
     @classmethod
     def _parse_episode_page(

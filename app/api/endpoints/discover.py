@@ -16,11 +16,11 @@ from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
 from app.runtime.events import eventmanager
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.event import DiscoverMediaSource as _SchemaDiscoverMediaSource
 from app.schemas.event import DiscoverSourceEventData
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import ChainEventType, MediaType
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 

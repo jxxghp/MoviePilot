@@ -182,3 +182,30 @@ def test_upload_part_size_grows_for_large_files():
     part_size = U115Pan._U115Pan__get_upload_part_size(file_size)
 
     assert part_size == 64 * 1024 * 1024
+
+
+def test_expired_access_token_uses_refreshed_credentials():
+    """
+    令牌刷新成功后，请求头和返回值应使用新令牌。
+    """
+    storage = object.__new__(U115Pan)
+    storage.get_conf = lambda: {
+        "refresh_token": "old-refresh",
+        "access_token": "old-access",
+        "refresh_time": 1,
+        "expires_in": 1,
+    }
+    storage._U115Pan__refresh_access_token = lambda _token: {
+        "refresh_token": "new-refresh",
+        "access_token": "new-access",
+        "expires_in": 3600,
+    }
+    saved = []
+    headers = []
+    storage.set_config = saved.append
+    storage._request_utils = SimpleNamespace(update_headers=headers.append)
+
+    assert storage.access_token == "new-access"
+    assert saved[0]["refresh_token"] == "new-refresh"
+    assert saved[0]["access_token"] == "new-access"
+    assert headers == [{"Authorization": "Bearer new-access"}]

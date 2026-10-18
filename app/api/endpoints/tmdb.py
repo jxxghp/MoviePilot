@@ -15,6 +15,7 @@ from app.api.response import (
 )
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
 from app.chain.tmdb import TmdbChain
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.tmdb import TmdbEpisode as _SchemaTmdbEpisode
@@ -22,7 +23,6 @@ from app.schemas.tmdb import TmdbRecognitionCacheData as _SchemaTmdbRecognitionC
 from app.schemas.tmdb import TmdbSeason as _SchemaTmdbSeason
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaType, SystemConfigKey
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 
@@ -73,9 +73,13 @@ async def tmdb_recognition_cache(
 async def delete_tmdb_recognition_cache(
     cache_key: str,
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     按缓存键删除单条 TheMovieDb 识别缓存。
+
+    :param cache_key: 要删除的缓存键
+    :param _: 已验证的管理员身份
+    :return: 删除结果；缓存不存在时返回失败响应
     """
     deleted_item = TmdbChain().delete_cache(cache_key)
     if not deleted_item:
@@ -88,9 +92,12 @@ async def delete_tmdb_recognition_cache(
 )
 async def clear_tmdb_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     清空全部 TheMovieDb 识别缓存。
+
+    :param _: 已验证的管理员身份
+    :return: 缓存清理结果
     """
     TmdbChain().clear_cache()
     return _SchemaResponse(success=True, message="TheMovieDb 识别缓存清理完成")

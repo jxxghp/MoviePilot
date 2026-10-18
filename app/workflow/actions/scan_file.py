@@ -57,7 +57,7 @@ class ScanFileAction(BaseAction):
         """
         扫描目录中的所有文件，记录到fileitems
         """
-        action_params = ScanFileParams(**params)
+        action_params = ScanFileParams.model_validate(params)
         if not action_params.storage or not action_params.directory:
             return context
         storagechain = StorageChain()

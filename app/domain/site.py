@@ -31,9 +31,12 @@ def urls_match(first: str, second: str) -> bool:
     return first.replace("www.", "") == second.replace("www.", "")
 
 
-def extract_domain(url: str) -> str:
+def extract_domain(url: Optional[str]) -> str:
     """
     按 MoviePilot 站点规则提取用于匹配的注册域名。
+
+    :param url: 待解析的站点地址；None 或空字符串返回空域名
+    :return: 注册域名；无法解析时返回空字符串
     """
     if not url:
         return ""

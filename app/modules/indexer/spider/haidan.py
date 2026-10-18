@@ -3,7 +3,7 @@
 """
 
 import urllib.parse
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
@@ -21,7 +21,7 @@ class HaiDanSpider:
     _indexerid = None
     _domain = None
     _url = None
-    _name = ""
+    _name: Optional[str] = ""
     _proxy = None
     _cookie = None
     _ua = None
@@ -57,7 +57,7 @@ class HaiDanSpider:
     }
 
     @classmethod
-    def get_search_page_size(cls, keyword: str = None) -> None:
+    def get_search_page_size(cls, keyword: Optional[str] = None) -> None:
         """
         海胆搜索入口当前没有接入页码参数，不参与自动翻页。
 
@@ -83,12 +83,12 @@ class HaiDanSpider:
             self._ua = indexer.get('ua')
             self._timeout = indexer.get('timeout') or 15
 
-    def __get_params(self, keyword: str, mtype: MediaType = None) -> dict:
+    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None) -> str:
         """
         获取请求参数。
         """
 
-        def __dict_to_query(_params: dict):
+        def __dict_to_query(_params: dict[str, object]) -> str:
             """
             将数组转换为逗号分隔的字符串。
             """
@@ -123,11 +123,11 @@ class HaiDanSpider:
             "cat": categories
         })
 
-    def __parse_result(self, result: dict):
+    def __parse_result(self, result: dict) -> list[dict[str, object]]:
         """
         解析结果。
         """
-        torrents = []
+        torrents: list[dict[str, object]] = []
         data = result.get('data') or {}
         for tid, item in data.items():
             # 分类字段在每条种子内，接口顶层没有 category 字段
@@ -141,7 +141,7 @@ class HaiDanSpider:
                 category = MediaType.MOVIE.value
             else:
                 category = MediaType.UNKNOWN.value
-            torrent = {
+            torrent: dict[str, object] = {
                 'title': item.get('name'),
                 'description': item.get('small_descr'),
                 'enclosure': item.get('url'),
@@ -159,7 +159,7 @@ class HaiDanSpider:
             torrents.append(torrent)
         return torrents
 
-    def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
+    def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, object]]]:
         """
         统一判定搜索响应状态、业务代码并投影 HaiDan 结果。
         """
@@ -175,7 +175,7 @@ class HaiDanSpider:
         logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
         return True, []
 
-    def search(self, keyword: str, mtype: MediaType = None) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: Optional[MediaType] = None) -> Tuple[bool, List[dict[str, object]]]:
         """
         同步搜索 海胆 种子。
 
@@ -197,7 +197,7 @@ class HaiDanSpider:
         ).get_res(url=f"{self._searchurl}?{params_str}")
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, mtype: MediaType = None) -> Tuple[bool, List[dict]]:
+    async def async_search(self, keyword: str, mtype: Optional[MediaType] = None) -> Tuple[bool, List[dict[str, object]]]:
         """
         异步搜索 海胆 种子。
 

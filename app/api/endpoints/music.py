@@ -2,7 +2,7 @@
 提供音乐身份、曲目、歌词与资源发现接口。
 """
 
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Union
 
 from fastapi import Depends, HTTPException, Query
 
@@ -17,16 +17,16 @@ from app.chain.listenbrainz import (
 from app.chain.media import MediaChain
 from app.chain.musicbrainz import MusicBrainzChain
 from app.chain.recommend import RecommendChain
-from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
+from app.domain.context import MediaInfo, MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.schemas.music import MusicAlbumInfo as _SchemaMusicAlbumInfo
 from app.schemas.music import MusicArtistInfo as _SchemaMusicArtistInfo
+from app.schemas.music import MusicInfo as _SchemaMusicInfo
 from app.schemas.music import MusicLibraryStatus as _SchemaMusicLibraryStatus
 from app.schemas.music import MusicLibraryStatusRequest as _SchemaMusicLibraryStatusRequest
 from app.schemas.music import MusicRecognitionCacheData as _SchemaMusicRecognitionCacheData
 from app.schemas.music import MusicRecognizeRequest as _SchemaMusicRecognizeRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
 from app.schemas.types import MediaSource, MediaType
 
 router = ResponseAPIRouter()
@@ -75,9 +75,9 @@ def _validate_music_source(
     return normalized_source
 
 
-def _serialize_music(info: MusicInfo) -> _SchemaMusicInfo:
+def _serialize_music(info: Union[MediaInfo, MusicInfo]) -> _SchemaMusicInfo:
     """
-    将内部音乐信息转换为 REST 响应模型。
+    将识别链返回的领域媒体信息转换为音乐响应模型。
     """
     return _SchemaMusicInfo(**info.to_dict())
 
@@ -107,17 +107,25 @@ async def recognize_music(
 ) -> _SchemaMusicInfo:
     """
     根据音乐元数据来源和媒体 ID 获取标准详情，与影视识别共用统一入口。
+
+    :param request: 媒体来源、原生 ID 与可选音乐实体类型
+    :param _: 已验证的访问令牌
+    :return: 可返回给客户端的音乐详情
+    :raises HTTPException: 未识别到音乐信息时返回 404
     """
-    recognize_kwargs = {
-        "media_source": request.media_source,
-        "media_id": request.media_id,
-        "mtype": MediaType.MUSIC,
-    }
-    if request.music_type is not None:
-        recognize_kwargs["music_type"] = request.music_type
-    info = await MediaChain().async_recognize_media(
-        **recognize_kwargs,
-    )
+    if request.music_type is None:
+        info = await MediaChain().async_recognize_media(
+            media_source=request.media_source,
+            media_id=request.media_id,
+            mtype=MediaType.MUSIC,
+        )
+    else:
+        info = await MediaChain().async_recognize_media(
+            media_source=request.media_source,
+            media_id=request.media_id,
+            mtype=MediaType.MUSIC,
+            music_type=request.music_type,
+        )
     if not info:
         raise HTTPException(status_code=404, detail="未识别到音乐信息")
     return _serialize_music(info)
@@ -155,9 +163,13 @@ async def music_recognition_cache(
 async def delete_music_recognition_cache(
     cache_key: str,
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     按缓存键删除单条 MusicBrainz 识别缓存。
+
+    :param cache_key: 要删除的缓存键
+    :param _: 已验证的管理员身份
+    :return: 删除结果；缓存不存在时返回失败响应
     """
     deleted_item = MusicBrainzChain().delete_cache(cache_key)
     if not deleted_item:
@@ -171,9 +183,12 @@ async def delete_music_recognition_cache(
 )
 async def clear_music_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     清空全部 MusicBrainz 识别缓存。
+
+    :param _: 已验证的管理员身份
+    :return: 缓存清理结果
     """
     MusicBrainzChain().clear_cache()
     MediaChain.clear_music_album_cache()

@@ -2,8 +2,6 @@
 工作流领域的请求级 command/query 依赖。
 """
 
-from typing import cast
-
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -12,7 +10,6 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.api.context import get_async_session, get_host_runtime, get_sync_session
 from app.application.scheduling import get_scheduler
 from app.application.workflow import (
-    WorkflowCachePort,
     WorkflowDefinitionCommand,
     WorkflowMutationCommand,
     WorkflowQueryService,
@@ -31,7 +28,7 @@ def get_workflow_mutation_command(
     """
     scheduler = get_scheduler()
     workflow_manager = get_workflow_manager()
-    system_config = cast(WorkflowCachePort, runtime.workflow.system_config())
+    system_config = runtime.workflow.system_config()
     return WorkflowMutationCommand(
         repository=runtime.workflow.repository(db),
         unit_of_work=runtime.persistence.sync_transaction(db),
@@ -54,7 +51,7 @@ def get_workflow_definition_command(
     """
     组装工作流创建、复用和重置的异步写用例。
     """
-    system_config = cast(WorkflowCachePort, runtime.workflow.system_config())
+    system_config = runtime.workflow.system_config()
     return WorkflowDefinitionCommand(
         repository=runtime.workflow.repository(db),
         unit_of_work=runtime.persistence.async_transaction(db),

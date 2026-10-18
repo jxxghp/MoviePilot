@@ -50,11 +50,11 @@ from app.schemas.event import (
     TransferRenameEventData,
 )
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import ChainEventType, MediaType
-from app.schemas.workflow import FileItem
 
 
 class TransHandler:
@@ -2361,7 +2361,7 @@ class TransHandler:
         target_path: Path,
         need_type_folder: Optional[bool] = False,
         need_category_folder: Optional[bool] = False,
-    ):
+    ) -> Path:
         """
         在自定义目标根目录下追加媒体类型和分类路径。
 
@@ -2448,7 +2448,7 @@ class TransHandler:
         meta: MetaBase,
         mediainfo: MediaInfo,
         file_ext: Optional[str] = None,
-        episodes_info: List[TmdbEpisode] = None,
+        episodes_info: Optional[List[TmdbEpisode]] = None,
     ) -> dict:
         """
         构造重命名模板使用的媒体变量和安全分类路径。

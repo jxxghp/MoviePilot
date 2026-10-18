@@ -23,14 +23,14 @@ from app.domain.context import Context
 from app.domain.media import normalize_music_type
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
+from app.schemas.context import Context as _SchemaContext
+from app.schemas.context import SubtitleInfo as _SchemaSubtitleInfo
 from app.schemas.media import resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.search import SearchLastContextData as _SchemaSearchLastContextData
 from app.schemas.search import SearchRecommendStatusData as _SchemaSearchRecommendStatusData
-from app.schemas.search import SubtitleInfo as _SchemaSubtitleInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaSource, MediaType
-from app.schemas.workflow import Context as _SchemaContext
 
 router = ResponseAPIRouter()
 

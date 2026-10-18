@@ -17,8 +17,7 @@ from app.modules._base.notification import _MessageChannelModuleBase
 from app.runtime.log import logger
 from app.schemas.event import CommandRegisterEventData
 from app.schemas.message import IncomingMessage, Message, MessageResponse
-from app.schemas.notification import NotificationChannel
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, NotificationChannel
 
 # SDK 缺失或加载失败时保留其他通知渠道的可用性。
 try:

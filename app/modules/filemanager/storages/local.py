@@ -16,9 +16,9 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 
 class LocalStorage(StorageBase):
@@ -39,7 +39,7 @@ class LocalStorage(StorageBase):
     # 文件复制块大小，默认 10 MiB
     chunk_size = 10 * 1024 * 1024
 
-    def init_storage(self):
+    def init_storage(self) -> None:
         """
         保留存储初始化钩子；本地文件系统不需要建立客户端。
         """
@@ -94,7 +94,7 @@ class LocalStorage(StorageBase):
         """
         ret_items = []
         path = fileitem.path
-        if not fileitem.path or fileitem.path == "/":
+        if not path or path == "/":
             if SystemUtils.is_windows():
                 partitions = SystemUtils.get_windows_drives() or ["C:/"]
                 for partition in partitions:
@@ -251,7 +251,7 @@ class LocalStorage(StorageBase):
             return False
         return True
 
-    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Path:
         """
         直接提供本地源路径，不复制文件。
 
@@ -279,7 +279,7 @@ class LocalStorage(StorageBase):
         return dest.parent / f".{dest.name}.{os.getpid()}{cls.PARTIAL_SUFFIX}"
 
     @classmethod
-    def _cleanup_stale_partials(cls, directory: Path):
+    def _cleanup_stale_partials(cls, directory: Path) -> None:
         """
         清理目录下中断残留的临时文件。
 
@@ -424,7 +424,7 @@ class LocalStorage(StorageBase):
         return None
 
     @staticmethod
-    def __should_show_progress(src: Path, dest: Path):
+    def __should_show_progress(src: Path, dest: Path) -> bool:
         """
         是否显示进度条。
         """

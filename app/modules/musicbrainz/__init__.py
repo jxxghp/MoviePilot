@@ -265,7 +265,7 @@ class MusicBrainzModule(_ModuleBase):
     _request_lock = threading.Lock()
     _last_request_at = 0.0
     # 本地识别缓存，由模块管理器初始化时挂载
-    cache: MusicBrainzCache = None
+    cache: Optional[MusicBrainzCache] = None
     # 全局复用 HTTP 连接，减少重复 DNS 查询和 TLS 握手。
     _request: Optional[RequestUtils] = None
     _client_lock = threading.Lock()
@@ -411,7 +411,7 @@ class MusicBrainzModule(_ModuleBase):
         self.music_cache_clear()
         logger.info("音乐识别缓存清除完成")
 
-    def music_cache_items(self) -> list[dict]:
+    def music_cache_items(self) -> list[dict[str, object]]:
         """
         列出可供管理界面展示的音乐识别缓存。
 
@@ -419,7 +419,7 @@ class MusicBrainzModule(_ModuleBase):
         """
         return self.cache.list_items() if self.cache else []
 
-    def music_cache_delete(self, cache_key: str) -> dict:
+    def music_cache_delete(self, cache_key: str) -> dict[str, object]:
         """
         按键删除识别缓存，删除成功时同时清空 HTTP 请求缓存。
 
@@ -851,9 +851,9 @@ class MusicBrainzModule(_ModuleBase):
         return queries
 
     @classmethod
-    def _strip_parenthetical(cls, value: str) -> str:
+    def _strip_parenthetical(cls, value: Optional[str]) -> str:
         """
-        去除标题中的括号注释，保留主体曲名。
+        去除标题中的括号注释，保留主体曲名；空标题返回空字符串。
         """
         text = re.sub(r"[\(（][^\)）]*[\)）]", " ", str(value or ""))
         return cls._normalize_text(text)
@@ -1605,7 +1605,7 @@ class MusicBrainzModule(_ModuleBase):
             artist_ids=artist_ids,
             artist_aliases=cls._credit_aliases(detail.get("artist-credit")),
             album_type=cls._stripped(release_group.get("primary-type")),
-            secondary_types=[cls._stripped(item) for item in release_group.get("secondary-types") or [] if cls._stripped(item)],
+            secondary_types=[value for item in release_group.get("secondary-types") or [] if (value := cls._stripped(item))],
             release_date=detail.get("date") or None,
             cover_url=cls._build_cover_url(group_id),
             genres=cls._names_of(detail.get("genres")),
@@ -1626,8 +1626,8 @@ class MusicBrainzModule(_ModuleBase):
 
     def recognize_media(
             self,
-            meta: MetaBase = None,
-            mtype: MediaType = None,
+            meta: Optional[MetaBase] = None,
+            mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             **kwargs,
@@ -1711,8 +1711,8 @@ class MusicBrainzModule(_ModuleBase):
 
     async def async_recognize_media(
             self,
-            meta: MetaBase = None,
-            mtype: MediaType = None,
+            meta: Optional[MetaBase] = None,
+            mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             **kwargs,
@@ -2686,7 +2686,7 @@ class MusicBrainzModule(_ModuleBase):
             album_type=cls._stripped(release_group.get("primary-type")),
             title_aliases=cls._names_of(release_group.get("aliases")),
             artist_aliases=cls._credit_aliases(release_group.get("artist-credit")),
-            secondary_types=[cls._stripped(item) for item in release_group.get("secondary-types") or [] if cls._stripped(item)],
+            secondary_types=[value for item in release_group.get("secondary-types") or [] if (value := cls._stripped(item))],
             release_date=release_group.get("first-release-date") or None,
             cover_url=cls._build_cover_url(media_id),
             genres=cls._names_of(release_group.get("genres")),

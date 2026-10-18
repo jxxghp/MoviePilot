@@ -146,7 +146,7 @@ class WorkflowExecutor:
     def __init__(
             self,
             workflow: WorkflowSnapshot,
-            step_callback: Callable = None,
+            step_callback: Optional[Callable[..., object]] = None,
             *,
             from_begin: bool = False,
             completion_callback: Optional[Callable[["WorkflowExecutor"], None]] = None,
@@ -205,9 +205,9 @@ class WorkflowExecutor:
             state for state in self.node_states.values()
             if state in ("success", "failed", "skipped")
         ])
-        self.flow_finished = set()
-        self.flow_satisfied = set()
-        self.flow_failed = set()
+        self.flow_finished: set[str] = set()
+        self.flow_satisfied: set[str] = set()
+        self.flow_failed: set[str] = set()
 
         self.workflowmanager = get_workflow_manager()
         # 具体管理器登记活动执行；旧自定义 能力提供方 不实现 任务持有者 接口时保持原调用兼容。
@@ -217,9 +217,9 @@ class WorkflowExecutor:
         self._stop_event = threading.Event()
         self._execute_returned = threading.Event()
         self._stopped_event = threading.Event()
-        self.queue = deque()
-        self.queued_actions = set()
-        self.active_concurrency_keys = set()
+        self.queue: deque[str] = deque()
+        self.queued_actions: set[str] = set()
+        self.active_concurrency_keys: set[str] = set()
         self.lock = threading.Lock()
         self.executor = OwnedThreadPoolExecutor(max_workers=self.get_workflow_max_workers())
         self.cancel_token = WorkflowCancelToken(self.workflow.id, self._stop_event)

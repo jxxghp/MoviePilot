@@ -342,7 +342,7 @@ class TmdbCache(metaclass=WeakSingleton):
             except Exception as err:
                 logger.error(f"保存TMDB识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
-    def __del__(self):
+    def __del__(self) -> None:
         """
         实例释放前保存非 Redis 缓存。
         """

@@ -757,7 +757,7 @@ class Telegram:
                 else max(initial_delay_seconds, 0)
             )
 
-            def typing_worker():
+            def typing_worker() -> None:
                 """
                 延迟首发并定期发送 typing 状态的后台线程。
                 """
@@ -887,7 +887,7 @@ class Telegram:
 
     def send_msg(
             self,
-            title: str,
+            title: Optional[str],
             text: Optional[str] = None,
             image: Optional[str] = None,
             userid: Optional[str] = None,
@@ -2204,7 +2204,7 @@ class Telegram:
 
         return ret
 
-    def register_commands(self, commands: Dict[str, dict]):
+    def register_commands(self, commands: Dict[str, dict]) -> None:
         """
         先清除旧菜单，再按输入顺序注册命令。
 
@@ -2221,7 +2221,7 @@ class Telegram:
                 ]
             )
 
-    def delete_commands(self):
+    def delete_commands(self) -> None:
         """
         清除机器人菜单命令；客户端未初始化时不执行。
         """

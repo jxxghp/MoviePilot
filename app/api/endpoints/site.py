@@ -47,7 +47,9 @@ from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import JsonData
 from app.schemas.common import JsonObject as _SchemaJsonObject
+from app.schemas.context import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.site import Site as _SchemaSite
 from app.schemas.site import SiteAuth as _SchemaSiteAuth
 from app.schemas.site import SiteCategory as _SchemaSiteCategory
 from app.schemas.site import SiteCookieSet as _SchemaSiteCookieSet
@@ -57,10 +59,8 @@ from app.schemas.site import SiteMappingData as _SchemaSiteMappingData
 from app.schemas.site import SitePriorityUpdate as _SchemaSitePriorityUpdate
 from app.schemas.site import SiteStatistic as _SchemaSiteStatistic
 from app.schemas.site import SiteUserData as _SchemaSiteUserData
-from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaType, SystemConfigKey
-from app.schemas.workflow import Site as _SchemaSite
 
 router = ResponseAPIRouter()
 

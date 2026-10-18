@@ -19,8 +19,8 @@ from app.application.mediaserver import MediaServerQueryService
 from app.application.transfer.execution import TransferExecutionRepository
 from app.chain.storage import StorageChain
 from app.runtime.events import eventmanager
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.types import EventType
-from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.startup.composition.context import HostRuntime
 
 
@@ -104,6 +104,13 @@ def get_transfer_history_mutation_command(
     组装整理历史删除、文件处理和事件发布用例。
     """
     storage_chain = StorageChain()
+
+    def publish_download_file_deleted(payload: dict[str, object]) -> None:
+        """
+        发送下载文件删除事件；用例不消费事件总线的返回值。
+        """
+        eventmanager.send_event(EventType.DownloadFileDeleted, payload)
+
     return TransferHistoryMutationCommand(
         repository=runtime.history.transfer_mutation_repository(db),
         download_repository=runtime.history.download_repository(db),
@@ -112,9 +119,6 @@ def get_transfer_history_mutation_command(
         file_item_factory=lambda payload: _SchemaFileItem(**payload),
         file_exists=storage_chain.exists,
         delete_media_file=storage_chain.delete_media_file,
-        publish_download_file_deleted=lambda payload: eventmanager.send_event(
-            EventType.DownloadFileDeleted,
-            payload,
-        ),
+        publish_download_file_deleted=publish_download_file_deleted,
         clear_failures=clear_transfer_failures,
     )

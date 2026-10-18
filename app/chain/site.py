@@ -37,9 +37,8 @@ from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.message import Message
-from app.schemas.notification import NotificationChannel
 from app.schemas.site import SiteUserData
-from app.schemas.types import EventType, MessageType
+from app.schemas.types import EventType, MessageType, NotificationChannel
 
 
 class SiteResponsePort(Protocol):
@@ -769,6 +768,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             if status:
                 logger.info(f"站点【{site_info.name}】连通性正常，不同步CookieCloud数据")
                 if not site_info.public and not site_info.rss:
+                    rss_url: Optional[str]
                     rss_url, errmsg = rsshelper.get_rss_link(
                         url=site_info.url,
                         cookie=cookie,
@@ -879,9 +879,12 @@ class SiteChain(InteractionChainMixin, ChainBase):
         )
 
     @eventmanager.register(EventType.SiteUpdated)
-    def cache_site_icon(self, event: Event):
+    def cache_site_icon(self, event: Event) -> None:
         """
-        缓存站点图标
+        站点更新后缓存对应图标。
+
+        :param event: 包含站点域名的更新事件
+        :return: 无返回值
         """
         if not event:
             return
@@ -921,9 +924,12 @@ class SiteChain(InteractionChainMixin, ChainBase):
             logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
 
     @eventmanager.register(EventType.SiteUpdated)
-    def clear_site_data(self, event: Event):
+    def clear_site_data(self, event: Event) -> None:
         """
-        清理站点数据
+        站点更新后清理对应的站点配置。
+
+        :param event: 包含站点域名的更新事件
+        :return: 无返回值
         """
         if not event:
             return
@@ -942,9 +948,12 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 systemconfig.delete(key)
 
     @eventmanager.register(EventType.SiteUpdated)
-    def cache_site_userdata(self, event: Event):
+    def cache_site_userdata(self, event: Event) -> None:
         """
-        缓存站点用户数据
+        站点更新后刷新对应的用户资料。
+
+        :param event: 包含站点域名的更新事件
+        :return: 无返回值
         """
         if not event:
             return
@@ -1059,9 +1068,15 @@ class SiteChain(InteractionChainMixin, ChainBase):
         )
 
     def remote_disable(self, arg_str: str, channel: NotificationChannel,
-                       userid: Union[str, int] = None, source: Optional[str] = None):
+                       userid: Optional[Union[str, int]] = None, source: Optional[str] = None) -> None:
         """
-        禁用站点
+        按远程命令中的编号禁用站点，并反馈操作结果。
+
+        :param arg_str: 站点编号文本
+        :param channel: 回复消息的渠道
+        :param userid: 渠道用户标识，未提供时由渠道决定接收者
+        :param source: 消息来源标识
+        :return: 无返回值
         """
         if not arg_str:
             return
@@ -1082,9 +1097,15 @@ class SiteChain(InteractionChainMixin, ChainBase):
         self.remote_list(channel=channel, userid=userid, source=source)
 
     def remote_enable(self, arg_str: str, channel: NotificationChannel,
-                      userid: Union[str, int] = None, source: Optional[str] = None):
+                      userid: Optional[Union[str, int]] = None, source: Optional[str] = None) -> None:
         """
-        启用站点
+        按远程命令中的编号启用站点，并反馈操作结果。
+
+        :param arg_str: 一个或多个站点编号
+        :param channel: 回复消息的渠道
+        :param userid: 渠道用户标识，未提供时由渠道决定接收者
+        :param source: 消息来源标识
+        :return: 无返回值
         """
         if not arg_str:
             return
@@ -1137,9 +1158,15 @@ class SiteChain(InteractionChainMixin, ChainBase):
         return False, "未知错误"
 
     def remote_cookie(self, arg_str: str, channel: NotificationChannel,
-                      userid: Union[str, int] = None, source: Optional[str] = None):
+                      userid: Optional[Union[str, int]] = None, source: Optional[str] = None) -> None:
         """
-        使用用户名密码更新站点Cookie
+        从远程命令读取凭据并更新站点 Cookie。
+
+        :param arg_str: 站点编号、用户名、密码及可选二次验证码
+        :param channel: 回复消息的渠道
+        :param userid: 渠道用户标识，未提供时由渠道决定接收者
+        :param source: 消息来源标识
+        :return: 无返回值
         """
         err_title = "请输入正确的命令格式：/site_cookie [id] [username] [password] [2fa_code/secret]，" \
                     "[id]为站点编号，[uername]为站点用户名，[password]为站点密码，[2fa_code/secret]为站点二步验证码或密钥"
@@ -1213,9 +1240,14 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 save_history=False))
 
     def remote_refresh_userdatas(self, channel: NotificationChannel,
-                                 userid: Union[str, int] = None, source: Optional[str] = None):
+                                 userid: Optional[Union[str, int]] = None, source: Optional[str] = None) -> None:
         """
-        刷新所有站点用户数据
+        刷新站点用户资料并向请求渠道发送流量汇总。
+
+        :param channel: 回复消息的渠道
+        :param userid: 渠道用户标识，未提供时由渠道决定接收者
+        :param source: 消息来源标识
+        :return: 无返回值
         """
         logger.info("收到命令，开始刷新站点数据 ...")
         self.post_message(Message(

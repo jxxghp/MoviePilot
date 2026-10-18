@@ -71,7 +71,7 @@ class TransferFileAction(BaseAction):
                 return False
             return True
 
-        action_params = TransferFileParams(**params)
+        action_params = TransferFileParams.model_validate(params)
         # 失败次数
         _failed_count = 0
         storagechain = StorageChain()

@@ -323,7 +323,7 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         裁剪公共订阅写入字段，可仅保留更新请求显式提交的字段。
         """
         return self.model_dump(
-            exclude=self.PUBLIC_WRITE_EXCLUDED_FIELDS,
+            exclude=set(self.PUBLIC_WRITE_EXCLUDED_FIELDS),
             exclude_unset=exclude_unset,
         )
 

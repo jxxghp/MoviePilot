@@ -79,7 +79,7 @@ class SubtitleModule(_ModuleBase):
         """
         return 0
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         字幕解析没有独立开关，是否执行由调用方决定。
         """
@@ -91,7 +91,7 @@ class SubtitleModule(_ModuleBase):
         """
         pass
 
-    def test(self):
+    def test(self) -> Optional[Tuple[bool, str]]:
         """
         字幕能力依赖具体资源详情页，不提供独立连接测试。
         """
@@ -125,7 +125,7 @@ class SubtitleModule(_ModuleBase):
         return sublink
 
     @classmethod
-    def _parse_subtitle_links(cls, html, page_url: str) -> List[str]:
+    def _parse_subtitle_links(cls, html: etree._Element, page_url: str) -> List[str]:
         """
         按站点页面结构提取去重后的字幕下载链接。
 
@@ -135,7 +135,7 @@ class SubtitleModule(_ModuleBase):
         :param page_url: 详情页地址，用于补齐相对链接
         :return: 按页面发现顺序排列的有效下载地址
         """
-        sublink_list = []
+        sublink_list: List[str] = []
         found_links = set()
         for xpath in cls._SITE_SUBTITLE_XPATH:
             sublink_count = len(sublink_list)

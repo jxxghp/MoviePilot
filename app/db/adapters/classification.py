@@ -272,6 +272,10 @@ class SystemConfigClassificationPolicyStore:
     def _decode(value: Any) -> ClassificationPolicyState | None:
         """
         把 JSON 配置解析为独立状态对象，并标记损坏数据。
+
+        :param value: 持久化的分类策略 JSON 值
+        :return: 有效策略状态；配置不存在时返回 None
+        :raises ClassificationPolicyStateCorruptError: 配置结构不符合当前模型
         """
         if value is None:
             return None

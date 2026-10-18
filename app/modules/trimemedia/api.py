@@ -44,7 +44,7 @@ class Category(Enum):
     OTHERS = "Others"
 
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value: object) -> Optional["Category"]:
         """
         为未知媒体库分类提供兼容回退。
 
@@ -72,7 +72,7 @@ class Type(Enum):
     DIRECTORY = "Directory"
 
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value: object) -> Optional["Type"]:
         """
         将未识别的条目类型按通用视频处理。
 
@@ -90,13 +90,13 @@ class MediaDb:
     :param guid: 媒体库唯一标识
     :param category: 媒体库内容分类
     :param name: 媒体库显示名称；未提供时为 None
-    :param posters: 媒体库封面的相对 API 路径列表；未提供时为 None
+    :param posters: 媒体库封面的相对 API 路径列表；路径转换失败的元素为 None，未提供时为 None
     :param dir_list: 媒体库实际目录列表；普通用户接口可能不提供，缺失时为 None
     """
     guid: str
     category: Category
     name: Optional[str] = None
-    posters: Optional[list[str]] = None
+    posters: Optional[list[Optional[str]]] = None
     dir_list: Optional[list[str]] = None
 
 
@@ -248,9 +248,11 @@ class Api:
         return self._version
 
     @property
-    def cookies(self) -> dict:
+    def cookies(self) -> dict[str, str]:
         """
-        当前会话的Cookies，开启访问码后包含访问码校验凭证。
+        读取当前 HTTP 会话的 Cookie，开启访问码后包含校验凭证。
+
+        :return: Cookie 名称及会话提供的字符串值
         """
         return self._request_utils.get_cookies()
 
@@ -505,7 +507,7 @@ class Api:
                 return True
         return False
 
-    def __build_item(self, info: dict) -> Item:
+    def __build_item(self, info: dict[str, object]) -> Item:
         """
         复制条目字段，并归一类型与图片 API 路径。
 
@@ -526,12 +528,12 @@ class Api:
     def item_list(
         self,
         guid: Optional[Union[str, int]] = None,
-        types=None,
-        exclude_grouped_video=True,
-        page=1,
-        page_size=20,
-        sort_by="create_time",
-        sort="DESC",
+        types: Optional[list[Type]] = None,
+        exclude_grouped_video: bool = True,
+        page: int = 1,
+        page_size: int = 20,
+        sort_by: str = "create_time",
+        sort: str = "DESC",
     ) -> Optional[list[Item]]:
         """
         按媒体库、类型及排序条件查询一页条目。
@@ -565,7 +567,7 @@ class Api:
             return [self.__build_item(info) for info in res.data.get("list", [])]
         return None
 
-    def item_count(self, guid: str, types=None) -> Optional[int]:
+    def item_count(self, guid: str, types: Optional[list[Type]] = None) -> Optional[int]:
         """
         获取指定媒体库的媒体条目总数。
 
@@ -674,7 +676,7 @@ class Api:
             return [self.__build_item(info) for info in res.data]
         return None
 
-    def __get_authx(self, api_path: str, body: Optional[str]):
+    def __get_authx(self, api_path: str, body: Optional[str]) -> str:
         """
         按飞牛客户端协议计算单次请求的 authx 签名。
 
@@ -709,10 +711,10 @@ class Api:
         self,
         api: str,
         method: Optional[str] = None,
-        params: Optional[dict] = None,
-        data: Optional[dict] = None,
+        params: Optional[dict[str, object]] = None,
+        data: Optional[dict[str, object]] = None,
         base_path: Optional[str] = None,
-        suppress_log=False,
+        suppress_log: bool = False,
     ):
         """
         构造签名并发送飞牛 API 请求，解析业务状态与响应数据。
@@ -755,7 +757,7 @@ class Api:
             """
             为请求体提供飞牛媒体类型枚举的 JSON 编码规则。
             """
-            def default(self, obj):
+            def default(self, obj: object) -> object:
                 """
                 把飞牛 Type 枚举编码为服务端类型值。
 

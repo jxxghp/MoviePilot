@@ -56,12 +56,12 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
     # 下载流每次读取 10 MiB，避免一次载入整个文件。
     chunk_size = 10 * 1024 * 1024
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         创建复用的 HTTP 会话和内存中的设备授权状态。
         """
         super().__init__()
-        self._auth_state = {}
+        self._auth_state: dict[str, Optional[str]] = {}
         self._request_utils = RequestUtils(
             use_session=True,
             timeout=20,
@@ -78,13 +78,13 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         """
         return bool(get_runtime_setting('ALIPAN_SNAPSHOT_CHECK_FOLDER_MODTIME'))
 
-    def _init_session(self):
+    def _init_session(self) -> None:
         """
         为开放接口会话设置 JSON 请求头。
         """
         self._request_utils.update_headers({"Content-Type": "application/json"})
 
-    def _check_session(self):
+    def _check_session(self) -> None:
         """
         读取并刷新访问令牌，拒绝无可用凭据的操作。
 
@@ -264,7 +264,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             )
         return result
 
-    def __get_drive_id(self):
+    def __get_drive_id(self) -> None:
         """
         查询已授权空间并合并写入当前存储配置。
 
@@ -397,7 +397,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                     sha1.update(chunk)
         return sha1.hexdigest()
 
-    def init_storage(self):
+    def init_storage(self) -> None:
         """
         保留存储初始化入口；本后端无需额外初始化。
         """
@@ -505,7 +505,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         return self._delay_get_item(new_path)
 
     @staticmethod
-    def _calculate_pre_hash(file_path: Path):
+    def _calculate_pre_hash(file_path: Path) -> str:
         """
         计算秒传预检查使用的文件前 1024 字节摘要。
 
@@ -518,7 +518,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             sha1.update(data)
         return sha1.hexdigest()
 
-    def _calculate_proof_code(self, file_path: Path):
+    def _calculate_proof_code(self, file_path: Path) -> str:
         """
         按访问令牌确定抽样偏移，生成秒传内容证明。
 
@@ -554,7 +554,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         return base64.b64encode(chunk).decode()
 
     @staticmethod
-    def _calculate_content_hash(file_path: Path):
+    def _calculate_content_hash(file_path: Path) -> str:
         """
         计算秒传校验使用的完整文件 SHA1 摘要。
 
@@ -833,7 +833,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             )
         return self.__get_fileitem(result, parent=target_dir.path)
 
-    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         下载云端文件到本地目录并报告进度。
 
@@ -963,7 +963,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             return False
         return True
 
-    def __get_by_path_item(self, path: Path, drive_id: str = None) -> Optional[_SchemaFileItem]:
+    def __get_by_path_item(self, path: Path, drive_id: Optional[str] = None) -> Optional[_SchemaFileItem]:
         """
         按路径查询并区分目标不存在与状态无法确认。
 
@@ -991,7 +991,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 f"【阿里云盘】查询文件信息出错: {path} - {code} {resp.get('message')}")
         return self.__get_fileitem(resp, parent=str(path.parent))
 
-    def get_item(self, path: Path, drive_id: str = None) -> Optional[_SchemaFileItem]:
+    def get_item(self, path: Path, drive_id: Optional[str] = None) -> Optional[_SchemaFileItem]:
         """
         宽松查询空间内的路径，将查询异常转换为未找到。
 

@@ -21,9 +21,9 @@ from app.runtime.rate import QpsRateLimiter, RateStats
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 lock = Lock()
 
@@ -76,14 +76,14 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     # 风控触发后休眠时间（秒）
     limit_sleep_seconds = 3600
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化复用会话、内存授权状态和共享限流统计。
 
         下载地址接口限速为每秒 1 次，其他文件接口为每秒 3 次；授权接口直接使用会话。
         """
         super().__init__()
-        self._auth_state = {}
+        self._auth_state: dict[str, Union[str, int, None]] = {}
         self._request_utils = RequestUtils(
             use_session=True,
             timeout=20,
@@ -96,7 +96,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         self._limit_lock = Lock()
         self._rate_stats = RateStats(source="115")
 
-    def _init_session(self):
+    def _init_session(self) -> None:
         """
         设置 115 开放接口使用的客户端标识及表单请求头。
         """
@@ -114,7 +114,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         self._request_utils.close()
 
-    def _check_session(self):
+    def _check_session(self) -> None:
         """
         按需刷新令牌并检查当前是否有可用凭据。
 
@@ -140,8 +140,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             expires_in = tokens.get("expires_in", 0)
             refresh_time = tokens.get("refresh_time", 0)
             if expires_in and refresh_time + expires_in < int(time.time()):
-                tokens = self.__refresh_access_token(refresh_token)
-                if tokens:
+                refreshed_tokens = self.__refresh_access_token(refresh_token)
+                if refreshed_tokens:
+                    tokens = refreshed_tokens
                     self.set_config({"refresh_time": int(time.time()), **tokens})
                 else:
                     return None
@@ -535,7 +536,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 return part_size
         return U115_UPLOAD_PART_SIZE_STEPS[-1]
 
-    def init_storage(self):
+    def init_storage(self) -> None:
         """
         保留存储初始化入口；本后端无需额外初始化。
         """
@@ -962,7 +963,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             modify_time=local_path.stat().st_mtime if local_path.exists() else None,
         )
 
-    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
+    def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         查询下载地址后将云端文件写入本地目录并报告进度。
 

@@ -155,7 +155,7 @@ def clear_torrent_cache(cache_backend: Optional[Any] = None) -> None:
 
 
 @lru_cache(maxsize=512)
-def _compile_filter_pattern(pattern: str) -> re.Pattern:
+def _compile_filter_pattern(pattern: str) -> re.Pattern[str]:
     """
     编译订阅/工作流附加过滤正则。
     用户输入沿用原本的正则语义，缓存只减少同一规则反复匹配大量种子时的编译成本。
@@ -163,7 +163,7 @@ def _compile_filter_pattern(pattern: str) -> re.Pattern:
     return re.compile(r"%s" % pattern, re.I)
 
 
-def _filter_pattern_search(pattern: Union[str, int, float], content: str) -> bool:
+def _filter_pattern_search(pattern: object, content: str) -> bool:
     """
     按原有字符串插值语义执行过滤正则匹配。
     """
@@ -308,7 +308,7 @@ class TorrentHelper:
     种子帮助类
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化种子失败地址缓存
         """
@@ -350,7 +350,7 @@ class TorrentHelper:
                          referer: Optional[str] = None,
                          proxy: Optional[bool] = False,
                          cache_invalid: bool = True) \
-            -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list], Optional[str]]:
+            -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list[str]], Optional[str]]:
         """
         把种子下载到本地
         :param url: 种子下载地址
@@ -530,14 +530,18 @@ class TorrentHelper:
     @staticmethod
     def get_url_filename(req: Any, url: str) -> str:
         """
-        从下载请求中获取种子文件名
+        从下载请求中获取种子文件名。
+
+        :param req: 下载响应；为空时返回空字符串
+        :param url: 原始下载地址，用于响应头缺失时提取文件名
+        :return: 响应头、地址或当前时间生成的文件名
         """
         if not req:
             return ""
         disposition = req.headers.get('content-disposition') or ""
-        file_name = re.findall(r"filename=\"?(.+)\"?", disposition)
-        if file_name:
-            file_name = unquote(str(file_name[0].encode('ISO-8859-1').decode()).split(";")[0].strip())
+        file_names = re.findall(r"filename=\"?(.+)\"?", disposition)
+        if file_names:
+            file_name = unquote(str(file_names[0].encode('ISO-8859-1').decode()).split(";")[0].strip())
             if file_name.endswith('"'):
                 file_name = file_name[:-1]
         elif url and url.endswith(".torrent"):
@@ -623,7 +627,7 @@ class TorrentHelper:
         return result
 
     @staticmethod
-    def get_torrent_episodes(files: list, custom_words: Optional[List[str]] = None) -> list:
+    def get_torrent_episodes(files: list[str], custom_words: Optional[List[str]] = None) -> list[int]:
         """
         从种子的文件清单中获取所有集数
 
@@ -631,7 +635,7 @@ class TorrentHelper:
         :param custom_words: 当前下载来源的临时自定义识别词
         :return: 识别到的全部集数
         """
-        episodes = []
+        episodes: list[int] = []
         config = get_chain_runtime_config_snapshot()
         for file in files:
             if not file:
@@ -652,9 +656,11 @@ class TorrentHelper:
         """
         return url in self._invalid_torrents if url else True
 
-    def add_invalid(self, url: str):
+    def add_invalid(self, url: str) -> None:
         """
-        添加无效种子
+        缓存无效种子地址。
+
+        :param url: 需要在后续请求中跳过的种子地址
         """
         if url not in self._invalid_torrents:
             self._invalid_torrents[url] = True
@@ -940,7 +946,7 @@ class TorrentHelper:
         return _size_filter_failure(torrent_info, filter_params.get("size"))
 
     @staticmethod
-    def match_season_episodes(torrent: TorrentInfo, meta: MetaBase, season_episodes: Dict[int, list]) -> bool:
+    def match_season_episodes(torrent: TorrentInfo, meta: MetaBase, season_episodes: Dict[int, list[int]]) -> bool:
         """
         判断种子是否匹配季集数
         :param torrent: 种子信息

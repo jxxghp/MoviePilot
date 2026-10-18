@@ -13,9 +13,9 @@ from app.foundation.crypto import HashUtils
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.system import StorageConf as _SchemaStorageConf
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 _SnapshotInfo = Dict[str, Dict[str, Any]]
 
@@ -56,7 +56,7 @@ class StorageBase(metaclass=ABCMeta):
     覆盖保护等需要区分不存在与失败的场景必须使用严格查询接口。
     """
     schema = None
-    transtype = {}
+    transtype: dict[str, str] = {}
 
     @property
     def snapshot_check_folder_modtime(self) -> bool:
@@ -76,7 +76,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         return False
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         取得用于读取和保存存储配置的应用服务。
         """
@@ -91,13 +91,13 @@ class StorageBase(metaclass=ABCMeta):
         return None
 
     @abstractmethod
-    def init_storage(self):
+    def init_storage(self) -> None:
         """
         按当前配置初始化具体存储的连接或客户端。
         """
         pass
 
-    def generate_qrcode(self, *args, **kwargs) -> Optional[Tuple[dict, str]]:
+    def generate_qrcode(self, *args, **kwargs) -> Optional[Tuple[dict[str, object], str]]:
         """
         提供存储二维码登录扩展入口。
 
@@ -107,7 +107,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
-    def generate_auth_url(self, *args, **kwargs) -> Optional[Tuple[dict, str]]:
+    def generate_auth_url(self, *args, **kwargs) -> Optional[Tuple[dict[str, object], str]]:
         """
         提供存储 OAuth2 授权地址扩展入口。
 
@@ -144,7 +144,7 @@ class StorageBase(metaclass=ABCMeta):
         conf = self.get_config()
         return conf.config if conf else {}
 
-    def set_config(self, conf: dict):
+    def set_config(self, conf: dict[str, object]) -> None:
         """
         持久化当前存储配置并立即重新初始化。
 
@@ -153,7 +153,7 @@ class StorageBase(metaclass=ABCMeta):
         self.storagehelper.set_storage(self.schema.value, conf)
         self.init_storage()
 
-    def support_transtype(self) -> dict:
+    def support_transtype(self) -> dict[str, str]:
         """
         提供当前存储支持的整理方式。
 
@@ -170,7 +170,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         return transtype in self.transtype
 
-    def reset_config(self):
+    def reset_config(self) -> None:
         """
         清除当前存储配置并重新初始化实例。
         """
@@ -310,7 +310,7 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Path:
+    def download(self, fileitem: _SchemaFileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         取得源文件可供本地读取的路径。
 
@@ -506,7 +506,7 @@ class StorageBase(metaclass=ABCMeta):
         files_info: _SnapshotInfo,
         previous_children: Dict[PurePosixPath, set[PurePosixPath]],
         previous_files: Dict[PurePosixPath, str],
-        last_snapshot_time: float,
+        last_snapshot_time: Optional[float],
         max_depth: int,
         current_depth: int = 0,
     ) -> None:
@@ -565,8 +565,8 @@ class StorageBase(metaclass=ABCMeta):
         except Exception as error:
             self._snapshot_read_error(fileitem, error)
 
-    def snapshot(self, path: Path, last_snapshot_time: float = None, max_depth: int = 5,
-                 previous_snapshot: Optional[Dict[str, Dict]] = None) -> Optional[Dict[str, Dict]]:
+    def snapshot(self, path: Path, last_snapshot_time: Optional[float] = None, max_depth: int = 5,
+                 previous_snapshot: Optional[_SnapshotInfo] = None) -> Optional[_SnapshotInfo]:
         """
         递归记录文件信息，并复用增量快照中未变化的子树。
 

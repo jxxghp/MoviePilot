@@ -5,7 +5,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
-from typing import Any, Callable, List, Mapping, Optional, Tuple, Union, cast
+from typing import Any, Callable, List, Mapping, Optional, Protocol, Tuple, Union, cast
 from urllib.parse import urljoin
 
 from app.application.site.health import get_configured_site_health_service
@@ -37,8 +37,34 @@ from app.schemas.media import resolve_media_identity
 from app.schemas.site import SiteUserData
 from app.schemas.types import MediaSource, MediaType, ModuleType, OtherModulesType
 
+
+class _PagedSpider(Protocol):
+    """
+    专站爬虫的构造与分页容量查询合同。
+
+    具体搜索参数仍由各站点适配器独立声明。
+    """
+
+    def __init__(self, indexer: dict[str, object]) -> None:
+        """
+        根据站点配置构造专站爬虫。
+
+        :param indexer: 站点索引配置
+        :return: 无返回值
+        """
+
+    @classmethod
+    def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
+        """
+        返回当前关键字下可用的固定分页容量。
+
+        :param keyword: 搜索关键字，站点可按此决定分页能力
+        :return: 单页数量；不支持可靠分页时返回 None
+        """
+
+
 # 站点资源声明的解析器名称到宿主专站爬虫的精确映射。
-SPIDER_PARSER_CLASSES = {
+SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
     "TNodeSpider": TNodeSpider,
     "TorrentLeech": TorrentLeech,
     "mTorrent": MTorrentSpider,
@@ -148,7 +174,7 @@ class IndexerModule(_ModuleBase):
     提供站点种子、字幕搜索及用户数据刷新，按站点类型选择对应解析器。
     """
 
-    _site_schemas = []
+    _site_schemas: list[type[SiteParserBase]] = []
 
     def init_module(self) -> None:
         """
@@ -187,7 +213,7 @@ class IndexerModule(_ModuleBase):
         """
         return 0
 
-    def stop(self):
+    def stop(self) -> None:
         """
         索引模块没有独立后台资源，此入口不执行额外停止操作。
         """
@@ -204,9 +230,11 @@ class IndexerModule(_ModuleBase):
             return False, "未配置站点或未通过用户认证"
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         索引模块无需独立开关配置。
+
+        :return: 无需初始化设置，返回 None
         """
         pass
 
@@ -297,9 +325,11 @@ class IndexerModule(_ModuleBase):
             )
 
     @staticmethod
-    def __parse_result(site: dict, result_array: list, seconds: int) -> TorrentInfo:
+    def __parse_result(site: dict, result_array: list, seconds: int) -> List[TorrentInfo]:
         """
         解析搜索结果为 TorrentInfo 对象。
+
+        :return: 站点搜索结果列表；没有匹配资源时为空列表
         """
         report_site_search_page(raw_count=len(result_array or []))
         if not result_array or len(result_array) == 0:
@@ -526,8 +556,8 @@ class IndexerModule(_ModuleBase):
         logger.error(f"{site.get('name')} {resource_name}搜索出错：{str(error)}")
 
     def search_torrents(self, site: dict,
-                        keyword: str = None,
-                        mtype: MediaType = None,
+                        keyword: Optional[str] = None,
+                        mtype: Optional[MediaType] = None,
                         cat: Optional[str] = None,
                         page: Optional[int] = 0) -> List[TorrentInfo]:
         """
@@ -541,7 +571,7 @@ class IndexerModule(_ModuleBase):
         :return: 资源列表
         """
 
-        result = []
+        result: List[dict[str, object]] = []
         start_time = datetime.now()
         error_flag = False
 
@@ -588,7 +618,7 @@ class IndexerModule(_ModuleBase):
         )
 
     def search_subtitles(self, site: dict,
-                         keyword: str = None,
+                         keyword: Optional[str] = None,
                          page: Optional[int] = 0) -> List[SubtitleInfo]:
         """
         搜索一个站点的字幕资源。
@@ -599,7 +629,7 @@ class IndexerModule(_ModuleBase):
         :return: 字幕列表
         """
 
-        result = []
+        result: List[dict[str, object]] = []
         start_time = datetime.now()
         error_flag = False
         error: Optional[Exception] = None
@@ -648,8 +678,8 @@ class IndexerModule(_ModuleBase):
         )
 
     async def async_search_torrents(self, site: dict,
-                                    keyword: str = None,
-                                    mtype: MediaType = None,
+                                    keyword: Optional[str] = None,
+                                    mtype: Optional[MediaType] = None,
                                     cat: Optional[str] = None,
                                     page: Optional[int] = 0) -> List[TorrentInfo]:
         """
@@ -663,7 +693,7 @@ class IndexerModule(_ModuleBase):
         :return: 资源列表
         """
 
-        result = []
+        result: List[dict[str, object]] = []
         start_time = datetime.now()
         error_flag = False
 
@@ -710,7 +740,7 @@ class IndexerModule(_ModuleBase):
         )
 
     async def async_search_subtitles(self, site: dict,
-                                     keyword: str = None,
+                                     keyword: Optional[str] = None,
                                      page: Optional[int] = 0) -> List[SubtitleInfo]:
         """
         异步搜索一个站点的字幕资源。
@@ -721,7 +751,7 @@ class IndexerModule(_ModuleBase):
         :return: 字幕列表
         """
 
-        result = []
+        result: List[dict[str, object]] = []
         start_time = datetime.now()
         error_flag = False
         error: Optional[Exception] = None
@@ -772,7 +802,7 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     def __spider_search(indexer: dict,
                         search_word: Optional[str] = None,
-                        mtype: MediaType = None,
+                        mtype: Optional[MediaType] = None,
                         cat: Optional[str] = None,
                         page: Optional[int] = 0,
                         search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict], Optional[str]]:
@@ -802,7 +832,7 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     async def __async_spider_search(indexer: dict,
                                     search_word: Optional[str] = None,
-                                    mtype: MediaType = None,
+                                    mtype: Optional[MediaType] = None,
                                     cat: Optional[str] = None,
                                     page: Optional[int] = 0,
                                     search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict], Optional[str]]:
@@ -944,25 +974,27 @@ class IndexerModule(_ModuleBase):
                         break
             if not site_obj.userid and not site.get("public"):
                 site_obj.err_msg = site_obj.err_msg or "未获取到站点用户信息，请检查 Cookie 是否有效"
-            return SiteUserData(
-                domain=site_rules.extract_domain(site.get("url")),
-                userid=site_obj.userid,
-                username=site_obj.username,
-                user_level=site_obj.user_level,
-                join_at=site_obj.join_at,
-                upload=site_obj.upload,
-                download=site_obj.download,
-                ratio=site_obj.ratio,
-                bonus=site_obj.bonus,
-                seeding=site_obj.seeding,
-                seeding_size=site_obj.seeding_size,
-                seeding_info=site_obj.seeding_info.copy() if site_obj.seeding_info else [],
-                leeching=site_obj.leeching,
-                leeching_size=site_obj.leeching_size,
-                message_unread=site_obj.message_unread,
-                message_unread_contents=site_obj.message_unread_contents.copy() if site_obj.message_unread_contents else [],
-                updated_day=datetime.now().strftime('%Y-%m-%d'),
-                err_msg=site_obj.err_msg
-            )
+            # 解析器保留站点原值，由模型统一执行既有字段校验与列表投影。
+            return SiteUserData.model_validate({
+                "domain": site_rules.extract_domain(site.get("url")),
+                "userid": site_obj.userid,
+                "username": site_obj.username,
+                "user_level": site_obj.user_level,
+                "join_at": site_obj.join_at,
+                "upload": site_obj.upload,
+                "download": site_obj.download,
+                "ratio": site_obj.ratio,
+                "bonus": site_obj.bonus,
+                "seeding": site_obj.seeding,
+                "seeding_size": site_obj.seeding_size,
+                "seeding_info": site_obj.seeding_info.copy() if site_obj.seeding_info else [],
+                "leeching": site_obj.leeching,
+                "leeching_size": site_obj.leeching_size,
+                "message_unread": site_obj.message_unread,
+                "message_unread_contents": site_obj.message_unread_contents.copy()
+                if site_obj.message_unread_contents else [],
+                "updated_day": datetime.now().strftime('%Y-%m-%d'),
+                "err_msg": site_obj.err_msg,
+            })
         finally:
             site_obj.clear()

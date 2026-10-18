@@ -214,8 +214,8 @@ class TheAudioDbModule(_ModuleBase):
 
     def recognize_media(
             self,
-            meta: MetaBase = None,
-            mtype: MediaType = None,
+            meta: Optional[MetaBase] = None,
+            mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             **kwargs,
@@ -258,8 +258,8 @@ class TheAudioDbModule(_ModuleBase):
 
     async def async_recognize_media(
             self,
-            meta: MetaBase = None,
-            mtype: MediaType = None,
+            meta: Optional[MetaBase] = None,
+            mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             **kwargs,

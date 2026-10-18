@@ -340,7 +340,7 @@ def _submit_blocking_call(
             )
             _blocking_executors[bucket] = executor
         # 长期 worker 保持空底层上下文，每个任务只在自己的调用快照内运行。
-        future = Context().run(executor.submit, context.run, bound_call)
+        future = Context().run(partial(executor.submit, context.run, bound_call))
         _blocking_futures[future] = executor
         future.add_done_callback(_discard_blocking_future)
         return future
@@ -480,7 +480,7 @@ async def run_agent_blocking(
         semaphore.release()
         raise
 
-    def _release_semaphore(_future) -> None:
+    def _release_semaphore(_future: ConcurrentFuture[object]) -> None:
         try:
             _future.exception()
         except Exception:
@@ -519,7 +519,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
     _username: Optional[str] = PrivateAttr(default=None)
     _stream_handler: Optional[_StreamingHandlerProtocol] = PrivateAttr(default=None)
     _require_admin: bool = PrivateAttr(default=False)
-    _agent_context: dict = PrivateAttr(default_factory=dict)
+    _agent_context: dict[str, object] = PrivateAttr(default_factory=dict)
     _data: Optional[AgentDataContext] = PrivateAttr(default=None)
 
     def __init__(
@@ -527,8 +527,8 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         session_id: str,
         user_id: str,
         data: Optional[AgentDataContext] = None,
-        **kwargs,
-    ):
+        **kwargs: object,
+    ) -> None:
         """
         保存会话身份及组合根注入的 Agent 数据上下文。
         """
@@ -703,7 +703,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             result, tool_name=self.name, max_chars=self.result_max_chars
         )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: object) -> Optional[str]:
         """
         获取工具执行时的友好提示消息。
 
@@ -728,7 +728,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         del kwargs
         return _get_tool_timeout_seconds()
 
-    async def run_with_timeout(self, **kwargs) -> str:
+    async def run_with_timeout(self, **kwargs: object) -> str:
         """
         按系统配置限制单个工具调用的最长执行时间。
         """
@@ -752,9 +752,14 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         """
         return await run_agent_blocking(bucket, func, *args, **kwargs)
 
-    def set_message_attr(self, channel: str, source: str, username: str):
+    def set_message_attr(
+        self,
+        channel: Optional[str],
+        source: Optional[str],
+        username: Optional[str],
+    ) -> None:
         """
-        设置消息属性
+        保存可选的消息渠道上下文；后台和 API 入口可以不提供渠道信息。
         """
         self._channel = channel
         self._source = source
@@ -768,7 +773,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         """
         self._stream_handler = stream_handler
 
-    def set_agent_context(self, agent_context: Optional[dict]):
+    def set_agent_context(self, agent_context: Optional[dict[str, object]]) -> None:
         """
         设置与当前 Agent 共享的上下文。
         """
@@ -1044,17 +1049,17 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         发送工具消息
         """
         await self.send_message(
-            Message(
-                channel=self._channel,
-                source=self._source,
-                mtype=MessageType.Agent,
-                userid=self._user_id,
-                username=self._username,
-                title=title,
-                text=message,
-                image=image,
-                save_history=False,
-            )
+            Message.model_validate({
+                "channel": self._channel,
+                "source": self._source,
+                "mtype": MessageType.Agent,
+                "userid": self._user_id,
+                "username": self._username,
+                "title": title,
+                "text": message,
+                "image": image,
+                "save_history": False,
+            })
         )
 
 

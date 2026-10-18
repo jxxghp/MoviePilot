@@ -1006,7 +1006,7 @@ class SystemUtils:
         return False
 
     @staticmethod
-    def get_windows_drives():
+    def get_windows_drives() -> list[str]:
         """
         获取Windows所有盘符
         """

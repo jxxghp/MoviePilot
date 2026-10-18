@@ -22,13 +22,12 @@ from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.schemas.file import StorageUsage
+from app.schemas.file import FileItem, StorageUsage
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, ModuleType, OtherModulesType, StorageAction
-from app.schemas.workflow import FileItem
 
 
 class FileManagerModule(_ModuleBase):
@@ -39,7 +38,7 @@ class FileManagerModule(_ModuleBase):
     """
 
     _storage_schemas = []
-    _support_storages = []
+    _support_storages: list[str] = []
 
     def __init__(self) -> None:
         """
@@ -165,11 +164,11 @@ class FileManagerModule(_ModuleBase):
 
         return True, ""
 
-    def __get_storage_oper(self, _storage: str, _func: Optional[str] = None) -> Optional[StorageBase]:
+    def __get_storage_oper(self, _storage: Optional[str], _func: Optional[str] = None) -> Optional[StorageBase]:
         """
         按存储标识和可选方法要求取得适配器实例。
 
-        :param _storage: 已注册的存储标识
+        :param _storage: 已注册的存储标识；为空时无匹配结果
         :param _func: 要求实现的方法名；为空时不限制方法
         :return: 匹配的存储实例；无匹配时返回 None
         """
@@ -180,7 +179,7 @@ class FileManagerModule(_ModuleBase):
                 return storage_schema()
         return None
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         保留文件整理模块的设置初始化扩展入口。
 
@@ -281,7 +280,7 @@ class FileManagerModule(_ModuleBase):
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
             return None
 
-        def __get_files(_item: FileItem, _r: Optional[bool] = False):
+        def __get_files(_item: FileItem, _r: Optional[bool] = False) -> None:
             """
             将当前目录子项追加到外层结果，按需递归子目录。
 
@@ -299,12 +298,12 @@ class FileManagerModule(_ModuleBase):
                 else:
                     result.extend(_items)
 
-        result = []
+        result: list[FileItem] = []
         __get_files(fileitem, recursion)
 
         return result
 
-    def any_files(self, fileitem: FileItem, extensions: list = None) -> Optional[bool]:
+    def any_files(self, fileitem: FileItem, extensions: Optional[list[str]] = None) -> Optional[bool]:
         """
         查询目录下是否存在指定扩展名的文件或任意子项。
 
@@ -321,7 +320,7 @@ class FileManagerModule(_ModuleBase):
             logger.error(f"不支持 {fileitem.storage} 的文件浏览")
             return None
 
-        def __any_file(_item: FileItem):
+        def __any_file(_item: FileItem) -> bool:
             """
             按外层扩展名过滤条件查找任意匹配子项。
 
@@ -407,7 +406,7 @@ class FileManagerModule(_ModuleBase):
             return False
         return storage_oper.rename(fileitem, name)
 
-    def download_file(self, fileitem: FileItem, path: Path = None) -> Optional[Path]:
+    def download_file(self, fileitem: FileItem, path: Optional[Path] = None) -> Optional[Path]:
         """
         委托源存储将文件下载到本地目录。
 
@@ -476,7 +475,7 @@ class FileManagerModule(_ModuleBase):
         return storage_oper.get_parent(fileitem)
 
     def snapshot_storage(self, storage: str, path: Path,
-                         last_snapshot_time: float = None, max_depth: int = 5,
+                         last_snapshot_time: Optional[float] = None, max_depth: int = 5,
                          previous_snapshot: Optional[Dict[str, Dict]] = None) -> Optional[Dict[str, Dict]]:
         """
         委托存储生成目录树快照或增量快照。
@@ -970,7 +969,7 @@ class FileManagerModule(_ModuleBase):
     def media_exists(
             self,
             mediainfo: Union[MediaInfo, MusicInfo],
-            **kwargs,
+            **kwargs: object,
     ) -> Optional[ExistMediaInfo]:
         """
         判断配置的本地或网盘媒体库是否已包含目标媒体。
@@ -1013,7 +1012,7 @@ class FileManagerModule(_ModuleBase):
             logger.info(f"{mediainfo.title_year} 在本地音乐库中找到了")
             return ExistMediaInfo(type=MediaType.MUSIC)
         if mediainfo.type == MediaType.TV:
-            seasons: Dict[int, list] = {}
+            seasons: Dict[int, list[int]] = {}
             for fileitem in fileitems:
                 file_meta = MetaInfo(fileitem.basename)
                 season_index = file_meta.begin_season if file_meta.begin_season is not None else 1

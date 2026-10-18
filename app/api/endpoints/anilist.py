@@ -10,9 +10,9 @@ from app.adapters.web.security.access import verify_token
 from app.api.response import ResponseAPIRouter
 from app.chain.anilist import AniListChain
 from app.domain.context import MediaInfo
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 

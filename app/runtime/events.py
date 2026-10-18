@@ -240,7 +240,7 @@ class EventManager(metaclass=Singleton):
         """
         self.set_error_notifier(None)
 
-    def start(self):
+    def start(self) -> None:
         """
         开始广播事件处理线程。
         """
@@ -261,7 +261,7 @@ class EventManager(metaclass=Singleton):
             thread.start()
             self.__consumer_threads.append(thread)
 
-    def stop(self):
+    def stop(self) -> None:
         """
         兼容同步关闭入口，等待同步处理器并请求取消异步处理器。
 
@@ -595,7 +595,8 @@ class EventManager(metaclass=Singleton):
         """
         event = Event(etype, data, priority)
         if isinstance(etype, EventType):
-            return self.__trigger_broadcast_event(event)
+            self.__trigger_broadcast_event(event)
+            return None
         elif isinstance(etype, ChainEventType):
             return self.__trigger_chain_event(event)
         else:
@@ -665,7 +666,8 @@ class EventManager(metaclass=Singleton):
         """
         event = Event(etype, data, priority)
         if isinstance(etype, EventType):
-            return self.__trigger_broadcast_event(event)
+            self.__trigger_broadcast_event(event)
+            return None
         elif isinstance(etype, ChainEventType):
             return await self.__trigger_chain_event_async(event)
         else:
@@ -762,7 +764,7 @@ class EventManager(metaclass=Singleton):
         dispatch = await self.__dispatch_chain_event_async(event)
         return event if dispatch else None
 
-    def __trigger_broadcast_event(self, event: Event):
+    def __trigger_broadcast_event(self, event: Event) -> None:
         """
         触发广播事件，将事件插入到优先级队列中。
 
@@ -800,7 +802,7 @@ class EventManager(metaclass=Singleton):
         """
         return await self.__dispatcher.async_dispatch_chain(event)
 
-    def __dispatch_broadcast_event(self, event: Event):
+    def __dispatch_broadcast_event(self, event: Event) -> None:
         """
         异步方式调度广播事件，通过线程池逐个调用事件处理器。
 
@@ -886,7 +888,7 @@ class EventManager(metaclass=Singleton):
         """
         return self.__binding_resolver.resolve(handler)
 
-    def __broadcast_consumer_loop(self):
+    def __broadcast_consumer_loop(self) -> None:
         """
         持续从队列中提取事件的后台广播消费者线程。
         """
@@ -916,14 +918,14 @@ class EventManager(metaclass=Singleton):
                 rate_limiter.trigger_limit()
 
     @staticmethod
-    def __log_event_lifecycle(event: Event, stage: str):
+    def __log_event_lifecycle(event: Event, stage: str) -> None:
         """
         记录事件的生命周期日志。
         """
         logger.debug(f"{stage} - {event}")
 
     def __handle_event_error(self, event: Event, module_name: str,
-                             class_name: str, method_name: str, e: Exception):
+                             class_name: str, method_name: str, e: Exception) -> None:
         """
         全局错误处理器，用于处理事件处理中的异常。
         """

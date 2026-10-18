@@ -16,6 +16,7 @@ from typing import (
     Callable,
     ContextManager,
     Dict,
+    Iterator,
     List,
     Optional,
     Tuple,
@@ -28,7 +29,8 @@ from watchfiles import watch
 
 from app.foundation.environment import is_free_threaded_runtime, is_gil_enabled
 from app.foundation.singleton import Singleton
-from app.runtime.events import EventHandlerBinding, eventmanager
+from app.runtime.event.binding import EventHandlerBinding
+from app.runtime.events import eventmanager
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
 from app.runtime.extensions.plugin.datadir import remove_plugin_data_directory
@@ -64,13 +66,13 @@ PluginRuntimeFactory = Callable[["PluginManager"], PluginRuntime]
 PluginRouteRefresher = Callable[[str], None]
 
 
-def _ignore_legacy_diagnostics(**_kwargs) -> None:
+def _ignore_legacy_diagnostics(**_kwargs: object) -> None:
     """
     在启动组合根尚未注入兼容服务时保持插件加载可用。
     """
 
 
-def _ignore_plugin_resource_imports(**_kwargs) -> None:
+def _ignore_plugin_resource_imports(**_kwargs: object) -> None:
     """
     未进入应用启动组合时不主动创建进程级宿主资源。
     """
@@ -298,7 +300,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             run_sync_in_threadpool=True,
         )
 
-    def init_config(self):
+    def init_config(self) -> None:
         """
         按最新系统配置完整重启插件。
         """
@@ -341,7 +343,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 return {pid: PluginRuntimeStatus.LOAD_FAILED}
             return {}
 
-    def init_plugin(self, plugin_id: str, conf: dict):
+    def init_plugin(self, plugin_id: str, conf: dict) -> None:
         """
         初始化插件。
 
@@ -529,7 +531,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_registry.classes
 
-    def on_config_changed(self):
+    def on_config_changed(self) -> None:
         """
         在插件监控配置变化后重建文件监控。
         """
@@ -556,7 +558,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         ):
             self._plugin_monitor.start()
 
-    def reload_monitor(self):
+    def reload_monitor(self) -> None:
         """
         重新加载插件文件修改监测。
         """
@@ -582,7 +584,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_monitor.close(timeout=timeout)
 
-    def _run_file_watcher(self):
+    def _run_file_watcher(self) -> None:
         """
         运行 watchfiles 监视器的主循环。
         """
@@ -656,7 +658,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return False
 
     @contextmanager
-    def suppress_plugin_monitor(self, plugin_id: str):
+    def suppress_plugin_monitor(self, plugin_id: str) -> Iterator[None]:
         """
         在插件包写入及其文件事件收敛期间阻止监控重复重载。
         """
@@ -695,7 +697,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._monitor_suppressed_until.pop(normalized_id, None)
             return False
 
-    def remove_plugin(self, plugin_id: str):
+    def remove_plugin(self, plugin_id: str) -> None:
         """
         从内存中移除一个插件。
 
@@ -1216,7 +1218,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_projection().dashboard_metadata()
 
-    def get_plugin_dashboard(self, pid: str, key: str, user_agent: str = None) -> Optional[_SchemaPluginDashboard]:
+    def get_plugin_dashboard(self, pid: str, key: str, user_agent: Optional[str] = None) -> Optional[_SchemaPluginDashboard]:
         """
         获取插件仪表盘。
         """
@@ -1236,7 +1238,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return None
         return getattr(plugin, attr)
 
-    def run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
+    def run_plugin_method(self, pid: str, method: str, *args: object, **kwargs: object) -> Any:
         """
         运行插件方法。
 
@@ -1252,7 +1254,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return None
         return getattr(plugin, method)(*args, **kwargs)
 
-    async def async_run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
+    async def async_run_plugin_method(self, pid: str, method: str, *args: object, **kwargs: object) -> Any:
         """
         异步运行插件方法，同步实现经受控线程入口执行。
 
@@ -1315,7 +1317,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_catalog_view.local_repository()
 
-    def is_plugin_exists(self, pid: str, version: str = None) -> bool:
+    def is_plugin_exists(self, pid: str, version: Optional[str] = None) -> bool:
         """
         判断插件是否存在，并满足版本要求(有传入version时)。
 
@@ -1455,7 +1457,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return PluginAccessPolicy.private_key(plugin_id)
 
     def clone_plugin(self, plugin_id: str, suffix: Optional[str], name: str, description: str,
-                     version: str = None, icon: str = None,
+                     version: Optional[str] = None, icon: Optional[str] = None,
                      restore_previous: bool = True) -> Tuple[bool, str]:
         """
         创建插件分身。

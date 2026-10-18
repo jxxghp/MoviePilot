@@ -411,7 +411,7 @@ class EpisodeFormatRuleHelper:
                 native_verified_count += 1
             if item.used_native_fallback:
                 native_fallback_count += 1
-        for item in sorted(
+        for candidate in sorted(
             candidates,
             key=lambda entry: (
                 self._sample_kind_priority(self._get_file_kind(entry)),
@@ -419,11 +419,11 @@ class EpisodeFormatRuleHelper:
                 (entry.path or ""),
             ),
         ):
-            file_name = item.name or ""
+            file_name = candidate.name or ""
             if self._is_special_sample(file_name):
                 continue
             normalized_episode, native_episode, used_native_fallback, native_verified = (
-                self._extract_episode_with_native_fallback(item)
+                self._extract_episode_with_native_fallback(candidate)
             )
             if normalized_episode and native_episode and not (
                 used_native_fallback or native_verified
@@ -462,10 +462,10 @@ class EpisodeFormatRuleHelper:
             )
 
         candidate_media_count = 0
-        for item in candidates:
+        for candidate in candidates:
             if (
-                    self._get_file_kind(item) == "media"
-                    and not self._is_special_sample(item.name or "")
+                    self._get_file_kind(candidate) == "media"
+                    and not self._is_special_sample(candidate.name or "")
             ):
                 candidate_media_count += 1
 
