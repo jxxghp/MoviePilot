@@ -24,6 +24,18 @@ _CODE = {
 _PIONEER = {"key": "pioneer", "at": "2024", "note": "Logo 设计"}
 
 
+async def _updated_profile(service, refresh=False):
+    """
+    显式运行一次后台维护再读取快照，保留原有缓存和传输边界用例的验证范围。
+
+    :param service: 测试勋章服务
+    :param refresh: 是否主动核验名单
+    :return: 后台维护后的公开快照
+    """
+    await service.update(force=refresh)
+    return await service.profile()
+
+
 @pytest.fixture
 def community():
     """
@@ -54,7 +66,8 @@ def community():
         return settings["enabled"]
 
     service = CommunityMedalService(
-        token_reader=token_reader, transport=transport, enabled_reader=enabled_reader,
+        token_reader=token_reader, token_snapshot=lambda: settings["token"],
+        local_enabled=lambda: settings["enabled"], transport=transport, enabled_reader=enabled_reader,
         clock=lambda: settings["time"],
     )
     return service, transport, settings
@@ -66,7 +79,7 @@ async def test_medals_are_looked_up_by_verified_numeric_id(community):
     名单按 GET /user 返回的数字 ID 查表，而不是登录名。
     """
     service, transport, _ = community
-    result = await service.profile()
+    result = await _updated_profile(service)
     assert result.state == "ready"
     assert (result.login, result.user_id) == ("artist", 42)
     assert result.medals == (_CODE,)
@@ -83,7 +96,7 @@ async def test_user_absent_from_registry_is_ready_without_medals(community):
     """
     service, _, settings = community
     settings["medals"] = {}
-    result = await service.profile()
+    result = await _updated_profile(service)
     assert result.state == "ready"
     assert result.medals == ()
 
@@ -94,18 +107,18 @@ async def test_cache_refresh_cooldown_and_concurrent_readers(community):
     同一 Token 的并发读取合并，刷新按钮不能绕过一分钟冷却，缓存六小时。
     """
     service, transport, settings = community
-    first, second = await asyncio.gather(service.profile(), service.profile())
+    first, second = await asyncio.gather(_updated_profile(service), _updated_profile(service))
     assert first == second
     assert transport.get_medal_snapshot.await_count == 1
-    await service.profile(refresh=True)
+    await _updated_profile(service, refresh=True)
     assert transport.get_medal_snapshot.await_count == 1
     settings["time"] += 61
-    await service.profile()
+    await _updated_profile(service)
     assert transport.get_medal_snapshot.await_count == 1
-    await service.profile(refresh=True)
+    await _updated_profile(service, refresh=True)
     assert transport.get_medal_snapshot.await_count == 2
     settings["time"] += 21600
-    await service.profile()
+    await _updated_profile(service)
     assert transport.get_medal_snapshot.await_count == 3
 
 
@@ -115,16 +128,16 @@ async def test_registry_failure_preserves_only_same_token_snapshot(community):
     名单拉取失败保留同 Token 旧结果并标记过期，换 Token 后不能借用上一人的勋章。
     """
     service, transport, settings = community
-    original = await service.profile()
+    original = await _updated_profile(service)
     settings["time"] += 61
     transport.get_medal_snapshot.side_effect = GithubAuthTransportError("registry down")
-    stale = await service.profile(refresh=True)
+    stale = await _updated_profile(service, refresh=True)
     assert stale.state == "ready"
     assert stale.medals == original.medals
     assert stale.checked_at == original.checked_at
     assert stale.stale
     settings["token"] = "second"
-    failed = await service.profile()
+    failed = await _updated_profile(service)
     assert failed.state == "unavailable"
     assert failed.medals == ()
     assert failed.login is None
@@ -137,11 +150,11 @@ async def test_stale_result_retries_after_cooldown_and_recovers(community):
     """
     service, transport, settings = community
     transport.get_medal_snapshot.side_effect = GithubAuthTransportError("registry down")
-    assert (await service.profile()).state == "unavailable"
+    assert (await _updated_profile(service)).state == "unavailable"
     transport.get_medal_snapshot.side_effect = None
     transport.get_medal_snapshot.return_value = GithubMedalSnapshot("t", (_PIONEER,))
     settings["time"] += 61
-    recovered = await service.profile()
+    recovered = await _updated_profile(service)
     assert recovered.state == "ready"
     assert recovered.medals == (_PIONEER,)
     assert not recovered.stale
@@ -153,14 +166,14 @@ async def test_unauthorized_or_removed_token_removes_medals(community):
     失效和删除凭据都不能继续显示已撤销身份的勋章。
     """
     service, transport, settings = community
-    assert (await service.profile()).medals
+    assert (await _updated_profile(service)).medals
     settings["time"] += 61
     transport.get_user.side_effect = GithubAuthTransportError("expired", unauthorized=True)
-    revoked = await service.profile(refresh=True)
+    revoked = await _updated_profile(service, refresh=True)
     assert revoked.state == "unavailable"
     assert revoked.medals == ()
     settings["token"] = ""
-    assert (await service.profile()).state == "unconfigured"
+    assert (await _updated_profile(service)).state == "unconfigured"
 
 
 @pytest.mark.asyncio
@@ -178,7 +191,7 @@ async def test_token_switch_during_query_discards_late_result(community):
         return GithubUser("artist", 42)
 
     transport.get_user.side_effect = user
-    result = await service.profile()
+    result = await _updated_profile(service)
     assert result.medals == ()
     assert result.login is None
 
@@ -190,12 +203,13 @@ async def test_endpoint_returns_registry_records_without_token(community):
     """
     service, _, settings = community
     settings["medals"] = {42: (_PIONEER, {**_CODE, "glow": "gold"})}
+    await service.update()
     reply = await get_community_profile(refresh=False, community=service)
     payload = json.loads(reply.model_dump_json())
     assert reply.success
     assert payload["data"]["medals"] == [_PIONEER, {**_CODE, "glow": "gold"}]
     assert set(payload["data"]) == {
-        "state", "login", "user_id", "medals", "generated_at", "checked_at", "stale",
+        "state", "login", "user_id", "medals", "generated_at", "checked_at", "stale", "refreshing",
     }
     assert "first" not in reply.model_dump_json()
 
@@ -207,13 +221,13 @@ async def test_disabled_switch_skips_identity_and_registry(community):
     """
     service, transport, settings = community
     settings["enabled"] = False
-    result = await service.profile(refresh=True)
+    result = await _updated_profile(service, refresh=True)
     assert result.state == "disabled"
     assert result.medals == ()
     transport.get_user.assert_not_awaited()
     transport.get_medal_snapshot.assert_not_awaited()
     settings["enabled"] = True
-    assert (await service.profile()).state == "ready"
+    assert (await _updated_profile(service)).state == "ready"
 
 
 @pytest.mark.asyncio
@@ -223,6 +237,7 @@ async def test_endpoint_reports_disabled_without_medals(community):
     """
     service, transport, settings = community
     settings["enabled"] = False
+    await service.update()
     reply = await get_community_profile(refresh=False, community=service)
     payload = json.loads(reply.model_dump_json())
     assert reply.success
@@ -312,6 +327,11 @@ async def test_effective_switch_with_local_setting_on(server, features, preview,
     scenario.update(features=features, preview=preview, login=login)
     expected = features == "on" or (bool(login) and preview)
     adapter = _ServerInfoAdapter({"COMMUNITY_MEDALS_ENABLE": True})
+    adapter.community = CommunityMedalService(
+        token_reader=AsyncMock(return_value=""), token_snapshot=lambda: "", local_enabled=lambda: True,
+        transport=SimpleNamespace(), enabled_reader=adapter.community_medals_enabled,
+    )
+    await adapter.community.update()
     assert (await adapter.user_global())["COMMUNITY_MEDALS_ENABLED"] is expected
     assert await adapter.community_medals_enabled() is expected
     assert calls.features.await_count == 1
@@ -396,9 +416,11 @@ async def test_community_state_follows_effective_switch(server, local, login, fe
 
     transport = SimpleNamespace(get_user=AsyncMock(), get_medal_snapshot=AsyncMock())
     service = CommunityMedalService(
-        token_reader=token_reader, transport=transport,
+        token_reader=token_reader, token_snapshot=lambda: "token" if login else "",
+        local_enabled=lambda: local, transport=transport,
         enabled_reader=adapter.community_medals_enabled,
     )
+    await service.update()
     reply = await get_community_profile(refresh=False, community=service)
     assert reply.success
     assert reply.data.state == state
@@ -426,9 +448,10 @@ async def test_preview_user_reaches_registry_while_global_off(server):
         get_medal_snapshot=AsyncMock(return_value=GithubMedalSnapshot("t", (_PIONEER,))),
     )
     service = CommunityMedalService(
-        token_reader=token_reader, transport=transport, enabled_reader=adapter.community_medals_enabled,
+        token_reader=token_reader, token_snapshot=lambda: "token", local_enabled=lambda: True,
+        transport=transport, enabled_reader=adapter.community_medals_enabled,
     )
-    result = await service.profile()
+    result = await _updated_profile(service)
     assert result.state == "ready"
     assert result.medals == (_PIONEER,)
 

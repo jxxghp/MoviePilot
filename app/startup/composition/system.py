@@ -257,6 +257,8 @@ class _ServerInfoAdapter(ServerInfoPort):
         保存运行设置提供器，用于读取本机社区勋章开关。
         """
         self._settings = settings
+        # 组合根绑定同一勋章服务，用户设置只读后台已经完成的开关核验。
+        self.community: CommunityMedalService | None = None
 
     async def user_global(self) -> dict[str, Any]:
         """
@@ -267,7 +269,8 @@ class _ServerInfoAdapter(ServerInfoPort):
             "USER_UNIQUE_ID": MoviePilotServerHelper.get_user_uuid(),
             "SUBSCRIBE_SHARE_MANAGE": is_admin,
             "WORKFLOW_SHARE_MANAGE": is_admin,
-            "COMMUNITY_MEDALS_ENABLED": await self.community_medals_enabled(),
+            "COMMUNITY_MEDALS_ENABLED": self.community.enabled if self.community else False,
+            "COMMUNITY_MEDALS_REFRESHING": self.community.refreshing if self.community else False,
         }
 
     async def community_medals_enabled(self) -> bool:
@@ -443,6 +446,13 @@ def compose_system_service(
         client_id=GITHUB_DEVICE_CLIENT_ID,
     )
     server_info = _ServerInfoAdapter(settings)
+    community = CommunityMedalService(
+        token_reader=github_auth.access_token,
+        token_snapshot=lambda: str(settings.get("GITHUB_TOKEN") or "").strip(),
+        local_enabled=lambda: bool(settings.get("COMMUNITY_MEDALS_ENABLE")),
+        transport=github_client, enabled_reader=server_info.community_medals_enabled,
+    )
+    server_info.community = community
     return SystemService(
         settings=settings,
         system_config=system_config,
@@ -458,8 +468,5 @@ def compose_system_service(
         plugin_mutation=plugin_system_config_mutation,
         rule_group_mutation=rule_group_mutation,
         github_auth=github_auth,
-        github_community=CommunityMedalService(
-            token_reader=github_auth.access_token, transport=github_client,
-            enabled_reader=server_info.community_medals_enabled,
-        ),
+        github_community=community,
     )

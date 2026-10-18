@@ -386,6 +386,8 @@ class SystemService:
         result = self.settings.update_many(env)
         success_updates = {key: value for key, value in result.items() if value[0]}
         failed_updates = {key: value for key, value in result.items() if value[0] is False}
+        if self.github_community is not None and {"GITHUB_TOKEN", "COMMUNITY_MEDALS_ENABLE"}.intersection(success_updates):
+            self.github_community.invalidate()
         if "GITHUB_TOKEN" in success_updates and self.github_auth is not None:
             await self.github_auth.forget_oauth_metadata()
         if failed_updates:

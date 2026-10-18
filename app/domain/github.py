@@ -111,6 +111,7 @@ class GithubCommunityProfile:
     :param generated_at: 名单生成时间文本；名单不可用时为 None
     :param checked_at: 本机最近检查的时间戳，单位为秒；尚未检查时为 None
     :param stale: 当前结果是否来自已过期但仍允许展示的缓存
+    :param refreshing: 后台正在预热或更新，读取接口不会等待其完成
     """
 
     state: str = "unconfigured"
@@ -120,6 +121,7 @@ class GithubCommunityProfile:
     generated_at: str | None = None
     checked_at: int | None = None
     stale: bool = False
+    refreshing: bool = False
 
 
 class GithubCommunityPort(Protocol):

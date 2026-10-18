@@ -76,6 +76,11 @@ focused 测试验证，不要求启动产品全套测试。
 
 ## 外部依赖：一律 mock，零真实网络
 
+社区勋章使用 `tests/test_community_medal_background.py` 验证启动主动预热、无人访问时的六小时
+更新、失败后的自动重试及 TaskRegistry 关闭。外部下载或远端开关被屏障阻塞时，查询必须在
+屏障释放前返回当前快照；冷启动通过 `refreshing` 表示后台尚未完成，不能把刷新锁或网络等待
+转移到页面请求。`tests/test_community_medals.py` 保留凭据隔离、有效开关和名单协议覆盖。
+
 测试**禁止**发起任何真实外部请求，包括但不限于 TMDB（`api.themoviedb.org`）、LLM 目录（`models.dev`）、下载器、媒体服务器、MP 服务器（`movie-pilot.org` 的共享识别 API）、以及任意外链图片/资源。**验收标准是全量跑测零真实出站**。
 
 两种标准做法：

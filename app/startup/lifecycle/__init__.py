@@ -306,6 +306,19 @@ async def stop_modules_component(app: FastAPI) -> bool:
     return converged
 
 
+def initialize_community_medals(app: FastAPI) -> None:
+    """
+    将实例勋章预热交给宿主任务登记器，启动阶段不等待任何外部请求。
+
+    :param app: 已发布 HostRuntime 和后台任务登记器的应用
+    """
+    runtime = getattr(app.state, "host_runtime", None)
+    if not isinstance(runtime, HostRuntime):
+        raise RuntimeError("HostRuntime 尚未发布，无法维护社区勋章缓存")
+    if runtime.system.github_community is not None:
+        runtime.system.github_community.start(app.state.task_registry)
+
+
 def initialize_log_runtime(app: FastAPI) -> None:
     """
     创建并发布当前 lifespan 独占的文件日志 writer。
@@ -529,6 +542,13 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             stop_order=70,
             start_timeout_seconds=300,
             stop_timeout_seconds=300,
+        ),
+        LifecycleComponent(
+            name="社区勋章缓存",
+            dependencies=("模块服务", "后台任务登记器"),
+            start=lambda: initialize_community_medals(app),
+            start_order=71,
+            start_timeout_seconds=30,
         ),
         LifecycleComponent(
             name="插件服务装配",

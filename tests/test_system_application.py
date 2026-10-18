@@ -154,6 +154,23 @@ async def test_update_environment_rejects_validation_and_partial_failure() -> No
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("key", ["GITHUB_TOKEN", "COMMUNITY_MEDALS_ENABLE"])
+async def test_medal_configuration_change_wakes_background_without_waiting(key: str) -> None:
+    """
+    勋章相关配置提交成功后立即失效并唤醒后台，不在保存路径执行外部核验。
+
+    :param key: 会影响勋章身份或本机可见性的部署设置项
+    """
+    service, ports = _build_service()
+    community = Mock()
+    service.github_community = community
+    ports.settings.update_many.return_value = {key: (True, "ok")}
+    result = await service.update_environment({key: "value"})
+    assert result.success
+    community.invalidate.assert_called_once_with()
+
+
+@pytest.mark.anyio
 async def test_update_environment_publishes_successful_batch() -> None:
     """
     全部设置写入成功后只发布一次成功键集合。

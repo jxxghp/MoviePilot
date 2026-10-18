@@ -40,6 +40,7 @@ class GithubCommunityProfile(BaseModel):  # type: ignore[misc]
     generated_at: str | None = Field(default=None, description="Wiki 名单的生成时间（ISO 8601 UTC）")
     checked_at: int | None = Field(default=None, description="实例最近一次成功核对名单的时间戳")
     stale: bool = Field(default=False, description="最近一次刷新失败，当前为同一 Token 的上次结果")
+    refreshing: bool = Field(default=False, description="后台正在预热或更新；接口已立即返回当前快照")
 
 
 # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。

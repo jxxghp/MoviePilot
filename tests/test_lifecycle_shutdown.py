@@ -36,6 +36,11 @@ def _isolate_task_registry():
 
 
 def _assert_completed_once(mock: MagicMock) -> None:
+    """
+    根据同步或异步回调类型验证生命周期恰好执行一次。
+
+    :param mock: 对应生命周期回调的替身
+    """
     if isinstance(mock, AsyncMock):
         mock.assert_awaited_once()
     else:
@@ -80,6 +85,7 @@ def _patch_lifespan(monkeypatch, *, failing_step: str | None = None) -> dict:
         "replay_pending_transfers",
         "init_command",
         "init_workflow",
+        "initialize_community_medals",
     ):
         monkeypatch.setattr(lifecycle, name, MagicMock())
     monkeypatch.setattr(lifecycle, "configure_plugin_runtime_services", MagicMock())
@@ -778,6 +784,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "路由",
         "插件运行时装配",
         "模块服务",
+        "社区勋章缓存",
         "插件服务装配",
         "消息队列",
         "插件备份恢复",
@@ -827,6 +834,7 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
         "路由",
         "插件运行时装配",
         "模块服务",
+        "社区勋章缓存",
         "插件服务装配",
         "消息队列",
         "AI智能体会话",
