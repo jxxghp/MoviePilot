@@ -513,6 +513,11 @@ moviepilot config set MUSIC_RELEASE_REGION_PRIORITY CN,TW,HK
 moviepilot config set MUSIC_RELEASE_SCRIPT_PRIORITY Hans,Hant,Latn
 ```
 
+`MUSIC_LOCAL_COVER_ENABLE` 开启时，下载器监控和文件系统监控的自动音乐整理会同步同目录中
+符合 `MUSIC_COVER_FILE_PATTERNS` 的封面，再由刮削按在线优先、本地回退的顺序写入音轨。
+封面须在该次规划时已存在，并能关联到唯一专辑；后来才落盘的封面需要重新提交专辑目录整理。
+手动整理仍遵循附加文件同步选项，手选曲目不会自动扩大文件范围。
+
 查看所有可配置项：
 
 ```shell

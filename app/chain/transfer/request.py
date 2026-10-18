@@ -112,9 +112,12 @@ class _TransferCandidatePlanner:
             download_hash: Optional[str],
             sync_extra_files: bool,
             fileitem: FileItem,
+            sync_music_covers: bool = False,
     ) -> None:
         """
         冻结候选规划依赖，避免请求阶段再读取可变配置。
+
+        :param sync_music_covers: 自动整理音乐封面，不扩展影视附加文件的同步范围
         """
         self._chain = chain
         self._meta = meta
@@ -127,6 +130,7 @@ class _TransferCandidatePlanner:
         self._transfer_exclude_words = transfer_exclude_words
         self._download_hash = download_hash
         self._sync_extra_files = sync_extra_files
+        self._sync_music_covers = sync_extra_files or sync_music_covers
         self._fileitem = fileitem
 
     def _build_file_meta(
@@ -355,9 +359,9 @@ class _TransferCandidatePlanner:
 
     def _is_music_cover_candidate(self, item: FileItem) -> bool:
         """
-        封面只随音乐主文件同步，影视批次及关闭附加文件同步时不接纳图片。
+        封面随音乐主文件同步；自动请求可单独启用，影视批次仍不接纳图片。
         """
-        return (self._sync_extra_files and not self._has_reliable_video_source()
+        return (self._sync_music_covers and not self._has_reliable_video_source()
                 and self._chain._is_music_cover_file(item))
 
     def _infer_music_batch_type(self, items: List[Tuple[FileItem, bool]]) -> None:
