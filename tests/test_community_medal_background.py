@@ -219,6 +219,163 @@ async def test_manual_refresh_returns_old_result_then_updates_in_background(back
     assert (await service.profile()).medals == ({"key": "helper"},)
 
 
+@pytest.mark.asyncio
+async def test_configuration_invalidation_wakes_worker_and_rejects_old_generation(background):
+    """
+    即使 Token 文本未变，配置失效也撤下旧快照，且在途旧世代不能重新发布。
+    """
+    service, transport, settings, tasks, _, _ = background
+    await service.update()
+    settings["time"] += 60
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def blocked(_user_id):
+        """
+        暂停撤销之前的同凭据响应。
+
+        :param _user_id: 已核验的数字用户标识
+        :return: 释放后返回的旧名单
+        """
+        started.set()
+        await release.wait()
+        return GithubMedalSnapshot("old", ({"key": "pioneer"},))
+
+    transport.get_medal_snapshot.side_effect = blocked
+    pending = tasks.create(service.update(force=True), owner="tests.community.invalidate")
+    await asyncio.wait_for(started.wait(), timeout=1)
+    service.invalidate()
+    assert (await service.profile()).medals == ()
+    assert not service.enabled
+    release.set()
+    await pending
+    assert (await service.profile()).medals == ()
+    transport.get_medal_snapshot.side_effect = None
+    transport.get_medal_snapshot.return_value = GithubMedalSnapshot("new", ({"key": "helper"},))
+    service.start(tasks)
+    await _until(lambda: transport.get_medal_snapshot.await_count == 3)
+    assert (await service.profile()).medals == ({"key": "helper"},)
+
+
+@pytest.mark.asyncio
+async def test_identity_change_during_feature_check_cannot_enable_old_identity(background):
+    """
+    远端开关查询返回时身份已经变化，不能把旧身份的开放结论传给新身份。
+    """
+    service, transport, settings, _, enabled, _ = background
+
+    async def switch_identity():
+        """
+        在远端开关返回之前切换本地凭据。
+
+        :return: 旧凭据的有效开关
+        """
+        settings["token"] = "second"
+        return True
+
+    enabled.side_effect = switch_identity
+    await service.update()
+    assert not service.enabled
+    assert (await service.profile()).medals == ()
+    transport.get_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rotate", [True, False])
+async def test_changed_or_mismatched_refreshed_token_is_never_used_for_old_snapshot(background, rotate):
+    """
+    OAuth 刷新期间发生凭据轮换或读取器返回不一致的凭据时，不能核验并发布旧快照。
+
+    :param rotate: 是否同步更新本地 Token，以区分正常轮换与读取器不一致
+    """
+    service, transport, settings, _, _, token = background
+
+    async def refresh_token():
+        """
+        模拟令牌轮换或并发读取到尚未提交的凭据。
+
+        :return: 刷新后的 Token
+        """
+        if rotate:
+            settings["token"] = "second"
+        return "second"
+
+    token.side_effect = refresh_token
+    await service.update()
+    transport.get_user.assert_not_awaited()
+    assert (await service.profile()).medals == ()
+
+
+@pytest.mark.asyncio
+async def test_invalid_numeric_identity_does_not_read_registry(background):
+    """
+    身份接口返回非正数字 ID 时拒绝查表，不能据此点亮勋章。
+    """
+    service, transport, _, _, _, _ = background
+    transport.get_user.return_value = GithubUser("invalid", 0)
+    await service.update()
+    assert (await service.profile()).state == "unavailable"
+    transport.get_medal_snapshot.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unexpected_background_failure_retries_without_leaking_credentials(background, monkeypatch):
+    """
+    非传输异常也保留旧结果并自动重试，日志只保留固定说明，不泄露异常中的凭据。
+    """
+    service, transport, settings, tasks, enabled, _ = background
+    await service.update()
+    settings["time"] += 60
+    enabled.side_effect = [RuntimeError("private-token-must-not-be-logged"), True, True]
+    messages = []
+    monkeypatch.setattr(medals.logger, "warning", messages.append)
+    service.start(tasks)
+    await _until(lambda: len(messages) == 1)
+    assert (await service.profile()).stale
+    assert messages == ["社区勋章后台更新失败，将在下一周期重试"]
+    transport.get_medal_snapshot.return_value = GithubMedalSnapshot("new", ({"key": "helper"},))
+    settings["time"] += 60
+    await _until(lambda: transport.get_medal_snapshot.await_count == 2)
+    assert not (await service.profile()).stale
+    assert (await service.profile()).medals == ({"key": "helper"},)
+
+
+@pytest.mark.asyncio
+async def test_late_transport_error_cannot_overwrite_new_identity(background):
+    """
+    外部失败返回前已经换 Token 时，不把旧失败状态或旧荣誉回填给新身份。
+    """
+    service, transport, settings, _, _, _ = background
+
+    async def failed_old_request(_token):
+        """
+        在旧请求失败前切换凭据。
+
+        :param _token: 请求发出时的旧 Token
+        """
+        settings["token"] = "second"
+        raise GithubAuthTransportError("old request failed")
+
+    transport.get_user.side_effect = failed_old_request
+    await service.update()
+    profile = await service.profile()
+    assert profile.medals == ()
+    assert profile.login is None
+    assert not profile.stale
+
+
+def test_lifecycle_rejects_missing_runtime_and_allows_absent_optional_service():
+    """
+    未装配运行时应明确失败；可选服务缺席时不创建任务或触发资源物化。
+    """
+    app = FastAPI()
+    with pytest.raises(RuntimeError, match="HostRuntime 尚未发布"):
+        lifecycle.initialize_community_medals(app)
+    runtime = MagicMock(spec=lifecycle.HostRuntime)
+    runtime.system = SimpleNamespace(github_community=None)
+    app.state.host_runtime = runtime
+    lifecycle.initialize_community_medals(app)
+
+
 def test_lifecycle_wires_startup_worker_to_host_registry():
     """
     生命周期从真实 HostRuntime 发布后台维护，并复用宿主登记器负责关闭。
