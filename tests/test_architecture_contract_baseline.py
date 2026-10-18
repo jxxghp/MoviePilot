@@ -89,21 +89,12 @@ def test_dependency_baseline_records_nonempty_host_graph() -> None:
     assert all("line" not in entry for entry in direct_egress["entries"])
 
 
-def test_architecture_documents_match_generated_quality_metrics() -> None:
+def test_architecture_overview_matches_generated_quality_metrics() -> None:
     """
-    高漂移量化指标必须与生成 fixture 同步，不能在多份文档中分叉。
+    架构总览引用的依赖边数与事件事实必须与生成 fixture 同步，不能在文档中分叉。
     """
     dependency = json.loads(
         (BASELINE_ROOT / "dependency-baseline.json").read_text(encoding="utf-8")
-    )
-    ruff = json.loads(
-        (BASELINE_ROOT / "ruff-baseline.json").read_text(encoding="utf-8")
-    )
-    mypy = json.loads(
-        (BASELINE_ROOT / "mypy-baseline.json").read_text(encoding="utf-8")
-    )
-    coverage = json.loads(
-        (BASELINE_ROOT / "coverage-baseline.json").read_text(encoding="utf-8")
     )
     runtime = json.loads(
         (BASELINE_ROOT / "runtime-contract-baseline.json").read_text(
@@ -113,43 +104,10 @@ def test_architecture_documents_match_generated_quality_metrics() -> None:
     overview = (PROJECT_ROOT / "docs" / "architecture-overview.md").read_text(
         encoding="utf-8"
     )
-    checklist = (
-        PROJECT_ROOT
-        / "docs"
-        / "refactor"
-        / "optimization-checklist.md"
-    ).read_text(encoding="utf-8")
-    roadmap = (
-        PROJECT_ROOT
-        / "docs"
-        / "refactor"
-        / "refactor-roadmap.md"
-    ).read_text(encoding="utf-8")
     edge_count = f"{dependency['edge_count']:,}"
-    ruff_count = sum(
-        count
-        for diagnostics in ruff.values()
-        for count in diagnostics.values()
-    )
-    mypy_count = sum(
-        count
-        for diagnostics in mypy.values()
-        for count in diagnostics.values()
-    )
-    coverage_scope = coverage["scope"]
-    total_coverage = coverage["total"]["percent"]
     event_facts = runtime["event_facts"]
 
     assert edge_count in overview
-    assert f"{dependency['module_count']} / {edge_count}" in checklist
-    assert f"全量 mypy 历史债务 | {mypy_count:,} / {len(mypy)} 文件" in checklist
-    assert f"Ruff 历史诊断 | {ruff_count}" in checklist
-    assert coverage_scope == {"root": "app", "excluded": ["app/plugins"]}
-    assert f"全 app（排除 app/plugins）当前聚合 {total_coverage:.2f}%" in checklist
-    if "**阶段状态：`CANCELLED`" in roadmap:
-        assert "| S4-L5 Ruff 治理债务清零 | `CANCELLED` |" in roadmap
-    else:
-        assert f"当前受控 {ruff_count} 条诊断归零" in roadmap
     assert (
         f"当前宿主有 {event_facts['producer_call_count']} 个\n"
         f"生产调用，其中 {event_facts['static_producer_call_count']} 个静态解析为 "
@@ -160,16 +118,6 @@ def test_architecture_documents_match_generated_quality_metrics() -> None:
         f"{event_facts['static_consumer_count']} 个静态、"
         f"{event_facts['dynamic_consumer_count']} 个动态"
     ) in overview
-    assert (
-        f"{event_facts['producer_call_count']} 个 producer（"
-        f"{event_facts['static_producer_call_count']} 静态、"
-        f"{event_facts['dynamic_producer_count']} 动态）"
-    ) in checklist
-    assert (
-        f"{event_facts['consumer_registration_count']} 个 consumer（"
-        f"{event_facts['static_consumer_count']} 静态、"
-        f"{event_facts['dynamic_consumer_count']} 动态）"
-    ) in checklist
 
 
 def test_official_discovery_plugins_explicitly_keep_host_page_envelope():

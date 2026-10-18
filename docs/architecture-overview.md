@@ -585,7 +585,7 @@ flowchart LR
 
 ## 七、AI Agent 子系统
 
-复杂任务的计划、工具发现和中断恢复使用说明见 [Agent 复杂任务执行与恢复](agent.md)。
+复杂任务的计划、工具发现和中断恢复由 `app/agent/` 的实现决定，本文只说明其在宿主中的位置与依赖边界。
 
 Agent 采用**门面 + 惰性物化**设计，避免 `application → agent` 形成静态依赖边：
 
@@ -812,9 +812,6 @@ Outbox 按 topic 有界并行恢复复用 `ThreadHelper`，生命周期关闭通
   物理文件仍是稳定入口的，不应为了目录规整新增“自己映射自己”的别名，也不应在 canonical 包中
   保留多余导出。
 
-当前架构问题、优先级、分阶段实施步骤与验收门禁见
-[`docs/refactor/optimization-checklist.md`](refactor/optimization-checklist.md)。
-
 ---
 
 ## 附录：相关文档索引
@@ -827,12 +824,7 @@ Outbox 按 topic 有界并行恢复复用 `ThreadHelper`，生命周期关闭通
 | [`docs/rules/05-architecture.md`](rules/05-architecture.md) | 层边界、依赖方向与关键文件位置（权威） |
 | [`docs/rules/09-external-response.md`](rules/09-external-response.md) | 外部 HTTP 约定与统一响应格式 |
 | [`docs/rules/10-data-and-persistent.md`](rules/10-data-and-persistent.md) | 数据模型、迁移与缓存规范 |
-| [`docs/subscribe-lifecycle.md`](subscribe-lifecycle.md) | 订阅生命周期详解 |
 | [`docs/mcp-api.md`](mcp-api.md) | MCP 工具端点说明 |
-| [`docs/refactor/optimization-checklist.md`](refactor/optimization-checklist.md) | 当前架构差距、优先级与可执行优化清单 |
-| [`docs/refactor/refactor-roadmap.md`](refactor/refactor-roadmap.md) | 多级 Goal、叶子依赖、清零条件与交付状态 |
-| [`docs/v3t-runtime-governance.md`](v3t-runtime-governance.md) | V3/V3t 运行依赖、故障恢复、GIL 可观测性与兼容退场门禁 |
-| [`docs/adr/0007-background-action-reliability.md`](adr/0007-background-action-reliability.md) | 后台动作 E0–E3 可靠性分级与完成语义决策 |
 
 音乐来源回退由 `app.application.music.recognition` 持有独立来源诊断和共享祖先预算，新增一个轻量启动模块。来源顺序由现有配置冻结，Chain通过已声明的音乐目录Port获取专辑与完整曲目；领域层只负责检索计划、身份和唯一对位。新增31条内部依赖均符合分层边界，不增加SCC或具体Adapter直连；启动性能仍使用原耗时预算。
 

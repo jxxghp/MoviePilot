@@ -274,7 +274,8 @@ owners, including definitions under `Match` and `TryStar`. Existing over-limit
 functions may only decrease; growth is rejected even by `--write`, and reductions
 must be recorded before the check passes. `--report` also records method/class/file
 line-span hotspots for review, but physical line counts never block CI. The former
-v1/v2 line-budget gates are retired; see [code quality](../code-quality.md).
+v1/v2 line-budget gates are retired; `scripts/architecture/complexity.py` and
+`scripts/architecture/mypy_ratchet.py` are the authoritative gate definitions.
 `scripts/architecture/concurrency.py` resolves canonical imports and aliases for
 native Thread, Timer, thread/process executors, Process, TaskGroup, event-loop
 task submission, asyncio task/thread helpers, and executor hand-off calls. It
@@ -1333,5 +1334,3 @@ modules only through `run_module` dispatch), and downloader SDK
 - `db/oper/searchsession.py` / `db/adapters/searchsession.py`：检查点读写与短 UoW；创建、保存、删除都在写入语句内校验队列任务租约和版本。`db/oper/subscriptionsearch.py` 在任务进入终态的同一事务中删除检查点。
 - `chain/search/scan.py`：`SearchSources` 提供来源与单页请求，自动订阅的 `SearchScan` 与手动分页 `chain/search/manual.py` 共用；手动分页不写数据库，页摘要走 Runtime 缓存门面。
 - 恢复候选的下载凭据经 `run_module("restore_search_torrent")` 由 Indexer 重建，Chain 不直接导入 Indexer 或数据库；该方法是宿主内部契约，不对插件公开。
-
-业务规则见 `docs/smart-search.md`。

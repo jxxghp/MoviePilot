@@ -256,9 +256,9 @@ must be one of the following before the Agent may use its capability:
 - explicitly unapproved until a role, effect, confirmation, recovery, result,
   and English parameter contract is added.
 
-The maintained route-by-route inventory is
-`docs/refactor/agent-api-surface-audit.md`. Its generated drift test fails
-when OpenAPI changes without an explicit ownership decision.
+The maintained route-by-route inventory is the fixed registry in
+`app/agent/policy/api.py`. The drift test fails when OpenAPI changes without an
+explicit ownership decision.
 
 The management recovery route `POST /api/v1/history/transfer/{history_id}/discard-corrupt`
 is reserved for direct authenticated management clients and is not a callable

@@ -360,7 +360,6 @@ REST 调用示例：
 
 ## 8. 参考与维护
 
-- [Agent 总体说明](agent.md)：MoviePilot 内置 Agent 的使用与配置。
 - [业务 API 操作参考](../skills/moviepilot-api/SKILL.md)：按领域查阅业务操作与约束。
 - [下载器操作参考](../skills/downloader-operation/SKILL.md)、[媒体服务器操作参考](../skills/mediaserver-operation/SKILL.md)、[数据库操作参考](../skills/database-operation/SKILL.md)：原生服务与 SQL 操作合同。
 

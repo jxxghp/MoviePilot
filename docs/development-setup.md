@@ -269,8 +269,8 @@ uv run --locked --no-sync python scripts/architecture/complexity.py
 ```
 
 `--write` 拒绝接受已有基线上的增长；减少或删除热点后必须固化低水位。
-CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指标。指标含义、限制与后续扩围见
-[代码门禁说明](code-quality.md)。
+CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指标。指标口径以
+`scripts/architecture/complexity.py` 与 `scripts/architecture/mypy_ratchet.py` 的实现为准。
 
 ### 7. 参考资源
 

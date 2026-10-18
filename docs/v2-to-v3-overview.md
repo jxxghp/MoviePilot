@@ -564,7 +564,6 @@ V3 本地运行要求 Python 3.14+，优先使用项目 `.venv` 和锁定依赖�
 ## 14. 延伸阅读
 
 - [V3 后端架构设计](architecture-overview.md)
-- [V3 与 V3t 运行时边界](v3t-runtime-governance.md)
 - [本地 CLI 使用说明](cli.md)
 - [Doctor 诊断说明](doctor.md)
 - [PostgreSQL 部署说明](postgresql-setup.md)
