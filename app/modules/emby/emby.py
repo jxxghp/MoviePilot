@@ -1,5 +1,7 @@
 """
 Emby 媒体服务器客户端，负责内容查询、图片、刷新及 Webhook 转换。
+
+后台列表查询关闭图片信息，避免触发服务端图片增强；仪表盘查询保留封面标签。
 """
 
 import json
@@ -420,6 +422,7 @@ class Emby:
         url = f"{self._host}emby/Items"
         params = {
             "IncludeItemTypes": "Series",
+            "EnableImages": "false",
             "Fields": "ProductionYear",
             "StartIndex": 0,
             "Recursive": "true",
@@ -463,6 +466,7 @@ class Emby:
         url = f"{self._host}emby/Items"
         params = {
             "IncludeItemTypes": "Movie",
+            "EnableImages": "false",
             "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId",
             "StartIndex": 0,
             "Recursive": "true",
@@ -516,6 +520,7 @@ class Emby:
         url = f"{self._host}emby/Users/{self.user}/Items"
         params = {
             "IncludeItemTypes": "MusicAlbum,Audio",
+            "EnableImages": "false",
             "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
                       "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
             "SearchTerm": query,
@@ -584,6 +589,7 @@ class Emby:
             params = {
                 "Season": season,
                 "IsMissing": "false",
+                "EnableImages": "false",
                 "api_key": self._apikey
             }
             res_json = RequestUtils().get_res(url, params)
@@ -624,6 +630,7 @@ class Emby:
             params = {
                 "Season": season,
                 "IsMissing": "false",
+                "EnableImages": "false",
                 "api_key": self._apikey
             }
             res_json = RequestUtils().get_res(url, params)
@@ -915,6 +922,7 @@ class Emby:
         params: dict[str, Union[str, int, None]] = {
             "ParentId": parent,
             "api_key": self._apikey,
+            "EnableImages": "false",
             "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
                       "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,"
                       "UserDataLastPlayedDate,ParentId"
