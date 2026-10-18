@@ -9,7 +9,13 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.architecture.mypy_ratchet import compare_counts, main, parse_errors, run_mypy
+from scripts.architecture.mypy_ratchet import (
+    Migration,
+    compare_counts,
+    main,
+    parse_errors,
+    run_mypy,
+)
 
 MYPY_SAMPLE = """
 app/application/a.py:12: error: Function is missing a type annotation [no-untyped-def]
@@ -68,6 +74,26 @@ def test_run_mypy_rejects_unexpected_stderr() -> None:
     )
     with patch("scripts.architecture.mypy_ratchet.subprocess.run", return_value=result):
         with pytest.raises(RuntimeError, match="stderr"):
+            run_mypy()
+
+
+def test_run_mypy_rejects_missing_type_stubs() -> None:
+    """
+    缺失类型桩会把带类型的第三方库降级为 Any，必须报环境错误而不是计成债务。
+    """
+    output = (
+        'app/foundation/temporal.py:9: error: Library stubs not installed for "yaml"  '
+        "[import-untyped]\n"
+        "Found 1 error in 1 file (checked 500 source files)\n"
+    )
+    result = subprocess.CompletedProcess(
+        args=[],
+        returncode=1,
+        stdout=output,
+        stderr="",
+    )
+    with patch("scripts.architecture.mypy_ratchet.subprocess.run", return_value=result):
+        with pytest.raises(RuntimeError, match="缺失的类型桩包.*yaml"):
             run_mypy()
 
 
@@ -167,7 +193,7 @@ def test_ratchet_requires_deleted_file_to_be_persisted() -> None:
 
 def test_ratchet_rejects_growth_and_new_errors() -> None:
     """
-    既有错误码增长和新增文件/错误码必须同时给出精确诊断。
+    既有错误码增长和新增文件必须同时给出精确诊断。
     """
     baseline = {
         "app/a.py": {"arg-type": 5},
@@ -183,7 +209,26 @@ def test_ratchet_rejects_growth_and_new_errors() -> None:
 
     assert any("app/a.py" in p and "arg-type" in p and "既有错误增长" in p for p in problems)
     assert any("app/a.py" in p and "type-arg" in p and "新增类型错误" in p for p in problems)
-    assert any("app/b.py" in p and "新增类型错误" in p for p in problems)
+    assert any("app/b.py" in p and "新增文件必须清零" in p for p in problems)
+
+
+def test_new_file_inside_registered_package_cannot_inherit_allowance() -> None:
+    """
+    迁移登记只覆盖逐一登记的接收文件；同包内后来新增的文件不得吸收旧文件额度。
+    """
+    baseline = {"app/chain/subscribe.py": {"arg-type": 5}}
+    current = {
+        "app/chain/subscribe/create.py": {"arg-type": 2},
+        "app/chain/subscribe/extra.py": {"arg-type": 3},
+    }
+
+    problems = compare_counts(baseline, current)
+
+    assert any(
+        "app/chain/subscribe/extra.py" in item and "新增文件必须清零" in item
+        for item in problems
+    )
+    assert not any("app/chain/subscribe/create.py" in item for item in problems)
 
 
 def test_ratchet_allows_same_package_path_migration_only_when_each_code_drops() -> None:
@@ -201,8 +246,17 @@ def test_ratchet_allows_same_package_path_migration_only_when_each_code_drops() 
             "attr-defined": 1,
         },
     }
+    migrations = {
+        "transfer-package": Migration(
+            sources=("app/chain/transfer.py", "app/chain/_transfer.py"),
+            targets=(
+                "app/chain/transfer/plan.py",
+                "app/chain/transfer/workflow.py",
+            ),
+        )
+    }
 
-    assert compare_counts(baseline, current) == [
+    assert compare_counts(baseline, current, migrations) == [
         "<path-migration:transfer-package>: 类型错误低水位未固化 "
         "[arg-type] 5->4",
         "<path-migration:transfer-package>: 类型错误低水位未固化 "
@@ -247,7 +301,9 @@ def test_ratchet_path_migration_does_not_absorb_unrelated_new_file() -> None:
     problems = compare_counts(baseline, current)
 
     assert any("<path-migration:subscribe-package>" in item for item in problems)
-    assert any("app/api/new.py" in item and "新增类型错误" in item for item in problems)
+    assert any(
+        "app/api/new.py" in item and "新增文件必须清零" in item for item in problems
+    )
 
 
 def test_write_refuses_to_legalize_type_regression(tmp_path, monkeypatch) -> None:

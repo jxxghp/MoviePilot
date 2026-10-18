@@ -61,6 +61,38 @@ uv run --locked --no-sync python scripts/architecture/complexity.py
 检查启用 preview；升级 Ruff 时应跑真实 Ruff 回归用例并审查指标 diff，不自动刷新基线。
 短路布尔表达式、推导式、跨函数调用链和职责耦合仍需行为测试与架构审查。
 
+## 类型检查门禁口径
+
+`v3` 的 mypy 债务分三层，口径不同，不能互相抵扣：
+
+| 层 | 判定 | 事实源 |
+| --- | --- | --- |
+| 严格清单 | `mypy.ini` 的 `files` 已清零，出现任何诊断即失败 | `mypy.ini` |
+| 存量例外 | 基线登记的文件按「文件 + 错误码」设上限，涨一条即失败 | `tests/fixtures/architecture/mypy-baseline.json` |
+| 新增文件 | 基线未登记的文件必须零诊断，出现任何错误即失败 | 同上 |
+
+`scripts/architecture/mypy_ratchet.py` 负责后两层：以 Linux 平台全量扫描 `app`（排除
+`app/plugins`），未登记文件按「新增文件必须清零类型错误」失败，例外文件只允许数量下降。
+债务真实下降后用 `--write` 固化低水位；存在新增文件或增长时 `--write` 拒绝写入，
+所以基线是逐文件、逐错误码的上限快照，不是允许失败的白名单。
+
+单体文件拆成包时，旧路径额度只能转移给 `MYPY_MIGRATIONS` 中逐一登记的接收文件；同包内
+后来新增的文件不在名单里，仍按新增文件清零判定，避免新文件吸收旧文件额度。迁移按错误码
+汇总比较，不据此推断旧源码已经删除。
+
+缺少 `pyproject.toml` 声明的 `types-*` 桩包时，mypy 会把带类型的第三方库降级为 `Any`，
+同时产生 `import-untyped` 和派生的 `no-any-return`。门禁此时直接报环境错误并要求
+`uv sync --locked`，不允许把环境缺失写进基线。本地复现门禁前先确认虚拟环境与 `uv.lock` 一致。
+
+按文件 + 错误码计数仍无法识别同一文件内同错误码的一换一替换，属于已知残余，需要评审确认；
+稳定诊断指纹是后续方向。验收命令：
+
+```bash
+uv run --locked --no-sync mypy --config-file mypy.ini
+uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
+uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py --write
+```
+
 ## 类型检查的本次扩围
 
 `mypy.ini` 的严格范围从 42 个文件扩大到 45 个，新增：
