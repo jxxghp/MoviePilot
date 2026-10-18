@@ -8,11 +8,17 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.application.site.observation import report_site_search_outcome, report_site_search_page
+from app.application.subscription.sitebudget import (
+    SiteBudgetClaim,
+    SubscriptionSiteBudget,
+    SubscriptionSiteBudgetUnavailable,
+)
 from app.chain.search.execution import MediaSearchPlan
 from app.chain.search.facade import SearchChain
 from app.chain.search.result import TorrentHelper
-from app.chain.search.scan import AUTOMATIC_REQUEST_INTERVAL, SearchScan, SearchSources
+from app.chain.search.scan import AUTOMATIC_REQUEST_INTERVAL, BUDGET_DEFERRAL_LIMIT, SearchScan, SearchSources
 from app.domain.context import MediaInfo, TorrentInfo
+from app.runtime.stop import runtime_stop_state
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType
 
@@ -1185,3 +1191,97 @@ def test_recovered_candidate_is_filtered_again_before_submission(owner, monkeypa
     submitted = []
     scan.choose({"1:1"}, lambda items, ready: submitted.extend(items) or set())
     assert submitted == []
+
+
+class _StubSiteBudget(SubscriptionSiteBudget):
+    """按站点模拟预算：故障站点始终长冷却推迟，健康站点立即放行。"""
+
+    def __init__(self, deferred_site_id: int, retry_seconds: float) -> None:
+        super().__init__(repository=None, owner="test", cancelled=lambda: False, stop_state=runtime_stop_state)
+        self.deferred_site_id = deferred_site_id
+        self.retry_seconds = retry_seconds
+
+    def acquire(self, site_id: int, *, minimum_interval: float = 0) -> SiteBudgetClaim:
+        if site_id == self.deferred_site_id:
+            retry_at = (datetime.now(timezone.utc)
+                        + timedelta(seconds=self.retry_seconds)).isoformat(timespec="seconds")
+            raise SubscriptionSiteBudgetUnavailable(site_id=site_id, retry_at=retry_at, wait_reason="cooldown")
+        return SiteBudgetClaim(site_id=site_id, acquired=True, retry_at="",
+                               consecutive_failures=0, lease_token="stub")
+
+    def record_request(self, site_id: int, candidate_count: int) -> None:
+        """测试不落库，忽略请求指标。"""
+        return None
+
+    def record_success(self, site_id: int) -> None:
+        """测试不落库，忽略成功指标。"""
+        return None
+
+    def finish(self, claim: SiteBudgetClaim, observation, *, deferral_seconds: float = 0) -> bool:
+        """测试不落库，直接收口租约。"""
+        return True
+
+
+def test_budget_deferred_dead_site_settles_and_releases_cached_candidates(owner, monkeypatch):
+    """
+    永久预算冷却的站点在本轮结算后放行"全部来源才提交"的屏障，缓存候选得以提交；
+    结算只在本轮有效，下一轮该站点重新参与搜索。
+    """
+    monkeypatch.setattr(owner, "_sync_indexers",
+                        lambda _sites: [{"id": 1, "name": "test", "parser": "mTorrent"},
+                                        {"id": 2, "name": "dead", "parser": "mTorrent"}])
+    site_pages = {(1, 0): [torrent(1)], (1, 1): []}
+
+    def request(**params):
+        values = site_pages.get((params["site"]["id"], params["page"]), [])
+        report_site_search_outcome(attempted=True, outcome="success")
+        report_site_search_page(raw_count=len(values))
+        return values
+
+    monkeypatch.setattr(owner, "search_site_torrents", request)
+    owner._subscription_site_budget = _StubSiteBudget(deferred_site_id=2, retry_seconds=3600.0)
+
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    submitted = []
+
+    def submit(contexts, ready):
+        submitted.extend(contexts)
+        return ready
+
+    # 每轮之间清空 retry，模拟冷却到期后持久队列按 retry_at 再次唤醒。
+    for _ in range(5):
+        scan.run(submit)
+        scan.retry.clear()
+
+    deferred_keys = [key for key in scan.collection.sources if key.startswith("2:")]
+    assert deferred_keys
+    assert all(scan.collection.sources[key].failed for key in deferred_keys)
+    assert all(scan.collection.sources[key].budget_deferrals >= BUDGET_DEFERRAL_LIMIT for key in deferred_keys)
+    assert scan.collection.settled == {"1:1"}
+    assert submitted
+    assert scan.ended is True
+
+
+def test_short_budget_wait_does_not_settle_source(owner, monkeypatch):
+    """
+    秒级预算等待（请求间隔、并发租约）属于健康站点噪声，不得计数或结算来源。
+    """
+    owner._subscription_site_budget = _StubSiteBudget(deferred_site_id=1, retry_seconds=11.0)
+
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    submitted = []
+
+    def submit(contexts, ready):
+        submitted.extend(contexts)
+        return ready
+
+    for _ in range(5):
+        scan.run(submit)
+        scan.retry.clear()
+
+    key = next(key for key in scan.collection.sources if key.startswith("1:"))
+    source = scan.collection.sources[key]
+    assert source.failed is False
+    assert source.budget_deferrals == 0
+    assert submitted == []
+    assert scan.ended is False

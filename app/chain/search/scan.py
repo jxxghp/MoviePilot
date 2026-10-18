@@ -52,6 +52,11 @@ RESTART_AFTER_SECONDS = 36 * 3600
 _CHECKPOINT_FORMAT = 3
 # 重取临时下载票据所在原页连续失败达到该次数后放弃该候选，避免一个候选卡住整个订阅。
 RECOVERY_ATTEMPTS = 3
+# 单个来源本轮因站点预算长冷却被推迟达到该次数后结算该来源：检查点随本轮结束删除，下一轮重新尝试，
+# 既打破"全部来源结束才提交"的屏障死锁，也不永久拉黑偶尔不可用的站点。
+BUDGET_DEFERRAL_LIMIT = 3
+# 只累计不短于该秒数的冷却推迟；请求间隔与并发租约的秒级等待是健康站点噪声，不计入。
+BUDGET_DEFERRAL_SECONDS = 600.0
 
 
 def search_targets(plan: MediaSearchPlan) -> set[str]:
@@ -439,9 +444,26 @@ class SearchScan:
         result = self.sources.fetch(key, page, budget=self._budget())
         observation = result.observation
         if result.retry_at:
+            wait_reason = result.wait_reason or "busy"
             self.retry[key] = result.retry_at
-            self.retry_reasons[key] = result.wait_reason or "busy"
+            self.retry_reasons[key] = wait_reason
             source.error = observation.error
+            if wait_reason == "cooldown":
+                # 只累计长冷却：短等待来自请求间隔或并发租约，说明站点本身仍可用。
+                deferral_seconds = (datetime.fromisoformat(result.retry_at)
+                                    - datetime.now(timezone.utc)).total_seconds()
+                if deferral_seconds >= BUDGET_DEFERRAL_SECONDS:
+                    source.budget_deferrals += 1
+            if source.budget_deferrals >= BUDGET_DEFERRAL_LIMIT:
+                # 永久失败的站点会让"全部来源结束才提交"的屏障永远不满足，候选与全系统搜索一起卡死；
+                # 本轮结算该来源放行提交。检查点随本轮结束删除，下一轮该来源重新参与搜索，
+                # 偶尔不可用的站点不会被跨轮拉黑，站点级节流仍由预算表的指数退避负责。
+                source.failure_outcome = "deferred"
+                source.failed = True
+                self.retry.pop(key, None)
+                self.retry_reasons.pop(key, None)
+                logger.warning(f"{self.media.title_year} 搜索来源 {key} 本轮 {source.budget_deferrals} 次等待站点预算未果，"
+                               "跳过该来源以提交已收集候选，下一轮将重新搜索")
             self.checkpoint()
             return False
         self.retry.pop(key, None)
@@ -473,6 +495,7 @@ class SearchScan:
                 logger.warning(f"{self.media.title_year} 搜索来源 {key} 连续 {UNMATCHED_PAGE_LIMIT} 页明确不匹配目标作品，"
                                "本轮停止该来源，继续处理其他来源候选")
             source.failure_outcome = None
+            source.budget_deferrals = 0
             self.retry.pop(key, None)
             self.retry_reasons.pop(key, None)
             self.live.update(contexts)
