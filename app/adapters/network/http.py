@@ -25,6 +25,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.exceptions import InsecureRequestWarning
 
 from app.runtime.correlation import with_correlation_header
+from app.runtime.log import logger
+from app.runtime.tasks import get_task_registry
 
 urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -143,21 +145,25 @@ class _NonClosingTransportProxy:
     包装共享传输对象，转发请求但不转发局部关闭调用。
 
     每次请求创建的 AsyncClient 退出时保留底层连接池；连接池最终由
-    aclose_shared_async_transports 统一关闭。
+    aclose_shared_async_transports 统一关闭；连续取池超时的旧池在借用结束后释放。
     """
 
-    __slots__ = ("_wrapped",)
+    __slots__ = ("_wrapped", "_recovery")
 
-    def __init__(self, wrapped: httpx2.AsyncBaseTransport):
+    def __init__(self, wrapped: httpx2.AsyncBaseTransport) -> None:
         """
         保存由进程统一管理生命周期的底层传输对象。
         """
         self._wrapped = wrapped
+        with _shared_async_transports_lock:
+            self._recovery = _shared_transport_recovery.get(wrapped)
 
-    async def __aenter__(self) -> "_NonClosingTransportProxy":  # pragma: no cover - 简单转发
+    async def __aenter__(self) -> "_NonClosingTransportProxy":
         """
         进入局部上下文时继续复用共享传输对象。
         """
+        if self._recovery is not None:
+            self._recovery.users += 1
         return self
 
     async def __aexit__(
@@ -169,8 +175,10 @@ class _NonClosingTransportProxy:
         """
         退出局部上下文时保留由进程统一管理的连接池。
         """
-        # 故意 no-op：不向底层 transport 传播 __aexit__，避免连接池被清空
-        return None
+        if self._recovery is not None:
+            self._recovery.users -= 1
+            if self._recovery.retired and self._recovery.users == 0:
+                _schedule_retired_transport_close(self._wrapped)
 
     async def aclose(self) -> None:
         """
@@ -183,7 +191,19 @@ class _NonClosingTransportProxy:
         """
         将异步请求转发给共享底层传输。
         """
-        return await self._wrapped.handle_async_request(request)
+        try:
+            response = await self._wrapped.handle_async_request(request)
+        except httpx2.PoolTimeout:
+            if self._recovery is not None:
+                _record_shared_pool_timeout(self._wrapped, self._recovery)
+            raise
+        except httpx2.RequestError:
+            if self._recovery is not None:
+                self._recovery.failures = 0
+            raise
+        if self._recovery is not None:
+            self._recovery.failures = 0
+        return response
 
 
 _SharedTransportKey = Tuple[
@@ -207,6 +227,31 @@ _SharedTransportKey = Tuple[
 _shared_async_transports: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, collections.OrderedDict[_SharedTransportKey, httpx2.AsyncHTTPTransport]] = weakref.WeakKeyDictionary()
 # 不同线程各自驱动的事件循环并发首次写入外层弱字典时，需要互斥保护
 _shared_async_transports_lock = threading.Lock()
+# 连续三次取池超时才更换池，普通连接/读取超时不触发恢复。
+_SHARED_POOL_TIMEOUT_THRESHOLD = 3
+
+
+class _SharedTransportRecovery:
+    """
+    记录单个共享池的失败与借用状态，退役后等局部客户端退出再关闭。
+    """
+
+    def __init__(self, key: _SharedTransportKey) -> None:
+        """
+        初始化池状态，以配置键约束最多两代在途连接池。
+
+        :param key: 当前池配置，用于识别同配置下仍未关闭的退役池
+        """
+        self.key = key
+        self.users = 0
+        self.failures = 0
+        self.retired = False
+        self.closing = False
+        self.closed = False
+
+
+_shared_transport_recovery: weakref.WeakKeyDictionary[httpx2.AsyncBaseTransport, _SharedTransportRecovery] = weakref.WeakKeyDictionary()
+_retired_async_transports: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, set[httpx2.AsyncBaseTransport]] = weakref.WeakKeyDictionary()
 # 每个事件循环允许的最大共享 transport 桶数；超出后按 LRU 淘汰最久未用桶。
 _MAX_SHARED_TRANSPORTS_PER_LOOP = 32
 # 默认的最大 keep-alive 连接数
@@ -283,7 +328,107 @@ def _discard_pending_eviction_task(task: asyncio.Task[Any]) -> None:
     with _shared_async_transports_lock:
         _pending_eviction_tasks.discard(task)
     if not task.cancelled():
-        task.exception()
+        error = task.exception()
+        if error is not None:
+            logger.warning(f"共享 HTTP 连接池关闭失败：{type(error).__name__}")
+
+
+def _create_shared_async_transport(
+    key: _SharedTransportKey,
+) -> httpx2.AsyncHTTPTransport:
+    """
+    按已有配置创建新池，不复用故障池的内部连接或请求队列。
+    """
+    proxy, verify, http2, trust_env, max_keepalive, max_connections, expiry = key
+    transport = httpx2.AsyncHTTPTransport(
+        http2=http2, proxy=proxy, verify=verify, trust_env=trust_env,
+        limits=httpx2.Limits(
+            max_keepalive_connections=max_keepalive,
+            max_connections=max_connections,
+            keepalive_expiry=expiry,
+        ),
+    )
+    with _shared_async_transports_lock:
+        _shared_transport_recovery[transport] = _SharedTransportRecovery(key)
+    return transport
+
+
+async def _close_retired_async_transport(transport: httpx2.AsyncBaseTransport) -> None:
+    """
+    关闭退役池并释放恢复状态；关闭异常仍由托管任务收集。
+    """
+    try:
+        await transport.aclose()
+    except BaseException:
+        with _shared_async_transports_lock:
+            _shared_transport_recovery[transport].closing = False
+        raise
+    else:
+        with _shared_async_transports_lock:
+            recovery = _shared_transport_recovery.get(transport)
+            if recovery is not None:
+                recovery.closed = True
+            retired = _retired_async_transports.get(asyncio.get_running_loop())
+            if retired is not None:
+                retired.discard(transport)
+
+
+def _schedule_retired_transport_close(transport: httpx2.AsyncBaseTransport) -> None:
+    """
+    将退役池关闭任务交给已有淘汰任务集合持有，避免取消调用方中断释放。
+    """
+    with _shared_async_transports_lock:
+        recovery = _shared_transport_recovery[transport]
+        if recovery.closing or recovery.closed:
+            return
+        recovery.closing = True
+        try:
+            task = get_task_registry().create(
+                _close_retired_async_transport(transport),
+                owner="http.transport.retire",
+                cancel_on_shutdown=False,
+            )
+        except RuntimeError:
+            recovery.closing = False
+            logger.warning("后台任务登记器已停止，退役 HTTP 连接池保留至宿主关闭时回收")
+            return
+        _pending_eviction_tasks.add(task)
+    task.add_done_callback(_discard_pending_eviction_task)
+
+
+def _record_shared_pool_timeout(
+    transport: httpx2.AsyncBaseTransport, recovery: _SharedTransportRecovery,
+) -> None:
+    """
+    连续取池失败时只替换仍为当前代的池；旧代请求退出前不重复轮换。
+
+    不重放当前请求，因此非幂等请求仍只发送一次。
+    """
+    recovery.failures += 1
+    if recovery.retired or recovery.failures < _SHARED_POOL_TIMEOUT_THRESHOLD:
+        return
+    loop = asyncio.get_running_loop()
+    with _shared_async_transports_lock:
+        per_loop = _shared_async_transports.get(loop)
+        if any(
+            _shared_transport_recovery[old].key == recovery.key
+            for old in _retired_async_transports.get(loop, ())
+        ):
+            return
+    if per_loop is None:
+        return
+    for key, current in per_loop.items():
+        if current is transport:
+            replacement = _create_shared_async_transport(key)
+            per_loop[key] = replacement
+            recovery.retired = True
+            with _shared_async_transports_lock:
+                _retired_async_transports.setdefault(loop, set()).add(transport)
+            logger.warning(
+                f"共享 HTTP 连接池连续 {recovery.failures} 次 PoolTimeout，"
+                f"后续请求切换新池，旧池等待 {recovery.users} 个在途客户端退出后关闭"
+            )
+            return
 
 
 def _get_shared_async_transport(
@@ -335,17 +480,7 @@ def _get_shared_async_transport(
         return transport
 
     # 首次见到这个配置，创建新的共享 transport 桶
-    transport = httpx2.AsyncHTTPTransport(
-        http2=http2,
-        proxy=proxy,
-        verify=verify,
-        trust_env=trust_env,
-        limits=httpx2.Limits(
-            max_keepalive_connections=max_keepalive_connections,
-            max_connections=max_connections,
-            keepalive_expiry=keepalive_expiry,
-        ),
-    )
+    transport = _create_shared_async_transport(key)
     per_loop[key] = transport
 
     # LRU 淘汰：超出上限时关闭并移除最久未用桶
@@ -376,15 +511,22 @@ async def aclose_shared_async_transports() -> None:
     # 弹出而非 get+clear，避免外层 dict 残留空 OrderedDict 占位
     with _shared_async_transports_lock:
         per_loop = _shared_async_transports.pop(loop, None)
+        retired = _retired_async_transports.get(loop, set())
         pending_evictions = [
             task
             for task in _pending_eviction_tasks
             if task.get_loop() is loop
         ]
+        retiring = [
+            transport for transport in retired
+            if not _shared_transport_recovery[transport].closing
+        ]
+        for transport in retiring:
+            _shared_transport_recovery[transport].closing = True
     transports = list(per_loop.values()) if per_loop else []
     if per_loop:
         per_loop.clear()
-    if not transports and not pending_evictions:
+    if not transports and not pending_evictions and not retiring:
         return
     # 并行关闭：每个 transport 的 TLS close_notify 各占一个 RTT，
     # 顺序等待会线性放大 shutdown 耗时；return_exceptions 让单点失败
@@ -392,6 +534,7 @@ async def aclose_shared_async_transports() -> None:
     await asyncio.gather(
         *pending_evictions,
         *(t.aclose() for t in transports),
+        *(_close_retired_async_transport(t) for t in retiring),
         return_exceptions=True,
     )
     with _shared_async_transports_lock:
