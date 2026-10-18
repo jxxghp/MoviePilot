@@ -177,7 +177,7 @@ def _rust_parse_options_cache_key(options: dict) -> str:
     """
     digest = hashlib.blake2b(digest_size=16)
 
-    def update(value) -> None:
+    def update(value: object) -> None:
         """
         将选项值及分隔符写入缓存摘要，避免相邻值直接拼接产生歧义。
         """
@@ -266,15 +266,15 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
                 break
 
     for source_name, patterns in _EXTENDED_MEDIA_ID_RE_LIST.items():
-        source = normalize_media_source(source_name)
-        if not source or source in legacy_identities:
+        extended_source = normalize_media_source(source_name)
+        if not extended_source or extended_source in legacy_identities:
             continue
         for media_id_re in patterns:
             media_id_match = media_id_re.search(title)
             if not media_id_match:
                 continue
             if media_id_match.group(1) != "0":
-                legacy_identities[source] = media_id_match.group(1)
+                legacy_identities[extended_source] = media_id_match.group(1)
             title = media_id_re.sub('', title).strip()
             break
 
@@ -424,7 +424,7 @@ def _rust_custom_parse_options(custom_words: Tuple[str, ...]) -> dict:
     return options
 
 
-def _rust_parse_options(custom_words: List[str] = None) -> dict:
+def _rust_parse_options(custom_words: Optional[List[str]] = None) -> dict:
     """
     收集 Rust Meta 解析所需的运行时配置，避免 Rust 层直接访问数据库和 settings。
 
@@ -443,7 +443,7 @@ def clear_rust_parse_options_cache() -> None:
     _rust_custom_parse_options.cache_clear()
 
 
-def _meta_from_rust(parsed: dict) -> Optional[MetaBase]:
+def _meta_from_rust(parsed: Optional[dict]) -> Optional[MetaBase]:
     """
     将 Rust 解析结果灌回现有 MetaVideo/MetaAnime 对象，保留下游属性和方法兼容性。
     """
@@ -451,7 +451,7 @@ def _meta_from_rust(parsed: dict) -> Optional[MetaBase]:
         return None
     parsed = _normalize_metainfo_identity(parsed)
     meta = MetaAnime("") if parsed.get("kind") == "anime" else MetaVideo("")
-    type_map = {
+    type_map: dict[object, MediaType] = {
         MediaType.MOVIE.value: MediaType.MOVIE,
         MediaType.TV.value: MediaType.TV,
         MediaType.COLLECTION.value: MediaType.COLLECTION,
@@ -519,7 +519,7 @@ def _requires_python_metainfo(
     )
 
 
-def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None,
+def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: Optional[List[str]] = None,
              force_video: bool = False, mtype: Optional[MediaType] = None) -> MetaBase:
     """
     根据标题和副标题识别元数据。
@@ -568,7 +568,7 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str]
     )
 
 
-def MetaInfoPath(path: Path, custom_words: List[str] = None, force_video: bool = False) -> MetaBase:
+def MetaInfoPath(path: Path, custom_words: Optional[List[str]] = None, force_video: bool = False) -> MetaBase:
     """
     根据路径识别元数据。
 

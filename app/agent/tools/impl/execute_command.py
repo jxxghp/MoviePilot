@@ -457,7 +457,7 @@ class ExecuteCommandTool(MoviePilotTool):
         if os.name == "posix":
             kwargs["start_new_session"] = True
         elif os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP")
         return kwargs
 
     @staticmethod
@@ -496,7 +496,7 @@ class ExecuteCommandTool(MoviePilotTool):
     async def _cleanup_process(
         cls,
         process: Any,
-        wait_task: asyncio.Task,
+        wait_task: asyncio.Task[int],
     ) -> None:
         """
         先温和终止，失败后强杀，避免超时 shell 遗留子进程。
@@ -523,7 +523,7 @@ class ExecuteCommandTool(MoviePilotTool):
             logger.warning(f"命令进程强制清理超时: pid={process.pid}")
 
     @staticmethod
-    async def _finish_reader_tasks(reader_tasks: list[asyncio.Task]) -> None:
+    async def _finish_reader_tasks(reader_tasks: list[asyncio.Task[None]]) -> None:
         """
         等待一次性命令输出读取任务退出，异常只记录不影响工具返回。
         """

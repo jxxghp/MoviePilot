@@ -118,9 +118,11 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
     """
 
     @staticmethod
-    def _SubscribeChain__subscribe_added_link(mtype: MediaType) -> Optional[str]:
+    def _SubscribeChain__subscribe_added_link(mtype: Optional[MediaType]) -> Optional[str]:
         """
         返回订阅类型对应的前端详情入口。
+
+        未指定或其他类型沿用电影订阅入口。
         """
         if mtype == MediaType.TV:
             result: Optional[str] = get_chain_runtime_config_snapshot().television_subscribe_url

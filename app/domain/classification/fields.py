@@ -12,6 +12,7 @@ from app.schemas.category import (
     ClassificationFactScalar,
     ClassificationFieldDefinition,
     ClassificationFieldOption,
+    ClassificationFieldValueType,
     ClassificationMediaType,
     ClassificationOperator,
 )
@@ -112,7 +113,7 @@ class _FieldSpec(TypedDict):
     label: str
     group: NotRequired[str]
     description: NotRequired[str]
-    value_type: str
+    value_type: ClassificationFieldValueType
     media_types: tuple[str, ...]
     options: NotRequired[tuple[str, ...]]
 

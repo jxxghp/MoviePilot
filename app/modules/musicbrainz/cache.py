@@ -9,13 +9,13 @@ import traceback
 from math import ceil
 from threading import RLock
 from time import time
-from typing import Optional
+from typing import Optional, cast
 
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.domain.music import music_isrc_codes
 from app.foundation.singleton import WeakSingleton
-from app.runtime.cache import FileCache, TTLCache
+from app.runtime.cache import CacheBackend, FileCache, TTLCache
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MUSIC_ENTITY_RECORDING
@@ -35,7 +35,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
     短期负缓存不落盘，重启后可以重新识别。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化音乐识别缓存并恢复未过期的持久化数据。
         """
@@ -47,15 +47,18 @@ class MusicBrainzCache(metaclass=WeakSingleton):
         self._dirty = False
         self._file_cache = None
         if not self._cache.is_redis():
-            self._file_cache = FileCache(base=get_runtime_setting('CACHE_PATH'), ttl=self.ttl)
-            self._restore()
+            file_cache = FileCache(base=get_runtime_setting('CACHE_PATH'), ttl=self.ttl)
+            self._file_cache = file_cache
+            self._restore(file_cache)
 
-    def _restore(self) -> None:
+    def _restore(self, file_cache: CacheBackend) -> None:
         """
         从统一文件缓存恢复仍在有效期内的音乐识别数据。
+
+        :param file_cache: 初始化时创建的文件缓存实例
         """
         try:
-            content = self._file_cache.get(PERSISTENCE_KEY, region=PERSISTENCE_REGION)
+            content = file_cache.get(PERSISTENCE_KEY, region=PERSISTENCE_REGION)
             if not content:
                 return
             payload = pickle.loads(content)
@@ -85,7 +88,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
         except Exception as err:
             logger.error(f"加载音乐识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
-    def _set(self, key: str, value: dict) -> None:
+    def _set(self, key: str, value: dict[str, object]) -> None:
         """
         无身份结果仅短暂缓存，不能让一次无匹配覆盖普通媒体缓存的整个有效期。
         """
@@ -95,7 +98,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             self._expires_at[key] = time() + ttl
             self._dirty = True
 
-    def clear(self):
+    def clear(self) -> None:
         """
         清空识别结果与过期记录，并立即同步清空文件缓存。
         """
@@ -105,7 +108,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             self._dirty = True
             self.save(force=True)
 
-    def list_items(self) -> list[dict]:
+    def list_items(self) -> list[dict[str, object]]:
         """
         生成管理界面可展示的音乐识别缓存列表。
 
@@ -126,7 +129,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
                     "music_type": value.get("music_type") or MUSIC_ENTITY_RECORDING,
                     "cover_url": value.get("cover_url") or "",
                 })
-            return sorted(cache_items, key=lambda item: item["key"])
+            return sorted(cache_items, key=lambda item: cast(str, item["key"]))
 
     @staticmethod
     def __get_key(meta: MetaMusic, music_type: Optional[str] = None) -> str:
@@ -167,7 +170,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             logger.error(f"解析音乐识别缓存失败：{str(err)}")
             return None
 
-    def delete(self, key: str) -> dict:
+    def delete(self, key: str) -> dict[str, object]:
         """
         删除单条识别缓存，并立即同步文件缓存。
 
@@ -175,7 +178,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
         :return: 被删除的原始数据；键不存在时为空映射
         """
         with lock:
-            cache_data = self._cache.get(key)
+            cache_data: dict[str, object] = self._cache.get(key)
             if cache_data:
                 self._cache.delete(key)
                 self._expires_at.pop(key, None)
@@ -266,7 +269,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             except Exception as err:
                 logger.error(f"保存音乐识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
-    def __del__(self):
+    def __del__(self) -> None:
         """
         实例释放前保存非 Redis 缓存。
         """

@@ -152,13 +152,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     验证既有 bcrypt 哈希，并保留超长历史密码的截断语义。
     """
     try:
-        return bcrypt.checkpw(
+        verified: bool = bcrypt.checkpw(
             _encode_bcrypt_password(
                 plain_password,
                 allow_legacy_truncation=True,
             ),
             hashed_password.encode("ascii"),
         )
+        return verified
     except (UnicodeEncodeError, ValueError):
         return False
 
@@ -167,10 +168,11 @@ def get_password_hash(password: str) -> str:
     """
     使用 ``$2b$`` 前缀和 cost 12 生成可持久化的 bcrypt 哈希。
     """
-    return bcrypt.hashpw(
+    hashed: bytes = bcrypt.hashpw(
         _encode_bcrypt_password(password),
         bcrypt.gensalt(rounds=BCRYPT_ROUNDS, prefix=b"2b"),
-    ).decode("ascii")
+    )
+    return hashed.decode("ascii")
 
 
 def decrypt(data: bytes, key: bytes) -> Optional[bytes]:

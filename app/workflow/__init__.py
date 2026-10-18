@@ -65,14 +65,14 @@ class WorkflowManager(metaclass=Singleton):
         self._executions: Dict[int, WorkflowExecutionOwner] = {}
         self.init()
 
-    def init(self):
+    def init(self) -> None:
         """
-        初始化
+        扫描并登记工作流动作与事件触发器。
         """
 
-        def filter_func(obj: Any):
+        def filter_func(obj: object) -> bool:
             """
-            过滤函数，确保只加载新定义的类
+            只接纳在工作流动作包中定义的具体动作类。
             """
             if not isinstance(obj, type):
                 return False
@@ -160,7 +160,7 @@ class WorkflowManager(metaclass=Singleton):
                 self._actions = {}
         return converged
 
-    def execute(self, workflow_id: int, action: Action, context: ActionContext = None,
+    def execute(self, workflow_id: int, action: Action, context: Optional[ActionContext] = None,
                 inputs: Optional[dict] = None, runtime: Optional[dict] = None,
                 cancel_token: Optional[Any] = None) -> ActionResult:
         """
@@ -209,7 +209,7 @@ class WorkflowManager(metaclass=Singleton):
         return action_result
 
     def excute(self, workflow_id: int, action: Action,
-               context: ActionContext = None) -> Tuple[bool, str, ActionContext]:
+               context: Optional[ActionContext] = None) -> Tuple[bool, str, ActionContext]:
         """
         执行工作流动作，兼容历史拼写错误的方法名。
         """
@@ -378,9 +378,11 @@ class WorkflowManager(metaclass=Singleton):
             return {}
         return action.get_contract()
 
-    def update_workflow_event(self, workflow: WorkflowSnapshot):
+    def update_workflow_event(self, workflow: WorkflowSnapshot) -> None:
         """
-        更新工作流事件触发器
+        根据工作流当前配置更新事件触发器。
+
+        :param workflow: 待更新的工作流快照
         """
         # 工作流可能切换触发事件，先按工作流ID从所有事件映射中移除。
         self.remove_workflow_event(workflow_id=workflow.id)
@@ -389,9 +391,11 @@ class WorkflowManager(metaclass=Singleton):
             # 注册事件触发器
             self.register_workflow_event(workflow.id, workflow.event_type)
 
-    def load_workflow_events(self, workflow_id: Optional[int] = None):
+    def load_workflow_events(self, workflow_id: Optional[int] = None) -> None:
         """
-        加载工作流触发事件
+        从持久化快照加载工作流触发事件。
+
+        :param workflow_id: 指定工作流标识；None 加载全部已启用的事件工作流
         """
         workflows = []
         if workflow_id:
@@ -406,9 +410,14 @@ class WorkflowManager(metaclass=Singleton):
         except Exception as e:
             logger.error(f"加载事件触发工作流失败: {e}")
 
-    def register_workflow_event(self, workflow_id: int, event_type_str: str):
+    def register_workflow_event(
+            self, workflow_id: int, event_type_str: Optional[str]
+    ) -> None:
         """
-        注册工作流事件触发器
+        为有效事件类型注册工作流触发器。
+
+        :param workflow_id: 待触发的工作流标识
+        :param event_type_str: 事件类型值；为空时不登记
         """
         if not event_type_str:
             return
@@ -427,9 +436,15 @@ class WorkflowManager(metaclass=Singleton):
                     self._event_workflows[event_type.value].append(workflow_id)
                 logger.info(f"已注册工作流 {workflow_id} 事件触发器: {event_type.value}")
 
-    def remove_workflow_event(self, workflow_id: Optional[int] = None, event_type_str: Optional[str] = None):
+    def remove_workflow_event(
+            self, workflow_id: Optional[int] = None,
+            event_type_str: Optional[str] = None,
+    ) -> None:
         """
-        移除工作流事件触发器
+        移除指定工作流或事件类型对应的触发器。
+
+        :param workflow_id: 指定工作流标识；None 清空匹配事件的工作流
+        :param event_type_str: 指定事件类型；None 遍历已登记的全部事件
         """
         event_type_values = [event_type_str] if event_type_str else list(self._event_workflows.keys())
         for event_type_value in event_type_values:
@@ -451,9 +466,11 @@ class WorkflowManager(metaclass=Singleton):
                     eventmanager.remove_event_listener(event_type, self._handle_event)
                 logger.info(f"已移除工作流 {workflow_id or ''} 事件触发器")
 
-    def _handle_event(self, event: Event):
+    def _handle_event(self, event: Event) -> None:
         """
-        处理事件，触发相应的工作流
+        收到事件后触发已登记且匹配的工作流。
+
+        :param event: 当前事件及其载荷
         """
         try:
             event_type_str = str(event.event_type.value)
@@ -466,9 +483,12 @@ class WorkflowManager(metaclass=Singleton):
         except Exception as e:
             logger.error(f"处理工作流事件失败: {e}")
 
-    def _trigger_workflow(self, workflow_id: int, event: Event):
+    def _trigger_workflow(self, workflow_id: int, event: Event) -> None:
         """
-        触发工作流执行
+        确认工作流状态与事件条件后发出执行事件。
+
+        :param workflow_id: 候选工作流标识
+        :param event: 触发执行的原始事件
         """
         try:
             # 检查工作流是否存在且启用

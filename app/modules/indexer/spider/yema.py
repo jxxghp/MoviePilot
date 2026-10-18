@@ -106,7 +106,7 @@ class YemaSpider:
             params["categoryId"] = category_id
         return params
 
-    def _search_category_ids(self, mtype: MediaType = None) -> List[Optional[int]]:
+    def _search_category_ids(self, mtype: Optional[MediaType] = None) -> List[Optional[int]]:
         """
         返回当前媒体类型需要分别查询的站点分类。
 
@@ -256,7 +256,7 @@ class YemaSpider:
     def search(
         self,
         keyword: Optional[str],
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
     ) -> Tuple[bool, List[dict]]:
         """
@@ -291,7 +291,7 @@ class YemaSpider:
     async def async_search(
         self,
         keyword: Optional[str],
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
     ) -> Tuple[bool, List[dict]]:
         """

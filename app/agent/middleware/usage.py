@@ -48,7 +48,7 @@ class UsageMiddleware(AgentMiddleware):
             return None
 
     @staticmethod
-    def _coerce_positive_int(value: Any) -> int | None:
+    def _coerce_positive_int(value: object) -> int | None:
         """
         仅接受模型 profile 和请求设置声明的非 bool 正整数。
         """
@@ -116,10 +116,16 @@ class UsageMiddleware(AgentMiddleware):
         return None
 
     @classmethod
-    def _extract_model_name(cls, model: Any) -> str | None:
+    def _extract_model_name(cls, model: object) -> object | None:
+        """
+        按属性优先级保留模型给出的非空名称值。
+
+        :param model: 模型实例；第三方实现可能返回非字符串名称
+        :return: 首个非空名称值，未提供时返回 None
+        """
         for field in ("model", "model_name", "model_id"):
             try:
-                value = getattr(model, field, None)
+                value: object = getattr(model, field, None)
             except Exception:
                 continue
             if value:

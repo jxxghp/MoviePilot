@@ -18,7 +18,6 @@ class TorrentLeech:
     TorrentLeech JSON 搜索接口索引器。
     """
 
-    _indexer = None
     _proxy = None
     _size = 100
     _searchurl = "%storrents/browse/list/query/%s"
@@ -46,10 +45,12 @@ class TorrentLeech:
             self._proxy = get_runtime_setting('PROXY')
             self._timeout = indexer.get('timeout') or 15
 
-    def __category_ids(self, mtype: MediaType = None) -> List[str]:
+    def __category_ids(self, mtype: Optional[MediaType] = None) -> List[str]:
         """
         读取资源包中与请求媒体类型对应的 TorrentLeech 分类 ID。
         """
+        if mtype is None:
+            return []
         category_key = {
             MediaType.MOVIE: "movie",
             MediaType.TV: "tv",
@@ -63,7 +64,7 @@ class TorrentLeech:
             if isinstance(item, dict) and item.get("id") is not None
         ]
 
-    def __get_search_url(self, keyword: str, mtype: MediaType = None) -> str:
+    def __get_search_url(self, keyword: str, mtype: Optional[MediaType] = None) -> str:
         """
         按媒体类型构造 TorrentLeech 搜索接口地址。
         """
@@ -77,11 +78,11 @@ class TorrentLeech:
             )
         return self._searchurl % (domain, encoded_keyword)
 
-    def __parse_result(self, results: List[dict], mtype: MediaType = None) -> List[dict]:
+    def __parse_result(self, results: List[dict], mtype: Optional[MediaType] = None) -> List[dict]:
         """
         解析搜索结果。
         """
-        torrents = []
+        torrents: list[dict[str, object]] = []
         if not results:
             return torrents
 
@@ -102,7 +103,7 @@ class TorrentLeech:
                 'page_url': self._pageurl % (self._indexer.get('domain'), result.get('fid')),
                 'imdbid': result.get('imdbID')
             }
-            if requested_category_ids:
+            if requested_category_ids and mtype is not None:
                 torrent['category'] = (
                     mtype.value
                     if str(result.get('categoryID')) in requested_category_ids
@@ -133,7 +134,7 @@ class TorrentLeech:
     def search(
         self,
         keyword: str,
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
     ) -> Tuple[bool, List[dict]]:
         """
@@ -167,7 +168,7 @@ class TorrentLeech:
     async def async_search(
         self,
         keyword: str,
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
     ) -> Tuple[bool, List[dict]]:
         """

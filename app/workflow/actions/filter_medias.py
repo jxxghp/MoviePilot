@@ -54,7 +54,7 @@ class FilterMediasAction(BaseAction):
         """
         过滤medias中媒体数据
         """
-        action_params = FilterMediasParams(**params)
+        action_params = FilterMediasParams.model_validate(params)
         for media in context.medias or []:
             if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break

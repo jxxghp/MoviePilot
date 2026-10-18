@@ -56,7 +56,7 @@ class TNodeSpider(metaclass=SingletonClass):
         同步请求站点首页并提取 CSRF 令牌。
         """
         if not self._domain:
-            return
+            return None
         res = RequestUtils(ua=self._ua,
                            cookies=self._cookie,
                            proxies=self._proxy,
@@ -69,7 +69,7 @@ class TNodeSpider(metaclass=SingletonClass):
         异步请求站点首页并提取 CSRF 令牌。
         """
         if not self._domain:
-            return
+            return None
         res = await AsyncRequestUtils(ua=self._ua,
                                       cookies=self._cookie,
                                       proxies=self._proxy,
@@ -86,7 +86,7 @@ class TNodeSpider(metaclass=SingletonClass):
         csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', res.text)
         return csrf_token.group(1) if csrf_token else None
 
-    def __get_params(self, keyword: str = None, page: Optional[int] = 0) -> dict:
+    def __get_params(self, keyword: Optional[str] = None, page: Optional[int] = 0) -> dict[str, object]:
         """
         获取搜索参数。
         """
@@ -111,7 +111,7 @@ class TNodeSpider(metaclass=SingletonClass):
         """
         解析搜索结果。
         """
-        torrents = []
+        torrents: list[dict[str, object]] = []
         if not results:
             return torrents
 

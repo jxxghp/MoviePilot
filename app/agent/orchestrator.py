@@ -104,9 +104,9 @@ from app.runtime.log import logger
 from app.runtime.observability import record_metric
 from app.runtime.settings import get_runtime_setting
 from app.schemas.event import AgentLLMProviderEventData, AgentTokensUsageEventData
-from app.schemas.message import Message, MessageType
+from app.schemas.message import Message
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
-from app.schemas.types import ChainEventType, EventType, NotificationChannel
+from app.schemas.types import ChainEventType, EventType, MessageType, NotificationChannel
 
 
 def _get_plugin_tools_revision() -> int:
@@ -326,14 +326,14 @@ class _ThinkTagStripper:
     _THINK_START_TAG = "<think>"
     _THINK_END_TAG = "</think>"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化思考标签解析缓冲与标签内状态。
         """
         self.buffer = ""
         self.in_think_tag = False
 
-    def reset(self):
+    def reset(self) -> None:
         """
         重置状态
         """
@@ -350,7 +350,7 @@ class _ThinkTagStripper:
                 return length
         return 0
 
-    def process(self, text: str, on_output: Callable[[str], None]):
+    def process(self, text: str, on_output: Callable[[str], None]) -> bool:
         """
         将新文本送入处理，剥离 <think> 标签后通过 on_output 回调输出。
         :param text: 新增的文本片段
@@ -404,7 +404,7 @@ class _ThinkTagStripper:
                     break
         return emitted
 
-    def flush(self, on_output: Callable[[str], None]):
+    def flush(self, on_output: Callable[[str], None]) -> None:
         """
         流式结束时，输出缓冲区中剩余的非思考内容
         """
@@ -779,7 +779,7 @@ class MoviePilotAgent:
             return None
 
     @staticmethod
-    def _coerce_positive_int(value: Any) -> Optional[int]:
+    def _coerce_positive_int(value: object) -> Optional[int]:
         """
         仅接受模型 profile 声明的非 bool 正整数。
         """
@@ -1264,17 +1264,17 @@ class MoviePilotAgent:
         try:
             response = await run_in_threadpool(
                 AgentChain().send_direct_message,
-                Message(
-                    channel=self.channel,
-                    source=self.source,
-                    mtype=MessageType.Agent,
-                    userid=self.user_id,
-                    username=self.username,
-                    text=content,
-                    private_delivery=True,
-                    parse_mode="plain",
-                    save_history=False,
-                ),
+                Message.model_validate({
+                    "channel": self.channel,
+                    "source": self.source,
+                    "mtype": MessageType.Agent,
+                    "userid": self.user_id,
+                    "username": self.username,
+                    "text": content,
+                    "private_delivery": True,
+                    "parse_mode": "plain",
+                    "save_history": False,
+                }),
             )
         except Exception as error:
             logger.error(f"Agent私聊投递失败: channel={self.channel}, error_type={type(error).__name__}")
@@ -1622,9 +1622,12 @@ class MoviePilotAgent:
         return ""
 
     @staticmethod
-    def _sanitize_execution_error_message(message: str) -> str:
+    def _sanitize_execution_error_message(message: object) -> str:
         """
         清理执行错误中的密钥和尾部长说明，避免把敏感字段或 SDK 调参文档直接发给用户。
+
+        :param message: 异常提供的消息值；空值会按空字符串处理
+        :return: 删除敏感信息和尾部说明后的单行消息
         """
         sanitized = re.sub(r"\s+", " ", str(message or "")).strip()
         if get_runtime_setting("LLM_API_KEY"):
@@ -1692,7 +1695,7 @@ class MoviePilotAgent:
         if self.should_dispatch_reply:
             await self.send_agent_message(message, title=title)
 
-    def _emit_output(self, text: str):
+    def _emit_output(self, text: str) -> None:
         """
         输出当前流式文本到外部回调。
         """
@@ -1706,7 +1709,7 @@ class MoviePilotAgent:
         except Exception as e:
             logger.debug(f"智能体输出回调失败: {e}")
 
-    def _handle_stream_text(self, text: str):
+    def _handle_stream_text(self, text: str) -> None:
         """
         统一处理一段可见流式文本，确保工具统计注入后的内容会同时进入
         消息缓冲区和外部流式回调。
@@ -2565,7 +2568,7 @@ class MoviePilotAgent:
         config: dict[str, Any],
         on_token: Callable[[str], None],
         stream_handler: Any = None,
-    ):
+    ) -> None:
         """
         流式运行智能体，过滤工具调用token和思考内容，将模型生成的内容通过回调输出。
         :param agent: LangGraph Agent 实例
@@ -2966,19 +2969,19 @@ class MoviePilotAgent:
         rich_message = message if not broadcast and self.channel == NotificationChannel.Telegram.value else None
         await self._save_assistant_display_message_once(message)
         await AgentChain().async_post_message(
-            Message(
-                channel=None if broadcast else self.channel,
-                source=None if broadcast else self.source,
-                mtype=MessageType.Agent,
-                userid=None if broadcast else self.user_id,
-                username=self.username or (get_runtime_setting("SUPERUSER") if broadcast else None),
-                original_message_id=None if broadcast else self.original_message_id,
-                original_chat_id=None if broadcast else self.original_chat_id,
-                title=title,
-                text=message,
-                rich_message=rich_message,
-                save_history=False,
-            )
+            Message.model_validate({
+                "channel": None if broadcast else self.channel,
+                "source": None if broadcast else self.source,
+                "mtype": MessageType.Agent,
+                "userid": None if broadcast else self.user_id,
+                "username": self.username or (get_runtime_setting("SUPERUSER") if broadcast else None),
+                "original_message_id": None if broadcast else self.original_message_id,
+                "original_chat_id": None if broadcast else self.original_chat_id,
+                "title": title,
+                "text": message,
+                "rich_message": rich_message,
+                "save_history": False,
+            })
         )
 
     async def cleanup(self) -> bool:

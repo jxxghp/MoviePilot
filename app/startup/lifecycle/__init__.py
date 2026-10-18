@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import time
 from contextlib import asynccontextmanager
-from typing import Awaitable, Callable
+from typing import AsyncIterator, Awaitable, Callable
 
 from fastapi import FastAPI
 
@@ -86,7 +86,7 @@ from app.startup.lifecycle.components import (
 )
 
 
-async def init_extra():
+async def init_extra() -> None:
     """
     同步插件及重启相关依赖服务
     """
@@ -156,7 +156,7 @@ async def run_shutdown_step(
     try:
         task = asyncio.create_task(invoke(), name=f"shutdown.{name}")
 
-        def _consume_shutdown_result(done: asyncio.Future) -> None:
+        def _consume_shutdown_result(done: asyncio.Future[object]) -> None:
             """
             消费延迟收敛任务的最终异常，避免事件循环产生未取回异常。
             """
@@ -724,7 +724,7 @@ def get_lifecycle_manifest(app: FastAPI, *, safe_mode: bool) -> tuple[dict[str, 
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     定义应用的生命周期事件
     """

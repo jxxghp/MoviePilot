@@ -65,13 +65,13 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         """
         return 3
 
-    def stop(self):
+    def stop(self) -> None:
         """
         下载器客户端由服务基类管理，本模块无额外停止动作。
         """
         pass
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         下载器实例由系统配置管理，不声明独立模块开关。
         """
@@ -82,7 +82,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         content: Union[Path, str, bytes],
         download_dir: Path,
         cookie: str,
-        episodes: Set[int] = None,
+        episodes: Optional[Set[int]] = None,
         category: Optional[str] = None,
         label: Optional[str] = None,
         downloader: Optional[str] = None,
@@ -104,20 +104,20 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         if not content:
             return None, None, None, "下载内容为空"
 
-        torrent_from_file, content = self._get_torrent_info(content)
+        torrent_from_file, resolved_content = self._get_torrent_info(content)
         is_magnet = (
-            isinstance(content, str)
-            and content.startswith("magnet:")
-            or isinstance(content, bytes)
-            and content.startswith(b"magnet:")
+            isinstance(resolved_content, str)
+            and resolved_content.startswith("magnet:")
+            or isinstance(resolved_content, bytes)
+            and resolved_content.startswith(b"magnet:")
         )
         if not torrent_from_file and not is_magnet:
             return None, None, None, "添加种子任务失败：无法读取种子文件"
 
         # 失败提示使用种子名称（磁力链接保留原文），不拼接种子文件的二进制内容
-        torrent_desc = torrent_from_file.name if torrent_from_file else content
+        torrent_desc = torrent_from_file.name if torrent_from_file else resolved_content
 
-        server: Rtorrent = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
 
@@ -132,7 +132,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         # 如果要选择文件则先暂停
         is_paused = True if episodes else False
         state = server.add_torrent(
-            content=content,
+            content=resolved_content,
             download_dir=self.normalize_path(download_dir, downloader),
             is_paused=is_paused,
             tags=tags,
@@ -199,7 +199,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                     f"下载任务添加成功，但获取rTorrent任务信息失败：{torrent_desc}",
                 )
             else:
-                if is_paused:
+                if episodes:
                     torrent_files = server.get_files(torrent_hash)
                     if not torrent_files:
                         return (
@@ -227,8 +227,8 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                     finally:
                         torrent_files.clear()
                         del torrent_files
-                    sucess_epidised = list(sucess_epidised)
-                    if sucess_epidised and file_ids:
+                    selected_episodes = list(sucess_epidised)
+                    if selected_episodes and file_ids:
                         # 设置不需要的文件优先级为0（不下载）
                         server.set_files(
                             torrent_hash=torrent_hash, file_ids=file_ids, priority=0
@@ -238,7 +238,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                         downloader or self.get_default_config_name(),
                         torrent_hash,
                         torrent_layout,
-                        f"添加下载成功，已选择集数：{sucess_epidised}",
+                        f"添加下载成功，已选择集数：{selected_episodes}",
                     )
                 else:
                     return (
@@ -250,8 +250,8 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
     def list_torrents(
         self,
-        status: TorrentStatus = None,
-        hashs: Union[list, str] = None,
+        status: Optional[TorrentStatus] = None,
+        hashs: Optional[Union[list[str], str]] = None,
         downloader: Optional[str] = None,
         include_all_tags: bool = False,
     ) -> Optional[List[DownloaderTorrent]]:
@@ -264,13 +264,14 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param include_all_tags: 是否包含未设置系统种子标签的任务，默认只查询系统标签范围
         :return: 匹配任务列表；指定实例不可用时返回 None，查询失败的实例不贡献结果
         """
+        servers: Dict[Optional[str], Rtorrent]
         if downloader:
-            server: Rtorrent = self.get_instance(downloader)
+            server = self.get_instance(downloader)
             if not server:
                 return None
             servers = {downloader: server}
         else:
-            servers: Dict[str, Rtorrent] = self.get_instances()
+            servers = self.get_instances()
         ret_torrents = []
         query_status = self._normalize_query_status(status)
         query_tags = None if include_all_tags else get_runtime_setting('TORRENT_TAG')
@@ -284,7 +285,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                 return Path(content_path)
             return Path(torrent_data["save_path"]) / torrent_data["name"]
 
-        def __build_torrent(downloader_name: str, torrent_data: TorrentData) -> DownloaderTorrent:
+        def __build_torrent(downloader_name: Optional[str], torrent_data: TorrentData) -> DownloaderTorrent:
             """
             构造统一下载器任务对象。
             """
@@ -399,7 +400,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         return DownloadTaskState.COMPLETED.value
 
     def transfer_completed(
-        self, hashs: Union[str, list], downloader: Optional[str] = None
+        self, hashs: Union[str, list[str]], downloader: Optional[str] = None
     ) -> None:
         """
         为整理完成的种子添加“已整理”标签。
@@ -409,7 +410,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param hashs: 已完成整理的种子哈希
         :param downloader: 下载器配置名称，省略时使用默认实例
         """
-        server: Rtorrent = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         org_tags = server.get_torrent_tags(ids=hashs)
@@ -423,7 +424,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
     def remove_torrents(
         self,
-        hashs: Union[str, list],
+        hashs: Union[str, list[str]],
         delete_file: Optional[bool] = True,
         downloader: Optional[str] = None,
     ) -> Optional[bool]:
@@ -435,13 +436,13 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param downloader: 下载器配置名称，省略时使用默认实例
         :return: 客户端报告的执行结果；找不到适用的下载器时返回 None
         """
-        server: Rtorrent = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
 
     def set_torrents_tag(
-        self, hashs: Union[str, list], tags: list,
+        self, hashs: Union[str, list[str]], tags: list[str],
         downloader: Optional[str] = None,
     ) -> Optional[bool]:
         """
@@ -452,7 +453,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param downloader: 下载器配置名称，省略时使用默认实例
         :return: 客户端报告的执行结果；找不到适用的下载器时返回 None
         """
-        server: Rtorrent = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         return server.set_torrents_tag(ids=hashs, tags=tags)
@@ -463,7 +464,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
             downloader: Optional[str] = None,
             download_limit: Optional[float] = None,
             upload_limit: Optional[float] = None,
-            tracker_list: Optional[list] = None,
+            tracker_list: Optional[list[str]] = None,
             save_path: Optional[str] = None,
             category: Optional[str] = None,
             ratio_limit: Optional[float] = None,
@@ -483,7 +484,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param seeding_time_limit: 做种时间限制，rTorrent 当前封装不支持
         :return: 各项请求的执行结果；未提供的项不写入结果，找不到适用实例时返回 None
         """
-        server: Rtorrent = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         results = {}
@@ -507,7 +508,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         return results
 
     def start_torrents(
-        self, hashs: Union[list, str], downloader: Optional[str] = None
+        self, hashs: Union[list[str], str], downloader: Optional[str] = None
     ) -> Optional[bool]:
         """
         启动指定下载任务。
@@ -516,13 +517,13 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param downloader: 下载器配置名称，省略时使用默认实例
         :return: 客户端报告的执行结果；找不到适用的下载器时返回 None
         """
-        server: Rtorrent = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         return server.start_torrents(ids=hashs)
 
     def stop_torrents(
-        self, hashs: Union[list, str], downloader: Optional[str] = None
+        self, hashs: Union[list[str], str], downloader: Optional[str] = None
     ) -> Optional[bool]:
         """
         暂停指定下载任务。
@@ -531,7 +532,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param downloader: 下载器配置名称，省略时使用默认实例
         :return: 客户端报告的执行结果；找不到适用的下载器时返回 None
         """
-        server: Rtorrent = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         return server.stop_torrents(ids=hashs)
@@ -546,7 +547,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param downloader: 下载器配置名称，省略时使用默认实例
         :return: 统一文件列表；找不到适用实例或客户端没有返回文件清单时返回 None
         """
-        server: Rtorrent = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         return self._normalize_torrent_files(

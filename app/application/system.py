@@ -466,7 +466,7 @@ class SystemService:
                     definitions = self._dict_list(value)
                     async with self._rule_group_mutation() as mutation:
                         await mutation.apply(definitions, expected_rule_groups=expected)
-                    event_value = definitions
+                    event_value = list[JsonData](definitions)
                     success = True
                 else:
                     write_result = (

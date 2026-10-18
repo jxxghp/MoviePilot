@@ -33,7 +33,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
     _notification_user_target_keys = ("wechatclawbot_userid",)
     _notification_admin_default_config_keys = ("WECHATCLAWBOT_DEFAULT_TARGET",)
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         创建实例级入站消息去重缓存。
 
@@ -92,7 +92,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         """
         return 2
 
-    def _commands_enabled(self, config: Optional[dict]) -> bool:
+    def _commands_enabled(self, config: Optional[dict[str, object]]) -> bool:
         """
         微信爪爪机器人客户端未提供命令注册/删除 API，跳过命令注册，。
         避免基类默认钩子调用不存在的 client.register_commands。
@@ -107,7 +107,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         """
         return self._stop_service_instances()
 
-    def _test_connection(self, client) -> Tuple[bool, str]:
+    def _test_connection(self, client: WechatClawBot) -> Tuple[bool, str]:
         """
         微信 ClawBot 的连接探测返回 (状态, 信息)。
         """
@@ -418,7 +418,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
             files=files,
         )
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> None:
         """
         向符合通知规则的实例发送附件、语音文件或普通通知。
 

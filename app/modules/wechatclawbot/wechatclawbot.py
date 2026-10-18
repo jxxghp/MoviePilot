@@ -1648,8 +1648,8 @@ class WechatClawBot:
         name: Optional[str] = None,
         identity: Optional[str] = None,
         auto_start_polling: bool = True,
-        **kwargs,
-    ):
+        **kwargs: object,
+    ) -> None:
         """
         恢复持久化登录状态，并按配置启动消息轮询。
 
@@ -1753,7 +1753,7 @@ class WechatClawBot:
             timeout=max(self._poll_timeout, 20),
         )
 
-    def _update_state(self, **kwargs) -> None:
+    def _update_state(self, **kwargs: object) -> None:
         """
         更新并保存持久化状态。
         """
@@ -2449,7 +2449,7 @@ class WechatClawBot:
         image: Optional[str] = None,
         userid: Optional[str] = None,
         link: Optional[str] = None,
-        **kwargs,
+        **kwargs: object,
     ) -> Optional[bool]:
         """
         优先发送组合文字，只有无文字时才尝试发送图片。
@@ -2515,7 +2515,7 @@ class WechatClawBot:
         title: Optional[str] = None,
         text: Optional[str] = None,
         userid: Optional[str] = None,
-        **kwargs,
+        **kwargs: object,
     ) -> Optional[bool]:
         """
         发送本地附件；图片类型使用图片协议，其他类型使用文件协议。

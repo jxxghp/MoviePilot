@@ -54,7 +54,9 @@ _SUBTITLE_EPISODE_TOKEN_RE = re.compile(
     r"(?<![A-Za-z0-9_])(?:EP|E)(?P<episode>\d{1,4})(?![A-Za-z0-9_])",
     re.IGNORECASE,
 )
-_EPISODE_OFFSET_OPS = {
+_EPISODE_OFFSET_OPS: dict[
+    type[ast.operator], Callable[[int | float, int | float], int | float]
+] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
@@ -62,14 +64,16 @@ _EPISODE_OFFSET_OPS = {
     ast.FloorDiv: operator.floordiv,
     ast.Mod: operator.mod,
 }
-_EPISODE_OFFSET_UNARY_OPS = {
+_EPISODE_OFFSET_UNARY_OPS: dict[
+    type[ast.unaryop], Callable[[int | float], int | float]
+] = {
     ast.UAdd: operator.pos,
     ast.USub: operator.neg,
 }
 
 
 @lru_cache(maxsize=1024)
-def _compile_custom_word_regex(pattern: str):
+def _compile_custom_word_regex(pattern: str) -> re.Pattern[str]:
     """
     编译自定义识别词正则，缓存重复识别链路中反复使用的同一规则。
     """
@@ -89,7 +93,7 @@ def calculate_episode_offset(offset: str, episode: int) -> int:
     return int(_evaluate_episode_offset_node(tree.body))
 
 
-def _evaluate_episode_offset_node(node: ast.AST):
+def _evaluate_episode_offset_node(node: ast.AST) -> int | float:
     """
     递归计算集数偏移 AST 节点，仅允许数字和基础算术运算。
     """
@@ -122,12 +126,18 @@ class WordsMatcher(metaclass=Singleton):
     自定义识别词匹配器。
     """
 
-    def prepare(self, title: str, custom_words: List[str] = None) -> Tuple[str, List[str]]:
+    def prepare(
+        self, title: str, custom_words: Optional[List[str]] = None
+    ) -> Tuple[str, List[str]]:
         """
         预处理标题，支持三种格式
         1：屏蔽词
         2：被替换词 => 替换词
         3：前定位词 <> 后定位词 >> 偏移量（EP）。
+
+        :param title: 待处理的主标题
+        :param custom_words: 临时识别词列表；未提供时读取已注入的配置
+        :return: 处理后的标题及已应用的识别词
         """
         title, _, appley_words = self.__prepare(title, None, custom_words)
         return title, appley_words

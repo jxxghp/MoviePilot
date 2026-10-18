@@ -14,7 +14,7 @@ class MetaInfoAccelerator(Protocol):
         self,
         title: str,
         subtitle: Optional[str] = None,
-        options: Optional[dict] = None,
+        options: Optional[dict[str, object]] = None,
     ) -> Optional[dict]:
         """
         解析单个标题，无法处理时返回空值。
@@ -28,7 +28,7 @@ class MetaInfoAccelerator(Protocol):
     def parse_metainfo_path(
         self,
         path: str,
-        options: Optional[dict] = None,
+        options: Optional[dict[str, object]] = None,
     ) -> Optional[dict]:
         """
         解析文件路径，无法处理时返回空值。

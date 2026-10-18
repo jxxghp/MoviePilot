@@ -4,7 +4,7 @@
 
 import bisect
 import datetime
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, overload
 
 import dateparser
 import dateutil.parser
@@ -33,7 +33,7 @@ def format_approx_duration(seconds: Union[str, int, float]) -> str:
     return f"{round(seconds / (threshold + 1))}{unit}"
 
 
-def format_duration(seconds: Union[str, int, float]) -> str:
+def format_duration(seconds: Union[int, float]) -> str:
     """
     把秒数格式化为时分秒组合文本。
     """
@@ -60,9 +60,22 @@ def parse_datetime(value: Any) -> Optional[datetime.datetime]:
         return None
 
 
+@overload
 def normalize_datetime(value: str) -> str:
+    ...
+
+
+@overload
+def normalize_datetime(value: None) -> None:
+    ...
+
+
+def normalize_datetime(value: Optional[str]) -> Optional[str]:
     """
     把常见绝对或相对日期文本统一为本地日期时间格式。
+
+    :param value: 待解析的日期文本；未提供时为 None
+    :return: 标准格式文本；空值或无法解析时返回原值
     """
     if not value:
         return value
@@ -73,10 +86,39 @@ def normalize_datetime(value: str) -> str:
         return value
 
 
+@overload
 def format_timestamp(timestamp: str, date_format: str = "%Y-%m-%d %H:%M:%S") -> str:
+    ...
+
+
+@overload
+def format_timestamp(timestamp: int, date_format: str = "%Y-%m-%d %H:%M:%S") -> Union[str, int]:
+    ...
+
+
+@overload
+def format_timestamp(timestamp: float, date_format: str = "%Y-%m-%d %H:%M:%S") -> Union[str, float]:
+    ...
+
+
+@overload
+def format_timestamp(timestamp: None, date_format: str = "%Y-%m-%d %H:%M:%S") -> None:
+    ...
+
+
+def format_timestamp(
+    timestamp: Optional[Union[str, int, float]],
+    date_format: str = "%Y-%m-%d %H:%M:%S",
+) -> Optional[Union[str, int, float]]:
     """
     把 Unix 时间戳转换为指定格式的本地日期文本。
+
+    :param timestamp: 字符串或数值时间戳；None 原样返回
+    :param date_format: 成功转换时使用的本地日期格式
+    :return: 成功时为日期文本；非数字文本或转换失败时返回原输入
     """
+    if timestamp is None:
+        return None
     if isinstance(timestamp, str) and not timestamp.isdigit():
         return timestamp
     try:

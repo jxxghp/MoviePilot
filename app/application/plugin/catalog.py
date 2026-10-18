@@ -8,7 +8,7 @@ import asyncio
 import concurrent.futures
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Optional, cast
+from typing import Any, Literal, Optional, cast
 
 from app.application.plugin.identity import (
     OFFICIAL_PLUGIN_SOURCE_KEY,
@@ -707,17 +707,15 @@ def _project_update_candidate(
         source_key, repo_url = normalize_github_plugin_source(plugin.repo_url)
     except ValueError:
         return plugin
-    source_type = (
-        TrustedPluginSourceType.OFFICIAL
-        if source_key == OFFICIAL_PLUGIN_SOURCE_KEY
-        else TrustedPluginSourceType.THIRD_PARTY
+    source_type: Literal["official", "third_party"] = (
+        "official" if source_key == OFFICIAL_PLUGIN_SOURCE_KEY else "third_party"
     )
     return cast(
         Plugin,
         plugin.model_copy(
             update={
                 "update_candidate": PluginUpdateCandidate(
-                    source_type=source_type.value,
+                    source_type=source_type,
                     source_key=source_key,
                     repo_url=repo_url,
                     version=plugin.plugin_version,

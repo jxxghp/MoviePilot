@@ -115,7 +115,10 @@ class TimerUtils:
             trigger_value=trigger_value,
             timezone_name=timezone_name,
         )
-        return trigger.get_next_fire_time(None, current_time)
+        next_run_time: Optional[datetime.datetime] = trigger.get_next_fire_time(
+            None, current_time
+        )
+        return next_run_time
 
     @staticmethod
     def random_scheduler(num_executions: int = 1,
@@ -132,7 +135,7 @@ class TimerUtils:
         :param min_interval: 最小间隔分钟
         :param max_interval: 最大间隔分钟
         """
-        trigger: list = []
+        trigger: list[datetime.datetime] = []
         now = datetime.datetime.now()
         random_trigger = now.replace(hour=begin_hour, minute=0, second=0, microsecond=0)
         for _ in range(num_executions):
@@ -175,9 +178,12 @@ class TimerUtils:
         return trigger_times
 
     @staticmethod
-    def time_difference(input_datetime: datetime) -> str:
+    def time_difference(input_datetime: Optional[datetime.datetime]) -> str:
         """
         判断输入时间与当前的时间差，如果输入时间大于当前时间则返回时间差，否则返回空字符串。
+
+        :param input_datetime: 目标时间；未提供时返回空字符串
+        :return: 正向时间差文本，时间已过或未提供时为空字符串
         """
         if not input_datetime:
             return ""
@@ -204,9 +210,12 @@ class TimerUtils:
         return time_difference_string
 
     @staticmethod
-    def diff_minutes(input_datetime: datetime) -> int:
+    def diff_minutes(input_datetime: Optional[datetime.datetime]) -> int:
         """
         计算当前时间与输入时间的分钟差。
+
+        :param input_datetime: 比较时间；未提供时返回零
+        :return: 当前时间相对输入时间的整分钟差
         """
         if not input_datetime:
             return 0

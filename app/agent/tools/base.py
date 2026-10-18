@@ -1049,17 +1049,17 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         发送工具消息
         """
         await self.send_message(
-            Message(
-                channel=self._channel,
-                source=self._source,
-                mtype=MessageType.Agent,
-                userid=self._user_id,
-                username=self._username,
-                title=title,
-                text=message,
-                image=image,
-                save_history=False,
-            )
+            Message.model_validate({
+                "channel": self._channel,
+                "source": self._source,
+                "mtype": MessageType.Agent,
+                "userid": self._user_id,
+                "username": self._username,
+                "title": title,
+                "text": message,
+                "image": image,
+                "save_history": False,
+            })
         )
 
 

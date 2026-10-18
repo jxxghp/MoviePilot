@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Protocol, Set, Union, cast
+from typing import Dict, Iterable, List, Optional, Protocol, Set, TypeAlias, Union, cast
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 from anyio import Path as AsyncPath
@@ -27,13 +27,16 @@ from app.runtime.coalesce import (
 )
 from app.runtime.log import logger
 
+_IPAddress: TypeAlias = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
+_IPNetwork: TypeAlias = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+
 # DNS 解析结果缓存。
 # 正向缓存 TTL 选择 120s，短于常见 CDN / fake-ip 的 DNS TTL，避免长期持有失效 IP；
 # 负向缓存 TTL 选择 15s，避免临时解析失败把目标长时间拉黑。
 _DNS_CACHE_MAXSIZE = 1024
 _DNS_CACHE_TTL_POSITIVE = 120
 _DNS_CACHE_TTL_NEGATIVE = 15
-_dns_positive_cache: "TTLCache[str, List[ipaddress._BaseAddress]]" = TTLCache(
+_dns_positive_cache: "TTLCache[str, List[_IPAddress]]" = TTLCache(
     maxsize=_DNS_CACHE_MAXSIZE, ttl=_DNS_CACHE_TTL_POSITIVE
 )
 _dns_negative_cache: "TTLCache[str, bool]" = TTLCache(
@@ -130,7 +133,7 @@ def _resource_secret_key() -> str:
         return get_token_runtime_config().resource_secret_key
     except RuntimeError:
         legacy_settings = importlib.import_module("app.runtime.config").settings
-        return legacy_settings.RESOURCE_SECRET_KEY
+        return cast(str, legacy_settings.RESOURCE_SECRET_KEY)
 
 
 class UrlSafetyReason(str, Enum):
@@ -177,7 +180,7 @@ class UrlSafetyDiagnosis:
 
 def _resolve_addresses_to_ips(
     address_values: Optional[Sequence[str]],
-) -> Optional[List[ipaddress._BaseAddress]]:
+) -> Optional[List[_IPAddress]]:
     """
     将 DNS 端口返回的地址字符串归一化为 IP 列表。
 
@@ -186,7 +189,7 @@ def _resolve_addresses_to_ips(
     """
     if not address_values:
         return None
-    addresses: List[ipaddress._BaseAddress] = []
+    addresses: List[_IPAddress] = []
     for address_value in address_values:
         try:
             addresses.append(ipaddress.ip_address(address_value))
@@ -282,7 +285,7 @@ class SecurityUtils:
             return SecurityUtils._path_validation_failed(e)
 
     @staticmethod
-    def _literal_ip(hostname: str) -> Optional[ipaddress._BaseAddress]:
+    def _literal_ip(hostname: str) -> Optional[_IPAddress]:
         """
         若 hostname 是字面量 IP（含 IPv6 的 `[::1]` 形式）则返回 IP 对象，否则 None。
         """
@@ -297,7 +300,7 @@ class SecurityUtils:
             return None
 
     @staticmethod
-    def _cache_lookup(hostname: str) -> tuple[bool, Optional[List[ipaddress._BaseAddress]]]:
+    def _cache_lookup(hostname: str) -> tuple[bool, Optional[List[_IPAddress]]]:
         """
         在 TTL 缓存中查找 hostname，返回 (是否命中, 命中值)。
 
@@ -315,7 +318,7 @@ class SecurityUtils:
     @staticmethod
     def _cache_store(
         hostname: str,
-        addresses: Optional[List[ipaddress._BaseAddress]],
+        addresses: Optional[List[_IPAddress]],
         generation: int,
     ) -> None:
         """
@@ -333,7 +336,7 @@ class SecurityUtils:
                     _dns_positive_cache[hostname] = addresses
 
     @staticmethod
-    def _hostname_addresses(hostname: str) -> Optional[List[ipaddress._BaseAddress]]:
+    def _hostname_addresses(hostname: str) -> Optional[List[_IPAddress]]:
         """
         同步解析主机名并返回全部 IP 地址，结果走 TTL 缓存。
 
@@ -394,7 +397,7 @@ class SecurityUtils:
     @staticmethod
     async def _hostname_addresses_async(
         hostname: str,
-    ) -> Optional[List[ipaddress._BaseAddress]]:
+    ) -> Optional[List[_IPAddress]]:
         """
         异步解析主机名并返回全部 IP 地址，与同步版本共用同一份 TTL 缓存。
 
@@ -432,7 +435,7 @@ class SecurityUtils:
 
     @staticmethod
     def _addresses_all_global(
-        addresses: Optional[List[ipaddress._BaseAddress]],
+        addresses: Optional[List[_IPAddress]],
     ) -> bool:
         """
         判断解析结果是否全部为公网地址（空列表/None 视为非公网）。
@@ -464,14 +467,14 @@ class SecurityUtils:
         )
 
     @staticmethod
-    def _parse_ip_networks(ranges: Optional[Iterable[str]]) -> List[ipaddress._BaseNetwork]:
+    def _parse_ip_networks(ranges: Optional[Iterable[str]]) -> List[_IPNetwork]:
         """
         解析用户配置的 IP/CIDR 网段。
 
         配置错误的条目会被忽略并写入 debug 日志，避免单个无效值导致所有图片代理
         校验失败。调用方仍然需要先完成域名白名单匹配，不能单独依赖该网段放行。
         """
-        networks = []
+        networks: List[_IPNetwork] = []
         for value in ranges or []:
             if not value:
                 continue
@@ -483,9 +486,9 @@ class SecurityUtils:
 
     @staticmethod
     def _match_private_addresses(
-        addresses: Optional[List[ipaddress._BaseAddress]],
-        networks: List[ipaddress._BaseNetwork],
-    ) -> Optional[tuple[List[ipaddress._BaseAddress], List[ipaddress._BaseNetwork]]]:
+        addresses: Optional[List[_IPAddress]],
+        networks: List[_IPNetwork],
+    ) -> Optional[tuple[List[_IPAddress], List[_IPNetwork]]]:
         """
         在已解析出的地址列表中匹配显式允许的非公网网段。
 
@@ -497,7 +500,7 @@ class SecurityUtils:
         if all(address.is_global for address in addresses):
             return None
 
-        matched_networks: List[ipaddress._BaseNetwork] = []
+        matched_networks: List[_IPNetwork] = []
         for address in addresses:
             matched_for_address = [
                 network for network in networks if address in network
@@ -511,7 +514,7 @@ class SecurityUtils:
     def _is_allowed_private_hostname(
         hostname: str,
         allowed_private_ranges: Optional[Iterable[str]],
-    ) -> Optional[tuple[List[ipaddress._BaseAddress], List[ipaddress._BaseNetwork]]]:
+    ) -> Optional[tuple[List[_IPAddress], List[_IPNetwork]]]:
         """
         返回主机名命中的显式允许非公网地址和网段（同步版本）。
 
@@ -530,7 +533,7 @@ class SecurityUtils:
     async def _is_allowed_private_hostname_async(
         hostname: str,
         allowed_private_ranges: Optional[Iterable[str]],
-    ) -> Optional[tuple[List[ipaddress._BaseAddress], List[ipaddress._BaseNetwork]]]:
+    ) -> Optional[tuple[List[_IPAddress], List[_IPNetwork]]]:
         """
         `_is_allowed_private_hostname` 的异步版本，语义保持一致。
         """
@@ -695,7 +698,7 @@ class SecurityUtils:
     @staticmethod
     def _log_private_range_allowed(
         url: str,
-        match: tuple[List[ipaddress._BaseAddress], List[ipaddress._BaseNetwork]],
+        match: tuple[List[_IPAddress], List[_IPNetwork]],
     ) -> None:
         """
         记录"图片代理允许访问配置的非公网网段"放行日志，便于运维排查。
@@ -913,7 +916,7 @@ class SecurityUtils:
     def _diagnose_resolved_addresses(
         url: str,
         hostname: str,
-        addresses: Optional[List[ipaddress._BaseAddress]],
+        addresses: Optional[List[_IPAddress]],
         allowed_private_ranges: Optional[Iterable[str]],
     ) -> "UrlSafetyDiagnosis":
         """

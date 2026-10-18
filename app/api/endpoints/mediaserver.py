@@ -265,9 +265,14 @@ def library(
 )
 async def clients(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
-    查询可用媒体服务器
+    查询已启用的媒体服务器名称与类型。
+
+    :param _: 已验证的访问令牌
+    :param page: 兼容客户端的分页参数，此接口不据此分页
+    :param count: 兼容客户端的数量参数，此接口不据此截断
+    :return: 已启用媒体服务器的名称和类型列表
     """
-    mediaservers: List[dict] = get_configured_system_config().get(SystemConfigKey.MediaServers)
+    mediaservers: List[dict[str, object]] = get_configured_system_config().get(SystemConfigKey.MediaServers)
     if mediaservers:
         return [
             {"name": d.get("name"), "type": d.get("type")}

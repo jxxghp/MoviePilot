@@ -31,6 +31,7 @@ from app.schemas.category import (
     ClassificationCategory,
     ClassificationCondition,
     ClassificationConditionNode,
+    ClassificationFactScalar,
     ClassificationFieldDefinition,
     ClassificationMediaType,
     ClassificationPolicy,
@@ -720,7 +721,7 @@ def _standard_numeric_condition(
                 ClassificationCondition(
                     field=field_id,
                     operator="not_in" if token.negative else "in",
-                    value=numeric_values,
+                    value=list[ClassificationFactScalar](numeric_values),
                 )
             )
         if unknown_values:
@@ -734,7 +735,7 @@ def _standard_numeric_condition(
                 ClassificationCondition(
                     field=extension_field_id,
                     operator=("contains_none" if token.negative else "contains_any"),
-                    value=unknown_values,
+                    value=list[ClassificationFactScalar](unknown_values),
                 )
             )
         if not token_nodes:
@@ -795,7 +796,7 @@ def _standard_boolean_condition(
                 ClassificationCondition(
                     field=extension_field_id,
                     operator=("contains_none" if token.negative else "contains_any"),
-                    value=unknown_values,
+                    value=list[ClassificationFactScalar](unknown_values),
                 )
             )
         if not standard_nodes:
@@ -880,7 +881,7 @@ def _migrate_genre_tokens(
                 ClassificationCondition(
                     field="media.genre_keys",
                     operator="contains_none" if token.negative else "contains_any",
-                    value=known_keys,
+                    value=list[ClassificationFactScalar](known_keys),
                 )
             )
         if token_nodes:

@@ -434,7 +434,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         seasons: dict[int, list[Any]] = {}
         season_info: _TmdbDataList = []
-        season_years: dict[int, str] = {}
+        season_years: dict[Union[int, str], str] = {}
         for group_season in group_seasons:
             season = group_season.get("order")
             episodes = group_season.get("episodes")
@@ -783,11 +783,11 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     @staticmethod
     def _collect_group_season_years(
         group_seasons: _TmdbDataList,
-    ) -> Dict[int, str]:
+    ) -> Dict[Union[int, str], str]:
         """
         从已获取的剧集组详情中提取每季首播年份。
         """
-        season_years: Dict[int, str] = {}
+        season_years: Dict[Union[int, str], str] = {}
         for group_season in group_seasons:
             season = group_season.get("order")
             episodes = group_season.get("episodes")
@@ -799,7 +799,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return season_years
 
     @staticmethod
-    def _apply_group_season_years(mediainfo: MediaInfo, season_years: Dict[int, str]) -> MediaInfo:
+    def _apply_group_season_years(mediainfo: MediaInfo, season_years: Dict[Union[int, str], str]) -> MediaInfo:
         """
         把聚合后的剧集组年份写回媒体结果。
         """

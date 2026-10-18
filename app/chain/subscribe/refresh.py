@@ -253,7 +253,7 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             if mtype == MediaType.MUSIC:
                 mediainfo = await self._async_recognize_music_subscribe(subscribe)
             else:
-                mediainfo: MediaInfo = await MediaChain().async_recognize_media(
+                mediainfo = await MediaChain().async_recognize_media(
                     mtype=mtype,
                     **subscribe_recognize_kwargs(subscribe),
                     episode_group=subscribe.episode_group,
@@ -712,8 +712,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         """
         accepted = []
         ignored = []
-        priority_updated = []
-        priority_ignored = []
+        priority_updated: List[int] = []
+        priority_ignored: List[dict[str, Union[int, str]]] = []
         target_episodes = set(self._SubscribeChain__get_best_version_target_episodes(subscribe))
         note = sorted({int(episode) for episode in subscribe.note or [] if str(episode).isdigit()})
         note_set = set(note)

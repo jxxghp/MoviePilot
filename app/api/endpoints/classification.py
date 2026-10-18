@@ -197,10 +197,7 @@ def _validation_response(
     """
     生成保留完整字段路径和问题代码的 422 策略校验响应。
     """
-    result = cast(
-        ClassificationValidationResult,
-        error.result.model_copy(deep=True),
-    )
+    result = error.result.model_copy(deep=True)
     payload = Response[ClassificationValidationResult](
         success=False,
         message="分类策略校验失败",

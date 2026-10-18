@@ -2,7 +2,7 @@
 飞牛模块，将媒体库、播放信息与受保护图片接入统一接口。
 """
 
-from typing import Any, Generator, List, Optional, Tuple, Union
+from typing import Any, Generator, Iterable, List, Optional, Tuple, Union
 
 from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.trimemedia.trimemedia import TrimeMedia
@@ -63,13 +63,15 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         """
         return 4
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         模块不提供额外的初始化开关。
+
+        :return: 始终为 None，表示不检查模块级配置项
         """
         pass
 
-    def _is_inactive(self, server) -> bool:
+    def _is_inactive(self, server: TrimeMedia) -> bool:
         """
         未配置的实例不参与定时重连。
         """
@@ -86,7 +88,7 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
             except Exception as err:
                 logger.error(f"停止飞牛影视模块实例失败：{err}")
 
-    def _test_server(self, server, name: Optional[str]) -> Optional[str]:
+    def _test_server(self, server: TrimeMedia, name: Optional[str]) -> Optional[str]:
         """
         飞牛影视用配置完整性与重连结果探测连接状态。
         """
@@ -133,6 +135,7 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         :param server: 指定实例，省略时汇总所有飞牛实例
         :return: 统计列表；指定实例不可用时返回 None，非管理员用户数记为 0
         """
+        servers: Iterable[TrimeMedia]
         if server:
             server_obj: Optional[TrimeMedia] = self.get_instance(server)
             if not server_obj:
@@ -150,7 +153,7 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         return media_statistics
 
     def mediaserver_librarys(
-        self, server: Optional[str] = None, hidden: Optional[bool] = False, **kwargs
+        self, server: Optional[str] = None, hidden: Optional[bool] = False, **kwargs: object
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         查询用户可见的媒体库。
@@ -171,7 +174,7 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         library_id: Union[str, int],
         start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
-    ) -> Optional[Generator]:
+    ) -> Optional[Generator[_SchemaMediaServerItem, None, None]]:
         """
         返回飞牛媒体库的递归条目生成器。
 
@@ -240,7 +243,7 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         ]
 
     def mediaserver_playing(
-        self, server: str, count: Optional[int] = 20, **kwargs
+        self, server: str, count: Optional[int] = 20, **kwargs: object
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询同步范围内的继续观看条目。
@@ -276,7 +279,7 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self,
         server: Optional[str] = None,
         count: Optional[int] = 20,
-        **kwargs,
+        **kwargs: object,
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询同步范围内最近创建的媒体条目。
@@ -296,7 +299,7 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         server: Optional[str] = None,
         count: Optional[int] = 20,
         remote: Optional[bool] = False,
-        **kwargs,
+        **kwargs: object,
     ) -> List[str]:
         """
         查询最新媒体的背景图或海报地址。
@@ -316,8 +319,8 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self,
         server: Optional[str] = None,
         image_url: Optional[str] = None,
-        **kwargs,
-    ) -> Optional[str | dict]:
+        **kwargs: object,
+    ) -> Optional[dict[str, Optional[str]]]:
         """
         为指定图片查找同源飞牛实例的授权 Cookie。
 
@@ -337,3 +340,4 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
             for server_obj in self.get_instances().values():
                 if cookies := server_obj.get_image_cookies(image_url):
                     return cookies
+        return None

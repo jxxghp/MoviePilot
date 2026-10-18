@@ -73,9 +73,13 @@ async def tmdb_recognition_cache(
 async def delete_tmdb_recognition_cache(
     cache_key: str,
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     按缓存键删除单条 TheMovieDb 识别缓存。
+
+    :param cache_key: 要删除的缓存键
+    :param _: 已验证的管理员身份
+    :return: 删除结果；缓存不存在时返回失败响应
     """
     deleted_item = TmdbChain().delete_cache(cache_key)
     if not deleted_item:
@@ -88,9 +92,12 @@ async def delete_tmdb_recognition_cache(
 )
 async def clear_tmdb_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     清空全部 TheMovieDb 识别缓存。
+
+    :param _: 已验证的管理员身份
+    :return: 缓存清理结果
     """
     TmdbChain().clear_cache()
     return _SchemaResponse(success=True, message="TheMovieDb 识别缓存清理完成")

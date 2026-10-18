@@ -48,7 +48,7 @@ class SendMessageAction(BaseAction):
         """
         发送messages中的消息
         """
-        action_params = SendMessageParams(**params)
+        action_params = SendMessageParams.model_validate(params)
         msg_text = f"当前进度：{context.progress}%"
         index = 1
         if context.execute_history:

@@ -15,7 +15,7 @@ import time
 from contextvars import Context, copy_context
 from datetime import datetime
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Union, cast
+from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Union, cast, overload
 
 from jinja2 import Template
 
@@ -567,7 +567,15 @@ class TemplateContextBuilder:
         context.update(raw_objects)
 
     @staticmethod
-    def __convert_invalid_characters(filename: str) -> str:
+    @overload
+    def __convert_invalid_characters(filename: str) -> str: ...
+
+    @staticmethod
+    @overload
+    def __convert_invalid_characters(filename: None) -> None: ...
+
+    @staticmethod
+    def __convert_invalid_characters(filename: Optional[str]) -> Optional[str]:
         """
         将不支持的字符转换为全角字符
         """

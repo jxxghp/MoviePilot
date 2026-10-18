@@ -9,8 +9,10 @@ import hashlib
 import json
 import re
 import uuid
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import Any, Optional
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Optional, Union
 from urllib.parse import urljoin
 
 from app.adapters.network.http import AsyncRequestUtils
@@ -23,6 +25,9 @@ from app.schemas.agent import (
     AgentMcpServerToolInfo,
 )
 from app.schemas.types import SystemConfigKey
+
+if TYPE_CHECKING:
+    import httpx2
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
 MCP_CLIENT_NAME = "MoviePilot Agent"
@@ -113,11 +118,16 @@ def _build_agent_tool_name(server: AgentMcpServerConfig, tool_name: str) -> str:
     return f"{normalized_prefix}_{normalized_tool_name}"[:128]
 
 
-def _jsonrpc_message(method: str, params: Optional[dict[str, Any]] = None, *, request_id: Optional[str] = None) -> dict:
+def _jsonrpc_message(
+    method: str,
+    params: Optional[dict[str, object]] = None,
+    *,
+    request_id: Optional[str] = None,
+) -> dict[str, object]:
     """
     构造 JSON-RPC 2.0 消息。
     """
-    payload = {"jsonrpc": "2.0", "method": method}
+    payload: dict[str, object] = {"jsonrpc": "2.0", "method": method}
     if request_id is not None:
         payload["id"] = request_id
     if params is not None:
@@ -150,7 +160,7 @@ def _extract_jsonrpc_result(payload: Any, request_id: str) -> Any:
     return payload.get("result")
 
 
-async def _iter_sse_events(response) -> Any:
+async def _iter_sse_events(response: httpx2.Response) -> Any:
     """
     按 SSE 事件格式迭代响应流。
     """
@@ -209,7 +219,7 @@ def _parse_sse_text_response(text: str, request_id: str) -> Any:
     raise RuntimeError("MCP SSE 响应中未找到匹配请求")
 
 
-def _load_sse_json_payload(event_name: str, data: str) -> Optional[dict]:
+def _load_sse_json_payload(event_name: str, data: str) -> Optional[dict[str, object]]:
     """
     解析 SSE data 中的 JSON-RPC 消息。
     """
@@ -230,7 +240,7 @@ class _StdioMcpSession:
     def __init__(self, server: AgentMcpServerConfig) -> None:
         self.server = server
         self.process: Optional[asyncio.subprocess.Process] = None
-        self.stderr_task: Optional[asyncio.Task] = None
+        self.stderr_task: Optional[asyncio.Task[None]] = None
 
     async def __aenter__(self) -> "_StdioMcpSession":
         """
@@ -250,7 +260,12 @@ class _StdioMcpSession:
         self.stderr_task = asyncio.create_task(self._drain_stderr())
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc: Optional[BaseException],
+        tb: Optional[TracebackType],
+    ) -> None:
         """
         结束 stdio MCP 子进程。
         """
@@ -304,7 +319,7 @@ class _StdioMcpSession:
             if payload.get("id") == request_id:
                 return _extract_jsonrpc_result(payload, request_id)
 
-    async def _write_json(self, payload: dict) -> None:
+    async def _write_json(self, payload: dict[str, object]) -> None:
         """
         写入一行 JSON-RPC 消息。
         """
@@ -314,7 +329,7 @@ class _StdioMcpSession:
         self.process.stdin.write(data.encode("utf-8"))
         await self.process.stdin.drain()
 
-    async def _read_json(self) -> dict:
+    async def _read_json(self) -> dict[str, object]:
         """
         从 stdout 读取一行 JSON-RPC 消息。
         """
@@ -349,7 +364,12 @@ class _HttpMcpSession:
         """
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc: Optional[BaseException],
+        tb: Optional[TracebackType],
+    ) -> None:
         """
         退出 HTTP MCP 会话。
         """
@@ -374,7 +394,7 @@ class _HttpMcpSession:
 
     async def _post(
         self,
-        payload: dict,
+        payload: dict[str, object],
         *,
         expect_response: bool,
         request_id: Optional[str] = None,
@@ -426,7 +446,7 @@ class _SseMcpSession:
         self.server = server
         self.response = None
         self.endpoint: Optional[str] = None
-        self._stream_manager = None
+        self._stream_manager: Optional[AbstractAsyncContextManager[Optional[httpx2.Response]]] = None
         self._event_iterator = None
 
     async def __aenter__(self) -> "_SseMcpSession":
@@ -441,7 +461,8 @@ class _SseMcpSession:
             accept_type="text/event-stream",
             http2=False,
         ).get_stream(self.server.url, raise_exception=True)
-        self.response = await self._stream_manager.__aenter__()
+        stream_manager = self._stream_manager
+        self.response = await stream_manager.__aenter__()
         if not self.response:
             raise RuntimeError("SSE MCP 连接无响应")
         self.response.raise_for_status()
@@ -449,7 +470,12 @@ class _SseMcpSession:
         self.endpoint = await self._read_endpoint()
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc: Optional[BaseException],
+        tb: Optional[TracebackType],
+    ) -> None:
         """
         关闭 SSE 流。
         """
@@ -489,7 +515,7 @@ class _SseMcpSession:
                 continue
             return urljoin(self.server.url, endpoint)
 
-    async def _post(self, payload: dict) -> None:
+    async def _post(self, payload: dict[str, object]) -> None:
         """
         向 SSE 握手返回的 endpoint 发送 JSON-RPC 消息。
         """
@@ -515,7 +541,9 @@ class _SseMcpSession:
                 await response.aclose()
 
 
-async def _open_mcp_session(server: AgentMcpServerConfig):
+async def _open_mcp_session(
+    server: AgentMcpServerConfig,
+) -> Union[_StdioMcpSession, _SseMcpSession, _HttpMcpSession]:
     """
     根据配置创建对应的 MCP 传输会话。
     """
@@ -549,9 +577,12 @@ class AgentMcpManager:
                 logger.warning(f"忽略无效的 Agent MCP 配置: {err}")
         return servers
 
-    async def save_servers(self, servers: list[AgentMcpServerConfig]) -> bool:
+    async def save_servers(self, servers: list[AgentMcpServerConfig]) -> Optional[bool]:
         """
         保存外部 MCP 服务器配置。
+
+        :param servers: 待保存的服务器配置
+        :return: 底层配置写入结果；配置值未变化时为 None
         """
         normalized_servers = [self.normalize_server(server).model_dump() for server in servers]
         return await get_configured_system_config().async_set(
@@ -592,7 +623,10 @@ class AgentMcpManager:
         raw_text = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
         return hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
 
-    async def initialize_session(self, session) -> None:
+    async def initialize_session(
+        self,
+        session: Union[_StdioMcpSession, _SseMcpSession, _HttpMcpSession],
+    ) -> None:
         """
         完成 MCP initialize 和 initialized 通知流程。
         """

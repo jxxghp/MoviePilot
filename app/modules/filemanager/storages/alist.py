@@ -7,7 +7,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import WeakSingleton
@@ -43,7 +43,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         "move": "移动",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化存储配置访问服务，登录令牌按首次请求惰性获取。
         """
@@ -58,7 +58,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         return bool(get_runtime_setting('OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME'))
 
-    def init_storage(self):
+    def init_storage(self) -> None:
         """
         清除当前地址和账号对应的临时登录令牌缓存。
         """
@@ -186,7 +186,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         logger.debug("【OpenList】AList获取令牌成功")
         return result["data"]["token"]
 
-    def __get_header_with_token(self) -> dict:
+    def __get_header_with_token(self) -> dict[str, str]:
         """
         获取带有token的header。
         """
@@ -544,7 +544,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
     def download(
         self,
         fileitem: _SchemaFileItem,
-        path: Path = None,
+        path: Optional[Path] = None,
         password: Optional[str] = "",
     ) -> Optional[Path]:
         """
@@ -653,7 +653,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                 """
                 为上传请求提供可计长、支持取消及进度回调的文件读取器。
                 """
-                def __init__(self, file_path: Path, callback):
+                def __init__(
+                    self, file_path: Path, callback: Optional[Callable[[int | float], None]]
+                ) -> None:
                     """
                     打开源文件并记录上传进度回调。
 
@@ -673,7 +675,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                     """
                     return self.file_size
 
-                def read(self, size=-1):
+                def read(self, size: int = -1) -> bytes:
                     """
                     读取上传内容并报告累计进度。
 
@@ -692,7 +694,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
                             self.callback(percent)
                     return chunk
 
-                def close(self):
+                def close(self) -> None:
                     """
                     关闭上传源文件句柄。
                     """
@@ -734,7 +736,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             return None
 
     @staticmethod
-    def __get_upload_hash_headers(path: Path) -> dict:
+    def __get_upload_hash_headers(path: Path) -> dict[str, str]:
         """
         计算 OpenList 秒传所需的文件哈希请求头。
         """

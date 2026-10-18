@@ -408,12 +408,9 @@ class ClassificationAnalysisService:
                 expected_revision=expected_revision,
                 current_revision=active.revision,
             )
-        candidate = cast(
-            ClassificationPolicy,
-            policy.model_copy(
+        candidate = policy.model_copy(
                 deep=True,
                 update={"revision": active.revision + 1},
-            ),
         )
         self._require_valid(candidate)
         batch = await self._sample_batch(samples, sample_limit, active, candidate)

@@ -64,7 +64,7 @@ class FetchTorrentsAction(BaseAction):
         """
         搜索站点，获取资源列表
         """
-        action_params = FetchTorrentsParams(**params)
+        action_params = FetchTorrentsParams.model_validate(params)
         searchchain = SearchChain()
         if action_params.search_type == "keyword":
             # 按关键字搜索

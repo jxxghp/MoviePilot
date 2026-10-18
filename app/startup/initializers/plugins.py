@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Optional, TypeVar, cast
 
 import sqlalchemy as sa
 from pydantic import ValidationError
@@ -79,6 +79,7 @@ from app.application.plugin.runtime import (
     configure_plugin_runtime,
     get_plugin_manager,
 )
+from app.application.plugin.source import CandidateInventory
 from app.application.plugin.transaction import (
     PluginPersistenceService,
     get_plugin_persistence,
@@ -622,7 +623,7 @@ def configure_plugin_services() -> None:
         )
     )
 
-    async def load_inventory(force: bool):
+    async def load_inventory(force: bool) -> CandidateInventory:
         """
         读取本轮配置市场和本地仓库的完整候选事实。
         """
@@ -631,7 +632,7 @@ def configure_plugin_services() -> None:
             force=force,
         )
 
-    async def reload_plugin_tree(plugin_id: str) -> object:
+    async def reload_plugin_tree(plugin_id: str) -> PluginRuntimeStatus:
         """
         在线程池中重建源插件及其全部虚拟实例。
         """
@@ -911,6 +912,12 @@ def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogSer
     """
     在组合根连接目录用例、市场客户端、持久化读取和插件 DTO 映射。
     """
+    def version_matches(source: str, comparison: str, target: str) -> bool:
+        """
+        目录筛选仅在版本比较明确成功时接受候选，解析失败沿用假值语义。
+        """
+        return compare_version(source, comparison, target) is True
+
     client = get_composed_plugin_market_client()
     return PluginCatalogService(
         market_loader=client.get_plugins,
@@ -920,7 +927,7 @@ def _build_plugin_catalog(plugin_mapper: Callable[..., Any]) -> PluginCatalogSer
         ) or [],
         plugin_mapper=plugin_mapper,
         is_local_repo=PluginMarketClient.is_local_repo_url,
-        version_compare=compare_version,
+        version_compare=version_matches,
         warning=logger.warning,
         error=logger.error,
     )
@@ -962,7 +969,7 @@ async def sync_plugins(
 
 async def _sync_plugins_admitted(
     plugin_manager: PluginManager,
-    loop,
+    loop: asyncio.AbstractEventLoop,
     startup_token: PluginStartupLease | None,
     online_restore_plugins: set[str],
 ) -> bool:
@@ -1101,7 +1108,7 @@ async def quiesce_plugins(timeout: float = 240.0) -> bool:
     """
     封口插件变更并停用 handler，保留超时 Future 的运行所有权。
     """
-    plugin_manager = PluginManager.get_existing_instance()
+    plugin_manager: Optional[PluginManager] = PluginManager.get_existing_instance()
     if plugin_manager is None:
         return True
     return await plugin_manager.quiesce_plugins(timeout=timeout)
@@ -1111,7 +1118,7 @@ async def quiesce_plugin_services(timeout: float = 240.0) -> bool:
     """
     在事件结算后有界执行旧插件 close、stop_service hook。
     """
-    plugin_manager = PluginManager.get_existing_instance()
+    plugin_manager: Optional[PluginManager] = PluginManager.get_existing_instance()
     if plugin_manager is None:
         return True
     return await plugin_manager.quiesce_plugin_services(timeout=timeout)
@@ -1127,7 +1134,14 @@ def finalize_plugins() -> bool:
     return bool(plugin_manager.finalize_plugins())
 
 
-async def execute_task(loop, task_func, task_name):
+_TaskResult = TypeVar("_TaskResult")
+
+
+async def execute_task(
+    loop: asyncio.AbstractEventLoop,
+    task_func: Callable[[], _TaskResult],
+    task_name: str,
+) -> _TaskResult | None:
     """
     执行后台任务；取消调用方时仍持有同步线程直到真实完成。
     """
@@ -1152,7 +1166,7 @@ async def execute_task(loop, task_func, task_name):
         return None
 
 
-def init_plugins():
+def init_plugins() -> None:
     """
     初始化插件
     """

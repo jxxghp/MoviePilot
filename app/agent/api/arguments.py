@@ -11,7 +11,9 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.agent.policy.api import resolve_api_route
 
-_SCALAR_ADAPTERS = {
+_SCALAR_ADAPTERS: dict[
+    str, TypeAdapter[bool] | TypeAdapter[int] | TypeAdapter[float] | TypeAdapter[str]
+] = {
     "boolean": TypeAdapter(bool),
     "integer": TypeAdapter(int),
     "number": TypeAdapter(float),

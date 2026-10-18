@@ -185,7 +185,7 @@ class RecognizeCaptchaTool(MoviePilotTool):
         user_agent: Optional[str] = None,
         allow_private_network: bool = False,
         image_data: Optional[bytes] = None,
-        **kwargs,
+        **kwargs: object,
     ) -> str:
         """
         识别指定图片地址中的图形验证码文本。

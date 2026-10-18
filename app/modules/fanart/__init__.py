@@ -32,7 +32,7 @@ class FanartModule(_ModuleBase):
         请求缓存键包含 API Key 指纹，更换 Key 后自然使用新键，无需在每次启动或重载时清空缓存。
         """
 
-    def stop(self):
+    def stop(self) -> None:
         """
         停止 Fanart 模块；请求资源由每次调用按当前配置创建。
         """

@@ -451,17 +451,17 @@ class TransferDispatcher:
                 logger.info(f"开始整理文件: {event_path}")
             # 开始整理
             TransferChain().do_transfer(
-                fileitem=FileItem(
-                    storage=storage,
-                    path=src_path,
-                    type="file" if not is_bluray_folder else "dir",
-                    name=event_path.name,
-                    basename=event_path.stem,
-                    extension=event_path.suffix[1:],
-                    size=file_size,
-                    modify_time=file_modify_time,
-                    fileid=fileid,
-                ),
+                fileitem=FileItem.model_validate({
+                    "storage": storage,
+                    "path": src_path,
+                    "type": "file" if not is_bluray_folder else "dir",
+                    "name": event_path.name,
+                    "basename": event_path.stem,
+                    "extension": event_path.suffix[1:],
+                    "size": file_size,
+                    "modify_time": file_modify_time,
+                    "fileid": fileid,
+                }),
                 mtype=self._get_monitor_media_type(
                     storage=storage,
                     event_path=event_path,

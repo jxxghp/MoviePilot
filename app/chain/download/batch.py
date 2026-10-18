@@ -235,9 +235,9 @@ class _BatchDownloadRun:
             reason = "无法解析" if partial else "无法确定"
             logger.warn(f"{meta.org_string} 下载地址是磁力链，{reason}种子文件集数")
             return None
-        episodes = cast(List[int], _new_torrent_helper().get_torrent_episodes(
+        episodes = _new_torrent_helper().get_torrent_episodes(
             files, custom_words=self.custom_words,
-        ))
+        )
         if partial:
             logger.info(f"{torrent.site_name} - {meta.org_string} 解析种子文件集数：{episodes}")
         else:

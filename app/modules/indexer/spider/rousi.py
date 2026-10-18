@@ -4,7 +4,7 @@
 
 import base64
 import json
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
@@ -25,7 +25,7 @@ class RousiSpider:
     _indexerid = None
     _domain = None
     _url = None
-    _name = ""
+    _name: Optional[str] = ""
     _proxy = None
     _use_proxy = False
     _cookie = None
@@ -76,7 +76,7 @@ class RousiSpider:
             self._apikey = indexer.get('apikey')
             self._timeout = indexer.get('timeout') or 15
 
-    def __get_params(self, keyword: str, mtype: MediaType = None, cat: Optional[str] = None, page: Optional[int] = 0) -> dict:
+    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, cat: Optional[str] = None, page: Optional[int] = 0) -> dict[str, Union[int, str]]:
         """
         构建 API 请求参数。
 
@@ -86,7 +86,7 @@ class RousiSpider:
         :param page: 页码（从 0 开始，API 需要从 1 开始）
         :return: 请求参数字典
         """
-        params = {
+        params: dict[str, Union[int, str]] = {
             "page": int(page) + 1,
             "page_size": self._size
         }
@@ -112,7 +112,7 @@ class RousiSpider:
 
         return params
 
-    def __get_category_names_by_ids(self, cat: str) -> Optional[list]:
+    def __get_category_names_by_ids(self, cat: str) -> Optional[list[str]]:
         """
         将用户选择的分类 ID 转为 API 接受的分类名称。
 
@@ -134,7 +134,7 @@ class RousiSpider:
 
         # 按逗号拆分分类 ID，并保留能映射到 API 名称的分类。
         cat_ids = [c.strip() for c in cat.split(',') if c.strip()]
-        category_names = [id_to_name.get(cat_id) for cat_id in cat_ids if cat_id in id_to_name]
+        category_names = [id_to_name[cat_id] for cat_id in cat_ids if cat_id in id_to_name]
 
         return category_names if category_names else None
 
@@ -175,7 +175,7 @@ class RousiSpider:
         :param results: API 返回的种子列表
         :return: 标准化的种子信息列表
         """
-        torrents = []
+        torrents: list[dict[str, object]] = []
         if not results:
             return torrents
 
@@ -217,7 +217,7 @@ class RousiSpider:
                     freedate = time_tools.normalize_datetime(promotion.get('until'))
 
             torrent_id = result.get('id')
-            torrent = {
+            torrent: dict[str, object] = {
                 'title': result.get('title'),
                 'description': result.get('subtitle'),
                 'enclosure': self.__get_download_url(torrent_id),
@@ -236,7 +236,7 @@ class RousiSpider:
             torrents.append(torrent)
         return torrents
 
-    def search(self, keyword: str, mtype: MediaType = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: Optional[MediaType] = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         同步搜索种子。
 
@@ -264,7 +264,7 @@ class RousiSpider:
 
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, mtype: MediaType = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    async def async_search(self, keyword: str, mtype: Optional[MediaType] = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         异步搜索种子。
 
@@ -292,7 +292,7 @@ class RousiSpider:
 
         return self.__process_response(res)
 
-    def __get_download_url(self, torrent_id: int) -> str:
+    def __get_download_url(self, torrent_id: object) -> str:
         """
         构建种子下载链接。
 

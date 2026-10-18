@@ -2,14 +2,16 @@
 提供 OpenAI Models、Chat Completions 与 Responses 兼容接口。
 """
 
+from __future__ import annotations
+
 import asyncio
 import time
 import uuid
 from threading import Lock
-from typing import AsyncIterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, AsyncIterator, List, Optional, Tuple, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Security
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.adapters.web.security.access import (
@@ -46,6 +48,10 @@ from app.schemas.openai import OpenAIResponsesResponse as _SchemaOpenAIResponses
 from app.schemas.openai import OpenAIUsage as _SchemaOpenAIUsage
 from app.schemas.types import NotificationChannel
 
+if TYPE_CHECKING:
+    from app.agent.manager import AgentManager
+    from app.agent.orchestrator import MoviePilotAgent
+
 OPENAI_ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     400: {"model": _SchemaOpenAIErrorResponse, "description": "请求格式错误"},
     401: {"model": _SchemaOpenAIErrorResponse, "description": "认证失败"},
@@ -58,6 +64,7 @@ router = APIRouter(responses=OPENAI_ERROR_RESPONSES)
 
 MODEL_ID = "moviepilot-agent"
 SESSION_PREFIX = "openai:"
+OpenAIStreamEvent = str | dict[str, str] | None
 
 
 class _CollectingMoviePilotAgentMixin:
@@ -85,7 +92,7 @@ class _CollectingMoviePilotAgentMixin:
         self,
         *,
         stream_mode: bool,
-        event_queue: Optional[asyncio.Queue],
+        event_queue: Optional[asyncio.Queue[OpenAIStreamEvent]],
     ) -> None:
         """
         切换请求级输出目标，并保持已编译工具引用的 handler identity。
@@ -104,7 +111,7 @@ class _CollectingMoviePilotAgentMixin:
 
     def release_protocol_request(
         self,
-        event_queue: Optional[asyncio.Queue],
+        event_queue: Optional[asyncio.Queue[OpenAIStreamEvent]],
     ) -> None:
         """
         释放已结束请求的输出队列，不影响同会话已重绑的新请求。
@@ -112,7 +119,7 @@ class _CollectingMoviePilotAgentMixin:
         if isinstance(self.stream_handler, _OpenAIStreamingHandlerMixin):
             self.stream_handler.unbind_queue(event_queue)
 
-    async def send_agent_message(self, message: str, title: str = ""):
+    async def send_agent_message(self, message: str, title: str = "") -> None:
         """
         收集 Agent 消息并按请求模式输出。
         """
@@ -132,20 +139,20 @@ class _OpenAIStreamingHandlerMixin:
     将 Agent 流式输出转发到 OpenAI SSE 队列，不向站内消息系统落消息。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化流式事件队列绑定。
         """
         super().__init__()
-        self._event_queue: Optional[asyncio.Queue] = None
+        self._event_queue: Optional[asyncio.Queue[OpenAIStreamEvent]] = None
 
-    def bind_queue(self, queue: Optional[asyncio.Queue]):
+    def bind_queue(self, queue: Optional[asyncio.Queue[OpenAIStreamEvent]]) -> None:
         """
         绑定当前协议请求的输出队列。
         """
         self._event_queue = queue
 
-    def unbind_queue(self, queue: Optional[asyncio.Queue]) -> None:
+    def unbind_queue(self, queue: Optional[asyncio.Queue[OpenAIStreamEvent]]) -> None:
         """
         仅当仍指向该请求时解除绑定，避免清掉已排队的新请求。
         """
@@ -188,7 +195,7 @@ class _OpenAIStreamingHandlerMixin:
         original_message_id: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         title: str = "",
-    ):
+    ) -> None:
         """
         绑定当前请求的渠道信息并启用流式输出。
         """
@@ -274,7 +281,7 @@ def _get_collecting_agent_type() -> type:
         return _COLLECTING_AGENT_TYPE
 
 
-def _sse_payload(data: dict) -> str:
+def _sse_payload(data: dict[str, object]) -> str:
     """
     保留旧测试入口并委托独立的 OpenAI SSE 协议转换器。
     """
@@ -282,7 +289,7 @@ def _sse_payload(data: dict) -> str:
 
 
 async def _stream_response(
-    manager,
+    manager: AgentManager,
     session_id: str,
     user_id: str,
     username: str,
@@ -294,13 +301,13 @@ async def _stream_response(
     """
     把受管 Agent 事件转换为 OpenAI 流式响应。
     """
-    event_queue: asyncio.Queue = asyncio.Queue()
+    event_queue: asyncio.Queue[OpenAIStreamEvent] = asyncio.Queue()
 
     created = int(time.time())
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
     finished = False
 
-    async def _run_agent():
+    async def _run_agent() -> None:
         """
         运行受管 Agent 并把完成或异常结果送入响应队列。
         """
@@ -454,7 +461,7 @@ def _manager_execution_error(error: BaseException) -> JSONResponse:
 
 async def _run_managed_agent(
     *,
-    manager,
+    manager: AgentManager,
     session_id: str,
     user_id: str,
     username: str,
@@ -462,22 +469,24 @@ async def _run_managed_agent(
     prompt: str,
     images: List[str],
     stream_mode: bool,
-    event_queue: Optional[asyncio.Queue] = None,
+    event_queue: Optional[asyncio.Queue[OpenAIStreamEvent]] = None,
 ) -> tuple[str, List[str]]:
     """
     通过 AgentManager 执行协议请求，并在 worker 内配置请求级输出。
     """
-    agent_holder = {}
+    agent_holder: dict[str, _CollectingMoviePilotAgentMixin] = {}
 
-    def configure_agent(agent) -> None:
+    def configure_agent(agent: MoviePilotAgent) -> None:
         """
         为请求绑定协议模式和流式事件队列。
         """
-        agent.configure_protocol_request(
+        # 会话管理器使用上方动态工厂创建或复用同一组合类型。
+        collecting_agent = cast(_CollectingMoviePilotAgentMixin, agent)
+        collecting_agent.configure_protocol_request(
             stream_mode=stream_mode,
             event_queue=event_queue,
         )
-        agent_holder["agent"] = agent
+        agent_holder["agent"] = collecting_agent
 
     try:
         result = await manager.process_message(
@@ -571,7 +580,7 @@ async def list_models(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
         openai_bearer_scheme
     ),
-):
+) -> _SchemaOpenAIModelListResponse | JSONResponse:
     """
     校验凭据并返回当前可用的兼容模型。
     """
@@ -591,7 +600,7 @@ async def _chat_completions_impl(
         openai_bearer_scheme
     ),
     task_registry: TaskRegistry | None = None,
-):
+) -> JSONResponse | StreamingResponse:
     """
     校验并执行 OpenAI Chat Completions 请求。
     """
@@ -655,7 +664,7 @@ async def _chat_completions_impl(
             ),
         )
 
-    collected_messages = []
+    collected_messages: list[str] = []
     try:
         result, collected_messages = await _run_managed_agent(
             manager=manager,
@@ -691,7 +700,7 @@ async def _responses_impl(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
         openai_bearer_scheme
     ),
-):
+) -> _SchemaOpenAIResponsesResponse | JSONResponse:
     """
     校验并执行 OpenAI Responses 请求。
     """
@@ -741,7 +750,7 @@ async def _responses_impl(
 
     session_key = str(payload.user or uuid.uuid4())
     session_id = build_session_id(session_key, SESSION_PREFIX)
-    collected_messages = []
+    collected_messages: list[str] = []
     try:
         result, collected_messages = await _run_managed_agent(
             manager=manager,
@@ -795,7 +804,7 @@ async def chat_completions(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(openai_bearer_scheme),
     task_registry: TaskRegistry = Depends(get_background_task_registry_compat),
-):
+) -> JSONResponse | StreamingResponse:
     """
     OpenAI Chat Completions 兼容公开入口。
     """
@@ -815,7 +824,7 @@ async def chat_completions(
 async def responses(
     payload: _SchemaOpenAIResponsesRequest,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(openai_bearer_scheme),
-):
+) -> _SchemaOpenAIResponsesResponse | JSONResponse:
     """
     OpenAI Responses 兼容公开入口。
     """

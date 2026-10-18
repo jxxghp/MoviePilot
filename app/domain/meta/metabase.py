@@ -251,9 +251,13 @@ class MetaBase(object):
     _subtitle_episode_between_re = r"[第]*\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期幕]?\s*-\s*第*\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期幕]"
     _subtitle_episode_all_re = r"([0-9一二三四五六七八九十百零]+)\s*集\s*全|[全共]\s*([0-9一二三四五六七八九十百零]+)\s*[集话話期幕]"
 
-    def __init__(self, title: str, subtitle: str = None, isfile: bool = False):
+    def __init__(self, title: str, subtitle: Optional[str] = None, isfile: bool = False) -> None:
         """
         保存原始标题、辅助描述和文件识别上下文。
+
+        :param title: 原始标题；空标题不写入识别状态
+        :param subtitle: 可补充识别信息的副标题，未提供时为 None
+        :param isfile: 标题是否来自文件路径
         """
         if not title:
             return
@@ -275,7 +279,7 @@ class MetaBase(object):
         return ""
 
     @name.setter
-    def name(self, name: str):
+    def name(self, name: str) -> None:
         """
         设置名称。
         """
@@ -285,9 +289,11 @@ class MetaBase(object):
             self.en_name = name
             self.cn_name = None
 
-    def init_subtitle(self, title_text: str):
+    def init_subtitle(self, title_text: Optional[str]) -> None:
         """
-        副标题识别。
+        从副标题提取季集与资源信息。
+
+        :param title_text: 待识别的副标题；空值时保持当前状态
         """
         if not title_text:
             return
@@ -448,7 +454,7 @@ class MetaBase(object):
             # 副标题无中文季集标记时，仍识别 01-26Fin 等数字范围+完结标记
             self.__init_episode_range_fin(title_text)
 
-    def __init_episode_range_fin(self, title_text: str):
+    def __init_episode_range_fin(self, title_text: str) -> None:
         """
         识别 01-26Fin / [01-38 END] 等"数字范围+完结标记"格式的集数信息。
         """
@@ -657,9 +663,9 @@ class MetaBase(object):
         return self.audio_encode or ""
 
     @property
-    def frame_rate(self) -> int:
+    def frame_rate(self) -> Optional[int]:
         """
-        返回帧率信息。
+        返回帧率信息，未识别时为 None。
         """
         return self.fps or None
 
@@ -675,9 +681,12 @@ class MetaBase(object):
             return None
         return f"{bit_match.group('bit')}bit"
 
-    def is_in_season(self, season: Union[list, int, str]) -> bool:
+    def is_in_season(self, season: Union[list[Union[int, str]], int, str]) -> bool:
         """
-        是否包含季。
+        判断当前识别结果是否覆盖指定季。
+
+        :param season: 单季或季列表；未标季数的资源按第 1 季处理
+        :return: 全部指定季均在识别范围内时为 True
         """
         if isinstance(season, list):
             if self.end_season is not None:
@@ -698,9 +707,12 @@ class MetaBase(object):
                 else:
                     return int(season) == 1
 
-    def is_in_episode(self, episode: Union[list, int, str]) -> bool:
+    def is_in_episode(self, episode: Union[list[Union[int, str]], int, str]) -> bool:
         """
-        是否包含集。
+        判断当前识别结果是否覆盖指定集。
+
+        :param episode: 单集或集列表
+        :return: 全部指定集均在识别范围内时为 True
         """
         if isinstance(episode, list):
             if self.end_episode is not None:
@@ -714,9 +726,11 @@ class MetaBase(object):
             else:
                 return int(episode) == self.begin_episode
 
-    def set_season(self, sea: Union[list, int, str]):
+    def set_season(self, sea: Union[list[Union[int, str]], int, str]) -> None:
         """
-        更新季。
+        从数字文本、季号或季列表更新季范围。
+
+        :param sea: 待设置的季信息；空值或非数字内容不更新
         """
         if not sea:
             return
@@ -731,9 +745,11 @@ class MetaBase(object):
             self.begin_season = int(sea)
             self.end_season = None
 
-    def set_episode(self, ep: Union[list, int, str]):
+    def set_episode(self, ep: Union[list[Union[int, str]], int, str]) -> None:
         """
-        更新集。
+        从数字文本、集号或集列表更新集范围。
+
+        :param ep: 待设置的集信息；空值或非数字内容不更新
         """
         if not ep:
             return
@@ -749,9 +765,12 @@ class MetaBase(object):
             self.begin_episode = int(ep)
             self.end_episode = None
 
-    def set_episodes(self, begin: int, end: int):
+    def set_episodes(self, begin: int, end: int) -> None:
         """
-        设置开始集结束集。
+        设置集数起止范围，并在两端均有效时更新总集数。
+
+        :param begin: 起始集数；零不覆盖当前值
+        :param end: 结束集数；零不覆盖当前值
         """
         if begin:
             self.begin_episode = begin
@@ -760,9 +779,11 @@ class MetaBase(object):
         if self.begin_episode and self.end_episode:
             self.total_episode = (self.end_episode - self.begin_episode) + 1
 
-    def merge(self, meta: Self):
+    def merge(self, meta: Self) -> None:
         """
-        合并Meta信息。
+        用另一份识别结果补齐当前缺失字段，保留已有媒体身份组合。
+
+        :param meta: 用于补齐当前识别结果的父级元信息
         """
         if self.type == MediaType.UNKNOWN \
                 and meta.type != MediaType.UNKNOWN:
@@ -798,9 +819,11 @@ class MetaBase(object):
         else:
             self.media_source, self.media_id = resolve_media_identity(media=meta)
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, object]:
         """
-        转为字典。
+        转为包含季集、名称和版本派生字段的字典。
+
+        :return: 当前识别状态及派生字段的浅拷贝
         """
         dicts = vars(self).copy()
         dicts["type"] = self.type.value if self.type else None

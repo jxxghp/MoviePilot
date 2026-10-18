@@ -59,11 +59,11 @@ class FilterTorrentsAction(BaseAction):
         """
         return self.done
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         过滤torrents中的资源
         """
-        params = FilterTorrentsParams(**params)
+        action_params = FilterTorrentsParams.model_validate(params)
         for torrent in context.torrents:
             if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
@@ -74,16 +74,16 @@ class FilterTorrentsAction(BaseAction):
             if TorrentHelper().filter_torrent(
                     torrent_info=torrent_info,
                     filter_params={
-                        "quality": params.quality,
-                        "resolution": params.resolution,
-                        "effect": params.effect,
-                        "include": params.include,
-                        "exclude": params.exclude,
-                        "size": params.size
+                        "quality": action_params.quality,
+                        "resolution": action_params.resolution,
+                        "effect": action_params.effect,
+                        "include": action_params.include,
+                        "exclude": action_params.exclude,
+                        "size": action_params.size
                     }
             ):
                 if ActionChain().filter_torrents(
-                        rule_groups=params.rule_groups,
+                        rule_groups=action_params.rule_groups,
                         torrent_list=[torrent_info],
                         mediainfo=media_info
                 ):

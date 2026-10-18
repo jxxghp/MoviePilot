@@ -25,6 +25,7 @@ from app.application.transfer.execution import (
     TransferExecutionSnapshot,
     TransferExecutionState,
 )
+from app.application.transfer.jobs import JobId
 from app.application.transfer.notifications import (
     TransferNotificationAggregator,
     TransferSuccessNotification,
@@ -46,16 +47,16 @@ from app.chain.transfer.records import apply_download_history_classification
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
+from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
-from app.schemas.transfer import TransferInfo, TransferJob, TransferQueueItemData
+from app.schemas.transfer import DownloaderTorrent, TransferInfo, TransferJob, TransferQueueItemData
 from app.schemas.types import (
     MediaSource,
     MediaType,
     ProgressKey,
     TorrentStatus,
 )
-from app.schemas.workflow import FileItem
 
 task_lock = threading.Lock()
 downloader_lock = threading.Lock()
@@ -63,6 +64,27 @@ downloader_lock = threading.Lock()
 _WORKER_RESTART_TIMEOUT_SECONDS = 30.0
 _WORKER_CLOSE_TIMEOUT_SECONDS = 30.0
 _QUEUE_ADMISSION_LOCK_WAIT_SECONDS = 0.1
+
+
+def _unique_pending_torrents(
+    torrents: List[DownloaderTorrent], existing_hashes: set[str]
+) -> List[DownloaderTorrent]:
+    """
+    按下载器返回顺序排除已整理和本轮重复的任务。
+
+    :param torrents: 本轮已完成的下载任务
+    :param existing_hashes: 整理队列中已有的任务哈希
+    :return: 保留首次出现的待整理任务
+    """
+    seen: set[Optional[str]] = set()
+    pending: List[DownloaderTorrent] = []
+    for torrent in torrents:
+        torrent_hash = torrent.hash
+        if torrent_hash in existing_hashes or torrent_hash in seen:
+            continue
+        seen.add(torrent_hash)
+        pending.append(torrent)
+    return pending
 
 
 class TransferQueueOwner(_TransferOwnerBase):
@@ -83,7 +105,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         super().__init__(runtime_context=runtime_context)
         self._refresh_file_extensions()
         self._queue = queue.Queue()
-        self._transfer_threads = []
+        self._transfer_threads: list[threading.Thread] = []
         # 队列间隔时间（秒）
         self._transfer_interval = 15
         self.jobview = JobManager()
@@ -93,11 +115,11 @@ class TransferQueueOwner(_TransferOwnerBase):
         # 持久准入仓库先于内存入队保存任务，进程退出后仍可恢复。
         self._transfer_admissions = self.transfer_admission_repository
         self._transfer_executions = self.transfer_execution_repository
-        self._success_target_files: Dict[Tuple, List[str]] = {}
+        self._success_target_files: Dict[JobId, List[str]] = {}
         # 批次级刮削缓冲，避免同一批多文件入库重复触发目录刮削
         self._scrape_batches: Dict[str, Dict[str, Any]] = {}
         self._progress = ProgressHelper(ProgressKey.FileTransfer)
-        self._threads = []
+        self._threads: list[threading.Thread] = []
         self._retiring_threads: List[threading.Thread] = []
         self._queue_active = False
         # 每一代执行线程 使用独立停止信号，避免热更新启动新执行线程 后旧线程重新取任务
@@ -864,6 +886,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                     or execution_snapshot.state is not TransferExecutionState.NOT_STARTED
                     or execution_snapshot.steps
                 )
+                fileitem: Optional[FileItem]
                 if use_frozen_source:
                     planning_input = admission.planning_input
                     if planning_input is None:
@@ -1304,13 +1327,13 @@ class TransferQueueOwner(_TransferOwnerBase):
             self.jobview.remove_task(task.fileitem, finished_only=True)
         return bool(self.jobview.add_task(task))
 
-    def remove_from_queue(self, fileitem: FileItem):
+    def remove_from_queue(self, fileitem: FileItem) -> None:
         """
         从待整理队列移除
         """
         self._transfer_queue_service().remove(fileitem)
 
-    def _TransferChain__start_job_execution(self, task: TransferTask):
+    def _TransferChain__start_job_execution(self, task: TransferTask) -> None:
         """
         在作业视图支持执行租约时标记主程序任务开始执行。
         """
@@ -1585,15 +1608,9 @@ class TransferQueueOwner(_TransferOwnerBase):
                 progress_callback(value=0, text="正在查询已完成下载任务 ...")
 
             if torrents_list := self.list_torrents(status=TorrentStatus.TRANSFER):
-                seen = set()
                 existing_hashes = self.jobview.get_all_torrent_hashes()
                 # 排除多下载器返回的重复种子
-                torrents = [
-                    torrent
-                    for torrent in torrents_list
-                    if (h := torrent.hash) not in existing_hashes
-                    and (h not in seen and (seen.add(h) or True))
-                ]
+                torrents = _unique_pending_torrents(torrents_list, existing_hashes)
             else:
                 torrents = []
 

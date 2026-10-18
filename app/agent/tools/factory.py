@@ -3,7 +3,18 @@
 """
 
 import hashlib
-from typing import Callable, List, Optional, Type
+from typing import (
+    TYPE_CHECKING,
+    List,
+    NotRequired,
+    Optional,
+    Type,
+    TypedDict,
+    Unpack,
+)
+
+if TYPE_CHECKING:
+    from app.agent.callback import StreamingHandler
 
 from app.agent.llm.capability import AgentCapabilityManager
 from app.agent.tools.impl.agent_task import AgentTaskTool
@@ -39,7 +50,49 @@ from .base import MoviePilotTool
 from .catalog import ToolCatalogError, ToolCatalogSnapshot
 
 
-def _get_plugin_agent_tools() -> list[dict]:
+class _PluginToolInfo(TypedDict):
+    """
+    插件运行时提供的一条 Agent 工具登记记录。
+
+    :ivar plugin_id: 插件的稳定标识
+    :ivar plugin_name: 插件显示名称
+    :ivar tools: 插件登记的工具类
+    """
+
+    plugin_id: str
+    plugin_name: str
+    tools: list[type[MoviePilotTool]]
+
+
+class _ToolFactoryOptions(TypedDict):
+    """
+    构造目录时原样交给工具创建入口的可选参数。
+
+    :ivar session_id: 当前会话标识
+    :ivar user_id: 当前用户标识
+    :ivar channel: 可缺省的消息渠道
+    :ivar source: 可缺省的消息来源
+    :ivar username: 可缺省的用户显示名
+    :ivar stream_handler: 可缺省的流式回调处理器
+    :ivar agent_context: 可缺省的 Agent 上下文
+    :ivar allow_message_tools: 是否允许消息工具
+    :ivar include_external_service_tools: 是否包含外部服务工具
+    :ivar data: 可缺省的 Agent 数据上下文
+    """
+
+    session_id: str
+    user_id: str
+    channel: NotRequired[Optional[str]]
+    source: NotRequired[Optional[str]]
+    username: NotRequired[Optional[str]]
+    stream_handler: NotRequired[Optional["StreamingHandler"]]
+    agent_context: NotRequired[Optional[dict[str, object]]]
+    allow_message_tools: NotRequired[bool]
+    include_external_service_tools: NotRequired[bool]
+    data: NotRequired[Optional[AgentDataContext]]
+
+
+def _get_plugin_agent_tools() -> list[_PluginToolInfo]:
     """
     读取当前插件工具投影，隔离 Agent 工具工厂与 Runtime 管理器。
     """
@@ -170,11 +223,11 @@ class MoviePilotToolFactory:
         cls,
         session_id: str,
         user_id: str,
-        channel: str = None,
-        source: str = None,
-        username: str = None,
-        stream_handler: Callable = None,
-        agent_context: dict = None,
+        channel: Optional[str] = None,
+        source: Optional[str] = None,
+        username: Optional[str] = None,
+        stream_handler: Optional["StreamingHandler"] = None,
+        agent_context: Optional[dict[str, object]] = None,
         allow_message_tools: bool = True,
         include_external_service_tools: bool = False,
         data: Optional[AgentDataContext] = None,
@@ -246,7 +299,7 @@ class MoviePilotToolFactory:
         return tools
 
     @classmethod
-    def create_catalog(cls, **tool_kwargs) -> ToolCatalogSnapshot:
+    def create_catalog(cls, **tool_kwargs: Unpack[_ToolFactoryOptions]) -> ToolCatalogSnapshot:
         """
         在插件目录稳定窗口内构造一份完整本地工具快照。
         """

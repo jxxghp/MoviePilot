@@ -999,19 +999,19 @@ class StreamingHandler:
                 # 第一次发送：发送新消息并获取 message_id
                 response = await run_in_threadpool(
                     chain.send_direct_message,
-                    Message(
-                        channel=self._channel,
-                        source=self._source,
-                        mtype=MessageType.Agent,
-                        userid=self._user_id,
-                        username=self._username,
-                        original_message_id=self._original_message_id,
-                        original_chat_id=self._original_chat_id,
-                        title=self._title,
-                        text=current_text,
-                        rich_message=self._get_rich_message(current_text),
-                        save_history=False,
-                    ),
+                    Message.model_validate({
+                        "channel": self._channel,
+                        "source": self._source,
+                        "mtype": MessageType.Agent,
+                        "userid": self._user_id,
+                        "username": self._username,
+                        "original_message_id": self._original_message_id,
+                        "original_chat_id": self._original_chat_id,
+                        "title": self._title,
+                        "text": current_text,
+                        "rich_message": self._get_rich_message(current_text),
+                        "save_history": False,
+                    }),
                 )
                 if response and response.success and response.message_id:
                     self._message_response = response
@@ -1037,19 +1037,19 @@ class StreamingHandler:
                     if current_text:
                         response = await run_in_threadpool(
                             chain.send_direct_message,
-                            Message(
-                                channel=self._channel,
-                                source=self._source,
-                                mtype=MessageType.Agent,
-                                userid=self._user_id,
-                                username=self._username,
-                                original_message_id=self._original_message_id,
-                                original_chat_id=self._original_chat_id,
-                                title=self._title,
-                                text=current_text,
-                                rich_message=self._get_rich_message(current_text),
-                                save_history=False,
-                            ),
+                            Message.model_validate({
+                                "channel": self._channel,
+                                "source": self._source,
+                                "mtype": MessageType.Agent,
+                                "userid": self._user_id,
+                                "username": self._username,
+                                "original_message_id": self._original_message_id,
+                                "original_chat_id": self._original_chat_id,
+                                "title": self._title,
+                                "text": current_text,
+                                "rich_message": self._get_rich_message(current_text),
+                                "save_history": False,
+                            }),
                         )
                         if response and response.success and response.message_id:
                             self._message_response = response

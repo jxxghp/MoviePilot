@@ -29,7 +29,7 @@ class Token(BaseModel):
     user_name: str = Field(description="用户名")
     avatar: Optional[str] = Field(default=None, description="头像")
     level: int = Field(default=1, description="权限级别")
-    permissions: Optional[UserPermissions] = Field(default_factory=dict, description="详细权限")
+    permissions: Optional[UserPermissions] = Field(default_factory=UserPermissions, description="详细权限")
 
 
 class TokenPayload(BaseModel):

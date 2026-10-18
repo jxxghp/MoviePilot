@@ -279,7 +279,10 @@ class ScrapingConfig:
     媒体刮削配置
     """
 
-    def __init__(self, config_dict: dict[str, str] = None):
+    def __init__(
+            self,
+            config_dict: Optional[dict[str, Union[ScrapingPolicy, bool, str]]] = None,
+    ) -> None:
         """
         初始化配置对象
 
@@ -295,8 +298,8 @@ class ScrapingConfig:
 
         for key, value in _config.items():
             if "_" in key:
-                items = key.split("_", 1)
-                self._policies[tuple(items)] = ScrapingOption(*items, value)
+                item, metadata = key.split("_", 1)
+                self._policies[(item, metadata)] = ScrapingOption(item, metadata, value)
 
     def option(
             self, item: Union[str, ScrapingTarget], metadata: Union[str, ScrapingMetadata]
@@ -328,7 +331,7 @@ class ScrapingConfig:
         return cls(user_config)
 
     @staticmethod
-    def get_default_config() -> dict[str, str]:
+    def get_default_config() -> dict[str, Union[ScrapingPolicy, bool, str]]:
         """
         获取默认配置字典
         """
@@ -346,7 +349,9 @@ class ScrapingConfig:
             ]
             for md in mds
         ]
-        defaults = {item: ScrapingPolicy.MISSINGONLY for item in config_items}
+        defaults: dict[str, Union[ScrapingPolicy, bool, str]] = {
+            item: ScrapingPolicy.MISSINGONLY for item in config_items
+        }
         defaults["music_lyrics"] = ScrapingPolicy.UPGRADE
         return defaults
 
@@ -385,7 +390,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         flags=re.IGNORECASE,
     )
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化存储访问和当前刮削策略。
         """
@@ -393,14 +398,14 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         self.storagechain = StorageChain()
         self.scraping_policies = ScrapingConfig.from_system_config()
 
-    def on_config_changed(self):
+    def on_config_changed(self) -> None:
         """
         重新读取刮削策略，供后续任务采用最新配置。
         """
         self.scraping_policies = ScrapingConfig.from_system_config()
 
     @staticmethod
-    def _cleanup_temp_file(path: Optional[Path]):
+    def _cleanup_temp_file(path: Optional[Path]) -> None:
         """
         清理临时刮削文件
 
@@ -450,7 +455,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _save_file(
             self, fileitem: _SchemaFileItem, path: Path, content: Union[bytes, str]
-    ):
+    ) -> None:
         """
         保存或上传文件
 
@@ -486,7 +491,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     def _download_and_save_image(
             self, fileitem: _SchemaFileItem, path: Path, url: str
-    ):
+    ) -> None:
         """
         流式下载图片并保存到文件
 
@@ -555,11 +560,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 if current_fileitem.type == "file":
                     # 电影文件NFO: 放在电影文件同级目录，名称与电影文件主体一致，后缀.nfo
                     final_filename = f"{target_dir_path.stem}.nfo"
-                    target_dir_item = (
+                    parent_item = (
                         parent_fileitem
                         or self.storagechain.get_parent_item(current_fileitem)
                     )
-                    if not target_dir_item:
+                    if not parent_item:
                         logger.error(
                             f"无法获取文件 {current_fileitem.path} 的父目录项。"
                         )
@@ -567,6 +572,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             current_fileitem,
                             None,
                         )
+                    target_dir_item = parent_item
                     target_dir_path = Path(target_dir_item.path)
                 else:
                     # 电影目录NFO (例如蓝光原盘): 放在电影目录内，名称与目录名主体一致，后缀.nfo
@@ -580,12 +586,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             elif item_type == ScrapingTarget.EPISODE:
                 # 电视剧集文件NFO: 放在集文件同级目录，名称与集文件主体一致，后缀.nfo
                 final_filename = f"{target_dir_path.stem}.nfo"
-                target_dir_item = parent_fileitem or self.storagechain.get_parent_item(
+                parent_item = parent_fileitem or self.storagechain.get_parent_item(
                     current_fileitem
                 )
-                if not target_dir_item:
+                if not parent_item:
                     logger.error(f"无法获取文件 {current_fileitem.path} 的父目录项。")
                     return current_fileitem, None
+                target_dir_item = parent_item
                 target_dir_path = Path(target_dir_item.path)
         # 图片通常是放在当前目录 (current_fileitem) 下
         # Jellyfin/Kodi 等在季目录内使用通用图片名，而不是 season01-poster.jpg
@@ -602,12 +609,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 final_filename = f"{season_image_name}{hint_ext}"
         elif item_type == ScrapingTarget.MOVIE and current_fileitem.type == "file":
             # 电影文件的图片应与视频文件同级保存，避免把图片路径拼到文件名下面。
-            target_dir_item = parent_fileitem or self.storagechain.get_parent_item(
+            parent_item = parent_fileitem or self.storagechain.get_parent_item(
                 current_fileitem
             )
-            if not target_dir_item:
+            if not parent_item:
                 logger.error(f"无法获取文件 {current_fileitem.path} 的父目录项。")
                 return current_fileitem, None
+            target_dir_item = parent_item
             target_dir_path = Path(target_dir_item.path)
         # 如果是 EPISODE 类型的图片（如thumb），通常也是放在文件同级目录，文件名与视频文件一致
         elif (
@@ -616,12 +624,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         ):
             hint_ext = Path(filename_hint).suffix if filename_hint else ".jpg"
             final_filename = f"{target_dir_path.stem}{hint_ext}"
-            target_dir_item = parent_fileitem or self.storagechain.get_parent_item(
+            parent_item = parent_fileitem or self.storagechain.get_parent_item(
                 current_fileitem
             )
-            if not target_dir_item:
+            if not parent_item:
                 logger.error(f"无法获取文件 {current_fileitem.path} 的父目录项。")
                 return current_fileitem, None
+            target_dir_item = parent_item
             target_dir_path = Path(target_dir_item.path)
         # TODO: 考虑其他图片类型是否也需要保存到父目录
 
@@ -759,7 +768,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             )
             if isinstance(plugin_images, dict):
                 return plugin_images or None
-        merged = {}
+        merged: dict[str, str] = {}
         for module in sorted(
             self.modulemanager.get_running_modules("metadata_img"),
             key=lambda x: x.get_priority(),
@@ -776,7 +785,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return merged or None
 
     @eventmanager.register(EventType.MetadataScrape)
-    def scrape_metadata_event(self, event: Event):
+    def scrape_metadata_event(self, event: Event) -> None:
         """
         监控手动刮削事件
         """
@@ -928,7 +937,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             overwrite: bool = False,
             season_number: Optional[int] = None,
             episode_number: Optional[int] = None,
-    ):
+    ) -> None:
         """
         NFO 刮削
         """
@@ -975,7 +984,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             overwrite: bool = False,
             season_number: Optional[int] = None,
             episode_number: Optional[int] = None,
-    ):
+    ) -> None:
         """
         图片刮削
         """
@@ -1064,10 +1073,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def scrape_metadata(
             self,
             fileitem: _SchemaFileItem,
-            meta: MetaBase = None,
-            mediainfo: Union[MediaInfo, MusicInfo] = None,
+            meta: Optional[MetaBase] = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             init_folder: bool = True,
-            parent: _SchemaFileItem = None,
+            parent: Optional[_SchemaFileItem] = None,
             overwrite: bool = False,
             recursive: bool = True,
             audio_files: Optional[list[_SchemaFileItem]] = None,
@@ -1080,7 +1089,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :param init_folder: 是否刮削根目录
-        :param parent: 上级目录
+        :param parent: 上级目录；未提供时由刮削目标自行确定
         :param overwrite: 是否覆盖已有文件
         :param recursive: 是否递归处理目录内文件
         :param audio_files: 音乐批次已确认成功的音频文件清单
@@ -1290,7 +1299,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         return True, message
 
     @staticmethod
-    def _music_scrape_identity(info: MusicInfo) -> tuple:
+    def _music_scrape_identity(
+            info: MusicInfo,
+    ) -> tuple[Optional[MediaSource], Optional[str], str, Optional[str], Optional[int], Optional[int]]:
         """
         构造音乐刮削身份键，用于识别同一单曲被错误套用到多个文件。
         """
@@ -1960,10 +1971,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
             recursive: bool,
-    ):
+    ) -> None:
         """
         处理电影刮削
         """
@@ -2004,7 +2015,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             init_folder: bool,
             overwrite: bool,
             recursive: bool,
-    ):
+    ) -> None:
         """
         处理电影目录刮削
         """
@@ -2047,10 +2058,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
             recursive: bool,
-    ):
+    ) -> None:
         """
         处理电视剧刮削
         """
@@ -2083,9 +2094,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             fileitem: _SchemaFileItem,
             filepath: Path,
             mediainfo: MediaInfo,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
-    ):
+    ) -> None:
         """
         处理电视剧集文件刮削
         """
@@ -2136,10 +2147,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta: MetaBase,
             mediainfo: MediaInfo,
             init_folder: bool,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
             recursive: bool,
-    ):
+    ) -> None:
         """
         处理电视剧目录刮削
         """
@@ -2177,9 +2188,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             filepath: Path,
             meta: MetaBase,
             mediainfo: MediaInfo,
-            parent: _SchemaFileItem,
+            parent: Optional[_SchemaFileItem],
             overwrite: bool,
-    ):
+    ) -> None:
         """
         初始化电视剧目录元数据（识别季号并刮削）
         """

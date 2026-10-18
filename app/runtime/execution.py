@@ -217,26 +217,41 @@ async def await_task_to_terminal(
 
 
 async def run_in_threadpool(
-    func: Callable[..., Any],
+    func: Callable[..., _Result],
     *args: Any,
     **kwargs: Any,
-) -> Any:
+) -> _Result:
     """
     在线程中执行同步函数，保持 FastAPI 旧帮助函数的参数语义。
+
+    :param func: 在线程中执行的同步回调
+    :param args: 回调的位置参数
+    :param kwargs: 回调的关键字参数
+    :return: 回调完成后的原始结果
     """
     if kwargs:
         func = partial(func, **kwargs)
     context = copy_context()
-    return await run_sync(context.run, func, *args)
+
+    def invoke() -> _Result:
+        return context.run(func, *args)
+
+    result: _Result = await run_sync(invoke)
+    return result
 
 
 async def run_in_threadpool_to_completion(
-    func: Callable[..., Any],
+    func: Callable[..., _Result],
     *args: Any,
     **kwargs: Any,
-) -> Any:
+) -> _Result:
     """
     在线程调用取得终态后传播取消，避免提前释放仍在使用的执行容量。
+
+    :param func: 在线程中执行的同步回调
+    :param args: 回调的位置参数
+    :param kwargs: 回调的关键字参数
+    :return: 回调完成后的原始结果；调用方取消时先等回调结束再传播取消
     """
     worker_task = asyncio.create_task(run_in_threadpool(func, *args, **kwargs))
     cancellation: asyncio.CancelledError | None = None

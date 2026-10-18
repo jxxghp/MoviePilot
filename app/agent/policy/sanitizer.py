@@ -705,9 +705,10 @@ def _pydantic_alias_names(
         return ()
     budget = _budget if _budget is not None else [_MAX_ITEMS]
     if type(alias) is AliasChoices:
-        choices = alias.choices
-        if type(choices) is not list:
+        candidate_choices = alias.choices
+        if type(candidate_choices) is not list:
             return None
+        choices: Sequence[object] = candidate_choices
     else:
         choices = (alias,)
     if len(choices) > budget[0]:

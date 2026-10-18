@@ -247,7 +247,7 @@ async def fetch_image(
     proxy: Optional[bool] = None,
     use_cache: bool = False,
     if_none_match: Optional[str] = None,
-    cookies: Optional[str | dict] = None,
+    cookies: Optional[str | dict[str, str]] = None,
     allowed_domains: Optional[set[str]] = None,
 ) -> Optional[Response]:
     """
@@ -942,7 +942,7 @@ def ruletest(
     )
     # 查询规则组详情
     rulegroup = RuleHelper().get_rule_group(rulegroup_name)
-    result_data = {
+    result_data: dict[str, object] = {
         "title": title,
         "subtitle": subtitle,
         "rulegroup_name": rulegroup_name,

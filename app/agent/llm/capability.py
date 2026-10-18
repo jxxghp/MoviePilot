@@ -11,8 +11,13 @@ import subprocess
 from abc import ABC
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from openai import OpenAI
+
+    from app.schemas.types import NotificationChannel
 
 from app.adapters.network.http import RequestUtils
 from app.agent.shell import agent_text_subprocess_kwargs
@@ -69,7 +74,7 @@ class OpenAIAudioProvider(AudioCapabilityProvider):
     name = "openai"
 
     @staticmethod
-    def _build_client(api_key: str, base_url: Optional[str]):
+    def _build_client(api_key: str, base_url: Optional[str]) -> OpenAI:
         from openai import OpenAI
 
         return OpenAI(api_key=api_key, base_url=base_url, max_retries=3)
@@ -144,7 +149,7 @@ class OpenAIAudioProvider(AudioCapabilityProvider):
             if not api_key:
                 raise ValueError("音频输出 provider 未配置 API Key")
             client = self._build_client(api_key=api_key, base_url=base_url)
-            voice_dir = get_runtime_setting('TEMP_PATH') / "voice"
+            voice_dir = Path(get_runtime_setting('TEMP_PATH')) / "voice"
             voice_dir.mkdir(parents=True, exist_ok=True)
             output_path = voice_dir / f"{uuid4().hex}.opus"
             response = client.audio.speech.create(
@@ -177,7 +182,7 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
     TTS_MESSAGE_ROLE = "user"
     SUPPORTED_STT_MODELS: Optional[frozenset[str]] = None
     SUPPORTED_TTS_MODELS: Optional[frozenset[str]] = None
-    UNSUPPORTED_TTS_MODELS = frozenset()
+    UNSUPPORTED_TTS_MODELS: frozenset[str] = frozenset()
     SUPPORTED_AUDIO_MIME_TYPES = {
         ".flac": "audio/flac",
         ".m4a": "audio/mp4",
@@ -189,7 +194,7 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
     TRANSCODED_STT_SUFFIX = ".wav"
     TRANSCODED_STT_SAMPLE_RATE = "16000"
 
-    def _build_client(self, api_key: str, base_url: Optional[str]):
+    def _build_client(self, api_key: str, base_url: Optional[str]) -> OpenAI:
         from openai import OpenAI
 
         return OpenAI(
@@ -260,7 +265,7 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
             return "ogg"
         return suffix or "ogg"
 
-    def _build_audio_input_payload(self, content: bytes, filename: str) -> dict:
+    def _build_audio_input_payload(self, content: bytes, filename: str) -> dict[str, str]:
         """
         按不同 Chat Audio 兼容形态构造 input_audio 内容。
         """
@@ -350,7 +355,7 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
                     logger.debug(f"清理 STT 临时音频失败: path={temp_path}, error={err}")
 
     @staticmethod
-    def _extract_message_text(message) -> Optional[str]:
+    def _extract_message_text(message: object) -> Optional[str]:
         """
         兼容音频理解响应可能放在 content 或 reasoning_content 的情况。
         """
@@ -371,7 +376,7 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
         return None
 
     @staticmethod
-    def _extract_audio_data(message) -> Optional[str]:
+    def _extract_audio_data(message: object) -> Optional[str]:
         audio = getattr(message, "audio", None)
         if isinstance(audio, dict):
             return audio.get("data")
@@ -595,7 +600,7 @@ class MiniMaxAudioProvider(OpenAIChatAudioProvider):
         }
     )
 
-    def _build_client(self, api_key: str, base_url: Optional[str]):
+    def _build_client(self, api_key: str, base_url: Optional[str]) -> OpenAI:
         """
         构建 MiniMax OpenAI 兼容客户端，兼容用户误填 Anthropic 端点的情况。
         """
@@ -734,7 +739,7 @@ class MiniMaxAudioProvider(OpenAIChatAudioProvider):
             if not audio_data:
                 raise ValueError("MiniMax T2A 响应中没有音频数据")
 
-            voice_dir = get_runtime_setting('TEMP_PATH') / "voice"
+            voice_dir = Path(get_runtime_setting('TEMP_PATH')) / "voice"
             voice_dir.mkdir(parents=True, exist_ok=True)
             output_path = voice_dir / f"{uuid4().hex}.opus"
             output_path.write_bytes(self._decode_audio_payload(audio_data))
@@ -899,7 +904,7 @@ class AgentCapabilityManager:
         return cls.REPLY_MODE_TEXT
 
     @classmethod
-    def _parse_message_channel(cls, channel: Optional[Any]):
+    def _parse_message_channel(cls, channel: object) -> Optional[NotificationChannel]:
         """
         将渠道入参归一化为消息渠道枚举。
         """
@@ -936,7 +941,7 @@ class AgentCapabilityManager:
         for config in get_notification_configs(include_disabled=True):
             if config.name != source:
                 continue
-            return (config.config or {}).get("WECHAT_MODE", "app") != "bot"
+            return bool((config.config or {}).get("WECHAT_MODE", "app") != "bot")
         return False
 
     @classmethod

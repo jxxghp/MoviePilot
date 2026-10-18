@@ -250,7 +250,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
                 or subscribe_media_id != media_id
             ):
                 continue
-            items = []
+            items: list[int] = []
             if mediainfo.type == MediaType.TV:
                 # 电视剧有集数，使用 episode_list
                 items = meta.episode_list
@@ -268,7 +268,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
         if note:
             updated = self._SubscribeChain__apply_subscribe_update(
                 subscribe,
-                {"note": note},
+                {"note": list[JsonData](note)},
                 scene="download_note",
             )
             return updated or subscribe
@@ -439,7 +439,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
         begin_season: int,
         total_episode: Optional[int],
         start_episode: Optional[int],
-        downloaded_episodes: List[int] = None,
+        downloaded_episodes: Optional[List[int]] = None,
     ) -> Tuple[bool, Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]:
         """
         根据订阅开始集数和总集数，结合TMDB信息计算当前订阅的缺失集数
@@ -450,7 +450,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
         :param begin_season: 开始季
         :param total_episode: 订阅设定总集数
         :param start_episode: 订阅设定开始集数
-        :param downloaded_episodes: 已下载集数
+        :param downloaded_episodes: 已下载集数；None 按空集数处理
         """
         # 用订阅限定的总集数和起始集裁剪缺集范围。
         if not no_exists or not no_exists.get(mediakey):

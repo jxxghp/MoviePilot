@@ -97,8 +97,9 @@ class SyncSiteReferenceMutationService:
             if isinstance(value, int) and site_id != "*" and value != site_id
         ] if isinstance(original_rss, list) else []
         if rss_sites != (original_rss or []):
-            self._configuration.stage_set(SystemConfigKey.RssSites, rss_sites)
-            changes[SystemConfigKey.RssSites] = rss_sites
+            rss_payload = list[JsonData](rss_sites)
+            self._configuration.stage_set(SystemConfigKey.RssSites, rss_payload)
+            changes[SystemConfigKey.RssSites] = rss_payload
 
         subscription_ids = []
         for subscription in self._subscriptions.list_for_reference_rewrite():
@@ -112,7 +113,7 @@ class SyncSiteReferenceMutationService:
                 continue
             self._subscriptions.stage_update(
                 subscription.id,
-                SubscriptionPatch({"sites": sites}),
+                SubscriptionPatch({"sites": list[JsonData](sites)}),
             )
             subscription_ids.append(subscription.id)
         return (

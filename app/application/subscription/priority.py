@@ -287,7 +287,7 @@ def prepare_best_version_total_expansion_fields(
                     total_episode=old_total_episode,
                 )
             }
-        update_data["episode_priority"] = episode_priority
+        update_data["episode_priority"] = cast(JsonData, episode_priority)
         working_episode_priority = episode_priority
         if is_full_best_version_enabled(subscribe):
             update_data["current_priority"] = 0
@@ -344,7 +344,7 @@ def prepare_best_version_total_change_fields(
                 episode_priority=filtered_priority,
             )
         )
-    update_data["episode_priority"] = filtered_priority
+    update_data["episode_priority"] = cast(JsonData, filtered_priority)
     update_data["current_priority"] = current_priority
     working_snapshot = replace(working_snapshot, current_priority=current_priority)
     update_data.update(prepare_subscribe_progress_fields(subscribe=working_snapshot, no_exists={}))

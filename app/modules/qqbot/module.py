@@ -19,8 +19,7 @@ from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.qqbot.qqbot import QQBot
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage, Message
-from app.schemas.notification import NotificationChannel
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
     NotificationChannel.QQ,
@@ -294,7 +293,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
                             )
                         )
 
-        deduped = []
+        deduped: List[IncomingMessage.MessageImage] = []
         for image in images:
             if image.ref not in [item.ref for item in deduped]:
                 deduped.append(image)

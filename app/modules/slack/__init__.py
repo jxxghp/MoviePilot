@@ -18,8 +18,7 @@ from app.modules.slack.slack import Slack
 from app.runtime.log import logger
 from app.schemas.event import CommandRegisterEventData
 from app.schemas.message import IncomingMessage, Message, MessageResponse
-from app.schemas.notification import NotificationChannel
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
     NotificationChannel.Slack,
@@ -93,7 +92,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         """
         return self._stop_service_instances()
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         保留设置初始化钩子，实例配置由通知服务管理。
         """
@@ -124,7 +123,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         client_config = self.get_config(source)
         if not client_config:
             return None
-        client: Slack = self.get_instance(client_config.name)
+        client = self.get_instance(client_config.name)
         try:
             msg_json = json.loads(body)
             while isinstance(msg_json, str):
@@ -394,7 +393,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
             return content
         return None
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> None:
         """
         向通过渠道范围筛选的 Slack 配置发送普通通知。
 
@@ -413,7 +412,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 if not userid:
                     logger.warn("用户没有指定 Slack用户ID，消息无法发送")
                     return
-            client: Slack = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 if message.file_path:
                     client.send_file(
@@ -450,7 +449,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: Slack = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(
                     title=message.title,
@@ -475,7 +474,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: Slack = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(
                     title=message.title,
@@ -508,7 +507,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         for conf in self.get_configs().values():
             if source != conf.name:
                 continue
-            client: Slack = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 result = client.delete_msg(message_id=message_id, chat_id=chat_id)
                 if result:
@@ -544,7 +543,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         for conf in self.get_configs().values():
             if source != conf.name:
                 continue
-            client: Slack = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 result = client.send_msg(
                     title=title or "",
@@ -584,7 +583,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         config = self.get_config(source)
         if not config:
             return None
-        client: Slack = self.get_instance(config.name)
+        client = self.get_instance(config.name)
         if not client:
             return None
         if not client.add_reaction(
@@ -636,7 +635,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         config = self.get_config(source)
         if not config:
             return False
-        client: Slack = self.get_instance(config.name)
+        client = self.get_instance(config.name)
         if not client:
             return False
         return client.remove_reaction(
@@ -664,7 +663,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 if not userid:
                     logger.warn("用户没有指定 Slack 用户ID，消息无法发送")
                     return None
-            client: Slack = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 if message.file_path:
                     result = client.send_file(

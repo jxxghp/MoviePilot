@@ -12,6 +12,7 @@ from app.application.rss import RssHelper
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.subscription.candidates import CandidateIndex
+from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
@@ -76,7 +77,9 @@ class TorrentsChain(ChainBase):
             return self._spider_file
         return self._rss_file
 
-    def remote_refresh(self, channel: NotificationChannel, userid: Union[str, int] = None):
+    def remote_refresh(
+        self, channel: NotificationChannel, userid: Optional[Union[str, int]] = None
+    ) -> None:
         """
         远程刷新订阅，发送消息
         """
@@ -123,7 +126,7 @@ class TorrentsChain(ChainBase):
         self._ensure_context_compatibility(music_cache, stype=stype)
         return music_cache
 
-    def cache_files(self, stype: Optional[str] = None) -> tuple:
+    def cache_files(self, stype: Optional[str] = None) -> tuple[str, str]:
         """
         返回影视与音乐缓存文件名，供按当前订阅模式回写各自缓存
 
@@ -134,7 +137,7 @@ class TorrentsChain(ChainBase):
     @staticmethod
     def split_cache_contexts(
             torrents_cache: Dict[str, List[Context]],
-    ) -> tuple:
+    ) -> tuple[Dict[str, List[Context]], Dict[str, List[Context]]]:
         """
         将合并读取的缓存按种子分类拆分为影视缓存与音乐缓存，用于分别回写各自存储文件。
         """
@@ -170,7 +173,7 @@ class TorrentsChain(ChainBase):
 
     def get_subscribe_cache_candidates(
             self,
-            subscribe,
+            subscribe: SubscriptionSnapshot,
             stype: Optional[str] = None,
             allow_title_match: bool = False,
     ) -> List[Context]:
@@ -190,42 +193,52 @@ class TorrentsChain(ChainBase):
         )
 
     @classmethod
-    def _context_matches_subscribe(cls, context: Context, subscribe) -> bool:
+    def _context_matches_subscribe(
+        cls, context: Context, subscribe: SubscriptionSnapshot
+    ) -> bool:
         """
         严格身份匹配：候选自身识别出的媒体 ID 命中订阅，且季信息不排除订阅季。
         """
         return CandidateIndex.strict_matches(context, subscribe)
 
     @classmethod
-    def _context_title_matches_subscribe(cls, context: Context, subscribe) -> bool:
+    def _context_title_matches_subscribe(
+        cls, context: Context, subscribe: SubscriptionSnapshot
+    ) -> bool:
         """
         标题兜底只服务诊断：仅允许身份缺失候选按标题命中，显式冲突 ID 不兜底。
         """
         return CandidateIndex.title_matches(context, subscribe)
 
     @staticmethod
-    def _mark_title_match_candidate(context: Context, subscribe) -> None:
+    def _mark_title_match_candidate(
+        context: Context, subscribe: SubscriptionSnapshot
+    ) -> None:
         """
         标记标题兜底候选，避免下游把目标媒体回填误认为候选自身识别结果。
         """
         CandidateIndex.mark_title_candidate(context, subscribe)
 
     @classmethod
-    def _context_media_type_matches(cls, context: Context, subscribe) -> bool:
+    def _context_media_type_matches(
+        cls, context: Context, subscribe: SubscriptionSnapshot
+    ) -> bool:
         """
         类型已知且冲突时拒绝；缺失类型不作为缓存候选过滤条件。
         """
         return CandidateIndex.media_type_matches(context, subscribe)
 
     @classmethod
-    def _context_season_matches_subscribe(cls, context: Context, subscribe) -> bool:
+    def _context_season_matches_subscribe(
+        cls, context: Context, subscribe: SubscriptionSnapshot
+    ) -> bool:
         """
         资源季信息只要明确排除订阅季就拒绝；跨季覆盖目标季留给插件诊断。
         """
         return CandidateIndex.season_matches(context, subscribe)
 
     @classmethod
-    def _context_meta_seasons(cls, meta_info) -> set[int]:
+    def _context_meta_seasons(cls, meta_info: Optional[MetaBase]) -> set[int]:
         """
         提取标题解析出的显式季范围；多季包以该范围为准。
         """
@@ -246,27 +259,27 @@ class TorrentsChain(ChainBase):
         return CandidateIndex.context_identities(context)
 
     @staticmethod
-    def _normalize_int(value) -> Optional[int]:
+    def _normalize_int(value: object) -> Optional[int]:
         """
         将季号等动态字段转为 int，无法解析时视为缺失。
         """
         return CandidateIndex.normalize_int(value)
 
     @staticmethod
-    def _normalize_media_type(value) -> Optional[str]:
+    def _normalize_media_type(value: object) -> Optional[str]:
         """
         统一 MediaType 枚举与字符串形态。
         """
         return CandidateIndex.normalize_media_type(value)
 
     @staticmethod
-    def _normalize_title(value) -> str:
+    def _normalize_title(value: object) -> str:
         """
         归一标题用于低置信标题兜底匹配。
         """
         return CandidateIndex.normalize_title(value)
 
-    def clear_torrents(self):
+    def clear_torrents(self) -> None:
         """
         清理种子缓存数据，包含音乐独立缓存
         """
@@ -582,7 +595,7 @@ class TorrentsChain(ChainBase):
     def refresh(
             self,
             stype: Optional[str] = None,
-            sites: List[int] = None,
+            sites: Optional[List[int]] = None,
             progress_callback: Optional[Callable[..., None]] = None,
             include_music: bool = False,
             site_observer: Optional[Callable[[dict[str, object]], None]] = None,
@@ -680,7 +693,9 @@ class TorrentsChain(ChainBase):
         )
 
     @staticmethod
-    def _ensure_context_compatibility(torrents_cache: Dict[str, List[Context]], stype: Optional[str] = None):
+    def _ensure_context_compatibility(
+        torrents_cache: Dict[str, List[Context]], stype: Optional[str] = None
+    ) -> None:
         """
         确保Context对象的兼容性，为旧版本添加缺失的字段
         """
@@ -711,7 +726,9 @@ class TorrentsChain(ChainBase):
                     context.media_info_is_target = False
 
     @staticmethod
-    def _get_media_id_match_source(mediainfo: Optional[MediaInfo]) -> str:
+    def _get_media_id_match_source(
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]]
+    ) -> str:
         """
         返回候选自身识别命中的媒体来源。
         """
@@ -720,7 +737,7 @@ class TorrentsChain(ChainBase):
             return str(media_source)
         return "unknown"
 
-    def __renew_rss_url(self, domain: str, site: dict):
+    def __renew_rss_url(self, domain: str, site: dict) -> None:
         """
         保留原配置生成新的rss地址
         """

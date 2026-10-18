@@ -6,8 +6,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Literal, Optional, Type, cast
 
-# pytz 未提供完整类型标记，保留现有时区实现的导入。
-import pytz  # type: ignore[import-untyped]
+import pytz
 from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.base import MoviePilotTool

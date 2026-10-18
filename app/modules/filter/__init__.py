@@ -21,7 +21,7 @@ _SIZE_UNIT = 1024 * 1024
 
 
 @lru_cache(maxsize=1024)
-def _compile_ignorecase(pattern: str) -> re.Pattern:
+def _compile_ignorecase(pattern: str) -> re.Pattern[str]:
     """
     缓存过滤规则的忽略大小写正则，减少重复匹配的编译开销。
 
@@ -103,7 +103,7 @@ class FilterModule(_ModuleBase):
         self.rule_set = deepcopy(self.builtin_rule_set)
         self.__init_custom_rules()
 
-    def __init_custom_rules(self):
+    def __init_custom_rules(self) -> None:
         """
         加载用户自定义规则，如跟内置规则冲突，以用户自定义规则为准。
         """
@@ -152,7 +152,7 @@ class FilterModule(_ModuleBase):
         """
         pass
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         保留模块配置入口；过滤器没有独立启用配置，返回 None。
         """
@@ -160,7 +160,7 @@ class FilterModule(_ModuleBase):
 
     def filter_torrents(self, rule_groups: List[str],
                         torrent_list: List[TorrentInfo],
-                        mediainfo: MediaInfo = None) -> List[TorrentInfo]:
+                        mediainfo: Optional[MediaInfo] = None) -> List[TorrentInfo]:
         """
         按规则组依次筛选种子，并在原种子对象上写入优先级。
 
@@ -223,7 +223,7 @@ class FilterModule(_ModuleBase):
 
     def __filter_torrents_with_python(self, groups: List[dict],
                                       torrent_list: List[TorrentInfo],
-                                      mediainfo: MediaInfo = None) -> List[TorrentInfo]:
+                                      mediainfo: Optional[MediaInfo] = None) -> List[TorrentInfo]:
         """
         依次执行规则组，复用本次调用的表达式解析缓存。
 
@@ -231,7 +231,7 @@ class FilterModule(_ModuleBase):
         """
         ret_torrents = torrent_list
         parser = RuleParser()
-        parsed_rule_cache = {}
+        parsed_rule_cache: Dict[str, Union[list[object], str]] = {}
         for group in groups:
             rule_string = group.get("rule_string")
             if not rule_string:
@@ -262,7 +262,7 @@ class FilterModule(_ModuleBase):
 
     def __filter_torrents(self, rule_string: str, rule_name: str,
                           torrent_list: List[TorrentInfo],
-                          mediainfo: MediaInfo,
+                          mediainfo: Optional[MediaInfo],
                           parser: RuleParser,
                           parsed_rule_cache: Dict[str, Union[list, str]]) -> List[TorrentInfo]:
         """
@@ -285,7 +285,7 @@ class FilterModule(_ModuleBase):
         return ret_torrents
 
     def __get_order(self, torrent: TorrentInfo, rule_groups: List[str],
-                    mediainfo: MediaInfo, parser: RuleParser,
+                    mediainfo: Optional[MediaInfo], parser: RuleParser,
                     parsed_rule_cache: Dict[str, Union[list, str]]) -> Optional[TorrentInfo]:
         """
         按层级顺序匹配种子，在原对象上记录首个命中的优先级。
@@ -321,7 +321,7 @@ class FilterModule(_ModuleBase):
         return parsed_rule_cache[rule_group]
 
     def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str],
-                      mediainfo: MediaInfo) -> Optional[bool]:
+                      mediainfo: Optional[MediaInfo]) -> Optional[bool]:
         """
         递归计算规则项以及 not、and、or 组成的布尔表达式。
 
@@ -339,9 +339,10 @@ class FilterModule(_ModuleBase):
         elif rule_group[1] == "or":
             return self.__match_group(torrent, rule_group[0], mediainfo) \
                 or self.__match_group(torrent, rule_group[2:], mediainfo)
+        return None
 
     def __match_rule(self, torrent: TorrentInfo, rule_name: str,
-                     mediainfo: MediaInfo) -> bool:
+                     mediainfo: Optional[MediaInfo]) -> bool:
         """
         匹配单条规则的媒体条件、文本、大小、做种人数和发布时间。
 
@@ -421,7 +422,7 @@ class FilterModule(_ModuleBase):
         return True
 
     @staticmethod
-    def __match_tmdb(tmdb: dict, mediainfo: MediaInfo) -> bool:
+    def __match_tmdb(tmdb: dict, mediainfo: Optional[MediaInfo]) -> bool:
         """
         检查媒体属性是否满足规则中的全部非空 TMDB 条件。
 

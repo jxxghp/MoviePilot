@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from app.agent.learning.files import contained_path, mutation_lock, read_text, write_text
 from app.agent.learning.matching import format_no_match_hint, fuzzy_find_and_replace

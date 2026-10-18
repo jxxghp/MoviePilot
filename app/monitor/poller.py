@@ -69,7 +69,7 @@ class RemotePoller:
         self._failure_counts[storage] = 0
 
     @staticmethod
-    def _snapshot_for_path(snapshot: Dict[str, Dict], mon_path: Path) -> Dict[str, Dict]:
+    def _snapshot_for_path(snapshot: Dict[str, object], mon_path: Path) -> Dict[str, object]:
         """
         提取指定监控目录范围内的快照。
         :param snapshot: 完整存储快照

@@ -212,7 +212,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
     def mediaserver_items(
         self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
-    ) -> Optional[Generator]:
+    ) -> Optional[Generator[_SchemaMediaServerItem, None, None]]:
         """
         返回虚拟音乐库的专辑迭代器。
 

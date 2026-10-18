@@ -5,6 +5,7 @@
 import json
 import re
 import xml.dom.minidom
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from urllib.parse import quote
 
@@ -21,11 +22,10 @@ from app.modules.wechat.wechat import WeChat
 from app.modules.wechat.wechatbot import WeChatBot
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage, Message
-from app.schemas.notification import NotificationChannel
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, NotificationChannel
 
 
-def _resolve_wechat_admin_ids(config: Optional[dict]) -> set[str]:
+def _resolve_wechat_admin_ids(config: Optional[dict[str, object]]) -> set[str]:
     """
     解析企业微信管理员及机器人模式下的主用户 ID。
     """
@@ -103,7 +103,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         return self._stop_service_instances()
 
     @staticmethod
-    def _is_bot_mode(config: dict) -> bool:
+    def _is_bot_mode(config: Optional[Mapping[str, object]]) -> bool:
         """
         区分 Markdown 智能机器人与原有企业微信应用消息协议。
         """
@@ -118,7 +118,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             return WeChatBot(name=conf.name, **conf.config)
         return WeChat(name=conf.name, **conf.config)
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         保留设置初始化钩子，实例配置由通知服务管理。
         """
@@ -330,7 +330,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             files=files,
         )
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> None:
         """
         向符合通知规则的实例发送文本、图文或语音。
 
@@ -341,7 +341,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             if not self.check_message(message, conf.name):
                 continue
             userid = self.get_notification_userid(message, "wechat_userid")
-            client: WeChat = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 text = message.channel_text(NotificationChannel.Wechat, conf.config) or message.text
                 if message.voice_path and hasattr(client, "send_voice"):
@@ -413,7 +413,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: WeChat = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 userid = self.get_notification_userid(message, "wechat_userid")
                 client.send_msg(title=message.title, userid=userid, link=message.link)
@@ -429,7 +429,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: WeChat = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 userid = self.get_notification_userid(message, "wechat_userid")
                 client.send_torrents_msg(title=message.title, torrents=torrents,
@@ -453,7 +453,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         """
         client.delete_menus()
 
-    def _apply_commands(self, client, commands: Dict[str, dict]) -> None:
+    def _apply_commands(self, client: WeChat, commands: Dict[str, dict[str, object]]) -> None:
         """
         企业微信使用自定义菜单 API 注册命令。
         """

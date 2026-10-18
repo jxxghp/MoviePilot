@@ -21,7 +21,7 @@ class SunnyPTSpider:
 
     _size = 100
     _category_cache_ttl = 3600
-    _category_cache = {}
+    _category_cache: dict[str, tuple[float, dict[str, list[str]]]] = {}
 
     def __init__(self, indexer: dict):
         """
@@ -56,14 +56,14 @@ class SunnyPTSpider:
         return cls._size
 
     @staticmethod
-    def _parse_configured_categories(category_config: dict) -> dict:
+    def _parse_configured_categories(category_config: dict) -> dict[str, list[str]]:
         """
         从站点索引配置提取电影、电视剧和音乐分类 ID，作为分类接口不可用时的兜底。
 
         :param category_config: Build 站点配置中的分类段
         :return: 按 API media_type 索引的分类 ID
         """
-        category_map = {"movie": [], "tv": [], "music": []}
+        category_map: dict[str, list[str]] = {"movie": [], "tv": [], "music": []}
         for media_type in category_map:
             for item in category_config.get(media_type) or []:
                 category_id = item.get("id") if isinstance(item, dict) else item
@@ -72,14 +72,14 @@ class SunnyPTSpider:
         return category_map
 
     @staticmethod
-    def _parse_category_items(items: list) -> dict:
+    def _parse_category_items(items: list[object]) -> dict[str, list[str]]:
         """
         将分类接口结果转换为按媒体类型索引的分类 ID。
 
         :param items: SunnyPT 分类接口 data 数组
         :return: 按 API media_type 索引的分类 ID
         """
-        category_map = {"movie": [], "tv": [], "music": []}
+        category_map: dict[str, list[str]] = {"movie": [], "tv": [], "music": []}
         for item in items or []:
             if not isinstance(item, dict) or item.get("id") is None:
                 continue
@@ -90,7 +90,7 @@ class SunnyPTSpider:
         return category_map
 
     @classmethod
-    def _get_cached_categories(cls, api_url: str) -> Optional[dict]:
+    def _get_cached_categories(cls, api_url: str) -> Optional[dict[str, list[str]]]:
         """
         获取未过期的站点分类缓存。
 
@@ -107,7 +107,7 @@ class SunnyPTSpider:
         return category_map
 
     @classmethod
-    def _set_cached_categories(cls, api_url: str, category_map: dict) -> None:
+    def _set_cached_categories(cls, api_url: str, category_map: dict[str, list[str]]) -> None:
         """
         缓存站点分类映射。
 
@@ -155,7 +155,7 @@ class SunnyPTSpider:
             return None
         return payload.get("data")
 
-    def _load_categories(self) -> dict:
+    def _load_categories(self) -> dict[str, list[str]]:
         """
         同步读取并缓存 SunnyPT 分类映射，接口失败时使用 Build 配置兜底。
 
@@ -176,7 +176,7 @@ class SunnyPTSpider:
         self._set_cached_categories(self._api_url, category_map)
         return category_map
 
-    async def _async_load_categories(self) -> dict:
+    async def _async_load_categories(self) -> dict[str, list[str]]:
         """
         异步读取并缓存 SunnyPT 分类映射，接口失败时使用 Build 配置兜底。
 
@@ -198,7 +198,7 @@ class SunnyPTSpider:
         return category_map
 
     @staticmethod
-    def _media_type_value(media_type: MediaType) -> Optional[str]:
+    def _media_type_value(media_type: Optional[MediaType]) -> Optional[str]:
         """
         将 MoviePilot 媒体类型转换为 SunnyPT API 枚举。
 
@@ -216,7 +216,7 @@ class SunnyPTSpider:
     def _build_params(
         self,
         keyword: Optional[str],
-        media_type: MediaType,
+        media_type: Optional[MediaType],
         category: Optional[str],
         page: Optional[int],
         category_map: dict,
@@ -314,7 +314,7 @@ class SunnyPTSpider:
     def search(
         self,
         keyword: Optional[str],
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         cat: Optional[str] = None,
         page: Optional[int] = 0,
     ) -> Tuple[bool, List[dict]]:
@@ -342,7 +342,7 @@ class SunnyPTSpider:
     async def async_search(
         self,
         keyword: Optional[str],
-        mtype: MediaType = None,
+        mtype: Optional[MediaType] = None,
         cat: Optional[str] = None,
         page: Optional[int] = 0,
     ) -> Tuple[bool, List[dict]]:
@@ -368,11 +368,11 @@ class SunnyPTSpider:
         ).get_res(url=f"{self._api_url}/torrents", params=params)
         return self._process_search_response(response)
 
-    def _build_download_url(self, torrent_id: int) -> str:
+    def _build_download_url(self, torrent_id: object) -> str:
         """
         构造先换取短时下载地址再下载种子文件的两段式链接。
 
-        :param torrent_id: SunnyPT 种子 ID
+        :param torrent_id: SunnyPT 响应中的种子 ID，按原值拼接到地址
         :return: Base64 请求配置与 download-token 接口 URL
         """
         request_config = {

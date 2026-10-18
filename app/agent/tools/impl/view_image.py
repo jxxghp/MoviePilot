@@ -263,7 +263,7 @@ class ViewImageTool(MoviePilotTool):
             )
         except ViewImageError as error:
             return self._failure(error.code, error.message, source_type)
-        except FileNotFoundError, IsADirectoryError, PermissionError:
+        except (FileNotFoundError, IsADirectoryError, PermissionError):
             return self._failure("local_file_unavailable", "本地图片不存在、不是文件或没有读取权限。", source_type)
         # 工具边界统一接收外部能力异常，并返回可供模型恢复的失败结果。
         except Exception as error:  # noqa: BLE001

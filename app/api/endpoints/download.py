@@ -133,7 +133,8 @@ def _resolve_add_media(
     media_id: str | None,
     music_type: MusicTargetEntityType | None,
     allow_unrecognized: bool,
-) -> tuple[MetaBase | None, MediaInfo | MusicInfo | None, _SchemaResponse | None]:
+) -> tuple[MetaBase | None, MediaInfo | MusicInfo | None,
+           _SchemaResponse[_SchemaDownloadAddedData] | None]:
     """
     校验媒体身份并为无媒体信息下载构建识别上下文。
     """
@@ -506,9 +507,14 @@ async def classify_source(
 )
 async def clients(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
-    查询可用下载器
+    查询已启用的下载器名称与类型。
+
+    :param _: 已验证的访问令牌
+    :param page: 兼容客户端的分页参数，此接口不据此分页
+    :param count: 兼容客户端的数量参数，此接口不据此截断
+    :return: 已启用下载器的名称和类型列表
     """
-    downloaders: List[dict] = get_configured_system_config().get(SystemConfigKey.Downloaders)
+    downloaders: List[dict[str, object]] = get_configured_system_config().get(SystemConfigKey.Downloaders)
     if downloaders:
         return [{"name": d.get("name"), "type": d.get("type")} for d in downloaders if d.get("enabled")]
     return []

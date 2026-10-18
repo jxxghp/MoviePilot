@@ -2,7 +2,7 @@
 绿联模块，将双协议媒体库查询、刷新和播放信息接入统一接口。
 """
 
-from typing import Any, Generator, List, Optional, Tuple, Union
+from typing import Any, Generator, Iterable, List, Optional, Tuple, Union
 
 from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.ugreen.ugreen import Ugreen
@@ -63,13 +63,15 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         """
         return 5
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         模块不提供额外的初始化开关。
+
+        :return: 始终为 None，表示不检查模块级配置项
         """
         pass
 
-    def _is_inactive(self, server) -> bool:
+    def _is_inactive(self, server: Ugreen) -> bool:
         """
         未配置的实例不参与定时重连。
         """
@@ -86,7 +88,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
             except Exception as err:
                 logger.error(f"停止绿联影视模块实例失败：{err}")
 
-    def _test_server(self, server, name: Optional[str]) -> Optional[str]:
+    def _test_server(self, server: Ugreen, name: Optional[str]) -> Optional[str]:
         """
         绿联影视用配置完整性与重连结果探测连接状态。
         """
@@ -133,6 +135,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         :param server: 指定实例名称；省略时汇总全部实例
         :return: 统计列表；指定实例不存在时返回 None
         """
+        servers: Iterable[Ugreen]
         if server:
             server_obj: Optional[Ugreen] = self.get_instance(server)
             if not server_obj:
@@ -151,7 +154,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         return media_statistics
 
     def mediaserver_librarys(
-        self, server: Optional[str] = None, hidden: Optional[bool] = False, **kwargs
+        self, server: Optional[str] = None, hidden: Optional[bool] = False, **kwargs: object
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         查询可见媒体库并按需应用同步范围筛选。
@@ -172,7 +175,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         library_id: Union[str, int],
         start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
-    ) -> Optional[Generator]:
+    ) -> Optional[Generator[_SchemaMediaServerItem, None, None]]:
         """
         返回媒体库同步条目的迭代器。
 
@@ -241,7 +244,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         ]
 
     def mediaserver_playing(
-        self, server: str, count: Optional[int] = 20, **kwargs
+        self, server: str, count: Optional[int] = 20, **kwargs: object
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询当前账号的继续观看列表。
@@ -277,7 +280,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self,
         server: Optional[str] = None,
         count: Optional[int] = 20,
-        **kwargs,
+        **kwargs: object,
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询当前账号最近入库的电影和电视剧。
@@ -297,7 +300,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         server: Optional[str] = None,
         count: Optional[int] = 20,
         remote: Optional[bool] = False,
-        **kwargs,
+        **kwargs: object,
     ) -> List[str]:
         """
         获取最新媒体的背景图或主封面。
@@ -317,8 +320,8 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self,
         server: Optional[str] = None,
         image_url: Optional[str] = None,
-        **kwargs,
-    ) -> Optional[str | dict]:
+        **kwargs: object,
+    ) -> None:
         """
         保留统一图片 Cookie 查询接口。
 

@@ -83,7 +83,7 @@ class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
         self._by_id[request.request_id] = request
         self._by_user[user_key] = request.request_id
 
-    def get_by_user(self, user_id: Union[str, int]) -> Optional[InteractionEntryT]:
+    def get_by_user(self, user_id: Optional[Union[str, int]]) -> Optional[InteractionEntryT]:
         """
         按用户返回当前仍有效的交互状态。
         """
@@ -161,7 +161,7 @@ class SlashInteractionManager(
 
     def create_or_replace(
             self,
-            user_id: Union[str, int],
+            user_id: Optional[Union[str, int]],
             command: str,
             channel: Optional[NotificationChannel],
             source: Optional[str],
@@ -237,7 +237,7 @@ class MessageGateway(Protocol):
     def edit_message(
             self,
             channel: NotificationChannel,
-            source: str,
+            source: Optional[str],
             message_id: Union[str, int],
             chat_id: Union[str, int],
             text: str,
@@ -299,10 +299,10 @@ def page_items(
 
 def build_navigation_buttons(
         prefix: str,
-        request: Any,
+        request: _UserInteractionEntry,
         page: int,
         total_pages: int,
-) -> List[List[dict]]:
+) -> List[List[dict[str, str]]]:
     """
     构造标准上一页/下一页按钮。
     """
@@ -328,14 +328,14 @@ def build_navigation_buttons(
 
 
 def update_or_post_message(
-        chain,
-        channel: NotificationChannel,
+        chain: MessageGateway,
+        channel: Optional[NotificationChannel],
         source: Optional[str],
-        userid: Union[str, int],
+        userid: Optional[Union[str, int]],
         username: Optional[str],
         title: str,
         text: str,
-        buttons: Optional[List[List[dict]]] = None,
+        buttons: Optional[List[List[dict[str, str]]]] = None,
         original_message_id: Optional[Union[str, int]] = None,
         original_chat_id: Optional[str] = None,
 ) -> None:
@@ -345,6 +345,7 @@ def update_or_post_message(
     if (
             original_message_id
             and original_chat_id
+            and channel is not None
             and ChannelCapabilityManager.supports_editing(channel)
     ):
         edit_kwargs = {}

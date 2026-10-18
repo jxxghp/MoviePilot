@@ -13,7 +13,11 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from types import ModuleType
+from typing import TYPE_CHECKING, Callable, Iterable, Optional
+
+if TYPE_CHECKING:
+    import pytest
 
 # 本进程隔离出的临时 CONFIG_DIR，兼作幂等标记
 _isolated_config_dir: Optional[str] = None
@@ -32,7 +36,7 @@ class _SitesHelperStub:
     auth_version = ""
     indexer_version = ""
 
-    def get_indexers(self) -> list:
+    def get_indexers(self) -> list[object]:
         """
         提供同步站点索引列表占位。
 
@@ -40,7 +44,7 @@ class _SitesHelperStub:
         """
         return []
 
-    async def async_get_indexers(self) -> list:
+    async def async_get_indexers(self) -> list[object]:
         """
         提供异步站点索引列表占位。
 
@@ -48,7 +52,7 @@ class _SitesHelperStub:
         """
         return []
 
-    def get_indexer(self, *_args: Any, **_kwargs: Any) -> Optional[dict]:
+    def get_indexer(self, *_args: object, **_kwargs: object) -> Optional[dict[str, object]]:
         """
         提供同步站点详情查询占位。
 
@@ -58,7 +62,7 @@ class _SitesHelperStub:
         """
         return None
 
-    async def async_get_indexer(self, *_args: Any, **_kwargs: Any) -> Optional[dict]:
+    async def async_get_indexer(self, *_args: object, **_kwargs: object) -> Optional[dict[str, object]]:
         """
         提供异步站点详情查询占位。
 
@@ -68,7 +72,7 @@ class _SitesHelperStub:
         """
         return None
 
-    def get_authsites(self) -> list:
+    def get_authsites(self) -> list[object]:
         """
         提供认证站点列表占位。
 
@@ -76,7 +80,7 @@ class _SitesHelperStub:
         """
         return []
 
-    def get_indexsites(self) -> list:
+    def get_indexsites(self) -> list[object]:
         """
         提供索引站点列表占位。
 
@@ -84,7 +88,7 @@ class _SitesHelperStub:
         """
         return []
 
-    def check(self, *_args: Any, **_kwargs: Any) -> tuple[bool, str]:
+    def check(self, *_args: object, **_kwargs: object) -> tuple[bool, str]:
         """
         声明测试占位未加载真实站点资源。
 
@@ -94,7 +98,7 @@ class _SitesHelperStub:
         """
         return False, "站点资源未加载"
 
-    def check_user(self, *_args: Any, **_kwargs: Any) -> tuple[bool, str]:
+    def check_user(self, *_args: object, **_kwargs: object) -> tuple[bool, str]:
         """
         声明测试占位不提供用户站点认证。
 
@@ -126,7 +130,11 @@ def isolate_config_dir() -> str:
     os.environ["CONFIG_DIR"] = tmp
     _isolated_config_dir = tmp
 
-    def _cleanup(path: str = tmp, rmtree=shutil.rmtree, sys_mod=sys) -> None:
+    def _cleanup(
+        path: str = tmp,
+        rmtree: Callable[..., None] = shutil.rmtree,
+        sys_mod: ModuleType = sys,
+    ) -> None:
         """
         退出时释放已创建的数据库连接池，再尽力删除测试临时目录。
 
@@ -182,7 +190,7 @@ def ensure_sites_stub() -> None:
     sys.modules["app.application.site.sites"] = stub
 
 
-def ensure_optional_stub(name: str, **attrs) -> None:
+def ensure_optional_stub(name: str, **attrs: object) -> None:
     """
     导入可选依赖，导入失败时为当前进程安装占位模块。
 
@@ -303,7 +311,7 @@ def prepare_v1_backend(plugins_repo: Path) -> None:
     _expose_plugin_source(Path(plugins_repo) / "plugins")
 
 
-def mark_plugin_generation(items, pytest_module) -> None:
+def mark_plugin_generation(items: Iterable[pytest.Item], pytest_module: ModuleType) -> None:
     """
     按用例路径添加插件代际标记，供 pytest 按代筛选。
 
@@ -313,12 +321,13 @@ def mark_plugin_generation(items, pytest_module) -> None:
     :param items: 已收集的测试用例，原地追加 v1、v2 或 v3 标记
     :param pytest_module: 调用方提供的 pytest 模块，避免模块导入时依赖 pytest
     """
+    markers = getattr(pytest_module, "mark")
     for item in items:
         item_path = getattr(item, "path", None)
         path = str(item_path if item_path is not None else item.fspath).replace("\\", "/")
         if "tests/v3/" in path:
-            item.add_marker(pytest_module.mark.v3)
+            item.add_marker(markers.v3)
         elif "tests/v2/" in path:
-            item.add_marker(pytest_module.mark.v2)
+            item.add_marker(markers.v2)
         elif "tests/v1/" in path:
-            item.add_marker(pytest_module.mark.v1)
+            item.add_marker(markers.v1)

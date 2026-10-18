@@ -171,12 +171,17 @@ class UserConfigOper(DbOper, metaclass=Singleton):
         key: Optional[Union[str, UserConfigKey]] = None,
     ) -> JsonData:
         """
-        获取用户配置
+        从已加载的快照读取用户配置并返回独立副本。
+
+        :param username: 用户名；为空时返回全部用户配置
+        :param key: 配置键；未提供时返回该用户的全部配置
+        :return: 对应的 JSON 值或配置映射；不存在时返回 None
         """
         with self._snapshot_lock:
             self._require_loaded()
             if not username:
-                return copy.deepcopy(self.__USERCONF)
+                snapshot: dict[str, JsonData] = dict(self.__USERCONF)
+                return copy.deepcopy(snapshot)
             if isinstance(key, UserConfigKey):
                 key = key.value
             if not key:

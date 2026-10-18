@@ -17,8 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Optional, Protocol, Sequence, cast
 
-# aiofiles 未提供完整类型信息，保留既有导入检查豁免。
-import aiofiles  # type: ignore[import-untyped]
+import aiofiles
 import aioshutil
 from anyio import Path as AsyncPath
 

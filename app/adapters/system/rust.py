@@ -4,11 +4,13 @@
 
 import logging
 from functools import lru_cache
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.log import log_settings, logger
 from app.runtime.settings import get_runtime_setting
+
+_import_error: Optional[Exception]
 
 try:
     import moviepilot_rust as _moviepilot_rust
@@ -55,7 +57,7 @@ def is_enabled() -> bool:
     return is_config_enabled() and is_available()
 
 
-def status() -> dict:
+def status() -> dict[str, Union[bool, str]]:
     """
     返回 Rust 加速能力与开关状态，供系统配置接口展示。
     """

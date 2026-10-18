@@ -22,7 +22,6 @@ from typing import (
     List,
     Optional,
     Tuple,
-    Type,
     Union,
     get_args,
     get_origin,
@@ -803,7 +802,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
     def generic_type_converter(
         value: Any,
         original_value: Any,
-        expected_type: Type,
+        expected_type: object,
         default: Any,
         field_name: str,
         raise_exception: bool = False,
@@ -811,6 +810,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         """
         先执行字段声明的转换策略，再根据预期类型转换值。如果转换失败，返回默认值。
 
+        :param expected_type: Pydantic 字段注解；字段未提供注解时为 None
         :return: 元组 (转换后的值, 是否需要更新)
         """
         if isinstance(value, (list, dict, set)):
@@ -860,7 +860,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                         "on": True,
                     }
                     if value_clean in bool_map:
-                        converted = bool_map[value_clean]
+                        converted: object = bool_map[value_clean]
                         return converted, str(converted).lower() != str(
                             original_value
                         ).lower()
@@ -910,7 +910,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
     # 校验器由 Pydantic 在模型构造前调用，保留框架要求的类方法签名。
     @model_validator(mode="before")
     @classmethod
-    def generic_type_validator(cls, data: Any):  # noqa
+    def generic_type_validator(cls, data: Any) -> object:  # noqa
         """
         通用校验器，迁移旧 Dev 跟踪偏好后将配置值转换为期望的类型。
         """
@@ -1073,14 +1073,14 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
 
     @property
-    def INNER_CONFIG_PATH(self):
+    def INNER_CONFIG_PATH(self) -> Path:
         """
         返回随程序发布的内置配置目录。
         """
         return self.ROOT_PATH / "config"
 
     @property
-    def CONFIG_PATH(self):
+    def CONFIG_PATH(self) -> Path:
         """
         按显式配置、容器和冻结运行环境确定配置目录。
         """
@@ -1093,21 +1093,21 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return self.ROOT_PATH / "config"
 
     @property
-    def TEMP_PATH(self):
+    def TEMP_PATH(self) -> Path:
         """
         返回运行时临时目录。
         """
         return self.CONFIG_PATH / "temp"
 
     @property
-    def CACHE_PATH(self):
+    def CACHE_PATH(self) -> Path:
         """
         返回业务缓存目录。
         """
         return self.CONFIG_PATH / "cache"
 
     @property
-    def PACKAGE_CACHE_PATH(self):
+    def PACKAGE_CACHE_PATH(self) -> Path:
         """
         返回 pip 和 uv 等包工具使用的缓存根目录。
         """
@@ -1116,14 +1116,14 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return self.CONFIG_PATH / ".cache"
 
     @property
-    def ROOT_PATH(self):
+    def ROOT_PATH(self) -> Path:
         """
         返回项目源码或冻结程序的根目录。
         """
         return Path(__file__).parents[2]
 
     @property
-    def PLUGIN_DATA_PATH(self):
+    def PLUGIN_DATA_PATH(self) -> Path:
         """
         返回插件持久化数据目录。
         """
@@ -1141,14 +1141,14 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return path if path.is_absolute() else self.CONFIG_PATH / path
 
     @property
-    def LOG_PATH(self):
+    def LOG_PATH(self) -> Path:
         """
         返回应用日志目录。
         """
         return self.CONFIG_PATH / "logs"
 
     @property
-    def COOKIE_PATH(self):
+    def COOKIE_PATH(self) -> Path:
         """
         返回站点 Cookie 文件目录。
         """
@@ -1204,11 +1204,11 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             }
         https_proxy = self._get_env_proxy("HTTPS_PROXY", "https_proxy")
         http_proxy = self._get_env_proxy("HTTP_PROXY", "http_proxy")
-        proxy_host = https_proxy or http_proxy
-        if proxy_host:
+        fallback_proxy_host = https_proxy or http_proxy
+        if fallback_proxy_host:
             return {
-                "http": http_proxy or proxy_host,
-                "https": https_proxy or proxy_host,
+                "http": http_proxy or fallback_proxy_host,
+                "https": https_proxy or fallback_proxy_host,
             }
         return None
 
@@ -1276,7 +1276,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return f"{scheme}://{auth}@{self.DB_POSTGRESQL_HOST}{port}/{database}"
 
     @property
-    def PROXY_SERVER(self):
+    def PROXY_SERVER(self) -> Optional[dict[str, str]]:
         """
         返回浏览器自动化使用的代理服务器配置。
         """
@@ -1300,7 +1300,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return None
 
     @property
-    def GITHUB_HEADERS(self):
+    def GITHUB_HEADERS(self) -> dict[str, str]:
         """
         Github请求头。
         """
@@ -1311,7 +1311,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             }
         return {}
 
-    def REPO_GITHUB_HEADERS(self, repo: str = None):
+    def REPO_GITHUB_HEADERS(self, repo: Optional[str] = None) -> dict[str, str]:
         """
         Github指定的仓库请求头。
 
@@ -1345,7 +1345,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         return headers.get(repo, self.GITHUB_HEADERS)
 
     @property
-    def VAPID(self):
+    def VAPID(self) -> dict[str, str]:
         """
         返回 Web Push 使用的 VAPID 配置。
         """
@@ -1355,7 +1355,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             "privateKey": "JTixnYY0vEw97t9uukfO3UWKfHKJdT5kCQDiv3gu894",
         }
 
-    def MP_DOMAIN(self, url: str = None):
+    def MP_DOMAIN(self, url: Optional[str] = None) -> Optional[str]:
         """
         将相对路径组合为当前 MoviePilot 对外访问地址。
         """
@@ -1363,7 +1363,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             return None
         return UrlUtils.combine_url(host=self.APP_DOMAIN, path=url)
 
-    def RENAME_FORMAT(self, media_type: MediaType):
+    def RENAME_FORMAT(self, media_type: MediaType) -> str:
         """
         获取指定类型的重命名格式。
 
@@ -1471,14 +1471,14 @@ class GlobalVar(object):
         """
         runtime_stop_state.replace_system_event(event)
 
-    def stop_system(self):
+    def stop_system(self) -> None:
         """
         停止系统。
         """
         runtime_stop_state.stop_system()
 
     @property
-    def is_system_stopped(self):
+    def is_system_stopped(self) -> bool:
         """
         是否停止。
         """
@@ -1502,13 +1502,13 @@ class GlobalVar(object):
         """
         return self._push_registry.remove(subscription)
 
-    def stop_workflow(self, workflow_id: int):
+    def stop_workflow(self, workflow_id: int) -> None:
         """
         停止工作流。
         """
         runtime_stop_state.stop_workflow(workflow_id)
 
-    def workflow_resume(self, workflow_id: int):
+    def workflow_resume(self, workflow_id: int) -> None:
         """
         恢复工作流。
         """
@@ -1520,7 +1520,7 @@ class GlobalVar(object):
         """
         return runtime_stop_state.is_workflow_stopped(workflow_id)
 
-    def stop_transfer(self, path: str):
+    def stop_transfer(self, path: str) -> None:
         """
         停止文件整理。
         """

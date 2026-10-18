@@ -785,7 +785,7 @@ class WeChatBot:
             send_success = send_success or target_success
         return send_success
 
-    def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None,
+    def send_msg(self, title: Optional[str], text: Optional[str] = None, image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         将通知组合成 Markdown 并发送给目标会话。

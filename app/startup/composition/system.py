@@ -9,9 +9,9 @@ import os
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-import aiofiles  # type: ignore[import-untyped]
+import aiofiles
 from anyio import Path as AsyncPath
 
 from app.adapters.external.github import GITHUB_DEVICE_CLIENT_ID, GithubAuthClient
@@ -77,7 +77,7 @@ class _FileLogAdapter(SystemLogPort):
         """
         path = await self._resolve_logfile(logfile)
         async with aiofiles.open(path, mode="r", encoding="utf-8", errors="replace") as file:
-            return cast(str, await file.read())
+            return await file.read()
 
     async def follow(
         self,

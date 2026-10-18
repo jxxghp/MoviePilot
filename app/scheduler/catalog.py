@@ -6,7 +6,7 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import List, Optional, TypedDict
 
-import pytz  # type: ignore[import-untyped]
+import pytz
 from apscheduler.executors.pool import BasePoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 

@@ -44,7 +44,7 @@ class UserBase(BaseModel):
     is_superuser: bool = Field(default=False, description="超级管理员")
     avatar: Optional[str] = Field(default=None, description="头像")
     is_otp: Optional[bool] = Field(default=False, description="是否开启二次验证")
-    permissions: Optional[UserPermissions] = Field(default_factory=dict, description="权限")
+    permissions: Optional[UserPermissions] = Field(default_factory=UserPermissions, description="权限")
     settings: Optional[dict[str, JsonData]] = Field(default_factory=dict, description="个性化设置")
 
     model_config = ConfigDict(from_attributes=True)
@@ -60,7 +60,7 @@ class UserCreate(UserBase):
     email: Optional[str] = Field(default=None, description="邮箱，未启用")
     password: Optional[str] = Field(default=None, description="新用户的初始密码")
     settings: Optional[dict[str, JsonData]] = Field(default_factory=dict, description="个性化设置")
-    permissions: Optional[UserPermissions] = Field(default_factory=dict, description="权限")
+    permissions: Optional[UserPermissions] = Field(default_factory=UserPermissions, description="权限")
 
 
 # 更新用户时接收的属性
@@ -74,7 +74,7 @@ class UserUpdate(UserBase):
     email: Optional[str] = Field(default=None, description="邮箱，未启用")
     password: Optional[str] = Field(default=None, description="新密码，为空时保持当前密码")
     settings: Optional[dict[str, JsonData]] = Field(default_factory=dict, description="个性化设置")
-    permissions: Optional[UserPermissions] = Field(default_factory=dict, description="权限")
+    permissions: Optional[UserPermissions] = Field(default_factory=UserPermissions, description="权限")
 
 
 # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。

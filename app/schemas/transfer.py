@@ -205,7 +205,7 @@ class TransferInfo(BaseModel):
     cleanup_status: Optional[str] = Field(default=None, description="清理下载器任务的结果；整理成功但清理失败时保留独立状态")
     cleanup_error: Optional[str] = Field(default=None, description="下载器清理失败的原因")
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, object]:
         """
         返回字典。
 

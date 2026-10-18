@@ -81,7 +81,7 @@ class SiteParserBase(metaclass=ABCMeta):
     # 详情页默认依赖用户 ID；当前会话接口可在配置页面时关闭此前置校验。
     _user_detail_requires_userid = True
 
-    def __init__(self, site_name: str,
+    def __init__(self, site_name: Optional[str],
                  url: str,
                  site_cookie: Optional[str],
                  apikey: Optional[str],
@@ -94,7 +94,7 @@ class SiteParserBase(metaclass=ABCMeta):
         """
         初始化站点用户数据解析器。
 
-        :param site_name: 站点名称
+        :param site_name: 站点名称；未配置时为 None，仅用于日志标识
         :param url: 站点前端地址
         :param site_cookie: 站点 Cookie
         :param apikey: 站点 API Key

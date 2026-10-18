@@ -321,7 +321,7 @@ class Slack:
             logger.error(f"下载Slack文件失败: {e}")
         return None
 
-    def send_msg(self, title: str, text: Optional[str] = None,
+    def send_msg(self, title: Optional[str], text: Optional[str] = None,
                  image: Optional[str] = None, link: Optional[str] = None,
                  userid: Optional[str] = None, buttons: Optional[List[List[dict]]] = None,
                  original_message_id: Optional[str] = None,
@@ -421,7 +421,7 @@ class Slack:
             return False, str(msg_e)
 
     @classmethod
-    def _message_blocks(cls, title: str, text: Optional[str], image: Optional[str],
+    def _message_blocks(cls, title: Optional[str], text: Optional[str], image: Optional[str],
                         link: Optional[str], buttons: Optional[List[List[Dict[str, Any]]]],
                         formatted_text: Optional[str]) -> List[Dict[str, Any]]:
         """

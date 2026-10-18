@@ -24,7 +24,7 @@ class TmdbScraper:
     _img_tmdb = None
 
     @property
-    def default_tmdb(self):
+    def default_tmdb(self) -> TmdbApi:
         """
         惰性创建并复用运行配置语言对应的 TMDB 客户端。
 
@@ -196,7 +196,7 @@ class TmdbScraper:
                 mediainfo.backdrop_path = get_runtime_setting('TMDB_IMAGE_URL')(backdrop_path)
 
     @staticmethod
-    def __pick_best_image_path(images: list) -> Optional[str]:
+    def __pick_best_image_path(images: Optional[list]) -> Optional[str]:
         """
         从 TMDB 图片列表中选择评分和投票数最高的一张。
         """
@@ -257,7 +257,7 @@ class TmdbScraper:
     @staticmethod
     def __gen_common_nfo(
         mediainfo: MediaInfo, doc: minidom.Document, root: minidom.Element
-    ):
+    ) -> minidom.Document:
         """
         向现有文档追加媒体标识、演职员、分级和制作信息。
 

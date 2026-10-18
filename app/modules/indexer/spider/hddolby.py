@@ -19,7 +19,7 @@ class HddolbySpider:
     _indexerid = None
     _domain = None
     _domain_host = None
-    _name = ""
+    _name: Optional[str] = ""
     _proxy = None
     _cookie = None
     _ua = None
@@ -92,7 +92,7 @@ class HddolbySpider:
             self._searchurl = f"https://api.{self._domain_host}/api/v1/torrent/search"
             self._pageurl = f"{self._domain}details.php?id=%s&hit=1"
 
-    def __get_params(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> dict:
+    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0) -> dict[str, object]:
         """
         获取请求参数。
         """
@@ -200,7 +200,7 @@ class HddolbySpider:
         logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
         return True, []
 
-    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         同步搜索 HDDolby 种子。
 
@@ -225,7 +225,7 @@ class HddolbySpider:
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    async def async_search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         异步搜索 HDDolby 种子。
 
@@ -250,7 +250,7 @@ class HddolbySpider:
         return self.__process_response(res)
 
     @staticmethod
-    def __get_downloadvolumefactor(discount: int) -> float:
+    def __get_downloadvolumefactor(discount: Optional[int]) -> float:
         """
         获取下载系数。
         """
@@ -265,7 +265,7 @@ class HddolbySpider:
         return 1
 
     @staticmethod
-    def __get_uploadvolumefactor(discount: int) -> float:
+    def __get_uploadvolumefactor(discount: Optional[int]) -> float:
         """
         获取上传系数。
         """
@@ -278,7 +278,7 @@ class HddolbySpider:
             return discount_dict.get(discount, 1)
         return 1
 
-    def __get_download_url(self, torrent_id: int, downhash: str) -> str:
+    def __get_download_url(self, torrent_id: object, downhash: object) -> str:
         """
         获取下载链接，返回base64编码的json字符串及URL。
         """

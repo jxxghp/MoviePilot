@@ -20,8 +20,8 @@ from app.schemas.notification import (
     ChannelCapabilities,
     ChannelCapability,
     ChannelCapabilityManager,
-    NotificationChannel,
 )
+from app.schemas.types import NotificationChannel
 
 SYSTEM_TASKS_FILE = "System Tasks.yaml"
 SYSTEM_TASKS_SCHEMA_VERSION = 2
@@ -123,7 +123,7 @@ class PromptManager:
     提示词管理器
     """
 
-    def __init__(self, prompts_dir: str = None):
+    def __init__(self, prompts_dir: Optional[str] = None) -> None:
         """
         初始化提示词来源与运行信息缓存。
         """
@@ -158,7 +158,7 @@ class PromptManager:
             logger.error(f"加载提示词失败: {prompt_name}, 错误: {e}")
             raise
 
-    def get_agent_prompt(self, channel: str = None) -> str:
+    def get_agent_prompt(self, channel: Optional[str] = None) -> str:
         """
         获取智能体提示词
         :param channel: 消息渠道（Telegram、微信、Slack等）
@@ -427,7 +427,7 @@ class PromptManager:
 
     @staticmethod
     def _generate_rich_message_instructions(
-        channel: NotificationChannel = None,
+        channel: Optional[NotificationChannel] = None,
     ) -> str:
         """
         根据渠道生成 Telegram Rich Message 回复提示。
@@ -445,7 +445,7 @@ class PromptManager:
 
     @staticmethod
     def _generate_button_choice_instructions(
-        channel: NotificationChannel = None,
+        channel: Optional[NotificationChannel] = None,
     ) -> str:
         """
         按渠道能力选择按钮交互或文字提问，明确终结本轮的交付约束。
@@ -616,7 +616,7 @@ class PromptManager:
                 normalized.append(text)
         return normalized
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """
         清空缓存
         """

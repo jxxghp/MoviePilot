@@ -342,7 +342,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                         if not file.filepath:
                             continue
                         file_meta = MetaInfo(file.filepath)
-                        file_info = _SchemaSubscribeDownloadFileInfo(
+                        download_file_info = _SchemaSubscribeDownloadFileInfo(
                             torrent_title=his.torrent_name,
                             site_name=his.torrent_site,
                             downloader=file.downloader,
@@ -355,16 +355,16 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                                 continue
                             episode_number = file_meta.begin_episode
                             if episode_number and episodes.get(episode_number):
-                                episodes[episode_number].download.append(file_info)
+                                episodes[episode_number].download.append(download_file_info)
                         else:
-                            episodes[0].download.append(file_info)
+                            episodes[0].download.append(download_file_info)
 
         try:
             meta = build_subscribe_meta(subscribe)
         except ValueError:
             logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
             return subscribe_info
-        mediainfo: MediaInfo = MediaChain().recognize_media(
+        mediainfo = MediaChain().recognize_media(
             meta=meta,
             mtype=meta.type,
             **subscribe_recognize_kwargs(subscribe),
@@ -382,7 +382,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         if library_fileitems:
             for fileitem in library_fileitems:
                 file_meta = MetaInfo(fileitem.path)
-                file_info = _SchemaSubscribeLibraryFileInfo(
+                library_file_info = _SchemaSubscribeLibraryFileInfo(
                     storage=fileitem.storage,
                     file_path=fileitem.path,
                 )
@@ -392,9 +392,9 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                         continue
                     episode_number = file_meta.begin_episode
                     if episode_number and episodes.get(episode_number):
-                        episodes[episode_number].library.append(file_info)
+                        episodes[episode_number].library.append(library_file_info)
                 else:
-                    episodes[0].library.append(file_info)
+                    episodes[0].library.append(library_file_info)
 
         self._append_subscribe_media_servers(subscribe, mediainfo, episodes)
 
