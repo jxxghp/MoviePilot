@@ -1906,6 +1906,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def _write_music_text_sidecar(target: Path, content: str) -> None:
         """
         同目录原子替换歌词目录项，避免覆盖已有硬/软链接时改写PT源旁挂文件。
+
+        新建和覆盖文件均遵循刮削文件的 UMASK 规则，不沿用临时文件的私有权限。
+
+        :param target: 媒体库中需要新建或替换的歌词路径
+        :param content: 使用 UTF-8 保存的歌词正文
+        :raises OSError: 创建、设置权限或替换失败，原歌词保持不变并清理临时文件
         """
         temporary: Optional[Path] = None
         try:
@@ -1913,6 +1919,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                                     prefix=f".{target.name[:40]}.", delete=False) as stream:
                 temporary = Path(stream.name)
                 stream.write(f"{content.rstrip()}\n")
+            temporary.chmod(0o666 & ~current_umask)
             temporary.replace(target)
         finally:
             if temporary is not None:
