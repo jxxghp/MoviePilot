@@ -1,226 +1,107 @@
 # AGENTS.md
 
-This file is the primary instruction set for all AI agents and LLMs working in this repository. Local documentation takes precedence over general training data. You must follow this file and the rule documents it references.
-
----
+Repository instructions for AI agents. Follow the linked rules for the domains touched by the task; load them on demand. The [documentation hub](docs/rules/README.md) is the full index.
 
 ## Shared Contract and Execution Authority
 
-Architecture, business correctness, SDK/Compat compatibility, test isolation, useful contract documentation, and truthful verification reports apply to everyone. Maintainer discretion over execution does not waive these engineering contracts or permit baseline laundering.
+Architecture, business correctness, SDK/Compat compatibility, test isolation, useful documentation, and truthful verification apply to everyone. Maintainer discretion cannot waive these contracts or permit baseline laundering.
 
-Submission preparation and checklists in this file and the linked rules are **contributor defaults**. A confirmed maintainer may explicitly adjust applicable verification scope, timing, evidence reuse, and delivery order, including saving a local anchor before remaining checks. Record the decision, supporting evidence, unverified items, and follow-up; an anchor is a recoverable state, not a claim of validation or acceptance.
+Preparation requirements are contributor defaults. A confirmed maintainer may adjust verification scope, timing, evidence reuse, or delivery order, including saving a local anchor before remaining checks. Record the decision, evidence, unverified items, and follow-up; an anchor does not establish acceptance.
 
-Maintainer execution authority comes from the current user or established project context that confirms their maintainer role and authorization. GitHub `WRITE` proves platform capability only; a contributor's self-declared role does not grant an exception. Without confirmed maintainer authorization, follow the contributor defaults. Reuse an existing scoped authorization without requesting it again; an explicit current restriction takes precedence. CI failure decisions follow `docs/rules/12-collaboration-and-distribution.md` and cannot bypass platform protection.
-
----
-
-## Task-to-Documentation Mapping
-
-For work that changes or reviews repository behavior, identify the domains actually touched and load only the applicable documents. Simple factual checks and unrelated domains do not require preloading rule files.
-
-### Architectural Decisions
-* **Primary Reference:** `docs/rules/05-architecture.md`
-* **Required Constraints:** Respect layer boundaries and dependency flow. Do not introduce circular dependencies. Verify the correct layer for any new capability before implementing.
-
-### Business Logic and Design Patterns
-* **Primary Reference:** `docs/rules/04-design-patterns.md`
-* **Required Constraints:** Use the project's established Module, Chain, Event, and Oper structural patterns. Do not introduce abstractions the project has not adopted.
-
-### Coding Standards and Style
-* **Primary Reference:** `docs/rules/06-code-styles.md`
-* **Required Constraints:** Match the style of the surrounding file. Type annotations, Pydantic models, and async/await usage must all conform to the documented standards.
-
-### Identifiers and Naming
-* **Primary Reference:** `docs/rules/07-naming-conventions.md`
-* **Required Constraints:** All filenames, class names, function names, and constants must follow the project's taxonomy. No arbitrary abbreviations or mixed casing styles.
-
-### Comments and Documentation
-* **Primary Reference:** `docs/rules/08-comment-styles.md`
-* **Required Constraints:** All comment prose must be Chinese. Every docstring uses multiline triple double quotes with each delimiter on its own line and reStructuredText / Sphinx field lists such as `:param:` and `:return:`; older single-line or English file styles are not exceptions. Substantive modules, public classes, and public functions/methods require documentation. Every dataclass, Pydantic model, and Protocol must document its class, each declared field/member, and explicit methods, including private types and test scaffolding. Dataclasses use `:param:` / `:ivar:`; Pydantic fields use Chinese `Field(description=...)`; Protocol methods document each part of the calling contract. Small self-evident private helpers may omit docstrings, but non-obvious behavior must explain its rationale. Detailed formats and boundaries are defined in `08-comment-styles.md`.
-
-### External Communication and Interfaces
-* **Primary Reference:** `docs/rules/09-external-response.md`
-* **Required Constraints:** Host-authored ordinary HTTP must go through `RequestUtils`; this rule does not authorize Application/Chain to import the concrete Adapter. Canonical transport, SDK, streaming protocol, contained vendor, diagnostic and control-plane exceptions must match the exact direct-egress policy. Response formats must use the project's standard schemas. Error handling must follow the per-layer conventions.
-
-### Data and Persistence
-* **Primary Reference:** `docs/rules/10-data-and-persistent.md`
-* **Required Constraints:** Any database model change requires a matching Alembic migration. Runtime configuration must be managed via `SystemConfigKey` + `SystemConfigOper`. Raw string keys are forbidden.
-
-### Quality and Security
-* **Primary Reference:** `docs/rules/11-quality-and-security.md`
-* **Required Constraints:** Preserve the quality contracts below and run applicable pytest, changed-file pylint, and architecture checks under the contributor preparation defaults or a documented maintainer arrangement. Dependency changes require a current `uv.lock`, locked environment verification, and the locked dependency vulnerability audit; execution discretion does not waive dependency or release policy.
-
-### Testing
-* **Primary Reference:** `docs/testing.md`
-* **Required Constraints:** pytest is the only runner; `tests/conftest.py` isolates each run to a temporary `CONFIG_DIR`. Tests must not touch the real database, network, or external services (TMDB, LLM catalogs, downloaders, media servers, MP server); mock at the boundary or replay recorded responses for zero real outbound traffic. Restore any process-level state stubbed by tests (`sys.modules`, singletons, caches, settings). New tests must be pytest-native (function + `assert` + fixtures); do not add new `unittest.TestCase`. When modifying an existing `TestCase` file, convert the entire file to pytest-native and verify equivalent behavior. The contributor verification scope and maintainer arrangements are defined in `docs/testing.md`. Documentation-only changes use applicable text and structure checks. GitHub Actions reuse remains subject to the exact tested merge tree and base contract in that document.
-
-### Commands and Development Workflow
-* **Primary Reference:** `docs/rules/03-commands.md`
-* **Required Constraints:** Use that file as the project command reference. Other standard inspection, Git, GitHub, and focused verification commands are allowed when they are necessary, scoped, and consistent with current authorization.
+Authority comes from the current user or established project context confirming the maintainer role and authorization. GitHub `WRITE` proves platform capability only; a contributor's self-declared role does not grant an exception. Reuse scoped authorization without asking again; an explicit current restriction takes precedence. Otherwise follow contributor defaults. CI failure decisions follow [collaboration rules](docs/rules/12-collaboration-and-distribution.md) and cannot bypass platform protection.
 
 ---
+
+## Read Only the Relevant Rules
+
+| Task domain | Reference |
+|---|---|
+| Commands, environments, dependencies | [03 Commands](docs/rules/03-commands.md), [development setup](docs/development-setup.md) |
+| Module, Chain, Event, Oper patterns | [04 Design Patterns](docs/rules/04-design-patterns.md) |
+| Ownership, imports, lifecycle, SDK/Compat | [05 Architecture](docs/rules/05-architecture.md) |
+| Types, Pydantic, async, code style | [06 Code Style](docs/rules/06-code-styles.md) |
+| Files, classes, functions, constants | [07 Naming](docs/rules/07-naming-conventions.md) |
+| Comments, docstrings, field/API descriptions | [08 Documentation](docs/rules/08-comment-styles.md) |
+| HTTP, external protocols, responses, errors | [09 Interfaces](docs/rules/09-external-response.md) |
+| Database, transactions, runtime configuration | [10 Persistence](docs/rules/10-data-and-persistent.md) |
+| Quality gates, security, vulnerability audits | [11 Quality and Security](docs/rules/11-quality-and-security.md) |
+| Git, CI decisions, versions, releases | [12 Collaboration](docs/rules/12-collaboration-and-distribution.md) |
+| Test scope, isolation, fixtures, CI evidence reuse | [Testing](docs/testing.md) |
+
+## Working Rules
+
+- Check affected boundaries before architecture, persistence, security, external-protocol, lifecycle, or public-contract changes. Factual checks and local maintenance need only relevant rules.
+- Make the smallest correct change, using established patterns and naming. Avoid unrelated refactors, renames, and formatting cleanup.
+- Add class and method documentation for new code and fill missing documentation encountered within task scope. Source comments and contract descriptions remain Chinese, with multiline triple-double-quoted docstrings and Sphinx field lists. Document every declared dataclass, Pydantic, and Protocol item, including private types and test scaffolding, as specified in rule 08. Passing static checks does not replace this review; runtime strings are not docstrings.
+- Prefer the project's virtual environment. Use locked commands and the documented shared test-environment mapping in `docs/development-setup.md`; `--no-sync` alone does not prove dependency consistency. Prefer rule 03 commands; other necessary, scoped inspection, Git, GitHub, and verification commands are allowed.
+- Batch related changes before expensive builds; do not rebuild after each small edit.
+- Default summaries, validation results, and risk notes to Chinese unless requested otherwise.
+- Resolve code/documentation contradictions from current evidence. Ask only when acceptance is blocked, security or data safety is ambiguous, or maintained sources cannot resolve the conflict; continue unaffected work and report discrepancies.
 
 ## Canonical Package Ownership
 
-The historical `app/core`, `app/helper`, and `app/utils` directories are compatibility-only virtual import roots. Never add physical Python source there and never use those imports from host code. Choose an owner by responsibility, not by whether a function is "shared" or has historically been called a helper.
+Choose owners by responsibility. Detailed placements and enforced splits live in rule 05; do not duplicate implementations or create generic helper packages.
 
-The legacy roots have no physical directories in the source tree. Current images and update flows write site resources only to `app/application/site/`; plugin imports under `app.helper.*` are resolved exclusively by the exact runtime compatibility manifest.
+| Owner | Responsibility and boundary |
+|---|---|
+| `app/foundation/` | Stateless, configuration-free and I/O-free primitives; no runtime logs or business policy |
+| `app/domain/` | Pure business rules/models, recognition parsing, media projection, and NFO documents; inject configuration and acceleration |
+| `app/runtime/` | Process configuration, events, logging, cache contracts/memory policy, concurrency, scheduling, GC, restart state, and resource facades |
+| `app/runtime/extensions/` | Discovery, registration, and lifecycle of modules, plugins, services, and managed resources |
+| `app/adapters/` | Concrete I/O: `network/` transport/browser/DNS; `cache/` Redis/files; `system/` OS/files/process/resources/Rust; `external/` named external ecosystems |
+| `app/application/` | Focused use cases and their technical/persistence Ports; no concrete Adapter, SQLAlchemy, Session, or Oper imports |
+| `app/application/messaging/` | Rendering, routing, interaction, and Agent/message orchestration; not a public plugin SDK |
+| `app/application/security/` | Authentication, authorization, cookies, OTP/passkeys, signing, and URL/path/SSRF policy |
+| `app/chain/` | Cross-module/use-case orchestration through services and injected ports; module dispatch only through `run_module`, with no module-internal, concrete Adapter, or DB/Oper imports |
+| `app/db/oper/` | Table-level access using the caller's Session; query, stage, or flush without implicit transaction ownership or external effects |
+| `app/db/adapters/` | Application persistence Port implementations with short-lived Session/UoW and Oper adaptation |
+| `app/startup/` | Composition, dependency injection, initialization, and startup/shutdown orchestration |
+| `app/sdk/` | Curated stable plugin imports; no canonical implementation logic |
+| `app/runtime/compat/` | Standard-library-only exact legacy routing, resource preflight, and diagnostics; no eager canonical imports |
 
-| Package | Owns | Must Not Own | Representative Files |
-|---|---|---|---|
-| `app/foundation/` | 无状态、无配置和无 I/O 的底层机制：反射/动态导入、加密、DOM、身份、集合、单例、文本、URL 和版本比较 | `settings`、DB/SystemConfig、网络请求、运行日志、MoviePilot 业务规则、旧导入路径 | `reflection.py`, `crypto.py`, `collections.py`, `text.py`, `url.py` |
-| `app/domain/` | Pure MoviePilot business semantics and models for media, recognition, sites, and torrents；`projection/` 只拥有外部媒体来源到 canonical `MediaInfo` 字段的纯映射 | Persistence, global settings reads, network/filesystem clients, Rust imports, service discovery, process lifecycle | `context.py`, `media.py`, `metainfo.py`, `scraper.py`, `meta/`, `projection/` |
-| `app/runtime/` | 进程级运行机制和策略：配置、事件、完整日志、缓存契约/内存行为、托管资源门面、并发、调度、限流、本地化、GC 和重启状态 | 具体外部产品、业务流程、Redis/文件缓存实现 | `config.py`, `events.py`, `log.py`, `cache.py`, `resources.py`, `thread.py`, `state.py` |
-| `app/runtime/extensions/` | 模块、插件、配置化服务和托管资源实现的发现、注册与生命周期适配 | 通用反射机制、插件公开 API、无关业务流程 | `module/manager.py`, `plugin/manager.py`, `resource.py`, `service.py` |
-| `app/adapters/network/` | HTTP、浏览器、DNS、Cloudflare 和 IP 等通用网络技术适配 | RSS/站点业务编排、身份认证策略、命名外部产品流程 | `http.py`, `browser.py`, `doh.py`, `ip.py` |
-| `app/adapters/cache/` | Redis 与文件缓存等具体持久化实现 | 缓存协议、装饰器和进程内缓存策略 | `backends.py`, `redis.py` |
-| `app/adapters/system/` | 操作系统、文件、进程、标准流、包/资源安装、显示和 Rust 加速适配 | 业务规则、进程重启决策 | `host.py`, `display/`, `stdio.py`, `package.py`, `resource.py`, `rust.py`, `fsproxy.py` |
-| `app/adapters/external/` | CookieCloud、插件市场、OCR、IP 归属和 MoviePilot Server 等命名外部生态 | 通用 HTTP/DNS/文件机制或可复用领域语义 | `market.py`, `server.py`, `cookiecloud.py`, `ocr.py`, `location.py`, `wechat.py` |
-| `app/application/` | 聚焦应用服务、用例命令，以及由用例拥有的持久化/技术能力 Port/Protocol；同一模块的多文件实现进入单词命名子目录 | SQLAlchemy、Session、Oper 等具体 DB 实现，具体 Adapter 静态依赖，多领域 Chain 编排、底层通用机制、通用传输协议 | `recognition.py`, `filter.py`, `outbox.py`, `subscription/write.py`, `workflow.py` |
-| `app/application/messaging/` | 消息渲染/路由、交互和 Agent 到消息桥接：`ingress.py` 统一渠道回环入口；`interaction/` 承载通用状态和 Agent 选择契约；`channel/admin.py` 承载渠道管理员解析；`router.py` 统一交互优先级和回调分发；`site.py`/`subscribe.py`/`skill.py` 对应命令的会话、输入解析和视图；`media.py` 媒体交互状态（业务工作流仍由 `MediaInteractionChain` 执行）；`plugin.py` 插件输入接管和插件按钮回调；`webagent/` 承载 WebAgent 事件和流编排；`agent.py` 保留 WebAgent 应用编排。不作为推荐给插件直接使用的公开 SDK | 认证策略、通用 HTTP、服务发现、仅端点使用的 Web Push 行为 | `ingress.py`, `message.py`, `interaction/`, `channel/`, `webagent/`, `router.py`, `agent.py` |
-| `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、路径/URL 安全、SSRF 和签名策略 | 通用 URL 解析、进程运行策略、普通业务校验 | `access.py`, `auth.py`, `cookie.py`, `passkey.py`, `otp.py`, `twofactor.py`, `url.py` |
-| `app/chain/` | Reusable use-case orchestration across modules, Application services, injected ports, events, and caches; chains reach modules only through `run_module` dispatch on method-name contracts | Transport schemas, backend-specific protocol details, concrete Adapter imports, generic primitives, direct Oper/DB imports, direct imports of module internals (classes, exceptions, constants) | `media/`, `download/`, `subscribe/`, `transfer/` |
-| `app/db/oper/` | 面向表和持久化值的 SQLAlchemy 数据访问；接收调用方 Session，只查询、暂存或 flush | Application 业务规则、隐式事务所有权、外部副作用 | `subscribe.py`, `site.py`, `workflow.py` |
-| `app/db/adapters/` | 实现 Application 持久化 Port，创建短生命周期 Session/UoW，并适配 Oper | 用例规则、启动顺序、进程生命周期 | `subscription.py`, `site.py`, `outbox.py`, `workflow.py` |
-| `app/startup/` | Composition root: `composition/` 构造并注入跨层依赖，`initializers/` 按领域初始化，`lifecycle/` 编排启动关闭 | Reusable business rules or adapter implementation details | `composition/context.py`, `composition/database.py`, `initializers/modules.py`, `lifecycle/components.py` |
-| `app/sdk/` | Deliberately curated stable imports for new plugins | Canonical implementation logic or host-internal dependencies | `browser.py`, `cache.py`, `logging.py`, `media.py`, `network.py`, `services.py` |
-| `app/runtime/compat/` | 仅依赖标准库的精确旧导入路由、资源前置扫描和 DEBUG 诊断 | 业务实现、通配猜测、目标模块的提前导入 | `manifest.py`, `imports.py`, `resources.py`, `diagnostics.py` |
+- `app/core`, `app/helper`, and `app/utils` are virtual compatibility roots only. Never recreate physical source there or use legacy imports in host code. Canonical implementations must not import SDK/Compat facades.
+- Preserve the splits in rule 05: runtime cache/logging versus concrete backends; pure recognition/projection versus configured services; RSS/site semantics versus transport; security policy versus generic crypto; resource installation versus startup-owned restart decisions. Site resources belong only in `app/application/site/`.
+- Ownership moves must update canonical imports, `app/runtime/compat/manifest.py`, public SDK exports when applicable, rule 05, and architecture/compatibility tests. Run `tests/test_architecture_dependencies.py` before broader tests.
+- Ordinary host HTTP uses `RequestUtils` through the permitted layer/port. Direct-egress exceptions must match rule 09 exactly; this does not permit Application/Chain to import concrete Adapters.
+- Database schema changes require Alembic migrations. Runtime configuration uses `SystemConfigKey` + `SystemConfigOper`, never raw string keys.
 
-容易误分的三个边界必须按实际职责判断：`application/rss.py` 同时承担 Feed/种子语义、站点规则和浏览器回退，不是单纯 HTTP 传输；它拥有所需 Port、由 startup 注入 network/system Adapter；历史上的直接 Adapter 导入已在 `S2-L6` 清零，Application 不得再直接导入具体 Adapter。`application/site/sites.*` 及 `user.sites.v3.bin` 共同构成站点目录、认证和索引应用能力，只有下载安装机制留在 `adapters/system/resource.py`；`foundation/crypto.py` 只提供无状态 RSA/摘要/AES 算法，认证、签名、令牌和二次验证策略仍属于 `application/security/`。
-
-### Placement Decision Order
-
-Use these questions in order before creating or moving a module:
-
-1. Is it generic, free of MoviePilot state and I/O? Put it in `foundation`.
-2. Is it a pure core MoviePilot rule/model that is independent of a configured service boundary? Put it in `domain`.
-3. Is it process-wide runtime policy or a contract used by adapters? Put it in `runtime`.
-4. Does it discover or manage modules/plugins/service implementations? Put it in `runtime/extensions`.
-5. Does it perform configured network, cache, OS/process, file, package/resource, stdio, or Rust I/O? Put it under the matching `adapters` technical boundary.
-6. Does it implement a named external product/ecosystem workflow? Put it in `adapters/external`.
-7. Does it own authentication, authorization, signing, SSRF, URL/path safety, OTP, passkeys, or two-factor behavior? Put it in `application/security`.
-8. Does it define a use case or the persistence Port required by that use case? Put it in `application`; do not import concrete DB there.
-9. Does it implement an Application persistence Port with SQLAlchemy Session/UoW/Oper? Put it in `db/adapters`.
-10. Does it coordinate several modules/services/Oper classes for one use case? Put it in `chain`.
-11. Is it public to plugins or only preserving an old path? Curate it in `sdk` or map it in `runtime/compat`; do not move implementation there.
-
-### Enforced Split Examples
-
-These decisions are architectural constraints, not naming suggestions:
-
-* Cache contracts, memory backends, decorators, and proxies stay in `app/runtime/cache.py`; Redis and filesystem implementations stay in `app/adapters/cache/backends.py`. Startup registers concrete factories before decorated business modules are imported. Legacy `app.core.cache` resolves to the complete `app.sdk.cache` facade.
-* The complete logging runtime stays in `app/runtime/log.py`: policy, console/plugin routing, async rotating file output, and shutdown. `app.runtime.config` supplies the resolved settings and log path. `runtime/log.py` remains a dependency leaf with no `app.*` imports. Plugins use `app.sdk.logging`; legacy `app.log` resolves to that SDK facade.
-* Recognition parsing stays pure in `app/domain/meta/` and `app/domain/metainfo.py`. `app/application/recognition.py` consumes injected configuration; `app/startup/initializers/domain.py` injects rules, extension policy, source defaults, TMDB image construction, and the optional Rust accelerator.
-* External media detail projection stays in `app/domain/projection/`: `mapping.py` owns the immutable builder and `tmdb.py`/`douban.py`/`bangumi.py`/`anilist.py` own source rules. `app/domain/context.py` keeps canonical `MediaInfo` construction and the four historical setter ABI as thin delegates. Host callers import source owners directly; do not add SDK/Compat aliases for these internal owners.
-* Kodi-style NFO reading and metadata document generation are one domain capability and stay together in `app/domain/scraper.py`; a separate `domain/nfo.py` must not be recreated.
-* `app/application/mediaserver.py` is the single media-server service capability module. It owns configured service discovery together with Provider ID normalization and music-library matching, while reusing generic identity rules from `app/domain/media.py`.
-* Configured notification-service discovery belongs in `app/application/notification.py`. Web Push subscription and manual-send HTTP behavior stays in `app/api/endpoints/message.py`; it is not a reusable messaging capability module. The Web Push protocol itself (aes128gcm encryption, VAPID signing, delivery through `RequestUtils`) is the network adapter `app/adapters/network/webpush.py`, shared by that endpoint and `WebPushModule`.
-* `app/adapters/system/resource.py` detects/downloads/installs resources and returns whether installation occurred. Only `app/startup/initializers/modules.py` may decide to restart the process afterward.
-* Process memory/GC policy belongs in `app/runtime/gc.py`; external IP-location APIs belong in `app/adapters/external/location.py`.
-* Security implementation filenames use package-context nouns: `app/application/security/url.py` and `app/application/security/twofactor.py`. Historical `app.utils.security` and `app.helper.twofa` remain compatibility mappings only.
-
-Foundation modules do not emit runtime logs. They return documented fallback values or raise according to their public contract; application callers decide whether a failure is operationally relevant and log it from the owning upper layer.
-
-Any ownership move must update canonical host imports, `app/runtime/compat/manifest.py`, curated SDK exports when applicable, `docs/rules/05-architecture.md`, and `tests/test_architecture_dependencies.py`. Run that architecture test before broader tests; it rejects physical legacy sources, forbidden upward dependencies, retired canonical filenames, and import cycles.
-
----
-
-## Agent Execution Rules
-
-### Pre-Flight Check
-
-Before generating code or proposing changes, identify the domains the task actually touches and load only the corresponding documents from `docs/rules/`. Apply those constraints while designing, implementing, and reviewing the change; do not produce a formal checklist for unrelated domains.
-
-Architecture, persistence, security, external protocols, cross-module lifecycle, and public-contract changes require an explicit boundary check before implementation. Local documentation, mechanical maintenance, and narrowly scoped changes use only the rules that materially affect their correctness and reviewability.
-
-### Implementation Guidelines
-
-* **Pattern Adherence:** Avoid generic boilerplate. If `04-design-patterns.md` defines a project-level pattern for a scenario, you are required to use it.
-* **Documentation Standards:** New and modified comments must follow `docs/rules/08-comment-styles.md`, the sole detailed source for comment conventions. Preserve code identifiers and tool syntax, but write explanations in Chinese. Do not rewrite runtime SQL, templates, or other strings as docstrings.
-* **Documentation Gate:** Reject changes with missing required documentation, single-line docstrings, English comment prose, or undocumented dataclass / Pydantic / Protocol declarations. The rule against restating code does not waive required explanations of business meaning. Migrate existing violations within task scope; they are not accepted exceptions. Passing current static checks does not establish compliance with every comment rule.
-* **Command Reliance:** Prefer commands documented in `03-commands.md`; use other necessary standard commands with explicit, scoped arguments.
-* **Minimal Change Principle:** Prefer the smallest correct change. Do not perform unrelated refactors, mass renames, or formatting-only cleanup.
-* **Output Language:** Summaries, validation results, and risk notes default to Chinese unless the user requests otherwise.
+## Validation and Delivery
 
 ### Contributor Preparation Defaults
 
-For contributors, inspect the final diff and complete applicable local checks before committing host code, tests, dependencies, architecture fixtures, or CI changes. A request to commit or push alone does not waive that preparation. Confirmed maintainers may use the documented execution arrangements above, including a local anchor followed by remaining validation. `.github/workflows/test.yml` and `.github/workflows/pylint.yml` remain the CI source of truth; re-read them when they change.
+Inspect the final diff and complete applicable local checks before committing code, tests, dependencies, fixtures, or CI changes, unless covered by a documented maintainer arrangement. A commit/push request alone does not waive preparation. `.github/workflows/test.yml` and `.github/workflows/pylint.yml` define CI; re-read them when changed.
 
-Select checks by affected contracts: architecture policy and snapshots for ownership/import/contract changes, relevant ratchets for governed Python changes, and startup performance for startup changes. Run focused behavior tests and changed-file pylint for affected Python files. The following is a command reference, not a requirement to execute every command for every task. When both apply, run architecture policy tests before snapshot checks, in the same order as CI. Shared test environments map these commands as described in `docs/development-setup.md`.
+- **Behavior and isolation:** Use pytest with temporary `CONFIG_DIR`; never touch real databases, runtime config, networks, or external services. Mock boundaries or replay fixtures and restore process-level stubs, singletons, caches, and settings. New tests use functions, assertions, and fixtures. When modifying an existing `TestCase` file, convert the entire file to pytest-native and preserve equivalent coverage.
+- **Scope:** Run focused behavior tests and changed-file pylint for Python changes. Run architecture policy tests before snapshots for ownership/import/contract changes; run relevant type, complexity, concurrency, async-blocking, task-ownership, service-locator, and Ruff/mypy ratchets for governed changes, plus startup performance for startup changes. Commands live in rule 03 and CI.
+- **Full suite:** Run `uv run --locked --no-sync python tests/run.py` before commit for dependency/lock changes, shared test infrastructure, database/startup paths, cross-module lifecycle, compatibility layers, or broad behavior changes. Do not weaken or remove tests without equivalent coverage.
+- **No baseline laundering:** Inspect failures and fix implementation regressions. Never use `--write-host`, `--write-plugins`, or ratchet `--write` just to pass a gate.
+- **Reviewed baseline updates only:** Update fixtures only for intentional, policy-compliant contract changes or genuine lower debt watermarks. Review the semantic diff, synchronize coupled docs/tests, rerun non-writing checks, and commit fixtures with the change. Complexity checks require recorded reductions and reject growth; other writers may mechanically overwrite regressions without approving them. For unexpected host snapshot failures, rerun `baseline.py --check-host --diagnostics` and inspect `tests/fixtures/architecture/`.
+- **Dependencies:** Changes to `pyproject.toml` or `uv.lock` require `uv lock --check`, `uv sync --locked --offline --inexact --no-dev --check`, the full suite, and the locked vulnerability audit in rule 03. Keep the canonical lock current; dependency/release policy cannot be waived by execution discretion.
+- **Coverage:** Preserve the CI line-coverage floor for Application/Domain changes and test new branches. Local macOS coverage is diagnostic; never write the canonical coverage baseline from it.
 
-```bash
-uv run --locked --no-sync pytest \
-  tests/test_architecture_dependencies.py \
-  tests/test_architecture_adapter_imports.py \
-  tests/test_architecture_egress.py \
-  tests/test_architecture_event_facts.py \
-  tests/test_architecture_event_policy.py -q
-uv run --locked --no-sync pytest \
-  tests/test_architecture_contract_baseline.py \
-  tests/test_architecture_baseline_cli.py -q
-uv run --locked --no-sync python scripts/architecture/baseline.py --check-host
-uv run --locked --no-sync mypy --config-file mypy.ini
-uv run --locked --no-sync python scripts/architecture/complexity.py
-uv run --locked --no-sync python scripts/architecture/concurrency.py
-uv run --locked --no-sync python scripts/architecture/async_blocking.py
-uv run --locked --no-sync python scripts/architecture/task_ownership.py
-uv run --locked --no-sync python scripts/architecture/service_locator.py
-uv run --locked --no-sync python scripts/architecture/ruff_ratchet.py
-uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
-uv run --locked --no-sync python scripts/startup/performance.py --check --repeat 3
-```
+* **Check changed Python files:** Use the deduplicated union of `git diff --name-only --diff-filter=ACMRT <pr-base>...HEAD -- '*.py'`, `git diff --cached --name-only --diff-filter=ACMRT -- '*.py'`, `git diff --name-only --diff-filter=ACMRT -- '*.py'`, and intended new files from `git ls-files --others --exclude-standard -- '*.py'`. Resolve `<pr-base>` to the actual target ref. Keep staged/unstaged comparisons separate; they can cancel against HEAD. Exclude unrelated local work and retain only paths present in the planned index tree, so unstaged deletions cannot hide committed content.
 
-Apply the following acceptance rules:
-
-* **No baseline laundering:** A failed baseline or ratchet is evidence to inspect, not permission to regenerate fixtures. Never use `--write-host`, `--write-plugins`, or any ratchet `--write` merely to make a gate pass. Fix added dependencies, cycles, layer violations, direct egress, service locators, blocking calls, unmanaged tasks, type/lint growth, complexity growth, or concurrency growth in the implementation.
-* **Reviewed baseline updates only:** Update a fixture only when the task intentionally changes the governed contract or the tool reports a genuine lower debt watermark. First prove the change complies with architecture policy, inspect the semantic diff, update coupled documentation/tests, run the non-writing check again, and include the fixture diff in the same commit. Complexity uses per-function C901/PLR1702 metrics across host Python sources; physical line counts are advisory only. Its writer rejects growth and its check requires reduced debt to be recorded. Concurrency, async-blocking, and host snapshot writers can overwrite regressions mechanically, so their ability to write is not approval to do so.
-* **Diagnose snapshot failures:** When `baseline.py --check-host` fails unexpectedly, rerun it with `--diagnostics` and inspect the affected JSON under `tests/fixtures/architecture/`. Do not infer that a changed snapshot is acceptable from test success alone.
-* **Test the behavior:** Run focused pytest coverage for every changed behavior. Run `uv run --locked --no-sync python tests/run.py` before commit for dependency/lock changes, shared test infrastructure, database or startup paths, cross-module lifecycle, compatibility layers, or broad behavior changes. Do not weaken, skip, or delete tests to satisfy a gate without proving equivalent coverage.
-* **Check changed Python files:** For PR preparation, take the deduplicated union of `git diff --name-only --diff-filter=ACMRT <pr-base>...HEAD -- '*.py'`, `git diff --cached --name-only --diff-filter=ACMRT -- '*.py'`, and `git diff --name-only --diff-filter=ACMRT -- '*.py'`, plus intended new files from `git ls-files --others --exclude-standard -- '*.py'`. Resolve `<pr-base>` to the actual target base ref (normally `upstream/v3`). Keep staged and unstaged comparisons separate: they can cancel against HEAD while the index still contains a broken change. Exclude unrelated local files from the planned commit.
-
-  Before commit validation, confirm the index contains exactly the authorized changes: ordinary `git commit` writes the index, not the working tree. Stage only the selected paths/hunks and record `git write-tree` before exporting or linting. Use the working-tree shortcut only when all tracked files match the index (`git diff --quiet` succeeds) and no extra configuration or import inputs can alter lint behavior. Then run `uv run --locked --no-sync pylint <paths...>` on the non-empty selection. Code, project configuration, and project-local lint dependencies must come from the same planned tree. Filter candidates by existence in the planned index tree, so staged deletions/renames are excluded but unstaged deletions do not hide content that would still be committed.
-
-  Otherwise, including partial staging, validate a temporary checkout of the index instead of linting the working-tree version or staging unrelated hunks. This selects the inputs for the existing lint check, not an additional gate. From the repository root, export the index into a fresh temporary directory:
+Stage only authorized paths/hunks and record `git write-tree` before validation. Lint the working tree only if `git diff --quiet` succeeds for all tracked files and no extra configuration/import inputs can alter results. Otherwise export the index to a fresh directory:
 
   ```bash
   INDEX_CHECKOUT="$(mktemp -d)"
   git checkout-index --all --prefix="${INDEX_CHECKOUT}/"
   ```
 
-  Run pylint from that directory on the selected Python paths present there, using the original absolute test-environment interpreter (`<test-env>/bin/python -m pylint <paths...>`), with project configuration and project-local lint dependencies resolved from the export, not the original working tree or extra local inputs. The export copies indexed files only; it does not stage anything or change the working tree. Confirm `git write-tree` still matches the recorded tree immediately before committing. Commit that verified index without `-a`, path arguments, or another staging step that changes the tree; any index change invalidates the affected evidence. CI PRs compare base to HEAD; CI pushes use the workflow's before/current SHA range. For broad Python changes, also check `app/` in the same validated tree.
-* **Verify dependency changes:** If `pyproject.toml` or `uv.lock` changed, run `uv lock --check`, `uv sync --locked --offline --inexact --no-dev --check`, the full `uv run --locked --no-sync python tests/run.py`, and the locked `pip-audit` commands in `docs/rules/03-commands.md`. Do not commit an out-of-date or locally generated alternative lock file.
-* **Protect coverage:** Changes in `app/application/` or `app/domain/` must preserve the CI line-coverage floor. Add focused tests for new branches. Local macOS coverage is diagnostic only; never write or commit the canonical coverage baseline from it.
-* **Verify the final tree:** Re-run affected gates after all fixes and generated fixture updates, then inspect `git diff --check`, `git status --short`, and the complete diff. Report the exact commands and outcomes; never claim a gate was run if it was skipped or failed.
-* **Close the remote loop:** After an authorized push or PR creation, inspect GitHub checks for the exact pushed commit and the actual required checks/Ruleset. Diagnose failures from logs and fix unresolved substantive issues caused, worsened, or newly exposed by this change. Handle unrelated failures under the documented maintainer decision in `docs/rules/12-collaboration-and-distribution.md`; ordinary optional or pending automation does not automatically block delivery. Do not weaken workflows or ratchets, bypass platform protection, or claim unfinished required verification passed.
+Run pylint there on selected indexed Python paths with the original absolute test-environment interpreter (`<test-env>/bin/python -m pylint <paths...>`). Code, configuration, and project-local lint dependencies must resolve from the exported tree. For broad changes, also check `app/`. Reconfirm `git write-tree` before committing that exact index without `-a`, path arguments, or further staging; index changes invalidate affected evidence.
 
-Documentation-only changes, including documentation contract tests, use applicable text, link, structure, focused test, and diff checks instead of the product suite; state that scope explicitly. Contributors report a blocked applicable check and obtain a maintainer decision before proceeding beyond the affected boundary. A documented maintainer arrangement may already cover that limitation; reuse it within scope and report what remains unverified.
+Documentation-only changes, including documentation contract tests, use text, link, structure, focused test, and diff checks instead of the product suite. State that scope explicitly. Contributors report blocked applicable checks and obtain a maintainer decision before crossing the affected boundary; reuse existing scoped arrangements and identify unverified items.
 
-### Conflict Resolution
+After all fixes and generated updates, rerun affected gates and inspect `git diff --check`, status, and the complete diff. Report exact commands/outcomes, including skipped or failed checks. After an authorized push or PR creation, verify checks for the exact pushed commit against actual required checks/Rulesets. Fix substantive issues caused, worsened, or newly exposed by the change; handle unrelated failures under rule 12. Never weaken gates, bypass protection, or report unfinished checks as passed. Optional/pending automation alone does not block delivery.
 
-If existing code appears to contradict the documentation, identify the exact contradiction and decide which current-task gate it affects. Stop and ask only when it blocks acceptance, creates a security or data-safety ambiguity, or cannot be resolved from current source and maintained documentation. Otherwise preserve the evidence, continue unaffected work, and report the discrepancy without silently expanding scope.
+## Coupled Updates
 
----
-
-## Coupled Update Rules
-
-When modifying the following, you must also update the listed artifacts:
-
-| Changed Content | Must Also Update |
+| Change | Also update |
 |---|---|
-| CLI behavior | `moviepilot` entrypoint, `docs/cli.md`, related tests |
-| MCP / REST API, exposed tools | `docs/mcp-api.md`, `skills/*/SKILL.md`, related tests |
-| Dev workflow, dependency management, security checks | `docs/development-setup.md` |
-| Database model schema | New Alembic migration under `database/versions/` |
-| User-visible config or init flow | Related docs, help text, setup/init flows, tests |
-| New skill | Follow `skills/<name>/SKILL.md` structure, keep YAML front matter |
-| Canonical module ownership or import path | `docs/rules/05-architecture.md`, `app/runtime/compat/manifest.py`, SDK exports when public, architecture/compatibility tests |
-
----
-
-## Primary Entry Point
-
-For the full documentation map and cross-references, refer to:
-
-**[Documentation Hub Index](./docs/rules/README.md)**
-
-*Last Updated: 2026-10-17*
+| CLI behavior | `moviepilot`, `docs/cli.md`, tests |
+| MCP / REST API or exposed tools | `docs/mcp-api.md`, `skills/*/SKILL.md`, tests |
+| Development workflow, dependencies, security checks | `docs/development-setup.md` |
+| Database schema | New migration in `database/versions/` |
+| User-visible configuration or initialization | Docs, help text, setup/init flows, tests |
+| New skill | `skills/<name>/SKILL.md` with YAML front matter |
+| Module ownership/import paths | Rule 05, Compat manifest, public SDK exports, architecture/compatibility tests |
