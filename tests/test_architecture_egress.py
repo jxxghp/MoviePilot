@@ -98,7 +98,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.adapters.network.doh", "socket.getaddrinfo"): "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71",
     ("app.adapters.network.doh", "urllib.request"): "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b",
     ("app.adapters.network.http", "httpx"): "c00458c868240f1adfe6278ba22bd5c4782e9bd2fcf896114c2288bf82981ee3",
-    ("app.adapters.network.http", "httpx2"): "73879afc31531cc27241f21e0edf3b8e493a7d9aef973d0c2e28165d006e631d",
+    # 池构造移入同一 owner 的专用函数以支持恢复；调用种类、数量与外连边均未增加。
+    ("app.adapters.network.http", "httpx2"): "cf347be42a531743cdae292eecd31f714be16ad13584a88f49a9102688262682",
     ("app.adapters.network.http", "requests"): "c95df710a8536328f5ee005c0ce065b9528f2f4ebae1f077315102d8c0f4c01f",
     ("app.adapters.network.http", "urllib3"): "66cbd8ec4e7552bd458db0baada30f1953e6d0493793822d23a2199567bca98a",
     ("app.adapters.network.ip", "socket.gethostbyname"): "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048",
