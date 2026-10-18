@@ -1,4 +1,4 @@
-# MoviePilot v3 架构设计
+# MoviePilot v3 后端架构总览
 
 > 本文面向开发人员，以图文结合的方式说明 MoviePilot v3 的整体架构：分层结构、各核心包的职责、
 > 模块间调用关系、典型业务流程与启动生命周期。
@@ -7,13 +7,13 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *Last Updated: 2026-08-30*
+> *最后更新：2026-10-18*
 
 ---
 
 ## 一、系统概述
 
-MoviePilot 是一个聚焦影视自动化核心流程的系统，实现**订阅、搜索、下载、文件整理、元数据刮削、
+MoviePilot 覆盖影视与音乐媒体的自动化管理，实现**订阅、搜索、下载、文件整理、元数据刮削、
 媒体库刷新与消息通知**的全流程自动化。后端基于 FastAPI，前端基于 Vue 3（独立仓库），
 同时对外提供 REST API、MCP 工具调用端点（`/api/v1/mcp`）与 OpenAI / Anthropic 兼容协议端点，
 内置 AI Agent 支持自然语言操控系统。
@@ -46,7 +46,7 @@ flowchart LR
     Msg -->|Webhook / 轮询| Core
     ExtAgent -->|JSON-RPC| API
     API --> Core
-    Core -->|通过应用端口 / Oper| Persist
+    Core -->|应用端口 / DB Adapter| Persist
     Persist --> DB
     Core <--> Site
     Core <--> DL
@@ -61,7 +61,8 @@ flowchart LR
 
 MoviePilot v3 以单向依赖的模块化单体为目标。历史包 `app/core`、`app/helper`、`app/utils`
 已不再存在物理目录，仅作为旧插件的**虚拟兼容导入根**保留。核心边界已有机器门禁，
-完整宿主 SCC 与 Adapter 直连已有精确政策门禁；其余尚未强制的边界记录在本章末的优化清单中。
+完整宿主强连通分量（SCC）、Adapter 直连、网络出口和事件合同均有事实快照与独立语义门禁，
+具体检查入口见第十章。
 
 下图同时表达职责关系与运行时调用方向，不等同于 Python 静态 import 图；通过 Port 注入的调用
 会与具体 Adapter 的静态依赖方向相反。
@@ -74,7 +75,7 @@ flowchart TB
         Monitor["app/monitor<br/>目录监控"]
         Workflow["app/workflow<br/>工作流"]
         Scheduler["app/scheduler/<br/>定时任务职责包"]
-        CLI["app/cli<br/>命令行"]
+        CLI["app/cli.py<br/>命令行"]
         PluginPkg["插件运行时目录<br/>app/plugins/*（副本/覆盖层）"]
     end
 
@@ -113,7 +114,7 @@ flowchart TB
     CLI --> Chain
     PluginPkg --> Sdk
 
-    Chain -->|run_module 分发| Modules
+    Chain -->|run_module / async_run_module 分发| Modules
     Chain -->|Application service / 命名数据端口| App
     App -->|运行时调用 Protocol / 持久化端口| Db
 
@@ -156,7 +157,7 @@ flowchart TB
         -> db/oper 与 db/models
 ```
 
-Chain 的持久化能力由 startup 构造 `ChainRuntimeContext` 并在 `ChainBase` 实例化时显式注入；
+Chain 的持久化能力由 `startup` 构造 `ChainRuntimeContext` 并在 `ChainBase` 实例化时显式注入；
 Agent manager、memory、tool 和 scheduler 共享同一个 `AgentDataContext`。原
 `app/application/chain/data.py`、`app/application/agentdata.py` 的进程级 getter 已删除，且不进入
 SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/Port，具体实现只存在于
@@ -166,15 +167,16 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 `app/db/adapters/outbox.py` 实现；`app/runtime/tasks.py` 的 TaskRegistry 只负责进程内任务所有权、
 取消和有限等待，不承担 durable queue 语义。
 
-**依赖方向的规范目标**如下。完整宿主 SCC 与 Application/Chain 具体 Adapter 直连已经使用
-生成事实 + 人工 policy 门禁；当前 Adapter 边均为有迁移 owner 的临时债务，不是永久例外。
-其余尚未机器化的规则仍按优化清单补齐，不能把表中每一行都理解为当前已经被 CI 全量证明：
+**依赖方向**如下。宿主 Application/Chain 到具体 Adapter 的静态直连已清零；
+持久化 Port 归用例所有，具体 DB Adapter 通过组合根注入。表中的规范、语义测试与生成快照
+分别承担边界定义、违规检测和事实漂移检测，不能相互替代：
 
 | 方向 | 状态 |
 |---|---|
 | 入口层 → Chain / Application / 注入 Port | 允许（按工作流复杂度选择；不得直接构造 Oper） |
 | Chain → Module | 仅允许通过 `run_module` 方法名分发，禁止直接 import 模块内部 |
 | Chain → Agent 实现 | 禁止；只能经 `app/application/agent.py` 门面 |
+| API / Chain → Workflow 实现 | 禁止；通过 `app/application/workflow.py` 用例门面 |
 | Application → Domain / Runtime / 注入的 Port | 允许；不得直接依赖具体 DB/Oper/Adapter |
 | DB Adapter → Application 持久化 Protocol / Oper / UoW | 允许；这是依赖倒置的实现方向 |
 | Module → Module / Chain | 禁止（跨模块编排一律进 Chain） |
@@ -202,22 +204,23 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 | `app/adapters/web/` | Web 技术适配：动态插件路由注册、认证依赖和 OpenAPI 重建；不承载插件路由用例 | `plugin/routes.py` |
 | `app/adapters/observability/` | 可选观测技术适配；核心层只依赖 `runtime/observability` 定义的窄端口 | `otel.py` |
 | `app/application/` | 读取配置/持久化状态的聚焦应用服务：识别、过滤、通知、RSS、站点、下载器、媒体服务器、存储、整理规则、可靠副作用等；同一主题拆成子包 | `recognition.py`、`rules.py`、`rss.py`、`outbox.py`、`site/`、`subscription/`、`plugin/` |
-| `app/application/chain/` | Chain 运行时上下文、跨领域数据端口和 durable event 命令；将组合根注入的能力以命名 getter 暴露给 Chain | `context.py`、`data.py`、`events.py` |
+| `app/application/chain/` | Chain 运行时上下文、跨领域数据端口和 durable event 命令；由组合根显式注入 Chain | `context.py`、`events.py` |
 | `app/application/subscription/` | 订阅深度冻结 DTO、typed query/write/staging Repository，以及新增、查询、变更、删除、媒体身份与搜索用例 | `contract.py`、`write.py`、`mutation.py`、`delete.py`、`identity.py`、`search.py` |
 | `app/application/plugin/` | 插件市场、安装、运行时端口、文件夹操作和动态路由用例；具体 FastAPI 路由适配器在 adapters 层 | `catalog.py`、`install.py`、`runtime.py`、`folders.py`、`routes.py` |
 | `app/application/messaging/` | 渠道回环入口、消息渲染/路由、命令交互会话、插件按钮回调、Agent 消息桥接 | `ingress.py`、`message.py`、`router.py`、`agent.py` |
 | `app/application/security/` | 认证、授权、Cookie、Passkey、OTP/二次认证、SSRF 与 URL/路径安全 | `auth.py`、`url.py`、`twofactor.py` |
-| `app/chain/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe/`、`search.py`、`transfer/` |
+| `app/chain/` | 跨入口复用的用例编排：订阅、搜索、下载、整理、媒体、消息等 Chain | `subscribe/`、`search/`、`download/`、`transfer/` |
 | `app/modules/` | 可插拔后端：下载器、媒体服务器、元数据源、消息渠道、索引器、存储 | `qbittorrent/`、`emby/`、`telegram/`、`themoviedb/` |
 | `app/db/` | SQLAlchemy 模型、表级 Oper、会话/UoW 与 Application 持久化适配器；Model 只接受显式 Session，不拥有事务提交 | `models/`、`oper/`、`adapters/`、`uow.py` |
 | `app/schemas/` | Pydantic 传输模型、枚举（`ModuleType`、`EventType`、`SystemConfigKey` 等） | `types.py`、`context.py` |
 | `app/api/` | FastAPI 主端点、鉴权依赖、统一 `Response` 响应封装；动态插件端点不走此统一包装 | `apiv1.py`、`endpoints/`、`response.py` |
-| `app/adapters/web/plugin/` | FastAPI 动态插件路由的技术适配：注册/移除、认证依赖、OpenAPI 重建；保留插件原生响应结构 | `routes.py` |
 | `app/agent/` | AI Agent：稳定 Manager 门面、会话/生命周期/后台任务 owner、单 Agent 编排器、运行时、工具、中间件、LLM、记忆、技能、策略 | `manager.py`、`session.py`、`lifecycle.py`、`tasks.py`、`orchestrator.py` |
 | `app/startup/` | 唯一组合根：跨层装配、领域初始化、声明式生命周期排序与重启策略 | `composition/`、`initializers/`、`lifecycle/` |
 | `app/sdk/` | 面向新插件的稳定导入面（网络、缓存、日志、浏览器等）；`_legacy/` 只承载旧插件行为适配薄门面 | `network.py`、`browser.py`、`cache.py`、`_legacy/` |
 | `app/monitor/` | 源目录监控 → 触发整理 | `watcher.py`、`dispatcher.py` |
-| `app/workflow/` | 工作流引擎 | — |
+| `app/workflow/` | 工作流执行引擎、动作与运行状态；跨入口消费者通过 Application 门面访问 | `__init__.py`、`actions/` |
+| `app/scheduler/` | 定时任务目录、动态协调、执行和生命周期；业务 callable 由启动组合根注入 | `catalog.py`、`registry.py`、`execution.py`、`lifecycle.py` |
+| `app/cli.py` | 本地命令入口：服务管理、安装更新、诊断和工具调用 | `cli.py` |
 | `app/plugins/` | 插件运行时副本/覆盖目录，由插件管理器加载；不是官方插件源码或宿主架构实现，架构审计以插件仓库与宿主边界为准 | — |
 
 `app/runtime/dependencies/` 是一个同名能力包：`profile.py` 只负责解释器 ABI 对应的依赖组，`native.py` 只负责已加载原生发行包的快照与变更检测。包根不重复导出实现，宿主直接导入职责子模块；旧的平级 `dependencies.py` 与 `native_dependencies.py` 已退出规范实现。
@@ -233,7 +236,7 @@ SDK/Compat。领域查询与写入继续使用 Application 所属的冻结 DTO/P
 sequenceDiagram
     participant Main as app/main.py
     participant Factory as app/factory.py
-    participant Life as startup/lifecycle.py
+    participant Life as startup/lifecycle/__init__.py
     participant Init as 各 initializer
     participant FastAPI as FastAPI 主循环
 
@@ -244,7 +247,8 @@ sequenceDiagram
     Main->>FastAPI: Server.run() 触发 lifespan 启动
 
     Life->>Life: configure_cache_dependencies()<br/>（必须先于业务模块导入）
-    Life->>Life: 显式创建并发布文件日志 writer
+    Life->>Life: 校验进程拓扑，登记主事件循环
+    Life->>Life: 创建文件日志 writer 与 TaskRegistry
     Life->>Init: prepare_database() + revision/head 校验
     Life->>Init: configure_default_user_agent（注入 UA）
     Life->>Init: configure_domain_dependencies（领域层依赖注入）
@@ -253,15 +257,21 @@ sequenceDiagram
     Life->>Init: init_routers(app) 注册 API 路由
     Life->>Init: init_modules()（app/startup/initializers/modules.py）发现并初始化模块，返回 HostRuntime
     Life->>FastAPI: app.state.host_runtime = HostRuntime
-    Life->>Life: 显式启动共享消息队列
+    Life->>Life: 登记社区勋章后台维护，装配插件服务
+    Life->>Life: 启动共享消息队列，恢复插件安装与备份
     Life->>Init: init_plugins() / init_scheduler() / init_monitor()
+    Life->>Init: replay_pending_transfers()（登记整理恢复调度器）
     Life->>Init: init_command() / init_workflow()
-    Life->>Init: replay_pending_transfers()（后台回放未整理文件）
-    Life->>Life: 发布 database_ready + lifecycle_ready
+    Life->>Life: 登记插件同步与启动收尾任务
+    Note over Life,FastAPI: database_ready 在数据库准备后发布
+    Life->>Life: 发布 lifecycle_ready
     Life->>FastAPI: yield，交还控制权
     Note over Life,FastAPI: 运行期……
     FastAPI->>Life: 收到停止信号
-    Life->>Init: 逆序关停：工作流→命令→监控→定时器→插件→消息队列→模块
+    Life->>Init: 按 stop_order 关停（与启动顺序独立）
+    Note over Life,Init: 先封口停止信号、Scheduler 与 TaskRegistry
+    Life->>Init: 收敛工作流/命令/监控、Agent/整理、事件与插件服务
+    Life->>Init: 事件屏障→插件→消息队列→模块→撤销注入端口
     Life->>Life: 关闭共享异步 HTTP 连接池
     Life->>Life: 关闭并释放当前 lifespan 的日志 writer
 ```
@@ -269,7 +279,7 @@ sequenceDiagram
 关键设计点：
 
 - **缓存装配先于业务导入**：缓存装饰器会在业务模块 import 时创建后端，
-  因此 `configure_cache_dependencies()` 在 `lifecycle.py` 顶部即执行。
+  因此 `configure_cache_dependencies()` 在 `startup/lifecycle/__init__.py` 的业务导入前执行。
 - **Uvicorn 入口分流**：生产单 worker 使用带协作停止语义的 `MoviePilotServer`；开发 reload
   和安全模式多 worker 使用 `app.factory:create_app` import string/factory，由 supervisor
   创建应用实例。`app.factory:app` 继续保留给既有 ASGI supervisor 和测试使用。
@@ -312,7 +322,10 @@ sequenceDiagram
 - **健康语义**：`/health/live` 只确认进程和事件循环可响应；`/health/ready` 仅在数据库
   到达当前 head 且生命周期完成后返回 200，启动失败或关停阶段返回 503。两者不公开路径、
   revision、插件和异常详情，深入诊断继续使用 Doctor。
-- **关停隔离**：每个关停步骤由 `run_shutdown_step` 独立捕获异常，保证后续资源仍有机会释放；TaskRegistry、事件投递屏障、插件和模块资源按生命周期清单中的 owner 顺序收口。
+- **声明式生命周期**：`lifecycle/components.py` 定义组件合同，`lifecycle/__init__.py` 的
+  `build_lifecycle_components()` 装配回调、依赖、启用模式及独立的 `start_order` / `stop_order`。
+  启动失败只清理已触达和部分启动的资源；关停按 owner 的预算等待，关键 `FAIL_FAST` owner
+  未收敛时停止释放后续依赖，保留句柄供重试，避免任务仍在运行而资源已被销毁。
 
 ---
 
@@ -372,8 +385,8 @@ flowchart TB
     MM --> M2
 ```
 
-- `run_module("method_name", **kwargs)` 会遍历所有实现了该方法的模块并聚合结果；
-  插件若实现了同名方法可获得优先响应。
+- `run_module("method_name", **kwargs)` 与异步入口按契约分发：首个非空、列表/映射合并、
+  管道传递或广播等规则由具体方法决定；插件同名实现优先，保留既有短路与返回语义。
 - `runtime/extensions/module/contracts.py` 为宿主已观察到的方法提供显式参数与返回合同；兼容期只诊断
   旧插件签名差异，不改变插件优先级、短路和自由返回语义。
 - 大型稳定 Chain 使用同名目录包治理：包根只保留稳定公开类，Facade 只组合职责 owner；
@@ -439,20 +452,19 @@ SQLAlchemy 查询。`models/` 与 `oper/` 按文件一一镜像（站点族聚�
 
 ```mermaid
 flowchart LR
-    Entry["API / Scheduler / Agent<br/>逻辑操作入口"]
-    Command["Application Command<br/>事务所有者"]
-    UoW["app/db/uow.py<br/>commit / rollback"]
-    Oper["app/db/oper/*.py<br/>SubscribeOper / TransferHistoryOper ..."]
-    Models["app/db/models/*.py<br/>SQLAlchemy 模型"]
-    Engine["app/db/engine.py<br/>同步 + 异步引擎"]
-    DB[("PostgreSQL / SQLite")]
-
-    Entry --> Command --> Oper --> Models --> Engine --> DB
-    Entry --> UoW --> Engine
-    Command -.提交或回滚.-> UoW
-    Command -.commit 后副作用.-> Effects["Event / Scheduler / Report"]
-    Models -.before_insert/before_update.-> Norm["_identity.py<br/>media_source/media_id 归一化"]
+    Entry["API / Scheduler / Agent"] --> Command["Application Command / Chain"]
+    Command -->|调用注入的 Port| Port["Application Protocol / DTO"]
+    Port -->|运行时实现| Adapter["db/adapters<br/>Session / UoW 作用域"]
+    Adapter --> Oper["db/oper<br/>查询 / stage / flush"]
+    Oper --> Models["db/models<br/>显式 Session"]
+    Models --> DB[("PostgreSQL / SQLite")]
+    Command -.决定提交边界.-> Adapter
+    Adapter --> UoW["db/uow.py<br/>commit / rollback"]
+    UoW --> DB
+    Command -.提交后副作用.-> Effects["Event / Scheduler / Report"]
 ```
+
+图中 Port 到 Adapter 表示运行时调用；静态依赖仍为 `db.adapters → application Protocol`。
 
 - Oper 只接收和返回持久化值；`MediaInfo` / `MetaBase` 与数据库行之间的转换属于业务逻辑，
   归 `app/application/`（见 `application/subscription/write.py`、`application/history/`）。
@@ -511,16 +523,17 @@ sequenceDiagram
     participant SC as SearchChain
     participant MC as MediaChain
     participant TC as TorrentsChain（索引）
-    participant FC as 过滤（application/filter + rules）
+    participant FC as 过滤（application/rules.py）
     participant DC as DownloadChain
     participant MOD as run_module 分发
 
-    E->>SC: search(title)
+    E->>SC: 按标题/媒体身份搜索
     SC->>MC: 识别与媒体信息补全（TMDB/Douban 模块）
     SC->>TC: 检索站点资源（indexer 模块 / 站点插件）
     TC->>MOD: search_torrents(...)
     SC->>FC: 按规则组过滤与排序
-    SC->>DC: download(torrent)
+    SC-->>E: 返回候选（普通搜索到此结束）
+    E->>DC: 用户或自动化用例提交选定资源
     DC->>MOD: download_torrent(...)（下载器模块）
     DC-->>E: 返回下载结果 / 发送通知事件
 ```
@@ -548,20 +561,24 @@ sequenceDiagram
     participant W as app/monitor 目录监控
     participant T as TransferChain
     participant R as 识别（domain/metainfo + application/recognition）
-    participant FS as adapters/system（文件操作）
+    participant FS as run_module 存储模块（具体 I/O）
     participant SC as ScrapingChain（刮削）
     participant EM as EventManager
 
     W->>T: 发现新文件，触发整理
     T->>R: 解析名称/路径得到 MetaBase
     T->>R: 匹配媒体（MediaChain）
+    T->>T: 持久准入、计划与执行检查点
     T->>FS: 按目录配置转移/重命名
     T->>SC: 生成 NFO / 图片刮削（domain/scraper）
     T->>EM: send_event(TransferComplete)
     Note over EM: 媒体服务器刷新、通知、<br/>插件等订阅方各自响应
 ```
 
-启动时 `replay_pending_transfers()` 会在后台线程回放上次未整理完的文件，保证崩溃恢复。
+`application/transfer/` 定义准入、计划、稳定操作身份、执行检查点及结算端口，
+`chain/transfer/` 负责识别、队列、存储分发、刮削与通知编排，`db/adapters/transfer/` 持有短事务实现。
+启动时 `replay_pending_transfers()` 登记唯一恢复调度器，统一处理启动回放、同进程补偿与过期租约接管；
+`retry_wait` 与 `manual_review` 分别表达可重试和需要人工核实的执行状态，不能把入队当作整理完成。
 
 ### 6.4 消息命令交互
 
@@ -581,13 +598,26 @@ flowchart LR
   业务工作流仍由对应 Chain 执行（如媒体交互的业务部分在 `MediaInteractionChain`）。
 - 该包不作为推荐给插件直接使用的公开 SDK。
 
+### 6.5 搜索分页与音乐识别
+
+- **分页搜索**：`chain/search/` 的 `facade.py` 保留公开入口，`manual.py`、`scan.py` 与
+  `pagination.py` 协调分页；`application/search/state.py` 拥有搜索状态，`session.py` 定义
+  检查点端口，`domain/search.py` 表达收集与来源游标规则。页面候选和游标一起保存，
+  检查点仅保存允许的资源字段，凭据与临时下载票据不进入快照。
+- **音乐识别**：`application/audio.py` 读取本地标签与 CUE，`domain/meta/` 和音乐领域规则解释
+  文件名、标签、目录、艺人、发行与曲目身份；`application/music/recognition.py` 经注入的
+  来源 Port 有界回退，`observation.py` 记录本次来源结果和共享预算。Domain 不持有来源客户端。
+  `chain/transfer/music.py` 负责批次准入与目录共识，`chain/subscribe/music.py` 使用下载/整理历史
+  对账专辑入库事实；匹配不到唯一身份时保留歧义保护。
+
 ---
 
 ## 七、AI Agent 子系统
 
 复杂任务的计划、工具发现和中断恢复由 `app/agent/` 的实现决定，本文只说明其在宿主中的位置与依赖边界。
 
-Agent 采用**门面 + 惰性物化**设计，避免 `application → agent` 形成静态依赖边：
+Agent 采用**门面 + 惰性物化**设计，Chain 经应用门面访问，
+启动组合根注册轻量 Provider，避免未启用时加载完整 Agent 运行时：
 
 ```mermaid
 flowchart TB
@@ -598,7 +628,7 @@ flowchart TB
     RT --> Manager["app/agent/manager.py<br/>稳定 AgentManager 门面"]
     Manager --> Session["session.py / lifecycle.py<br/>会话队列与有界生命周期"]
     Manager --> Tasks["tasks.py<br/>后台、调度与心跳任务"]
-    Session --> ORC["orchestrator.py<br/>单 MoviePilotAgent 执行"]
+    Session --> ORC["orchestrator.py<br/>MoviePilotAgent 图与工具编排"]
     Tasks --> Session
     ORC --> Tools["app/agent/tools<br/>系统工具（经 application 门面）"]
     ORC --> LLM["app/agent/llm<br/>LLM 提供商管理"]
@@ -626,6 +656,21 @@ flowchart TB
   `adapters/web/plugin/`，入口层不承载路由实现。
 - 对外暴露 MCP 端点 `/api/v1/mcp` 与 OpenAI / Anthropic 兼容端点，
   错误响应在 `app/factory.py` 中按协议原生格式单独处理（不走统一 `Response` 包装）。
+
+Agent 内部状态按责任分开保存：
+
+| 能力 | 所有者与边界 |
+|---|---|
+| 计划、工具发现与执行纠偏 | `middleware/plan.py`、`selection.py`、`guardrails.py`；计划和历史只提供上下文，实际调用仍须经过权限与执行合同 |
+| 业务工具 | `policy/api.py` 固定 `moviepilot_api` 的 operation 注册表，工具经 Application 门面访问业务；外部 MCP 工具目录按请求投影 Schema |
+| 写入回执 | `middleware/invocation.py` 经 `application/invocation.py` Port 认领与结算，`db/adapters/invocation.py` 提供持久化；回执未知不等于成功，也不能盲目重试 |
+| 历史回忆 | `application/messaging/recall.py` 定义 DTO/Port 和维护服务，`agent/history/` 持有按用户隔离的独立 SQLite/FTS5 消息库；不共享主库 Session，旧快照仅由 `db/adapters/recall.py` 只读导出 |
+| 个人技能与学习 | `agent/learning/`、`middleware/learning.py` 管理按用户隔离的技能、稳定记忆与复盘；后台快照不能授予新执行权限 |
+| 终端与 Python 会话 | `agent/terminal/`、`agent/code/` 持有会话身份和授权；通用 Python 子进程 I/O 在 `adapters/system/code/`，不拥有用户和业务 API 权限 |
+
+`middleware/recall.py` 在压缩或截断前采集脱敏证据，历史库的索引、旧数据回填与学习任务由
+TaskRegistry/会话 owner 有界调度，导入阶段不打开消息库。Agent 主库会话/任务数据、独立历史库、
+个人技能文件与临时工具输出各有生命周期，不能混用主库 Alembic 或把临时输出当作长期记忆。
 
 ---
 
@@ -704,18 +749,29 @@ flowchart LR
     Startup --> RCA
     Startup --> AC
 
-    Caller["上层调用方"] -->|装饰器/协议| RCA
-    RCA -.可切换后端.-> AC
-    Caller --> AN
-    Caller --> AB
+    Caller["Application / Chain"] -->|装饰器/协议| RCA
+    RCA -.运行时调用注入后端.-> AC
+    Caller --> Port["注入的网络 / 浏览器 Port"]
+    Port -.运行时调用.-> AN
+    Port -.运行时调用.-> AB
+    Startup -->|构造并注入| Port
 ```
 
-- **第三方 HTTP 的 transport 实现必须走 `RequestUtils`**（`app/adapters/network/http.py`）；
+- **普通 HTTP 统一通过 `RequestUtils`**（`app/adapters/network/http.py`）；
+  网络 SDK、流协议、vendor 和诊断/控制面仅允许规则 09 与人工 policy 中的精确例外；
   这不授权 Application/Chain 直接导入具体 Adapter，插件使用 `app.sdk.network`。
 - `app/runtime/log.py` 是依赖叶子（无任何 `app.*` 导入）；`foundation` 不输出运行日志，
   由上层所有者决定是否记录。
 - 缓存契约与内存后端在 `runtime/cache.py`，Redis/文件实现在 `adapters/cache/backends.py`，
-  由 startup 在被装饰的业务模块导入前完成工厂注册。
+  由 startup 在被装饰的业务模块导入前完成工厂注册；Redis 实现仅在选用该后端时加载。
+- **消息协议与结构化通知**：Schema 的 `NotificationContent` / 段落结构表达通用语义，
+  `foundation/text.py` 提供无状态格式转换；渠道依据 `ChannelCapabilities` 选择格式与分段预算，
+  插件同时保留纯文本回退。Telegram Bot API、飞书 OpenAPI 和 Web Push 的宿主实现复用
+  统一 HTTP 传输，飞书长连接等协议入口按精确出口 policy 管理。
+- **安全策略与技术 I/O**：URL/路径/SSRF 与图片域名白名单策略归 `application/security/`，
+  DNS、HTTP 和文件操作归 Adapter。白名单快照不替代每次实际访问的安全判定。
+- **社区勋章缓存**：`application/community/medals.py` 经注入的 GitHub Port 维护实例快照；
+  生命周期主动预热，TaskRegistry 定期刷新，请求只读本地快照，不等待远端下载。
 
 ### 9.2 数据与配置总览
 
@@ -726,91 +782,71 @@ flowchart LR
 | 用户级配置 | `UserConfigOper` | 按 `user_id` 隔离 |
 | 部署配置 | `runtime/config.py` 的 `Settings` | 环境变量 / `app.env` |
 | 缓存 | `runtime/cache.py` 装饰器 | Redis 或文件后端可切换 |
-| 站点资源 | `app/application/site/sites.*` | 生成的站点目录、认证与索引能力数据包 |
+| 站点资源 | `app/application/site/sites.*` + `user.sites.v3.bin` | Build 仓生成、Resources 仓发布，宿主安装/加载；不写入虚拟兼容目录 |
+| Agent 历史与学习 | `agent/history/`、`agent/learning/` | 独立消息库及个人文件按用户隔离，与主库会话表分工 |
+| 进程内任务 | `runtime/tasks.py` + 领域生命周期 | TaskRegistry 管取消和等待；跨重启恢复使用持久执行记录/Outbox |
 
 ---
 
 ## 十、架构治理
 
-架构边界中的核心子集已经由测试强制执行，其余目标不能只停留在文档约定：
+### 10.1 事实、策略与自动检查
 
-- `tests/test_architecture_dependencies.py` 构建完整 Python 模块图，拒绝：
-  物理遗留源码、禁止的上向依赖、SDK/compat 反向引用、包含迁移模块的强连通分量、
-  模块间/模块到 Chain 的 import、入口层对 `app.modules` 内部的 import、
-  Chain 直接 import 模块内部（必须走 `run_module` 分发）、`app/chain` 内的下载器 SDK 依赖。
-- `tests/fixtures/architecture/dependency-baseline.json` 记录生成事实；人工审查的 SCC 分类单独存入
-  `dependency-policy.json`。完整宿主 SCC 必须精确匹配 policy，新增、扩大、变形和陈旧 policy 都失败；
-  `--write-host` 不会替代人工决策。
-- 同一 baseline 的 `direct_adapter_imports` 记录现存原始直连；Application 与 Chain 均已清零，
-  policy 目标为空集合。新增、替换、删除后未清理 policy 都会失败。
-- `direct_egress` 记录全宿主 48 条 raw transport、network SDK 和协议操作 identity；普通 HTTP/
-  Session bridge 与 Application DNS I/O 债务已清零，其余 canonical transport、SDK、
-  stream/vendor/diagnostic/control-plane 事实是精确 containment。每条初始边的指纹由测试独立冻结，
-  bindings/uses 变化、分类互换、通配导入和初始边增长都会失败；债务删除时同步删除冻结项以禁止恢复，
-  `--write-host` 不会改写人工 policy 或冻结上界。
-- `event_facts` 是生产者/消费者唯一收集源；运行快照记录 86 个生产调用和 17 个消费注册，
-  consumer 的 17 个唯一 fingerprint 另由只读人工 policy 精确准入。CI 将语义 policy 与生成快照
-  分成独立步骤，前者不能通过刷新后者绕过。
-- 任何所有权迁移必须同步更新：canonical 导入、`app/runtime/compat/manifest.py`、
-  SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
-- 延迟导入不被接受为隐藏循环依赖的手段。
+宿主架构统计排除 `app/plugins/**`。生成快照记录源码事实，人工 policy 决定精确准入边界；
+快照一致不等于架构合理，也不能用刷新基线来接受新债务。
 
-### 10.1 2026-10-09 当前收口状态与后续边界
+| 检查对象 | 事实与约束 |
+|---|---|
+| 依赖方向与循环 | `test_architecture_dependencies.py` 构建完整模块图；`dependency-baseline.json` 保存模块、边和 SCC，`dependency-policy.json` 仅容纳精确的 TMDB vendor SCC |
+| Adapter 与网络出口 | `test_architecture_adapter_imports.py`、`test_architecture_egress.py` 分别约束具体 Adapter 直连与 raw transport/SDK/协议操作；出口的 source、target、用途与 fingerprint 均须匹配 policy |
+| 事件合同 | `scripts/architecture/event_facts.py` 是生产/消费事实的唯一收集器；`runtime-contract-policy.json` 独立准入消费者身份，禁止靠生成快照绕过语义检查 |
+| 事务和配置 | `transaction-debt-baseline.json`、`configuration-debt-baseline.json` 检查底层事务所有权和配置边界；Model/Oper 不得重新创建或提交独立 Session |
+| SDK / Compat | manifest、SDK 导出和官方插件快照共同核对旧导入路径、符号身份与行为边界；迁移时同步 canonical 导入、公开契约及兼容测试 |
+| 类型与复杂度 | `mypy.ini` 严格清单与全宿主逐文件/错误码 ratchet；未列入 mypy 债务基线的新文件必须零错误，既有债务只能减少；复杂度约束 C901/PLR1702，行数只作观察 |
+| 后台与启动 | 并发所有权、异步阻塞、TaskRegistry/生命周期测试和启动性能检查；结构计数与耗时预算分开维护 |
+| 行为与覆盖率 | pytest 离线隔离执行；CI 按全部宿主文件的覆盖率低水位检查，新文件至少 80%，本机覆盖率不能回写 canonical baseline |
 
-当前宿主架构基线（排除 `app/plugins/**`）如下；数字来自
-`tests/fixtures/architecture/`，更新基线前必须先审查语义变化：
+所有权迁移须同步 canonical 导入、Compat manifest、公开 SDK（若涉及）、规则 05 和对应测试。
+延迟导入不能用来隐藏循环；`--write-host` 不会改写人工 policy，也不能替代语义审查。
+
+### 10.2 当前架构快照
+
+以下是 2026-10-18 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
+不代表某个已发布镜像或正在运行的实例已经验证。
 
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1123 |
 | 内部导入边 | 9,579 |
-| 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
+| 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
-| Direct egress | 49（债务已清零，49 条精确 containment） |
-| Module Contract V2 spec | 215（其中 211 个进入 `run_module` 观察面） |
+| Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |
+| Module Contract V2 spec | 224（其中 220 个方法进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Event producer / consumer | 86（85 静态、1 动态）/ 17（16 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
-Outbox 按 topic 有界并行恢复复用 `ThreadHelper`，生命周期关闭通过受保护的线程等待让出事件循环；
-新增日志与关闭屏障共 5 条合法依赖边（含父包展开），未新增模块或 SCC。
+保留的 SCC 是移植的 TMDB 包内部环，不得扩大或吸收包外模块；精确出口准入也不授予同包其他模块
+网络权限。配置驱动的工作流事件注册是当前唯一动态 consumer，插件自定义事件类型可保持动态。
 
-外部 MCP schema 紧凑投影由纯函数模块 `app.agent.tools.projection` 拥有，仅在请求头显式 opt-in 后应用；新增 1 个模块和 1 条合法端点依赖边，未新增 SCC。`list_exposed_tools` 返回类型注解使端点类型债务减少 5 项。
+### 10.3 检查入口
 
-目录监控成功通知在批次完成后复用主事件循环开启静默窗口，新增 2 条合法 Chain 到 Runtime 依赖边（含父包展开），未新增模块或 SCC。成功通知聚合复用既有 owner 和领域模型，统一交由通知模板渲染；移除汇总发送端的模板上下文直连后，原聚合实现的 14 条新增依赖边减为 12 条，未新增模块或 SCC。社区勋章名单读取复用 `app.foundation.url` 标准化 GitHub 镜像地址，新增 2 条合法依赖边（含父包展开），未新增模块或 SCC。整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；音乐标签准入与批次共识由 `app.chain.transfer.music` 负责，预览证据由 `app.application.transfer.projection` 只读投影；宿主依赖边现为 9,579；站点 API 依赖显式导入 SiteQueryPort 与 SiteStagingPort，新增 1 条合法类型边；订阅独立日志复用运行时上下文、系统日志端口与资源鉴权，新增 19 条合法依赖边（含父包展开），未新增模块或 SCC；插件实例校验复用 `app.domain.plugin` 的物理身份规则，兼容下划线 ID，新增 2 条 Schema 到 Domain 的合法依赖边（含父包展开）；种子下载限流窗口由 `app.domain.torrent` 定义，失败冷却 owner 复用同一语义，新增 1 条合法 Chain 到 Domain 的导入边；工作流添加下载动作由 `app.workflow.actions.add_download` 转换工作流 Schema 为下载链领域上下文，新增 5 条模块导入边；资源过滤动作 `app.workflow.actions.filter_torrents` 与动作包共用的领域还原函数同样把 Schema 资源还原为领域对象后再交给过滤链，新增 6 条模块导入边。音乐来源链与识别缓存复用领域身份核验，音乐交互包未新增 SCC，插件一次性任务 owner `app.scheduler.oncejob` 带来 1 个模块和 9 条依赖边。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。缓存组合根只在启动时选用 Redis 缓存才导入 Redis 适配器，依赖 langchain_core 的对话记忆模型归属 `app.agent.memory`，文件缓存且未启用智能体的实例不再加载 redis 与 langchain_core。Telegram 渠道改用模块内 `app.modules.telegram.botapi` 精简 Bot API 客户端，经 `RequestUtils` 出站，宿主不再导入 pyTelegramBotAPI，启用 Telegram 的实例也不会因该 SDK 加载 redis；该依赖暂时保留给插件使用。Web Push 协议（aes128gcm 加密、VAPID 签名与经 `RequestUtils` 投递）由网络适配器 `app.adapters.network.webpush` 直接基于 http-ece 与 py-vapid 实现，消息端点与 `WebPushModule` 共用，宿主不再导入 pywebpush 及其连带的 aiohttp；该依赖同样暂时保留给插件使用。飞书渠道改用模块内 `app.modules.feishu.openapi` OpenAPI 客户端（经 `RequestUtils` 出站）与网络适配器 `app.adapters.network.feishu` 事件长连接（websocket-client 同步收发 pbbp2 帧），宿主不再导入 lark-oapi 及其上万个生成模块，长连接也不再依赖 SDK 的模块级事件循环；插件经 `app.sdk.feishu` 复用同一长连接，lark-oapi 暂时保留给尚未迁移的插件使用。API 文档路由由 `app.adapters.web.docs` 按 `API_DOCS_ENABLE` 逐请求开放，默认关闭，未开放时不生成文档。当前 `app.startup.lifecycle` 为 587、`app.factory` 为 600、`app.main` 为 602。专辑订阅入库对账新增 `app.chain.subscribe.music` 一个职责 owner；按注入的下载/整理历史 Port 读取事实，复用音频标签/CUE 读取和领域覆盖规则，依赖图增加 18 条合法边，不引入跨层数据库或 Adapter 直连。订阅业务活动新增 `app.application.subscription.activity` 及对应 DB Model、Oper、Adapter 四个模块，三入口与功能前提交对照均只增加这四个模块；性能基线仅同步结构计数，保留原有历史耗时采样和预算。音乐调用观察 `app.application.music.observation` 新增一个轻量模块，记录来源结果及请求预算；AcoustID及路径识别复用此上下文传递有界指纹候选，保留旧单ID模块合同。站点图片域名快照新增 `app.application.security.image`，各启动入口增加一个模块；性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
+使用目标项目的锁定虚拟环境；共享工作区的解释器映射见[开发环境设置](development-setup.md)。
+以下是文档与架构的核对入口，修改生产行为仍须按[测试规范](testing.md)扩展验证范围：
 
-架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
-语义门禁，`Check host architecture snapshot` 再执行快照测试及一次
-`scripts/architecture/baseline.py --check-host`。快照一致只说明事实未漂移，不能替代边界合理性审查。
-本轮最终实现头 `c204e2e97` 的 Unit Tests `33269394727` 与 Pylint `33269394716` 均已成功；
-本地锁定全量为 `7659 passed, 9 skipped`，官方插件兼容基线基于
-`161fce34caa31deb7d82dd50a31f217d5e6784c2` 通过。S0-S3 与 S5 已全部交付，S4 按维护者决定取消。
+```bash
+# 文档结构与架构快照合同
+uv run --locked --no-sync pytest tests/test_architecture_documentation.py \
+  tests/test_architecture_contract_baseline.py -q
 
-本总览与本轮架构治理的关系如下：
+# 当前宿主事实与快照是否一致；此命令不写基线
+uv run --locked --no-sync python scripts/architecture/baseline.py --check-host
+```
 
-- 已完成的宿主边界：旧 `app.core` / `app.helper` / `app.utils` / `app.log` 根路径通过
-  `app/runtime/compat/manifest.py` 精确映射；订阅、历史、用户认证等旧 Oper 入口通过
-  `app/sdk/_legacy/` 薄门面保留行为兼容。兼容清单是导入路由，不负责合并模块，也不负责把任意
-  新实现重新导出到旧模块。
-- 已完成的插件边界：插件 API 的动态路由由 application 端口 + web adapter 组成，使用原生
-  `APIRoute` 保留插件响应；插件管理器归入 `runtime/extensions/plugin/manager.py`，旧 ABI
-  只由 SDK/Compat 路由；`app/plugins/` 仅作为运行时插件副本/覆盖层处理。
-- 已完成的主题收口：订阅 DTO/Port 归入 `app/application/subscription/contract.py`，用例写入归入
-  `app/application/subscription/write.py`，SQLAlchemy 实现只在 `app/db/adapters/subscription.py`；插件动态路由与
-  文件夹操作归入 `app/application/plugin/routes.py`、`folders.py`。原
-  `app/application/subscribe.py`、`app/application/plugins.py` 未形成插件 ABI，已经直接删除，
-  宿主调用统一改为 canonical 路径。
-- 已完成的运行时可靠性收口：已迁移的主干后台任务由 TaskRegistry 或领域 lifecycle owner 管理；
-  durable-required 事件和
-  订阅关键副作用经 `app/application/outbox.py` 与 `app/db/adapters/outbox.py` 进入同事务 Outbox；
-  搜索逐页任务、Agent/消息事件和插件市场子任务均遵守请求或生命周期 owner，不再由入口模块维护
-  无法追踪的裸任务集合。
-- Scheduler 已从单体迁入 `app.scheduler` 同名职责包，startup 是业务 callable 的唯一构造与注入边界；
-  功能、生命周期、架构、兼容、文档与官方插件基线均已完成独立验证。
-- 判断是否需要新增 manifest 映射的标准：只有当旧物理模块被删除、改名或公开符号迁移时才登记；
-  物理文件仍是稳定入口的，不应为了目录规整新增“自己映射自己”的别名，也不应在 canonical 包中
-  保留多余导出。
+CI 的 `Architecture Contract Gate` 先检查依赖、Adapter、出口与事件语义，再核对宿主快照；
+`Architecture Ratchet Gate` 执行类型、复杂度与并发等治理检查，行为测试、覆盖率、启动性能和
+Pylint 分别提供对应证据。验证结论应绑定实际源码提交，不能引用旧一轮成功记录推断当前状态。
 
 ---
 
@@ -818,42 +854,13 @@ Outbox 按 topic 有界并行恢复复用 `ThreadHelper`，生命周期关闭通
 
 | 文档 | 内容 |
 |---|---|
-| [`docs/rules/01-project-overview.md`](rules/01-project-overview.md) | 系统目标与业务范围 |
-| [`docs/rules/02-tech-stack.md`](rules/02-tech-stack.md) | 技术栈与第三方集成 |
-| [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) | Module / Chain / Event / Oper 等模式细则 |
-| [`docs/rules/05-architecture.md`](rules/05-architecture.md) | 层边界、依赖方向与关键文件位置（权威） |
-| [`docs/rules/09-external-response.md`](rules/09-external-response.md) | 外部 HTTP 约定与统一响应格式 |
-| [`docs/rules/10-data-and-persistent.md`](rules/10-data-and-persistent.md) | 数据模型、迁移与缓存规范 |
-| [`docs/mcp-api.md`](mcp-api.md) | MCP 工具端点说明 |
-
-音乐来源回退由 `app.application.music.recognition` 持有独立来源诊断和共享祖先预算，新增一个轻量启动模块。来源顺序由现有配置冻结，Chain通过已声明的音乐目录Port获取专辑与完整曲目；领域层只负责检索计划、身份和唯一对位。新增31条内部依赖均符合分层边界，不增加SCC或具体Adapter直连；启动性能仍使用原耗时预算。
-
-Agent 历史回忆由 `application.messaging.recall` 的 DTO/Port 和有界 worker 服务注入。
-`agent.history` 拥有运行目录中的独立 SQLite/FTS5 消息库，按真实用户分别存储；
-`db.adapters.recall` 只导出升级前尚存的恢复快照，导入完成后历史查询不依赖主库。
-`agent.middleware.recall` 采集压缩前、工具截断前的完整脱敏证据并提供 Hermes 式检索；
-旧 `middleware.memory` 删除逐轮活动摘要调用，只保留稳定偏好。索引和旧快照回填通过
-宿主 TaskRegistry 按批调度，关停时取消并留下持久游标；启动导入不打开消息库。
-
-历史检索新增 11 个宿主模块，宿主模块总数为 1,072；依赖图新增 78 条、移除 3 条依赖边，没有新增循环。启动冷路径仅增加 2 个模块；SQLite 实现与 Agent runtime 仍在组合函数执行时加载。性能基线仅更新模块计数，不修改时间预算或历史采样。
-
-Agent 个人技能与后台学习新增13个宿主模块、61条内部依赖边，宿主为1085模块/9198边；没有新增SCC、具体Adapter越层依赖或边界债务。冷启动不物化学习实现，三入口模块数量仍为578/590/592，耗时预算和历史采样未调整。
-
-Agent Hermes 执行纠偏新增5个宿主模块、19条内部依赖边，当前1090模块/9217边；没有新增SCC、越层依赖或边界债务。循环控制器不执行工具，实际调用、权限、原始回执与取消仍由宿主掌握。
-
-智能分页新增冷导入模块 `app.application.search.session`、`app.chain.search.manual`、`app.chain.search.scan` 和 `app.domain.search`，三入口分别增加4个模块。性能 fixture 仅同步结构数量，保留原有耗时样本、预算及生命周期资源约束。下载提交沿用原有流程；未新增越层依赖或 SCC。
-
-订阅业务活动新增 Application 事实和 Port、DB Model/Oper/Adapter 四个模块，增加 50 条合法内部依赖边（含父包展开）。新 API 保持登录用户归属隔离；后台活动采用短事务观察，完成历史通过独立标识关联，未增加 SCC 或 Application/Chain 到具体 Adapter/数据库的直连。
-
-Jellyfin webhook 路径恢复复用 `app.runtime.cache.MemoryBackend` 的有界内存缓存和原子消费，
-新增 1 条合法 Module 到 Runtime 的导入边。缓存按服务器与条目 ID 隔离，
-未新增模块、SCC、数据库依赖或外部传输能力；删除路径未知时电影历史查询默认返回空。
-
-结构化通知通过 Schema 承载通用标题和段落，文本格式转换复用 `app.foundation.text` 的无状态机制，
-渠道按 `ChannelCapabilities.notification_text_format` 与实例模式选择投递格式和分段预算。
-新增 3 条合法依赖边（含父包展开）；文本转换按需加载，未新增模块、SCC、数据库依赖或外部传输能力。
-插件只发送一份结构化结果和纯文本回退，不包含渠道名称或平台格式逻辑。
-
-IP 归属地适配器复用 `app.schemas.common.JsonData` 声明原始 JSON 返回，新增 2 条合法依赖边（含父包展开），未新增模块、循环或越层依赖。
-
-社区勋章缓存由启动生命周期主动预热，并通过宿主 TaskRegistry 定期维护；查询只读本地快照，不等待远端功能开关、身份核验或名单下载。新增 3 条合法 Application 到 Runtime 依赖边（含父包展开），用于任务归属和固定消息日志，未新增模块、SCC、越层依赖或直接网络出口。
+| [项目概述](rules/01-project-overview.md) | 系统目标与业务范围 |
+| [技术栈](rules/02-tech-stack.md) | 技术栈与第三方集成 |
+| [设计模式](rules/04-design-patterns.md) | Module / Chain / Event / Oper 模式细则 |
+| [架构规则](rules/05-architecture.md) | 层边界、依赖方向与关键文件位置（权威） |
+| [外部接口约定](rules/09-external-response.md) | HTTP、协议适配与响应格式 |
+| [数据与持久化](rules/10-data-and-persistent.md) | 数据模型、事务、迁移与缓存 |
+| [开发环境设置](development-setup.md) | 锁定依赖、环境映射与治理检查 |
+| [测试规范](testing.md) | 隔离、测试范围与 CI 证据 |
+| [MCP 接入](mcp-api.md) | 外部 Agent 连接、认证、工具发现和调用 |
+| [CLI](cli.md) / [Doctor](doctor.md) | 本地管理与故障诊断 |
