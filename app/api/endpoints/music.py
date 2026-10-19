@@ -9,6 +9,7 @@ from fastapi import Depends, HTTPException, Query
 from app.adapters.web.security.access import verify_token
 from app.api.dependencies.auth import get_current_active_superuser_async
 from app.api.response import ResponseAPIRouter
+from app.application.mediaserver import MEDIA_SERVER_EXISTENCE_QUERY
 from app.chain.listenbrainz import (
     LISTENBRAINZ_CHART_RANGES,
     LISTENBRAINZ_FRESH_MAX_DAYS,
@@ -342,8 +343,8 @@ async def music_artist_albums(
     response_model=list[_SchemaMusicLibraryStatus],
 )
 def music_library_status(
-        request: _SchemaMusicLibraryStatusRequest,
-        _: _SchemaTokenPayload = Depends(verify_token),
+    request: _SchemaMusicLibraryStatusRequest,
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> list[_SchemaMusicLibraryStatus]:
     """
     按稳定音乐身份批量判断专辑是否已入库。
@@ -358,7 +359,7 @@ def music_library_status(
         expected_tracks = info.total_tracks or 1
         info.total_tracks = expected_tracks
         # 音乐媒体复用既有媒体存在性接口，其静态参数类型尚未包含音乐模型。
-        exists = media_chain.media_exists(mediainfo=info) is not None  # type: ignore[arg-type]
+        exists = media_chain.media_exists(mediainfo=info, query=MEDIA_SERVER_EXISTENCE_QUERY) is not None  # type: ignore[arg-type]
         assert item.media_source is not None
         assert item.media_id is not None
         statuses.append(

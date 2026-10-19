@@ -11,11 +11,12 @@ from requests import Response
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
+from app.modules._base.mediaserver import emby_query_params
 from app.runtime.cache import MemoryBackend
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import Statistic as _SchemaStatistic
-from app.schemas.mediaserver import MediaServerItem
+from app.schemas.mediaserver import MediaServerField, MediaServerItem, MediaServerQueryOptions
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
@@ -212,12 +213,15 @@ class Jellyfin:
         self,
         username: Optional[str] = None,
         hidden: Optional[bool] = False,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         读取用户可见媒体库，并转换为统一媒体库模型。
 
         :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
         :param hidden: 是否隐藏未选入同步范围的媒体库；默认返回全部可见库
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 媒体库列表；配置不完整、用户不可用或查询失败时返回 None
         """
         if not self._host or not self._apikey:
@@ -225,43 +229,49 @@ class Jellyfin:
         source_libraries = self.__get_jellyfin_librarys(username)
         if source_libraries is None:
             return None
+        options = query or MediaServerQueryOptions()
         libraries = []
         for library in source_libraries:
-            if hidden and self._sync_libraries and "all" not in self._sync_libraries \
-                    and library.get("Id") not in self._sync_libraries:
+            if (
+                hidden
+                and self._sync_libraries
+                and "all" not in self._sync_libraries
+                and library.get("Id") not in self._sync_libraries
+            ):
                 continue
             if library.get("CollectionType") == "movies":
                 library_type = MediaType.MOVIE.value
-                link = f"{self._playhost or self._host}web/index.html#!" \
-                    f"/movies.html?topParentId={library.get('Id')}"
+                link = f"{self._playhost or self._host}web/index.html#!/movies.html?topParentId={library.get('Id')}"
             elif library.get("CollectionType") == "tvshows":
                 library_type = MediaType.TV.value
-                link = f"{self._playhost or self._host}web/index.html#!" \
-                    f"/tv.html?topParentId={library.get('Id')}"
+                link = f"{self._playhost or self._host}web/index.html#!/tv.html?topParentId={library.get('Id')}"
             elif library.get("CollectionType") in ("music", "musicvideos"):
                 library_type = MediaType.MUSIC.value
-                link = f"{self._playhost or self._host}web/index.html#!" \
-                    f"/music.html?topParentId={library.get('Id')}"
+                link = f"{self._playhost or self._host}web/index.html#!/music.html?topParentId={library.get('Id')}"
             else:
                 library_type = MediaType.UNKNOWN.value
-                link = f"{self._playhost or self._host}web/index.html#!" \
-                    f"/library.html?topParentId={library.get('Id')}"
-            image = self.__get_local_image_by_id(library.get("Id"))
+                link = f"{self._playhost or self._host}web/index.html#!/library.html?topParentId={library.get('Id')}"
+            image = (
+                self.__get_local_image_by_id(library.get("Id")) if options.includes(MediaServerField.IMAGES) else None
+            )
             libraries.append(
                 _SchemaMediaServerLibrary(
                     server="jellyfin",
                     id=library.get("Id"),
                     name=library.get("Name"),
-                    path=library.get("Path"),
+                    path=library.get("Path") if options.includes(MediaServerField.PATH) else None,
                     type=library_type,
                     item_count=self.get_items_count(
                         library.get("Id"),
                         include_item_types="MusicAlbum" if library_type == MediaType.MUSIC.value else "Movie,Series",
-                    ),
+                    )
+                    if options.includes(MediaServerField.COUNTS)
+                    else None,
                     image=image,
-                    link=link,
-                    server_type="jellyfin"
-                ))
+                    link=link if options.includes(MediaServerField.LINK) else None,
+                    server_type="jellyfin",
+                )
+            )
         return libraries
 
     def get_user_count(self) -> int:
@@ -483,9 +493,13 @@ class Jellyfin:
             episode_count=episode_count, music_count=music_count,
         ) if has_known_library else None
 
-    def __get_jellyfin_series_id_by_name(self, name: Optional[str], year: Optional[str]) -> Optional[str]:
+    def __get_jellyfin_series_id_by_name(
+        self, name: Optional[str], year: Optional[str], *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[str]:
         """
         根据名称查询Jellyfin中剧集的SeriesId。
+
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         """
         if not self._host or not self._apikey or not self.user:
             return None
@@ -495,27 +509,33 @@ class Jellyfin:
             "Recursive": "true",
             "searchTerm": name,
             "Limit": 10,
-            "api_key": self._apikey
+            "api_key": self._apikey,
         }
         try:
+            params.update(emby_query_params(query))
             res = self._request().get_res(url, params)
             if res:
                 res_items = res.json().get("Items")
                 if res_items:
                     for res_item in res_items:
-                        if res_item.get('Name') == name and (
-                                not year or str(res_item.get('ProductionYear')) == str(year)):
-                            return _optional_text(res_item.get('Id'))
+                        if res_item.get("Name") == name and (
+                            not year or str(res_item.get("ProductionYear")) == str(year)
+                        ):
+                            return _optional_text(res_item.get("Id"))
         except Exception as e:
             logger.error("连接Items出错：" + str(e))
             return None
         return ""
 
-    def get_movies(self,
-                   title: str,
-                   year: Optional[str] = None,
-                   media_source: Optional[MediaSource] = None,
-                   media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
+    def get_movies(
+        self,
+        title: str,
+        year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[List[_SchemaMediaServerItem]]:
         """
         搜索电影并核对标题、年份和来源身份。
 
@@ -525,6 +545,7 @@ class Jellyfin:
         :param year: 可选年份，空值表示不限年份
         :param media_source: 可选媒体来源，用于排除来源身份冲突
         :param media_id: 来源内的媒体标识，与 media_source 配合使用
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 匹配的统一电影条目；候选均被过滤时可能为空列表，服务端无候选或查询失败时返回 None
         """
         if not self._host or not self._apikey or not self.user:
@@ -539,9 +560,12 @@ class Jellyfin:
             "CollapseBoxSetItems": "false",
             "searchTerm": title,
             "Limit": 10,
-            "api_key": self._apikey
+            "api_key": self._apikey,
         }
         try:
+            params.update(
+                emby_query_params(query.with_fields(MediaServerField.IDENTITY) if query is not None else None)
+            )
             res = self._request().get_res(url, params)
             if res:
                 res_items = res.json().get("Items")
@@ -552,11 +576,11 @@ class Jellyfin:
                             continue
                         mediaserver_item = self.__format_item_info(item)
                         if mediaserver_item:
-                            if MediaServerIdentityHelper.is_compatible(
-                                    mediaserver_item, media_source, media_id
-                            ) and \
-                                    mediaserver_item.title == title and \
-                                    (not year or str(mediaserver_item.year) == str(year)):
+                            if (
+                                MediaServerIdentityHelper.is_compatible(mediaserver_item, media_source, media_id)
+                                and mediaserver_item.title == title
+                                and (not year or str(mediaserver_item.year) == str(year))
+                            ):
                                 ret_movies.append(mediaserver_item)
                     return ret_movies
         except Exception as e:
@@ -565,8 +589,12 @@ class Jellyfin:
         return None
 
     def get_music(
-        self, title: Optional[str] = None, artist: Optional[str] = None,
+        self,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
         album: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> List[_SchemaMediaServerItem]:
         """
         按歌曲、艺术家和专辑关键词搜索音乐候选。
@@ -576,24 +604,26 @@ class Jellyfin:
         :param title: 可选歌曲标题
         :param artist: 可选艺术家名称
         :param album: 可选专辑名称
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 最多 20 个专辑或歌曲候选；查询词为空、配置不完整或请求失败时返回空列表
         """
         if not self._host or not self._apikey or not self.user:
             return []
-        query = " ".join(filter(None, [title, artist, album])).strip()
-        if not query:
+        search_term = " ".join(filter(None, [title, artist, album])).strip()
+        if not search_term:
             return []
         url = f"{self._host}Users/{self.user}/Items"
         params = {
             "IncludeItemTypes": "MusicAlbum,Audio",
             "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
-                      "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
-            "searchTerm": query,
+            "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
+            "searchTerm": search_term,
             "Recursive": "true",
             "Limit": 20,
             "api_key": self._apikey,
         }
         try:
+            params.update(emby_query_params(query))
             res = self._request().get_res(url, params)
             items = res.json().get("Items", []) if res and res.status_code == 200 else []
             return [item for item in (self.__format_item_info(item) for item in items) if item]
@@ -601,13 +631,17 @@ class Jellyfin:
             logger.debug(f"查询Jellyfin音乐出错：{e}")
             return []
 
-    def get_tv_episodes(self,
-                        item_id: Optional[str] = None,
-                        title: Optional[str] = None,
-                        year: Optional[str] = None,
-                        media_source: Optional[MediaSource] = None,
-                        media_id: Optional[str] = None,
-                        season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, list[int]]]]:
+    def get_tv_episodes(
+        self,
+        item_id: Optional[str] = None,
+        title: Optional[str] = None,
+        year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        season: Optional[int] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Tuple[Optional[str], Optional[Dict[int, list[int]]]]:
         """
         查询电视剧身份及各季已经存在的集号。
 
@@ -619,6 +653,7 @@ class Jellyfin:
         :param media_source: 可选媒体来源，用于排除身份冲突
         :param media_id: 对应来源的媒体标识
         :param season: 目标季号；None 表示查询全部季
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 电视剧条目标识与“季号到集号列表”映射；配置缺失或异常返回两项 None，
             未找到、身份不兼容或响应无可用数据时返回 None 和空映射
         """
@@ -626,22 +661,32 @@ class Jellyfin:
             return None, None
         cached_item_id = item_id
         if not item_id:
-            item_id = self.__get_jellyfin_series_id_by_name(title, year)
+            item_id = self.__get_jellyfin_series_id_by_name(
+                title, year, **({"query": query} if query is not None else {})
+            )
             if item_id is None:
                 return None, None
             if not item_id:
                 return None, {}
         # 校验媒体服务器返回的主身份是否与目标冲突
-        item_info = self.get_iteminfo(item_id)
+        item_info = self.get_iteminfo(
+            item_id,
+            **({"query": query.with_fields(MediaServerField.IDENTITY)} if query is not None else {}),
+        )
         if not item_info and cached_item_id and title:
             # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
             logger.warning(f"Jellyfin缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
-            item_id = self.__get_jellyfin_series_id_by_name(title, year)
+            item_id = self.__get_jellyfin_series_id_by_name(
+                title, year, **({"query": query} if query is not None else {})
+            )
             if item_id is None:
                 return None, None
             if not item_id:
                 return None, {}
-            item_info = self.get_iteminfo(item_id)
+            item_info = self.get_iteminfo(
+                item_id,
+                **({"query": query.with_fields(MediaServerField.IDENTITY)} if query is not None else {}),
+            )
         if not item_info:
             return None, {}
         if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
@@ -649,13 +694,13 @@ class Jellyfin:
         if season is None:
             season = None
         url = f"{self._host}Shows/{item_id}/Episodes"
-        params = {
-            "season": season,
-            "userId": self.user,
-            "isMissing": "false",
-            "api_key": self._apikey
-        }
+        params = {"season": season, "userId": self.user, "isMissing": "false", "api_key": self._apikey}
         try:
+            params.update(
+                emby_query_params(
+                    MediaServerQueryOptions(fields=set()) if query is not None and query.fields is not None else None
+                )
+            )
             res_json = self._request().get_res(url, params)
             if res_json:
                 tv_info = res_json.json()
@@ -679,24 +724,27 @@ class Jellyfin:
             return None, None
         return None, {}
 
-    def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
+    def get_season_episode_ids(
+        self, item_id: str, season: int, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Dict[int, str]:
         """
         读取指定季的分集条目标识。
 
         :param item_id: Jellyfin 条目标识
         :param season: 目标季号
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 集号到条目标识的映射；输入不完整、无分集或查询失败时返回空映射
         """
         if not item_id or not self._host or not self._apikey or not self.user:
             return {}
         try:
             url = f"{self._host}Shows/{item_id}/Episodes"
-            params = {
-                "season": season,
-                "userId": self.user,
-                "isMissing": "false",
-                "api_key": self._apikey
-            }
+            params = {"season": season, "userId": self.user, "isMissing": "false", "api_key": self._apikey}
+            params.update(
+                emby_query_params(
+                    MediaServerQueryOptions(fields=set()) if query is not None and query.fields is not None else None
+                )
+            )
             res_json = self._request().get_res(url, params)
             if not res_json:
                 return {}
@@ -956,11 +1004,14 @@ class Jellyfin:
         """
         return format_emby_family_item(item, server="jellyfin")
 
-    def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
+    def get_iteminfo(
+        self, itemid: str, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[_SchemaMediaServerItem]:
         """
         查询单个条目并转换为统一媒体模型。
 
         :param itemid: Jellyfin 条目标识
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 条目详情；标识为空、配置不完整、查询失败或类型无法转换时返回 None
         """
         if not itemid:
@@ -968,13 +1019,20 @@ class Jellyfin:
         if not self._host or not self._apikey:
             return None
         url = f"{self._host}Users/{self.user}/Items/{itemid}"
-        params = {
-            "api_key": self._apikey
-        }
+        params: dict[str, Any] = {"api_key": self._apikey}
+        projected = query is not None and query.fields is not None
+        if projected:
+            url = url.rsplit("/", 1)[0]
+            params.update({"Ids": itemid, "Limit": 1, **emby_query_params(query)})
         try:
             res = self._request().get_res(url, params)
             if res and res.status_code == 200:
-                return self.__format_item_info(res.json())
+                payload = res.json()
+                if projected:
+                    payload = next(iter(payload.get("Items") or []), None)
+                if payload is None:
+                    return None
+                return self.__format_item_info(payload)
         except Exception as e:
             logger.error(f"连接Users/{self.user}/Items/{itemid}：" + str(e))
         return None
@@ -1009,8 +1067,14 @@ class Jellyfin:
             logger.error(f"查询媒体库 {parent} 的媒体总数出错：{str(e)}")
             return None
 
-    def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0, limit: Optional[int] = -1) \
-            -> Generator[Optional[MediaServerItem], None, None]:
+    def get_items(
+        self,
+        parent: Union[str, int],
+        start_index: Optional[int] = 0,
+        limit: Optional[int] = -1,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Generator[Optional[MediaServerItem], None, None]:
         """
         读取媒体库条目并递归展开目录。
 
@@ -1020,6 +1084,7 @@ class Jellyfin:
         :param parent: 媒体库标识，不接受空值
         :param start_index: 分页起始索引；不限制数量时不发送此参数
         :param limit: 本层请求数量；None 或 -1 不限制，递归子目录始终不分页
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :yields: 转换后的统一媒体条目
         :raises ValueError: 媒体库标识为空
         :raises ConnectionError: 配置不完整或读取媒体库失败
@@ -1033,15 +1098,13 @@ class Jellyfin:
             "ParentId": parent,
             "api_key": self._apikey,
             "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
-                      "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,"
-                      "UserDataLastPlayedDate,ParentId",
+            "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,"
+            "UserDataLastPlayedDate,ParentId",
         }
         if limit is not None and limit != -1:
-            params.update({
-                "StartIndex": start_index,
-                "Limit": limit
-            })
+            params.update({"StartIndex": start_index, "Limit": limit})
         try:
+            params.update(emby_query_params(query))
             res = self._request().get_res(url, params)
             if not res or res.status_code != 200:
                 raise ConnectionError(
@@ -1052,7 +1115,7 @@ class Jellyfin:
                 if not item:
                     continue
                 if "Folder" in item.get("Type") or item.get("Type") == "BoxSet":
-                    for items in self.get_items(item.get("Id")):
+                    for items in self.get_items(item.get("Id"), **({"query": query} if query is not None else {})):
                         yield items
                 elif item.get("Type") in ["Movie", "Series", "MusicAlbum"]:
                     yield self.__format_item_info(item)
@@ -1141,12 +1204,19 @@ class Jellyfin:
         return f"{host_url}Items/{item_id}/" \
             f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
-    def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
+    def get_resume(
+        self,
+        num: Optional[int] = 12,
+        username: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询用户的继续观看列表并按可同步媒体库路径筛选。
 
         :param num: 最多保留的条目数量，默认 12
         :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 电影或电视剧播放条目列表；配置不完整、用户不可用或请求失败时返回 None
         """
         if not self._host or not self._apikey:
@@ -1165,7 +1235,9 @@ class Jellyfin:
             "Fields": "ProductionYear,Path",
             "api_key": self._apikey,
         }
+        options = query or MediaServerQueryOptions()
         try:
+            params.update(emby_query_params(query.with_fields(MediaServerField.PATH) if query is not None else None))
             res = self._request().get_res(url, params)
             if res:
                 result = res.json().get("Items") or []
@@ -1178,37 +1250,33 @@ class Jellyfin:
                     if item.get("Type") not in ["Movie", "Episode"]:
                         continue
                     item_path = item.get("Path")
-                    if item_path and library_folders and not any(
-                            str(item_path).startswith(folder) for folder in library_folders):
+                    if (
+                        item_path
+                        and library_folders
+                        and not any(str(item_path).startswith(folder) for folder in library_folders)
+                    ):
                         continue
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
-                    link = self.get_play_url(item.get("Id"))
-                    image: Optional[str]
-                    if item.get("BackdropImageTags"):
-                        image = self.get_backdrop_url(item_id=item.get("Id"),
-                                                      image_tag=item.get("BackdropImageTags")[0])
-                    else:
-                        image = self.__get_local_image_by_id(item.get("Id"))
-                    # 小部分剧集无[xxx-S01E01-thumb.jpg]图片
-                    image_res = self._request().get_res(image)
-                    if not image_res or image_res.status_code == 404:
-                        image = self.generate_image_link(item.get("Id"), "Backdrop", False)
+                    link = self.get_play_url(item.get("Id")) if options.includes(MediaServerField.LINK) else None
+                    image = self._get_resume_image(item, query)
                     if item_type == MediaType.MOVIE.value:
                         title = item.get("Name")
                         subtitle = str(item.get("ProductionYear")) if item.get("ProductionYear") else None
                     else:
-                        title = f'{item.get("SeriesName")}'
-                        subtitle = f'S{item.get("ParentIndexNumber")}:{item.get("IndexNumber")} - {item.get("Name")}'
-                    ret_resume.append(_SchemaMediaServerPlayItem(
-                        id=item.get("Id"),
-                        title=title,
-                        subtitle=subtitle,
-                        type=item_type,
-                        image=image,
-                        link=link,
-                        percent=item.get("UserData", {}).get("PlayedPercentage"),
-                        server_type='jellyfin',
-                    ))
+                        title = f"{item.get('SeriesName')}"
+                        subtitle = f"S{item.get('ParentIndexNumber')}:{item.get('IndexNumber')} - {item.get('Name')}"
+                    ret_resume.append(
+                        _SchemaMediaServerPlayItem(
+                            id=item.get("Id"),
+                            title=title,
+                            subtitle=subtitle,
+                            type=item_type,
+                            image=image,
+                            link=link,
+                            percent=item.get("UserData", {}).get("PlayedPercentage"),
+                            server_type="jellyfin",
+                        )
+                    )
                 return ret_resume
             else:
                 logger.error("Users/Items/Resume 未获取到返回数据")
@@ -1216,12 +1284,44 @@ class Jellyfin:
             logger.error("连接Users/Items/Resume出错：" + str(e))
         return None
 
-    def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
+    def _get_resume_image(
+        self,
+        item: dict[str, Any],
+        query: Optional[MediaServerQueryOptions],
+    ) -> Optional[str]:
+        """
+        仅在请求图片时运行原有继续观看封面选择与探测逻辑。
+
+        :param item: 继续观看接口返回的原始条目
+        :param query: 可选内容投影；未指定时保留原有图片行为
+        :return: 可用图片链接；调用方不需要图片时返回 None 且不探测图片
+        """
+        if query is not None and not query.includes(MediaServerField.IMAGES):
+            return None
+        image: Optional[str]
+        if item.get("BackdropImageTags"):
+            image = self.get_backdrop_url(item_id=item["Id"], image_tag=(item.get("BackdropImageTags") or [])[0])
+        else:
+            image = self.__get_local_image_by_id(item.get("Id"))
+        # 小部分剧集无[xxx-S01E01-thumb.jpg]图片
+        image_res = self._request().get_res(image)
+        if not image_res or image_res.status_code == 404:
+            image = self.generate_image_link(item["Id"], "Backdrop", False)
+        return image
+
+    def get_latest(
+        self,
+        num: Optional[int] = 20,
+        username: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询用户最近入库的媒体条目。
 
         :param num: 最多保留的条目数量，默认 20；先查询 100 条再按库路径筛选
         :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 转换后的最新媒体列表；配置不完整、用户不可用或请求失败时返回 None
         """
         if not self._host or not self._apikey:
@@ -1239,7 +1339,9 @@ class Jellyfin:
             "Fields": "ProductionYear,Path,BackdropImageTags",
             "api_key": self._apikey,
         }
+        options = query or MediaServerQueryOptions()
         try:
+            params.update(emby_query_params(query.with_fields(MediaServerField.PATH) if query is not None else None))
             res = self._request().get_res(url, params)
             if res:
                 result = res.json() or []
@@ -1252,22 +1354,33 @@ class Jellyfin:
                     if item.get("Type") not in ["Movie", "Series"]:
                         continue
                     item_path = item.get("Path")
-                    if item_path and library_folders and not any(
-                            str(item_path).startswith(folder) for folder in library_folders):
+                    if (
+                        item_path
+                        and library_folders
+                        and not any(str(item_path).startswith(folder) for folder in library_folders)
+                    ):
                         continue
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
-                    link = self.get_play_url(item.get("Id"))
-                    image = self.__get_local_image_by_id(item_id=item.get("Id"))
-                    ret_latest.append(_SchemaMediaServerPlayItem(
-                        id=item.get("Id"),
-                        title=item.get("Name"),
-                        subtitle=str(item.get("ProductionYear")) if item.get("ProductionYear") else None,
-                        type=item_type,
-                        image=image,
-                        link=link,
-                        BackdropImageTags=item.get("BackdropImageTags"),
-                        server_type='jellyfin'
-                    ))
+                    link = self.get_play_url(item.get("Id")) if options.includes(MediaServerField.LINK) else None
+                    image = (
+                        self.__get_local_image_by_id(item_id=item.get("Id"))
+                        if options.includes(MediaServerField.IMAGES)
+                        else None
+                    )
+                    ret_latest.append(
+                        _SchemaMediaServerPlayItem(
+                            id=item.get("Id"),
+                            title=item.get("Name"),
+                            subtitle=str(item.get("ProductionYear")) if item.get("ProductionYear") else None,
+                            type=item_type,
+                            image=image,
+                            link=link,
+                            BackdropImageTags=item.get("BackdropImageTags")
+                            if options.includes(MediaServerField.IMAGES)
+                            else None,
+                            server_type="jellyfin",
+                        )
+                    )
                 return ret_latest
             else:
                 logger.error("Users/Items/Latest 未获取到返回数据")

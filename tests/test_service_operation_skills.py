@@ -714,3 +714,88 @@ def test_service_operation_skill_docs_cover_every_action_and_argument(
             assert row, f"{path} 缺少 {action_name} 的独立合同表格行"
             for argument in spec.arguments:
                 assert f"`{argument.name}" in row
+
+
+def test_mediaserver_query_is_validated_and_forwarded(mediaserver_module, monkeypatch):
+    """
+    Agent 采用宿主统一模型解释查询内容并向客户端传递。
+    """
+    from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
+
+    client = MagicMock()
+    client.get_items.return_value = []
+    monkeypatch.setattr(mediaserver_module, "_select_config", lambda _name: _mediaserver_config())
+    monkeypatch.setattr(mediaserver_module, "_build_client", lambda _config: client)
+
+    mediaserver_module.call_action(
+        None,
+        "items.list",
+        {
+            "parent": "movies",
+            "limit": 10,
+            "query": {"fields": ["identity", "path"]},
+        },
+    )
+
+    query = client.get_items.call_args.kwargs["query"]
+    assert isinstance(query, MediaServerQueryOptions)
+    assert query.fields == {MediaServerField.IDENTITY, MediaServerField.PATH}
+
+
+def test_mediaserver_invalid_query_fails_before_config_load(mediaserver_module, monkeypatch):
+    """
+    非法内容组在读取实例配置或连接服务前拒绝。
+    """
+    select = MagicMock()
+    monkeypatch.setattr(mediaserver_module, "_select_config", select)
+
+    with pytest.raises(ValueError):
+        mediaserver_module.call_action(
+            None,
+            "items.list",
+            {
+                "parent": "movies",
+                "query": {"fields": ["unknown"]},
+            },
+        )
+
+    select.assert_not_called()
+
+
+@pytest.mark.parametrize("provider", ["zspace", "trimemedia", "ugreen", "mediavault"])
+def test_mediaserver_skipped_query_fails_before_connection(mediaserver_module, monkeypatch, provider):
+    """
+    尚未改造的服务明确拒绝新参数，并保留原客户端实现。
+    """
+    build = MagicMock()
+    monkeypatch.setattr(mediaserver_module, "_select_config", lambda _name: _mediaserver_config(provider))
+    monkeypatch.setattr(mediaserver_module, "_build_client", build)
+
+    with pytest.raises(ValueError):
+        mediaserver_module.call_action(
+            None,
+            "items.list",
+            {
+                "parent": "movies",
+                "query": {"fields": []},
+            },
+        )
+
+    build.assert_not_called()
+
+
+def test_mediaserver_tool_query_schema_uses_canonical_fields(mediaserver_module):
+    """
+    工具参数直接使用统一模型内容组，嵌套 schema 不残留失效引用。
+    """
+    from app.agent.tools.impl.service import _build_arguments_schema
+    from app.schemas.mediaserver import MediaServerField
+
+    schema = _build_arguments_schema("items.list", mediaserver_module.ACTIONS["items.list"])
+
+    query = schema["properties"]["query"]
+    variants = query["properties"]["fields"]["anyOf"]
+    enum = next(item["items"]["enum"] for item in variants if "items" in item)
+    assert set(enum) == {field.value for field in MediaServerField}
+    assert query["additionalProperties"] is False
+    assert "$ref" not in json.dumps(query)

@@ -13,6 +13,7 @@ from jinja2 import Template
 import app.chain.download.submission as download_submission
 from app.api.endpoints.download import add, download, download_artist_collection
 from app.application.audio import AudioMetadataHelper
+from app.application.mediaserver import MEDIA_SERVER_EXISTENCE_QUERY
 from app.application.messaging.message import TemplateHelper
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
@@ -404,4 +405,5 @@ def test_music_library_exists_uses_atomic_album_lookup():
     chain.media_exists.assert_called_once_with(
         mediainfo=album,
         itemid="album-item-1",
+        query=MEDIA_SERVER_EXISTENCE_QUERY,
     )

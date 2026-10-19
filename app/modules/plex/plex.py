@@ -11,7 +11,7 @@ from urllib.parse import quote_plus
 from plexapi.audio import Album, Artist, Track
 from plexapi.base import PlexPartialObject
 from plexapi.exceptions import NotFound
-from plexapi.library import Library
+from plexapi.library import Library, LibrarySection
 from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
 from plexapi.video import Episode, Movie, Season, Show
@@ -23,7 +23,7 @@ from app.foundation.url import UrlUtils
 from app.runtime.cache import cached
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
-from app.schemas.mediaserver import MediaServerItem
+from app.schemas.mediaserver import MediaServerField, MediaServerItem, MediaServerQueryOptions
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
@@ -52,6 +52,74 @@ class Plex:
     _plex = None
     _request_utils = None
     _sync_libraries: List[str] = []
+
+    @staticmethod
+    def _query_params(query: Optional[MediaServerQueryOptions]) -> dict[str, str]:
+        """
+        将显式内容投影转换为 Plex 的属性与子节点排除参数。
+
+        不使用跨 API 版本语义不同的 includeFields；不支持裁剪的旧服务端可能忽略请求。
+        Media 保存文件路径，Guid 保存媒体身份，二者只在调用方不需要时排除。
+
+        :param query: 可选查询投影；默认选项不改变旧请求
+        :return: 通过 SDK 的 params 或查询串发送的服务端参数
+        """
+        if query is None or query.fields is None:
+            return {}
+        attributes = {
+            MediaServerField.ORIGINAL_TITLE: ("originalTitle",),
+            MediaServerField.YEAR: ("year", "originallyAvailableAt"),
+            MediaServerField.USER_STATE: ("viewOffset", "viewCount", "lastViewedAt"),
+            MediaServerField.IMAGES: (
+                "art",
+                "thumb",
+                "parentArt",
+                "parentThumb",
+                "grandparentArt",
+                "grandparentThumb",
+                "banner",
+            ),
+        }
+        elements = {
+            MediaServerField.IDENTITY: ("Guid",),
+            MediaServerField.PATH: ("Media",),
+            MediaServerField.IMAGES: ("Image", "OriginalImage"),
+        }
+        excluded_fields = [name for field, names in attributes.items() if not query.includes(field) for name in names]
+        excluded_elements = PLEX_SYNC_EXCLUDE_ELEMENTS.split(",") + [
+            name for field, names in elements.items() if not query.includes(field) for name in names
+        ]
+        return {"excludeFields": ",".join(excluded_fields), "excludeElements": ",".join(excluded_elements)}
+
+    @staticmethod
+    def _disable_auto_reload(item: Any, query: Optional[MediaServerQueryOptions]) -> None:
+        """
+        防止 SDK 为显式省略的可选字段自动补查完整详情。
+
+        :param item: 待使用的 Plex SDK 对象
+        :param query: 显式投影；默认选项保留 SDK 原行为
+        """
+        if query is not None and query.fields is not None and isinstance(item, PlexPartialObject):
+            item._autoReload = False
+
+    def _search_music_library(
+        self,
+        library: LibrarySection,
+        title: str,
+        query: Optional[MediaServerQueryOptions],
+    ) -> list[Any]:
+        """
+        显式精简音乐查询通过 fetchItems.params 发送，避免被 search 误当成筛选字段。
+
+        :param library: 待搜索的 Plex 音乐库
+        :param title: 音乐搜索词
+        :param query: 可选内容投影；默认选项保留原搜索方法
+        :return: 服务端返回的音乐候选
+        """
+        if query is None or query.fields is None:
+            return list(library.search(title=title))
+        key = library._buildSearchKey(title=title, includeGuids=query.includes(MediaServerField.IDENTITY))
+        return list(library.fetchItems(key, params=self._query_params(query.with_fields(MediaServerField.MUSIC))))
 
     def __init__(self, host: Optional[str] = None, token: Optional[str] = None, play_host: Optional[str] = None,
                  sync_libraries: Optional[list[str]] = None, timeout: Optional[int] = 30, **kwargs: Any) -> None:
@@ -185,11 +253,14 @@ class Plex:
         return [f"{self._host.rstrip('/') + url}?X-Plex-Token={self._token}" for url in
                 list(poster_urls.keys())[:total_size]]
 
-    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
+    def get_librarys(
+        self, hidden: Optional[bool] = False, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         刷新媒体库目录，并转换支持的电影、剧集和音乐库。
 
         :param hidden: 是否隐藏未选入同步范围的库；默认返回全部支持的媒体库
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一媒体库列表；SDK 未连接或读取库目录失败时返回 None
         """
         if not self._plex:
@@ -199,33 +270,48 @@ class Plex:
         except Exception as err:
             logger.error(f"获取媒体服务器所有媒体库列表出错：{str(err)}")
             return None
+        options = query or MediaServerQueryOptions()
         libraries = []
         for library in self._libraries:
-            if hidden and self._sync_libraries and "all" not in self._sync_libraries \
-                    and str(library.key) not in self._sync_libraries:
+            if (
+                hidden
+                and self._sync_libraries
+                and "all" not in self._sync_libraries
+                and str(library.key) not in self._sync_libraries
+            ):
                 continue
             if library.type == "movie":
                 library_type = MediaType.MOVIE.value
-                image_list = self.__get_library_images(library.key, 1)
+                image_list = (
+                    self.__get_library_images(library.key, 1) if options.includes(MediaServerField.IMAGES) else None
+                )
             elif library.type == "show":
                 library_type = MediaType.TV.value
-                image_list = self.__get_library_images(library.key, 2)
+                image_list = (
+                    self.__get_library_images(library.key, 2) if options.includes(MediaServerField.IMAGES) else None
+                )
             elif library.type in ("artist", "music"):
                 library_type = MediaType.MUSIC.value
-                image_list = self.__get_library_images(library.key, 8)
+                image_list = (
+                    self.__get_library_images(library.key, 8) if options.includes(MediaServerField.IMAGES) else None
+                )
             else:
                 continue
             libraries.append(
                 _SchemaMediaServerLibrary(
                     id=library.key,
                     name=library.title,
-                    path=library.locations,
+                    path=library.locations if options.includes(MediaServerField.PATH) else None,
                     type=library_type,
-                    item_count=self.get_items_count(library.key),
+                    item_count=self.get_items_count(library.key) if options.includes(MediaServerField.COUNTS) else None,
                     image_list=image_list,
-                    link=f"{self._playhost or self._host}web/index.html#!/media/{self._plex.machineIdentifier}"
-                    f"/com.plexapp.plugins.library?source={library.key}&X-Plex-Token={self._token}",
-                    server_type='plex'
+                    link=(
+                        f"{self._playhost or self._host}web/index.html#!/media/{self._plex.machineIdentifier}"
+                        f"/com.plexapp.plugins.library?source={library.key}&X-Plex-Token={self._token}"
+                    )
+                    if options.includes(MediaServerField.LINK)
+                    else None,
+                    server_type="plex",
                 )
             )
         return libraries
@@ -259,12 +345,16 @@ class Plex:
             music_count=music_count,
         )
 
-    def get_movies(self,
-                   title: str,
-                   original_title: Optional[str] = None,
-                   year: Optional[str] = None,
-                   media_source: Optional[MediaSource] = None,
-                   media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
+    def get_movies(
+        self,
+        title: str,
+        original_title: Optional[str] = None,
+        year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[List[_SchemaMediaServerItem]]:
         """
         按标题和可选年份搜索电影，并排除来源身份冲突。
 
@@ -273,35 +363,33 @@ class Plex:
         :param year: 可选年份，空值表示不限年份
         :param media_source: 用于校验身份的媒体来源
         :param media_id: 对应来源内的标识
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 去重后的电影条目列表；未连接时返回 None，无匹配项时返回空列表，SDK 查询异常向上传播
         """
         if not self._plex:
             return None
+        options = query or MediaServerQueryOptions()
+        params = self._query_params(query.with_fields(MediaServerField.IDENTITY) if query is not None else None)
+        if query is not None and query.fields is not None:
+            params["includeGuids"] = "1"
         ret_movies = []
         if year:
-            movies = self._plex.library.search(title=title,
-                                               year=year,
-                                               libtype="movie")
+            movies = self._plex.library.search(title=title, year=year, libtype="movie", **params)
             # 根据原标题再查一遍
             if original_title and str(original_title) != str(title):
-                movies.extend(self._plex.library.search(title=original_title,
-                                                        year=year,
-                                                        libtype="movie"))
+                movies.extend(self._plex.library.search(title=original_title, year=year, libtype="movie", **params))
         else:
-            movies = self._plex.library.search(title=title,
-                                               libtype="movie")
+            movies = self._plex.library.search(title=title, libtype="movie", **params)
             if original_title and str(original_title) != str(title):
-                movies.extend(self._plex.library.search(title=original_title,
-                                                        libtype="movie"))
+                movies.extend(self._plex.library.search(title=original_title, libtype="movie", **params))
         for item in set(movies):
+            self._disable_auto_reload(item, query)
             ids = self.__get_ids(item.guids)
             item_source, item_media_id = MediaServerIdentityHelper.from_provider_ids(ids)
-            if not MediaServerIdentityHelper.are_compatible(
-                    item_source, item_media_id, media_source, media_id
-            ):
+            if not MediaServerIdentityHelper.are_compatible(item_source, item_media_id, media_source, media_id):
                 continue
             path = None
-            if item.locations:
+            if options.includes(MediaServerField.PATH) and item.locations:
                 path = item.locations[0]
             ret_movies.append(
                 _SchemaMediaServerItem(
@@ -320,8 +408,12 @@ class Plex:
         return ret_movies
 
     def get_music(
-        self, title: Optional[str] = None, artist: Optional[str] = None,
+        self,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
         album: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> List[_SchemaMediaServerItem]:
         """
         在音乐库中按专辑、歌曲或艺术家名称搜索候选。
@@ -331,19 +423,21 @@ class Plex:
         :param title: 歌曲标题；未提供专辑名时作为查询词
         :param artist: 艺术家名称；没有专辑名和歌曲标题时作为查询词
         :param album: 专辑名称，优先作为查询词
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一音乐候选列表；未连接或查询词为空时返回空列表，查询中途失败时保留已取得的候选
         """
         if not self._plex:
             return []
-        query = album or title or artist
-        if not query:
+        search_term = album or title or artist
+        if not search_term:
             return []
         results: List[_SchemaMediaServerItem] = []
         try:
             for library in self._plex.library.sections():
                 if library.type not in ("artist", "music"):
                     continue
-                for item in library.search(title=query):
+                for item in self._search_music_library(library, search_term, query):
+                    self._disable_auto_reload(item, query)
                     item_type = getattr(item, "type", None)
                     if item_type == "track":
                         item_artist = getattr(item, "grandparentTitle", None)
@@ -351,33 +445,42 @@ class Plex:
                     else:
                         item_artist = getattr(item, "parentTitle", None)
                         item_album = getattr(item, "title", None) if item_type == "album" else None
-                    results.append(_SchemaMediaServerItem(
-                        server="plex",
-                        library=library.key,
-                        item_id=getattr(item, "ratingKey", None) or getattr(item, "key", None),
-                        item_type=item_type or MediaType.MUSIC.value,
-                        title=getattr(item, "title", None),
-                        original_title=getattr(item, "title", None),
-                        year=getattr(item, "year", None),
-                        path=getattr(item, "file", None),
-                        note={
-                            "artist": item_artist,
-                            "album": item_album,
-                            "song_count": getattr(item, "leafCount", None),
-                        },
-                    ))
+                    item_id = getattr(item, "ratingKey", None) or getattr(item, "key", None)
+                    results.append(
+                        _SchemaMediaServerItem(
+                            server="plex",
+                            library=library.key,
+                            item_id=str(item_id) if item_id is not None else None,
+                            item_type=item_type or MediaType.MUSIC.value,
+                            title=getattr(item, "title", None),
+                            original_title=getattr(item, "title", None),
+                            year=getattr(item, "year", None),
+                            path=getattr(item, "file", None)
+                            if query is None or query.includes(MediaServerField.PATH)
+                            else None,
+                            note={
+                                "artist": item_artist,
+                                "album": item_album,
+                                "song_count": getattr(item, "leafCount", None),
+                            },
+                        )
+                    )
         except Exception as e:
             logger.debug(f"查询Plex音乐出错：{e}")
         return results
 
-    def get_tv_episodes(self,
-                        item_id: Optional[str] = None,
-                        title: Optional[str] = None,
-                        original_title: Optional[str] = None,
-                        year: Optional[str] = None,
-                        media_source: Optional[MediaSource] = None,
-                        media_id: Optional[str] = None,
-                        season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, List[int]]]]:
+    def get_tv_episodes(
+        self,
+        item_id: Optional[str] = None,
+        title: Optional[str] = None,
+        original_title: Optional[str] = None,
+        year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        season: Optional[int] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Tuple[Optional[str], Optional[Dict[int, List[int]]]]:
         """
         查询电视剧及其各季已有的分集编号。
 
@@ -390,38 +493,48 @@ class Plex:
         :param media_source: 用于排除身份冲突的媒体来源
         :param media_id: 对应来源内的标识
         :param season: 指定季号，None 表示全部季
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 电视剧条目路径及“季号到集号列表”映射；未连接、无匹配或身份冲突时返回 None 和空映射
         """
         if not self._plex:
             return None, {}
         if item_id:
             try:
-                videos = self.__fetch_item(item_id)
-            except (NotFound, RequestException):
+                videos = self.__fetch_item(
+                    item_id, **({"query": query.with_fields(MediaServerField.IDENTITY)} if query is not None else {})
+                )
+            except NotFound, RequestException:
                 # Plex 删除并重新入库后元数据标识会变化，缓存的旧item_id失效时回退到搜索路径。
                 logger.warning(f"Plex缓存的电视剧媒体ID {item_id} 已失效，尝试按标题重新搜索：{title}")
-                videos = self.__search_show(title=title,
-                                            original_title=original_title,
-                                            year=year)
+                videos = self.__search_show(
+                    title=title,
+                    original_title=original_title,
+                    year=year,
+                    **({"query": query} if query is not None else {}),
+                )
         else:
-            videos = self.__search_show(title=title,
-                                        original_title=original_title,
-                                        year=year)
+            videos = self.__search_show(
+                title=title, original_title=original_title, year=year, **({"query": query} if query is not None else {})
+            )
 
         if not videos:
             return None, {}
         if isinstance(videos, list):
             videos = videos[0]
-        video_source, video_media_id = MediaServerIdentityHelper.from_provider_ids(
-            self.__get_ids(videos.guids)
-        )
-        if not MediaServerIdentityHelper.are_compatible(
-                video_source, video_media_id, media_source, media_id
-        ):
+        self._disable_auto_reload(videos, query)
+        video_source, video_media_id = MediaServerIdentityHelper.from_provider_ids(self.__get_ids(videos.guids))
+        if not MediaServerIdentityHelper.are_compatible(video_source, video_media_id, media_source, media_id):
             return None, {}
-        episodes = videos.episodes()
+        episodes = videos.episodes(
+            **(
+                {"params": self._query_params(MediaServerQueryOptions(fields=set()))}
+                if query is not None and query.fields is not None
+                else {}
+            )
+        )
         season_episodes: Dict[int, List[int]] = {}
         for episode in episodes:
+            self._disable_auto_reload(episode, query)
             if season is not None and episode.seasonNumber != int(season):
                 continue
             # Plex 空条目可能缺少季集号，不能传入后续季集模型校验。
@@ -432,22 +545,32 @@ class Plex:
             season_episodes[episode.seasonNumber].append(episode.index)
         return videos.key, season_episodes
 
-    def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
+    def get_season_episode_ids(
+        self, item_id: str, season: int, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Dict[int, str]:
         """
         查询指定季中每一集的 Plex 条目路径。
 
         :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
         :param season: 季号
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 集号到条目路径的映射；输入不完整、未连接、无分集或查询失败时返回空映射
         """
         if not self._plex or not item_id:
             return {}
         try:
-            videos = self.__fetch_item(item_id)
+            videos = self.__fetch_item(item_id, **({"query": query} if query is not None else {}))
             if not videos:
                 return {}
             episode_ids: Dict[int, str] = {}
-            for episode in videos.episodes():
+            for episode in videos.episodes(
+                **(
+                    {"params": self._query_params(MediaServerQueryOptions(fields=set()))}
+                    if query is not None and query.fields is not None
+                    else {}
+                )
+            ):
+                self._disable_auto_reload(episode, query)
                 if episode.seasonNumber != int(season):
                     continue
                 if episode.index is None or not episode.key:
@@ -458,39 +581,45 @@ class Plex:
             logger.error(f"获取 Plex 季集条目 ID 出错：{str(e)}")
             return {}
 
-    def __search_show(self,
-                      title: Optional[str] = None,
-                      original_title: Optional[str] = None,
-                      year: Optional[str] = None) -> Any:
+    def __search_show(
+        self,
+        title: Optional[str] = None,
+        original_title: Optional[str] = None,
+        year: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Any:
         """
         按标题搜索Plex电视剧条目，供常规查询和缓存item_id失效后的回退查询复用。
 
         :param title: 标题
         :param original_title: 原产地标题
         :param year: 年份，可以为空，为空时不按年份过滤
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: Plex搜索返回的电视剧条目列表
         """
         if self._plex is None:
             raise AttributeError("'NoneType' object has no attribute 'library'")
         # 兼容年份为空的场景
         kwargs = {"year": year} if year else {}
+        kwargs.update(self._query_params(query.with_fields(MediaServerField.IDENTITY) if query is not None else None))
+        if query is not None and query.fields is not None:
+            kwargs["includeGuids"] = "1"
         # 根据标题和年份搜索候选，后续仍需核对规范媒体来源身份。
-        videos = self._plex.library.search(title=title,
-                                           libtype="show",
-                                           **kwargs)
-        if (not videos
-                and original_title
-                and str(original_title) != str(title)):
-            videos = self._plex.library.search(title=original_title,
-                                               libtype="show",
-                                               **kwargs)
+        videos = self._plex.library.search(title=title, libtype="show", **kwargs)
+        if not videos and original_title and str(original_title) != str(title):
+            videos = self._plex.library.search(title=original_title, libtype="show", **kwargs)
         return videos
 
-    def get_remote_image_by_id(self,
-                               item_id: str,
-                               image_type: str,
-                               depth: Optional[int] = 0,
-                               plex_url: Optional[bool] = True) -> Optional[str]:
+    def get_remote_image_by_id(
+        self,
+        item_id: str,
+        image_type: str,
+        depth: Optional[int] = 0,
+        plex_url: Optional[bool] = True,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[str]:
         """
         根据ItemId从Plex查询图片地址。
 
@@ -498,6 +627,7 @@ class Plex:
         :param image_type: 图片的类型，Poster或者Backdrop等
         :param depth: 当前递归深度，默认为0
         :param plex_url: 是否返回Plex的URL，默认为True（仅在配置了外网地址和Token时有效）
+        :param query: 可选内容投影；显式查询只获取图片及父级回退需要的基础信息
         :return: 图片对应在plex服务器或TMDB中的URL
         """
         if not self._plex:
@@ -506,23 +636,30 @@ class Plex:
             raise TypeError("'>' not supported between instances of 'NoneType' and 'int'")
         if depth > 2 or not item_id:
             return None
+        if query is not None and not query.includes(MediaServerField.IMAGES):
+            return None
         try:
             image_url = None
             ekey = item_id
-            item = self._plex.fetchItem(ekey=ekey)
+            item = self._plex.fetchItem(
+                ekey=ekey,
+                **(
+                    {"params": self._query_params(MediaServerQueryOptions(fields={MediaServerField.IMAGES}))}
+                    if query is not None and query.fields is not None
+                    else {}
+                ),
+            )
+            self._disable_auto_reload(item, query)
             if not item:
                 return None
             # 直接使用当前条目的 art/thumb 作为 Plex 本地图片兜底。
             # 这样既能兼容 webhook 返回带 /children 的 key，也能避免图片列表为空时彻底没有封面。
-            local_image_url = self.__build_local_image_url(item=item,
-                                                           image_type=image_type,
-                                                           plex_url=plex_url)
+            local_image_url = self.__build_local_image_url(item=item, image_type=image_type, plex_url=plex_url)
             # 如果配置了外网播放地址以及Token，则默认从Plex媒体服务器获取图片，否则返回有外网地址的图片资源
             # Plex外网播放地址这个框里目前可以填两种地址
             #   1. Plex的官方转发地址https://app.plex.tv, 2. 自己处理的端口转发地址
             #   如果使用的是1的官方转发地址,那么就不能走这个逻辑，因为官方转发地址无法获取到图片
-            if (self._playhost and "app.plex.tv" not in self._playhost
-                    and self._token and plex_url):
+            if self._playhost and "app.plex.tv" not in self._playhost and self._token and plex_url:
                 image_url = local_image_url
             else:
                 if image_type == "Poster":
@@ -551,10 +688,13 @@ class Plex:
                 # 如果最后还是找不到，则递归父级进行查找
                 parent_key = getattr(item, "parentKey", None)
                 if not image_url and parent_key:
-                    return self.get_remote_image_by_id(item_id=parent_key,
-                                                       image_type=image_type,
-                                                       depth=depth + 1,
-                                                       plex_url=plex_url)
+                    return self.get_remote_image_by_id(
+                        item_id=parent_key,
+                        image_type=image_type,
+                        depth=depth + 1,
+                        plex_url=plex_url,
+                        **({"query": query} if query is not None else {}),
+                    )
             return image_url
         except Exception as e:
             logger.error("获取封面出错：" + str(e))
@@ -667,18 +807,21 @@ class Plex:
             logger.error(f"查找媒体库出错：{str(err)}")
         return "", None
 
-    def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
+    def get_iteminfo(
+        self, itemid: str, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[_SchemaMediaServerItem]:
         """
         查询单个条目并转换为统一媒体模型。
 
         :param itemid: Plex 数字标识或条目路径
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 条目详情；未连接、条目不存在或查询失败时返回 None
         """
         if not self._plex:
             return None
         try:
-            item = self.__fetch_item(itemid)
-            return self.__build_media_server_item(item)
+            item = self.__fetch_item(itemid, **({"query": query} if query is not None else {}))
+            return self.__build_media_server_item(item, **({"query": query} if query is not None else {}))
         except Exception as err:
             logger.error(f"获取项目详情出错：{str(err)}")
         return None
@@ -723,11 +866,15 @@ class Plex:
 
         return ids
 
-    def __fetch_item(self, item_id: Union[int, str]) -> Union[Movie, Show, Season, Episode, Artist, Album, Track]:
+    def __fetch_item(
+        self, item_id: Union[int, str], *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Union[Movie, Show, Season, Episode, Artist, Album, Track]:
         """
         根据给定的item_id获取媒体项。
 
         :param item_id: 媒体项的ID，可以是整数或字符串，如果是字符串且表示为数字，将会被转换为整数
+
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         """
         if isinstance(item_id, str):
             if item_id.isdigit():
@@ -737,21 +884,61 @@ class Plex:
                 raise NotFound(f"invalid Plex metadata id: {item_id}")
         if self._plex is None:
             raise AttributeError("'NoneType' object has no attribute 'fetchItem'")
-        item: Union[Movie, Show, Season, Episode, Artist, Album, Track] = self._plex.fetchItem(item_id)
+        params = self._query_params(query)
+        if query is not None and query.fields is not None:
+            params["includeGuids"] = str(int(query.includes(MediaServerField.IDENTITY)))
+        item: Union[Movie, Show, Season, Episode, Artist, Album, Track] = self._plex.fetchItem(
+            item_id, **({"params": params} if params else {})
+        )
+        self._disable_auto_reload(item, query)
         return item
 
-    def __build_media_server_item(self, item: Union[Movie, Show, Season, Episode, Artist, Album, Track, None]) -> Optional[_SchemaMediaServerItem]:
+    def __build_media_server_item(
+        self,
+        item: Union[Movie, Show, Season, Episode, Artist, Album, Track, None],
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[_SchemaMediaServerItem]:
         """
         按 Plex 条目实际具备的字段构造媒体信息，兼容艺人、专辑和曲目。
 
         :param item: Plex媒体项目
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 标准媒体条目，包含播放状态和路径；输入为空时返回 None
         """
         if not item:
             return None
-        ids = self.__get_ids(item.guids)
-        locations = getattr(item, "locations", None)
+        options = query or MediaServerQueryOptions()
+        self._disable_auto_reload(item, query)
+        ids = self.__get_ids(item.guids) if options.includes(MediaServerField.IDENTITY) else {}
+        locations = getattr(item, "locations", None) if options.includes(MediaServerField.PATH) else None
         path = locations[0] if locations else None
+        user_state = self._item_user_state(item) if options.includes(MediaServerField.USER_STATE) else None
+
+        return _SchemaMediaServerItem(
+            server="plex",
+            library=item.librarySectionID if options.includes(MediaServerField.LIBRARY) else None,
+            item_id=item.key,
+            item_type=item.type,
+            title=item.title,
+            original_title=getattr(item, "originalTitle", None)
+            if options.includes(MediaServerField.ORIGINAL_TITLE)
+            else None,
+            year=getattr(item, "year", None) if options.includes(MediaServerField.YEAR) else None,
+            media_source=MediaServerIdentityHelper.from_provider_ids(ids)[0],
+            media_id=MediaServerIdentityHelper.from_provider_ids(ids)[1],
+            path=path,
+            user_state=user_state,
+        )
+
+    @staticmethod
+    def _item_user_state(item: Any) -> _SchemaMediaServerItemUserState:
+        """
+        仅在需要播放状态时读取 SDK 的进度、次数和时间属性。
+
+        :param item: 包含播放状态的 Plex 条目
+        :return: 统一用户状态
+        """
         playback_position = getattr(item, "viewOffset", None) or 0
         duration = getattr(item, "duration", None) or 0
         percentage = (playback_position / duration * 100) if duration > 0 else None
@@ -762,25 +949,14 @@ class Plex:
         user_state = _SchemaMediaServerItemUserState(
             played=played,
             resume=playback_position > 0,
-            last_played_date=last_played_date.isoformat() if last_played_date and hasattr(last_played_date,
-                                                                                          'isoformat') else None,
+            last_played_date=last_played_date.isoformat()
+            if last_played_date and hasattr(last_played_date, "isoformat")
+            else None,
             play_count=play_count,
             percentage=percentage,
         )
 
-        return _SchemaMediaServerItem(
-            server="plex",
-            library=item.librarySectionID,
-            item_id=item.key,
-            item_type=item.type,
-            title=item.title,
-            original_title=getattr(item, "originalTitle", None),
-            year=getattr(item, "year", None),
-            media_source=MediaServerIdentityHelper.from_provider_ids(ids)[0],
-            media_id=MediaServerIdentityHelper.from_provider_ids(ids)[1],
-            path=path,
-            user_state=user_state,
-        )
+        return user_state
 
     def get_items_count(self, parent: Union[str, int]) -> Optional[int]:
         """
@@ -798,8 +974,14 @@ class Plex:
             logger.error(f"查询媒体库 {parent} 的媒体总数出错：{str(err)}")
             return None
 
-    def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0, limit: Optional[int] = -1) \
-            -> Generator[MediaServerItem | None, Any, None]:
+    def get_items(
+        self,
+        parent: Union[str, int],
+        start_index: Optional[int] = 0,
+        limit: Optional[int] = -1,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Generator[MediaServerItem | None, Any, None]:
         """
         分页读取包含媒体路径与来源身份的条目，逐项转换为统一模型。
 
@@ -809,6 +991,7 @@ class Plex:
         :param parent: 媒体库数字标识，不接受空值
         :param start_index: 起始条目索引，空值或负值按 0 处理
         :param limit: 本次最多读取数量；None 或 -1 表示每页 50 条持续读取，其他非正值不产生条目
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :yields: 统一媒体条目
         :raises ValueError: 媒体库标识为空或指定媒体库不存在
         :raises ConnectionError: SDK 客户端未连接
@@ -836,7 +1019,14 @@ class Plex:
                 page_size = limit
             page_start = max(start_index or 0, 0)
             # section.all() 的默认列表会排除 Media；读取 locations 会让局部对象逐条请求详情。
-            search_key = section._buildSearchKey(libtype=section.TYPE)
+            search_key = section._buildSearchKey(
+                libtype=section.TYPE,
+                **(
+                    {"includeGuids": query.includes(MediaServerField.IDENTITY)}
+                    if query is not None and query.fields is not None
+                    else {}
+                ),
+            )
             while True:
                 items = self._retry_timeout(
                     lambda: section.fetchItems(
@@ -847,6 +1037,7 @@ class Plex:
                         params={
                             "excludeElements": PLEX_SYNC_EXCLUDE_ELEMENTS,
                             "skipRefresh": 1,
+                            **self._query_params(query),
                         },
                     ),
                     f"读取媒体库 {parent} 的第 {page_start} 项分页",
@@ -862,7 +1053,9 @@ class Plex:
                         item._autoReload = False
                     try:
                         media_item = self._retry_timeout(
-                            lambda: self.__build_media_server_item(item),
+                            lambda: self.__build_media_server_item(
+                                item, **({"query": query} if query is not None else {})
+                            ),
                             f"处理媒体项目 {getattr(item, 'key', '')}",
                         )
                     except Exception as err:
@@ -1001,28 +1194,37 @@ class Plex:
             raise AttributeError("'NoneType' object has no attribute 'machineIdentifier'")
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}&X-Plex-Token={self._token}'
 
-    def get_resume(self, num: Optional[int] = 12) -> Optional[List[_SchemaMediaServerPlayItem]]:
+    def get_resume(
+        self, num: Optional[int] = 12, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         获取同步范围内可以继续观看的媒体。
 
         只使用列表已有字段，缺失的年份、图片或时长不触发逐条详情请求。
 
         :param num: 最多返回条目数量，默认 12
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 包含观看进度百分比的媒体列表；未连接或无法读取媒体库范围时返回 None，SDK 请求异常向上传播
         """
         if not self._plex:
             return None
         # 媒体库白名单
-        libraries = self.get_librarys(hidden=True)
+        options = query or MediaServerQueryOptions()
+        libraries = self.get_librarys(
+            hidden=True,
+            **(
+                {"query": MediaServerQueryOptions(fields=set())}
+                if query is not None and query.fields is not None
+                else {}
+            ),
+        )
         if libraries is None:
             return None
         allow_library = ",".join(map(str, (lib.id for lib in libraries)))
-        params = {"contentDirectoryID": allow_library}
-        items = self._plex.fetchItems("/hubs/continueWatching/items",
-                                      container_start=0,
-                                      container_size=num,
-                                      maxresults=num,
-                                      params=params)
+        params = {"contentDirectoryID": allow_library, **self._query_params(query)}
+        items = self._plex.fetchItems(
+            "/hubs/continueWatching/items", container_start=0, container_size=num, maxresults=num, params=params
+        )
         ret_resume: List[_SchemaMediaServerPlayItem] = []
         for item in items:
             if isinstance(item, PlexPartialObject):
@@ -1035,40 +1237,53 @@ class Plex:
             else:
                 title = item.grandparentTitle
                 subtitle = f"S{item.parentIndex}:E{item.index} - {item.title}"
-            link = self.get_play_url(item.key)
-            image = item.artUrl
-            ret_resume.append(_SchemaMediaServerPlayItem(
-                id=item.key,
-                title=title,
-                subtitle=subtitle,
-                type=item_type,
-                image=image,
-                link=link,
-                percent=item.viewOffset / item.duration * 100 if item.viewOffset and item.duration else 0,
-                server_type='plex'
-            ))
+            link = self.get_play_url(item.key) if options.includes(MediaServerField.LINK) else None
+            image = item.artUrl if options.includes(MediaServerField.IMAGES) else None
+            ret_resume.append(
+                _SchemaMediaServerPlayItem(
+                    id=item.key,
+                    title=title,
+                    subtitle=subtitle,
+                    type=item_type,
+                    image=image,
+                    link=link,
+                    percent=item.viewOffset / item.duration * 100 if item.viewOffset and item.duration else 0,
+                    server_type="plex",
+                )
+            )
         return ret_resume[:num]
 
-    def get_latest(self, num: Optional[int] = 20) -> Optional[List[_SchemaMediaServerPlayItem]]:
+    def get_latest(
+        self, num: Optional[int] = 20, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         在允许同步的媒体库中汇总最近新增条目。
 
         通过 promoted 分组排除继续观看项，按 addedAt 降序汇总；SDK 请求异常向调用方传播。
 
         :param num: 最多返回条目数量，默认 20
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 按获取到的推荐分组内容排序后的最新条目列表；未连接或无法读取库范围时返回 None
         """
         if not self._plex:
             return None
         # 请求参数（除黑名单）
-        libraries = self.get_librarys(hidden=True)
+        libraries = self.get_librarys(
+            hidden=True,
+            **(
+                {"query": MediaServerQueryOptions(fields=set())}
+                if query is not None and query.fields is not None
+                else {}
+            ),
+        )
         if libraries is None:
             return None
         allow_library = ",".join(map(str, (lib.id for lib in libraries)))
         params = {
             "contentDirectoryID": allow_library,
             "count": num,
-            "excludeContinueWatching": 1
+            "excludeContinueWatching": 1,
+            **self._query_params(query),
         }
         ret_resume: List[_SchemaMediaServerPlayItem] = []
         sub_result = []
@@ -1080,11 +1295,7 @@ class Plex:
                 break
             # 获取所有资料库
             hubs = self._plex.fetchItems(
-                '/hubs/promoted',
-                container_start=offset,
-                container_size=num,
-                maxresults=num,
-                params=params
+                "/hubs/promoted", container_start=offset, container_size=num, maxresults=num, params=params
             )
             if len(hubs) == 0:
                 break
@@ -1096,38 +1307,59 @@ class Plex:
             sub_result.sort(key=lambda x: x.addedAt, reverse=True)
 
             for item in sub_result:
+                self._disable_auto_reload(item, query)
                 if len(ret_resume) >= num:
                     break
-                item_type, title, image = "", "", ""
-                if item.TYPE == "movie":
-                    item_type = MediaType.MOVIE.value
-                    title = item.title
-                    image = item.posterUrl
-                elif item.TYPE == "season":
-                    item_type = MediaType.TV.value
-                    title = "%s 第%s季" % (item.parentTitle, item.index)
-                    image = item.posterUrl
-                elif item.TYPE == "episode":
-                    item_type = MediaType.TV.value
-                    title = "%s 第%s季 第%s集" % (item.grandparentTitle, item.parentIndex, item.index)
-                    thumb = (item.parentThumb or item.grandparentThumb or '').lstrip('/')
-                    image = (self._host + thumb + f"?X-Plex-Token={self._token}")
-                elif item.TYPE == "show":
-                    item_type = MediaType.TV.value
-                    title = "%s 共%s季" % (item.title, item.seasonCount)
-                    image = item.posterUrl
-                link = self.get_play_url(item.key)
-                ret_resume.append(_SchemaMediaServerPlayItem(
-                    id=item.key,
-                    title=title,
-                    subtitle=str(item.year) if item.year else None,
-                    type=item_type,
-                    image=image,
-                    link=link,
-                    server_type='plex'
-                ))
+                ret_resume.append(self._latest_play_item(item, query))
             offset += num
         return ret_resume[:num]
+
+    def _latest_play_item(self, item: Any, query: Optional[MediaServerQueryOptions]) -> _SchemaMediaServerPlayItem:
+        """
+        将最新入库的 SDK 对象转换为展示条目，按需构造图片与跳转链接。
+
+        :param item: Plex 电影、季、分集或剧集对象
+        :param query: 可选内容投影；默认保留原展示字段
+        :return: 统一最新入库条目
+        """
+        options = query or MediaServerQueryOptions()
+        item_type, title = "", ""
+        image: Optional[str] = ""
+        if item.TYPE == "movie":
+            item_type = MediaType.MOVIE.value
+            title = item.title
+            image = item.posterUrl if options.includes(MediaServerField.IMAGES) else None
+        elif item.TYPE == "season":
+            item_type = MediaType.TV.value
+            title = "%s 第%s季" % (item.parentTitle, item.index)
+            image = item.posterUrl if options.includes(MediaServerField.IMAGES) else None
+        elif item.TYPE == "episode":
+            item_type = MediaType.TV.value
+            title = "%s 第%s季 第%s集" % (item.grandparentTitle, item.parentIndex, item.index)
+            thumb = (
+                (item.parentThumb or item.grandparentThumb or "").lstrip("/")
+                if options.includes(MediaServerField.IMAGES)
+                else ""
+            )
+            image = (
+                (self._host + thumb + f"?X-Plex-Token={self._token}")
+                if options.includes(MediaServerField.IMAGES)
+                else None
+            )
+        elif item.TYPE == "show":
+            item_type = MediaType.TV.value
+            title = "%s 共%s季" % (item.title, item.seasonCount)
+            image = item.posterUrl if options.includes(MediaServerField.IMAGES) else None
+        link = self.get_play_url(item.key) if options.includes(MediaServerField.LINK) else None
+        return _SchemaMediaServerPlayItem(
+            id=item.key,
+            title=title,
+            subtitle=str(item.year) if item.year else None,
+            type=item_type,
+            image=image,
+            link=link,
+            server_type="plex",
+        )
 
     def get_data(self, endpoint: str, **kwargs: object) -> Optional[Any]:
         """

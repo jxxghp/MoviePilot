@@ -12,6 +12,7 @@ from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
@@ -255,26 +256,34 @@ class Navidrome:
         """
         return _SchemaStatistic(music_count=len(self._albums())) if self.user else _SchemaStatistic()
 
-    def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
+    def get_librarys(
+        self, hidden: Optional[bool] = False, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         将全部专辑展示为单个虚拟音乐库。
 
         :param hidden: 是否应用同步库筛选；启用且非空同步库配置不含 all 时隐藏音乐库
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 虚拟音乐库列表；用户未验证或音乐库被隐藏时返回空列表
         """
-        if not self.user or (hidden and self._sync_libraries and "all" not in self._sync_libraries):
+        options = query or MediaServerQueryOptions()
+        if not self.user or (
+            hidden and self._sync_libraries and not {"all", "music"}.intersection(self._sync_libraries)
+        ):
             return []
-        count = self.get_items_count("music")
-        return [_SchemaMediaServerLibrary(
-            server="navidrome",
-            id="music",
-            item_id="music",
-            name="音乐",
-            type=MediaType.MUSIC.value,
-            item_count=count,
-            link=self._play_host,
-            server_type="navidrome",
-        )]
+        count = (self.get_items_count("music")) if options.includes(MediaServerField.COUNTS) else None
+        return [
+            _SchemaMediaServerLibrary(
+                server="navidrome",
+                id="music",
+                item_id="music",
+                name="音乐",
+                type=MediaType.MUSIC.value,
+                item_count=(count) if options.includes(MediaServerField.COUNTS) else None,
+                link=(self._play_host) if options.includes(MediaServerField.LINK) else None,
+                server_type="navidrome",
+            )
+        ]
 
     def get_items_count(self, library_id: str = "music") -> int:
         """
@@ -285,33 +294,71 @@ class Navidrome:
         """
         return len(self._albums()) if self.user else 0
 
-    def get_items(self, start_index: int = 0, limit: int = -1) -> Generator[_SchemaMediaServerItem, None, None]:
+    def get_items(
+        self, start_index: int = 0, limit: int = -1, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Generator[_SchemaMediaServerItem, None, None]:
         """
-        读取全部专辑后按切片范围逐项返回。
+        读取指定范围的专辑；显式投影使用服务端分页，默认保留全量读取后切片的行为。
 
         :param start_index: 专辑列表起始索引，默认为 0
         :param limit: 返回数量；-1 或 None 表示从起始位置返回到末尾
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :yields: 已转换为统一媒体模型的专辑条目
         """
+        if query is not None and query.fields is not None:
+            for album in self._iter_albums(start_index, limit):
+                yield self._album_to_item(album)
+            return
         albums = self._albums()
         end = None if limit is None or limit == -1 else start_index + limit
         for album in albums[start_index:end]:
             yield self._album_to_item(album)
 
-    def get_iteminfo(self, item_id: str) -> Optional[_SchemaMediaServerItem]:
+    def _iter_albums(
+        self, start_index: int, limit: Optional[int], *, list_type: str = "alphabeticalByName"
+    ) -> Generator[dict[str, Any], None, None]:
+        """
+        直接使用 Subsonic 的偏移和数量控制逐页读取，避免先取全量再切片。
+
+        :param start_index: 首个专辑偏移，负数按零处理
+        :param limit: 本次最大数量；None 或 -1 持续翻页，其它非正值不发请求
+        :param list_type: Subsonic 专辑排序方式
+        :yields: 服务器返回的原始专辑
+        """
+        offset = max(0, start_index)
+        remaining = None if limit is None or limit == -1 else max(0, limit)
+        while remaining is None or remaining > 0:
+            size = 500 if remaining is None else min(500, remaining)
+            payload = self._call("getAlbumList2", type=list_type, size=size, offset=offset)
+            albums = ((payload or {}).get("albumList2") or {}).get("album") or []
+            yield from albums
+            if len(albums) < size:
+                return
+            offset += len(albums)
+            if remaining is not None:
+                remaining -= len(albums)
+
+    def get_iteminfo(
+        self, item_id: str, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[_SchemaMediaServerItem]:
         """
         根据专辑标识获取详情。
 
         :param item_id: Navidrome 条目标识
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一专辑条目；专辑不存在或请求失败时返回 None
         """
         payload = self._call("getAlbum", id=item_id)
-        album = ((payload or {}).get("album") or {})
+        album = (payload or {}).get("album") or {}
         return self._album_to_item(album) if album else None
 
     def search_music(
-        self, title: Optional[str] = None, artist: Optional[str] = None,
+        self,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
         album: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> List[_SchemaMediaServerItem]:
         """
         搜索专辑或歌曲，并按名称和艺术家精确筛选。
@@ -321,34 +368,38 @@ class Navidrome:
         :param title: 目标单曲标题；未指定 album 时用于单曲匹配
         :param artist: 可选艺术家名称，省略时不限艺术家
         :param album: 目标专辑名称；提供时优先查询和匹配专辑
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 名称忽略大小写、空白及标点后匹配的音乐条目；查询词为空或请求失败时返回空列表
         """
         target = album or title
-        query = " ".join(dict.fromkeys(filter(None, [target, artist]))).strip()
-        if not query:
+        search_term = " ".join(dict.fromkeys(filter(None, [target, artist]))).strip()
+        if not search_term:
             return []
-        payload = self._call("search3", query=query, artistCount=0, albumCount=20, songCount=20)
-        result = ((payload or {}).get("searchResult3") or {})
+        payload = self._call("search3", query=search_term, artistCount=0, albumCount=20, songCount=20)
+        result = (payload or {}).get("searchResult3") or {}
         albums = result.get("album") or []
         songs = result.get("song") or []
         if album:
             return [
                 self._album_to_item(item)
                 for item in albums
-                if self._same_name(self._album_name(item), album)
-                and self._same_artist(item, artist)
+                if self._same_name(self._album_name(item), album) and self._same_artist(item, artist)
             ]
         return [
             self._song_to_item(item)
             for item in songs
-            if self._same_name(item.get("title") or item.get("name"), title)
-            and self._same_artist(item, artist)
+            if self._same_name(item.get("title") or item.get("name"), title) and self._same_artist(item, artist)
         ]
 
-    def _to_play_item(self, album: dict) -> _SchemaMediaServerPlayItem:
+    def _to_play_item(
+        self, album: dict, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> _SchemaMediaServerPlayItem:
         """
         将专辑转换为仪表盘播放/最新条目。
+
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         """
+        options = query or MediaServerQueryOptions()
         album_id = str(album.get("id") or "")
         return _SchemaMediaServerPlayItem(
             id=album_id,
@@ -356,15 +407,20 @@ class Navidrome:
             title=self._album_name(album),
             subtitle=album.get("artist") or album.get("albumArtist"),
             type=MediaType.MUSIC.value,
-            image=self._album_cover(album),
-            link=self._play_host,
+            image=(self._album_cover(album)) if options.includes(MediaServerField.IMAGES) else None,
+            link=(self._play_host) if options.includes(MediaServerField.LINK) else None,
             server_type="navidrome",
         )
 
-    def _song_to_play_item(self, song: dict) -> _SchemaMediaServerPlayItem:
+    def _song_to_play_item(
+        self, song: dict, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> _SchemaMediaServerPlayItem:
         """
         将正在播放的单曲转换为仪表盘条目，避免把所属专辑名误作曲名。
+
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         """
+        options = query or MediaServerQueryOptions()
         song_id = str(song.get("id") or "")
         return _SchemaMediaServerPlayItem(
             id=song_id,
@@ -372,30 +428,43 @@ class Navidrome:
             title=song.get("title") or song.get("name") or "",
             subtitle=song.get("artist") or song.get("albumArtist"),
             type=MediaType.MUSIC.value,
-            image=self._album_cover(song),
-            link=self._play_host,
+            image=(self._album_cover(song)) if options.includes(MediaServerField.IMAGES) else None,
+            link=(self._play_host) if options.includes(MediaServerField.LINK) else None,
             server_type="navidrome",
         )
 
-    def get_latest(self, count: int = 20) -> List[_SchemaMediaServerPlayItem]:
+    def get_latest(
+        self, count: int = 20, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> List[_SchemaMediaServerPlayItem]:
         """
         查询最近新增专辑，并转换为仪表盘条目。
 
         :param count: 最多返回的专辑数，默认 20
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 按新增时间排序的专辑列表；查询失败时可能为空或仅含已读取部分
         """
-        return [self._to_play_item(album) for album in self._albums("newest")[:count]]
+        albums = (
+            self._iter_albums(0, count, list_type="newest")
+            if query is not None and query.fields is not None
+            else self._albums("newest")[:count]
+        )
+        return [self._to_play_item(album, **({"query": query} if query is not None else {})) for album in albums]
 
-    def get_resume(self, count: int = 20) -> List[_SchemaMediaServerPlayItem]:
+    def get_resume(
+        self, count: int = 20, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> List[_SchemaMediaServerPlayItem]:
         """
         查询服务端当前正在播放的音乐。
 
         :param count: 最多返回的播放条目数，默认 20
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 服务端 getNowPlaying 返回范围内的条目，不再按用户名过滤；请求失败时返回空列表
         """
         payload = self._call("getNowPlaying")
         items = ((payload or {}).get("nowPlaying") or {}).get("entry") or []
-        return [self._song_to_play_item(item) for item in items[:count]]
+        return [
+            self._song_to_play_item(item, **({"query": query} if query is not None else {})) for item in items[:count]
+        ]
 
     def get_play_url(self, item_id: str) -> Optional[str]:
         """

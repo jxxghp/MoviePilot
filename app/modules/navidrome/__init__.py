@@ -13,6 +13,7 @@ from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
 from app.schemas.event import AuthCredentials, AuthInterceptCredentials
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
@@ -139,7 +140,12 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         return None
 
     def media_exists(
-        self, mediainfo: MediaInfo, itemid: Optional[str] = None, server: Optional[str] = None
+        self,
+        mediainfo: MediaInfo,
+        itemid: Optional[str] = None,
+        server: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> Optional[_SchemaExistMediaInfo]:
         """
         按条目标识或音乐名称检查媒体是否已入库。
@@ -147,19 +153,24 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param mediainfo: 待匹配的媒体信息，仅处理音乐
         :param itemid: 可选专辑标识，优先查询；不匹配时继续按名称搜索
         :param server: 媒体服务器配置名称；省略时汇总本类型全部实例
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 首个匹配项的服务器和条目标识；非音乐或未找到匹配项时返回 None
         """
         if mediainfo.type != MediaType.MUSIC:
             return None
         servers: list[tuple[Optional[str], Optional[Navidrome]]] = (
-            [(server, self.get_instance(server))]
-            if server
-            else list(self.get_instances().items())
+            [(server, self.get_instance(server))] if server else list(self.get_instances().items())
         )
         for name, service in servers:
             if not service:
                 continue
-            item = service.get_iteminfo(str(itemid)) if itemid else None
+            item = (
+                service.get_iteminfo(
+                    str(itemid), **({"query": query.with_fields(MediaServerField.MUSIC)} if query is not None else {})
+                )
+                if itemid
+                else None
+            )
             if item and MusicMediaServerHelper.item_matches(mediainfo, item):
                 return _SchemaExistMediaInfo(
                     type=MediaType.MUSIC,
@@ -167,7 +178,13 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
                     server=name,
                     itemid=itemid,
                 )
-            matches = service.search_music(**MusicMediaServerHelper.search_params(mediainfo))
+            search_params = MusicMediaServerHelper.search_params(mediainfo)
+            matches = service.search_music(
+                title=search_params["title"],
+                artist=search_params["artist"],
+                album=search_params["album"],
+                **({"query": query.with_fields(MediaServerField.MUSIC)} if query is not None else {}),
+            )
             match = MusicMediaServerHelper.find_match(mediainfo, matches)
             if match:
                 return _SchemaExistMediaInfo(
@@ -196,7 +213,12 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         return result
 
     def mediaserver_librarys(
-        self, server: str, username: Optional[str] = None, hidden: Optional[bool] = False
+        self,
+        server: str,
+        username: Optional[str] = None,
+        hidden: Optional[bool] = False,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         查询实例提供的虚拟音乐库。
@@ -204,14 +226,22 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param server: 媒体服务器配置名称
         :param username: 为统一媒体服务器接口保留，当前使用实例配置用户
         :param hidden: 是否隐藏未被同步配置选中的音乐库
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 库列表；实例不存在时返回 None
         """
         service = self.get_instance(server)
-        return service.get_librarys(hidden=hidden) if service else None
+        return (
+            service.get_librarys(hidden=hidden, **({"query": query} if query is not None else {})) if service else None
+        )
 
     def mediaserver_items(
-        self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
+        self,
+        server: str,
+        library_id: Union[str, int],
+        start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> Optional[Generator[_SchemaMediaServerItem, None, None]]:
         """
         返回虚拟音乐库的专辑迭代器。
@@ -220,10 +250,15 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param library_id: 统一接口的库标识，Navidrome 只有一个虚拟音乐库，当前不使用
         :param start_index: 专辑列表起始索引，默认 0
         :param limit: 最多返回条目数，-1 或 None 表示返回剩余全部条目
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 专辑生成器；实例不存在时返回 None，实际查询在迭代时执行
         """
         service = self.get_instance(server)
-        return service.get_items(start_index, limit) if service else None
+        return (
+            service.get_items(start_index, limit, **({"query": query} if query is not None else {}))
+            if service
+            else None
+        )
 
     def mediaserver_items_count(self, server: str, library_id: Union[str, int]) -> Optional[int]:
         """
@@ -236,29 +271,40 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         service = self.get_instance(server)
         return service.get_items_count(str(library_id)) if service else None
 
-    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[_SchemaMediaServerItem]:
+    def mediaserver_iteminfo(
+        self, server: str, item_id: str, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[_SchemaMediaServerItem]:
         """
         查询 Navidrome 专辑详情。
 
         :param server: 媒体服务器配置名称
         :param item_id: Navidrome 条目标识
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一专辑模型；实例不存在、专辑不存在或请求失败时返回 None
         """
         service = self.get_instance(server)
-        return service.get_iteminfo(item_id) if service else None
+        return service.get_iteminfo(item_id, **({"query": query} if query is not None else {})) if service else None
 
-    def mediaserver_tv_episodes(self, server: str, item_id: Union[str, int]) -> List[_SchemaMediaServerSeasonInfo]:
+    def mediaserver_tv_episodes(
+        self, server: str, item_id: Union[str, int], *, query: Optional[MediaServerQueryOptions] = None
+    ) -> List[_SchemaMediaServerSeasonInfo]:
         """
         为统一接口提供空剧集结果；纯音乐服务没有季集信息。
 
         :param server: 媒体服务器配置名称
         :param item_id: Navidrome 条目标识
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 始终返回空列表
         """
         return []
 
     def mediaserver_playing(
-        self, server: str, count: Optional[int] = 20, username: Optional[str] = None
+        self,
+        server: str,
+        count: Optional[int] = 20,
+        username: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询服务端当前正在播放的音乐条目。
@@ -266,10 +312,11 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param server: 媒体服务器配置名称
         :param count: 最多返回条目数，默认 20
         :param username: 为统一媒体服务器接口保留，当前使用实例配置用户
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 播放条目列表；实例不存在时返回 None，服务端请求失败时返回空列表
         """
         service = self.get_instance(server)
-        return service.get_resume(count) if service else None
+        return service.get_resume(count, **({"query": query} if query is not None else {})) if service else None
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
@@ -283,8 +330,12 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         return service.get_play_url(str(item_id)) if service else None
 
     def mediaserver_latest(
-        self, server: Optional[str] = None, count: Optional[int] = 20,
+        self,
+        server: Optional[str] = None,
+        count: Optional[int] = 20,
         username: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询指定实例最近新增的专辑。
@@ -292,14 +343,20 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param server: 服务器配置名称，省略时选择默认实例
         :param count: 最多返回条目数，默认 20
         :param username: 为统一媒体服务器接口保留，当前使用实例配置用户
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 最近新增专辑列表；实例不存在时返回 None
         """
         service = self.get_instance(server)
-        return service.get_latest(count) if service else None
+        return service.get_latest(count, **({"query": query} if query is not None else {})) if service else None
 
     def mediaserver_latest_images(
-        self, server: Optional[str] = None, count: Optional[int] = 10,
-        username: Optional[str] = None, remote: Optional[bool] = False,
+        self,
+        server: Optional[str] = None,
+        count: Optional[int] = 10,
+        username: Optional[str] = None,
+        remote: Optional[bool] = False,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> List[str]:
         """
         按统一壁纸规则筛选最新媒体图片。
@@ -308,10 +365,16 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param count: 最多查询的最新条目数，默认 10
         :param username: 为统一媒体服务器接口保留，当前使用实例配置用户
         :param remote: 兼容统一接口的远程图片选项，当前不使用
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 仅保留电影与电视剧图片；正常 Navidrome 音乐条目会全部被排除，返回空列表
         """
+        if query is not None and not query.includes(MediaServerField.IMAGES):
+            return []
         return [
             item.image
-            for item in (self.mediaserver_latest(server, count, username) or [])
+            for item in (
+                self.mediaserver_latest(server, count, username, **({"query": query} if query is not None else {}))
+                or []
+            )
             if item.type in (MediaType.MOVIE.value, MediaType.TV.value) and item.image
         ]

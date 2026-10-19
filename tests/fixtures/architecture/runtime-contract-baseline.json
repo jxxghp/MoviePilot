@@ -6537,7 +6537,9 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaExistsRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "query"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6616,7 +6618,9 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerItemRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "query"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6636,7 +6640,9 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerItemsRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "query"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6678,7 +6684,9 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerRecentRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "query"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6699,7 +6707,9 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerRecentImagesRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "query"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6721,7 +6731,9 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerLibrariesRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "query"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6762,7 +6774,9 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerRecentRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "query"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6783,7 +6797,9 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerSeasonEpisodesRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "query"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6804,7 +6820,9 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerEpisodesRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "query"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -11080,6 +11098,11 @@
       },
       {
         "kind": "import",
+        "name": "MediaServerField",
+        "target": "app.schemas.mediaserver.MediaServerField"
+      },
+      {
+        "kind": "import",
         "name": "MediaServerHelper",
         "target": "app.application.mediaserver.MediaServerHelper"
       },
@@ -11087,6 +11110,11 @@
         "kind": "import",
         "name": "MediaServerIdentityHelper",
         "target": "app.application.mediaserver.MediaServerIdentityHelper"
+      },
+      {
+        "kind": "import",
+        "name": "MediaServerQueryOptions",
+        "target": "app.schemas.mediaserver.MediaServerQueryOptions"
       },
       {
         "kind": "import",

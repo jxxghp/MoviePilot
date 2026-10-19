@@ -12,7 +12,7 @@ from app.db.models.mediaserver import MediaServerItem
 from app.db.oper.mediaserver import MediaServerOper
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
-from app.schemas.mediaserver import ExistMediaInfo
+from app.schemas.mediaserver import ExistMediaInfo, MediaServerField
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -44,10 +44,11 @@ def _no_exists_info(db, year: str):
     chain = DownloadChain()
     chain.media_server_repository = MediaServerOper(db.session)
 
-    def media_exists(mediainfo, itemid=None, server=None):
+    def media_exists(mediainfo, itemid=None, server=None, *, query=None):
         """
         模拟媒体服务器按缓存条目返回动画已有的 26 集。
         """
+        assert query.fields == {MediaServerField.IDENTITY, MediaServerField.YEAR}
         if itemid != "anime-2024":
             return None
         return ExistMediaInfo(

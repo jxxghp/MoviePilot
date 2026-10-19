@@ -18,6 +18,7 @@ from app.agent.shell import agent_text_subprocess_kwargs
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.settings import get_runtime_setting
+from app.schemas.mediaserver import MediaServerQueryOptions
 
 
 # Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
@@ -115,6 +116,8 @@ def _argument_schema(argument: dict[str, Any]) -> dict[str, Any]:
     """
     schema = _compact_type_schema(str(argument["type"]))
     name = str(argument["name"])
+    if name == "query" and argument["type"] == "object":
+        schema = _media_query_schema()
     schema["description"] = str(argument.get("description") or "")
     if "default" in argument:
         schema["default"] = argument["default"]
@@ -143,6 +146,20 @@ def _argument_schema(argument: dict[str, Any]) -> dict[str, Any]:
         "items",
     }:
         schema["minItems"] = 1
+    return schema
+
+
+def _media_query_schema() -> dict[str, Any]:
+    """
+    从统一投影模型生成内联参数结构，避免工具另维护一份字段列表。
+
+    :return: 不依赖外层 definitions 路径的投影 JSON Schema
+    """
+    schema: dict[str, Any] = MediaServerQueryOptions.model_json_schema()
+    definitions = schema.pop("$defs")
+    for alternative in schema["properties"]["fields"]["anyOf"]:
+        if "items" in alternative:
+            alternative["items"] = definitions["MediaServerField"]
     return schema
 
 

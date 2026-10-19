@@ -148,6 +148,10 @@ ITEM_ID = ArgumentSpec("item_id", "string", "所选媒体服务器返回的原�
 PARENT = ArgumentSpec("parent", "string|integer", "媒体库或父条目标识；Navidrome 可省略并使用 music。")
 OFFSET = ArgumentSpec("offset", "integer", "列表偏移量，从 0 开始。", default=0)
 LIMIT = ArgumentSpec("limit", "integer", "返回条目数量，范围为 1 至 200。", default=DEFAULT_LIMIT)
+QUERY = ArgumentSpec(
+    "query", "object",
+    "统一内容投影，如 {\"fields\":[\"identity\",\"path\"]}；省略或 fields=null 保留原内容，fields=[] 仅取基础信息。",
+)
 
 
 ACTIONS: dict[str, ActionSpec] = {
@@ -183,12 +187,13 @@ ACTIONS: dict[str, ActionSpec] = {
         arguments=(
             ArgumentSpec("hidden", "boolean", "只返回已配置为同步的媒体库。", default=False),
             ArgumentSpec("username", "string", "读取该用户名可见的媒体库；Emby、Jellyfin 和 ZSpace 支持。"),
+            QUERY,
         ),
     ),
     "items.list": ActionSpec(
         "分页读取指定媒体库或父条目下的内容。",
         "safe_read",
-        arguments=(PARENT, OFFSET, LIMIT),
+        arguments=(PARENT, OFFSET, LIMIT, QUERY),
         argument_rules=("除 Navidrome 外必须提供 parent；Navidrome 忽略该参数。",),
     ),
     "items.count": ActionSpec(
@@ -200,7 +205,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "items.detail": ActionSpec(
         "按服务原生标识读取单个媒体条目。",
         "safe_read",
-        arguments=(ArgumentSpec("item_id", "string", ITEM_ID.description, required=True),),
+        arguments=(ArgumentSpec("item_id", "string", ITEM_ID.description, required=True), QUERY),
     ),
     "items.movies.search": ActionSpec(
         "按标题及可选年份搜索服务中的电影条目。",
@@ -209,6 +214,7 @@ ACTIONS: dict[str, ActionSpec] = {
         (
             ArgumentSpec("title", "string", "电影标题。", required=True),
             ArgumentSpec("year", "string|integer", "可选的发行年份。"),
+            QUERY,
         ),
     ),
     "items.music.search": ActionSpec(
@@ -219,6 +225,7 @@ ACTIONS: dict[str, ActionSpec] = {
             ArgumentSpec("title", "string", "曲目、专辑或音乐条目标题。"),
             ArgumentSpec("artist", "string", "艺术家名称。"),
             ArgumentSpec("album", "string", "专辑名称；须提供 title、artist 或 album。"),
+            QUERY,
         ),
         ("Provide at least one of title, artist, and album.",),
     ),
@@ -231,27 +238,25 @@ ACTIONS: dict[str, ActionSpec] = {
             ArgumentSpec("title", "string", "剧集标题；须提供本字段或 item_id。"),
             ArgumentSpec("year", "string|integer", "可选的首播年份。"),
             ArgumentSpec("season", "integer", "可选的季编号。"),
+            QUERY,
         ),
         ("Provide at least one of item_id and title.",),
     ),
     "activity.latest": ActionSpec(
         "读取服务最近添加的媒体条目。",
         "safe_read",
-        arguments=(LIMIT, ArgumentSpec("username", "string", "按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。")),
+        arguments=(LIMIT, ArgumentSpec("username", "string", "按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。"), QUERY),
     ),
     "activity.resume": ActionSpec(
         "读取服务中正在观看或可继续播放的媒体条目。",
         "safe_read",
-        arguments=(LIMIT, ArgumentSpec("username", "string", "按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。")),
+        arguments=(LIMIT, ArgumentSpec("username", "string", "按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。"), QUERY),
     ),
     "activity.backdrops": ActionSpec(
         "读取服务近期媒体的背景图。",
         "safe_read",
         ("ugreen", "trimemedia", "mediavault"),
-        (
-            LIMIT,
-            ArgumentSpec("remote", "boolean", "是否返回可远程访问的服务 URL。", default=False),
-        ),
+        (LIMIT, ArgumentSpec("remote", "boolean", "是否返回可远程访问的服务 URL。", default=False)),
     ),
     "playback.sessions": ActionSpec("读取正在进行的播放会话。", "safe_read", ("emby", "jellyfin", "plex")),
     "playback.url": ActionSpec(
@@ -262,9 +267,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "library.scan": ActionSpec(
         "触发媒体库扫描。",
         "external_side_effect",
-        arguments=(
-            ArgumentSpec("scan_mode", "string|integer", "UGREEN 原生扫描模式；其他服务必须省略。"),
-        ),
+        arguments=(ArgumentSpec("scan_mode", "string|integer", "UGREEN 原生扫描模式；其他服务必须省略。"),),
     ),
     "metadata.refresh": ActionSpec(
         "刷新匹配条目的服务端元数据。",
@@ -487,18 +490,16 @@ def _validate_action_arguments(action: str, spec: ActionSpec, arguments: Mapping
         if value is not None and argument.enum and value not in argument.enum:
             errors.append(f"参数 {name} 仅支持: {', '.join(map(str, argument.enum))}")
 
-    if action == "items.music.search" and not any(
-        arguments.get(name) for name in ("title", "artist", "album")
-    ):
+    if action == "items.music.search" and not any(arguments.get(name) for name in ("title", "artist", "album")):
         errors.append("title、artist、album 至少提供一项")
-    if action == "items.season_episodes" and not any(
-        arguments.get(name) for name in ("item_id", "title")
-    ):
+    if action == "items.season_episodes" and not any(arguments.get(name) for name in ("item_id", "title")):
         errors.append("item_id 与 title 至少提供一项")
     if action == "metadata.refresh":
         errors.extend(_validate_refresh_items(arguments.get("items")))
     if errors:
         raise ValueError("参数校验失败：" + "；".join(errors))
+    if "query" in argument_specs:
+        _query_kwargs(arguments)
 
 
 def _validate_provider_arguments(action: str, provider: str, arguments: Mapping[str, Any]) -> None:
@@ -506,6 +507,8 @@ def _validate_provider_arguments(action: str, provider: str, arguments: Mapping[
     校验需要知道服务实现后才能确定的条件参数。
     """
     errors: list[str] = []
+    if arguments.get("query") is not None and provider not in {"emby", "jellyfin", "plex", "navidrome"}:
+        errors.append(f"{provider} 暂不支持参数: query")
     if action in {"items.list", "items.count"} and provider != "navidrome" and not arguments.get("parent"):
         errors.append(f"{provider} 的 {action} 必须提供 parent")
     username_providers = {"emby", "jellyfin", "zspace"}
@@ -528,6 +531,22 @@ def _limit(arguments: Mapping[str, Any]) -> int:
     return min(MAX_LIMIT, max(1, int(arguments.get("limit", DEFAULT_LIMIT))))
 
 
+def _query_kwargs(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """
+    按需加载统一投影模型，默认调用不增加参数或加载宿主配置。
+
+    :param arguments: 所选动作的参数
+    :return: 已校验的 query 关键字；未指定时为空字典
+    :raises ValueError: 投影含未知内容组或非法字段
+    """
+    if arguments.get("query") is None:
+        return {}
+    _ensure_project_import()
+    from app.schemas.mediaserver import MediaServerQueryOptions
+
+    return {"query": MediaServerQueryOptions.model_validate(arguments["query"])}
+
+
 def _call_supported(method: Any, **kwargs: Any) -> Any:
     """
     仅向服务实现公共方法传递其显式支持的关键字参数。
@@ -544,10 +563,10 @@ def _items_list(client: Any, provider: str, arguments: Mapping[str, Any]) -> dic
     start = max(0, int(arguments.get("offset", 0)))
     limit = _limit(arguments)
     if provider == "navidrome":
-        items = client.get_items(start_index=start, limit=limit)
+        items = client.get_items(start_index=start, limit=limit, **_query_kwargs(arguments))
     else:
         parent = _require(arguments, "parent")
-        items = client.get_items(parent=parent, start_index=start, limit=limit)
+        items = client.get_items(parent=parent, start_index=start, limit=limit, **_query_kwargs(arguments))
     materialized = list(items or [])
     return {"offset": start, "limit": limit, "items": _jsonable(materialized)}
 
@@ -568,10 +587,7 @@ def _activity(client: Any, action: str, arguments: Mapping[str, Any]) -> Any:
     method = client.get_latest if action == "activity.latest" else client.get_resume
     limit = _limit(arguments)
     return _call_supported(
-        method,
-        num=limit,
-        count=limit,
-        username=arguments.get("username"),
+        method, num=limit, count=limit, username=arguments.get("username"), **_query_kwargs(arguments)
     )
 
 
@@ -585,7 +601,7 @@ def _search_music(client: Any, provider: str, arguments: Mapping[str, Any]) -> A
     if not any((title, artist, album)):
         raise ValueError("title、artist、album 至少提供一项")
     method = client.search_music if provider == "navidrome" else client.get_music
-    return method(title=title, artist=artist, album=album)
+    return method(title=title, artist=artist, album=album, **_query_kwargs(arguments))
 
 
 def _season_episodes(client: Any, arguments: Mapping[str, Any]) -> Any:
@@ -600,6 +616,7 @@ def _season_episodes(client: Any, arguments: Mapping[str, Any]) -> Any:
         title=arguments.get("title"),
         year=arguments.get("year"),
         season=arguments.get("season"),
+        **_query_kwargs(arguments),
     )
 
 
@@ -648,17 +665,17 @@ def _dispatch(client: Any, provider: str, action: str, arguments: Mapping[str, A
             client.get_librarys,
             hidden=bool(arguments.get("hidden", False)),
             username=arguments.get("username"),
+            **_query_kwargs(arguments),
         )
     if action == "items.list":
         return _items_list(client, provider, arguments)
     if action == "items.count":
         return _items_count(client, provider, arguments)
     if action == "items.detail":
-        return client.get_iteminfo(str(_require(arguments, "item_id")))
+        return client.get_iteminfo(str(_require(arguments, "item_id")), **_query_kwargs(arguments))
     if action == "items.movies.search":
         return client.get_movies(
-            title=str(_require(arguments, "title")),
-            year=arguments.get("year"),
+            title=str(_require(arguments, "title")), year=arguments.get("year"), **_query_kwargs(arguments)
         )
     if action == "items.music.search":
         return _search_music(client, provider, arguments)
@@ -667,10 +684,7 @@ def _dispatch(client: Any, provider: str, action: str, arguments: Mapping[str, A
     if action in {"activity.latest", "activity.resume"}:
         return _activity(client, action, arguments)
     if action == "activity.backdrops":
-        return client.get_latest_backdrops(
-            num=_limit(arguments),
-            remote=bool(arguments.get("remote", False)),
-        )
+        return client.get_latest_backdrops(num=_limit(arguments), remote=bool(arguments.get("remote", False)))
     if action == "playback.sessions":
         return _playback_sessions(client, provider)
     if action == "playback.url":

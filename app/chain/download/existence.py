@@ -4,7 +4,7 @@
 
 from typing import Any, Dict, Optional, Tuple, cast
 
-from app.application.mediaserver import get_mediaserver_configs
+from app.application.mediaserver import MEDIA_SERVER_EXISTENCE_QUERY, get_mediaserver_configs
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.media import MediaChain
 from app.domain.context import (
@@ -156,30 +156,24 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
             return True, no_exists
 
     def _media_exists_with_server_cache(
-            self,
-            mediainfo: MediaInfo,
-            query: dict[str, Any],
+        self,
+        mediainfo: MediaInfo,
+        query: dict[str, Any],
     ) -> Optional[ExistMediaInfo]:
         """
         按媒体服务器隔离缓存条目，再执行存在性检查。
         """
-        server_names = [
-            str(config.name)
-            for config in get_mediaserver_configs()
-            if config.name
-        ]
+        server_names = [str(config.name) for config in get_mediaserver_configs() if config.name]
         if not server_names:
             itemid = self.media_server_repository.get_item_id(**query)
-            return self.media_exists(mediainfo=mediainfo, itemid=itemid)
+            return self.media_exists(mediainfo=mediainfo, itemid=itemid, query=MEDIA_SERVER_EXISTENCE_QUERY)
         for server in server_names:
             itemid = self.media_server_repository.get_item_id(
                 server=server,
                 **query,
             )
             exists = self.media_exists(
-                mediainfo=mediainfo,
-                itemid=itemid,
-                server=server,
+                mediainfo=mediainfo, itemid=itemid, server=server, query=MEDIA_SERVER_EXISTENCE_QUERY
             )
             if exists:
                 return exists

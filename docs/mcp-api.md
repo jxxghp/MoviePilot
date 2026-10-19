@@ -256,6 +256,12 @@ curl -sS "$MP_MCP_URL/tools/moviepilot_api/schema" \
 
 完整动作参考：[下载器](../skills/downloader-operation/SKILL.md)、[媒体服务器](../skills/mediaserver-operation/SKILL.md)。
 
+Emby、Jellyfin、Plex、Navidrome 的目录、条目、搜索、季集和活动查询支持内层可选 `query`，例如
+`{"parent":"movies","limit":50,"query":{"fields":["identity","path","year"]}}`。
+`fields` 省略或为 null 时保留原内容；空数组只取当前操作必需的信息。输入 schema 从
+`MediaServerQueryOptions` 推导，内容组与服务端能力边界见 [媒体查询内容契约](media-server-query.md)。
+调用方不能据此假定每种私有协议都支持完整的远端字段裁剪。
+
 ### 4.3 `database_operation`：直接数据库访问
 
 先发现真实表名和字段，再构造 SQL：

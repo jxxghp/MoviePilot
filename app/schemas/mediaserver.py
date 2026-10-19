@@ -2,6 +2,7 @@
 媒体服务器播放、媒体条目和回调事件的数据结构。
 """
 
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -10,6 +11,71 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MediaType
+
+
+class MediaServerField(str, Enum):
+    """
+    各媒体服务器共用的可选查询内容组。
+
+    :cvar LIBRARY: 条目所属媒体库或父目录
+    :cvar ORIGINAL_TITLE: 原始语言标题
+    :cvar YEAR: 年份及展示所需的日期
+    :cvar IDENTITY: 成对的媒体来源和来源标识
+    :cvar PATH: 媒体文件、目录及版本路径
+    :cvar MUSIC: 音乐艺术家、专辑及匹配所需的附加信息
+    :cvar USER_STATE: 播放状态、进度、次数及时间
+    :cvar IMAGES: 图片元数据、链接及附加图片查询
+    :cvar COUNTS: 媒体库数量及非业务必需的总量查询
+    :cvar LINK: 播放页或媒体库跳转链接
+    """
+
+    LIBRARY = "library"
+    ORIGINAL_TITLE = "original_title"
+    YEAR = "year"
+    IDENTITY = "identity"
+    PATH = "path"
+    MUSIC = "music"
+    USER_STATE = "user_state"
+    IMAGES = "images"
+    COUNTS = "counts"
+    LINK = "link"
+
+
+# 当前 mypy 配置跳过 Pydantic 实现，无法静态解析 BaseModel 基类。
+class MediaServerQueryOptions(BaseModel):  # type: ignore[misc]
+    """
+    不依赖服务端协议的媒体查询投影，未指定内容组时保留原行为。
+
+    基础标识、类型、名称和完成当前操作所必需的字段始终保留；
+    服务适配器只对有协议证据的能力实施远端裁剪。
+    """
+
+    fields: Optional[frozenset[MediaServerField]] = Field(
+        default=None,
+        description="所需内容组；None 保留原有内容，空集合仅取操作必需的基础信息",
+    )
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    def includes(self, field: MediaServerField) -> bool:
+        """
+        判断调用方是否需要某个内容组。
+
+        :param field: 待检查的统一内容组
+        :return: 未指定投影或显式选中该组时为 True
+        """
+        return self.fields is None or field in self.fields
+
+    def with_fields(self, *fields: MediaServerField) -> "MediaServerQueryOptions":
+        """
+        为当前操作补充完成身份校验等所必需的内容，不修改原选项。
+
+        :param fields: 需要补充的内容组
+        :return: 保留原默认行为或包含补充内容的新选项
+        """
+        if self.fields is None:
+            return self
+        return MediaServerQueryOptions(fields=self.fields.union(fields))
 
 
 class ExistMediaInfo(BaseModel):

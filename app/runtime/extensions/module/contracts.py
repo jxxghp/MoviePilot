@@ -203,6 +203,7 @@ _METHOD_CONTRACTS = {
         result_contract="Iterable[MediaServerItem] | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("server", "library_id", "start_index", "limit"),
+        optional_parameters=("query",),
     ),
     "mediaserver_iteminfo": ModuleMethodContract(
         family="media-server",
@@ -210,6 +211,7 @@ _METHOD_CONTRACTS = {
         result_contract="MediaServerItem | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("server", "item_id"),
+        optional_parameters=("query",),
     ),
     "mediaserver_play_url": ModuleMethodContract(
         family="media-server",
@@ -225,6 +227,7 @@ _METHOD_CONTRACTS = {
         result_contract="list[MediaServerPlayItem]",
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "item_id"),
+        optional_parameters=("query",),
     ),
     "media_exists": ModuleMethodContract(
         family="media-server",
@@ -232,6 +235,7 @@ _METHOD_CONTRACTS = {
         result_contract="ExistMediaInfo | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("mediainfo", "itemid", "server"),
+        optional_parameters=("query",),
     ),
     "media_statistic": ModuleMethodContract(
         family="media-server",
@@ -262,6 +266,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "count", "username"),
+        optional_parameters=("query",),
     ),
     "mediaserver_latest_images": ModuleMethodContract(
         family="media-server",
@@ -270,6 +275,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "count", "remote", "username"),
+        optional_parameters=("query",),
     ),
     "mediaserver_librarys": ModuleMethodContract(
         family="media-server",
@@ -278,6 +284,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "username", "hidden"),
+        optional_parameters=("query",),
     ),
     "mediaserver_playing": ModuleMethodContract(
         family="media-server",
@@ -286,6 +293,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("server", "count", "username"),
+        optional_parameters=("query",),
     ),
     "mediaserver_season_episode_ids": ModuleMethodContract(
         family="media-server",
@@ -294,6 +302,7 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.MAPPING,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("server", "item_id", "season"),
+        optional_parameters=("query",),
     ),
     "any_files": ModuleMethodContract(
         family="storage",

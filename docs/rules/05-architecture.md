@@ -768,6 +768,13 @@ qBittorrent/Transmission 用同一规则选择文件。零匹配、目标集不�
 Module dispatcher 仅对合同明确声明的新增可选参数兼容旧签名；支持该参数或 `**kwargs` 的 provider
 完整接收参数，其他未知参数仍按原规则失败，不能用过滤掩盖 provider ABI 错误。
 
+媒体服务器查询的内容组与不可变选项由 `app.schemas.mediaserver` 的 `MediaServerField` 和
+`MediaServerQueryOptions` 定义；插件从 `app.sdk.services` 导入。链通过显式登记的可选 `query`
+参数传递内容需求，具体服务器协议翻译归各客户端；Emby/Jellyfin 公用的参数编译位于
+`app.modules._base.mediaserver`。应用服务与链不拼装 Emby 字段名或 Plex SDK 参数。
+默认选项保留旧行为，显式投影必须作用于真实请求与附加查询，不能用下载后丢字段替代远端裁剪。
+协议限制与各调用方需要的内容见 [媒体查询内容契约](../media-server-query.md)。
+
 SMB 同存储整理由 `app.modules.filemanager.storages.smb` 持有协议调用边界：
 复制调用 `smbclient.copyfile`（CopyChunk），共享内移动调用 `smbclient.rename`，硬链接调用
 `smbclient.link`；跨共享移动先用 SMB 查询确认目标未占用，服务端复制成功后才调用

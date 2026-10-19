@@ -89,7 +89,9 @@ def test_subscribe_files_info_merges_multiple_mediaservers():
 
     mediaserver_chain = MagicMock()
     mediaserver_chain.get_play_url.side_effect = lambda server, item_id: f"https://{server}/item/{item_id}"
-    mediaserver_chain.get_season_episode_ids.side_effect = lambda server, item_id, season: {1: f"{item_id}-ep1"}
+    mediaserver_chain.get_season_episode_ids.side_effect = lambda server, item_id, season, *, query: {
+        1: f"{item_id}-ep1"
+    }
     media_chain = MagicMock()
     media_chain.recognize_media.return_value = mediainfo
 
@@ -109,6 +111,7 @@ def test_subscribe_files_info_merges_multiple_mediaservers():
     servers = {item.server for item in library}
     assert servers == {"Emby1", "Jellyfin1"}
     assert all(str(item.file_path).startswith("https://") for item in library)
+    assert all(call.kwargs["query"].fields == set() for call in mediaserver_chain.get_season_episode_ids.call_args_list)
 
 
 def test_subscribe_files_info_uses_season_zero_for_tv():
@@ -130,7 +133,11 @@ def test_subscribe_files_info_uses_season_zero_for_tv():
             )
         return None
 
-    def _get_season_episode_ids(server, item_id, season):
+    def _get_season_episode_ids(server, item_id, season, *, query):
+        """
+        保留特别篇季号，并确认跳转查询只请求集标识。
+        """
+        assert query.fields == set()
         captured_seasons.append(season)
         return {1: f"{item_id}-ep1"}
 

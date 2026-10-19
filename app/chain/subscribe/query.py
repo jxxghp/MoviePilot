@@ -5,7 +5,7 @@
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.configuration import get_configured_system_config
-from app.application.mediaserver import MediaServerHelper
+from app.application.mediaserver import MEDIA_SERVER_EXISTENCE_QUERY, MediaServerHelper
 from app.application.subscription.contract import (
     SubscriptionIdentity,
     SubscriptionRepository,
@@ -27,6 +27,7 @@ from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.media import normalize_media_source
+from app.schemas.mediaserver import MediaServerQueryOptions
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
 from app.schemas.subscribe import Subscribe as _SchemaSubscribe
@@ -436,7 +437,9 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
             return False
 
         for server_name in server_names:
-            exists_media = self.media_exists(mediainfo=mediainfo, server=server_name)
+            exists_media = self.media_exists(
+                mediainfo=mediainfo, server=server_name, query=MEDIA_SERVER_EXISTENCE_QUERY
+            )
             if not exists_media or not (exists_media.server or exists_media.server_type):
                 continue
             resolved_server = exists_media.server or server_name
@@ -473,6 +476,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                     server=resolved_server,
                     item_id=exists_media.itemid,
                     season=season_number,
+                    query=MediaServerQueryOptions(fields=set()),
                 )
             for episode_number in exist_episodes:
                 episode_info = episodes.get(episode_number)

@@ -8,6 +8,7 @@ from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.emby.emby import Emby
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
@@ -23,6 +24,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
 
     # 媒体库标识（ExistMediaInfo.server_type）
     _server_type_value = "emby"
+    _query_options_supported = True
 
     def init_module(self) -> None:
         """
@@ -123,24 +125,39 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
             media_statistics.append(media_statistic)
         return media_statistics
 
-    def mediaserver_librarys(self, server: str,
-                             username: Optional[str] = None,
-                             hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
+    def mediaserver_librarys(
+        self,
+        server: str,
+        username: Optional[str] = None,
+        hidden: Optional[bool] = False,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         读取用户可见媒体库。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
         :param hidden: 是否隐藏未选入同步配置的库
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一媒体库列表；实例不可用或查询失败时返回 None
         """
         server_obj = self.get_instance(server)
         if server_obj:
-            return server_obj.get_librarys(username=username, hidden=hidden)
+            return server_obj.get_librarys(
+                username=username, hidden=hidden, **({"query": query} if query is not None else {})
+            )
         return None
 
-    def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
-                          limit: Optional[int] = -1) -> Optional[Generator[Optional[_SchemaMediaServerItem], None, None]]:
+    def mediaserver_items(
+        self,
+        server: str,
+        library_id: Union[str, int],
+        start_index: Optional[int] = 0,
+        limit: Optional[int] = -1,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[Generator[Optional[_SchemaMediaServerItem], None, None]]:
         """
         返回媒体库条目的迭代器，按需分页并递归展开目录。
 
@@ -148,11 +165,14 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         :param library_id: 要读取的媒体库标识
         :param start_index: 当前层分页起始索引，limit 不限制数量时不使用
         :param limit: 当前层请求数量；None 或 -1 不限制，子目录递归读取全部条目
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一媒体条目的生成器；实例不存在时返回 None，迭代时的读取错误向调用方传播
         """
         server_obj = self.get_instance(server)
         if server_obj:
-            return server_obj.get_items(library_id, start_index, limit)
+            return server_obj.get_items(
+                library_id, start_index, limit, **({"query": query} if query is not None else {})
+            )
         return None
 
     def mediaserver_items_count(self, server: str, library_id: Union[str, int]) -> Optional[int]:
@@ -168,53 +188,64 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
             return server_obj.get_items_count(library_id)
         return None
 
-    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[_SchemaMediaServerItem]:
+    def mediaserver_iteminfo(
+        self, server: str, item_id: str, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[_SchemaMediaServerItem]:
         """
         查询单个媒体条目的详细信息。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param item_id: Emby 条目标识
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一条目模型；实例、条目不存在或请求失败时返回 None
         """
         server_obj = self.get_instance(server)
         if server_obj:
-            return server_obj.get_iteminfo(item_id)
+            return server_obj.get_iteminfo(item_id, **({"query": query} if query is not None else {}))
         return None
 
-    def mediaserver_tv_episodes(self, server: str,
-                                item_id: Union[str, int]) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
+    def mediaserver_tv_episodes(
+        self, server: str, item_id: Union[str, int], *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
         查询电视剧中各季已经入库的集号。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param item_id: Emby 条目标识
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 按季组织的集号列表；实例不存在时返回 None，无分集数据或查询失败时返回空列表
         """
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
+        _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id, **({"query": query} if query is not None else {}))
         if not seasoninfo:
             return []
-        return [_SchemaMediaServerSeasonInfo(
-            season=season,
-            episodes=episodes
-        ) for season, episodes in seasoninfo.items()]
+        return [
+            _SchemaMediaServerSeasonInfo(season=season, episodes=episodes) for season, episodes in seasoninfo.items()
+        ]
 
-    def mediaserver_playing(self, server: str, count: Optional[int] = 20,
-                            username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
+    def mediaserver_playing(
+        self,
+        server: str,
+        count: Optional[int] = 20,
+        username: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询用户可继续观看的媒体列表。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param count: 最多保留的条目数，默认 20
         :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 继续观看条目列表；实例不可用或查询失败时返回 None
         """
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_resume(num=count, username=username)
+        return server_obj.get_resume(num=count, username=username, **({"query": query} if query is not None else {}))
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
@@ -229,42 +260,56 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
             return None
         return server_obj.get_play_url(item_id)
 
-    def mediaserver_season_episode_ids(self, server: str, item_id: Union[str, int],
-                                       season: int) -> Optional[Dict[int, str]]:
+    def mediaserver_season_episode_ids(
+        self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[Dict[int, str]]:
         """
         获取指定季的集号到条目 ID 映射。
 
         :param server: Emby 媒体服务器名称
         :param item_id: 剧集在 Emby 中的条目 ID
         :param season: 季号
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 集号到条目 ID 的映射，服务器不可用或无数据时返回 None
         """
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_season_episode_ids(str(item_id), season)
+        return server_obj.get_season_episode_ids(
+            str(item_id), season, **({"query": query} if query is not None else {})
+        )
 
-    def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
-                           username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
+    def mediaserver_latest(
+        self,
+        server: Optional[str] = None,
+        count: Optional[int] = 20,
+        username: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询用户最近入库的媒体列表。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param count: 最多查询的条目数，默认 20
         :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 最新媒体列表；实例不可用或查询失败时返回 None
         """
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_latest(num=count, username=username)
+        return server_obj.get_latest(num=count, username=username, **({"query": query} if query is not None else {}))
 
-    def mediaserver_latest_images(self,
-                                  server: Optional[str] = None,
-                                  count: Optional[int] = 10,
-                                  username: Optional[str] = None,
-                                  remote: Optional[bool] = False
-                                  ) -> List[str]:
+    def mediaserver_latest_images(
+        self,
+        server: Optional[str] = None,
+        count: Optional[int] = 10,
+        username: Optional[str] = None,
+        remote: Optional[bool] = False,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> List[str]:
         """
         获取媒体服务器最新入库条目的图片。
 
@@ -272,21 +317,29 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         :param count: 获取数量
         :param username: 用户名
         :param remote: True为外网链接, False为内网链接
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 图片链接列表
         """
+        if query is not None and not query.includes(MediaServerField.IMAGES):
+            return []
         server_obj = self.get_instance(server)
         if not server_obj:
             return []
 
         links = []
-        items = self.mediaserver_latest(server=server, count=count, username=username) or []
+        items = (
+            self.mediaserver_latest(
+                server=server, count=count, username=username, **({"query": query} if query is not None else {})
+            )
+            or []
+        )
         for item in items:
             if item.type not in (MediaType.MOVIE.value, MediaType.TV.value):
                 continue
             if item.BackdropImageTags:
-                image_url = server_obj.get_backdrop_url(item_id=item.id,
-                                                        image_tag=item.BackdropImageTags[0],
-                                                        remote=remote)
+                image_url = server_obj.get_backdrop_url(
+                    item_id=item.id, image_tag=item.BackdropImageTags[0], remote=remote
+                )
                 if image_url:
                     links.append(image_url)
         return links
