@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *最后更新：2026-10-18*
+> *最后更新：2026-10-19*
 
 ---
 
@@ -811,13 +811,13 @@ flowchart LR
 
 ### 10.2 当前架构快照
 
-以下是 2026-10-18 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
+以下是 2026-10-19 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
 不代表某个已发布镜像或正在运行的实例已经验证。
 
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1124 |
-| 内部导入边 | 9,615 |
+| 内部导入边 | 9,621 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |

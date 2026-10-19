@@ -40,6 +40,7 @@ from app.domain.meta.metabase import MetaBase
 from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
+from app.schemas.download import DOWNLOAD_TASK_ALREADY_EXISTS
 from app.schemas.event import ResourceDownloadEventData
 from app.schemas.file import FileURI
 from app.schemas.media import resolve_media_identity
@@ -750,6 +751,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 actual_downloader=actual_downloader,
                 download_hash=download_hash,
                 layout=layout,
+                already_exists=error_msg == DOWNLOAD_TASK_ALREADY_EXISTS,
             )
         else:
             self._record_rejected_download(
@@ -779,10 +781,15 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         actual_downloader: Optional[str],
         download_hash: str,
         layout: Optional[str],
+        already_exists: bool = False,
     ) -> None:
         """
         按普通下载合同结算下载器明确返回的成功结果。
+
+        :param already_exists: 下载器中已存在同一任务时为 True，结算时复用现有任务而不重复通知
         """
+        if already_exists:
+            logger.info(f"{prepared.torrent.title} 下载器中已存在同一任务，沿用现有下载进度")
         # 下载器中已存在相同 Hash 时下载器会沿用原保存目录，须以实际目录记录
         download_dir = self._resolve_actual_download_dir(
             downloader=actual_downloader,
@@ -808,6 +815,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             username=username,
             torrent_content=prepared.torrent_content,
             custom_words=custom_words,
+            already_exists=already_exists,
         )
 
     def _resolve_actual_download_dir(
