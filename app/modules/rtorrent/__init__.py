@@ -14,6 +14,7 @@ from app.modules.rtorrent.rtorrent import Rtorrent, TorrentData
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
+from app.schemas.download import DOWNLOAD_TASK_ALREADY_EXISTS
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
     DownloaderType,
@@ -183,7 +184,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                                 downloader or self.get_default_config_name(),
                                 torrent_hash,
                                 torrent_layout,
-                                "下载任务已存在",
+                                DOWNLOAD_TASK_ALREADY_EXISTS,
                             )
                 finally:
                     torrents.clear()

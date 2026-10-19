@@ -21,6 +21,7 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfo
+from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
     EventType,
@@ -76,9 +77,12 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             username: Optional[str],
             torrent_content: Union[str, bytes],
             custom_words: Optional[str],
+            already_exists: bool = False,
     ) -> None:
         """
         提交下载历史、文件明细和 durable 下载事件。
+
+        :param already_exists: 下载器中已存在同一任务时为 True，仅补记历史，不再重复通知与文件明细
         """
         if layout == "NoSubfolder" or not folder_name:
             download_path = download_dir / file_list[0] if file_list else download_dir
@@ -140,12 +144,14 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
                     torrentname=meta.org_string,
                 )
             )
+        if already_exists:
+            files_to_add = self._filter_unrecorded_download_files(files_to_add, download_hash)
         frozen_files = tuple(files_to_add)
         event_payload = {
             "hash": download_hash, "context": context, "username": username,
             "downloader": downloader, "episodes": episodes or meta.episode_list, "source": source,
         }
-        notification = self._build_download_notification(
+        notification = None if already_exists else self._build_download_notification(
             media=media,
             meta=meta,
             torrent=torrent,
@@ -187,3 +193,30 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             downloader=downloader,
         )
         self.eventmanager.send_event(EventType.DownloadAdded, event_payload)
+
+    def _filter_unrecorded_download_files(
+            self,
+            files: list[DownloadFileWrite],
+            download_hash: str,
+    ) -> list[DownloadFileWrite]:
+        """
+        剔除同一任务 Hash 下已经记录的有效文件明细，避免重复提交写入成对副本。
+
+        :param files: 本次提交解析出的文件明细
+        :param download_hash: 下载器中的任务哈希标识
+        :return: 尚未记录过的文件明细
+        """
+        if not files:
+            return files
+        recorded = {
+            item.fullpath
+            for item in self.download_history_repository.get_files_by_hash(download_hash, state=1)
+            if item.fullpath
+        }
+        if not recorded:
+            return files
+        retained = [item for item in files if item.fullpath not in recorded]
+        skipped = len(files) - len(retained)
+        if skipped:
+            logger.info(f"下载任务 {download_hash} 的 {skipped} 条文件明细已记录，不再重复写入")
+        return retained

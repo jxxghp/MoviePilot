@@ -104,28 +104,34 @@ async def test_http_only_restores_live_process_registered_key(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_anyio_interactive_capacity_survives_default_limiter_saturation() -> None:
+async def test_anyio_interactive_and_gateway_capacity_survive_background_saturation() -> None:
     """
-    默认线程令牌用尽时交互仍可执行，完成和上下文传播不依赖后台释放。
+    普通宿主令牌用尽时框架入口仍执行，两组均忙时交互工具仍可取得保留容量。
     """
     limiter = current_default_thread_limiter()
     original = limiter.total_tokens
     limiter.total_tokens = 1
     entered = threading.Event()
+    framework_entered = threading.Event()
     release = threading.Event()
     task = asyncio.create_task(run_in_threadpool(lambda: entered.set() or release.wait(3)))
+    framework = None
     try:
         await _entered(entered)
+        # FastAPI 的同步依赖和端点走库默认入口，也不能等待宿主后台调用归还令牌。
+        assert await asyncio.wait_for(run_sync(lambda: "gateway"), 1) == "gateway"
+        framework = asyncio.create_task(run_sync(lambda: framework_entered.set() or release.wait(3)))
+        await _entered(framework_entered)
         with priority.interactive_execution():
             assert priority.interactive_thread_limiter() is priority.interactive_thread_limiter()
             assert await asyncio.wait_for(run_in_threadpool(priority.is_interactive), 1) is True
-        # FastAPI 的同步依赖和端点走库默认入口，也不能等待宿主后台调用归还令牌。
-        assert await asyncio.wait_for(run_sync(lambda: "gateway"), 1) == "gateway"
         assert priority.background_thread_limiter() is priority.background_thread_limiter()
         assert not task.done()
     finally:
         release.set()
         await task
+        if framework is not None:
+            await framework
         limiter.total_tokens = original
 
 
@@ -350,6 +356,15 @@ async def test_model_request_timeout_and_disabled_timeout(monkeypatch) -> None:
     assert cancelled.is_set()
     monkeypatch.setattr(config_module, "get_runtime_setting", lambda *_args: 0)
     assert await middleware.awrap_model_call(None, AsyncMock(return_value="done")) == "done"
+
+
+def test_timeout_notice_requires_checking_existing_write_status() -> None:
+    """
+    超时提示必须说明操作仍可能收尾，避免用户直接重复执行写入。
+    """
+    message = MoviePilotAgent._friendly_execution_error_message(TimeoutError())
+    assert "超时" in message
+    assert "先确认状态" in message
 
 
 @pytest.mark.asyncio

@@ -1965,9 +1965,13 @@ def _prepared_download_for_settle(download_dir: Path) -> download_submission._Pr
     )
 
 
-def _settle_accepted_download(chain, download_dir: Path) -> None:
+def _settle_accepted_download(chain, download_dir: Path, already_exists: bool = False) -> None:
     """
     以固定下载上下文调用一次成功结算。
+
+    :param chain: 待结算的下载链实例
+    :param download_dir: 提交前解析出的预期下载目录
+    :param already_exists: 是否按下载器已存在同一任务结算
     """
     chain._settle_accepted_download(
         prepared=_prepared_download_for_settle(download_dir),
@@ -1981,6 +1985,7 @@ def _settle_accepted_download(chain, download_dir: Path) -> None:
         actual_downloader="qb",
         download_hash="hash123",
         layout="NoSubfolder",
+        already_exists=already_exists,
     )
 
 
@@ -2041,6 +2046,19 @@ def test_settle_accepted_download_skips_lookup_for_remote_dir():
 
     assert chain._settle_download_success.call_args.kwargs["download_dir"] == Path("smb:/downloads/TV")
     chain.list_torrents.assert_not_called()
+
+
+def test_settle_accepted_download_marks_reuse_when_task_exists():
+    """
+    下载器已存在同一任务时，复用事实须传递到结算，供历史跳过重复通知。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.list_torrents = MagicMock(return_value=[])
+    chain._settle_download_success = MagicMock()
+
+    _settle_accepted_download(chain, Path("/downloads/TV"), already_exists=True)
+
+    assert chain._settle_download_success.call_args.kwargs["already_exists"] is True
 
 
 def test_settle_accepted_download_records_actual_path_for_existing_torrent():

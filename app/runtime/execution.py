@@ -225,6 +225,8 @@ async def run_in_threadpool(
     """
     在线程中执行同步函数，保持 FastAPI 旧帮助函数的参数语义。
 
+    交互调用使用保留配额；普通宿主调用使用独立后台配额，避免耗尽框架同步入口的令牌。
+
     :param func: 在线程中执行的同步回调
     :param args: 回调的位置参数
     :param kwargs: 回调的关键字参数

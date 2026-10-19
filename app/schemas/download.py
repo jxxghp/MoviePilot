@@ -10,6 +10,9 @@ from pydantic import model_validator as _model_validator
 from app.schemas.types import MediaSource as _MediaSource
 from app.schemas.types import MusicEntityType as _MusicEntityType
 
+# 下载器报告同一 hash 的任务已存在时返回的统一说明，订阅链路据此区分复用与新增提交。
+DOWNLOAD_TASK_ALREADY_EXISTS = "下载任务已存在"
+
 
 class DownloadTask(BaseModel):
     """

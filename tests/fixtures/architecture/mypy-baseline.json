@@ -640,7 +640,7 @@
     "type-arg": 1
   },
   "app/modules/filemanager/storages/local.py": {
-    "arg-type": 8,
+    "arg-type": 7,
     "assignment": 1,
     "truthy-function": 1
   },
@@ -674,7 +674,7 @@
     "union-attr": 32
   },
   "app/modules/filemanager/transhandler.py": {
-    "arg-type": 17,
+    "arg-type": 15,
     "assignment": 1,
     "no-redef": 1,
     "no-untyped-def": 2,

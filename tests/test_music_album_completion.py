@@ -182,6 +182,8 @@ def test_actual_torrent_hash_parser(content, expected):
 def test_hash_guard_skips_only_fully_transferred_subscription(album, tmp_path):
     """
     跨轮次去重以种子真实 hash 和全部音频成功整理为准，保留人工下载与失败重试。
+
+    交付事实来自整理历史：单曲被移出媒体库不重投整包，整理目标全部消失才视为交付失效。
     """
     content = Bencode.encode({"info": {"name": "album", "piece length": 16384, "pieces": "x" * 20, "length": 100}})
     actual_hash = TorrentHelper.get_torrent_hash(content)
@@ -205,13 +207,24 @@ def test_hash_guard_skips_only_fully_transferred_subscription(album, tmp_path):
     assert chain._has_completed_music_download(prepared, "Subscribe|7")
     chain.download_history_repository.get_by_hash.assert_called_with(actual_hash)
     assert not chain._has_completed_music_download(prepared, "Manual")
-    missing_path = tmp_path / "2.flac"
-    missing_path.unlink()
+    (tmp_path / "2.flac").unlink()
+    assert chain._has_completed_music_download(prepared, "Subscribe|7")
+    (tmp_path / "1.flac").unlink()
     assert not chain._has_completed_music_download(prepared, "Subscribe|7")
-    missing_path.write_bytes(b"audio")
+    for number in (1, 2):
+        (tmp_path / f"{number}.flac").write_bytes(b"audio")
+    # 同一曲目的过期整理记录不会抵消仍然在库的那份交付。
+    success.append(SimpleNamespace(src="/downloads/1.flac", dest=str(tmp_path / "stale.flac"), status=True,
+                                   dest_storage="local", type=MediaType.MUSIC.value, downloader="qb",
+                                   src_storage="local"))
+    assert chain._has_completed_music_download(prepared, "Subscribe|7")
+    success.pop()
     success[1].status = False
     assert not chain._has_completed_music_download(prepared, "Subscribe|7")
-    success[1].status = True
+    success[0].status = False
+    # 没有任何有效整理记录时交付事实为空，必须保留失败重试。
+    assert not chain._has_completed_music_download(prepared, "Subscribe|7")
+    success[0].status = success[1].status = True
     success[1].downloader = "other"
     assert not chain._has_completed_music_download(prepared, "Subscribe|7")
     chain.download_history_repository.get_by_hash.return_value.media_id = "other"

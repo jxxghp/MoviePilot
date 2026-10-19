@@ -137,6 +137,7 @@ SCHEMA_EXPORTS = {
     'CustomFilterRuleUpdateRequest': ('app.schemas.rule', 'CustomFilterRuleUpdateRequest'),
     'CustomIdentifiersUpdateRequest': ('app.schemas.system', 'CustomIdentifiersUpdateRequest'),
     'CustomRule': ('app.schemas.rule', 'CustomRule'),
+    'DOWNLOAD_TASK_ALREADY_EXISTS': ('app.schemas.download', 'DOWNLOAD_TASK_ALREADY_EXISTS'),
     'DashboardMemoryInfo': ('app.schemas.dashboard', 'DashboardMemoryInfo'),
     'DashboardSystemInfo': ('app.schemas.dashboard', 'DashboardSystemInfo'),
     'DataT': ('app.schemas.response', 'DataT'),
