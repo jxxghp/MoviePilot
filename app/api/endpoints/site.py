@@ -699,7 +699,7 @@ async def site_resource(
         domain=site.domain,
         keyword=keyword,
         cat=cat,
-        page=page,
+        page=max(int(page or 0) - 1, 0),
         mtype=MediaType.from_agent(mtype) or MediaType(mtype) if mtype else None,
     )
     if not torrents:

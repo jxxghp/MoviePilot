@@ -225,6 +225,7 @@ class YemaSpider:
         keyword: Optional[str],
         mtype: Optional[MediaType],
         page: Optional[int],
+        cat: Optional[str] = None,
     ) -> Optional[List[dict[str, Any]]]:
         """
         统一执行认证准入并生成各分类的搜索请求体。
@@ -232,9 +233,14 @@ class YemaSpider:
         if not self._api_key:
             logger.warning(f"{self._name} 未配置 API AuthKey")
             return None
+        if cat:
+            # 站点资源页显式选择的分类优先，避免按媒体类型猜分类。
+            category_ids: List[Optional[int]] = [int(cat)]
+        else:
+            category_ids = self._search_category_ids(mtype)
         return [
             self._build_params(keyword, page, category_id)
-            for category_id in self._search_category_ids(mtype)
+            for category_id in category_ids
         ]
 
     def _finalize_search_responses(
@@ -258,6 +264,7 @@ class YemaSpider:
         keyword: Optional[str],
         mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
+        cat: Optional[str] = None,
     ) -> Tuple[bool, List[dict]]:
         """
         同步搜索 YemaPT 公开种子。
@@ -265,12 +272,14 @@ class YemaSpider:
         :param keyword: 搜索关键字
         :param mtype: MoviePilot 媒体类型，指定后按真实站点分类分别查询
         :param page: MoviePilot 从 0 开始的页码
+        :param cat: 站点资源页显式选择的站点分类 ID
         :return: 是否失败及标准种子列表
         """
         payloads = self._prepare_search_requests(
             keyword=keyword,
             mtype=mtype,
             page=page,
+            cat=cat,
         )
         if payloads is None:
             return True, []
@@ -293,6 +302,7 @@ class YemaSpider:
         keyword: Optional[str],
         mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
+        cat: Optional[str] = None,
     ) -> Tuple[bool, List[dict]]:
         """
         异步搜索 YemaPT 公开种子。
@@ -300,12 +310,14 @@ class YemaSpider:
         :param keyword: 搜索关键字
         :param mtype: MoviePilot 媒体类型，指定后按真实站点分类分别查询
         :param page: MoviePilot 从 0 开始的页码
+        :param cat: 站点资源页显式选择的站点分类 ID
         :return: 是否失败及标准种子列表
         """
         payloads = self._prepare_search_requests(
             keyword=keyword,
             mtype=mtype,
             page=page,
+            cat=cat,
         )
         if payloads is None:
             return True, []

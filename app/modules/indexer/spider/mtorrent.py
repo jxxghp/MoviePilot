@@ -121,11 +121,14 @@ class MTorrentSpider:
         registered_domain = site_rules.extract_domain(domain_url)
         return f"api.{registered_domain}" if registered_domain else host
 
-    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0) -> dict[str, object]:
+    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
+                     cat: Optional[str] = None) -> dict[str, object]:
         """
         获取请求参数。
         """
-        if not mtype:
+        if cat:
+            categories = [str(cat)]
+        elif not mtype:
             categories = []
         elif mtype == MediaType.TV:
             categories = self._tv_category
@@ -226,7 +229,7 @@ class MTorrentSpider:
         return True, []
 
     def search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
-               search_type: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
+               search_type: Optional[str] = None, cat: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         搜索种子或字幕。
 
@@ -241,7 +244,7 @@ class MTorrentSpider:
         if not self._apikey:
             return True, []
 
-        params = self.__get_params(keyword, mtype, page)
+        params = self.__get_params(keyword, mtype, page, cat)
 
         res = RequestUtils(
             headers={
@@ -256,7 +259,7 @@ class MTorrentSpider:
         return self.__process_response(res)
 
     async def async_search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
-                           search_type: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
+                           search_type: Optional[str] = None, cat: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索种子或字幕。
 
@@ -271,7 +274,7 @@ class MTorrentSpider:
         if not self._apikey:
             return True, []
 
-        params = self.__get_params(keyword, mtype, page)
+        params = self.__get_params(keyword, mtype, page, cat)
 
         res = await AsyncRequestUtils(
             headers={
