@@ -7,7 +7,7 @@ import ntpath
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
@@ -746,7 +746,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】上传失败: {target_name} - {e}")
             return None
 
-    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str, **_kwargs: Any) -> bool:
         """
         在同一服务器的已配置共享间执行 CopyChunk 服务端复制。
 

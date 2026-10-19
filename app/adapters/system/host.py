@@ -492,7 +492,7 @@ class SystemUtils:
         return platform.machine()
 
     @staticmethod
-    def copy(src: Path, dest: Path) -> Tuple[int, str]:
+    def copy(src: Path, dest: Path, *, try_reflink: bool = True) -> Tuple[int, str]:
         """
         复制文件。
 
@@ -501,10 +501,11 @@ class SystemUtils:
 
         :param src: 源文件路径
         :param dest: 目标文件路径
+        :param try_reflink: 是否优先尝试写时复制引用链接克隆
         :return: (状态码, 错误信息)，0 表示成功
         """
         try:
-            if SystemUtils.is_same_disk(src, dest):
+            if try_reflink and SystemUtils.is_same_disk(src, dest):
                 code, _ = SystemUtils.reflink(src, dest)
                 if code == 0:
                     return 0, ""
@@ -557,7 +558,7 @@ class SystemUtils:
     @staticmethod
     def reflink(src: Path, dest: Path) -> Tuple[int, str]:
         """
-        创建引用链接（写时复制 / Cow / Reflink）
+        创建引用链接（写时复制 / CoW / Reflink / 克隆）
 
         采用原子暂存模式将源文件克隆到临时路径，成功后移动至目标路径。
 

@@ -7,7 +7,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import WeakSingleton
@@ -766,7 +766,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         return self.get_item(Path(fileitem.path))
 
-    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str, **_kwargs: Any) -> bool:
         """
         请求服务端复制，再尽力把目标改为新名称。
 

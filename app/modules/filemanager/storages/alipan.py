@@ -8,7 +8,7 @@ import secrets
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from app.adapters.network.http import HttpRequestError, RequestUtils
 from app.foundation import temporal as time_tools
@@ -1074,7 +1074,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         """
         return self.get_item(Path(fileitem.path))
 
-    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str, **_kwargs: Any) -> bool:
         """
         在源空间内复制文件，再尝试改为目标名称。
 

@@ -4,7 +4,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import pytest
 
@@ -96,7 +96,7 @@ def test_storage_base_reflink_defaults_to_false(tmp_path: Path) -> None:
         def detail(self, fileitem: FileItem) -> Optional[FileItem]:
             return None
 
-        def copy(self, fileitem: FileItem, path: Path, new_name: str) -> bool:
+        def copy(self, fileitem: FileItem, path: Path, new_name: str, **kwargs: Any) -> bool:
             return False
 
         def move(self, fileitem: FileItem, path: Path, new_name: str) -> bool:
@@ -258,7 +258,7 @@ def test_local_storage_copy_prioritizes_reflink_on_same_disk(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     """
-    测试本地复制在同文件系统且支持写时复制时，优先尝试引用链接。
+    测试本地复制在同文件系统且配置开启时，默认优先尝试引用链接。
 
     :param monkeypatch: pytest 猴子补丁夹具
     :param tmp_path: pytest 临时测试目录
@@ -278,6 +278,10 @@ def test_local_storage_copy_prioritizes_reflink_on_same_disk(
 
     monkeypatch.setattr(SystemUtils, "reflink", _mock_reflink)
     monkeypatch.setattr(SystemUtils, "is_same_disk", lambda _s, _d: True)
+    monkeypatch.setattr(
+        "app.modules.filemanager.storages.local.get_runtime_setting",
+        lambda key, default=True: True if key == "TRANSFER_COPY_TRY_REFLINK" else default,
+    )
 
     fileitem = FileItem(storage="local", path=source.as_posix(), name="src.bin")
     success = storage.copy(fileitem, target_dir, "dest.bin")
@@ -319,6 +323,90 @@ def test_local_storage_copy_falls_back_when_reflink_fails(
     assert (target_dir / "dest.bin").read_bytes() == b"fallback copy content"
 
 
+def test_local_storage_copy_skips_reflink_when_disabled_via_argument(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    测试显式传入 try_reflink=False 时跳过引用链接尝试，直接走常规复制。
+
+    :param monkeypatch: pytest 猴子补丁夹具
+    :param tmp_path: pytest 临时测试目录
+    """
+    storage = _make_local_storage()
+    source = tmp_path / "src.bin"
+    source.write_bytes(b"explicit false copy content")
+    target_dir = tmp_path / "dest"
+    target_dir.mkdir()
+
+    reflink_called = []
+
+    def _mock_reflink(src: Path, dest: Path) -> Tuple[int, str]:
+        reflink_called.append((src, dest))
+        return 0, ""
+
+    monkeypatch.setattr(SystemUtils, "reflink", _mock_reflink)
+    monkeypatch.setattr(SystemUtils, "is_same_disk", lambda _s, _d: True)
+    monkeypatch.setattr(
+        "app.modules.filemanager.storages.local.get_runtime_setting",
+        lambda key, default=True: True if key == "TRANSFER_COPY_TRY_REFLINK" else default,
+    )
+
+    fileitem = FileItem(storage="local", path=source.as_posix(), name="src.bin")
+    success = storage.copy(fileitem, target_dir, "dest.bin", try_reflink=False)
+
+    assert success is True
+    assert len(reflink_called) == 0
+    assert (target_dir / "dest.bin").read_bytes() == b"explicit false copy content"
+
+
+def test_local_storage_copy_rejects_positional_try_reflink(tmp_path: Path) -> None:
+    """
+    测试 LocalStorage.copy 拒绝以位置参数形式传入 try_reflink，抛出 TypeError。
+
+    :param tmp_path: pytest 临时测试目录
+    """
+    storage = _make_local_storage()
+    fileitem = FileItem(storage="local", path=str(tmp_path / "src.bin"), name="src.bin")
+    with pytest.raises(TypeError):
+        storage.copy(fileitem, tmp_path, "dest.bin", False)  # type: ignore[misc]
+
+
+def test_local_storage_copy_skips_reflink_when_disabled_via_runtime_setting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    测试运行期配置 TRANSFER_COPY_TRY_REFLINK 为 False 时，默认传参跳过引用链接探测。
+
+    :param monkeypatch: pytest 猴子补丁夹具
+    :param tmp_path: pytest 临时测试目录
+    """
+    storage = _make_local_storage()
+    source = tmp_path / "src.bin"
+    source.write_bytes(b"runtime setting false copy content")
+    target_dir = tmp_path / "dest"
+    target_dir.mkdir()
+
+    reflink_called = []
+
+    def _mock_reflink(src: Path, dest: Path) -> Tuple[int, str]:
+        reflink_called.append((src, dest))
+        return 0, ""
+
+    monkeypatch.setattr(SystemUtils, "reflink", _mock_reflink)
+    monkeypatch.setattr(SystemUtils, "is_same_disk", lambda _s, _d: True)
+    monkeypatch.setattr(
+        "app.modules.filemanager.storages.local.get_runtime_setting",
+        lambda key, default=True: False if key == "TRANSFER_COPY_TRY_REFLINK" else default,
+    )
+
+    fileitem = FileItem(storage="local", path=source.as_posix(), name="src.bin")
+    success = storage.copy(fileitem, target_dir, "dest.bin")
+
+    assert success is True
+    assert len(reflink_called) == 0
+    assert (target_dir / "dest.bin").read_bytes() == b"runtime setting false copy content"
+
+
 def test_local_storage_copy_skips_reflink_on_different_disks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
@@ -351,11 +439,11 @@ def test_local_storage_copy_skips_reflink_on_different_disks(
     assert (target_dir / "dest.bin").read_bytes() == b"cross disk copy content"
 
 
-def test_system_utils_copy_reflink_priority_and_fallback(
+def test_system_utils_copy_keyword_only_and_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     """
-    测试 SystemUtils.copy 优先尝试引用链接并在失败时回退常规复制。
+    测试 SystemUtils.copy 强制仅限关键字参数、优先引用链接及回退常规复制。
 
     :param monkeypatch: pytest 猴子补丁夹具
     :param tmp_path: pytest 临时测试目录
@@ -364,11 +452,17 @@ def test_system_utils_copy_reflink_priority_and_fallback(
     source.write_bytes(b"system utils copy test")
     dest1 = tmp_path / "dest1.bin"
     dest2 = tmp_path / "dest2.bin"
+    dest3 = tmp_path / "dest3.bin"
 
-    calls = []
+    # 1. 验证拒绝位置传参 try_reflink
+    with pytest.raises(TypeError):
+        SystemUtils.copy(source, dest1, False)  # type: ignore[misc]
+
+    # 2. 验证显式 try_reflink=False 时跳过 reflink
+    reflink_calls = []
 
     def _mock_reflink(src: Path, dest: Path) -> Tuple[int, str]:
-        calls.append((src, dest))
+        reflink_calls.append((src, dest))
         if dest == dest1:
             dest.write_bytes(src.read_bytes())
             return 0, ""
@@ -377,13 +471,22 @@ def test_system_utils_copy_reflink_priority_and_fallback(
     monkeypatch.setattr(SystemUtils, "reflink", _mock_reflink)
     monkeypatch.setattr(SystemUtils, "is_same_disk", lambda _s, _d: True)
 
+    code_skip, msg_skip = SystemUtils.copy(source, dest3, try_reflink=False)
+    assert code_skip == 0
+    assert msg_skip == ""
+    assert dest3.read_bytes() == b"system utils copy test"
+    assert len(reflink_calls) == 0
+
+    # 3. 验证默认优先尝试 reflink 并成功
     code1, msg1 = SystemUtils.copy(source, dest1)
     assert code1 == 0
     assert msg1 == ""
     assert dest1.read_bytes() == b"system utils copy test"
+    assert len(reflink_calls) == 1
 
+    # 4. 验证 reflink 失败时自动回退常规复制
     code2, msg2 = SystemUtils.copy(source, dest2)
     assert code2 == 0
     assert msg2 == ""
     assert dest2.read_bytes() == b"system utils copy test"
-    assert len(calls) == 2
+    assert len(reflink_calls) == 2

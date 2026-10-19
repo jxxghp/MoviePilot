@@ -8,7 +8,7 @@ import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from app.adapters.system.host import SystemUtils
 from app.foundation import temporal as time_tools
@@ -591,7 +591,7 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】移动失败: {fileitem.name} - {err}")
             return False
 
-    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str, **_kwargs: Any) -> bool:
         """
         调用 copyto 在 MP 远端内复制文件并回调进度。
 

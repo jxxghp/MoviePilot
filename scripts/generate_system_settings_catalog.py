@@ -61,6 +61,7 @@ SECTION_GROUPS = {
     "插件配置": "plugins",
     "技能配置": "skills",
     "Github & PIP": "dependencies",
+    "GitHub 与 Python 包索引配置": "dependencies",
     "飞书通知配置": "feishu",
     "性能配置": "performance",
     "安全配置": "security",
@@ -99,7 +100,12 @@ def _assignment_name(node: ast.stmt) -> str | None:
     return None
 
 
-def _preceding_comments(lines: list[str], line_number: int) -> list[str]:
+def _preceding_comments(
+    lines: list[str],
+    line_number: int,
+    *,
+    exclude_sections: bool = False,
+) -> list[str]:
     """
     读取字段前连续注释，并排除章节分隔标题。
     """
@@ -108,6 +114,9 @@ def _preceding_comments(lines: list[str], line_number: int) -> list[str]:
     while index >= 0:
         stripped = lines[index].strip()
         if not stripped.startswith("#"):
+            break
+        candidate = stripped.lstrip("#").strip().strip("=").strip()
+        if exclude_sections and (SECTION_PATTERN.match(stripped) or candidate in SECTION_GROUPS):
             break
         if not SECTION_PATTERN.match(stripped):
             comments.append(stripped[1:].strip())
@@ -121,9 +130,14 @@ def _sections(lines: list[str]) -> list[tuple[int, str]]:
     """
     results: list[tuple[int, str]] = []
     for line_number, line in enumerate(lines, start=1):
-        match = SECTION_PATTERN.match(line.strip())
+        stripped = line.strip()
+        match = SECTION_PATTERN.match(stripped)
         if match:
             results.append((line_number, match.group(1).strip()))
+        elif stripped.startswith("#"):
+            candidate = stripped.lstrip("#").strip().strip("=").strip()
+            if candidate in SECTION_GROUPS:
+                results.append((line_number, candidate))
     return results
 
 
@@ -158,7 +172,14 @@ def _extract_model_fields(
         field_name = _assignment_name(node)
         if not field_name or field_name == "model_config" or field_name in results:
             continue
-        description = " ".join(_preceding_comments(lines, node.lineno)).strip()
+        description = ""
+        val = getattr(node, "value", None)
+        if isinstance(val, ast.Call):
+            for kw in val.keywords:
+                if kw.arg == "description" and isinstance(kw.value, ast.Constant):
+                    description = str(kw.value.value).strip()
+        if not description:
+            description = " ".join(_preceding_comments(lines, node.lineno, exclude_sections=True)).strip()
         section = _section_before(sections, line_number=node.lineno)
         group = default_group or SECTION_GROUPS.get(section or "")
         results[field_name] = {
@@ -184,7 +205,7 @@ def _extract_systemconfig_fields(path: Path) -> dict[str, dict[str, Any]]:
         value = ast.literal_eval(node.value)
         results[str(value)] = {
             "enum_name": field_name,
-            "description": " ".join(_preceding_comments(lines, node.lineno)).strip(),
+            "description": " ".join(_preceding_comments(lines, node.lineno, exclude_sections=False)).strip(),
             "source_file": str(path.relative_to(PROJECT_ROOT)),
             "source_line": node.lineno,
         }
