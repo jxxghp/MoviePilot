@@ -809,7 +809,7 @@ class TransferInterceptEventData(ChainEventData):
     mediainfo: Any = Field(..., description="媒体信息")
     target_storage: str = Field(..., description="目标存储")
     target_path: Path = Field(..., description="目标路径")
-    transfer_type: str = Field(..., description="整理方式（copy、move、link、softlink等）")
+    transfer_type: str = Field(..., description="整理方式（copy、move、link、softlink、reflink等）")
     options: Optional[dict] = Field(default=None, description="其他参数")
 
     # 输出参数
@@ -833,7 +833,7 @@ class TransferOverwriteCheckEventData(ChainEventData):
     target_storage: str = Field(..., description="目标存储")
     target_path: Path = Field(..., description="目标文件路径")
     overwrite_mode: str = Field(..., description="覆盖模式（always、size、never、latest）")
-    transfer_type: str = Field(..., description="整理方式")
+    transfer_type: str = Field(..., description="整理方式（copy、move、link、softlink、reflink等）")
     options: Optional[dict] = Field(default=None, description="其他参数")
 
     # 输出参数

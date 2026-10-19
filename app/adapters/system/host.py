@@ -3,6 +3,7 @@
 """
 
 import asyncio
+import ctypes
 import datetime
 import hashlib
 import os
@@ -541,6 +542,67 @@ class SystemUtils:
             return 0, ""
         except Exception as err:
             return -1, str(err)
+
+    @staticmethod
+    def reflink(src: Path, dest: Path) -> Tuple[int, str]:
+        """
+        创建引用链接（写时复制 / Cow / Reflink）
+
+        采用原子暂存模式将源文件克隆到临时路径，成功后移动至目标路径。
+
+        :param src: 源文件路径
+        :param dest: 目标文件路径
+        :return: (状态码, 错误信息)，0 表示成功
+        """
+        tmp_path = dest.with_suffix(dest.suffix + ".mp")
+        try:
+            # 检查临时目标路径是否已存在，如果存在则先清理
+            if tmp_path.exists():
+                tmp_path.unlink()
+            # 调用私有辅助方法执行底层克隆
+            code, msg = SystemUtils._reflink_copy(src, tmp_path)
+            if code != 0:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+                return code, msg
+            # 克隆成功，原子移动替换到目标路径
+            shutil.move(tmp_path, dest)
+            return 0, ""
+        except Exception as err:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except Exception:
+                    pass
+            return -1, str(err)
+
+    @staticmethod
+    def _reflink_copy(src: Path, dest: Path) -> Tuple[int, str]:
+        """
+        调用底层操作系统能力执行文件引用链接（写时复制克隆）
+
+        :param src: 源文件路径
+        :param dest: 目标文件路径
+        :return: (状态码, 错误信息)，0 表示成功
+        """
+        if sys.platform == "darwin":
+            libc = ctypes.CDLL(None, use_errno=True)
+            ret = libc.clonefile(os.fsencode(str(src)), os.fsencode(str(dest)), ctypes.c_uint32(0))
+            if ret != 0:
+                err = ctypes.get_errno()
+                return -1, f"clonefile 失败: {os.strerror(err)}"
+            return 0, ""
+        if sys.platform.startswith("linux"):
+            if fcntl is None:
+                return -1, "fcntl 不可用"
+            try:
+                with open(src, "rb") as s, open(dest, "wb") as d:
+                    fcntl.ioctl(d.fileno(), 0x40049409, s.fileno())
+                shutil.copystat(src, dest)
+                return 0, ""
+            except OSError as err:
+                return -1, f"Linux ioctl(FICLONE) 失败: {err}"
+        return -1, f"当前操作系统 ({sys.platform}) 不支持引用链接 (reflink)"
 
     @staticmethod
     def list_files(directory: Path, extensions: list = None,

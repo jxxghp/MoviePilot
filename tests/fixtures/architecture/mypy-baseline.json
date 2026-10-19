@@ -674,7 +674,7 @@
     "union-attr": 32
   },
   "app/modules/filemanager/transhandler.py": {
-    "arg-type": 17,
+    "arg-type": 15,
     "assignment": 1,
     "no-redef": 1,
     "no-untyped-def": 2,

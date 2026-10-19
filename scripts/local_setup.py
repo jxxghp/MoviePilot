@@ -2073,6 +2073,7 @@ def _collect_directory_config() -> dict[str, Any]:
             "softlink": "软链接",
             "copy": "复制",
             "move": "移动",
+            "reflink": "引用链接",
         },
         default="link",
     )

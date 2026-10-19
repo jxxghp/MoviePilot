@@ -446,7 +446,7 @@ class TransferDirectoryConf(BaseModel):
     download_category_folder: Optional[bool] = Field(default=False, description="下载类别子目录")
     monitor_type: Optional[str] = Field(default=None, description="监控方式 downloader/monitor，None为不监控")
     monitor_mode: Optional[str] = Field(default="fast", description="监控模式 fast / compatibility")
-    transfer_type: Optional[str] = Field(default=None, description="整理方式 move/copy/link/softlink")
+    transfer_type: Optional[str] = Field(default=None, description="整理方式 move/copy/link/softlink/reflink")
     overwrite_mode: Optional[str] = Field(default=None, description="文件覆盖模式 always/size/never/latest")
     library_path: Optional[str] = Field(default=None, description="整理到媒体库目录")
     library_storage: Optional[str] = Field(default=None, description="媒体库目录存储")

@@ -495,7 +495,7 @@ FIELD_DESCRIPTIONS = {
     "total_episode": "订阅预期总集数。",
     "total_tracks": "音乐项目预期或已记录的曲目数。",
     "transfer_task_id": "历史记录关联的稳定持久化整理任务标识。",
-    "transfer_type": "手动整理方式，例如 move、copy、link、softlink。",
+    "transfer_type": "手动整理方式，例如 move、copy、link、softlink、reflink。",
     "trigger_type": "工作流触发方式筛选：timer、event、manual 或 all。",
     "type": "所选操作要求的媒体或存储项目类型。",
     "type_name": "仅凭来源标识无法区分时使用的显式媒体类型名。",
