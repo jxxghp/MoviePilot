@@ -8,6 +8,7 @@ from xml.etree.ElementTree import fromstring
 
 import pytest
 from plexapi.library import MovieSection, MusicSection
+from pydantic import ValidationError
 
 from app.modules.emby import EmbyModule
 from app.modules.emby.emby import Emby
@@ -21,6 +22,48 @@ from app.modules.zspace import ZSpaceModule
 from app.runtime.extensions.module.contracts import compatible_module_kwargs
 from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.types import MediaSource, MediaType
+
+
+def test_default_query_keeps_all_fields_when_operation_adds_requirements():
+    """
+    默认查询补充操作必需字段后仍保留全部内容，不能退化为仅取这些字段。
+    """
+    query = MediaServerQueryOptions()
+
+    enriched = query.with_fields(MediaServerField.IDENTITY)
+
+    assert enriched is query
+    assert enriched.fields is None
+    assert all(enriched.includes(field) for field in MediaServerField)
+
+
+def test_query_requirements_do_not_mutate_shared_projection():
+    """
+    操作补充身份字段不能污染共享选项或调用方传入的集合。
+    """
+    fields = {MediaServerField.PATH}
+    query = MediaServerQueryOptions(fields=fields)
+
+    enriched = query.with_fields(MediaServerField.IDENTITY, MediaServerField.PATH)
+    fields.clear()
+
+    assert query.fields == frozenset({MediaServerField.PATH})
+    assert not query.includes(MediaServerField.IDENTITY)
+    assert enriched.fields == frozenset({MediaServerField.PATH, MediaServerField.IDENTITY})
+    assert not enriched.includes(MediaServerField.IMAGES)
+    with pytest.raises(ValidationError, match="frozen_instance"):
+        query.fields = frozenset()
+
+
+@pytest.mark.parametrize("payload", [{"fields": ["unknown"]}, {"images": False}])
+def test_query_rejects_unknown_content_groups_and_options(payload):
+    """
+    查询边界拒绝未登记的内容组与配置项，避免拼写错误静默改变请求。
+
+    :param payload: 带未知内容组或配置项的外部输入
+    """
+    with pytest.raises(ValidationError):
+        MediaServerQueryOptions.model_validate(payload)
 
 
 @pytest.fixture(params=[Emby, Jellyfin], ids=["emby", "jellyfin"])
