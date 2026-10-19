@@ -381,18 +381,30 @@ def test_downloader_task_identity_decides_reuse_flag(downloader, existing):
 
 
 @pytest.mark.parametrize("durable", [False, True])
-def test_reuse_settlement_keeps_history_and_skips_duplicate_effects(durable):
+@pytest.mark.parametrize("existing,expected_files", [
+    ("matched", [_FILES[1]]),
+    ("all", []),
+    ("empty", _FILES),
+    ("unrelated", _FILES),
+], ids=["matched", "all", "empty", "unrelated"])
+def test_reuse_settlement_keeps_history_and_skips_duplicate_effects(durable, existing, expected_files):
     """
-    复用已有任务时仍记录历史并触发整理与事件，但不生成通知意图，也不重复写入同一 hash 的文件明细。
+    复用已有任务时仍记录历史并触发整理与事件，但不生成通知意图，也不重复写入已记录的文件明细。
     """
     recorded_file, new_file = _FILES
+    records = {
+        "matched": [f"/downloads/shared-show/{recorded_file}", ""],
+        "all": [f"/downloads/shared-show/{name}" for name in _FILES],
+        "empty": [],
+        "unrelated": ["/downloads/shared-show/Other.Show.S01E01.1080p.mkv"],
+    }[existing]
     meta = MetaInfo(recorded_file)
     media = MediaInfo(type=MediaType.TV, title="一念永恒", tmdb_id=107371)
     torrent = TorrentInfo(title="A.Will.Eternal.S04.2160p")
     chain = DownloadChain.__new__(DownloadChain)
     chain.download_history_repository = MagicMock()
     chain.download_history_repository.get_files_by_hash.return_value = [
-        SimpleNamespace(fullpath=f"/downloads/shared-show/{recorded_file}")
+        SimpleNamespace(fullpath=path) for path in records
     ]
     chain.durable_event_writer = MagicMock() if durable else None
     chain._build_download_notification = MagicMock(return_value=object())
@@ -420,5 +432,33 @@ def test_reuse_settlement_keeps_history_and_skips_duplicate_effects(durable):
         chain._submit_download_added_task.assert_called_once()
         chain.eventmanager.send_event.assert_called_once()
     assert history.download_hash == "reuse-hash"
-    assert [item.filepath for item in files] == [new_file]
+    assert [item.filepath for item in files] == list(expected_files)
     chain._build_download_notification.assert_not_called()
+    chain.download_history_repository.get_files_by_hash.assert_called_once_with("reuse-hash", state=1)
+
+
+def test_reuse_settlement_without_media_files_skips_file_lookup():
+    """
+    复用任务且本次种子没有可记录的媒体文件时，不再查询历史明细，也不写入文件记录。
+    """
+    meta = MetaInfo("readme.txt")
+    media = MediaInfo(type=MediaType.TV, title="一念永恒", tmdb_id=107371)
+    torrent = TorrentInfo(title="A.Will.Eternal.S04.2160p")
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = MagicMock()
+    chain.durable_event_writer = MagicMock()
+    chain._build_download_notification = MagicMock(return_value=object())
+
+    chain._settle_download_success(
+        context=Context(meta_info=meta, media_info=media, torrent_info=torrent),
+        media=media, meta=meta, torrent=torrent,
+        folder_name="shared-show", file_list=["readme.txt"],
+        download_dir=Path("/downloads"), layout="Original", downloader="qb",
+        download_hash="reuse-hash", download_episodes=None, episodes=None,
+        channel=None, source="subscribe", userid=None, username=None,
+        torrent_content=b"torrent", custom_words=None, already_exists=True,
+    )
+
+    payload = chain.durable_event_writer.download_added.call_args.kwargs
+    assert payload["files"] == ()
+    chain.download_history_repository.get_files_by_hash.assert_not_called()

@@ -808,6 +808,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             username=username,
             torrent_content=prepared.torrent_content,
             custom_words=custom_words,
+            already_exists=already_exists,
         )
 
     def _resolve_actual_download_dir(
