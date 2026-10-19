@@ -555,7 +555,7 @@ def _runtime_dependencies(key: str) -> tuple[str, ...]:
         return ("AI_AGENT_ENABLE", "LLM_SUPPORT_AUDIO_INPUT")
     if key.startswith("AUDIO_OUTPUT_"):
         return ("AI_AGENT_ENABLE", "LLM_SUPPORT_AUDIO_OUTPUT")
-    if key.startswith("LLM_") or key.startswith("AI_AGENT_"):
+    if key.startswith(("LLM_", "AI_AGENT_", "AGENT_")):
         return () if key == "AI_AGENT_ENABLE" else ("AI_AGENT_ENABLE",)
     if key.startswith("DB_POSTGRESQL_") or key.startswith("DB_SQLITE_"):
         return ("DB_TYPE",)

@@ -709,6 +709,10 @@ class ConfigModel(BaseModel):
 
     # AI智能体配置
     AI_AGENT_ENABLE: bool = Field(default=False, description='AI智能体开关')
+    AGENT_INTERACTIVE_PRIORITY: bool = Field(default=True, description='为交互式智能助手隔离执行容量，并让新启动的非关键后台服务有限避让')
+    AGENT_BACKGROUND_DEFER_SECONDS: int = Field(default=30, ge=0, description='交互活跃时非关键后台服务最多避让的秒数，0为不避让；不暂停已开始的任务')
+    AGENT_LLM_TIMEOUT: int = Field(default=180, ge=0, description='Agent单次模型请求的总超时秒数，包含供应商重试；0为不限制')
+    SCHEDULER_JOB_TIMEOUT: int = Field(default=3600, ge=0, description='协程调度任务默认执行超时秒数，0为不限制；不强行终止同步线程')
     AI_AGENT_GLOBAL: bool = Field(default=False, description='合局AI智能体')
     AI_AGENT_HIDE_ENTRY: bool = Field(default=False, description='是否隐藏前端全局智能体入口')
     AI_AGENT_PET: str = Field(default="", description='默认助手形象，格式为 插件ID:形象key，留空使用内置机器人；用户个人选择优先')

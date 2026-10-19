@@ -252,3 +252,138 @@ def test_filemanager_check_reflink_unsupported_storage(monkeypatch: pytest.Monke
     success, message = module.test()
     assert success is False
     assert "测试远端目录 的存储不支持 reflink 整理方式" in message
+
+
+def test_local_storage_copy_prioritizes_reflink_on_same_disk(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    测试本地复制在同文件系统且支持写时复制时，优先尝试引用链接。
+
+    :param monkeypatch: pytest 猴子补丁夹具
+    :param tmp_path: pytest 临时测试目录
+    """
+    storage = _make_local_storage()
+    source = tmp_path / "src.bin"
+    source.write_bytes(b"reflink copy content")
+    target_dir = tmp_path / "dest"
+    target_dir.mkdir()
+
+    reflink_called = []
+
+    def _mock_reflink(src: Path, dest: Path) -> Tuple[int, str]:
+        reflink_called.append((src, dest))
+        dest.write_bytes(src.read_bytes())
+        return 0, ""
+
+    monkeypatch.setattr(SystemUtils, "reflink", _mock_reflink)
+    monkeypatch.setattr(SystemUtils, "is_same_disk", lambda _s, _d: True)
+
+    fileitem = FileItem(storage="local", path=source.as_posix(), name="src.bin")
+    success = storage.copy(fileitem, target_dir, "dest.bin")
+
+    assert success is True
+    assert len(reflink_called) == 1
+    assert (target_dir / "dest.bin").read_bytes() == b"reflink copy content"
+
+
+def test_local_storage_copy_falls_back_when_reflink_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    测试本地复制在引用链接失败时，自动回退到常规文件复制。
+
+    :param monkeypatch: pytest 猴子补丁夹具
+    :param tmp_path: pytest 临时测试目录
+    """
+    storage = _make_local_storage()
+    source = tmp_path / "src.bin"
+    source.write_bytes(b"fallback copy content")
+    target_dir = tmp_path / "dest"
+    target_dir.mkdir()
+
+    reflink_called = []
+
+    def _failing_reflink(src: Path, dest: Path) -> Tuple[int, str]:
+        reflink_called.append((src, dest))
+        return -1, "Operation not supported"
+
+    monkeypatch.setattr(SystemUtils, "reflink", _failing_reflink)
+    monkeypatch.setattr(SystemUtils, "is_same_disk", lambda _s, _d: True)
+
+    fileitem = FileItem(storage="local", path=source.as_posix(), name="src.bin")
+    success = storage.copy(fileitem, target_dir, "dest.bin")
+
+    assert success is True
+    assert len(reflink_called) == 1
+    assert (target_dir / "dest.bin").read_bytes() == b"fallback copy content"
+
+
+def test_local_storage_copy_skips_reflink_on_different_disks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    测试跨磁盘复制时不尝试引用链接，直接走常规复制。
+
+    :param monkeypatch: pytest 猴子补丁夹具
+    :param tmp_path: pytest 临时测试目录
+    """
+    storage = _make_local_storage()
+    source = tmp_path / "src.bin"
+    source.write_bytes(b"cross disk copy content")
+    target_dir = tmp_path / "dest"
+    target_dir.mkdir()
+
+    reflink_called = []
+
+    def _mock_reflink(src: Path, dest: Path) -> Tuple[int, str]:
+        reflink_called.append((src, dest))
+        return 0, ""
+
+    monkeypatch.setattr(SystemUtils, "reflink", _mock_reflink)
+    monkeypatch.setattr(SystemUtils, "is_same_disk", lambda _s, _d: False)
+
+    fileitem = FileItem(storage="local", path=source.as_posix(), name="src.bin")
+    success = storage.copy(fileitem, target_dir, "dest.bin")
+
+    assert success is True
+    assert len(reflink_called) == 0
+    assert (target_dir / "dest.bin").read_bytes() == b"cross disk copy content"
+
+
+def test_system_utils_copy_reflink_priority_and_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """
+    测试 SystemUtils.copy 优先尝试引用链接并在失败时回退常规复制。
+
+    :param monkeypatch: pytest 猴子补丁夹具
+    :param tmp_path: pytest 临时测试目录
+    """
+    source = tmp_path / "src.bin"
+    source.write_bytes(b"system utils copy test")
+    dest1 = tmp_path / "dest1.bin"
+    dest2 = tmp_path / "dest2.bin"
+
+    calls = []
+
+    def _mock_reflink(src: Path, dest: Path) -> Tuple[int, str]:
+        calls.append((src, dest))
+        if dest == dest1:
+            dest.write_bytes(src.read_bytes())
+            return 0, ""
+        return -1, "CoW not supported"
+
+    monkeypatch.setattr(SystemUtils, "reflink", _mock_reflink)
+    monkeypatch.setattr(SystemUtils, "is_same_disk", lambda _s, _d: True)
+
+    code1, msg1 = SystemUtils.copy(source, dest1)
+    assert code1 == 0
+    assert msg1 == ""
+    assert dest1.read_bytes() == b"system utils copy test"
+
+    code2, msg2 = SystemUtils.copy(source, dest2)
+    assert code2 == 0
+    assert msg2 == ""
+    assert dest2.read_bytes() == b"system utils copy test"
+    assert len(calls) == 2

@@ -494,9 +494,20 @@ class SystemUtils:
     @staticmethod
     def copy(src: Path, dest: Path) -> Tuple[int, str]:
         """
-        复制
+        复制文件。
+
+        若源与目标在同一磁盘且支持写时复制 (reflink)，优先尝试克隆；
+        失败或不支持时自动回退为常规复制。
+
+        :param src: 源文件路径
+        :param dest: 目标文件路径
+        :return: (状态码, 错误信息)，0 表示成功
         """
         try:
+            if SystemUtils.is_same_disk(src, dest):
+                code, _ = SystemUtils.reflink(src, dest)
+                if code == 0:
+                    return 0, ""
             shutil.copy2(src, dest)
             return 0, ""
         except Exception as err:

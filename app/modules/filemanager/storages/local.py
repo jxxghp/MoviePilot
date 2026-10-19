@@ -319,12 +319,47 @@ class LocalStorage(StorageBase):
         except Exception as err:
             logger.debug(f"【本地】清理临时文件失败：{directory} - {err}")
 
+    @staticmethod
+    def _try_reflink_copy(src: Path, dest: Path) -> bool:
+        """
+        若源与目标位于同一磁盘且支持写时复制，优先尝试通过引用链接克隆。
+
+        :param src: 源文件路径
+        :param dest: 目标文件路径
+        :return: 成功完成克隆并同步时间戳与权限策略返回 True，否则返回 False
+        """
+        if not SystemUtils.is_same_disk(src, dest):
+            return False
+        try:
+            code, _ = SystemUtils.reflink(src, dest)
+            if code != 0:
+                return False
+            src_stat = src.stat()
+            os.utime(dest, ns=(src_stat.st_atime_ns, src_stat.st_mtime_ns))
+            sentinel = dest.parent / f".mode-probe-{os.getpid()}"
+            try:
+                sentinel.write_bytes(b"")
+                dest_mode = sentinel.stat().st_mode & 0o777
+                dest.chmod(dest_mode)
+            finally:
+                sentinel.unlink(missing_ok=True)
+            return True
+        except Exception as err:
+            logger.debug(f"【本地】尝试写时复制克隆失败，回退常规复制：{err}")
+            if dest.exists():
+                try:
+                    dest.unlink()
+                except OSError:
+                    pass
+            return False
+
     def _write_atomically(self, src: Path, dest: Path) -> bool:
         """
         先复制到同目录中间文件，完成后原子替换目标名称。
 
         目标已有内容在替换前保留；此处保证名称替换的原子性，不额外执行断电持久化同步。
         结束时尽力删除中间文件，进度展示会收尾到 100，不能仅据此判断复制成功。
+        同一文件系统且支持写时复制时优先使用 reflink，失败或不支持时自动回退为常规复制。
 
         :param src: 源文件路径，成功后仍保留
         :param dest: 完整目标文件路径；父目录需已存在
@@ -332,6 +367,14 @@ class LocalStorage(StorageBase):
         """
         self._cleanup_stale_partials(dest.parent)
         partial = self._partial_path(dest)
+        if runtime_stop_state.consume_transfer_stop(src.as_posix()):
+            logger.info(f"【本地】{src} 复制已取消")
+            return False
+
+        # 同一文件系统优先尝试写时复制克隆，成功即完成原子替换
+        if self._try_reflink_copy(src, partial):
+            os.replace(partial, dest)
+            return True
         # 进度只在需要展示时才回调 UI，但代理内部始终按固定间隔上报——那是判定
         # 「传输是否还在推进」的心跳，不能因为不展示进度就关掉
         progress_callback = (
@@ -466,6 +509,8 @@ class LocalStorage(StorageBase):
         :param new_name: 目标文件名
         :return: 目标写入完成返回 True，取消或失败返回 False
         """
+        if not fileitem.path:
+            return False
         return self._write_atomically(Path(fileitem.path), path / new_name)
 
     def move(
@@ -545,9 +590,9 @@ class LocalStorage(StorageBase):
         :return: 系统操作返回成功时为 True，否则为 False
         """
         if not fileitem.path:
+            logger.error("【本地】引用链接文件失败：源文件路径为空")
             return False
-        file_path = Path(fileitem.path)
-        code, message = SystemUtils.reflink(file_path, target_file)
+        code, message = SystemUtils.reflink(Path(fileitem.path), target_file)
         if code != 0:
             logger.error(f"【本地】引用链接文件失败：{message}")
             return False

@@ -13,6 +13,24 @@
       "source_file": "app/runtime/config.py",
       "source_line": 410
     },
+    "AGENT_BACKGROUND_DEFER_SECONDS": {
+      "description": "交互活跃时非关键后台服务最多避让的秒数，0为不避让；不暂停已开始的任务",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 713
+    },
+    "AGENT_INTERACTIVE_PRIORITY": {
+      "description": "为交互式智能助手隔离执行容量，并让新启动的非关键后台服务有限避让",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 712
+    },
+    "AGENT_LLM_TIMEOUT": {
+      "description": "Agent单次模型请求的总超时秒数，包含供应商重试；0为不限制",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 714
+    },
     "AI_AGENT_ENABLE": {
       "description": "AI智能体开关",
       "group": "ai_agent",
@@ -1296,6 +1314,12 @@
       "group": "performance",
       "source_file": "app/runtime/config.py",
       "source_line": 757
+    },
+    "SCHEDULER_JOB_TIMEOUT": {
+      "description": "协程调度任务默认执行超时秒数，0为不限制；不强行终止同步线程",
+      "group": "performance",
+      "source_file": "app/runtime/config.py",
+      "source_line": 715
     },
     "SCRAP_FOLLOW_TMDB": {
       "description": "新增已入库媒体是否跟随TMDB信息变化",

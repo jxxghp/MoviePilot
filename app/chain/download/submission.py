@@ -40,6 +40,7 @@ from app.domain.meta.metabase import MetaBase
 from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
+from app.schemas.download import DOWNLOAD_TASK_ALREADY_EXISTS
 from app.schemas.event import ResourceDownloadEventData
 from app.schemas.file import FileURI
 from app.schemas.media import resolve_media_identity
@@ -566,7 +567,10 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
 
     def _has_completed_music_download(self, prepared: _PreparedDownload, source: Optional[str]) -> bool:
         """
-        按真实 hash 核验整包音频成功整理且本地目标仍存在，失败、缺失或部分整理可重试。
+        按真实 hash 核验整包音频是否已成功整理交付；失败或部分整理可重试。
+
+        交付事实来自整理历史本身：单曲被移出媒体库不再触发整包重投，仅当全部整理
+        目标都已消失（专辑删除或整体迁移）时才视为交付失效。
         """
         if prepared.media.type != MediaType.MUSIC or not self._is_subscribe_source(source):
             return False
@@ -583,12 +587,45 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         audio_paths = {(item.storage, item.path) for item in audio_files}
         if not audio_paths:
             return False
-        transferred = {
-            (item.src_storage or "local", item.src) for item in self.transfer_history_repository.list_by_hash(download_hash)
-            if item.status and item.dest and item.type == MediaType.MUSIC.value and item.downloader == history.downloader
-            and item.dest_storage == "local" and Path(item.dest).is_file()
-        }
-        return audio_paths.issubset(transferred)
+        delivered = self._music_delivered_audio_keys(download_hash, history.downloader)
+        if not delivered:
+            return False
+        retained = sum(1 for alive in delivered.values() if alive)
+        if not retained:
+            logger.info(f"{prepared.torrent.title} 媒体库已无该批整理目标，视为交付失效并允许重新提交")
+            return False
+        if not audio_paths.issubset(delivered):
+            return False
+        if retained < len(delivered):
+            # 下载器对同一 hash 只会复用任务，重投整包补不回被删单曲，只会重复记录历史。
+            logger.info(
+                f"{prepared.torrent.title} 媒体库缺失 {len(delivered) - retained} 首已整理曲目，沿用历史交付不重投整包"
+            )
+        return True
+
+    def _music_delivered_audio_keys(
+            self,
+            download_hash: str,
+            expected_downloader: Optional[str],
+    ) -> Dict[Tuple[str, str], bool]:
+        """
+        按整理历史汇总该种子音频的交付事实，并标记每条目标当前是否仍在媒体库。
+
+        :param download_hash: 种子真实 hash
+        :param expected_downloader: 下载历史记录的下载器，用于排除跨下载器的历史记录
+        :return: 下载源路径标识到“整理目标是否仍存在”的映射
+        """
+        delivered: Dict[Tuple[str, str], bool] = {}
+        for item in self.transfer_history_repository.list_by_hash(download_hash):
+            if not (item.status and item.dest
+                    and item.type == MediaType.MUSIC.value
+                    and item.downloader == expected_downloader
+                    and item.dest_storage == "local"):
+                continue
+            # 同一曲目可能有多条整理记录，任一目标仍在媒体库即视为已交付。
+            key = (item.src_storage or "local", str(item.src or ""))
+            delivered[key] = delivered.get(key, False) or Path(item.dest).is_file()
+        return delivered
 
     def _prepare_download_single(
         self,
@@ -750,6 +787,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 actual_downloader=actual_downloader,
                 download_hash=download_hash,
                 layout=layout,
+                already_exists=error_msg == DOWNLOAD_TASK_ALREADY_EXISTS,
             )
         else:
             self._record_rejected_download(
@@ -779,10 +817,15 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         actual_downloader: Optional[str],
         download_hash: str,
         layout: Optional[str],
+        already_exists: bool = False,
     ) -> None:
         """
         按普通下载合同结算下载器明确返回的成功结果。
+
+        :param already_exists: 下载器中已存在同一任务时为 True，结算时复用现有任务而不重复通知
         """
+        if already_exists:
+            logger.info(f"{prepared.torrent.title} 下载器中已存在同一任务，沿用现有下载进度")
         # 下载器中已存在相同 Hash 时下载器会沿用原保存目录，须以实际目录记录
         download_dir = self._resolve_actual_download_dir(
             downloader=actual_downloader,
@@ -808,6 +851,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             username=username,
             torrent_content=prepared.torrent_content,
             custom_words=custom_words,
+            already_exists=already_exists,
         )
 
     def _resolve_actual_download_dir(

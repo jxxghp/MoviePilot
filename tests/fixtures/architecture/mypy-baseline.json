@@ -640,7 +640,7 @@
     "type-arg": 1
   },
   "app/modules/filemanager/storages/local.py": {
-    "arg-type": 8,
+    "arg-type": 7,
     "assignment": 1,
     "truthy-function": 1
   },

@@ -5,16 +5,19 @@
 import hashlib
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 from torrentool.bencode import Bencode
 
 from app.chain.download.facade import DownloadChain
-from app.domain.context import Context
+from app.domain.context import Context, MediaInfo, TorrentInfo
+from app.domain.metainfo import MetaInfo
 from app.modules.qbittorrent import QbittorrentModule
 from app.modules.transmission import TransmissionModule
 from app.modules.transmission.transmission import Transmission
+from app.schemas.download import DOWNLOAD_TASK_ALREADY_EXISTS
+from app.schemas.types import MediaType
 
 _CUSTOM_WORDS = (
     "A.Will.Eternal.S04 => 一念永恒{[tmdbid=107371;type=tv]}S01 "
@@ -335,3 +338,127 @@ def test_qbittorrent_force_start_confirms_selection_result(downloader, started):
     assert result[1] == (torrent_hash if started else None)
     server.torrents_set_force_start.assert_called_once_with(torrent_hash)
     server.start_torrents.assert_not_called()
+
+
+def _report_existing_task(server, module, torrent_hash) -> None:
+    """
+    让真实模块把本次添加解释为下载器中已存在的同一任务。
+
+    :param server: 被替换的外部下载器客户端
+    :param module: 当前参数化的下载器模块
+    :param torrent_hash: 下载器中已存在任务的哈希
+    """
+    server.add_torrent.return_value = (
+        (False, []) if isinstance(module, QbittorrentModule) else None
+    )
+    server.get_torrents.return_value = (
+        [{"hash": torrent_hash, "name": "Same.Show.S01", "total_size": 42, "tags": ""}]
+        if isinstance(module, QbittorrentModule) else
+        [SimpleNamespace(hashString=torrent_hash, name="Same.Show.S01", total_size=42, labels=[])],
+        None,
+    )
+
+
+@pytest.mark.parametrize("existing", [True, False])
+def test_downloader_task_identity_decides_reuse_flag(downloader, existing):
+    """
+    复用已有任务与新增提交在结算入口必须可区分，供链路跳过重复通知与文件明细。
+    """
+    module, server, content, torrent_hash = downloader
+    if existing:
+        _report_existing_task(server, module, torrent_hash)
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+
+    result, message = _submit(chain, content, None, None)
+
+    assert result == torrent_hash
+    assert chain._settle_accepted_download.call_args.kwargs["already_exists"] is existing
+    assert (message == DOWNLOAD_TASK_ALREADY_EXISTS) is existing
+    chain._record_rejected_download.assert_not_called()
+
+
+@pytest.mark.parametrize("durable", [False, True])
+@pytest.mark.parametrize("existing,expected_files", [
+    ("matched", [_FILES[1]]),
+    ("all", []),
+    ("empty", _FILES),
+    ("unrelated", _FILES),
+], ids=["matched", "all", "empty", "unrelated"])
+def test_reuse_settlement_keeps_history_and_skips_duplicate_effects(durable, existing, expected_files):
+    """
+    复用已有任务时仍记录历史并触发整理与事件，但不生成通知意图，也不重复写入已记录的文件明细。
+    """
+    recorded_file, new_file = _FILES
+    records = {
+        "matched": [f"/downloads/shared-show/{recorded_file}", ""],
+        "all": [f"/downloads/shared-show/{name}" for name in _FILES],
+        "empty": [],
+        "unrelated": ["/downloads/shared-show/Other.Show.S01E01.1080p.mkv"],
+    }[existing]
+    meta = MetaInfo(recorded_file)
+    media = MediaInfo(type=MediaType.TV, title="一念永恒", tmdb_id=107371)
+    torrent = TorrentInfo(title="A.Will.Eternal.S04.2160p")
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = MagicMock()
+    chain.download_history_repository.get_files_by_hash.return_value = [
+        SimpleNamespace(fullpath=path) for path in records
+    ]
+    chain.durable_event_writer = MagicMock() if durable else None
+    chain._build_download_notification = MagicMock(return_value=object())
+    chain._submit_download_added_task = MagicMock()
+    chain.post_message = MagicMock()
+    chain.eventmanager = MagicMock()
+
+    chain._settle_download_success(
+        context=Context(meta_info=meta, media_info=media, torrent_info=torrent),
+        media=media, meta=meta, torrent=torrent,
+        folder_name="shared-show", file_list=[recorded_file, new_file],
+        download_dir=Path("/downloads"), layout="Original", downloader="qb",
+        download_hash="reuse-hash", download_episodes=None, episodes=None,
+        channel=None, source="subscribe", userid=None, username=None,
+        torrent_content=b"torrent", custom_words=None, already_exists=True,
+    )
+
+    if durable:
+        payload = chain.durable_event_writer.download_added.call_args.kwargs
+        assert payload["notification_payload"] is None
+        history, files = payload["history"], payload["files"]
+    else:
+        history, files = chain.download_history_repository.add.call_args.args
+        chain.post_message.assert_not_called()
+        chain._submit_download_added_task.assert_called_once()
+        chain.eventmanager.send_event.assert_called_once()
+    assert history.download_hash == "reuse-hash"
+    assert [item.filepath for item in files] == list(expected_files)
+    chain._build_download_notification.assert_not_called()
+    chain.download_history_repository.get_files_by_hash.assert_called_once_with("reuse-hash", state=1)
+
+
+def test_reuse_settlement_without_media_files_skips_file_lookup():
+    """
+    复用任务且本次种子没有可记录的媒体文件时，不再查询历史明细，也不写入文件记录。
+    """
+    meta = MetaInfo("readme.txt")
+    media = MediaInfo(type=MediaType.TV, title="一念永恒", tmdb_id=107371)
+    torrent = TorrentInfo(title="A.Will.Eternal.S04.2160p")
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = MagicMock()
+    chain.durable_event_writer = MagicMock()
+    chain._build_download_notification = MagicMock(return_value=object())
+
+    chain._settle_download_success(
+        context=Context(meta_info=meta, media_info=media, torrent_info=torrent),
+        media=media, meta=meta, torrent=torrent,
+        folder_name="shared-show", file_list=["readme.txt"],
+        download_dir=Path("/downloads"), layout="Original", downloader="qb",
+        download_hash="reuse-hash", download_episodes=None, episodes=None,
+        channel=None, source="subscribe", userid=None, username=None,
+        torrent_content=b"torrent", custom_words=None, already_exists=True,
+    )
+
+    payload = chain.durable_event_writer.download_added.call_args.kwargs
+    assert payload["files"] == ()
+    chain.download_history_repository.get_files_by_hash.assert_not_called()

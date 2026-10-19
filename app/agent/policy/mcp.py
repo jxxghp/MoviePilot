@@ -391,7 +391,7 @@ FIELD_DESCRIPTIONS = {
     "min_rating": "筛选共享或热门订阅的最低评分。",
     "min_sample_rate": "最低可接受音频采样率，单位为赫兹。",
     "min_sub": "筛选热门订阅的最低订阅人数。",
-    "mode": "操作模式；music.explore 接受 chart 或 fresh，整理历史记录 move、copy、link 或 softlink。",
+    "mode": "操作模式；music.explore 接受 chart 或 fresh，整理历史记录 move、copy、link、softlink 或 reflink。",
     "modify_time": "存储项目的修改时间戳。",
     "mtype": "操作要求的媒体类型或订阅历史分类。",
     "music_cue_enable": "订阅级可选 CUE 整理设置，省略时继承系统默认值。",

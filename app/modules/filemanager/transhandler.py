@@ -2102,14 +2102,14 @@ class TransHandler:
                 return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
             action_name = "copy_item" if transfer_type == "copy" else "move_item"
             custom_item_action = getattr(source_oper, action_name, None)
+            fallback_action = getattr(source_oper, transfer_type, None)
             if callable(custom_item_action):
                 new_item = custom_item_action(
                     fileitem, Path(target_fileitem.path), target_file.name
                 )
                 if new_item:
                     return new_item, ""
-            fallback_action = getattr(source_oper, transfer_type, None)
-            if callable(fallback_action) and fallback_action(
+            elif callable(fallback_action) and fallback_action(
                 fileitem, Path(target_fileitem.path), target_file.name
             ):
                 return get_remote_targetitem(fileitem, target_file), ""

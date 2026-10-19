@@ -285,6 +285,8 @@ CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指�
 
 ### Agent 学习验证
 
+交互执行隔离、后台避让及超时配置见 [智能助手执行优先策略](agent-execution.md)。
+
 `tests/test_agent_learning_skills.py`、`tests/test_agent_learning_memory.py` 和
 `tests/test_agent_learning_review.py` 用临时目录与确定性模型核对 Hermes 学习契约，
 不访问实际 LLM 或个人记忆。匹配器、威胁模式和提示词的上游来源及 MIT 许可在
