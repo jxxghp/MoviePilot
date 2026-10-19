@@ -58,6 +58,7 @@ class LLMProviderManager(
         """
         self._lock = threading.RLock()
         self._models_dev_lock = asyncio.Lock()
+        self._chatgpt_refresh_lock = asyncio.Lock()
         self._pending_sessions: dict[str, PendingAuthSession] = {}
         self._oauth_state_index: dict[str, str] = {}
         self._models_dev_data: dict[str, Any] | None = None

@@ -4,6 +4,7 @@ LLM Provider 持久鉴权和外部授权协议的唯一 owner。
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import copy
 import hashlib
@@ -102,6 +103,7 @@ class _ProviderAuth:
     """
 
     _lock: Any
+    _chatgpt_refresh_lock: asyncio.Lock
     _pending_sessions: dict[str, PendingAuthSession]
     _oauth_state_index: dict[str, str]
 
@@ -485,6 +487,23 @@ class _ProviderAuth:
             },
             raise_exception=True,
         )
+        if response.status_code >= 400:
+            # 只展示已知错误码的本地说明，不把响应正文或令牌带入日志和管理接口。
+            try:
+                error = response.json().get("error")
+            except (ValueError, AttributeError):
+                error = None
+            code = error.get("code") if isinstance(error, dict) else error
+            messages = {
+                "refresh_token_reused": "ChatGPT 刷新令牌已被使用，请重新授权；请勿在多个客户端复制同一授权",
+                "refresh_token_expired": "ChatGPT 刷新令牌已过期，请重新授权",
+                "refresh_token_invalidated": "ChatGPT 授权已被撤销，请重新授权",
+                "invalid_grant": "ChatGPT 授权已失效，请重新授权",
+            }
+            message = messages.get(code) if isinstance(code, str) else None
+            raise LLMProviderAuthError(
+                message or f"ChatGPT 令牌刷新失败（HTTP {response.status_code}），请稍后重试"
+            )
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict):
@@ -578,25 +597,27 @@ class _ProviderAuth:
         """
         解析并返回 ChatGPT OAuth 鉴权，支持自动刷新 Token。
         """
-        auth = self.get_saved_auth("chatgpt")
-        if not auth or auth.get("type") != "oauth":
-            raise LLMProviderAuthError("尚未完成 ChatGPT Plus/Pro 授权")
+        # 读取、刷新和持久化必须串行；等待者重新读取轮换后的令牌，不能重用旧令牌。
+        async with self._chatgpt_refresh_lock:
+            auth = self.get_saved_auth("chatgpt")
+            if not auth or auth.get("type") != "oauth":
+                raise LLMProviderAuthError("尚未完成 ChatGPT Plus/Pro 授权")
 
-        expires_at = auth.get("expires_at")
-        refresh_token = auth.get("refresh_token")
-        # 预留 60 秒刷新缓冲，避免刚发起请求就遇到过期。
-        if expires_at and refresh_token and int(expires_at) <= int(time.time()) + 60:
-            payload = await self._refresh_chatgpt_tokens(refresh_token)
-            claims = self._jwt_claims(payload.get("id_token") or payload["access_token"])
-            auth.update(
-                {
-                    "access_token": payload["access_token"],
-                    "refresh_token": payload.get("refresh_token") or refresh_token,
-                    "expires_at": int(time.time() + int(payload.get("expires_in") or 3600)),
-                    "account_id": auth.get("account_id") or self._extract_chatgpt_account_id(claims),
-                    "email": auth.get("email") or claims.get("email"),
-                    "label": auth.get("label") or claims.get("email") or auth.get("account_id") or "ChatGPT Plus/Pro",
-                }
-            )
-            await self.save_auth("chatgpt", auth)
-        return auth
+            expires_at = auth.get("expires_at")
+            refresh_token = auth.get("refresh_token")
+            # 预留 60 秒刷新缓冲，避免刚发起请求就遇到过期。
+            if expires_at and refresh_token and int(expires_at) <= int(time.time()) + 60:
+                payload = await self._refresh_chatgpt_tokens(refresh_token)
+                claims = self._jwt_claims(payload.get("id_token") or payload["access_token"])
+                auth.update(
+                    {
+                        "access_token": payload["access_token"],
+                        "refresh_token": payload.get("refresh_token") or refresh_token,
+                        "expires_at": int(time.time() + int(payload.get("expires_in") or 3600)),
+                        "account_id": auth.get("account_id") or self._extract_chatgpt_account_id(claims),
+                        "email": auth.get("email") or claims.get("email"),
+                        "label": auth.get("label") or claims.get("email") or auth.get("account_id") or "ChatGPT Plus/Pro",
+                    }
+                )
+                await self.save_auth("chatgpt", auth)
+            return auth
