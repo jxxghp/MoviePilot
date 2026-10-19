@@ -399,6 +399,8 @@ class TransferHistoryOwner(_TransferOwnerBase):
     def _send_transfer_success_notifications(self, notifications: list[TransferSuccessNotification]) -> None:
         """
         合并真实目标文件及大小，并以专辑、电影或季为模板主体发送批次通知。
+
+        未配置访问域名时不附带整理记录按钮，避免通知渠道收到空链接。
         """
         if not notifications:
             return
@@ -426,7 +428,8 @@ class TransferHistoryOwner(_TransferOwnerBase):
         self.send_transfer_message(
             meta=first.meta, mediainfo=media, transferinfo=merged,
             season_episode=season_episode, episodes_info=first.episodes_info, username=first.username,
-            buttons=[[{"text": "查看整理记录", "url": self.runtime_config.history_url}]] if len(files) > 1 else None,
+            buttons=[[{"text": "查看整理记录", "url": self.runtime_config.history_url}]]
+            if len(files) > 1 and self.runtime_config.history_url else None,
         )
 
     @staticmethod

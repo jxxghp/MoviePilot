@@ -485,10 +485,12 @@ def test_old_callback_cannot_flush_recreated_group():
 @pytest.mark.parametrize("media_type", [MediaType.MOVIE, MediaType.TV, MediaType.MUSIC])
 @pytest.mark.parametrize("file_count", [1, 3])
 @pytest.mark.parametrize("debounce", [False, True])
-def test_success_notifications_render_configured_template(chain, monkeypatch, media_type, file_count, debounce):
+@pytest.mark.parametrize("history_url", [None, "", "https://example.test/history"])
+def test_success_notifications_render_configured_template(chain, monkeypatch, media_type, file_count, debounce, history_url):
     """
-    单文件与汇总通知经真实入口和模板引擎渲染，隔离配置、历史和渠道边界。
+    单文件与汇总通知经真实入口渲染，仅在配置域名时提供整理记录按钮。
     """
+    chain.runtime_config = replace(chain.runtime_config, history_url=history_url)
     template = """{
         'title': '自定义 {{ title_year }}{% if track_number %} #{{ track_number }}{% endif %}'
                  '{% if season_episode %} {{ season_episode }}{% endif %}',
@@ -533,10 +535,12 @@ def test_success_notifications_render_configured_template(chain, monkeypatch, me
     if media_type == MediaType.MUSIC:
         assert "|总曲目=74" in message.text
         assert "#" not in message.title
-    assert message.buttons == ([[{"text": "查看整理记录", "url": "https://example.test/history"}]] if file_count > 1 else None)
+    assert message.buttons == (
+        [[{"text": "查看整理记录", "url": history_url}]] if file_count > 1 and history_url else None
+    )
     assert message.ctype == ContentType.OrganizeSuccess
     assert message.mtype == MessageType.Organize
-    assert message.link == "https://example.test/history"
+    assert message.link == history_url
     assert message.username == "tester"
     config.get.assert_called_with(SystemConfigKey.NotificationTemplates)
     chain.messageoper.add.assert_called_once()
