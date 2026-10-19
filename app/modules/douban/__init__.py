@@ -1695,6 +1695,10 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     ) -> List[MediaPerson]:
         """
         把豆瓣人物搜索响应过滤并投影为统一人物列表。
+
+        :param name: 用于筛选人物标题的查询文本
+        :param result: 豆瓣人物搜索响应
+        :return: 图片尺寸已转换为 URL 的匹配人物列表
         """
         persons = []
         for item in (result or {}).get("items") or []:
@@ -1702,11 +1706,16 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             title = target.get("title") or ""
             if name not in title:
                 continue
+            # 豆瓣尺寸图片可能包含宽高信息，统一模型只接收 URL；兼容已有字符串格式
+            images = {
+                size: image.get("url") if isinstance(image, dict) else image
+                for size, image in (target.get("cover") or {}).items()
+            }
             persons.append(MediaPerson(source="douban", **{
                 "id": item.get("target_id"),
                 "name": title,
                 "url": target.get("url"),
-                "images": target.get("cover", {}),
+                "images": images,
                 "avatar": (target.get("cover_img", {}).get("url") or "").replace(
                     "/l/public/", "/s/public/"
                 ),
