@@ -182,3 +182,28 @@ def test_same_device_move_still_uses_rename(tmp_path: Path) -> None:
     assert target.stat().st_ino == source_stat.st_ino
     assert target.stat().st_mode & 0o777 == 0o600
     copy_mock.assert_not_called()
+
+
+def test_list_skips_subitems_that_disappear_before_stat(tmp_path: Path) -> None:
+    """
+    列举目录时子项在枚举后消失应被跳过，不能让整个目录浏览失败。
+    """
+    storage = _make_storage()
+    (tmp_path / "keep.txt").write_bytes(b"keep")
+    (tmp_path / "keepdir").mkdir()
+    (tmp_path / "vanished.txt").write_bytes(b"gone")
+
+    original_stat = local_storage_module.fsproxy.stat
+
+    def _stat(path, *args, **kwargs):
+        if Path(path).name == "vanished.txt":
+            raise OSError(errno.ENOENT, "No such file or directory")
+        return original_stat(path, *args, **kwargs)
+
+    with patch.object(local_storage_module.fsproxy, "stat", side_effect=_stat):
+        items = storage.list(schemas.FileItem(path=tmp_path.as_posix()))
+
+    names = {item.name for item in items}
+    assert "keep.txt" in names
+    assert "keepdir" in names
+    assert "vanished.txt" not in names

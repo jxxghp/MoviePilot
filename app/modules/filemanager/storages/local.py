@@ -90,7 +90,8 @@ class LocalStorage(StorageBase):
         列举直接子目录和文件，文件路径则返回该文件自身。
 
         :param fileitem: 待浏览项；空路径或根路径在 Windows 下返回磁盘列表
-        :return: 目录项在前、文件项在后的列表；路径确认不存在时返回空列表
+        :return: 目录项在前、文件项在后的列表；路径确认不存在时返回空列表，
+                 列举过程中已消失的子项被跳过
         """
         ret_items = []
         path = fileitem.path
@@ -126,11 +127,27 @@ class LocalStorage(StorageBase):
             return ret_items
 
         for item in SystemUtils.list_sub_directory(path_obj):
-            ret_items.append(self.__get_diritem(item))
+            if sub_item := self.__stat_subitem(item):
+                ret_items.append(sub_item)
 
         for item in SystemUtils.list_sub_file(path_obj):
-            ret_items.append(self.__get_fileitem(item))
+            if sub_item := self.__stat_subitem(item, is_file=True):
+                ret_items.append(sub_item)
         return ret_items
+
+    def __stat_subitem(self, path: Path, is_file: bool = False) -> Optional[_SchemaFileItem]:
+        """
+        读取子项信息，条目在枚举后消失时返回 None 而不是中断整次列举。
+
+        :param path: 子项路径
+        :param is_file: 是否按文件项读取，否则按目录项读取
+        :return: 文件项或目录项；条目已被移动、删除或成为悬空链接时为 None
+        """
+        try:
+            return self.__get_fileitem(path) if is_file else self.__get_diritem(path)
+        except (FileNotFoundError, NotADirectoryError):
+            logger.debug(f"【本地】列举期间子项已不存在，跳过：{path}")
+            return None
 
     def create_folder(self, fileitem: _SchemaFileItem, name: str) -> Optional[_SchemaFileItem]:
         """
