@@ -20,6 +20,7 @@ from app.agent.policy.contracts import ActionEffect
 from app.agent.policy.sanitizer import stable_type_name
 from app.application.security.token import create_access_token
 from app.runtime.log import logger
+from app.runtime.priority import PRIORITY_HEADER, interactive_key
 from app.runtime.settings import get_runtime_setting
 
 _DEFAULT_API_REQUEST_TIMEOUT_SECONDS = 30
@@ -156,6 +157,9 @@ class MoviePilotApiExecutor:
             headers["X-MoviePilot-Agent-Channel"] = quote(self._context.channel, safe="")
         if self._context.source:
             headers["X-MoviePilot-Agent-Source"] = quote(self._context.source, safe="")
+        execution_key = interactive_key()
+        if execution_key:
+            headers[PRIORITY_HEADER] = execution_key
         return headers
 
     @classmethod

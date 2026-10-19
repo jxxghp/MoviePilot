@@ -31,6 +31,7 @@ from app.application.notification import get_notification_configs
 from app.chain.base import ChainBase
 from app.foundation.identity import build_user_memory_key
 from app.runtime.log import logger
+from app.runtime.priority import is_interactive
 from app.runtime.settings import get_runtime_setting
 from app.schemas.message import Message
 from app.schemas.types import MessageType, NotificationChannel
@@ -299,7 +300,8 @@ _BLOCKING_BUCKET_LIMITS = {
 }
 _blocking_semaphores = {
     bucket: asyncio.Semaphore(limit)
-    for bucket, limit in _BLOCKING_BUCKET_LIMITS.items()
+    for name, limit in _BLOCKING_BUCKET_LIMITS.items()
+    for bucket in (name, f"interactive:{name}")
 }
 _blocking_executors: dict[str, ThreadPoolExecutor] = {}
 _blocking_retiring_executors: set[ThreadPoolExecutor] = set()
@@ -333,7 +335,7 @@ def _submit_blocking_call(
             raise RuntimeError("Agent 工具阻塞执行器正在关闭，不能再提交新任务")
         executor = _blocking_executors.get(bucket)
         if executor is None:
-            limit = _BLOCKING_BUCKET_LIMITS[bucket]
+            limit = _BLOCKING_BUCKET_LIMITS[bucket.removeprefix("interactive:")]
             executor = ThreadPoolExecutor(
                 max_workers=limit,
                 thread_name_prefix=f"agent-tool-{bucket}",
@@ -469,6 +471,8 @@ async def run_agent_blocking(
     新任务，把同一类慢 IO 的线程池持续打满。
     """
     bucket_name = bucket if bucket in _BLOCKING_BUCKET_LIMITS else "default"
+    if is_interactive():
+        bucket_name = f"interactive:{bucket_name}"
     semaphore = _blocking_semaphores[bucket_name]
     bound_call = partial(func, *args, **kwargs)
     loop = asyncio.get_running_loop()
@@ -481,6 +485,9 @@ async def run_agent_blocking(
         raise
 
     def _release_semaphore(_future: ConcurrentFuture[object]) -> None:
+        """
+        同步工具真实结束后才归还所属执行组的并发额度。
+        """
         try:
             _future.exception()
         except Exception:

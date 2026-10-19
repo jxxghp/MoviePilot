@@ -11,9 +11,14 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import dataclass
-from typing import Callable, TypeVar, cast
+from typing import Callable, Optional, TypeVar, cast
 
 from app.runtime.observability import record_metric
+from app.runtime.priority import (
+    INTERACTIVE_DATABASE_CAPACITY,
+    INTERACTIVE_DATABASE_WORKERS,
+    is_interactive,
+)
 from app.schemas.exception import (
     DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
@@ -28,7 +33,7 @@ DATABASE_WORKER_CAPACITY = 32
 @dataclass(frozen=True, slots=True)
 class DatabaseWorkerStats:
     """
-    数据库执行器当前的容量和任务数量快照。
+    单个数据库执行组当前的容量和任务数量快照。
 
     :param max_workers: 最大工作线程数
     :param capacity: 包含排队和运行中任务的总容量上限
@@ -69,9 +74,14 @@ class DatabaseWorker:
         *,
         max_workers: int = DATABASE_WORKER_MAX_WORKERS,
         capacity: int = DATABASE_WORKER_CAPACITY,
+        reserve_interactive: bool = True,
     ) -> None:
         """
         保存容量配置，线程只在显式启动后创建。
+
+        :param max_workers: 普通数据库事务的工作线程上限
+        :param capacity: 普通事务的运行和排队总容量
+        :param reserve_interactive: 是否额外保留独立的交互短事务 worker 和队列
         """
         if max_workers < 1:
             raise ValueError("数据库 worker 线程数必须大于 0")
@@ -91,6 +101,13 @@ class DatabaseWorker:
         self._reported_running = 0
         self._rejected = 0
         self._closing = False
+        self._interactive_worker = (
+            DatabaseWorker(
+                max_workers=INTERACTIVE_DATABASE_WORKERS,
+                capacity=INTERACTIVE_DATABASE_CAPACITY,
+                reserve_interactive=False,
+            ) if reserve_interactive else None
+        )
 
     async def start(self) -> None:
         """
@@ -106,11 +123,13 @@ class DatabaseWorker:
             thread_name_prefix="moviepilot-db",
         )
         self._closing = False
+        if self._interactive_worker is not None:
+            await self._interactive_worker.start()
         self._record_depth()
 
     def snapshot(self) -> DatabaseWorkerStats:
         """
-        返回无需访问任务对象的低基数运行快照。
+        返回普通执行组的低基数快照；交互保留组通过 interactive_snapshot 单独读取。
         """
         with self._state_lock:
             return DatabaseWorkerStats(
@@ -122,6 +141,12 @@ class DatabaseWorker:
                 closing=self._closing,
             )
 
+    def interactive_snapshot(self) -> Optional[DatabaseWorkerStats]:
+        """
+        返回交互保留组的容量和负载；未配置保留组时返回 None。
+        """
+        return self._interactive_worker.snapshot() if self._interactive_worker is not None else None
+
     async def run(self, operation: Callable[[], T]) -> T:
         """
         执行短事务；结果发布和取消返回均晚于容量回收，取消仍等待已开始事务收口。
@@ -130,6 +155,8 @@ class DatabaseWorker:
         executor = self._executor
         if executor is None or self._loop is not loop or self._closing:
             raise DatabaseWorkerClosedError("数据库 worker 当前不可接收任务")
+        if self._interactive_worker is not None and is_interactive():
+            return await self._interactive_worker.run(operation)
 
         with self._state_lock:
             if self._queued + self._running >= self._capacity:
@@ -284,6 +311,8 @@ class DatabaseWorker:
         if self._loop is not asyncio.get_running_loop():
             raise RuntimeError("数据库 worker 必须在所属事件循环中停止")
         self._closing = True
+        if self._interactive_worker is not None:
+            await self._interactive_worker.shutdown()
         with self._state_lock:
             futures = tuple(self._futures.items())
         for future, _state in futures:

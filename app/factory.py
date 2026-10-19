@@ -17,6 +17,7 @@ from app.adapters.web.docs import install_api_docs_routes
 from app.adapters.web.health import install_health_routes
 from app.adapters.web.metrics import HttpMetricsMiddleware
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
+from app.adapters.web.priority import ExecutionPriorityMiddleware
 from app.adapters.web.security.access import (
     configure_token_codec,
     verify_apikey,
@@ -409,6 +410,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     _app.add_middleware(CorrelationIdMiddleware)
+    _app.add_middleware(ExecutionPriorityMiddleware)
     _app.add_middleware(HttpMetricsMiddleware)
 
     @_app.middleware("http")

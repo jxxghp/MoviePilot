@@ -78,6 +78,7 @@ class JobSpec:
             "name": self.name,
             "func": self.func,
             "owner": self.owner,
+            "execution_group": "agent" if self.owner == "agent" else "default",
             "overlap": self.overlap.value,
             "timeout_seconds": self.timeout_seconds,
             "manual": self.manual,

@@ -130,6 +130,7 @@ def test_clear_cache_is_manual_only(monkeypatch):
     缓存清理任务应仅手动执行，不注册到调度器自动运行。
     """
     background_scheduler = _BackgroundSchedulerStub()
+    executor_groups = {}
     services = Mock()
     monkeypatch.setattr(scheduler_catalog, "get_plugin_manager", lambda: Mock())
     monkeypatch.setattr(
@@ -140,7 +141,7 @@ def test_clear_cache_is_manual_only(monkeypatch):
     monkeypatch.setattr(
         scheduler_catalog,
         "BackgroundScheduler",
-        lambda **kwargs: background_scheduler,
+        lambda **kwargs: executor_groups.update(kwargs["executors"]) or background_scheduler,
     )
     monkeypatch.setattr(Scheduler, "stop", lambda self: None)
     monkeypatch.setattr(Scheduler, "init_workflow_jobs", lambda self: None)
@@ -151,7 +152,7 @@ def test_clear_cache_is_manual_only(monkeypatch):
         "get_scheduler_runtime_config",
         lambda: SchedulerRuntimeConfig(
             False, "Asia/Shanghai", 1, False, "", 0, None, False, 24,
-            "rss", 30, False, 0, 0, False, None, False, None,
+            "rss", 30, False, 0, 0, True, 1, False, None,
         ),
     )
 
@@ -177,6 +178,10 @@ def test_clear_cache_is_manual_only(monkeypatch):
     outbox_job = next(job for job in background_scheduler.jobs if job["id"] == "outbox_dispatch")
     assert outbox_job["name"] == "重试未完成的后台处理"
     assert background_scheduler.started is True
+    assert set(executor_groups) == {"default", "agent"}
+    heartbeat = next(job for job in background_scheduler.jobs if job["id"] == "agent_heartbeat")
+    assert heartbeat["executor"] == "agent"
+    assert scheduler._jobs["agent_heartbeat"]["execution_group"] == "agent"
 
 
 def test_user_auth_refreshes_plugin_routes_after_runtime_reinitialization(monkeypatch):

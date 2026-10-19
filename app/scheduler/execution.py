@@ -19,8 +19,11 @@ from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.observability import record_metric
+from app.runtime.priority import interactive_execution
 from app.runtime.progress import ProgressHelper
 from app.runtime.scheduling import TimerUtils
+from app.runtime.settings import get_runtime_setting
+from app.scheduler.admission import defer_coroutine, invoke_background
 from app.scheduler.contract import _SchedulerOwnerBase
 from app.schemas.dashboard import ScheduleInfo as _SchemaScheduleInfo
 from app.schemas.types import EventType
@@ -50,6 +53,9 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
         把注册 generation 写入可变运行时状态。
         """
         self._registry.assign_generation(job_id, job)
+        if inspect.iscoroutinefunction(job.get("func")) and job.get("timeout_seconds") is None:
+            timeout = int(get_runtime_setting("SCHEDULER_JOB_TIMEOUT", 3600))
+            job["timeout_seconds"] = timeout if timeout > 0 else None
 
     def _is_job_active(self, job_id: str) -> bool:
         """
@@ -179,10 +185,12 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
         success = True
         error = None
         try:
-            result = await JobExecutionState.await_result(
-                coro_factory(),
-                timeout_seconds=job.get("timeout_seconds"),
-            )
+            await defer_coroutine(job, self._accepting_submissions)
+            with interactive_execution(enabled=False):
+                result = await JobExecutionState.await_result(
+                    coro_factory(),
+                    timeout_seconds=job.get("timeout_seconds"),
+                )
             error = self._get_result_error(result)
             success = error is None
         except asyncio.TimeoutError as err:
@@ -329,7 +337,7 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
                 p.join()
             else:
                 # 普通函数
-                result = func(*args, **kwargs)
+                result = invoke_background(job, self._accepting_submissions, func, *args, **kwargs)
                 error = self._get_result_error(result)
                 success = error is None
         except Exception as e:
@@ -401,7 +409,8 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
                             id=job_id,
                             name=name,
                             provider=provider_name,
-                            status="正在运行",
+                            status="等待交互结束" if service.get("deferred") else "正在运行",
+                            execution_group=service.get("execution_group", "default"),
                             progress=progress.value if progress else 0,
                             progress_text=progress.text if progress else None,
                             progress_enable=progress.enable if progress else False,
@@ -429,6 +438,7 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
                         name=job.name,
                         provider=service_state.get("provider_name", "[系统]"),
                         status=status,
+                        execution_group=service_state.get("execution_group", "default"),
                         next_run=next_run,
                         progress=progress.value if progress else 0,
                         progress_text=progress.text if progress else None,
@@ -450,6 +460,7 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
                         name=service.get("name"),
                         provider=service.get("provider_name", "[系统]"),
                         status=("正在运行" if self._is_job_active(job_id) else "等待"),
+                        execution_group=service.get("execution_group", "default"),
                         progress=progress.value if progress else 0,
                         progress_text=progress.text if progress else None,
                         progress_enable=progress.enable if progress else False,

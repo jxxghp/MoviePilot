@@ -18,6 +18,7 @@ from app.runtime.execution import (
     await_task_to_terminal,
     run_in_threadpool_to_completion,
 )
+from app.runtime.priority import background_thread_limiter
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -157,7 +158,8 @@ async def test_threadpool_capacity_is_held_until_cancelled_call_finishes() -> No
         await asyncio.sleep(0)
 
         assert first.done() is False
-        assert limiter.borrowed_tokens == 1
+        assert background_thread_limiter().borrowed_tokens == 1
+        assert limiter.borrowed_tokens == 0
 
         second = asyncio.create_task(
             run_in_threadpool_to_completion(blocking_call, second_started)

@@ -2,6 +2,7 @@
 动态注入 Agent 根层运行时配置的中间件。
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 
 from langchain.agents.middleware.types import (
@@ -14,6 +15,7 @@ from langchain.agents.middleware.types import (
 
 from app.agent.middleware.utils import append_to_system_message
 from app.agent.runtime import agent_runtime_manager
+from app.runtime.settings import get_runtime_setting
 
 
 class RuntimeConfigMiddleware(AgentMiddleware[dict, ContextT, ResponseT]):  # noqa
@@ -45,7 +47,9 @@ class RuntimeConfigMiddleware(AgentMiddleware[dict, ContextT, ResponseT]):  # no
         """
         在异步模型调用前注入当前运行配置，并返回模型执行结果。
         """
-        return await handler(self.modify_request(request))
+        timeout = float(get_runtime_setting("AGENT_LLM_TIMEOUT", 180))
+        async with asyncio.timeout(timeout if timeout > 0 else None):
+            return await handler(self.modify_request(request))
 
 
 __all__ = ["RuntimeConfigMiddleware"]
