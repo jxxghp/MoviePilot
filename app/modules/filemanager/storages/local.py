@@ -527,6 +527,8 @@ class LocalStorage(StorageBase):
         :param target_file: 完整目标链接路径
         :return: 系统操作返回成功时为 True，否则为 False
         """
+        if not fileitem.path:
+            return False
         file_path = Path(fileitem.path)
         code, message = SystemUtils.reflink(file_path, target_file)
         if code != 0:
