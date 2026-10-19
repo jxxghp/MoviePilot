@@ -4,7 +4,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import pytest
 
@@ -96,7 +96,7 @@ def test_storage_base_reflink_defaults_to_false(tmp_path: Path) -> None:
         def detail(self, fileitem: FileItem) -> Optional[FileItem]:
             return None
 
-        def copy(self, fileitem: FileItem, path: Path, new_name: str, *, try_reflink: Optional[bool] = None) -> bool:
+        def copy(self, fileitem: FileItem, path: Path, new_name: str, **kwargs: Any) -> bool:
             return False
 
         def move(self, fileitem: FileItem, path: Path, new_name: str) -> bool:

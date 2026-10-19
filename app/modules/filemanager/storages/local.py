@@ -6,7 +6,7 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from app.adapters.system.fsproxy import fsproxy
 from app.adapters.system.host import SystemUtils
@@ -520,6 +520,7 @@ class LocalStorage(StorageBase):
         new_name: str,
         *,
         try_reflink: Optional[bool] = None,
+        **_kwargs: Any,
     ) -> bool:
         """
         通过同目录中间文件复制并替换目标。
@@ -528,6 +529,7 @@ class LocalStorage(StorageBase):
         :param path: 已存在的目标目录
         :param new_name: 目标文件名
         :param try_reflink: 是否优先尝试写时复制引用链接克隆；None 时遵循系统运行期配置
+        :param _kwargs: 忽略多余的扩展参数
         :return: 目标写入完成返回 True，取消或失败返回 False
         """
         if not fileitem.path:

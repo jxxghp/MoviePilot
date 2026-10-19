@@ -7,7 +7,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import WeakSingleton
@@ -766,14 +766,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         return self.get_item(Path(fileitem.path))
 
-    def copy(
-        self,
-        fileitem: _SchemaFileItem,
-        path: Path,
-        new_name: str,
-        *,
-        try_reflink: Optional[bool] = None,
-    ) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str, **_kwargs: Any) -> bool:
         """
         请求服务端复制，再尽力把目标改为新名称。
 
@@ -782,7 +775,6 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param fileitem: 源存储项
         :param path: 远端目标目录
         :param new_name: 目标文件名
-        :param try_reflink: 远端存储不支持引用链接克隆，保留以对齐基类契约
         :return: 复制接口成功返回 True，接口失败返回 False；后续重命名失败不改变成功结果
         """
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(

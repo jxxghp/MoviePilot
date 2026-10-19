@@ -7,7 +7,7 @@ import ntpath
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
@@ -746,14 +746,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             logger.error(f"【SMB】上传失败: {target_name} - {e}")
             return None
 
-    def copy(
-        self,
-        fileitem: _SchemaFileItem,
-        path: Path,
-        new_name: str,
-        *,
-        try_reflink: Optional[bool] = None,
-    ) -> bool:
+    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str, **_kwargs: Any) -> bool:
         """
         在同一服务器的已配置共享间执行 CopyChunk 服务端复制。
 
@@ -762,7 +755,6 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         :param fileitem: 源文件项，不得与目标表示同一文件
         :param path: 目标共享中的目录路径
         :param new_name: 目标文件名
-        :param try_reflink: 远端存储不支持引用链接克隆，保留以对齐基类契约
         :return: 复制完成返回 True，失败返回 False 且保留已产生的目标内容
         """
         import smbclient
