@@ -687,7 +687,10 @@ async def site_resource(
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
-    浏览站点资源
+    浏览站点资源，沿用前端和索引模块从 0 开始的分页约定。
+
+    :param cat: 逗号分隔的站点分类 ID，未指定时不限制分类
+    :param page: 从 0 开始的页码，默认查询第一页
     """
     site = await query.get(site_id)
     if not site:
