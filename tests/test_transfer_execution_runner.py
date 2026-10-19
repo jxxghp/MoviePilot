@@ -397,9 +397,10 @@ class _ImmediateStepRunner:
         return execute()
 
 
-def test_cross_storage_move_materializes_before_independent_source_delete(tmp_path):
+@pytest.mark.parametrize("frozen_time,live_time", [(1.0, 1.0), (1.0, 5.0), (None, 5.0), (1.0, None)])
+def test_cross_storage_move_materializes_before_independent_source_delete(tmp_path, frozen_time, live_time):
     """
-    跨存储 move 必须先复制目标，再用独立步骤删除源。
+    跨存储 move 先复制再独立删除源，源和目标时间戳变化或缺失均不阻止清理。
     """
     source_path = tmp_path / "source.mkv"
     source_path.write_bytes(b"movie")
@@ -409,7 +410,7 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
         name=source_path.name,
         type="file",
         size=source_path.stat().st_size,
-        modify_time=source_path.stat().st_mtime,
+        modify_time=frozen_time,
         extension="mkv",
     )
     target_item = FileItem(
@@ -423,9 +424,10 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
     )
     source_oper = Mock()
     source_oper.delete.return_value = True
-    source_oper.get_item_strict.return_value = source_item
+    live_source = source_item.model_copy(update={"modify_time": live_time})
+    source_oper.get_item_strict.return_value = live_source
     target_oper = Mock()
-    target_oper.get_item_strict.return_value = target_item
+    target_oper.get_item_strict.return_value = target_item.model_copy(update={"modify_time": live_time})
     target_oper.get_folder.return_value = FileItem(
         storage="remote", path="/library", name="library", type="dir"
     )
@@ -450,7 +452,7 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
     ]
     assert runner.steps[0][2]["transfer_type"] == "copy"
     target_oper.upload.assert_called_once()
-    source_oper.delete.assert_called_once_with(source_item)
+    source_oper.delete.assert_called_once_with(live_source)
 
 
 def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_path):

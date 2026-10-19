@@ -640,33 +640,75 @@ def test_completed_promotion_rechecks_live_files_before_destructive_cleanup(
     assert backup.read_bytes() == expected_backup
 
 
+def test_completed_promotion_allows_cleanup_after_timestamp_changes(
+        tmp_path, monkeypatch, repository_factory,
+):
+    """
+    提升结果已落账后，即使源、目标和备份的时间戳均变化，恢复仍按大小和身份完成清理。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.write_bytes(b"old-version")
+    checkpoint = _checkpoint(source, target, transfer_type="move")
+    repository = repository_factory(checkpoint)
+    runner = _durable_runner(repository, checkpoint)
+    real_run = runner.run
+
+    class ProcessStopped(BaseException):
+        """
+        模拟提升结果落账后、清理源文件前进程退出。
+        """
+
+    def stop_before_cleanup(**kwargs):
+        """
+        保留真实成功证据，只中断源文件清理步骤。
+        """
+        if kwargs["kind"] == "delete_overwrite_source":
+            raise ProcessStopped()
+        return real_run(**kwargs)
+
+    monkeypatch.setattr(runner, "run", stop_before_cleanup)
+    with pytest.raises(ProcessStopped):
+        _execute(checkpoint, monkeypatch, runner)
+    backup = next(tmp_path.glob(".mp-backup-*"))
+    for path in (source, target, backup):
+        before = path.stat()
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 4_000_000_000))
+
+    result = _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+    assert result.success
+    assert target.read_bytes() == b"new-version"
+    assert not source.exists()
+    assert not backup.exists()
+
+
 @pytest.mark.parametrize("missing_evidence", ["source", "target"])
 def test_overwrite_preserves_all_copies_when_cleanup_identity_evidence_is_missing(
         tmp_path, monkeypatch, repository_factory, missing_evidence,
 ):
     """
-    旧快照或适配器缺少修改时间时，禁止把当前查询结果当作原文件凭据。
+    旧快照或适配器缺少大小时，禁止把当前查询结果当作原文件凭据。
     """
     source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
     target.write_bytes(b"old-version")
     checkpoint = _checkpoint(source, target, transfer_type="move")
     if missing_evidence == "source":
-        frozen_source = {**checkpoint.items[0].source_fileitem, "modify_time": None}
+        frozen_source = {**checkpoint.items[0].source_fileitem, "size": None}
         checkpoint = replace(checkpoint,
                              planning_input=replace(checkpoint.planning_input, source_fileitem=frozen_source),
                              items=(replace(checkpoint.items[0], source_fileitem=frozen_source),))
     else:
         real_query = LocalStorage.get_item_strict
 
-        def query_without_time(self, path):
+        def query_without_size(self, path):
             """
-            模拟目标适配器未提供可持久验证的修改时间。
+            模拟目标适配器未提供可持久验证的大小。
             """
             item = real_query(self, path)
-            return item.model_copy(update={"modify_time": None}) if item and path == target else item
+            return item.model_copy(update={"size": None}) if item and path == target else item
 
-        monkeypatch.setattr(LocalStorage, "get_item_strict", query_without_time)
+        monkeypatch.setattr(LocalStorage, "get_item_strict", query_without_size)
     repository = repository_factory(checkpoint)
     with pytest.raises(execution_module._TransferManualReviewRequired):
         _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))

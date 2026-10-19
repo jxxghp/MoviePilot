@@ -803,24 +803,22 @@ class TransHandler:
     @staticmethod
     def __assert_file_identity(expected: FileItem, current: Optional[FileItem]) -> None:
         """
-        清理前比对冻结文件的大小、修改时间及可用身份；证据不足时保留文件。
+        清理前比对冻结文件的大小、类型及可用身份；证据不足时保留文件。
 
         本地链接的查询沿用 stat 语义，硬链接和软链接均比较实际内容的身份。
-        旧快照没有 fileid 时允许用完整大小、时间凭据；缺少这两项则不能自动删除。
+        云盘修改时间可能在上传后变化或缺失，不参与校验；旧快照没有 fileid 时使用大小凭据。
 
-        :param expected: 冻结的文件身份，必须包含大小和修改时间
+        :param expected: 冻结的文件身份，必须包含大小
         :param current: 当前严格查询结果；不可见时视为冲突
         :raises TransferExecutionConflictError: 文件消失、身份字段变化或类型不一致
         :raises StorageQueryError: 缺少必要身份凭据
         """
         if current is None:
             raise TransferExecutionConflictError(f"文件 {expected.path} 已不可见，保留源文件和旧备份")
-        for field in ("size", "modify_time"):
-            frozen_value, live_value = getattr(expected, field), getattr(current, field)
-            if frozen_value is None or live_value is None:
-                raise StorageQueryError(f"文件 {expected.path} 缺少 {field} 身份凭据，需人工复核")
-            if frozen_value != live_value:
-                raise TransferExecutionConflictError(f"文件 {expected.path} 的 {field} 已变化，禁止清理")
+        if expected.size is None or current.size is None:
+            raise StorageQueryError(f"文件 {expected.path} 缺少 size 身份凭据，需人工复核")
+        if expected.size != current.size:
+            raise TransferExecutionConflictError(f"文件 {expected.path} 的 size 已变化，禁止清理")
         if expected.type != current.type:
             raise TransferExecutionConflictError(f"文件 {expected.path} 的类型已变化，禁止清理")
         if expected.fileid:
