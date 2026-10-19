@@ -961,7 +961,7 @@ class TransHandler:
         :param source_oper: 源严格查询适配器
         :param target_oper: 目标严格查询适配器
         :param target_file: 已冻结目标文件路径
-        :param transfer_type: move、copy、link 或 softlink
+        :param transfer_type: move、copy、link、softlink 或 reflink
         :return: 完成状态及文件证据；无法证明内容或查询失败时返回未知状态
         """
         try:
@@ -1016,6 +1016,14 @@ class TransHandler:
                 applied = source_path.is_file() and target_file.samefile(source_path)
             elif transfer_type == "softlink":
                 applied = target_file.is_symlink() and target_file.resolve() == source_path.resolve()
+            elif transfer_type == "reflink":
+                applied = (
+                    source_path.is_file()
+                    and target_file.is_file()
+                    and not target_file.is_symlink()
+                    and not target_file.samefile(source_path)
+                    and filecmp.cmp(source_path, target_file, shallow=False)
+                )
             else:
                 return TransferOperationObservation(
                     state=TransferOperationObservationState.UNKNOWN,
@@ -2052,7 +2060,7 @@ class TransHandler:
         :param source_oper: 源存储适配器
         :param target_oper: 目标存储适配器
         :param target_file: 最终文件路径，必要时创建父目录
-        :param transfer_type: copy、move、link 或 softlink，支持范围取决于存储组合
+        :param transfer_type: copy、move、link、softlink 或 reflink，支持范围取决于存储组合
         :return: 目标文件项及错误文本；失败时文件项为 None
         """
 
@@ -2128,6 +2136,8 @@ class TransHandler:
                 state = source_oper.link(fileitem, target_file)
             elif transfer_type == "softlink":
                 state = source_oper.softlink(fileitem, target_file)
+            elif transfer_type == "reflink":
+                state = source_oper.reflink(fileitem, target_file)
             else:
                 return None, f"不支持的整理方式：{transfer_type}"
             if state:
@@ -2226,6 +2236,11 @@ class TransHandler:
                     return __get_remote_targetitem(fileitem, target_file), ""
                 else:
                     return None, f"【{target_storage}】{fileitem.path} 创建硬链接失败"
+            elif transfer_type == "reflink":
+                if hasattr(source_oper, "reflink") and source_oper.reflink(fileitem, target_file):
+                    return __get_remote_targetitem(fileitem, target_file), ""
+                else:
+                    return None, f"【{target_storage}】{fileitem.path} 创建引用链接失败"
             else:
                 return None, f"不支持的整理方式：{transfer_type}"
 

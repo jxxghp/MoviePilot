@@ -33,7 +33,8 @@ class LocalStorage(StorageBase):
         "copy": "复制",
         "move": "移动",
         "link": "硬链接",
-        "softlink": "软链接"
+        "softlink": "软链接",
+        "reflink": "引用链接",
     }
 
     # 文件复制块大小，默认 10 MiB
@@ -515,6 +516,21 @@ class LocalStorage(StorageBase):
         code, message = SystemUtils.softlink(file_path, target_file)
         if code != 0:
             logger.error(f"【本地】软链接文件失败：{message}")
+            return False
+        return True
+
+    def reflink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
+        """
+        创建本地引用链接。
+
+        :param fileitem: 源文件项
+        :param target_file: 完整目标链接路径
+        :return: 系统操作返回成功时为 True，否则为 False
+        """
+        file_path = Path(fileitem.path)
+        code, message = SystemUtils.reflink(file_path, target_file)
+        if code != 0:
+            logger.error(f"【本地】引用链接文件失败：{message}")
             return False
         return True
 

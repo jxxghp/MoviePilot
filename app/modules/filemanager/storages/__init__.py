@@ -389,6 +389,16 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
+    def reflink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
+        """
+        在支持引用链接的存储中创建目标文件。
+
+        :param fileitem: 源文件项
+        :param target_file: 完整目标文件路径
+        :return: 引用链接创建成功标记；不支持的实现返回 False
+        """
+        return False
+
     @abstractmethod
     def usage(self) -> Optional[_SchemaStorageUsage]:
         """
