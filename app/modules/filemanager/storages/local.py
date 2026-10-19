@@ -545,9 +545,9 @@ class LocalStorage(StorageBase):
         :return: 系统操作返回成功时为 True，否则为 False
         """
         if not fileitem.path:
+            logger.error("【本地】引用链接文件失败：源文件路径为空")
             return False
-        file_path = Path(fileitem.path)
-        code, message = SystemUtils.reflink(file_path, target_file)
+        code, message = SystemUtils.reflink(Path(fileitem.path), target_file)
         if code != 0:
             logger.error(f"【本地】引用链接文件失败：{message}")
             return False
