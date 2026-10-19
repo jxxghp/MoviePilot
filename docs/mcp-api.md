@@ -4,6 +4,27 @@
 
 **最短调用路径：**配置连接与密钥 → `initialize` → `notifications/initialized` → `tools/list` → `tools/call`。已有 MCP 客户端通常会自动完成初始化和工具发现，只需配置下表中的连接信息。
 
+### 订阅下载的提交来源
+
+新产生的订阅下载在通知标题和日志中标记“首次订阅”“洗版升级”或“全集洗版”。
+该标记来自提交前订阅的已下载事实与最终选集，不改变过滤、优先级、选集和下载策略。
+同一整包包含已下载集与缺集时计作一次洗版任务，分别保留 `initial_episodes` 和
+`upgrade_episodes`；`best_version_full` 表示此次提交使用的全集洗版模式。
+
+- `GET /api/v1/subscribe/{id}/activity` 的 `counts` 保留 `submitted` 总量，增加
+  `initial_submitted`、`upgrade_submitted`、`full_upgrade_submitted`；最后一项是洗版计数的子集。
+- 活动详情 `details.resources[].subscription_download` 保存 `subscription_id`、
+  `submission_type`（`initial` / `upgrade`）、`best_version_full` 及两类集数。
+  活动可从订阅历史继续查看，恢复重试按资源去重，不重复累计成功回执。
+- `GET /api/v1/subscribe/execution/batches` 及其 `/{batch_id}` 详情返回 `download_counts`、
+  `downloads` 和 `downloads_omitted`。分类数量按成功下载任务计数，与搜索任务完成数量独立；
+  明细最多 100 条，裁剪不影响总量，访问权限沿用整批订阅归属校验。
+- 下载历史的 `note.subscription_download` 保留同一来源，`note.source` 继续保留原入口信息。
+  已冻结的通知及下载处理上下文在持久事件恢复后保留该来源。
+
+升级前历史没有来源标记，界面显示“未记录”，不会按当前订阅设置追溯推断。
+手动下载保留现有通知形式。普通订阅的首次提交与洗版订阅补缺都标记为首次订阅。
+
 ## 1. 连接与认证
 
 | 配置项 | 值与含义 |

@@ -43,6 +43,53 @@ def telegram():
         telegram.stop()
 
 
+@pytest.mark.parametrize("url", [None, "", "   ", 123, False])
+@pytest.mark.parametrize("callback_data", [None, "", 123, "history"])
+def test_inline_keyboard_filters_invalid_actions(url, callback_data):
+    """
+    无效链接仅在具有有效回调时降级，保留其他按钮及其行顺序。
+    """
+    button = {"text": "整理记录", "url": url, "callback_data": callback_data}
+    valid_link = {"text": "打开", "url": "https://example.test/history", "callback_data": "ignored"}
+    valid_callback = {"text": "返回", "callback_data": "back"}
+
+    markup = Telegram._create_inline_keyboard([
+        [button], [], [valid_link, {"text": "无动作"}, valid_callback],
+    ])
+
+    expected = [[{"text": "打开", "url": "https://example.test/history"}, valid_callback]]
+    if callback_data == "history":
+        expected.insert(0, [{"text": "整理记录", "callback_data": "history"}])
+    assert markup == {"inline_keyboard": expected}
+    assert button == {"text": "整理记录", "url": url, "callback_data": callback_data}
+
+
+@pytest.mark.parametrize("poster_fails", [False, True])
+def test_send_msg_ignores_null_url_button_with_photo_and_text_fallback(telegram, poster_fails):
+    """
+    空链接且无回调的按钮不阻断图片通知或图片失败后的文本兜底。
+    """
+    telegram.bot.send_photo.return_value = {"message_id": 101, "chat": {"id": "fake_chat_id"}}
+    telegram.bot.send_message.return_value = {"message_id": 102, "chat": {"id": "fake_chat_id"}}
+    if poster_fails:
+        telegram.bot.send_photo.side_effect = TelegramApiError("sendPhoto", "Bad Request: wrong file", error_code=400)
+
+    result = telegram.send_msg(
+        title="整理完成", text="已入库两个文件", image="https://example.test/poster.jpg",
+        buttons=[[{"text": "查看整理记录", "url": None}]],
+    )
+
+    assert result and result["success"]
+    assert result["message_id"] == (102 if poster_fails else 101)
+    telegram.bot.send_photo.assert_called_once()
+    assert telegram.bot.send_photo.call_args.kwargs["reply_markup"] == {"inline_keyboard": []}
+    if poster_fails:
+        telegram.bot.send_message.assert_called_once()
+        assert telegram.bot.send_message.call_args.kwargs["reply_markup"] == {"inline_keyboard": []}
+    else:
+        telegram.bot.send_message.assert_not_called()
+
+
 def test_send_msg_success(telegram):
     """
     测试发送普通消息成功

@@ -420,11 +420,12 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             save_path = current.save_path
             downloader = current.downloader
             source = self.get_subscribe_source_keyword(current)
-            governance = SubscriptionDownloadGovernance(
-                cancelled=execution_context.should_stop if execution_context else None,
-                mark_started=execution_context.mark_download_started if execution_context else None,
-                decision_observer=activity.resource if activity else None,
-            )
+        governance = SubscriptionDownloadGovernance(
+            cancelled=execution_context.should_stop if execution_context else None,
+            mark_started=execution_context.mark_download_started if execution_context else None,
+            decision_observer=activity.resource if activity else None,
+            prepare_submission=lambda context: _priority.annotate_subscription_download(subscribe, context),
+        )
         if eligible_targets is not None:
             no_exists = _prepare_batch_missing(no_exists, mediakey, eligible_targets)
         allowed_episodes = _ready_episodes(no_exists, mediakey, eligible_targets)

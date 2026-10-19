@@ -1446,21 +1446,27 @@ class Telegram:
     @staticmethod
     def _create_inline_keyboard(buttons: List[List[Dict]]) -> JsonDict:
         """
-        创建内联键盘。
+        创建内联键盘，忽略没有有效链接或回调数据的按钮及空行。
 
-        :param buttons: 按钮配置，格式：[[{"text": "按钮文本", "callback_data": "回调数据", "url": "链接"}]]
-        :return: Bot API InlineKeyboardMarkup 结构
+        :param buttons: 按行排列的按钮配置；非空字符串 URL 优先，否则使用非空字符串回调数据
+        :return: Bot API InlineKeyboardMarkup 结构；没有有效按钮时包含空键盘
         """
         keyboard = []
         for row in buttons:
             button_row = []
             for button in row:
-                if "url" in button:
-                    btn = {"text": button["text"], "url": button["url"]}
+                url = button.get("url")
+                callback_data = button.get("callback_data")
+                if isinstance(url, str) and url.strip():
+                    btn = {"text": button["text"], "url": url}
+                elif isinstance(callback_data, str) and callback_data:
+                    btn = {"text": button["text"], "callback_data": callback_data}
                 else:
-                    btn = {"text": button["text"], "callback_data": button["callback_data"]}
+                    logger.warning("Telegram 按钮缺少有效 URL 或回调数据，已忽略")
+                    continue
                 button_row.append(btn)
-            keyboard.append(button_row)
+            if button_row:
+                keyboard.append(button_row)
         return {"inline_keyboard": keyboard}
 
     def answer_callback_query(

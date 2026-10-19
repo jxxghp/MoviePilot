@@ -961,7 +961,7 @@ class TransHandler:
         :param source_oper: 源严格查询适配器
         :param target_oper: 目标严格查询适配器
         :param target_file: 已冻结目标文件路径
-        :param transfer_type: move、copy、link 或 softlink
+        :param transfer_type: move、copy、link、softlink 或 reflink
         :return: 完成状态及文件证据；无法证明内容或查询失败时返回未知状态
         """
         try:
@@ -1016,6 +1016,14 @@ class TransHandler:
                 applied = source_path.is_file() and target_file.samefile(source_path)
             elif transfer_type == "softlink":
                 applied = target_file.is_symlink() and target_file.resolve() == source_path.resolve()
+            elif transfer_type == "reflink":
+                applied = (
+                    source_path.is_file()
+                    and target_file.is_file()
+                    and not target_file.is_symlink()
+                    and not target_file.samefile(source_path)
+                    and filecmp.cmp(source_path, target_file, shallow=False)
+                )
             else:
                 return TransferOperationObservation(
                     state=TransferOperationObservationState.UNKNOWN,
@@ -2033,6 +2041,91 @@ class TransHandler:
         return True, ""
 
     @staticmethod
+    def __transfer_local_to_local(
+        source_oper: StorageBase,
+        fileitem: FileItem,
+        target_file: Path,
+        transfer_type: str,
+    ) -> Tuple[bool, str]:
+        """
+        执行本地存储之间的单文件传输操作。
+
+        :param source_oper: 本地存储适配器
+        :param fileitem: 源文件项
+        :param target_file: 目标文件完整路径
+        :param transfer_type: 整理方式
+        :return: 操作成功标记及错误说明
+        """
+        if not target_file.parent.exists():
+            target_file.parent.mkdir(parents=True, exist_ok=True)
+        if transfer_type == "copy":
+            state = source_oper.copy(fileitem, target_file.parent, target_file.name)
+        elif transfer_type == "move":
+            state = source_oper.move(fileitem, target_file.parent, target_file.name)
+        elif transfer_type in ("link", "softlink", "reflink"):
+            action = getattr(source_oper, transfer_type, None)
+            state = bool(callable(action) and action(fileitem, target_file))
+        else:
+            return False, f"不支持的整理方式：{transfer_type}"
+        if state:
+            return True, ""
+        return False, f"{fileitem.path} {transfer_type} 失败"
+
+    @staticmethod
+    def __transfer_same_remote_storage(
+        fileitem: FileItem,
+        target_storage: str,
+        source_oper: StorageBase,
+        target_oper: StorageBase,
+        target_file: Path,
+        transfer_type: str,
+        get_remote_targetitem: Callable[[FileItem, Path], FileItem],
+    ) -> Tuple[Optional[FileItem], str]:
+        """
+        在相同的非本地远端存储间执行文件复制、移动或链接操作。
+
+        :param fileitem: 源文件项
+        :param target_storage: 目标存储标识
+        :param source_oper: 源存储适配器
+        :param target_oper: 目标存储适配器
+        :param target_file: 目标文件完整路径
+        :param transfer_type: 整理方式
+        :param get_remote_targetitem: 获取远端目标项回调
+        :return: 目标文件项及错误说明
+        """
+        if not source_oper.is_support_transtype(transfer_type):
+            return None, f"存储 {fileitem.storage} 不支持 {transfer_type} 整理方式"
+
+        if transfer_type in ("copy", "move"):
+            target_fileitem = target_oper.get_folder(target_file.parent)
+            if not target_fileitem:
+                return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
+            action_name = "copy_item" if transfer_type == "copy" else "move_item"
+            custom_item_action = getattr(source_oper, action_name, None)
+            fallback_action = getattr(source_oper, transfer_type, None)
+            if callable(custom_item_action):
+                new_item = custom_item_action(
+                    fileitem, Path(target_fileitem.path), target_file.name
+                )
+                if new_item:
+                    return new_item, ""
+            elif callable(fallback_action) and fallback_action(
+                fileitem, Path(target_fileitem.path), target_file.name
+            ):
+                return get_remote_targetitem(fileitem, target_file), ""
+            action_desc = "复制" if transfer_type == "copy" else "移动"
+            return None, f"【{target_storage}】{fileitem.path} {action_desc}文件失败"
+
+        if transfer_type in ("link", "reflink"):
+            action = getattr(source_oper, transfer_type, None)
+            if callable(action) and action(fileitem, target_file):
+                return get_remote_targetitem(fileitem, target_file), ""
+            action_desc = "引用链接" if transfer_type == "reflink" else "硬链接"
+            return None, f"【{target_storage}】{fileitem.path} 创建{action_desc}失败"
+
+        return None, f"不支持的整理方式：{transfer_type}"
+
+    @staticmethod
     def __transfer_command(
         fileitem: FileItem,
         target_storage: str,
@@ -2052,7 +2145,7 @@ class TransHandler:
         :param source_oper: 源存储适配器
         :param target_oper: 目标存储适配器
         :param target_file: 最终文件路径，必要时创建父目录
-        :param transfer_type: copy、move、link 或 softlink，支持范围取决于存储组合
+        :param transfer_type: copy、move、link、softlink 或 reflink，支持范围取决于存储组合
         :return: 目标文件项及错误文本；失败时文件项为 None
         """
 
@@ -2118,22 +2211,15 @@ class TransHandler:
             return None, f"不支持 {fileitem.storage} 到 {target_storage} 的文件整理"
 
         if fileitem.storage == "local" and target_storage == "local":
-            if not target_file.parent.exists():
-                target_file.parent.mkdir(parents=True, exist_ok=True)
-            if transfer_type == "copy":
-                state = source_oper.copy(fileitem, target_file.parent, target_file.name)
-            elif transfer_type == "move":
-                state = source_oper.move(fileitem, target_file.parent, target_file.name)
-            elif transfer_type == "link":
-                state = source_oper.link(fileitem, target_file)
-            elif transfer_type == "softlink":
-                state = source_oper.softlink(fileitem, target_file)
-            else:
-                return None, f"不支持的整理方式：{transfer_type}"
+            state, error = TransHandler.__transfer_local_to_local(
+                source_oper=source_oper,
+                fileitem=fileitem,
+                target_file=target_file,
+                transfer_type=transfer_type,
+            )
             if state:
                 return __get_targetitem(target_file), ""
-            else:
-                return None, f"{fileitem.path} {transfer_type} 失败"
+            return None, error
         elif fileitem.storage == "local" and target_storage != "local":
             filepath = Path(fileitem.path)
             if not filepath.exists():
@@ -2178,56 +2264,15 @@ class TransHandler:
             )
             return (__get_targetitem(target_file), "") if state else (None, error)
         elif fileitem.storage == target_storage:
-            if not source_oper.is_support_transtype(transfer_type):
-                return None, f"存储 {fileitem.storage} 不支持 {transfer_type} 整理方式"
-
-            if transfer_type == "copy":
-                target_fileitem = target_oper.get_folder(target_file.parent)
-                if target_fileitem:
-                    copy_item = getattr(source_oper, "copy_item", None)
-                    if callable(copy_item):
-                        new_item = copy_item(
-                            fileitem, Path(target_fileitem.path), target_file.name
-                        )
-                        if new_item:
-                            return new_item, ""
-                    elif source_oper.copy(
-                            fileitem, Path(target_fileitem.path), target_file.name
-                    ):
-                        return __get_remote_targetitem(fileitem, target_file), ""
-                    return None, f"【{target_storage}】{fileitem.path} 复制文件失败"
-                else:
-                    return (
-                        None,
-                        f"【{target_storage}】{target_file.parent} 目录获取失败",
-                    )
-            elif transfer_type == "move":
-                target_fileitem = target_oper.get_folder(target_file.parent)
-                if target_fileitem:
-                    move_item = getattr(source_oper, "move_item", None)
-                    if callable(move_item):
-                        new_item = move_item(
-                            fileitem, Path(target_fileitem.path), target_file.name
-                        )
-                        if new_item:
-                            return new_item, ""
-                    elif source_oper.move(
-                            fileitem, Path(target_fileitem.path), target_file.name
-                    ):
-                        return __get_remote_targetitem(fileitem, target_file), ""
-                    return None, f"【{target_storage}】{fileitem.path} 移动文件失败"
-                else:
-                    return (
-                        None,
-                        f"【{target_storage}】{target_file.parent} 目录获取失败",
-                    )
-            elif transfer_type == "link":
-                if source_oper.link(fileitem, target_file):
-                    return __get_remote_targetitem(fileitem, target_file), ""
-                else:
-                    return None, f"【{target_storage}】{fileitem.path} 创建硬链接失败"
-            else:
-                return None, f"不支持的整理方式：{transfer_type}"
+            return TransHandler.__transfer_same_remote_storage(
+                fileitem=fileitem,
+                target_storage=target_storage,
+                source_oper=source_oper,
+                target_oper=target_oper,
+                target_file=target_file,
+                transfer_type=transfer_type,
+                get_remote_targetitem=__get_remote_targetitem,
+            )
 
         return None, "未知错误"
 

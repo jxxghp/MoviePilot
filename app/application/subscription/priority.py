@@ -623,3 +623,31 @@ def build_full_pack_first_no_exists(
         )
     }
     return {mediakey: cast(Dict[int, NotExistMediaInfo], season_map)}
+
+
+def annotate_subscription_download(subscribe: SubscriptionSnapshot, context: Context) -> None:
+    """
+    按提交前订阅事实与最终选集冻结下载来源，不把开启洗版等同于已发生升级。
+
+    整包同时包含已下载集和缺集时归入洗版，并分别保留两类集数。
+    非电视剧按已提交过版本的优先级事实区分，普通订阅始终记录为首次订阅。
+    """
+    selected = set(context.selected_episodes or [])
+    downloaded = set(get_downloaded_best_version_episodes(subscribe))
+    if is_full_best_version_enabled(subscribe) and subscribe.current_priority:
+        downloaded.update(get_best_version_target_episodes(subscribe))
+    if subscribe.type == MediaType.TV.value:
+        if not selected:
+            selected = set(get_best_version_target_episodes(subscribe))
+        upgraded = selected & downloaded if subscribe.best_version else set()
+        is_upgrade = bool(upgraded)
+    else:
+        upgraded = set()
+        is_upgrade = bool(subscribe.best_version and subscribe.current_priority)
+    context.subscription_download = {
+        "subscription_id": subscribe.id,
+        "submission_type": "upgrade" if is_upgrade else "initial",
+        "best_version_full": is_full_best_version_enabled(subscribe),
+        "initial_episodes": sorted(selected - upgraded),
+        "upgrade_episodes": sorted(upgraded),
+    }

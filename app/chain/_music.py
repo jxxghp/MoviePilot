@@ -20,6 +20,7 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.execution import SubscriptionExecutionContext
 from app.application.subscription.mutation import SubscriptionActor
+from app.application.subscription.priority import annotate_subscription_download
 from app.application.subscription.sitebudget import SubscriptionSearchCancelled
 from app.application.torrent.download import TorrentHelper
 from app.chain._contracts import MusicSubscribeMixinHost
@@ -557,6 +558,7 @@ class MusicSubscribeMixin:
             cancelled=execution_context.should_stop if execution_context else None,
             mark_started=execution_context.mark_download_started if execution_context else None,
             decision_observer=activity.resource if activity else None,
+            prepare_submission=lambda context: annotate_subscription_download(subscribe, context),
         )
         if execution_context:
             execution_context.report_phase("preparing")

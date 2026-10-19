@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Mapping, Optional, Protocol
 from uuid import uuid4
 
@@ -16,6 +16,7 @@ from app.application.subscription.sitebudget import (
     SubscriptionSearchDeferred,
     SubscriptionSiteBudgetDeferral,
 )
+from app.schemas.common import JsonData
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +271,8 @@ class SearchTaskSnapshot:
     :param finished_at: 完成执行的时间文本；尚未完成时为 None
     :param last_error: 最近失败的错误摘要；无错误时为 None
     :param current_site_id: 正在处理的站点标识；尚未进入站点时为 None
+    :param download_counts: 任务活动累计的成功提交分类计数；旧活动为空
+    :param downloads: 本任务活动中保留的成功下载安全摘要；最多 100 条
     :param pending_site_ids: 等待恢复的站点标识；None 表示尚未限定站点范围
     """
 
@@ -292,6 +295,8 @@ class SearchTaskSnapshot:
     last_error: Optional[str] = None
     current_site_id: Optional[int] = None
     pending_site_ids: Optional[tuple[int, ...]] = None
+    download_counts: dict[str, int] = field(default_factory=dict)
+    downloads: tuple[dict[str, JsonData], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

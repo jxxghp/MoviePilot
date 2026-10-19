@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
+from app.application.download.admission import subscription_download_label
 from app.application.messaging.message import MessageTemplateHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain.context import (
@@ -17,6 +18,7 @@ from app.domain.context import (
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.runtime.thread import ThreadHelper
+from app.schemas.common import JsonData
 from app.schemas.message import Message
 from app.schemas.types import (
     ContentType,
@@ -41,11 +43,12 @@ class DownloadProcessingOwner(_DownloadOwnerBase):
         userid: str | int | None,
         username: str | None,
         download_episodes: str | None,
+        subscription_download: dict[str, JsonData] | None = None,
     ) -> Optional[Message]:
         """
         提交前冻结下载通知，供即时路径与 durable 恢复共用。
         """
-        return MessageTemplateHelper.render(
+        message = MessageTemplateHelper.render(
             message=Message(
                 channel=channel,
                 source=source if channel else None,
@@ -63,6 +66,10 @@ class DownloadProcessingOwner(_DownloadOwnerBase):
             username=username,
             current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
+        label = subscription_download_label(subscription_download)
+        if message is not None and label:
+            message.title = f"【{label}】{message.title or ''}"
+        return message
 
     def _submit_download_added_task(
             self,
@@ -80,6 +87,9 @@ class DownloadProcessingOwner(_DownloadOwnerBase):
         """
 
         def _run_download_added() -> None:
+            """
+            执行已成功提交下载的附加任务，并隔离后台错误。
+            """
             try:
                 self.download_added(
                     context=context,

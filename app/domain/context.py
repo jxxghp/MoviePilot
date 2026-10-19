@@ -27,6 +27,7 @@ from app.domain.meta.metamusic import (
 from app.domain.metainfo import MetaInfo
 from app.foundation import temporal as time_tools
 from app.schemas.category import ClassificationFactValue, ClassificationResult
+from app.schemas.common import JsonData
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -2400,6 +2401,7 @@ class Context:
     :param allowed_episodes: 调用方对本候选允许下载的剧集集合，None 表示不限制，空集合表示拒绝交付任何集
     :param selected_episodes: 下载链实际提交的剧集集合；None 表示尚未执行下载选择
     :param confirmed_full_coverage: 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源
+    :param subscription_download: 本次订阅提交的类型、全集洗版模式及新增和升级集数；非订阅下载为 None
     :param music_track_keys: 下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度
     """
 
@@ -2417,6 +2419,7 @@ class Context:
     selected_episodes: Optional[List[int]] = None
     confirmed_full_coverage: bool = False
     music_track_keys: Optional[List[str]] = None
+    subscription_download: Optional[Dict[str, JsonData]] = None
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -2438,4 +2441,5 @@ class Context:
             "selected_episodes": self.selected_episodes,
             "confirmed_full_coverage": self.confirmed_full_coverage,
             "music_track_keys": self.music_track_keys,
+            "subscription_download": self.subscription_download,
         }
