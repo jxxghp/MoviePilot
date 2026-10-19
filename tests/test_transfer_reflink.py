@@ -4,12 +4,10 @@
 
 import filecmp
 import os
-import sys
-import warnings
+import shutil
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import psutil
 import pytest
 
 from app.adapters.system.host import SystemUtils
@@ -36,89 +34,34 @@ def _make_local_storage() -> LocalStorage:
     return object.__new__(LocalStorage)
 
 
-def _get_filesystem_type(path: Path) -> str:
+def _patch_reflink_with_simulated_clone(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[tuple[Path, Path]],
+) -> None:
     """
-    获取指定路径所在挂载点文件系统的格式类型。
+    用同盘复制模拟底层引用链接，避免测试依赖宿主文件系统的 CoW 能力。
 
-    :param path: 目标路径
-    :return: 小写文件系统名称（例如 apfs, btrfs, xfs, ext4）
+    真实克隆语义与不支持时的失败处理由 tests/test_system_reflink.py 覆盖，
+    管道测试只验证整理流程是否把整理方式正确路由到存储适配器。
+
+    :param monkeypatch: pytest 猴子补丁夹具
+    :param calls: 记录 (源路径, 目标路径) 调用的列表
     """
-    resolved = path.resolve()
-    best_mount = ""
-    best_fstype = ""
-    try:
-        for part in psutil.disk_partitions(all=True):
-            try:
-                mount = Path(part.mountpoint).resolve()
-                if resolved == mount or mount in resolved.parents:
-                    if len(str(mount)) > len(best_mount):
-                        best_mount = str(mount)
-                        best_fstype = (part.fstype or "").lower()
-            except Exception:
-                continue
-    except Exception:
-        pass
-    if best_fstype:
-        return best_fstype
 
-    if sys.platform.startswith("linux"):
-        try:
-            with open("/proc/mounts", "r", encoding="utf-8") as stream:
-                for line in stream:
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        mount = Path(parts[1]).resolve()
-                        if resolved == mount or mount in resolved.parents:
-                            if len(str(mount)) > len(best_mount):
-                                best_mount = str(mount)
-                                best_fstype = parts[2].lower()
-        except Exception:
-            pass
-    if best_fstype:
-        return best_fstype
+    def _simulated_reflink(src: Path, dest: Path) -> tuple[int, str]:
+        """
+        复制内容并同步元数据，模拟克隆成功后的落地状态。
 
-    if sys.platform == "darwin":
-        return "apfs"
-    return "unknown"
+        :param src: 源文件路径
+        :param dest: 目标文件路径
+        :return: 固定成功状态
+        """
+        shutil.copyfile(src, dest)
+        shutil.copystat(src, dest)
+        calls.append((src, dest))
+        return 0, ""
 
-
-def _probe_reflink_support(path: Path) -> bool:
-    """
-    真实探测文件系统是否支持写时复制。
-
-    :param path: 探测临时目录
-    :return: 支持写时复制时为 True
-    """
-    src = path / ".probe_reflink_src"
-    dest = path / ".probe_reflink_dest"
-    try:
-        src.write_bytes(b"probe")
-        code, _ = SystemUtils.reflink(src, dest)
-        return code == 0
-    except Exception:
-        return False
-    finally:
-        src.unlink(missing_ok=True)
-        dest.unlink(missing_ok=True)
-
-
-def _require_reflink_filesystem(tmp_path: Path) -> str:
-    """
-    检查测试目录文件系统格式，非写时复制格式发出警告并跳过测试。
-
-    :param tmp_path: pytest 临时测试目录
-    :return: 当前被确认支持写时复制的文件系统格式
-    """
-    fstype = _get_filesystem_type(tmp_path)
-    supported_types = {"apfs", "btrfs", "xfs", "zfs"}
-    if fstype not in supported_types or not _probe_reflink_support(tmp_path):
-        warning_message = (
-            f"当前测试目录所在文件系统格式为 [{fstype}]，"
-            f"非写时复制格式（需为 {supported_types} 且启用 CoW），已跳过对应引用链接测试"
-        )
-        warnings.warn(warning_message, UserWarning, stacklevel=2)
-        pytest.skip(warning_message)
-    return fstype
+    monkeypatch.setattr(SystemUtils, "reflink", _simulated_reflink)
 
 
 def test_transhandler_plan_and_execute_reflink(
@@ -129,12 +72,12 @@ def test_transhandler_plan_and_execute_reflink(
     测试 TransHandler 使用 transfer_type="reflink" 规划并执行本地文件整理。
 
     验证整理执行成功，目标文件被创建，源文件与目标文件内容完全一致，
-    且属于不同 Inode（非硬链接），也不是符号链接。
+    且属于不同 Inode（非硬链接），也不是符号链接；底层克隆调用被模拟，
+    不依赖宿主文件系统是否支持 CoW。
 
     :param tmp_path: pytest 临时测试目录
     :param monkeypatch: pytest 猴子补丁夹具
     """
-    _require_reflink_filesystem(tmp_path)
     download_dir = tmp_path / "downloads"
     library_dir = tmp_path / "library"
     download_dir.mkdir(parents=True, exist_ok=True)
@@ -155,6 +98,9 @@ def test_transhandler_plan_and_execute_reflink(
     handler = TransHandler()
     monkeypatch.setattr(handler, "_TransHandler__intercept_transfer", lambda **_kwargs: (True, ""))
     monkeypatch.setattr(LocalStorage, "_LocalStorage__should_show_progress", lambda *_args: False)
+
+    cloned_calls: list[tuple[Path, Path]] = []
+    _patch_reflink_with_simulated_clone(monkeypatch, cloned_calls)
 
     meta = MetaBase("Test.Movie.2026.mkv")
     mediainfo = MediaInfo(type=MediaType.MOVIE, title="Test Movie", year="2026")
@@ -192,6 +138,8 @@ def test_transhandler_plan_and_execute_reflink(
     assert transfer_info.success is True
 
     target_file = Path(checkpoint.final_target_path)
+    # 验证整理流程把引用链接路由到系统适配器
+    assert cloned_calls == [(source_file, target_file)]
     # 验证目标文件已创建且为常规文件
     assert target_file.exists()
     assert target_file.is_file()
@@ -211,10 +159,11 @@ def test_transhandler_reflink_overwrite_always(
     """
     测试在覆盖模式为 always 时，reflink 也能安全覆盖已存在的目标文件。
 
+    底层克隆调用被模拟，不依赖宿主文件系统是否支持 CoW。
+
     :param tmp_path: pytest 临时测试目录
     :param monkeypatch: pytest 猴子补丁夹具
     """
-    _require_reflink_filesystem(tmp_path)
     download_dir = tmp_path / "downloads"
     library_dir = tmp_path / "library"
     download_dir.mkdir(parents=True, exist_ok=True)
@@ -239,6 +188,9 @@ def test_transhandler_reflink_overwrite_always(
     handler = TransHandler()
     monkeypatch.setattr(handler, "_TransHandler__intercept_transfer", lambda **_kwargs: (True, ""))
     monkeypatch.setattr(LocalStorage, "_LocalStorage__should_show_progress", lambda *_args: False)
+
+    cloned_calls: list[tuple[Path, Path]] = []
+    _patch_reflink_with_simulated_clone(monkeypatch, cloned_calls)
 
     meta = MetaBase("Test.Movie.2026.mkv")
     mediainfo = MediaInfo(type=MediaType.MOVIE, title="Test Movie", year="2026")
@@ -274,6 +226,13 @@ def test_transhandler_reflink_overwrite_always(
 
     assert transfer_info.success is True
 
+    # 验证整理流程把引用链接路由到系统适配器；覆盖模式先克隆到暂存路径再替换旧目标
+    assert len(cloned_calls) == 1
+    clone_source, clone_target = cloned_calls[0]
+    assert clone_source == source_file
+    assert clone_target != target_file
+    assert clone_target.parent == target_file.parent
+    assert not clone_target.exists()
     # 验证旧目标已被新版本的 reflink 内容原子替换
     assert target_file.exists()
     assert target_file.is_file()
@@ -283,11 +242,89 @@ def test_transhandler_reflink_overwrite_always(
     assert filecmp.cmp(source_file, target_file, shallow=False)
 
 
+def test_transhandler_reflink_unsupported_filesystem_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    测试底层文件系统不支持引用链接时，整理严格失败且不隐式降级为全量复制。
+
+    :param tmp_path: pytest 临时测试目录
+    :param monkeypatch: pytest 猴子补丁夹具
+    """
+    download_dir = tmp_path / "downloads"
+    library_dir = tmp_path / "library"
+    download_dir.mkdir(parents=True, exist_ok=True)
+    library_dir.mkdir(parents=True, exist_ok=True)
+
+    source_file = download_dir / "Unsupported.2026.mkv"
+    source_file.write_bytes(b"reflink unsupported filesystem content")
+
+    storage = _make_local_storage()
+    source_item = storage.get_item_strict(source_file)
+    assert source_item is not None
+
+    planning_input = TransferPlanningInput(
+        source_fileitem=source_item.model_dump(mode="json"),
+    )
+
+    handler = TransHandler()
+    monkeypatch.setattr(handler, "_TransHandler__intercept_transfer", lambda **_kwargs: (True, ""))
+    monkeypatch.setattr(LocalStorage, "_LocalStorage__should_show_progress", lambda *_args: False)
+
+    def _unsupported_reflink(_src: Path, _dest: Path) -> tuple[int, str]:
+        """
+        模拟不支持 FICLONE 的文件系统返回错误。
+
+        :param _src: 源文件路径
+        :param _dest: 目标文件路径
+        :return: 失败状态及错误信息
+        """
+        return -1, "Linux ioctl(FICLONE) 失败: [Errno 95] Operation not supported"
+
+    monkeypatch.setattr(SystemUtils, "reflink", _unsupported_reflink)
+
+    meta = MetaBase("Unsupported.2026.mkv")
+    mediainfo = MediaInfo(type=MediaType.MOVIE, title="Unsupported", year="2026")
+
+    checkpoint = handler.plan_transfer(
+        planning_input,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=storage,
+        target_storage="local",
+        target_path=library_dir,
+        transfer_type="reflink",
+        need_scrape=False,
+        need_rename=False,
+        need_notify=False,
+        overwrite_mode=None,
+        episodes_info=None,
+        preview=False,
+    )
+
+    transfer_info = handler.execute_transfer_plan(
+        checkpoint,
+        meta=meta,
+        mediainfo=mediainfo,
+        source_oper=storage,
+        target_oper=storage,
+    )
+
+    # 克隆不可用时不复制、不降级，整理失败并保留源文件
+    assert transfer_info.success is False
+    assert not Path(checkpoint.final_target_path).exists()
+    assert source_file.read_bytes() == b"reflink unsupported filesystem content"
+
+
 def test_transhandler_observe_reflink_operation_states(
     tmp_path: Path,
 ) -> None:
     """
     测试步骤观察器 __observe_transfer_operation 对 reflink 整理方式的状态判定。
+
+    观察器只判定目标链接类型与内容状态，测试用普通副本构造等价落地结果，
+    不依赖宿主文件系统的 CoW 能力。
 
     验证：
     1. 目标正常独立且内容一致时返回 APPLIED。
@@ -298,7 +335,6 @@ def test_transhandler_observe_reflink_operation_states(
 
     :param tmp_path: pytest 临时测试目录
     """
-    _require_reflink_filesystem(tmp_path)
     source_dir = tmp_path / "src"
     target_dir = tmp_path / "dst"
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -312,10 +348,9 @@ def test_transhandler_observe_reflink_operation_states(
     source_item = storage.get_item_strict(source_file)
     assert source_item is not None
 
-    # 1. 成功创建的真实 reflink 文件 -> APPLIED
+    # 1. 内容一致的独立常规文件（引用链接落地后的等价状态） -> APPLIED
     reflink_target = target_dir / "sample_reflink.mkv"
-    code, msg = SystemUtils.reflink(source_file, reflink_target)
-    assert code == 0, f"创建 reflink 失败: {msg}"
+    shutil.copyfile(source_file, reflink_target)
 
     obs_applied = TransHandler._TransHandler__observe_transfer_operation(
         fileitem=source_item,
