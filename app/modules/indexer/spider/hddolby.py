@@ -92,11 +92,20 @@ class HddolbySpider:
             self._searchurl = f"https://api.{self._domain_host}/api/v1/torrent/search"
             self._pageurl = f"{self._domain}details.php?id=%s&hit=1"
 
-    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0) -> dict[str, object]:
+    def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
+                     cat: Optional[str] = None) -> dict[str, object]:
         """
-        获取请求参数。
+        构造请求参数，显式站点分类优先于媒体类型预置分类。
+
+        :param keyword: 搜索关键词
+        :param mtype: 未指定站点分类时使用的媒体类型
+        :param page: 从 0 开始的搜索页码
+        :param cat: 逗号分隔的站点分类 ID，未指定时沿用媒体类型筛选
+        :return: HDDolby 搜索请求体
         """
-        if mtype == MediaType.TV:
+        if cat:
+            categories = [int(category) for category in cat.split(",")]
+        elif mtype == MediaType.TV:
             categories = self._tv_category
         elif mtype == MediaType.MOVIE:
             categories = self._movie_category
@@ -200,17 +209,19 @@ class HddolbySpider:
         logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
         return True, []
 
-    def search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
+               cat: Optional[str] = None) -> Tuple[bool, List[dict]]:
         """
         同步搜索 HDDolby 种子。
 
         :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
         :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
         :param page: 从 0 开始的搜索页码
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型
         :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
 
-        params = self.__get_params(keyword, mtype, page)
+        params = self.__get_params(keyword, mtype, page, cat)
 
         res = RequestUtils(
             headers={
@@ -225,16 +236,18 @@ class HddolbySpider:
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    async def async_search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
+                           cat: Optional[str] = None) -> Tuple[bool, List[dict]]:
         """
         异步搜索 HDDolby 种子。
 
         :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
         :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
         :param page: 从 0 开始的搜索页码
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型
         :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
-        params = self.__get_params(keyword, mtype, page)
+        params = self.__get_params(keyword, mtype, page, cat)
 
         res = await AsyncRequestUtils(
             headers={

@@ -80,11 +80,11 @@ SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
 _SPECIALIZED_SEARCH_ARGUMENTS = {
     "TNodeSpider": ("keyword", "page"),
     "TorrentLeech": ("keyword", "mtype", "page"),
-    "mTorrent": ("keyword", "mtype", "page"),
+    "mTorrent": ("keyword", "mtype", "cat", "page"),
     "SunnyPT": ("keyword", "mtype", "cat", "page"),
-    "Yema": ("keyword", "mtype", "page"),
+    "Yema": ("keyword", "mtype", "cat", "page"),
     "Haidan": ("keyword", "mtype"),
-    "HDDolby": ("keyword", "mtype", "page"),
+    "HDDolby": ("keyword", "mtype", "cat", "page"),
     "RousiPro": ("keyword", "mtype", "cat", "page"),
     "Milkie": ("keyword", "mtype", "page"),
 }

@@ -225,16 +225,27 @@ class YemaSpider:
         keyword: Optional[str],
         mtype: Optional[MediaType],
         page: Optional[int],
+        cat: Optional[str] = None,
     ) -> Optional[List[dict[str, Any]]]:
         """
         统一执行认证准入并生成各分类的搜索请求体。
+
+        :param keyword: 搜索关键词
+        :param mtype: 未指定站点分类时使用的媒体类型
+        :param page: 从 0 开始的搜索页码
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型并逐分类查询
+        :return: 各分类的请求体；缺少认证信息时返回 None
         """
         if not self._api_key:
             logger.warning(f"{self._name} 未配置 API AuthKey")
             return None
+        if cat:
+            category_ids: List[Optional[int]] = [int(category) for category in cat.split(",")]
+        else:
+            category_ids = self._search_category_ids(mtype)
         return [
             self._build_params(keyword, page, category_id)
-            for category_id in self._search_category_ids(mtype)
+            for category_id in category_ids
         ]
 
     def _finalize_search_responses(
@@ -258,6 +269,7 @@ class YemaSpider:
         keyword: Optional[str],
         mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
+        cat: Optional[str] = None,
     ) -> Tuple[bool, List[dict]]:
         """
         同步搜索 YemaPT 公开种子。
@@ -265,12 +277,14 @@ class YemaSpider:
         :param keyword: 搜索关键字
         :param mtype: MoviePilot 媒体类型，指定后按真实站点分类分别查询
         :param page: MoviePilot 从 0 开始的页码
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型并逐分类查询
         :return: 是否失败及标准种子列表
         """
         payloads = self._prepare_search_requests(
             keyword=keyword,
             mtype=mtype,
             page=page,
+            cat=cat,
         )
         if payloads is None:
             return True, []
@@ -293,6 +307,7 @@ class YemaSpider:
         keyword: Optional[str],
         mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
+        cat: Optional[str] = None,
     ) -> Tuple[bool, List[dict]]:
         """
         异步搜索 YemaPT 公开种子。
@@ -300,12 +315,14 @@ class YemaSpider:
         :param keyword: 搜索关键字
         :param mtype: MoviePilot 媒体类型，指定后按真实站点分类分别查询
         :param page: MoviePilot 从 0 开始的页码
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型并逐分类查询
         :return: 是否失败及标准种子列表
         """
         payloads = self._prepare_search_requests(
             keyword=keyword,
             mtype=mtype,
             page=page,
+            cat=cat,
         )
         if payloads is None:
             return True, []

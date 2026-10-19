@@ -399,7 +399,7 @@ def test_yema_sync_async_entries_share_request_plan_and_result_finalizer(
         spider.async_search(keyword="Movie", mtype=MediaType.MUSIC, page=2)
     )
 
-    expected_plan = {"keyword": "Movie", "mtype": MediaType.MUSIC, "page": 2}
+    expected_plan = {"keyword": "Movie", "mtype": MediaType.MUSIC, "page": 2, "cat": None}
     assert sync_result == async_result == (False, [{"title": "projected"}])
     assert prepare == [expected_plan, expected_plan]
     assert finalized == [
