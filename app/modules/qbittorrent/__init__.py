@@ -17,6 +17,7 @@ from app.modules.qbittorrent.qbittorrent import Qbittorrent
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
+from app.schemas.download import DOWNLOAD_TASK_ALREADY_EXISTS
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
     DownloaderType,
@@ -193,7 +194,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                                         server, torrent_hash, episodes or set(), custom_words, downloader, torrent_layout,
                                         already_exists=True,
                                     )
-                                return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "下载任务已存在"
+                                return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, DOWNLOAD_TASK_ALREADY_EXISTS
                     finally:
                         torrents.clear()
                         del torrents
@@ -236,7 +237,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
         if not selected:
             return None, None, None, message
         if already_exists:
-            message = "下载任务已存在"
+            message = DOWNLOAD_TASK_ALREADY_EXISTS
         return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, message
 
     @staticmethod
