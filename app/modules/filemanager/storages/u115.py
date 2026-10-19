@@ -1197,7 +1197,14 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         return self.get_item(Path(fileitem.path))
 
-    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+    def copy(
+        self,
+        fileitem: _SchemaFileItem,
+        path: Path,
+        new_name: str,
+        *,
+        try_reflink: Optional[bool] = None,
+    ) -> bool:
         """
         复制到已存在的目录，再重命名为目标名称。
 
@@ -1206,6 +1213,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         :param fileitem: 源文件项；缺少远端标识时先按路径查询
         :param path: 已存在的目标目录路径
         :param new_name: 复制后的名称
+        :param try_reflink: 远端存储不支持引用链接克隆，保留以对齐基类契约
         :return: 复制、查询新文件和重命名均成功时为 True，否则为 False
         """
         if fileitem.fileid is None:

@@ -344,13 +344,21 @@ class StorageBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+    def copy(
+        self,
+        fileitem: _SchemaFileItem,
+        path: Path,
+        new_name: str,
+        *,
+        try_reflink: Optional[bool] = None,
+    ) -> bool:
         """
         复制文件到同一存储的目标目录。
 
         :param fileitem: 源文件项
         :param path: 同一存储中的目标目录
         :param new_name: 目标文件名
+        :param try_reflink: 是否优先尝试写时复制引用链接克隆；None 时遵循系统运行期配置
         :return: 实现报告的复制成功标记
         """
         pass

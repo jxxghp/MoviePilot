@@ -591,13 +591,21 @@ class Rclone(StorageBase):
             logger.error(f"【rclone】移动失败: {fileitem.name} - {err}")
             return False
 
-    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+    def copy(
+        self,
+        fileitem: _SchemaFileItem,
+        path: Path,
+        new_name: str,
+        *,
+        try_reflink: Optional[bool] = None,
+    ) -> bool:
         """
         调用 copyto 在 MP 远端内复制文件并回调进度。
 
         :param fileitem: 源远端文件项
         :param path: 远端目标目录
         :param new_name: 目标文件名
+        :param try_reflink: 远端存储不支持引用链接克隆，保留以对齐基类契约
         :return: 命令退出码为 0 时返回 True，否则返回 False；失败时不撤销已写入内容
         """
         target_path = path / new_name

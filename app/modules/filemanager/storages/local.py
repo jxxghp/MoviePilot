@@ -333,6 +333,12 @@ class LocalStorage(StorageBase):
         try:
             code, _ = SystemUtils.reflink(src, dest)
             if code != 0:
+                logger.debug(f"【本地】尝试写时复制克隆返回非零状态码，回退常规复制：code={code}")
+                if dest.exists():
+                    try:
+                        dest.unlink()
+                    except OSError:
+                        pass
                 return False
             src_stat = src.stat()
             os.utime(dest, ns=(src_stat.st_atime_ns, src_stat.st_mtime_ns))
@@ -353,7 +359,13 @@ class LocalStorage(StorageBase):
                     pass
             return False
 
-    def _write_atomically(self, src: Path, dest: Path) -> bool:
+    def _write_atomically(
+        self,
+        src: Path,
+        dest: Path,
+        *,
+        try_reflink: Optional[bool] = None,
+    ) -> bool:
         """
         先复制到同目录中间文件，完成后原子替换目标名称。
 
@@ -363,6 +375,7 @@ class LocalStorage(StorageBase):
 
         :param src: 源文件路径，成功后仍保留
         :param dest: 完整目标文件路径；父目录需已存在
+        :param try_reflink: 是否优先尝试写时复制引用链接克隆；None 时遵循系统运行期配置
         :return: 复制和替换均完成返回 True；取消或失败返回 False
         """
         self._cleanup_stale_partials(dest.parent)
@@ -371,8 +384,13 @@ class LocalStorage(StorageBase):
             logger.info(f"【本地】{src} 复制已取消")
             return False
 
+        should_try = (
+            get_runtime_setting("TRANSFER_COPY_TRY_REFLINK", True)
+            if try_reflink is None
+            else try_reflink
+        )
         # 同一文件系统优先尝试写时复制克隆，成功即完成原子替换
-        if self._try_reflink_copy(src, partial):
+        if should_try and self._try_reflink_copy(src, partial):
             os.replace(partial, dest)
             return True
         # 进度只在需要展示时才回调 UI，但代理内部始终按固定间隔上报——那是判定
@@ -496,10 +514,12 @@ class LocalStorage(StorageBase):
         return False
 
     def copy(
-            self,
-            fileitem: _SchemaFileItem,
-            path: Path,
-            new_name: str
+        self,
+        fileitem: _SchemaFileItem,
+        path: Path,
+        new_name: str,
+        *,
+        try_reflink: Optional[bool] = None,
     ) -> bool:
         """
         通过同目录中间文件复制并替换目标。
@@ -507,11 +527,16 @@ class LocalStorage(StorageBase):
         :param fileitem: 源文件项
         :param path: 已存在的目标目录
         :param new_name: 目标文件名
+        :param try_reflink: 是否优先尝试写时复制引用链接克隆；None 时遵循系统运行期配置
         :return: 目标写入完成返回 True，取消或失败返回 False
         """
         if not fileitem.path:
             return False
-        return self._write_atomically(Path(fileitem.path), path / new_name)
+        return self._write_atomically(
+            Path(fileitem.path),
+            path / new_name,
+            try_reflink=try_reflink,
+        )
 
     def move(
             self,

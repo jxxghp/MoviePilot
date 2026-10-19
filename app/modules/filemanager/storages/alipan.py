@@ -1074,7 +1074,14 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         """
         return self.get_item(Path(fileitem.path))
 
-    def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+    def copy(
+        self,
+        fileitem: _SchemaFileItem,
+        path: Path,
+        new_name: str,
+        *,
+        try_reflink: Optional[bool] = None,
+    ) -> bool:
         """
         在源空间内复制文件，再尝试改为目标名称。
 
@@ -1084,6 +1091,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         :param fileitem: 携带空间和文件标识的源文件项
         :param path: 源空间中已存在的目标目录路径
         :param new_name: 复制后的目标文件名
+        :param try_reflink: 远端存储不支持引用链接克隆，保留以对齐基类契约
         :return: 目录有效且复制接口成功时为 True，前置检查或复制失败时为 False
         """
         dest_fileitem = self.get_item(path, drive_id=fileitem.drive_id)

@@ -536,6 +536,10 @@ class ConfigModel(BaseModel):
 
     # 整理配置
     TRANSFER_THREADS: int = Field(default=1, description='文件整理线程数')
+    TRANSFER_COPY_TRY_REFLINK: bool = Field(
+        default=True,
+        description='本地文件复制时，在同一磁盘且支持写时复制时优先尝试引用链接 (reflink / 克隆)。若明确知晓底层文件系统不支持 CoW，可关闭此选项跳过探测直接进行全量复制以提升性能。',
+    )
     FS_PROXY_ENABLED: bool = Field(
         default=True,
         description=(
