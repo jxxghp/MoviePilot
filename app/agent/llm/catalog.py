@@ -407,6 +407,14 @@ class _ProviderCatalog:
                 api_key_hint="填写 API Route API Key，可在 https://api-route.com 获取。",
                 description="API Route OpenAI-compatible 聚合模型平台，支持刷新账户可用模型目录。",
             ),
+            openai_provider(
+                provider_id="cheaperinference",
+                name="Cheaper Inference",
+                default_base_url="https://api.cheaperinference.com/v1",
+                sort_order=57,
+                api_key_hint="填写 Cheaper Inference API Key，可在 https://cheaperinference.com/signup 获取。",
+                description="Cheaper Inference OpenAI-compatible 聚合模型平台，一个 Key 覆盖多家厂商的模型。",
+            ),
             ProviderSpec(
                 id="github-copilot",
                 name="GitHub Copilot",
