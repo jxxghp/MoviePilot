@@ -144,17 +144,17 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 | action | Purpose and argument summary |
 | :--- | :--- |
 | `activity.backdrops` | 读取服务近期媒体的背景图。; arguments: `limit`, `remote` |
-| `activity.latest` | 读取服务最近添加的媒体条目。; arguments: `limit`, `username` |
-| `activity.resume` | 读取服务中正在观看或可继续播放的媒体条目。; arguments: `limit`, `username` |
+| `activity.latest` | 读取服务最近添加的媒体条目。; arguments: `limit`, `username`, `query` |
+| `activity.resume` | 读取服务中正在观看或可继续播放的媒体条目。; arguments: `limit`, `username`, `query` |
 | `capabilities.list` | 列出支持的媒体服务器动作及完整参数契约。; arguments: `action_name` |
 | `instances.list` | 列出已配置的媒体服务器实例，不返回连接凭据。; no arguments |
 | `items.count` | 统计指定媒体库或父条目下的内容数量。; arguments: `parent` |
-| `items.detail` | 按服务原生标识读取单个媒体条目。; arguments: `item_id*` |
-| `items.list` | 分页读取指定媒体库或父条目下的内容。; arguments: `parent`, `offset`, `limit` |
-| `items.movies.search` | 按标题及可选年份搜索服务中的电影条目。; arguments: `title*`, `year` |
-| `items.music.search` | 按标题、艺术家或专辑搜索服务中的音乐。; arguments: `title`, `artist`, `album` |
-| `items.season_episodes` | 读取指定剧集及可选季的现有分集信息。; arguments: `item_id`, `title`, `year`, `season` |
-| `libraries.list` | 列出可见媒体库。; arguments: `hidden`, `username` |
+| `items.detail` | 按服务原生标识读取单个媒体条目。; arguments: `item_id*`, `query` |
+| `items.list` | 分页读取指定媒体库或父条目下的内容。; arguments: `parent`, `offset`, `limit`, `query` |
+| `items.movies.search` | 按标题及可选年份搜索服务中的电影条目。; arguments: `title*`, `year`, `query` |
+| `items.music.search` | 按标题、艺术家或专辑搜索服务中的音乐。; arguments: `title`, `artist`, `album`, `query` |
+| `items.season_episodes` | 读取指定剧集及可选季的现有分集信息。; arguments: `item_id`, `title`, `year`, `season`, `query` |
+| `libraries.list` | 列出可见媒体库。; arguments: `hidden`, `username`, `query` |
 | `library.scan` | 触发媒体库扫描。; arguments: `scan_mode` |
 | `metadata.refresh` | 刷新匹配条目的服务端元数据。; arguments: `items*` |
 | `playback.sessions` | 读取正在进行的播放会话。; no arguments |
@@ -172,11 +172,13 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 读取服务最近添加的媒体条目。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `limit` (integer; default `50`): 返回条目数量，范围为 1 至 200。
 - `username` (string): 按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。
+- `query` (object): 统一内容投影，如 {"fields":["identity","path"]}；省略或 fields=null 保留原内容，fields=[] 仅取基础信息。
 
 ### `activity.resume`
 读取服务中正在观看或可继续播放的媒体条目。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `limit` (integer; default `50`): 返回条目数量，范围为 1 至 200。
 - `username` (string): 按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。
+- `query` (object): 统一内容投影，如 {"fields":["identity","path"]}；省略或 fields=null 保留原内容，fields=[] 仅取基础信息。
 
 ### `capabilities.list`
 列出支持的媒体服务器动作及完整参数契约。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
@@ -194,24 +196,28 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 ### `items.detail`
 按服务原生标识读取单个媒体条目。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `item_id*` (string): 所选媒体服务器返回的原生条目标识。
+- `query` (object): 统一内容投影，如 {"fields":["identity","path"]}；省略或 fields=null 保留原内容，fields=[] 仅取基础信息。
 
 ### `items.list`
 分页读取指定媒体库或父条目下的内容。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `parent` (string|integer): 媒体库或父条目标识；Navidrome 可省略并使用 music。
 - `offset` (integer; default `0`): 列表偏移量，从 0 开始。
 - `limit` (integer; default `50`): 返回条目数量，范围为 1 至 200。
+- `query` (object): 统一内容投影，如 {"fields":["identity","path"]}；省略或 fields=null 保留原内容，fields=[] 仅取基础信息。
 - Rule: 除 Navidrome 外必须提供 parent；Navidrome 忽略该参数。
 
 ### `items.movies.search`
 按标题及可选年份搜索服务中的电影条目。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, mediavault`.
 - `title*` (string): 电影标题。
 - `year` (string|integer): 可选的发行年份。
+- `query` (object): 统一内容投影，如 {"fields":["identity","path"]}；省略或 fields=null 保留原内容，fields=[] 仅取基础信息。
 
 ### `items.music.search`
 按标题、艺术家或专辑搜索服务中的音乐。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, navidrome`.
 - `title` (string): 曲目、专辑或音乐条目标题。
 - `artist` (string): 艺术家名称。
 - `album` (string): 专辑名称；须提供 title、artist 或 album。
+- `query` (object): 统一内容投影，如 {"fields":["identity","path"]}；省略或 fields=null 保留原内容，fields=[] 仅取基础信息。
 - Rule: Provide at least one of title, artist, and album.
 
 ### `items.season_episodes`
@@ -220,12 +226,14 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 - `title` (string): 剧集标题；须提供本字段或 item_id。
 - `year` (string|integer): 可选的首播年份。
 - `season` (integer): 可选的季编号。
+- `query` (object): 统一内容投影，如 {"fields":["identity","path"]}；省略或 fields=null 保留原内容，fields=[] 仅取基础信息。
 - Rule: Provide at least one of item_id and title.
 
 ### `libraries.list`
 列出可见媒体库。 Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `hidden` (boolean; default `False`): 只返回已配置为同步的媒体库。
 - `username` (string): 读取该用户名可见的媒体库；Emby、Jellyfin 和 ZSpace 支持。
+- `query` (object): 统一内容投影，如 {"fields":["identity","path"]}；省略或 fields=null 保留原内容，fields=[] 仅取基础信息。
 
 ### `library.scan`
 触发媒体库扫描。 Effect: `external_side_effect`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
@@ -265,3 +273,21 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 - If a provider does not advertise an action, report it as unsupported. Never
   fall back to raw HTTP, arbitrary SDK methods, or credentials copied from
   MoviePilot settings.
+
+## Query Content Projection
+
+Emby, Jellyfin, Plex and Navidrome read actions accept an optional `query` object.
+Omit it for ZSpace, TrimeMedia, UGREEN and Vyo, whose adapters have not adopted it.
+Omitting `query` or setting `fields` to null preserves the existing content;
+`fields: []` requests only the information required by the operation.
+
+```json
+{"parent":"movies","limit":50,"query":{"fields":["identity","path","year"]}}
+```
+
+The field groups are `library`, `original_title`, `year`, `identity`, `path`,
+`music`, `user_state`, `images`, `counts` and `link`. Matching and scope checks
+retain their required dependencies, including music album completeness.
+Adapters translate supported options into remote request parameters. Servers may
+still return default attributes when their protocol cannot select those fields.
+See `docs/media-server-query.md` for the mappings and compatibility limits.

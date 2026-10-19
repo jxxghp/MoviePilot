@@ -342,6 +342,7 @@ def test_chain_composition_registers_lazy_wallpaper_providers(monkeypatch) -> No
     """
     壁纸装配只登记 callable，不在启动阶段提前物化业务 Chain。
     """
+    from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
     from app.startup.composition import chain as chain_composition
 
     register = Mock()
@@ -367,4 +368,6 @@ def test_chain_composition_registers_lazy_wallpaper_providers(monkeypatch) -> No
     assert providers["mediaserver_wallpaper"]() == "media-one"
     assert providers["mediaserver_wallpapers"](4) == ["media-many"]
     tmdb_instance.get_trending_wallpapers.assert_called_once_with(3)
-    media_instance.get_latest_wallpapers.assert_called_once_with(count=4)
+    query = MediaServerQueryOptions(fields={MediaServerField.IMAGES})
+    media_instance.get_latest_wallpaper.assert_called_once_with(query=query)
+    media_instance.get_latest_wallpapers.assert_called_once_with(count=4, query=query)

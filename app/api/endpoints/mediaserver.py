@@ -16,6 +16,7 @@ from app.api.response import (
 )
 from app.application.configuration import get_configured_system_config
 from app.application.mediaserver import (
+    MEDIA_SERVER_EXISTENCE_QUERY,
     MediaServerQueryService,
     get_mediaserver_configs,
 )
@@ -29,16 +30,23 @@ from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
 from app.schemas.mediaserver import MediaServerExistingEpisodes as _SchemaMediaServerExistingEpisodes
 from app.schemas.mediaserver import MediaServerExistsData as _SchemaMediaServerExistsData
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions, NotExistMediaInfo
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayData as _SchemaMediaServerPlayData
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
-from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 router = ResponseAPIRouter()
+
+# 首页卡片只消费展示内容，播放进度仅由继续观看卡片使用。
+_CARD_QUERY = MediaServerQueryOptions(fields={MediaServerField.YEAR, MediaServerField.IMAGES, MediaServerField.LINK})
+_RESUME_QUERY = _CARD_QUERY.with_fields(MediaServerField.USER_STATE)
+_LIBRARY_QUERY = MediaServerQueryOptions(fields={
+    MediaServerField.PATH, MediaServerField.IMAGES, MediaServerField.COUNTS, MediaServerField.LINK,
+})
 
 
 def _require_mediaserver_result(result: Optional[List[Any]]) -> List[Any]:
@@ -58,9 +66,7 @@ def _require_mediaserver_result(result: Optional[List[Any]]) -> List[Any]:
     summary="在线播放",
     response_model=_SchemaResponse[_SchemaMediaServerPlayData],
 )
-def play_item(
-    itemid: str, _: _SchemaTokenPayload = Depends(verify_token)
-) -> _SchemaResponse:
+def play_item(itemid: str, _: _SchemaTokenPayload = Depends(verify_token)) -> _SchemaResponse:
     """
     获取媒体服务器播放页面地址
     """
@@ -72,7 +78,11 @@ def play_item(
     media_chain = MediaServerChain()
     for config in configs:
         name = config.name
-        item = media_chain.iteminfo(server=name, item_id=itemid)
+        item = media_chain.iteminfo(
+            server=name,
+            item_id=itemid,
+            query=MediaServerQueryOptions(fields=set()),
+        )
         if item:
             play_url = media_chain.get_play_url(server=name, item_id=itemid)
             if play_url:
@@ -135,9 +145,7 @@ async def exists_local(
     summary="查询已存在的剧集信息（媒体服务器）",
     response_model=_SchemaMediaServerExistingEpisodes,
 )
-def exists(
-    media_in: _SchemaMediaInfo, _: _SchemaTokenPayload = Depends(verify_token)
-) -> Any:
+def exists(media_in: _SchemaMediaInfo, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     根据媒体信息查询媒体库已存在的剧集信息
     """
@@ -145,7 +153,7 @@ def exists(
     mediainfo = MediaInfo()
     mediainfo.from_dict(media_in.model_dump())
     existsinfo: _SchemaExistMediaInfo = MediaServerChain().media_exists(
-        mediainfo=mediainfo
+        mediainfo=mediainfo, query=MEDIA_SERVER_EXISTENCE_QUERY
     )
     if not existsinfo:
         return {}
@@ -196,9 +204,7 @@ def not_exists(
     return []
 
 
-@router.get(
-    "/latest", summary="最新入库条目", response_model=List[_SchemaMediaServerPlayItem]
-)
+@router.get("/latest", summary="最新入库条目", response_model=List[_SchemaMediaServerPlayItem])
 def latest(
     server: str,
     count: Optional[int] = 20,
@@ -212,13 +218,12 @@ def latest(
             server=server,
             count=count,
             username=userinfo.username,
+            query=_CARD_QUERY,
         )
     )
 
 
-@router.get(
-    "/playing", summary="正在播放条目", response_model=List[_SchemaMediaServerPlayItem]
-)
+@router.get("/playing", summary="正在播放条目", response_model=List[_SchemaMediaServerPlayItem])
 def playing(
     server: str,
     count: Optional[int] = 12,
@@ -232,13 +237,12 @@ def playing(
             server=server,
             count=count,
             username=userinfo.username,
+            query=_RESUME_QUERY,
         )
     )
 
 
-@router.get(
-    "/library", summary="媒体库列表", response_model=List[_SchemaMediaServerLibrary]
-)
+@router.get("/library", summary="媒体库列表", response_model=List[_SchemaMediaServerLibrary])
 def library(
     server: str,
     hidden: Optional[bool] = False,
@@ -254,6 +258,7 @@ def library(
             server=server,
             username=userinfo.username,
             hidden=hidden,
+            query=_LIBRARY_QUERY,
         )
     )
 

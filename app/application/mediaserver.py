@@ -13,6 +13,7 @@ from app.application.service import ServiceBaseHelper
 from app.domain.context import MusicInfo
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source, resolve_media_identity
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerItemUserState as _SchemaMediaServerItemUserState
 from app.schemas.system import MediaServerConf, ServiceInfo
@@ -22,6 +23,11 @@ from app.schemas.types import (
     ModuleType,
     SystemConfigKey,
 )
+
+# 查重只需要来源身份与年份；具体音乐匹配由模块补充专辑完整性证据。
+MEDIA_SERVER_EXISTENCE_QUERY = MediaServerQueryOptions(fields={
+    MediaServerField.IDENTITY, MediaServerField.YEAR,
+})
 
 
 @dataclass(frozen=True, slots=True)

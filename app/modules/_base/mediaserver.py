@@ -15,7 +15,34 @@ from app.runtime.log import logger
 from app.schemas.event import AuthCredentials as _SchemaAuthCredentials
 from app.schemas.event import AuthInterceptCredentials as _SchemaAuthInterceptCredentials
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.types import ChainEventType, MediaType
+
+
+def emby_query_params(query: Optional[MediaServerQueryOptions]) -> dict[str, str]:
+    """
+    把显式投影翻译为 Emby/Jellyfin 已公开的列表查询控制参数。
+
+    名称、类型、年份等基础字段由服务端默认返回；Fields 只追加当前投影所需的可选字段。
+    音乐完整性匹配需要 ChildCount，即使未请求额外统计也不能删除它。
+
+    :param query: 调用方投影；None 或 fields=None 时不改变旧请求
+    :return: 字段追加、图片信息和用户数据参数；不添加未公开的总量开关
+    """
+    if query is None or query.fields is None:
+        return {}
+    fields = {
+        MediaServerField.LIBRARY: "ParentId",
+        MediaServerField.ORIGINAL_TITLE: "OriginalTitle",
+        MediaServerField.IDENTITY: "ProviderIds",
+        MediaServerField.PATH: "Path",
+        MediaServerField.MUSIC: "ChildCount",
+    }
+    return {
+        "Fields": ",".join(value for field, value in fields.items() if query.includes(field)),
+        "EnableImages": str(query.includes(MediaServerField.IMAGES)).lower(),
+        "EnableUserData": str(query.includes(MediaServerField.USER_STATE)).lower(),
+    }
 
 
 class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
@@ -25,6 +52,8 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
 
     # 媒体库标识（用于 ExistMediaInfo.server_type，如 "emby"），子类覆写
     _server_type_value: str = ""
+    # 仅已实现查询投影的适配器向原生客户端透传新参数。
+    _query_options_supported: bool = False
 
     def user_authenticate(
             self,
@@ -77,10 +106,12 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         return None
 
     def media_exists(
-            self,
-            mediainfo: MediaInfo,
-            itemid: Optional[str] = None,
-            server: Optional[str] = None,
+        self,
+        mediainfo: MediaInfo,
+        itemid: Optional[str] = None,
+        server: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> Optional[_SchemaExistMediaInfo]:
         """
         判断媒体文件是否存在。
@@ -88,8 +119,11 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         :param mediainfo:  识别的媒体信息
         :param itemid:  媒体服务器ItemID
         :param server:  媒体服务器名称
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
+        if not self._query_options_supported:
+            query = None
         servers: Iterable[tuple[Optional[str], Optional[TService]]]
         if server:
             servers = [(server, self.get_instance(server))]
@@ -101,7 +135,8 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
             if mediainfo.type == MediaType.MUSIC:
                 # 部分服务器未实现音乐查询，退化为空列表
                 matches = getattr(s, "get_music", lambda **_: [])(
-                    **MusicMediaServerHelper.search_params(mediainfo)
+                    **MusicMediaServerHelper.search_params(mediainfo),
+                    **({"query": query.with_fields(MediaServerField.MUSIC)} if query is not None else {}),
                 )
                 match = MusicMediaServerHelper.find_match(mediainfo, matches)
                 if match:
@@ -114,47 +149,43 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                 continue
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
-                    movie = s.get_iteminfo(itemid)
+                    movie = s.get_iteminfo(itemid, **({"query": query} if query is not None else {}))
                     if movie:
                         logger.info(f"媒体库 {name} 中找到了 {movie}")
                         return _SchemaExistMediaInfo(
-                            type=MediaType.MOVIE,
-                            server_type=self._server_type_value,
-                            server=name,
-                            itemid=movie.item_id
+                            type=MediaType.MOVIE, server_type=self._server_type_value, server=name, itemid=movie.item_id
                         )
-                movies = s.get_movies(title=mediainfo.title,
-                                      year=mediainfo.year,
-                                      media_source=mediainfo.media_source,
-                                      media_id=mediainfo.media_id)
+                movies = s.get_movies(
+                    title=mediainfo.title,
+                    year=mediainfo.year,
+                    media_source=mediainfo.media_source,
+                    media_id=mediainfo.media_id,
+                    **({"query": query} if query is not None else {}),
+                )
                 if not movies:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
                     continue
                 else:
                     logger.info(f"媒体库 {name} 中找到了 {movies}")
                     return _SchemaExistMediaInfo(
-                        type=MediaType.MOVIE,
-                        server_type=self._server_type_value,
-                        server=name,
-                        itemid=movies[0].item_id
+                        type=MediaType.MOVIE, server_type=self._server_type_value, server=name, itemid=movies[0].item_id
                     )
             else:
-                itemid, tvs = s.get_tv_episodes(title=mediainfo.title,
-                                                year=mediainfo.year,
-                                                media_source=mediainfo.media_source,
-                                                media_id=mediainfo.media_id,
-                                                item_id=itemid)
+                itemid, tvs = s.get_tv_episodes(
+                    title=mediainfo.title,
+                    year=mediainfo.year,
+                    media_source=mediainfo.media_source,
+                    media_id=mediainfo.media_id,
+                    item_id=itemid,
+                    **({"query": query} if query is not None else {}),
+                )
                 if not tvs:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
                     continue
                 else:
                     logger.info(f"{mediainfo.title_year} 在媒体库 {name} 中找到 了这些季集：{tvs}")
                     return _SchemaExistMediaInfo(
-                        type=MediaType.TV,
-                        seasons=tvs,
-                        server_type=self._server_type_value,
-                        server=name,
-                        itemid=itemid
+                        type=MediaType.TV, seasons=tvs, server_type=self._server_type_value, server=name, itemid=itemid
                     )
         return None
 

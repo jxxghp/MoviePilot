@@ -141,7 +141,7 @@
           {"source": "app.modules.discord.discord", "target": "discord", "kind": "network_sdk", "fingerprint": "a46a1d6da767a51eb4e1085de5fb936490fc8360c2f3a814635d408468c1b150"},
           {"source": "app.modules.filemanager.storages.smb", "target": "smbclient", "kind": "network_sdk", "fingerprint": "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47"},
           {"source": "app.modules.filemanager.storages.u115", "target": "oss2", "kind": "network_sdk", "fingerprint": "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae"},
-          {"source": "app.modules.plex.plex", "target": "plexapi", "kind": "network_sdk", "fingerprint": "67d183ca91be3abc02db57ae4853ca95c64c6514fa917e1d0354b02205a6a987"},
+          {"source": "app.modules.plex.plex", "target": "plexapi", "kind": "network_sdk", "fingerprint": "0fe42fa932618997d4f589a5217a36b45f7ac2947212a371bdfbbc55d9cf1def"},
           {"source": "app.modules.qbittorrent.qbittorrent", "target": "qbittorrentapi", "kind": "network_sdk", "fingerprint": "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d"},
           {"source": "app.modules.slack.slack", "target": "slack_bolt", "kind": "network_sdk", "fingerprint": "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6"},
           {"source": "app.modules.slack.slack", "target": "slack_sdk", "kind": "network_sdk", "fingerprint": "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14"},

@@ -7,6 +7,7 @@ from typing import Any, Iterator, Optional
 
 from pydantic import Field
 
+from app.application.mediaserver import MEDIA_SERVER_EXISTENCE_QUERY
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.domain.context import Context as DownloadContext
@@ -81,14 +82,14 @@ class AddDownloadAction(BaseAction):
                 logger.info(f"{torrent_info.title} 已添加过下载，跳过")
                 continue
             if (
-                    not self._recognize_resource(t, title=torrent_info.title, subtitle=torrent_info.description)
-                    or t.meta_info is None
+                not self._recognize_resource(t, title=torrent_info.title, subtitle=torrent_info.description)
+                or t.meta_info is None
             ):
                 continue
             download_context = self._to_domain_context(t)
             download_media_info = download_context.media_info
             if action_params.only_lack and isinstance(download_media_info, DownloadMediaInfo):
-                exists_info = DownloadChain().media_exists(download_media_info)
+                exists_info = DownloadChain().media_exists(download_media_info, query=MEDIA_SERVER_EXISTENCE_QUERY)
                 if exists_info:
                     if download_media_info.type == MediaType.MOVIE:
                         # 电影
@@ -111,14 +112,17 @@ class AddDownloadAction(BaseAction):
                             if exists_episodes and t.meta_info.episode_list:
                                 if set(t.meta_info.episode_list).issubset(exists_episodes):
                                     logger.warning(
-                                        f"{t.meta_info.title} 第 {season_num} 季第 {t.meta_info.episode_list} 集已存在，跳过")
+                                        f"{t.meta_info.title} 第 {season_num} 季第 {t.meta_info.episode_list} 集已存在，跳过"
+                                    )
                                     continue
 
             _started = True
-            did = DownloadChain().download_single(context=download_context,
-                                                  downloader=action_params.downloader,
-                                                  save_path=action_params.save_path,
-                                                  label=action_params.labels)
+            did = DownloadChain().download_single(
+                context=download_context,
+                downloader=action_params.downloader,
+                save_path=action_params.save_path,
+                label=action_params.labels,
+            )
             if did:
                 self._added_downloads.append(did)
                 # 保存缓存

@@ -61,6 +61,7 @@ from app.runtime.extensions.module.manager import ModuleManager
 from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.stop import runtime_stop_state
 from app.schemas.common import JsonData
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.types import MediaType
 from app.startup.composition.database import build_transactional_user_repository
 from app.startup.composition.runtime import RuntimeDependencies
@@ -148,8 +149,13 @@ def configure_wallpaper_services() -> None:
     configure_wallpaper_providers(
         tmdb_wallpaper=lambda: TmdbChain().get_random_wallpager(),
         tmdb_wallpapers=lambda count: TmdbChain().get_trending_wallpapers(count),
-        mediaserver_wallpaper=lambda: MediaServerChain().get_latest_wallpaper(),
-        mediaserver_wallpapers=lambda count: MediaServerChain().get_latest_wallpapers(count=count),
+        mediaserver_wallpaper=lambda: MediaServerChain().get_latest_wallpaper(
+            query=MediaServerQueryOptions(fields={MediaServerField.IMAGES}),
+        ),
+        mediaserver_wallpapers=lambda count: MediaServerChain().get_latest_wallpapers(
+            count=count,
+            query=MediaServerQueryOptions(fields={MediaServerField.IMAGES}),
+        ),
     )
 
 

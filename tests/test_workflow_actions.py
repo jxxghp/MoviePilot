@@ -333,6 +333,7 @@ def test_add_download_only_lack_handles_schema_metainfo(monkeypatch):
     from app.schemas.context import (
         TorrentInfo as SchemaTorrentInfo,
     )
+    from app.schemas.mediaserver import MediaServerField
     from app.schemas.types import MediaType
     from app.workflow.actions.add_download import AddDownloadAction
 
@@ -343,12 +344,13 @@ def test_add_download_only_lack_handles_schema_metainfo(monkeypatch):
         模拟媒体库检查和下载提交，并验证工作流对象已转换为领域类型。
         """
 
-        def media_exists(self, mediainfo):
+        def media_exists(self, mediainfo, *, query):
             """
             返回已存在剧集，并检查传入媒体使用领域类型。
             """
             assert isinstance(mediainfo, DomainMediaInfo)
             assert mediainfo.type is MediaType.TV
+            assert query.fields == {MediaServerField.IDENTITY, MediaServerField.YEAR}
             # 模拟媒体库已存在第 1 季的第 1、2 集
             return SimpleNamespace(seasons={1: [1, 2]})
 

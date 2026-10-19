@@ -14,11 +14,14 @@ from app.application.service import ServiceBaseHelper
 from app.application.storage import StorageHelper
 from app.runtime.extensions.service import ServiceConfigHelper
 from app.runtime.state import SystemHelper
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 
 __all__ = [
     "DownloaderHelper",
     "MediaServerHelper",
     "MediaServerIdentityHelper",
+    "MediaServerField",
+    "MediaServerQueryOptions",
     "MusicMediaServerHelper",
     "NotificationHelper",
     "RuleHelper",

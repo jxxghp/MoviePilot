@@ -13,6 +13,7 @@ from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
 from app.schemas.event import AuthCredentials, AuthInterceptCredentials
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
@@ -162,14 +163,21 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                     return result
         return None
 
-    def media_exists(self, mediainfo: MediaInfo, itemid: Optional[str] = None,
-                     server: Optional[str] = None) -> Optional[_SchemaExistMediaInfo]:
+    def media_exists(
+        self,
+        mediainfo: MediaInfo,
+        itemid: Optional[str] = None,
+        server: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[_SchemaExistMediaInfo]:
         """
         按媒体类型查询首个匹配的入库记录。
 
         :param mediainfo: 识别后的媒体信息，用于名称、年份和来源身份匹配
         :param itemid: 缓存条目标识；电影优先直接查详情，剧集失效后可回退搜索
         :param server: 指定实例名称，省略时依次查询全部实例
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 存在信息，电视剧结果包含季集映射；没有匹配记录时返回 None
         """
         servers: Iterable[tuple[Optional[str], Optional[Plex]]]
@@ -181,7 +189,13 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             if not s:
                 continue
             if mediainfo.type == MediaType.MUSIC:
-                matches = s.get_music(**MusicMediaServerHelper.search_params(mediainfo))
+                search_params = MusicMediaServerHelper.search_params(mediainfo)
+                matches = s.get_music(
+                    title=search_params["title"],
+                    artist=search_params["artist"],
+                    album=search_params["album"],
+                    **({"query": query.with_fields(MediaServerField.MUSIC)} if query is not None else {}),
+                )
                 match = MusicMediaServerHelper.find_match(mediainfo, matches)
                 if match:
                     return _SchemaExistMediaInfo(
@@ -193,49 +207,45 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                 continue
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
-                    movie = s.get_iteminfo(itemid)
+                    movie = s.get_iteminfo(itemid, **({"query": query} if query is not None else {}))
                     if movie:
                         logger.info(f"媒体库 {name} 中找到了 {movie}")
                         return _SchemaExistMediaInfo(
-                            type=MediaType.MOVIE,
-                            server_type="plex",
-                            server=name,
-                            itemid=movie.item_id
+                            type=MediaType.MOVIE, server_type="plex", server=name, itemid=movie.item_id
                         )
-                movies = s.get_movies(title=mediainfo.title,
-                                      original_title=mediainfo.original_title,
-                                      year=mediainfo.year,
-                                      media_source=mediainfo.media_source,
-                                      media_id=mediainfo.media_id)
+                movies = s.get_movies(
+                    title=mediainfo.title,
+                    original_title=mediainfo.original_title,
+                    year=mediainfo.year,
+                    media_source=mediainfo.media_source,
+                    media_id=mediainfo.media_id,
+                    **({"query": query} if query is not None else {}),
+                )
                 if not movies:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
                     continue
                 else:
                     logger.info(f"媒体库 {name} 中找到了 {movies}")
                     return _SchemaExistMediaInfo(
-                        type=MediaType.MOVIE,
-                        server_type="plex",
-                        server=name,
-                        itemid=movies[0].item_id
+                        type=MediaType.MOVIE, server_type="plex", server=name, itemid=movies[0].item_id
                     )
             else:
-                item_id, tvs = s.get_tv_episodes(title=mediainfo.title,
-                                                 original_title=mediainfo.original_title,
-                                                 year=mediainfo.year,
-                                                 media_source=mediainfo.media_source,
-                                                 media_id=mediainfo.media_id,
-                                                 item_id=itemid)
+                item_id, tvs = s.get_tv_episodes(
+                    title=mediainfo.title,
+                    original_title=mediainfo.original_title,
+                    year=mediainfo.year,
+                    media_source=mediainfo.media_source,
+                    media_id=mediainfo.media_id,
+                    item_id=itemid,
+                    **({"query": query} if query is not None else {}),
+                )
                 if not tvs:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
                     continue
                 else:
                     logger.info(f"{mediainfo.title_year} 在媒体库 {name} 中找到了这些季集：{tvs}")
                     return _SchemaExistMediaInfo(
-                        type=MediaType.TV,
-                        seasons=tvs,
-                        server_type="plex",
-                        server=name,
-                        itemid=item_id
+                        type=MediaType.TV, seasons=tvs, server_type="plex", server=name, itemid=item_id
                     )
         return None
 
@@ -263,23 +273,36 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             media_statistics.append(media_statistic)
         return media_statistics
 
-    def mediaserver_librarys(self, server: Optional[str] = None, hidden: Optional[bool] = False,
-                             **kwargs: object) -> Optional[List[_SchemaMediaServerLibrary]]:
+    def mediaserver_librarys(
+        self,
+        server: Optional[str] = None,
+        hidden: Optional[bool] = False,
+        query: Optional[MediaServerQueryOptions] = None,
+        **kwargs: object,
+    ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
         查询可用的电影、剧集和音乐库。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param hidden: 是否隐藏同步范围外的媒体库
         :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一媒体库列表；实例不可用或库目录查询失败时返回 None
         """
         server_obj = self.get_instance(server)
         if server_obj:
-            return server_obj.get_librarys(hidden)
+            return server_obj.get_librarys(hidden, **({"query": query} if query is not None else {}))
         return None
 
-    def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
-                          limit: Optional[int] = -1) -> Optional[Generator[Optional[_SchemaMediaServerItem], None, None]]:
+    def mediaserver_items(
+        self,
+        server: str,
+        library_id: Union[str, int],
+        start_index: Optional[int] = 0,
+        limit: Optional[int] = -1,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
+    ) -> Optional[Generator[Optional[_SchemaMediaServerItem], None, None]]:
         """
         返回媒体库同步条目的生成器。
 
@@ -287,11 +310,14 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param library_id: Plex 媒体库数字标识
         :param start_index: 起始条目索引，空值或负值按 0 处理
         :param limit: 本次最多读取条目数；None 或 -1 表示分页读取剩余全部条目
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一条目生成器；实例不存在时返回 None，迭代中的查询错误向上传播
         """
         server_obj = self.get_instance(server)
         if server_obj:
-            return server_obj.get_items(library_id, start_index, limit)
+            return server_obj.get_items(
+                library_id, start_index, limit, **({"query": query} if query is not None else {})
+            )
         return None
 
     def mediaserver_items_count(self, server: str, library_id: Union[str, int]) -> Optional[int]:
@@ -307,75 +333,89 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             return server_obj.get_items_count(library_id)
         return None
 
-    def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[_SchemaMediaServerItem]:
+    def mediaserver_iteminfo(
+        self, server: str, item_id: str, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[_SchemaMediaServerItem]:
         """
         读取单个 Plex 条目详情。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 统一媒体模型；实例不存在、条目无效或查询失败时返回 None
         """
         server_obj = self.get_instance(server)
         if server_obj:
-            return server_obj.get_iteminfo(item_id)
+            return server_obj.get_iteminfo(item_id, **({"query": query} if query is not None else {}))
         return None
 
-    def mediaserver_tv_episodes(self, server: str,
-                                item_id: Union[str, int]) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
+    def mediaserver_tv_episodes(
+        self, server: str, item_id: Union[str, int], *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
         读取电视剧中各季已存在的分集编号。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 季集列表；实例不存在时返回 None，无可用季集时返回空列表
         """
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
+        _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id, **({"query": query} if query is not None else {}))
         if not seasoninfo:
             return []
-        return [_SchemaMediaServerSeasonInfo(
-            season=season,
-            episodes=episodes
-        ) for season, episodes in seasoninfo.items()]
+        return [
+            _SchemaMediaServerSeasonInfo(season=season, episodes=episodes) for season, episodes in seasoninfo.items()
+        ]
 
-    def mediaserver_playing(self, server: str, count: Optional[int] = 20,
-                            **kwargs: object) -> Optional[List[_SchemaMediaServerPlayItem]]:
+    def mediaserver_playing(
+        self, server: str, count: Optional[int] = 20, query: Optional[MediaServerQueryOptions] = None, **kwargs: object
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询同步范围内的继续观看列表。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param count: 最多返回的条目数量，默认 20
         :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 继续观看条目列表；实例不可用或无法读取媒体库范围时返回 None
         """
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_resume(num=count)
+        return server_obj.get_resume(num=count, **({"query": query} if query is not None else {}))
 
-    def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
-                           **kwargs: object) -> Optional[List[_SchemaMediaServerPlayItem]]:
+    def mediaserver_latest(
+        self,
+        server: Optional[str] = None,
+        count: Optional[int] = 20,
+        query: Optional[MediaServerQueryOptions] = None,
+        **kwargs: object,
+    ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         查询同步范围内最近新增的媒体。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param count: 最多返回的条目数量，默认 20
         :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 最新媒体列表；实例不可用或无法读取媒体库范围时返回 None
         """
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_latest(num=count)
+        return server_obj.get_latest(num=count, **({"query": query} if query is not None else {}))
 
-    def mediaserver_latest_images(self,
-                                  server: Optional[str] = None,
-                                  count: Optional[int] = 20,
-                                  username: Optional[str] = None,
-                                  **kwargs: object
-                                  ) -> List[str]:
+    def mediaserver_latest_images(
+        self,
+        server: Optional[str] = None,
+        count: Optional[int] = 20,
+        username: Optional[str] = None,
+        query: Optional[MediaServerQueryOptions] = None,
+        **kwargs: object,
+    ) -> List[str]:
         """
         为最新电影和电视剧查找可直接访问的外部背景图。
 
@@ -383,20 +423,31 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         :param count: 最多检查的最新媒体数量，默认 20
         :param username: 兼容统一接口的用户名，当前不参与用户筛选
         :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 外部图片 URL 列表；不回退含 Plex 访问令牌的本地图片，无可用图片时返回空列表
         """
+        if query is not None and not query.includes(MediaServerField.IMAGES):
+            return []
         server_obj = self.get_instance(server)
         if not server_obj:
             return []
 
         links = []
-        items = self.mediaserver_latest(server=server, count=count, username=username) or []
+        items = (
+            self.mediaserver_latest(
+                server=server, count=count, username=username, **({"query": query} if query is not None else {})
+            )
+            or []
+        )
         for item in items:
             if item.type not in (MediaType.MOVIE.value, MediaType.TV.value):
                 continue
-            link = server_obj.get_remote_image_by_id(item_id=item.id,
-                                                     image_type="Backdrop",
-                                                     plex_url=False)
+            link = server_obj.get_remote_image_by_id(
+                item_id=item.id,
+                image_type="Backdrop",
+                plex_url=False,
+                **({"query": query} if query is not None else {}),
+            )
             if link:
                 links.append(link)
         return links
@@ -414,17 +465,21 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             return None
         return server_obj.get_play_url(item_id)
 
-    def mediaserver_season_episode_ids(self, server: str, item_id: Union[str, int],
-                                       season: int) -> Optional[Dict[int, str]]:
+    def mediaserver_season_episode_ids(
+        self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None
+    ) -> Optional[Dict[int, str]]:
         """
         读取指定季的集号到条目路径映射。
 
         :param server: 服务器配置名称，空值使用默认实例
         :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
         :param season: 目标季号
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 集号到 Plex 条目路径的映射；实例不存在时返回 None，无分集或查询失败时返回空映射
         """
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_season_episode_ids(str(item_id), season)
+        return server_obj.get_season_episode_ids(
+            str(item_id), season, **({"query": query} if query is not None else {})
+        )

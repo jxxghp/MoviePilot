@@ -12,6 +12,7 @@ from app.api.dependencies.subscription import (
     get_servarr_subscription_service,
 )
 from app.api.response import ERROR_RESPONSES
+from app.application.mediaserver import MEDIA_SERVER_EXISTENCE_QUERY
 from app.application.servarr import ServarrSubscription, ServarrSubscriptionService
 from app.application.subscription.write import (
     SubscriptionBatchWriteError,
@@ -340,9 +341,7 @@ async def arr_movies(
     return result
 
 
-@arr_router.get(
-    "/movie/lookup", summary="查询电影", response_model=List[_SchemaRadarrMovie]
-)
+@arr_router.get("/movie/lookup", summary="查询电影", response_model=List[_SchemaRadarrMovie])
 def arr_movie_lookup(
     term: str,
     _: Annotated[str, Depends(verify_apikey)],
@@ -365,7 +364,7 @@ def arr_movie_lookup(
     if not mediainfo:
         return [RadarrMovie()]
     # 查询是否已存在
-    exists = MediaChain().media_exists(mediainfo=mediainfo)
+    exists = MediaChain().media_exists(mediainfo=mediainfo, query=MEDIA_SERVER_EXISTENCE_QUERY)
     if not exists:
         # 文件不存在
         hasfile = False
@@ -680,8 +679,7 @@ def arr_series_lookup(
             [
                 season
                 for season in tvdbinfo.get("seasons")
-                if season["type"]["id"] == tvdbinfo.get("defaultSeasonType")
-                and season["number"] > 0
+                if season["type"]["id"] == tvdbinfo.get("defaultSeasonType") and season["number"] > 0
             ]
         )
         seas = list(range(1, int(sea_num) + 1)) if sea_num else []
@@ -699,7 +697,7 @@ def arr_series_lookup(
         if not seas and mediainfo.seasons:
             seas = [season for season in mediainfo.seasons if season > 0]
         # 查询是否存在
-        exists = MediaChain().media_exists(mediainfo)
+        exists = MediaChain().media_exists(mediainfo, query=MEDIA_SERVER_EXISTENCE_QUERY)
         if exists:
             hasfile = True
         else:

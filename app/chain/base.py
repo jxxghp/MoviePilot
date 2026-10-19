@@ -23,7 +23,7 @@ from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.context import MediaPerson
 from app.schemas.exception import BusinessRejectedError, RateLimitExceededException
-from app.schemas.mediaserver import ExistMediaInfo, WebhookEventInfo
+from app.schemas.mediaserver import ExistMediaInfo, MediaServerQueryOptions, WebhookEventInfo
 from app.schemas.message import IncomingMessage
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
@@ -1169,6 +1169,8 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         mediainfo: MediaInfo,
         itemid: Optional[str] = None,
         server: Optional[str] = None,
+        *,
+        query: Optional[MediaServerQueryOptions] = None,
     ) -> Optional[ExistMediaInfo]:
         """
         判断媒体文件是否存在
@@ -1176,9 +1178,16 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param mediainfo:  识别的媒体信息
         :param itemid:  媒体服务器ItemID
         :param server:  媒体服务器
+        :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
-        return self.run_module("media_exists", mediainfo=mediainfo, itemid=itemid, server=server)
+        return self.run_module(
+            "media_exists",
+            mediainfo=mediainfo,
+            itemid=itemid,
+            server=server,
+            **({"query": query} if query is not None else {}),
+        )
 
     def media_files(self, mediainfo: MediaInfo) -> Optional[List[FileItem]]:
         """

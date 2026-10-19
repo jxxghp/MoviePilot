@@ -385,7 +385,6 @@
   },
   "app/chain/mediaserver.py": {
     "arg-type": 3,
-    "assignment": 2,
     "misc": 2,
     "no-any-return": 5,
     "type-arg": 1
