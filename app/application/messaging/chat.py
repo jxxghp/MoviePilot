@@ -15,6 +15,7 @@ from app.application.database import (
 )
 from app.application.messaging.recall import RecallService
 from app.runtime.observability import record_metric
+from app.runtime.priority import INTERACTIVE_DATABASE_CAPACITY, is_interactive
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
 from app.schemas.exception import AgentChatPersistenceUnavailableError
 
@@ -523,6 +524,7 @@ class AgentChatPersistenceService:
         self._capacity = capacity
         self._session_capacity = session_capacity
         self._pending_writes = 0
+        self._pending_interactive_writes = 0
         self._pending_by_session: dict[str, int] = {}
         self._active_tasks: set[asyncio.Task[object]] = set()
         self._closing = False
@@ -561,16 +563,21 @@ class AgentChatPersistenceService:
                 "AgentChat 持久化服务当前不可接收任务"
             )
         session_pending = self._pending_by_session.get(session_id, 0)
+        interactive = is_interactive()
+        pending = self._pending_interactive_writes if interactive else self._pending_writes - self._pending_interactive_writes
+        capacity = INTERACTIVE_DATABASE_CAPACITY if interactive else self._capacity
         if (
-            self._pending_writes >= self._capacity
+            pending >= capacity
             or session_pending >= self._session_capacity
         ):
             record_metric("agent.chat.persistence.rejected")
             raise AgentChatPersistenceUnavailableError(
-                f"AgentChat 写入容量已用尽（全局上限 {self._capacity}，"
+                f"AgentChat 写入容量已用尽（当前执行组上限 {capacity}，"
                 f"单会话上限 {self._session_capacity}）"
             )
         self._pending_writes += 1
+        if interactive:
+            self._pending_interactive_writes += 1
         self._pending_by_session[session_id] = session_pending + 1
         current = asyncio.current_task()
         if current is not None:
@@ -589,6 +596,8 @@ class AgentChatPersistenceService:
                 await self._async_executor.run(execute)
         finally:
             self._pending_writes -= 1
+            if interactive:
+                self._pending_interactive_writes -= 1
             remaining = self._pending_by_session.get(session_id, 1) - 1
             if remaining:
                 self._pending_by_session[session_id] = remaining

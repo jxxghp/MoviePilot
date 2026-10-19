@@ -3,12 +3,14 @@
 """
 
 import threading
+import time
 from concurrent.futures import Future
 from contextvars import copy_context
 from typing import Any, Callable, TypeVar, cast
 
 from app.foundation.singleton import Singleton
 from app.runtime.execution import OwnedThreadPoolExecutor
+from app.runtime.priority import INTERACTIVE_THREAD_WORKERS, is_interactive
 from app.runtime.settings import get_runtime_setting
 
 _Result = TypeVar("_Result")
@@ -29,6 +31,7 @@ class ThreadHelper(metaclass=Singleton):
         """
         self._lifecycle_lock = threading.RLock()
         self.pool = self._new_pool()
+        self._interactive_pool = OwnedThreadPoolExecutor(max_workers=INTERACTIVE_THREAD_WORKERS)
 
     @staticmethod
     def _new_pool() -> OwnedThreadPoolExecutor:
@@ -58,7 +61,9 @@ class ThreadHelper(metaclass=Singleton):
             # mypy 严格检查跳过 execution 实现导入，需要在兼容门面恢复 Future 泛型。
             return cast(
                 Future[_Result],
-                self.pool.submit(context.run, func, *args, **kwargs),
+                (self._interactive_pool if is_interactive() else self.pool).submit(
+                    context.run, func, *args, **kwargs
+                ),
             )
 
     def reopen(self) -> bool:
@@ -69,11 +74,14 @@ class ThreadHelper(metaclass=Singleton):
         同时保留两组 worker。
         """
         with self._lifecycle_lock:
-            if self.pool.accepting:
+            if self.pool.accepting and self._interactive_pool.accepting:
                 return True
-            if not self.pool.shutdown_bounded(timeout=0.0):
+            normal_stopped = self.pool.shutdown_bounded(timeout=0.0)
+            interactive_stopped = self._interactive_pool.shutdown_bounded(timeout=0.0)
+            if not normal_stopped or not interactive_stopped:
                 return False
             self.pool = self._new_pool()
+            self._interactive_pool = OwnedThreadPoolExecutor(max_workers=INTERACTIVE_THREAD_WORKERS)
             return True
 
     def shutdown(
@@ -87,4 +95,10 @@ class ThreadHelper(metaclass=Singleton):
         :return: 全部任务和 worker 均已终止时返回 True，否则返回 False
         """
         with self._lifecycle_lock:
-            return bool(self.pool.shutdown_bounded(timeout=timeout))
+            deadline = time.monotonic() + max(0.0, timeout)
+            # 两组执行器先共同封口，再在同一个预算内等待，超时仍保留原 owner。
+            self.pool.shutdown_bounded(timeout=0.0)
+            self._interactive_pool.shutdown_bounded(timeout=0.0)
+            normal_stopped = self.pool.shutdown_bounded(timeout=max(0.0, deadline - time.monotonic()))
+            interactive_stopped = self._interactive_pool.shutdown_bounded(timeout=max(0.0, deadline - time.monotonic()))
+            return bool(normal_stopped and interactive_stopped)

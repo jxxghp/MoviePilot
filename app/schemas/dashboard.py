@@ -82,6 +82,7 @@ class ScheduleProgress(BaseModel):
     name_i18n: Optional[str] = Field(default=None, description="多语言名称")
     provider: Optional[str] = Field(default=None, description="提供者")
     provider_i18n: Optional[str] = Field(default=None, description="多语言提供者")
+    execution_group: str = Field(default="default", description="调度执行组：agent为自主Agent独立线程池，default为普通后台任务；交互轮次使用另外保留的容量")
     enable: Optional[bool] = Field(default=False, description="是否正在执行")
     value: Optional[float] = Field(default=0.0, description="当前完成百分比")
     text: Optional[str] = Field(default=None, description="当前进度文本")

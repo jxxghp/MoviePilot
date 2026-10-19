@@ -16,6 +16,7 @@ from typing import Any, Awaitable, Callable, ParamSpec, TypeVar, cast
 from anyio.to_thread import run_sync
 
 from app.runtime.gc import flush_thread_allocator_cache
+from app.runtime.priority import background_thread_limiter, interactive_thread_limiter, is_interactive
 from app.schemas.exception import ImmediateException
 
 TaskResult = TypeVar("TaskResult")
@@ -234,9 +235,13 @@ async def run_in_threadpool(
     context = copy_context()
 
     def invoke() -> _Result:
+        """
+        在线程内恢复提交方上下文，确保嵌套调用沿用执行归属。
+        """
         return context.run(func, *args)
 
-    result: _Result = await run_sync(invoke)
+    limiter = interactive_thread_limiter() if is_interactive() else background_thread_limiter()
+    result: _Result = await run_sync(invoke, limiter=limiter)
     return result
 
 

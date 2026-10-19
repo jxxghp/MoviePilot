@@ -158,6 +158,9 @@ upload/domain failures to HTTP responses, and frames Application events as SSE.
 | `app/runtime/resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
 | `app/runtime/tasks.py` | Lifespan-scoped ownership, cancellation and bounded shutdown waiting for in-process background tasks |
 | `app/runtime/execution.py` | Shared sync/async execution and cross-thread submission boundary with correlation propagation |
+| `app/runtime/priority.py` | 交互执行作用域、有限后台避让及每个事件循环共享的交互 anyio 配额；仅传播临时执行归属，不替代身份鉴权 |
+| `app/adapters/web/priority.py` | 从本进程登记的存活临时凭据恢复本机 Agent API 执行归属 |
+| `app/scheduler/admission.py` | 关键任务豁免、协程和同步调度入口的有限避让；保留原 generation 和句柄 owner |
 | `app/runtime/correlation.py` | Request/cross-thread correlation context and safe propagation into logs and child work |
 | `app/runtime/state.py` | Process restart and update state |
 | `app/runtime/dependencies/` | Runtime dependency profile selection in `profile.py` and loaded native payload activation detection in `native.py`; the package root contains no implementation or host re-exports |

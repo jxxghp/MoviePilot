@@ -102,6 +102,7 @@ from app.runtime.events import eventmanager
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.observability import record_metric
+from app.runtime.priority import interactive_execution
 from app.runtime.settings import get_runtime_setting
 from app.schemas.event import AgentLLMProviderEventData, AgentTokensUsageEventData
 from app.schemas.message import Message
@@ -1643,6 +1644,8 @@ class MoviePilotAgent:
         将 Agent 执行异常转换为用户可读消息。
         回复只携带主错误信息，完整 traceback 保留在日志中排查。
         """
+        if isinstance(error, TimeoutError):
+            return "本次请求执行超时，请稍后重试。已开始的后台操作可能仍在收尾，请先确认状态，避免重复执行。"
         message = cls._primary_exception_message(error)
         if not message:
             return AGENT_EXECUTION_ERROR_MESSAGE
@@ -2211,7 +2214,9 @@ class MoviePilotAgent:
             self._scheduled_terminal_scopes.add(scope)
         steering_token = bind_steering_inbox(self._steering_inbox)
         try:
-            with bind_terminal_scope(scope):
+            with bind_terminal_scope(scope), interactive_execution(
+                enabled=not self.is_background and scope.kind != "scheduled"
+            ):
                 return await self._process(
                     message, images=images, files=files, has_audio_input=has_audio_input
                 )

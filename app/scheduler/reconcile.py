@@ -163,6 +163,7 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
                 trigger=trigger,
                 id=job_id,
                 name=task.name,
+                executor="agent",
                 kwargs={"job_id": job_id, "task_id": task_id},
                 coalesce=True,
                 max_instances=1,

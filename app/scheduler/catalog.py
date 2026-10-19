@@ -87,6 +87,10 @@ def _wallpaper_job_specs(
 
 
 # APScheduler 未提供类型注解，基类在 mypy 中是 Any
+# 自主 Agent 任务只需独立的有限触发容量；协程执行仍由原主循环和句柄 owner 托管。
+_AGENT_SCHEDULER_WORKERS = 2
+
+
 class _SchedulerThreadPoolExecutor(BasePoolExecutor):  # type: ignore[misc]
     """
     APScheduler 线程池执行器：定时任务线程按需增长、不收缩，空闲时交还各自的分配器线程缓存。
@@ -269,7 +273,11 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
 
         self._scheduler = BackgroundScheduler(
             timezone=config.timezone,
-            executors={"default": _SchedulerThreadPoolExecutor(config.scheduler_workers)},
+            executors={
+                "default": _SchedulerThreadPoolExecutor(config.scheduler_workers),
+                "agent": _SchedulerThreadPoolExecutor(_AGENT_SCHEDULER_WORKERS),
+            },
+            job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": None},
         )
 
         self._register_database_backup_job(config)
@@ -527,6 +535,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
                 self.start,
                 "interval",
                 id="agent_heartbeat",
+                executor="agent",
                 name="智能体定时任务",
                 hours=config.ai_agent_job_interval,
                 kwargs={"job_id": "agent_heartbeat"},
