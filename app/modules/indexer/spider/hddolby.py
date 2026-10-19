@@ -95,11 +95,16 @@ class HddolbySpider:
     def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
                      cat: Optional[str] = None) -> dict[str, object]:
         """
-        获取请求参数。
+        构造请求参数，显式站点分类优先于媒体类型预置分类。
+
+        :param keyword: 搜索关键词
+        :param mtype: 未指定站点分类时使用的媒体类型
+        :param page: 从 0 开始的搜索页码
+        :param cat: 逗号分隔的站点分类 ID，未指定时沿用媒体类型筛选
+        :return: HDDolby 搜索请求体
         """
         if cat:
-            # 站点资源页显式选择的分类优先，避免 Movie/TV 预置分类互相覆盖。
-            categories = [int(cat)]
+            categories = [int(category) for category in cat.split(",")]
         elif mtype == MediaType.TV:
             categories = self._tv_category
         elif mtype == MediaType.MOVIE:
@@ -212,6 +217,7 @@ class HddolbySpider:
         :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
         :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
         :param page: 从 0 开始的搜索页码
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型
         :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
 
@@ -238,6 +244,7 @@ class HddolbySpider:
         :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
         :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
         :param page: 从 0 开始的搜索页码
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型
         :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
         params = self.__get_params(keyword, mtype, page, cat)

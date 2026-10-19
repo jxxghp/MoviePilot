@@ -124,10 +124,16 @@ class MTorrentSpider:
     def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
                      cat: Optional[str] = None) -> dict[str, object]:
         """
-        获取请求参数。
+        构造请求参数，显式站点分类优先于媒体类型预置分类。
+
+        :param keyword: 搜索关键词，IMDb 标识会转换为完整链接
+        :param mtype: 未指定站点分类时使用的媒体类型
+        :param page: 从 0 开始的页码，提交到站点时转换为从 1 开始
+        :param cat: 逗号分隔的站点分类 ID，未指定时沿用媒体类型筛选
+        :return: M-Team 搜索请求体
         """
         if cat:
-            categories = [str(cat)]
+            categories = [category.strip() for category in cat.split(",")]
         elif not mtype:
             categories = []
         elif mtype == MediaType.TV:
@@ -237,6 +243,7 @@ class MTorrentSpider:
         :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
         :param page: 从 0 开始的搜索页码
         :param search_type: 资源类型；subtitles 表示字幕，其余值搜索种子
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型，仅对种子搜索生效
         :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
         if search_type == "subtitles":
@@ -267,6 +274,7 @@ class MTorrentSpider:
         :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
         :param page: 从 0 开始的搜索页码
         :param search_type: 资源类型；subtitles 表示字幕，其余值搜索种子
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型，仅对种子搜索生效
         :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
         if search_type == "subtitles":

@@ -80,7 +80,7 @@ def _install_search_observers(monkeypatch, events: list[tuple]) -> None:
         ),
         (
             "mTorrent",
-            {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "page": 3},
+            {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "cat": "movie", "page": 3},
         ),
         (
             "SunnyPT",
@@ -93,7 +93,7 @@ def _install_search_observers(monkeypatch, events: list[tuple]) -> None:
         ),
         (
             "Yema",
-            {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "page": 3},
+            {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "cat": "movie", "page": 3},
         ),
         (
             "Milkie",
@@ -105,7 +105,7 @@ def _install_search_observers(monkeypatch, events: list[tuple]) -> None:
         ),
         (
             "HDDolby",
-            {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "page": 3},
+            {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "cat": "movie", "page": 3},
         ),
         (
             "RousiPro",
@@ -136,6 +136,9 @@ def test_torrent_search_uses_identical_parser_selection_and_arguments(
         """
 
         def __init__(self, site):
+            """
+            保存待验证的站点配置。
+            """
             self.site = site
 
         def search(self, **kwargs):

@@ -229,13 +229,18 @@ class YemaSpider:
     ) -> Optional[List[dict[str, Any]]]:
         """
         统一执行认证准入并生成各分类的搜索请求体。
+
+        :param keyword: 搜索关键词
+        :param mtype: 未指定站点分类时使用的媒体类型
+        :param page: 从 0 开始的搜索页码
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型并逐分类查询
+        :return: 各分类的请求体；缺少认证信息时返回 None
         """
         if not self._api_key:
             logger.warning(f"{self._name} 未配置 API AuthKey")
             return None
         if cat:
-            # 站点资源页显式选择的分类优先，避免按媒体类型猜分类。
-            category_ids: List[Optional[int]] = [int(cat)]
+            category_ids: List[Optional[int]] = [int(category) for category in cat.split(",")]
         else:
             category_ids = self._search_category_ids(mtype)
         return [
@@ -272,7 +277,7 @@ class YemaSpider:
         :param keyword: 搜索关键字
         :param mtype: MoviePilot 媒体类型，指定后按真实站点分类分别查询
         :param page: MoviePilot 从 0 开始的页码
-        :param cat: 站点资源页显式选择的站点分类 ID
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型并逐分类查询
         :return: 是否失败及标准种子列表
         """
         payloads = self._prepare_search_requests(
@@ -310,7 +315,7 @@ class YemaSpider:
         :param keyword: 搜索关键字
         :param mtype: MoviePilot 媒体类型，指定后按真实站点分类分别查询
         :param page: MoviePilot 从 0 开始的页码
-        :param cat: 站点资源页显式选择的站点分类 ID
+        :param cat: 逗号分隔的站点分类 ID，优先于媒体类型并逐分类查询
         :return: 是否失败及标准种子列表
         """
         payloads = self._prepare_search_requests(
