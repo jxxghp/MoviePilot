@@ -975,8 +975,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9640,
-  "edge_sha256": "e282d6307ea8c6f0cd2843f5c2faae04995bc2630c945e408d1dd490e337fcfe",
+  "edge_count": 9642,
+  "edge_sha256": "bace4b8791f142f8d9fdc9e12f532c562d7eec5bed42adb2d07bdb9c8ec8251a",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7323,6 +7323,8 @@
     "app.modules.feishu.feishu -> app.application.security.user",
     "app.modules.feishu.feishu -> app.domain",
     "app.modules.feishu.feishu -> app.domain.context",
+    "app.modules.feishu.feishu -> app.foundation",
+    "app.modules.feishu.feishu -> app.foundation.size",
     "app.modules.feishu.feishu -> app.modules",
     "app.modules.feishu.feishu -> app.modules.feishu",
     "app.modules.feishu.feishu -> app.modules.feishu.openapi",

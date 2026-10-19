@@ -19,6 +19,7 @@ from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.ingress import submit_message_to_host
 from app.application.security.user import get_configured_user_channel_lookup
 from app.domain.context import Context, MediaInfo
+from app.foundation import size as size_tools
 from app.modules.feishu.openapi import FEISHU_DOMAIN, FeishuOpenApi, FeishuResponse, JsonDict
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -2071,6 +2072,8 @@ class Feishu:
         """
         将前 10 个种子候选项渲染为通知卡片。
 
+        每项显示站点、标题、大小和做种数；缺失或为零的详情不展示，保留输入顺序与选择序号。
+
         :param message: 原通知标题、按钮、链接和目标
         :param torrents: 含种子信息的候选上下文
         :param userid: 显式用户标识；未提供用户和会话时回退到默认配置或已互动会话
@@ -2082,7 +2085,16 @@ class Feishu:
         for index, torrent in enumerate(torrents[:10], start=1):
             torrent_info = getattr(torrent, "torrent_info", None)
             title = getattr(torrent_info, "title", None) or getattr(torrent_info, "site_name", None) or "未知种子"
-            lines.append(f"{index}. {title}")
+            site_name = getattr(torrent_info, "site_name", None)
+            size = getattr(torrent_info, "size", None)
+            seeders = getattr(torrent_info, "seeders", None)
+            site_prefix = f"【{site_name}】" if site_name else " "
+            details = [f"{index}.{site_prefix}{title}"]
+            if size:
+                details.append(size_tools.format_compact_size(size))
+            if seeders:
+                details.append(f"{seeders}↑")
+            lines.append(" ".join(details))
         proxy_message = Message(
             title=message.title,
             text="\n".join(lines),
