@@ -346,11 +346,15 @@ class Transmission:
         将选定文件设为需要下载。
 
         :param tid: 种子哈希
-        :param file_ids: 种子内部的文件索引列表
-        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
+        :param file_ids: 种子内部的文件索引列表；空列表不修改任何文件
+        :return: 已连接且无需修改或请求完成时返回 True；未连接或请求失败时返回 False，
+            不代表任务已完成该动作
         """
         if not self.trc:
             return False
+        # Transmission 把空数组解释为全部文件，空选择不能直接传入 RPC
+        if not file_ids:
+            return True
         try:
             self.trc.change_torrent(ids=tid, files_wanted=file_ids)
             return True
@@ -363,11 +367,15 @@ class Transmission:
         将选定文件设为不下载。
 
         :param tid: 种子哈希
-        :param file_ids: 种子内部的文件索引列表
-        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
+        :param file_ids: 种子内部的文件索引列表；空列表不修改任何文件
+        :return: 已连接且无需修改或请求完成时返回 True；未连接或请求失败时返回 False，
+            不代表任务已完成该动作
         """
         if not self.trc:
             return False
+        # 空的不下载列表表示无需排除文件，不能触发 RPC 的全部文件语义
+        if not file_ids:
+            return True
         try:
             self.trc.change_torrent(ids=tid, files_unwanted=file_ids)
             return True

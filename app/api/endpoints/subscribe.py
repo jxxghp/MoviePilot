@@ -664,7 +664,8 @@ async def popular_subscribes(
             media.title = title
             raw_year = sub.get("year")
             if isinstance(raw_year, (int, float, str)) and str(raw_year).strip():
-                media.year = int(raw_year)
+                # 共享数据可能使用数值年份，公开响应仍遵循字符串年份契约
+                media.year = str(int(float(raw_year)))
             if season is not None:
                 media.season = season
             raw_description = sub.get("description")

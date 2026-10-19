@@ -82,3 +82,34 @@ def test_explicit_speed_limits_preserve_integer_conversion(download_limit, uploa
         speed_limit_down_enabled=bool(download_limit),
         speed_limit_up_enabled=bool(upload_limit),
     )
+
+
+@pytest.mark.parametrize("method,field", [
+    ("set_files", "files_wanted"), ("set_unwanted_files", "files_unwanted"),
+])
+@pytest.mark.parametrize("file_ids", [[], [0], [0, 2]])
+def test_file_selection_never_sends_empty_rpc_arrays(method, field, file_ids) -> None:
+    """
+    空选择不得发送代表全部文件的 RPC 数组，非空索引应原样转发。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+
+    assert getattr(client, method)("hash", file_ids) is True
+
+    if file_ids:
+        client.trc.change_torrent.assert_called_once_with(ids="hash", **{field: file_ids})
+    else:
+        client.trc.change_torrent.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["set_files", "set_unwanted_files"])
+@pytest.mark.parametrize("file_ids", [[], [0]])
+def test_file_selection_without_connection_keeps_failure(method, file_ids) -> None:
+    """
+    未连接时仍返回失败，空选择不能掩盖客户端不可用状态。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = None
+
+    assert getattr(client, method)("hash", file_ids) is False

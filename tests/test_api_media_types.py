@@ -7,6 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from app.api.endpoints import douban, media, mediaserver, subscribe, tmdb, transfer
 from app.schemas.file import FileItem
@@ -116,7 +118,9 @@ def test_popular_subscriptions_normalize_record_type(monkeypatch, type_name, exp
 
 
 def test_popular_subscriptions_preserves_optional_fields_and_filters_invalid_records(monkeypatch) -> None:
-    """热门订阅应转换可选字段，并跳过类型或人数无效的记录。"""
+    """
+    热门订阅应转换可选字段，并跳过类型或人数无效的记录。
+    """
     statistic = AsyncMock(return_value=[
         {
             "name": "测试媒体",
@@ -144,9 +148,36 @@ def test_popular_subscriptions_preserves_optional_fields_and_filters_invalid_rec
     assert result[0]["type"] == MediaType.TV.value
     assert result[0]["media_id"] == "123"
     assert result[0]["season"] == 2
-    assert result[0]["year"] == 2024
+    assert result[0]["year"] == "2024"
     assert result[0]["vote_average"] == 8.5
     assert result[1]["type"] == MediaType.MOVIE.value
+
+
+@pytest.mark.parametrize("year,expected", [
+    ("2023", "2023"), (2023, "2023"), (2023.0, "2023"),
+    ("2023.0", "2023"), (" 2023 ", "2023"), (None, None), ("", None), (" ", None),
+])
+def test_popular_subscriptions_validates_year_in_http_response(monkeypatch, year, expected) -> None:
+    """
+    真实响应路由应把共享年份输出为字符串或空值，避免响应校验导致 500。
+    """
+    statistic = AsyncMock(return_value=[{
+        "name": "测试媒体", "type": "movie", "count": 1, "year": year,
+    }])
+    monkeypatch.setattr(
+        subscribe.MoviePilotServerHelper, "async_get_subscribe_statistic", statistic,
+    )
+    app = FastAPI()
+    app.dependency_overrides[subscribe.verify_token] = lambda: None
+    app.include_router(subscribe.router, prefix="/api/v1/subscribe")
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/subscribe/popular", params={"stype": "电影", "count": 5})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"][0]["year"] == expected
 
 
 def test_share_subscribe_rejects_incomplete_payload() -> None:

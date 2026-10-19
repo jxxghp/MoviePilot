@@ -292,7 +292,6 @@
   },
   "app/api/endpoints/subscribe.py": {
     "arg-type": 5,
-    "assignment": 1,
     "no-any-return": 1,
     "no-untyped-def": 1,
     "type-arg": 2

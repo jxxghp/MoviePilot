@@ -14,6 +14,7 @@ from app.chain.download.facade import DownloadChain
 from app.domain.context import Context
 from app.modules.qbittorrent import QbittorrentModule
 from app.modules.transmission import TransmissionModule
+from app.modules.transmission.transmission import Transmission
 
 _CUSTOM_WORDS = (
     "A.Will.Eternal.S04 => 一念永恒{[tmdbid=107371;type=tv]}S01 "
@@ -110,6 +111,58 @@ def test_subscription_mapping_reaches_real_downloader_selection(downloader):
     server.start_torrents.assert_called_once_with(torrent_hash)
     chain._settle_accepted_download.assert_called_once()
     chain._record_rejected_download.assert_not_called()
+
+
+@pytest.mark.parametrize("file_count", [1, 2])
+def test_transmission_all_files_wanted_starts_without_unwanted_rpc(downloader, file_count) -> None:
+    """
+    单集和多集文件全部命中时，经真实客户端封装仅发送需要下载的索引后启动。
+    """
+    module, server, content, torrent_hash = downloader
+    if not isinstance(module, TransmissionModule):
+        pytest.skip("Transmission 空文件数组的 RPC 语义")
+    list_files = server.get_files.side_effect
+    server.get_files.side_effect = lambda *args: list_files(*args)[:file_count]
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    server.set_files = Mock(wraps=client.set_files)
+    server.set_unwanted_files = Mock(wraps=client.set_unwanted_files)
+
+    def start_selected_task(_torrent_hash) -> bool:
+        """
+        启动之前确认所有目标文件已选中，且未发送覆盖全部文件的不下载请求。
+        """
+        client.trc.change_torrent.assert_called_once_with(
+            ids=torrent_hash, files_wanted=list(range(file_count)),
+        )
+        return True
+
+    server.start_torrents.side_effect = start_selected_task
+    result = module.download(
+        content, Path("/downloads"), "", episodes=set(range(170, 170 + file_count)),
+        custom_words=_CUSTOM_WORDS,
+    )
+
+    assert result[1] == torrent_hash
+    client.trc.change_torrent.assert_called_once_with(ids=torrent_hash, files_wanted=list(range(file_count)))
+    server.start_torrents.assert_called_once_with(torrent_hash)
+
+
+def test_transmission_empty_episode_selection_never_starts_task() -> None:
+    """
+    选集入口没有目标集数时应保留暂停状态，不把空数组转换为全部文件。
+    """
+    server = Mock()
+    server.stop_torrents.return_value = True
+    server.get_files.return_value = [SimpleNamespace(id=0, name="Show.S01E01.mkv")]
+
+    selected, message = TransmissionModule._select_download_files(server, "hash", set(), None)
+
+    assert selected is False
+    assert "保持暂停" in message
+    server.set_files.assert_not_called()
+    server.set_unwanted_files.assert_not_called()
+    server.start_torrents.assert_not_called()
 
 
 @pytest.mark.parametrize("failure", ["unmatched", "missing_files", "priority", "start"])

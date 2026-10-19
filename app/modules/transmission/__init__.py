@@ -254,6 +254,12 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
     ) -> Tuple[bool, str]:
         """
         先确认任务暂停再按来源集数映射选集，兼容 RPC 返回正在运行的重复任务。
+
+        :param server: 已配置的 Transmission 客户端
+        :param torrent_hash: 需要暂停、选集并恢复的任务哈希
+        :param episodes: 需要完整匹配的目标集数；空集合不启动任务
+        :param custom_words: 来源识别词，按行参与物理文件名识别
+        :return: 是否确认选集及启动成功，以及失败时的下载器核查说明
         """
         if not server.stop_torrents(torrent_hash):
             return False, f"选集失败，任务 {torrent_hash} 无法确认暂停，未执行选集，请在下载器核实"
@@ -275,7 +281,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                     unwanted.append(item.id)
         finally:
             torrent_files.clear()
-        if not set(episodes).issubset(matched):
+        if not wanted or not set(episodes).issubset(matched):
             return False, f"{failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
         if not server.set_files(torrent_hash, wanted) or not server.set_unwanted_files(torrent_hash, unwanted):
             return False, f"{failure}：文件选择设置未确认"
