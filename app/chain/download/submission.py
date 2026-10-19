@@ -622,7 +622,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     and item.dest_storage == "local"):
                 continue
             # 同一曲目可能有多条整理记录，任一目标仍在媒体库即视为已交付。
-            key = (item.src_storage or "local", item.src)
+            key = (item.src_storage or "local", str(item.src or ""))
             delivered[key] = delivered.get(key, False) or Path(item.dest).is_file()
         return delivered
 
