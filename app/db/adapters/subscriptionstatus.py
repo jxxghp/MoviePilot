@@ -8,14 +8,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.subscription.execution import SearchBatchSnapshot, SearchTaskSnapshot
+from app.db.models.subscribeactivity import SubscribeActivity
 from app.db.models.subscriptionsearch import SubscriptionSearchBatch, SubscriptionSearchTask
 
 
-def _task(record: SubscriptionSearchTask) -> SearchTaskSnapshot:
+def _task(record: SubscriptionSearchTask, activity: Optional[SubscribeActivity] = None) -> SearchTaskSnapshot:
     """
     复制可脱离 AsyncSession 使用的搜索任务快照。
     """
     return SearchTaskSnapshot(
+        download_counts={key: value for key, value in (activity.counts if activity else {}).items()
+                         if key in {"submitted", "initial_submitted", "upgrade_submitted", "full_upgrade_submitted"}
+                         and isinstance(value, int)},
+        downloads=tuple({**resource, "subscription_id": record.subscription_id, "task_id": record.task_id}
+                        for resource in (activity.details.get("resources", []) if activity else [])
+                        if isinstance(resource, dict) and resource.get("decision") == "submitted"),
         task_id=record.task_id,
         batch_id=record.batch_id,
         subscription_id=record.subscription_id,
@@ -123,8 +130,9 @@ class SessionSubscriptionExecutionStatusRepository:
         按持久位置返回批次任务，供访问校验和当前阶段投影。
         """
         result = await self._session.execute(
-            select(SubscriptionSearchTask)
+            select(SubscriptionSearchTask, SubscribeActivity)
+            .outerjoin(SubscribeActivity, SubscribeActivity.event_id == SubscriptionSearchTask.task_id)
             .where(SubscriptionSearchTask.batch_id == batch_id)
             .order_by(SubscriptionSearchTask.position, SubscriptionSearchTask.id)
         )
-        return [_task(record) for record in result.scalars().all()]
+        return [_task(record, activity) for record, activity in result.all()]

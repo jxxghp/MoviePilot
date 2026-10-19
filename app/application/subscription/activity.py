@@ -211,7 +211,8 @@ class SubscriptionActivityRun:
         self.started_at = activity_time()
         self.status = "running"
         self.finished_at: str | None = None
-        self.counts: dict[str, int] = {"sites": 0, "requested_sites": 0, "discovered": 0, "related": 0, "qualified": 0, "submitted": 0}
+        self.counts: dict[str, int] = {"sites": 0, "requested_sites": 0, "discovered": 0, "related": 0, "qualified": 0, "submitted": 0,
+                                       "initial_submitted": 0, "upgrade_submitted": 0, "full_upgrade_submitted": 0}
         self.details: dict[str, JsonData] = {
             "rules": {key: subscribe.to_dict().get(key) for key in RULE_FIELDS},
             "resources": [], "sites": [],
@@ -247,6 +248,12 @@ class SubscriptionActivityRun:
             if decision == "submitted" and key not in self._submitted:
                 self._submitted.add(key)
                 self.counts["submitted"] += 1
+                submission = getattr(context, "subscription_download", None) or {}
+                submission_type = submission.get("submission_type")
+                if submission_type in {"initial", "upgrade"}:
+                    self.counts[f"{submission_type}_submitted"] += 1
+                    if submission_type == "upgrade" and submission.get("best_version_full"):
+                        self.counts["full_upgrade_submitted"] += 1
                 self._failed.discard(key)
             if decision == "failed" and key not in self._submitted:
                 self._failed.add(key)
@@ -259,6 +266,9 @@ class SubscriptionActivityRun:
                 self._resources[key] = {
                     "resource_id": key, "title": title, "site": str(getattr(torrent, "site_name", "") or ""),
                     "decision": decision, "reason": reason,
+                    "subscription_download": copy.deepcopy(getattr(context, "subscription_download", None)
+                                                           or (previous or {}).get("subscription_download"))
+                    if decision == "submitted" else None,
                 }
             resources: list[dict[str, JsonData]] = sorted(
                 self._resources.values(),

@@ -441,3 +441,47 @@ def test_subscription_download_ledger_removal_migration_is_reversible(
         assert connection.execute(sa.text(
             "SELECT COUNT(*) FROM subscriptiondownloadsubmission"
         )).scalar_one() == 0
+
+
+@pytest.mark.parametrize("selected, expected", [({1}, "upgrade"), ({2}, "initial")])
+def test_final_selection_reaches_downloader_and_history_with_same_source(selected, expected):
+    """
+    经真实下载入口与插件事件后，来源依据最终选集冻结，并在调用下载器前就可见。
+    """
+    from app.application.subscription.priority import annotate_subscription_download
+
+    context = _context()
+    context.meta_info = MetaInfo("Demo Show S01E01-E02")
+    subscribe = SubscriptionSnapshot(id=17, name="Demo", type="电视剧", total_episode=2,
+                                     best_version=1, episode_priority={"1": 50})
+    chain = _download_chain()
+
+    def accept(**_kwargs):
+        """
+        在下载器副作用边界读取来源，确认标记并非成功后补造。
+        """
+        assert context.subscription_download["submission_type"] == expected
+        assert context.selected_episodes == sorted(selected)
+        return "qb", "hash", "Original", None
+
+    chain.download = MagicMock(side_effect=accept)
+    governance = SubscriptionDownloadGovernance(
+        prepare_submission=lambda item: annotate_subscription_download(subscribe, item),
+    )
+    assert chain.download_single(context=context, torrent_content=b"torrent", episodes=selected,
+                                  save_path="/downloads", governance=governance) == "hash"
+    saved = chain._settle_download_success.call_args.kwargs["context"]
+    assert saved.subscription_download["submission_type"] == expected
+
+
+def test_manual_download_clears_reused_subscription_source():
+    """
+    复用已用于订阅下载的上下文做手动下载时不得留下洗版标签。
+    """
+    chain = _download_chain()
+    context = _context()
+    context.subscription_download = {"submission_type": "upgrade"}
+    chain.download = MagicMock(return_value=("qb", "hash", "Original", None))
+    assert chain.download_single(context=context, torrent_content=b"torrent", episodes={1},
+                                  save_path="/downloads") == "hash"
+    assert context.subscription_download is None

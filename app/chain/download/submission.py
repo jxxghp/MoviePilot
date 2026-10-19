@@ -17,7 +17,7 @@ from app.application.directory import (
     specified_download_save_path,
     validate_download_save_path,
 )
-from app.application.download.admission import SubscriptionDownloadGovernance
+from app.application.download.admission import SubscriptionDownloadGovernance, subscription_download_label
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -711,6 +711,13 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         """
         if self._subscription_download_cancelled(governance):
             return None, "订阅下载在提交前已取消"
+        # 非订阅入口清除复用上下文上的旧标记；订阅来源在插件处理与选集之后冻结。
+        context.subscription_download = None
+        if governance and governance.prepare_submission:
+            governance.prepare_submission(context)
+        submission_label = subscription_download_label(context.subscription_download)
+        if submission_label:
+            logger.info(f"开始下载【{submission_label}】{prepared.torrent.title} ...")
         if governance and governance.mark_started:
             governance.mark_started()
         category = prepared.media.category

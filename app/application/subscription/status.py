@@ -3,10 +3,11 @@
 """
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Protocol
 
 from app.application.subscription.execution import SearchBatchSnapshot, SearchTaskSnapshot
+from app.schemas.common import JsonData
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +59,9 @@ class SubscriptionBatchStatus:
     :param current_site_id: 正在处理的站点标识；尚未进入站点时为 None
     :param error: 可展示的错误摘要；无错误时为 None
     :param can_cancel: 当前状态是否支持用户取消
+    :param download_counts: 成功下载任务的分类计数，与搜索任务成功/失败计数独立
+    :param downloads: 批次内成功下载安全摘要；最多返回 100 条
+    :param downloads_omitted: 超出明细上限或已被活动裁剪的成功下载数量
     :param skipped_count: 本轮无需执行而跳过的任务数量
     """
 
@@ -77,6 +81,9 @@ class SubscriptionBatchStatus:
     error: Optional[str] = None
     can_cancel: bool = False
     skipped_count: int = 0
+    download_counts: dict[str, int] = field(default_factory=dict)
+    downloads: tuple[dict[str, JsonData], ...] = ()
+    downloads_omitted: int = 0
 
 
 class SubscriptionExecutionReadRepository(Protocol):
@@ -263,7 +270,13 @@ class SubscriptionExecutionStatusService:
             + batch.skipped_count
         )
         phase = current.phase if current else batch.state
+        download_counts = {key: sum(task.download_counts.get(key, 0) for task in tasks)
+                           for key in ("submitted", "initial_submitted", "upgrade_submitted", "full_upgrade_submitted")}
+        downloads = tuple(resource for task in tasks for resource in task.downloads)[:100]
         return SubscriptionBatchStatus(
+            download_counts=download_counts,
+            downloads=downloads,
+            downloads_omitted=max(0, download_counts["submitted"] - len(downloads)),
             batch_id=batch.batch_id,
             source=batch.source,
             state=batch.state,

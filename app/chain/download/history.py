@@ -116,7 +116,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             classification_policy_revision=classification.policy_revision,
             classification_source=classification.source,
             episode_group=media.episode_group,
-            note=self._build_download_note(source, media, meta),
+            note={**self._build_download_note(source, media, meta),
+                  **({"subscription_download": context.subscription_download} if context.subscription_download else {})},
             custom_words=custom_words,
         )
         files_to_add: list[DownloadFileWrite] = []
@@ -153,6 +154,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             userid=userid,
             username=username,
             download_episodes=download_episodes,
+            subscription_download=context.subscription_download,
         )
         notification_payload = snapshot_download_notification(notification)
         processing_payload = snapshot_download_processing(

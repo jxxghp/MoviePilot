@@ -457,6 +457,7 @@ class Context(BaseModel):
     match_status: Optional[str] = Field(default=None, description="资源匹配状态")
     match_reason: Optional[str] = Field(default=None, description="资源匹配或未匹配的原因")
     confirmed_full_coverage: Optional[bool] = Field(default=False, description="下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源")
+    subscription_download: Optional[Dict[str, JsonData]] = Field(default=None, description="本次订阅提交类型、全集洗版模式及新增和升级集数；旧记录或非订阅下载为空")
     music_track_keys: Optional[List[str]] = Field(default=None, description="下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度")
 
 
