@@ -19,6 +19,7 @@ from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.ingress import submit_message_to_host
 from app.application.security.user import get_configured_user_channel_lookup
 from app.domain.context import Context, MediaInfo
+from app.foundation import size as size_tools
 from app.modules.feishu.openapi import FEISHU_DOMAIN, FeishuOpenApi, FeishuResponse, JsonDict
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -2082,7 +2083,18 @@ class Feishu:
         for index, torrent in enumerate(torrents[:10], start=1):
             torrent_info = getattr(torrent, "torrent_info", None)
             title = getattr(torrent_info, "title", None) or getattr(torrent_info, "site_name", None) or "未知种子"
-            lines.append(f"{index}. {title}")
+            # 站点前缀、大小与做种数与 Telegram 渠道对齐，字段缺失时自动省略
+            site_name = getattr(torrent_info, "site_name", None)
+            site_prefix = f"【{site_name}】" if site_name else ""
+            suffix_parts = []
+            torrent_size = getattr(torrent_info, "size", 0) or 0
+            if torrent_size:
+                suffix_parts.append(size_tools.format_compact_size(torrent_size))
+            seeders = getattr(torrent_info, "seeders", 0) or 0
+            if seeders:
+                suffix_parts.append(f"{seeders}↑")
+            suffix = "  " + " ".join(suffix_parts) if suffix_parts else ""
+            lines.append(f"{index}. {site_prefix}{title}{suffix}")
         proxy_message = Message(
             title=message.title,
             text="\n".join(lines),
