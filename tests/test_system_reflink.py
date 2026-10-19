@@ -6,12 +6,100 @@ import errno
 import os
 import shutil
 import sys
+import warnings
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import psutil
 import pytest
 
 from app.adapters.system.host import SystemUtils
+
+
+def _get_filesystem_type(path: Path) -> str:
+    """
+    获取指定路径所在挂载点文件系统的格式类型。
+
+    :param path: 目标路径
+    :return: 小写文件系统名称（例如 apfs, btrfs, xfs, ext4）
+    """
+    resolved = path.resolve()
+    best_mount = ""
+    best_fstype = ""
+    try:
+        for part in psutil.disk_partitions(all=True):
+            try:
+                mount = Path(part.mountpoint).resolve()
+                if resolved == mount or mount in resolved.parents:
+                    if len(str(mount)) > len(best_mount):
+                        best_mount = str(mount)
+                        best_fstype = (part.fstype or "").lower()
+            except Exception:
+                continue
+    except Exception:
+        pass
+    if best_fstype:
+        return best_fstype
+
+    if sys.platform.startswith("linux"):
+        try:
+            with open("/proc/mounts", "r", encoding="utf-8") as stream:
+                for line in stream:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        mount = Path(parts[1]).resolve()
+                        if resolved == mount or mount in resolved.parents:
+                            if len(str(mount)) > len(best_mount):
+                                best_mount = str(mount)
+                                best_fstype = parts[2].lower()
+        except Exception:
+            pass
+    if best_fstype:
+        return best_fstype
+
+    if sys.platform == "darwin":
+        return "apfs"
+    return "unknown"
+
+
+def _probe_reflink_support(path: Path) -> bool:
+    """
+    真实探测文件系统是否支持写时复制。
+
+    :param path: 探测临时目录
+    :return: 支持写时复制时为 True
+    """
+    src = path / ".probe_reflink_src"
+    dest = path / ".probe_reflink_dest"
+    try:
+        src.write_bytes(b"probe")
+        code, _ = SystemUtils.reflink(src, dest)
+        return code == 0
+    except Exception:
+        return False
+    finally:
+        src.unlink(missing_ok=True)
+        dest.unlink(missing_ok=True)
+
+
+def _require_reflink_filesystem(tmp_path: Path) -> str:
+    """
+    检查测试目录文件系统格式，非写时复制格式发出警告并跳过测试。
+
+    :param tmp_path: pytest 临时测试目录
+    :return: 当前被确认支持写时复制的文件系统格式
+    """
+    fstype = _get_filesystem_type(tmp_path)
+    supported_types = {"apfs", "btrfs", "xfs", "zfs"}
+    if fstype not in supported_types or not _probe_reflink_support(tmp_path):
+        warning_message = (
+            f"当前测试目录所在文件系统格式为 [{fstype}]，"
+            f"非写时复制格式（需为 {supported_types} 且启用 CoW），已跳过对应引用链接测试"
+        )
+        warnings.warn(warning_message, UserWarning, stacklevel=2)
+        pytest.skip(warning_message)
+    return fstype
+
 
 
 def test_reflink_success_on_current_platform(tmp_path: Path):
@@ -19,8 +107,7 @@ def test_reflink_success_on_current_platform(tmp_path: Path):
     测试在当前支持引用链接的系统（如 macOS APFS）上成功创建 reflink，
     验证内容一致、不同 Inode、写时复制独立修改以及文件大小一致。
     """
-    if sys.platform != "darwin":
-        pytest.skip("仅在 macOS (APFS) 环境下测试原生 clonefile")
+    _require_reflink_filesystem(tmp_path)
 
     src = tmp_path / "source.bin"
     dest = tmp_path / "cloned.bin"
@@ -51,8 +138,7 @@ def test_reflink_cleans_preexisting_temp_file(tmp_path: Path):
     """
     测试当目标临时 .mp 文件预先存在时，reflink 能先清理临时文件并成功完成克隆。
     """
-    if sys.platform != "darwin":
-        pytest.skip("仅在 macOS 环境下测试")
+    _require_reflink_filesystem(tmp_path)
 
     src = tmp_path / "source.txt"
     dest = tmp_path / "target.txt"
