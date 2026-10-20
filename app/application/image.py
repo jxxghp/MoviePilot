@@ -313,6 +313,27 @@ def _image_ports_snapshot() -> tuple[ImageTransport, InternalAddressPort]:
     return transport, internal_address
 
 
+def _redirect_private_ranges() -> tuple[str, ...]:
+    """
+    读取默认重定向校验使用的非公网放行网段。
+
+    图片域名的首个请求由调用方（图片代理端点）带上
+    ``IMAGE_PROXY_ALLOWED_PRIVATE_RANGES`` 完成校验，但内部调用方（推荐海报
+    预缓存、通知配图）不传 ``redirect_validator``，重定向会退回本模块的默认
+    校验。默认校验若固定不放行任何非公网网段，就会与首个请求的判定不一致：
+    使用 fake-ip / 分流 DNS 时域名解析到保留地址，首个请求放行、跳转却被
+    自己拦掉。此处沿用同一份配置，让两次校验口径一致。
+
+    :return: 已配置的非公网 IP/CIDR 元组；运行时配置尚未装配时返回空元组，
+        保持默认拒绝
+    """
+    try:
+        snapshot = get_chain_runtime_config_snapshot()
+    except RuntimeError:
+        return ()
+    return tuple(snapshot.image_proxy_allowed_private_ranges)
+
+
 def _empty_wallpaper_provider() -> Optional[str]:
     """
     在启动组合根尚未装配壁纸来源时返回空结果。
@@ -764,7 +785,7 @@ class ImageHelper(metaclass=Singleton):
         redirect_validator: Optional[Callable[[str], bool]] = None,
     ) -> Optional[ImageResponsePort]:
         """
-        逐跳校验后读取图片；重试从原地址开始，默认只允许公网重定向。
+        逐跳校验后读取图片；重试从原地址开始，默认只允许公网与已配置网段。
         """
         response: Optional[ImageResponsePort] = None
         for _ in range(_IMAGE_FETCH_ATTEMPTS):
@@ -778,9 +799,13 @@ class ImageHelper(metaclass=Singleton):
                 target = ImageHelper._redirect_target(response, current_url)
                 if not target or redirect_count == _IMAGE_MAX_REDIRECTS:
                     return response
-                allowed = redirect_validator(target) if redirect_validator else SecurityUtils.is_safe_url(
-                    target, {target}, strict=True, block_private=True,
-                )
+                if redirect_validator:
+                    allowed = redirect_validator(target)
+                else:
+                    allowed = SecurityUtils.is_safe_url(
+                        target, {target}, strict=True, block_private=True,
+                        allowed_private_ranges=_redirect_private_ranges(),
+                    )
                 if not allowed:
                     return response
                 current_options = ImageHelper._redirect_options(current_options, current_url, target, response, cookies)
@@ -811,9 +836,13 @@ class ImageHelper(metaclass=Singleton):
                 target = ImageHelper._redirect_target(response, current_url)
                 if not target or redirect_count == _IMAGE_MAX_REDIRECTS:
                     return response
-                allowed = await redirect_validator(target) if redirect_validator else await SecurityUtils.is_safe_url_async(
-                    target, {target}, strict=True, block_private=True,
-                )
+                if redirect_validator:
+                    allowed = await redirect_validator(target)
+                else:
+                    allowed = await SecurityUtils.is_safe_url_async(
+                        target, {target}, strict=True, block_private=True,
+                        allowed_private_ranges=_redirect_private_ranges(),
+                    )
                 if not allowed:
                     return response
                 current_options = ImageHelper._redirect_options(current_options, current_url, target, response, cookies)

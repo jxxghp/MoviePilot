@@ -338,6 +338,9 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         wallpaper_image_url=settings.WALLPAPER_IMAGE_URL,
         customize_wallpaper_api_url=settings.CUSTOMIZE_WALLPAPER_API_URL,
         security_image_suffixes=tuple(settings.SECURITY_IMAGE_SUFFIXES),
+        image_proxy_allowed_private_ranges=tuple(
+            settings.IMAGE_PROXY_ALLOWED_PRIVATE_RANGES
+        ),
         cache_path=settings.CACHE_PATH,
         global_image_cache_days=settings.GLOBAL_IMAGE_CACHE_DAYS,
     )

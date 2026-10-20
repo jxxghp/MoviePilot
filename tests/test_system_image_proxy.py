@@ -22,6 +22,7 @@ from app.adapters.network import http as http_adapter
 from app.adapters.system.host import SystemUtils
 from app.api.endpoints import system as system_endpoint
 from app.application import image as image_service
+from app.application.configuration import ChainRuntimeConfig
 from app.application.image import (
     ImageHelper,
     ImageResponsePort,
@@ -468,6 +469,92 @@ async def test_redirects_are_bounded_and_every_hop_is_checked(isolated_image_cac
     ) is None
     assert len(transport.async_calls) == 6
     assert validator.await_count == 5
+
+
+class _RedirectThenImageTransport:
+    """
+    首个请求返回跨来源重定向，其后返回图片内容并记录请求地址。
+    """
+
+    def __init__(self, location: str, content: bytes) -> None:
+        """
+        保存重定向目标与最终图片内容。
+
+        :param location: 首个请求返回的 Location 头
+        :param content: 跟随重定向后返回的图片字节
+        """
+        self.location = location
+        self.content = content
+        self.sync_urls: list[str] = []
+        self.async_urls: list[str] = []
+
+    def get(self, url: str, *, options: Mapping[str, Any]) -> Optional[ImageResponsePort]:
+        """
+        记录同步请求地址，首个请求返回重定向，其余返回图片。
+
+        :param url: 本次请求地址
+        :param options: 传输参数，用于确认重定向未被自动跟随
+        :return: 构造的图片响应契约
+        """
+        self.sync_urls.append(url)
+        if len(self.sync_urls) == 1:
+            return SimpleNamespace(status_code=307, content=b"", headers={"location": self.location})
+        return SimpleNamespace(status_code=200, content=self.content, headers={})
+
+    async def async_get(self, url: str, *, options: Mapping[str, Any]) -> Optional[ImageResponsePort]:
+        """
+        记录异步请求地址，首个请求返回重定向，其余返回图片。
+
+        :param url: 本次请求地址
+        :param options: 传输参数，用于确认重定向未被自动跟随
+        :return: 构造的图片响应契约
+        """
+        self.async_urls.append(url)
+        if len(self.async_urls) == 1:
+            return SimpleNamespace(status_code=307, content=b"", headers={"location": self.location})
+        return SimpleNamespace(status_code=200, content=self.content, headers={})
+
+
+@pytest.mark.parametrize(("ranges", "expected"), [([], False), (["198.18.0.0/15"], True)])
+@pytest.mark.parametrize("mode", ["sync", "async"])
+def test_default_image_redirect_honours_configured_private_ranges(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_image_cache: ImageHelper,
+    mode: str,
+    ranges: list[str],
+    expected: bool,
+) -> None:
+    """
+    内部调用方不传 redirect_validator 时，默认重定向校验沿用图片代理配置的
+    非公网放行网段；未配置时仍按默认拒绝非公网解析结果。
+    """
+    content = _image_bytes("PNG")
+    transport = _RedirectThenImageTransport("https://cdn.example/poster.png", content)
+    configure_image_ports(transport=transport, internal_address=_FakeInternalAddress())
+    monkeypatch.setattr(
+        image_service,
+        "get_chain_runtime_config_snapshot",
+        lambda: ChainRuntimeConfig(
+            media_extensions=(),
+            image_proxy_allowed_private_ranges=tuple(ranges),
+        ),
+    )
+    monkeypatch.setattr(
+        system_endpoint.SecurityUtils, "_hostname_addresses", lambda _: [ipaddress.ip_address("198.18.0.2")],
+    )
+    monkeypatch.setattr(
+        system_endpoint.SecurityUtils, "_hostname_addresses_async",
+        AsyncMock(return_value=[ipaddress.ip_address("198.18.0.2")]),
+    )
+    url = "https://image.tmdb.org/redirect"
+    if mode == "sync":
+        result = isolated_image_cache.fetch_image(url, use_cache=False)
+        requested = transport.sync_urls
+    else:
+        result = asyncio.run(isolated_image_cache.async_fetch_image(url, use_cache=False))
+        requested = transport.async_urls
+    assert (result == content) is expected
+    assert requested == ([url] if not expected else [url, "https://cdn.example/poster.png"])
 
 
 def test_bangumi_image_proxy_domain_is_added_to_allowlist() -> None:
