@@ -9,6 +9,8 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 
 
@@ -296,3 +298,33 @@ def test_collect_agent_config_prompts_for_duplicate_base_url_presets() -> None:
         base_url_preset="minimax-cn-coding",
         runtime_python=None,
     )
+
+
+@pytest.mark.parametrize("saved_model", [None, "gemini-2.5-flash"])
+def test_collect_agent_config_accepts_google_default_and_keeps_saved_model(saved_model) -> None:
+    """
+    Google 向导回车使用新项目可访问的默认模型，同时保留用户已保存的模型。
+    """
+    module = load_local_setup_module()
+
+    with (
+        patch.object(module, "print_step"),
+        patch.object(module, "_prompt_yes_no", side_effect=[True, False, True]),
+        patch.object(module, "_load_llm_provider_definitions", return_value=[]),
+        patch.object(module, "_prompt_provider_choice", return_value="google"),
+        patch.object(module, "_prompt_text", side_effect=lambda _prompt, **kwargs: kwargs["default"]),
+        patch.object(module, "_prompt_secret_text", return_value="offline-key"),
+        patch.object(module, "_load_llm_models", return_value=[]),
+        patch.object(module, "read_env_value", return_value=None),
+        patch.object(
+            module, "_env_default",
+            side_effect=lambda key, default="": saved_model if key == "LLM_MODEL" and saved_model else default,
+        ),
+        patch.object(module, "_env_bool", side_effect=lambda _key, default: default),
+        patch.object(module, "_env_llm_thinking_level_default", return_value="auto"),
+        patch.object(module, "_prompt_choice", side_effect=lambda _prompt, **kwargs: kwargs["default"]),
+    ):
+        config = module._collect_agent_config()
+
+    assert config["LLM_PROVIDER"] == "google"
+    assert config["LLM_MODEL"] == (saved_model or "gemini-3.8-flash")
