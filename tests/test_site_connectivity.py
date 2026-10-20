@@ -60,7 +60,7 @@ def test_mtorrent_schema_uses_profile_api(
 
     assert chain.test(site.url) == expected
 
-    indexer.assert_called_once_with("colapt.com")
+    indexer.assert_called_with("colapt.com")
     open_response.assert_called_once_with(
         method="POST",
         url="https://api.colapt.com/api/member/profile",
@@ -130,6 +130,167 @@ def test_other_schemas_keep_generic_connectivity_path(monkeypatch, schema, rende
     assert tested_site.render == render
     assert site.url == "https://generic.test/"
     api_test.assert_not_called()
+
+
+@pytest.mark.parametrize("resource_key", ["schema", "parser"])
+@pytest.mark.parametrize("successful", [True, False])
+@pytest.mark.parametrize(
+    ("protocol", "method", "endpoint", "auth_header", "success_payload", "failure_payload"),
+    [
+        (
+            "MTorrent", "POST", "https://api.protocol.test/api/member/profile", "x-api-key",
+            {"code": "0", "data": {"id": "1"}}, {"code": "401", "data": {"id": "1"}},
+        ),
+        (
+            "HDDolby", "GET", "https://api.protocol.test/api/v1/user/data", "x-api-key",
+            {"status": 0, "data": [{"id": "1"}]}, {"status": 1},
+        ),
+        (
+            "RousiPro", "GET", "https://protocol.test/api/v1/profile", "Authorization",
+            {"code": 0, "data": {"id": "1"}}, {"code": 401},
+        ),
+        (
+            "SunnyPT", "GET", "https://api.protocol.test/api/v1/mp/profile", "X-API-Key",
+            {"code": 0, "data": {"download_allowed": True}}, {"code": 401},
+        ),
+        (
+            "Yema", "POST", "https://www.protocol.test/openApi/user/fetchBasicInfo.json", "Authorization",
+            {"success": True, "data": {"id": "1"}}, {"success": False, "errorMessage": "AuthKey 无效"},
+        ),
+        (
+            "Milkie", "GET", "https://www.protocol.test/api/v1/torrents?ps=1", "x-milkie-auth",
+            {"torrents": []}, {"error": "API Key 无效"},
+        ),
+    ],
+)
+def test_api_protocols_use_their_own_authentication(
+    monkeypatch, resource_key, successful, protocol, method, endpoint,
+    auth_header, success_payload, failure_payload,
+):
+    """
+    所有已适配的 API Key 协议按资源声明选择接口，并验证协议自己的成功判据。
+    """
+    chain = SiteChain()
+    site = SiteSnapshot(
+        id=1, name="协议兼容站", domain="protocol.test", url="https://www.protocol.test/",
+        apikey="test-key", cookie="unused-cookie", render=1,
+    )
+    chain.site_repository = Mock()
+    chain.site_repository.get_by_domain.return_value = site
+    # mTorrent 是搜索适配器的历史大小写，与资料 schema 不同。
+    resource_value = "mTorrent" if resource_key == "parser" and protocol == "MTorrent" else protocol
+    indexer = Mock(return_value={resource_key: resource_value})
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=indexer)))
+    response = Mock(status_code=200)
+    response.json.return_value = success_payload if successful else failure_payload
+    context = MagicMock()
+    context.__enter__.return_value = response
+    open_response = Mock(return_value=context)
+    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+    generic_test = Mock(side_effect=AssertionError("API 协议不应检查首页 HTML"))
+    monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
+
+    state, _message = chain.test(site.url)
+
+    assert state is successful
+    open_response.assert_called_once()
+    request = open_response.call_args.kwargs
+    assert request["method"] == method
+    assert request["url"] == endpoint
+    expected_key = "Bearer test-key" if protocol == "RousiPro" else "test-key"
+    assert request["headers"][auth_header] == expected_key
+    assert "cookie" not in request
+    if protocol == "Yema":
+        assert request["json_body"] == {}
+    generic_test.assert_not_called()
+    context.__exit__.assert_called_once_with(None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("protocol", "host_key", "expected_url"),
+    [
+        ("MTorrent", "api_domain", "https://custom-api.test:8443/api/member/profile"),
+        ("MTorrent", "api_host", "https://custom-api.test:8443/api/member/profile"),
+        ("SunnyPT", "api_url", "https://custom-api.test:8443/api/profile"),
+    ],
+)
+def test_api_probe_honors_resource_endpoint(monkeypatch, protocol, host_key, expected_url):
+    """
+    MTorrent 和 SunnyPT 探测与搜索使用同一资源 API 地址配置。
+    """
+    chain = SiteChain()
+    site = SiteSnapshot(id=1, name="独立 API", domain="custom.test", url="https://www.custom.test/", apikey="key")
+    chain.site_repository = Mock()
+    chain.site_repository.get_by_domain.return_value = site
+    indexer = Mock(return_value={"schema": protocol, host_key: "https://custom-api.test:8443/api"})
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=indexer)))
+    context = MagicMock()
+    context.__enter__.return_value = Mock(status_code=200, json=Mock(return_value={"code": "0", "data": {"id": "1"}}))
+    open_response = Mock(return_value=context)
+    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+
+    assert chain.test(site.url) == (True, "连接成功")
+
+    assert open_response.call_args.kwargs["url"] == expected_url
+
+
+@pytest.mark.parametrize("apikey", [None, "test-auth-key"])
+def test_yema_registered_domain_prefers_authkey_and_preserves_legacy_cookie(monkeypatch, apikey):
+    """
+    Yema 主站已配置 AuthKey 时使用开放 API，否则兼容历史 Cookie 连接测试。
+    """
+    chain = SiteChain()
+    site = SiteSnapshot(
+        id=1, name="YemaPT", domain="yemapt.org", url="https://www.yemapt.org/",
+        cookie="session=test", apikey=apikey,
+    )
+    chain.site_repository = Mock()
+    chain.site_repository.get_by_domain.return_value = site
+    context = MagicMock()
+    context.__enter__.return_value = Mock(
+        status_code=200, json=Mock(return_value={"success": True, "data": {"id": "1"}}),
+    )
+    open_response = Mock(return_value=context)
+    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+
+    assert chain.test(site.url) == (True, "连接成功")
+
+    request = open_response.call_args.kwargs
+    if apikey:
+        assert request["method"] == "POST"
+        assert request["url"] == "https://www.yemapt.org/openApi/user/fetchBasicInfo.json"
+        assert request["headers"]["Authorization"] == apikey
+        assert "cookie" not in request
+    else:
+        assert request["method"] == "GET"
+        assert request["url"] == "https://www.yemapt.org/api/consumer/fetchSelfDetail"
+        assert request["cookie"] == "session=test"
+
+
+@pytest.mark.parametrize("resource_key, resource_value", [("schema", "TNode"), ("parser", "TNodeSpider")])
+def test_tnode_probe_uses_cookie_and_csrf_api(monkeypatch, resource_key, resource_value):
+    """
+    Cookie 认证的 TNode SPA 通过 CSRF 和当前用户 API 验证会话。
+    """
+    chain = SiteChain()
+    site = SiteSnapshot(id=1, name="TNode 兼容站", domain="tnode.test", url="https://tnode.test/", cookie="session=test")
+    chain.site_repository = Mock()
+    chain.site_repository.get_by_domain.return_value = site
+    indexer = Mock(return_value={resource_key: resource_value})
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=indexer)))
+    page = MagicMock()
+    page.__enter__.return_value = Mock(status_code=200, text='<meta name="x-csrf-token" content="csrf-test">')
+    api = MagicMock()
+    api.__enter__.return_value = Mock(status_code=200, json=Mock(return_value={"data": {"id": "1"}}))
+    open_response = Mock(side_effect=[page, api])
+    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+
+    assert chain.test(site.url) == (True, "连接成功")
+
+    request = open_response.call_args.kwargs
+    assert request["url"] == "https://tnode.test/api/user/getInfo"
+    assert request["headers"]["X-CSRF-TOKEN"] == "csrf-test"
+    assert request["cookie"] == "session=test"
 
 
 def test_site_connectivity_records_result_without_injected_session(db, monkeypatch):

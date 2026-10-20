@@ -210,9 +210,20 @@ class _SiteHttpAdapter:
         ua: Optional[str] = None,
         proxies: Optional[Mapping[str, Any]] = None,
         timeout: int = 20,
+        json_body: Optional[Mapping[str, Any]] = None,
     ) -> Iterator[Optional[SiteResponsePort]]:
         """
         打开响应并在所有返回或异常分支后关闭底层连接。
+
+        :param method: HTTP 请求方法
+        :param url: 完整请求地址
+        :param headers: 额外请求头
+        :param cookie: 登录 Cookie
+        :param ua: 用户代理字符串
+        :param proxies: 代理配置
+        :param timeout: 请求超时秒数
+        :param json_body: JSON 请求体，None 时保留无请求体行为
+        :yields: 在上下文有效期内提供响应或 None
         """
         request = RequestUtils(
             headers=dict(headers or {}),
@@ -221,7 +232,8 @@ class _SiteHttpAdapter:
             proxies=dict(proxies or {}),
             timeout=timeout,
         )
-        with request.response_manager(method=method, url=url) as response:
+        request_options = {} if json_body is None else {"json": dict(json_body)}
+        with request.response_manager(method=method, url=url, **request_options) as response:
             yield cast(Optional[SiteResponsePort], response)
 
 
