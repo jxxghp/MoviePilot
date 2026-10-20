@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionState,
+    TransferManualReviewDecision,
     TransferOperationObservation,
     TransferOperationObservationState,
     TransferStepIntent,
@@ -26,6 +27,7 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
 )
 from app.chain.transfer import execution as transfer_chain_module
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
@@ -35,6 +37,7 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
+from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.types import MediaType
 from app.schemas.workflow import FileItem
@@ -453,6 +456,116 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
     assert runner.steps[0][2]["transfer_type"] == "copy"
     target_oper.upload.assert_called_once()
     source_oper.delete.assert_called_once_with(live_source)
+
+
+@pytest.mark.parametrize("change", [
+    None, "target_size", "target_id", "target_missing", "source_size",
+    "receipt_id_missing", "receipt_size_missing", "source_size_missing", "other_storage",
+    "target_id_missing", "target_type", "target_query",
+])
+def test_legacy_u115_receipt_resumes_after_manual_review_without_uploading_again(
+        tmp_path, execution_repository, change,
+):
+    """
+    真实旧账本经人工确认后只恢复源删除；身份不足、文件变化或其它存储仍隔离。
+    """
+    source_path = tmp_path / "source.mkv"
+    source_path.write_bytes(b"movie" * 251)
+    local = object.__new__(LocalStorage)
+    source = local.get_item_strict(source_path).model_dump(mode="json")
+    if change == "source_size_missing":
+        source["size"] = None
+    storage = "remote" if change == "other_storage" else "u115"
+    target = FileItem(
+        storage=storage, path="/library/source.mkv", type="file",
+        name="source.mkv", size=1255, fileid="200",
+    )
+    receipt = target.model_copy(update={
+        "size": None if change == "receipt_size_missing" else 1254,
+        "fileid": None if change == "receipt_id_missing" else "200",
+    })
+    planning_input = TransferPlanningInput(source_fileitem=source)
+    checkpoint = replace(
+        _runner_plan_checkpoint(), planning_input=planning_input,
+        target_storage=storage, final_target_path=target.path, resolved_transfer_type="move",
+        items=(TransferPlanItem(
+            sequence=0, source_fileitem=source, target_storage=storage, target_path=target.path,
+        ),),
+    )
+    with execution_repository._session_factory() as session:
+        pending = session.query(TransferPending).one()
+        pending.src_path = source["path"]
+        pending.planning_input = planning_input.to_payload()
+        pending.input_fingerprint = planning_input.fingerprint
+        pending.checkpoint_payload = checkpoint.to_payload()
+        session.commit()
+    runner = transfer_chain_module._DurableTransferStepRunner(
+        task_id="task-runner", lease_token="lease",
+        checkpoint_fingerprint=checkpoint.fingerprint, repository=execution_repository,
+    )
+    original_result = TransferStepResult(payload={"item": receipt.model_dump(mode="json")})
+    runner.run(
+        phase="transfer", kind="materialize_target",
+        payload={"source": source, "target_storage": storage,
+                 "target_path": target.path, "transfer_type": "copy"},
+        execute=lambda: original_result,
+        observe=lambda: pytest.fail("成功上传回执不应重新探测"),
+    )
+    command = TransferExecutionCommand(execution_repository)
+    prepared = command.prepare(
+        task_id="task-runner", lease_token="lease",
+        intent=TransferStepIntent.create(
+            task_id="task-runner", checkpoint_fingerprint=checkpoint.fingerprint,
+            ordinal=1, phase="transfer", kind="delete_move_source",
+            payload={"source": source, "target_storage": storage, "target_path": target.path},
+        ),
+    )
+    started = command.begin(task_id="task-runner", lease_token="lease", operation_id=prepared.operation_id)
+    command.manual_review(
+        task_id="task-runner", lease_token="lease", step=started,
+        error="旧版秒传大小凭据冲突", evidence=TransferStepResult(payload={"identity_error": "size 已变化"}),
+    )
+    resolved = command.resolve_manual_review(
+        task_id="task-runner", operation_id=started.operation_id,
+        decision=TransferManualReviewDecision.NOT_APPLIED, actor="admin", reason="确认源文件仍存在",
+    )
+    assert resolved.state is TransferExecutionState.RETRY_WAIT
+    claimed = TransactionalTransferAdmissionRepository(execution_repository._session_factory).claim_task(
+        task_id="task-runner", owner_id="recovery", lease_seconds=120,
+    )
+    runner = transfer_chain_module._DurableTransferStepRunner(
+        task_id="task-runner", lease_token=claimed.lease_token,
+        checkpoint_fingerprint=checkpoint.fingerprint, repository=execution_repository,
+    )
+    if change == "source_size":
+        source_path.write_bytes(b"changed source")
+    live_target = target.model_copy(update={
+        "size": 999 if change == "target_size" else target.size,
+        "fileid": None if change == "target_id_missing" else "201" if change == "target_id" else target.fileid,
+        "type": "dir" if change == "target_type" else target.type,
+    })
+    remote = Mock()
+    remote.get_item_strict.return_value = None if change == "target_missing" else live_target
+    if change == "target_query":
+        remote.get_item_strict.side_effect = TimeoutError("115 unavailable")
+    arguments = dict(
+        step_runner=runner, source_fileitem=source, target_storage=storage,
+        source_oper=local, target_oper=remote, target_file=Path(target.path), transfer_type="move",
+    )
+    if change:
+        with pytest.raises(transfer_chain_module._TransferManualReviewRequired):
+            TransHandler._TransHandler__execute_transfer_with_steps(**arguments)
+        assert source_path.exists()
+        assert execution_repository.get_snapshot(task_id="task-runner").state is TransferExecutionState.MANUAL_REVIEW
+    else:
+        result, error = TransHandler._TransHandler__execute_transfer_with_steps(**arguments)
+        assert not error
+        assert result == target
+        assert not source_path.exists()
+    snapshot = execution_repository.get_snapshot(task_id="task-runner")
+    assert snapshot.steps[0].result == original_result
+    remote.upload.assert_not_called()
+    remote.delete.assert_not_called()
 
 
 def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_path):

@@ -662,13 +662,12 @@
     "union-attr": 5
   },
   "app/modules/filemanager/storages/u115.py": {
-    "arg-type": 16,
-    "assignment": 5,
-    "call-overload": 17,
+    "arg-type": 10,
+    "assignment": 3,
+    "call-overload": 15,
     "empty-body": 2,
     "no-any-return": 6,
     "no-untyped-def": 1,
-    "operator": 2,
     "override": 1,
     "type-arg": 8,
     "union-attr": 32

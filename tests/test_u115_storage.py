@@ -281,3 +281,15 @@ def test_expired_access_token_uses_refreshed_credentials():
     assert saved[0]["refresh_token"] == "new-refresh"
     assert saved[0]["access_token"] == "new-access"
     assert headers == [{"Authorization": "Bearer new-access"}]
+
+
+@pytest.mark.parametrize("response,expected", [
+    (None, False), ({"state": False}, False), ({"state": True}, True),
+])
+def test_delete_requires_explicit_api_success(response, expected):
+    """
+    115 删除被拒绝或请求失败时，不能向整理结算谎报源文件已经删除。
+    """
+    storage = _build_storage()
+    storage._request_api = lambda *_args, **_kwargs: response
+    assert storage.delete(FileItem(storage="u115", path="/source.mkv", fileid="200")) is expected
