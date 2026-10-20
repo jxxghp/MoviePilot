@@ -9,12 +9,13 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from app.agent.callback import StreamingHandler
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.modules.telegram.botapi import TelegramApiError, TelegramNetworkError
 from app.modules.telegram.module import TelegramModule
 from app.modules.telegram.telegram import Telegram
-from app.schemas.message import Message
+from app.schemas.message import Message, MessageResponse
 from app.schemas.types import MediaType, NotificationChannel
 
 
@@ -41,6 +42,50 @@ def telegram():
         telegram = Telegram(TELEGRAM_TOKEN="fake_token", TELEGRAM_CHAT_ID="fake_chat_id")
         yield telegram
         telegram.stop()
+
+
+@pytest.mark.asyncio
+async def test_agent_fallback_skips_progress_during_telegram_edit_interval(telegram, monkeypatch):
+    """
+    真实 Telegram 两秒编辑间隔触发回退时，已发送统计不能随最终答案再发一次。
+    """
+    monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: 100.0)
+    telegram.bot.send_rich_message.return_value = {
+        "message_id": 101, "chat": {"id": "fake_chat_id"},
+    }
+    handler = StreamingHandler()
+    handler._channel = NotificationChannel.Telegram.value
+    handler._source = "bot"
+    handler._streaming_enabled = True
+
+    async def dispatch(func, *args, **kwargs):
+        """
+        保留真实 Telegram 发送及限频逻辑，只隔离宿主模块路由和远端 Bot API。
+        """
+        if func.__name__ == "send_direct_message":
+            message = args[0]
+            result = telegram.send_msg(title="", text=message.text, rich_message=message.rich_message)
+            return MessageResponse(source="bot", **result)
+        if func.__name__ == "edit_message":
+            return telegram.edit_msg(
+                chat_id=kwargs["chat_id"], message_id=kwargs["message_id"],
+                text=kwargs["text"],
+                rich_message=kwargs["metadata"]["telegram_rich_message"],
+            )
+        return True
+
+    monkeypatch.setattr("app.agent.callback.run_in_threadpool", dispatch)
+    handler.record_tool_call("execute_command", tool_kwargs={"command": "capture"})
+    handler.thinking_started()
+    await handler._flush_messages()
+    handler.emit("截图已发送。")
+
+    all_sent, _ = await handler.stop_streaming()
+
+    assert not all_sent
+    assert await handler.take() == "截图已发送。"
+    telegram.bot.send_rich_message.assert_called_once()
+    telegram.bot.edit_message_text.assert_not_called()
 
 
 @pytest.mark.parametrize("url", [None, "", "   ", 123, False])

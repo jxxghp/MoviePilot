@@ -75,6 +75,8 @@ class StreamingHandler:
         self._message_response: Optional[MessageResponse] = None
         # 已发送给用户的文本（用于追踪增量）
         self._sent_text = ""
+        # 最近一次成功发送时附带的临时思考状态，不属于已交付正文。
+        self._sent_thinking_status = ""
         # 当前消息的起始偏移量（buffer 中属于当前消息的起始位置）
         self._msg_start_offset = 0
         self._message_boundaries: deque[tuple[int, Optional[str]]] = deque()
@@ -313,13 +315,16 @@ class StreamingHandler:
 
     async def take(self) -> str:
         """
-        获取当前已积累的消息内容，获取后清空缓冲区。
+        获取当前尚未交付的消息内容，获取后清空缓冲区及发送快照。
 
         用于非流式渠道：工具调用前取出 Agent 已产出的文字，
         与工具提示合并后独立发送。
 
-        注意：流式渠道不调用此方法，工具消息直接 emit 到 buffer 中。
+        流式渠道仅在收尾回退时调用；正常工具消息直接写入缓冲区。
+
+        :return: 待普通发送的内容，不包含已确认送达的前缀和临时思考状态
         """
+        self.thinking_finished()
         self.flush_pending_tool_summary()
 
         with self._lock:
@@ -327,9 +332,12 @@ class StreamingHandler:
                 self._live_tool_summary = None
                 self._live_tool_stats = {}
                 return ""
-            message = self._buffer[self._msg_start_offset :]
+            message = self._unsent_text_locked(self._buffer[self._msg_start_offset :])
             logger.info(f"Agent消息: {message}")
             self._buffer = ""
+            self._sent_text = ""
+            self._sent_thinking_status = ""
+            self._message_response = None
             self._msg_start_offset = 0
             self._message_boundaries.clear()
             self._live_tool_summary = None
@@ -343,6 +351,7 @@ class StreamingHandler:
         with self._lock:
             self._buffer = ""
             self._sent_text = ""
+            self._sent_thinking_status = ""
             self._message_response = None
             self._msg_start_offset = 0
             self._message_boundaries.clear()
@@ -365,6 +374,7 @@ class StreamingHandler:
         with self._lock:
             self._buffer = ""
             self._sent_text = ""
+            self._sent_thinking_status = ""
             self._msg_start_offset = 0
             self._message_boundaries.clear()
             self._pending_tool_stats = {}
@@ -449,6 +459,7 @@ class StreamingHandler:
 
         self._streaming_enabled = True
         self._sent_text = ""
+        self._sent_thinking_status = ""
         self._message_response = None
         self._msg_start_offset = 0
         self._message_boundaries.clear()
@@ -518,10 +529,11 @@ class StreamingHandler:
             )
             # 保留最终文本用于返回（返回完整 buffer 内容，包含所有分段消息）
             final_text = self._buffer if all_sent else ""
-            # 跨消息边界已经交付的前段不再进入常规发送回退，避免重复旧回复。
-            self._buffer = self._buffer[self._msg_start_offset :]
+            # 已收口的前段及当前消息中成功发送的前缀都不再进入普通发送回退。
+            self._buffer = self._unsent_text_locked(current_msg_text)
             # 重置状态
             self._sent_text = ""
+            self._sent_thinking_status = ""
             self._message_response = None
             self._msg_start_offset = 0
             self._message_boundaries.clear()
@@ -536,6 +548,44 @@ class StreamingHandler:
                 # 所有内容已通过流式发送，清空缓冲区
                 self._buffer = ""
             return all_sent, final_text
+
+    def _unsent_text_locked(self, current_text: str) -> str:
+        """
+        从当前片段排除已确认送达的正文前缀，供收尾回退和长度分段共用。
+
+        思考状态按成功发送时的快照移除；更新过的工具统计整行保留，
+        不按旧文本长度裁剪不同内容，也不删除后续批次中相同的统计文案。
+
+        :param current_text: 当前渠道消息对应的缓冲片段
+        :return: 尚未确认送达的内容
+        """
+        if self._message_response is None or not self._sent_text:
+            return current_text
+        sent_text = self._sent_text
+        if self._sent_thinking_status:
+            sent_text = sent_text.removesuffix(self._sent_thinking_status)
+        if current_text.startswith(sent_text):
+            return current_text[len(sent_text) :]
+
+        prefix_length = 0
+        for sent_line, current_line in zip(
+            sent_text.splitlines(keepends=True), current_text.splitlines(keepends=True)
+        ):
+            if sent_line != current_line:
+                break
+            prefix_length += len(current_line)
+        return current_text[prefix_length:]
+
+    def _record_sent_text(self, text: str, thinking_status: str) -> None:
+        """
+        仅在渠道确认成功后记录发送快照，避免在途思考状态变化污染去重依据。
+
+        :param text: 本次请求实际发送的完整文本
+        :param thinking_status: 构造本次请求时的临时思考状态
+        """
+        with self._lock:
+            self._sent_text = text
+            self._sent_thinking_status = thinking_status
 
     def record_tool_call(
         self,
@@ -965,6 +1015,7 @@ class StreamingHandler:
                 self._msg_start_offset = boundary
                 self._message_response = None
                 self._sent_text = ""
+                self._sent_thinking_status = ""
                 self._original_message_id = original_message_id
         await self._flush()
 
@@ -985,6 +1036,7 @@ class StreamingHandler:
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
             current_text = self._buffer[self._msg_start_offset : end_offset]
+            thinking_status = self._thinking_status_text
             if not current_text or current_text == self._sent_text:
                 # 没有新内容需要刷新
                 return
@@ -1015,8 +1067,7 @@ class StreamingHandler:
                 )
                 if response and response.success and response.message_id:
                     self._message_response = response
-                    with self._lock:
-                        self._sent_text = current_text
+                    self._record_sent_text(current_text, thinking_status)
                     logger.debug(f"流式输出初始消息已发送: message_id={response.message_id}")
                 else:
                     logger.debug("流式输出初始消息发送失败或未返回message_id，降级为非流式输出")
@@ -1028,10 +1079,12 @@ class StreamingHandler:
                     # 将 offset 移动到已发送文本之后，开启新消息
                     logger.debug(f"流式消息长度 {len(current_text)} 超过限制 {self._max_message_length}，启用新消息")
                     with self._lock:
-                        self._msg_start_offset += len(self._sent_text)
+                        unsent_text = self._unsent_text_locked(current_text)
+                        self._msg_start_offset += len(current_text) - len(unsent_text)
                         current_text = self._buffer[self._msg_start_offset : end_offset]
                     self._message_response = None
                     self._sent_text = ""
+                    self._sent_thinking_status = ""
 
                     # 如果偏移后还有新内容，立即发送为新消息
                     if current_text:
@@ -1053,8 +1106,7 @@ class StreamingHandler:
                         )
                         if response and response.success and response.message_id:
                             self._message_response = response
-                            with self._lock:
-                                self._sent_text = current_text
+                            self._record_sent_text(current_text, thinking_status)
                             logger.debug(f"流式输出新消息已发送: message_id={response.message_id}")
                         else:
                             logger.debug("流式输出新消息发送失败，降级为非流式输出")
@@ -1082,8 +1134,7 @@ class StreamingHandler:
                         metadata=metadata,
                     )
                     if success:
-                        with self._lock:
-                            self._sent_text = current_text
+                        self._record_sent_text(current_text, thinking_status)
                     else:
                         logger.debug("流式输出消息编辑失败")
         except Exception as e:

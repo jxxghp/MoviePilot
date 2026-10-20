@@ -2700,12 +2700,10 @@ class MoviePilotAgent:
                     # 流式输出未能发送全部内容（发送失败等）
                     # 通过常规方式发送剩余内容
                     remaining_text = await self.stream_handler.take()
-                    if remaining_text:
-                        unsent_text = remaining_text
-                        if self._streamed_output and remaining_text.startswith(self._streamed_output):
-                            unsent_text = remaining_text[len(self._streamed_output) :]
-                        if unsent_text:
-                            self._emit_output(unsent_text)
+                    # 正文 token 已经进入回调与历史；渠道回退不能再累计同一答案。
+                    # 没有正文 token 时仍保留工具结束后产生的残留展示内容。
+                    if remaining_text and not self._streamed_output:
+                        self._emit_output(remaining_text)
                     if remaining_text and self.should_dispatch_reply and not self._tool_context.get("user_reply_sent"):
                         await self.send_agent_message(remaining_text)
 
