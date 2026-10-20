@@ -456,7 +456,10 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def __mteam_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
-        判断站点是否已经登陆：m-team
+        通过 MTorrent 用户资料接口验证 API Key，不依赖首页登录标记。
+
+        :param site: M-Team 或兼容 MTorrent 协议的站点配置
+        :return: 是否可用及接口返回的状态信息
         """
         user_agent = site.ua or self.runtime_config.user_agent
         domain = site_rules.extract_domain(site.url)
@@ -988,14 +991,17 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 state, message = special_test(site_info)
             else:
                 indexer = SitesHelper().get_indexer(domain) or {}
-                state, message = self.__test(
-                    replace(
-                        site_info,
-                        url=site_rules.resolve_page_url(
-                            site_info.url, indexer.get("login_path")
-                        ),
+                if indexer.get("schema") == "MTorrent":
+                    state, message = self.__mteam_test(site_info)
+                else:
+                    state, message = self.__test(
+                        replace(
+                            site_info,
+                            url=site_rules.resolve_page_url(
+                                site_info.url, indexer.get("login_path")
+                            ),
+                        )
                     )
-                )
             seconds = (datetime.now() - start_time).seconds
             if state:
                 repository.success(domain=domain, seconds=seconds)
