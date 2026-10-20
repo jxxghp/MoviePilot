@@ -80,7 +80,7 @@ LLM_PROVIDER_DEFAULTS = {
         "base_url": "",
     },
     "anthropic": {
-        "model": "claude-sonnet-4-0",
+        "model": "claude-sonnet-4-6",
         "base_url": "https://api.anthropic.com/v1",
     },
     "baidu-qianfan-coding-plan": {

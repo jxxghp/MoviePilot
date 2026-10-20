@@ -89,7 +89,7 @@ def test_collect_agent_config_falls_back_to_common_provider_choices() -> None:
         patch.object(module, "_prompt_text", side_effect=["https://api.anthropic.com/v1"]),
         patch.object(module, "_prompt_secret_text", return_value="sk-anthropic"),
         patch.object(module, "_load_llm_models", return_value=[]),
-        patch.object(module, "_prompt_model_choice", return_value="claude-sonnet-4-0"),
+        patch.object(module, "_prompt_model_choice", side_effect=lambda models, default=None: default),
         patch.object(module, "read_env_value", return_value=None),
         patch.object(module, "_env_default", side_effect=lambda key, default="": default),
         patch.object(module, "_env_bool", side_effect=lambda key, default: default),
@@ -99,7 +99,7 @@ def test_collect_agent_config_falls_back_to_common_provider_choices() -> None:
         config = module._collect_agent_config()
 
     assert config["LLM_PROVIDER"] == "anthropic"
-    assert config["LLM_MODEL"] == "claude-sonnet-4-0"
+    assert config["LLM_MODEL"] == "claude-sonnet-4-6"
     assert config["LLM_BASE_URL"] == "https://api.anthropic.com/v1"
 
 
