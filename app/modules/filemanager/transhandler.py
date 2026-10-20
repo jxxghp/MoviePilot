@@ -827,6 +827,24 @@ class TransHandler:
             if expected.fileid != current.fileid:
                 raise TransferExecutionConflictError(f"文件 {expected.path} 已被替换，禁止清理")
 
+    @staticmethod
+    def __restore_move_target_identity(source: FileItem, target: FileItem) -> FileItem:
+        """
+        恢复旧版 115 秒传回执的精确大小，保留原文件 ID 和持久账本不变。
+
+        仅本地文件上传到 115 且回执包含大小和文件 ID 时，使用冻结源的字节数。
+        删除前仍须严格核对云端大小、原文件 ID 及本地源身份，不能凭路径接纳替换文件。
+
+        :param source: 上传前冻结的本地源文件
+        :param target: 已持久成功的上传回执，旧版本可能记录舍入后的显示大小
+        :return: 用于严格核验和结算的目标身份；证据不完整或其它存储沿用原值
+        """
+        if (source.storage == "local" and target.storage == "u115"
+                and source.type == target.type == "file" and target.fileid
+                and source.size is not None and target.size is not None):
+            return cast(FileItem, target.model_copy(update={"size": source.size}))
+        return target
+
     @classmethod
     def __observe_safe_delete(
             cls, storage_oper: StorageBase, path: Path, *,
@@ -978,6 +996,13 @@ class TransHandler:
             "target_exists": target_exists,
             "item": TransHandler.__serialize_step_item(target_item),
         })
+        # 115 盘内操作包含复制/移动及改名。最终路径缺失不能排除中间副本已产生，
+        # 包括旧版适配器留下的原名或编号副本，禁止据此自动重复复制。
+        if fileitem.storage == target_storage == "u115":
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.UNKNOWN,
+                evidence=evidence,
+            )
         if transfer_type == "move":
             if not source_exists and target_exists:
                 return TransferOperationObservation(
@@ -1135,6 +1160,7 @@ class TransHandler:
             return None, "整理步骤成功证据缺少目标文件"
         if not cross_storage_move:
             return new_item, str(materialized.payload.get("message") or "")
+        new_item = cls.__restore_move_target_identity(fileitem, new_item)
 
         def execute_source_delete() -> TransferStepResult:
             """
