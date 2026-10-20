@@ -105,9 +105,15 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         return f"title={title}|size={size}"
 
     @classmethod
-    def _build_download_failure_fingerprint(cls, context: Context) -> Optional[str]:
+    def _build_download_failure_fingerprint(
+            cls, context: Context, *, resource_backoff: bool = False,
+    ) -> Optional[str]:
         """
-        根据媒体和种子资源信息生成失败冷却指纹。
+        根据媒体和种子资源信息生成冷却指纹，整包退避不依赖解析后补齐的集数。
+
+        :param context: 识别出的媒体与资源上下文
+        :param resource_backoff: 是否为整包均已记录的资源退避；与普通失败指纹隔离
+        :return: 稳定资源指纹；缺少身份时返回 None
         """
         media = getattr(context, "media_info", None)
         torrent = getattr(context, "torrent_info", None)
@@ -128,7 +134,7 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             "media_type": str(media_type or ""),
             "media_key": str(media_key or ""),
             "season": str(season) if season is not None else "",
-            "episodes": cls._format_failure_episodes(meta) or "",
+            "episodes": None if resource_backoff else cls._format_failure_episodes(meta) or "",
             "site": str(site or ""),
             "resource": cls._torrent_resource_key(torrent),
         }
@@ -158,6 +164,7 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             source: Optional[str] = None,
             episodes: Optional[Set[int]] = None,
             ttl_seconds: Optional[int] = None,
+            resource_backoff: bool = False,
     ) -> Optional[str]:
         """
         记录资源级冷却事实，并返回本次资源指纹。
@@ -171,8 +178,10 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         :param source: 下载来源，仅订阅来源的冷却会被读取
         :param episodes: 目标集数，缺省时按识别元数据记录
         :param ttl_seconds: 显式冷却秒数，缺省时按原因文本推断
+        :param resource_backoff: 是否使用不含运行时集数的整包退避指纹
+        :return: 本次记录的资源指纹；缺少身份时返回 None
         """
-        fingerprint = self._build_download_failure_fingerprint(context)
+        fingerprint = self._build_download_failure_fingerprint(context, resource_backoff=resource_backoff)
         if not fingerprint:
             return None
 
@@ -239,14 +248,15 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         """
         为重复接受且未带来任何新增文件的资源记录退避，并返回该资源指纹。
 
-        退避只压制这一个资源指纹：订阅候选会继续尝试同媒体的其他资源，订阅本身既不会被
-        判定完成也不会被判失败，冷却到期后仍可重试。仅订阅来源需要记录，因为候选过滤
-        只在订阅来源读取该台账。
+        调用方须确认整包全部媒体文件均已记录。退避只压制这一个资源，订阅候选会继续
+        尝试同媒体的其他资源，订阅本身既不会被判定完成也不会被判失败，冷却到期后仍可重试。
+        仅订阅来源需要记录，因为候选过滤只在订阅来源读取该台账。
 
         :param context: 本次结算的上下文，用于计算资源指纹
         :param downloader: 本次使用的下载器
         :param source: 下载来源
         :param episodes: 目标集数
+        :return: 本次记录的整包资源指纹；非订阅来源返回 None
         """
         if not self._is_subscribe_source(source):
             return None
@@ -257,6 +267,7 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             source=source,
             episodes=episodes,
             ttl_seconds=DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS,
+            resource_backoff=True,
         )
 
     def _active_download_failure_fingerprints(
@@ -265,26 +276,36 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             source: Optional[str],
     ) -> Dict[str, DownloadFailureSnapshot]:
         """
-        查询当前订阅候选中仍处于冷却期的失败记录，返回指纹到失败记录的映射。
+        查询候选的普通失败与整包退避，并映射回当前候选指纹供所有选源阶段消费。
+
+        :param contexts: 本轮待筛选的资源上下文
+        :param source: 本次批量下载的业务来源
+        :return: 当前候选指纹到有效冷却记录的映射；非订阅来源不读取台账
         """
         if not self._is_subscribe_source(source):
             return {}
-        fingerprints = [
-            fingerprint
-            for fingerprint in [
-                self._build_download_failure_fingerprint(context)
-                for context in contexts or []
-            ]
-            if fingerprint
-        ]
+        backoff_fingerprints = {
+            fingerprint: self._build_download_failure_fingerprint(context, resource_backoff=True) or fingerprint
+            for context in contexts or []
+            if (fingerprint := self._build_download_failure_fingerprint(context))
+        }
+        fingerprints = list(dict.fromkeys([
+            *backoff_fingerprints,
+            *backoff_fingerprints.values(),
+        ]))
         if not fingerprints:
             return {}
         now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         try:
             repository: DownloadFailureRepository = self.download_failure_repository
-            return repository.get_active_by_fingerprints(
+            records = repository.get_active_by_fingerprints(
                 fingerprints=fingerprints, now_time=now_time,
             )
+            return {
+                fingerprint: records.get(fingerprint) or records[backoff]
+                for fingerprint, backoff in backoff_fingerprints.items()
+                if fingerprint in records or backoff in records
+            }
         except Exception as err:
             logger.error(f"查询下载失败冷却失败：{str(err)}")
             return {}

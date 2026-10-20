@@ -20,6 +20,9 @@ from app.chain.download.failure import (
     DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS,
     DownloadFailureOwner,
 )
+from app.db.adapters.download import TransactionalDownloadFailureRepository
+from app.db.models.downloadfailure import DownloadFailure
+from app.db.session import SessionFactory
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaType
@@ -317,16 +320,18 @@ def test_duplicate_submission_backoff_is_subscribe_only_and_long(source, recorde
     assert write.downloader == "qb"
     assert (datetime.fromisoformat(write.next_retry_at)
             - datetime.fromisoformat(write.failed_at)).total_seconds() == DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS
-    assert fingerprint == chain._build_download_failure_fingerprint(context)
+    assert fingerprint == chain._build_download_failure_fingerprint(context, resource_backoff=True)
 
 
-def test_duplicate_backoff_cools_only_that_resource_for_subscription_candidates():
+def test_duplicate_backoff_cools_only_that_resource_for_subscription_candidates(db, monkeypatch):
     """
     退避按资源指纹生效：同一媒体的其他种子仍可被候选选中。
     """
+    db.watermark(DownloadFailure)
     chain = object.__new__(DownloadChain)
-    chain.download_failure_repository = Mock()
+    chain.download_failure_repository = TransactionalDownloadFailureRepository(SessionFactory)
     cooled = _duplicate_backoff_context()
+    cooled.media_info = MediaInfo(title="Series", type=MediaType.MOVIE)
     other = Context(
         torrent_info=TorrentInfo(site=1, site_name="test", title="Series S01 1080p",
                                  enclosure="https://tracker.example/download.php?id=40"),
@@ -336,14 +341,34 @@ def test_duplicate_backoff_cools_only_that_resource_for_subscription_candidates(
     fingerprint = chain._record_duplicate_download_backoff(
         context=cooled, downloader="qb", source="Subscribe|1",
     )
-    chain.download_failure_repository.get_active_by_fingerprints.return_value = {fingerprint: Mock()}
+    chain.eventmanager = Mock()
+    chain.eventmanager.send_event.return_value = None
+    chain.download_single = Mock(return_value="new-hash")
+    monkeypatch.setattr(download.TorrentHelper, "sort_torrents", lambda _self, contexts: contexts)
 
-    active = chain._active_download_failure_fingerprints(contexts=[cooled, other], source="Subscribe|1")
+    downloads, _lefts = chain.batch_download(contexts=[cooled, other], source="Subscribe|1")
 
-    queried = chain.download_failure_repository.get_active_by_fingerprints.call_args.kwargs["fingerprints"]
-    assert list(active) == [fingerprint]
-    assert len(set(queried)) == 2
-    assert chain._build_download_failure_fingerprint(other) not in active
+    assert fingerprint
+    assert downloads == [other]
+    chain.download_single.assert_called_once()
+    assert chain.download_single.call_args.args[0] is other
+
+
+def test_duplicate_backoff_survives_whole_season_episode_expansion(db):
+    """
+    整季种子解析后的退避，在下一轮尚未解析文件集数时仍须命中同一资源。
+    """
+    db.watermark(DownloadFailure)
+    chain = object.__new__(DownloadChain)
+    chain.download_failure_repository = TransactionalDownloadFailureRepository(SessionFactory)
+    submitted = _duplicate_backoff_context()
+    submitted.meta_info.set_episodes(begin=1, end=12)
+    chain._record_duplicate_download_backoff(context=submitted, source="Subscribe|1")
+    next_round = _duplicate_backoff_context()
+
+    active = chain._active_download_failure_fingerprints(contexts=[next_round], source="Subscribe|1")
+
+    assert chain._build_download_failure_fingerprint(next_round) in active
 
 
 def test_cooldown_log_keeps_backoff_reason_neutral(monkeypatch):
