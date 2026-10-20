@@ -321,12 +321,14 @@ def test_initializer_rolls_back_all_ports_when_site_chain_publish_fails(
         site_module._site_ports_snapshot()
 
 
-def test_real_initializer_http_adapter_closes_response(monkeypatch) -> None:
+@pytest.mark.parametrize("json_body", [None, {}])
+def test_real_initializer_http_adapter_closes_response(monkeypatch, json_body) -> None:
     """
     组合根 HTTP adapter 必须在调用方返回后关闭 RequestUtils 响应。
     """
     response = _FakeResponse(200, text="ok")
     state = {"closed": False}
+    observed = {}
 
     class FakeRequest:
         """
@@ -339,10 +341,11 @@ def test_real_initializer_http_adapter_closes_response(monkeypatch) -> None:
             """
 
         @contextmanager
-        def response_manager(self, **_kwargs):
+        def response_manager(self, **kwargs):
             """
             退出上下文时记录响应已释放。
             """
+            observed.update(kwargs)
             try:
                 yield response
             finally:
@@ -351,11 +354,15 @@ def test_real_initializer_http_adapter_closes_response(monkeypatch) -> None:
     monkeypatch.setattr(site_composition, "RequestUtils", FakeRequest)
     adapter = site_composition._SiteHttpAdapter()
 
-    with adapter.open(method="GET", url="https://close.test/") as opened:
+    with adapter.open(method="POST", url="https://close.test/", json_body=json_body) as opened:
         assert opened is response
         assert not state["closed"]
 
     assert state["closed"]
+    expected = {"method": "POST", "url": "https://close.test/"}
+    if json_body is not None:
+        expected["json"] = json_body
+    assert observed == expected
 
 
 def test_cookiecloud_adapter_closes_remote_response(monkeypatch) -> None:

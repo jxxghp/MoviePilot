@@ -9,7 +9,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Callable, Dict, Mapping, Optional, Protocol, Tuple, Union
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from lxml import etree
 
@@ -88,6 +88,7 @@ class SiteHttpPort(Protocol):
         ua: Optional[str] = None,
         proxies: Optional[Mapping[str, Any]] = None,
         timeout: int = 20,
+        json_body: Optional[Mapping[str, Any]] = None,
     ) -> AbstractContextManager[Optional[SiteResponsePort]]:
         """
         打开有界响应上下文，退出时必须关闭底层响应。
@@ -99,6 +100,7 @@ class SiteHttpPort(Protocol):
         :param ua: 本次使用的 User-Agent，None 时使用客户端默认值
         :param proxies: 协议到代理地址的映射，None 表示未指定代理
         :param timeout: 请求超时秒数，默认 20 秒
+        :param json_body: JSON 请求体，None 表示不发送 JSON
         :return: 进入后提供响应或 None 的上下文管理器；退出时关闭底层响应
         """
         ...
@@ -245,9 +247,20 @@ def _open_site_response(
     ua: Optional[str] = None,
     proxies: Optional[Mapping[str, Any]] = None,
     timeout: int = 20,
+    json_body: Optional[Mapping[str, Any]] = None,
 ) -> AbstractContextManager[Optional[SiteResponsePort]]:
     """
     通过当前 HTTP 端口打开一个必定有界关闭的响应上下文。
+
+    :param method: HTTP 请求方法
+    :param url: 完整请求地址
+    :param headers: 额外请求头
+    :param cookie: 登录 Cookie
+    :param ua: 用户代理字符串
+    :param proxies: 代理配置
+    :param timeout: 请求超时秒数
+    :param json_body: JSON 请求体，None 表示不发送 JSON
+    :return: 由调用方进入并负责退出的响应上下文
     """
     return _site_ports_snapshot().http.open(
         method=method,
@@ -257,6 +270,7 @@ def _open_site_response(
         ua=ua,
         proxies=proxies,
         timeout=timeout,
+        json_body=json_body,
     )
 
 
@@ -270,7 +284,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def __init__(self) -> None:
         """
-        初始化站点管理处理链及特殊站点测试器
+        初始化站点管理处理链及按域名、资源协议选择的连接测试器。
         """
         super().__init__()
 
@@ -284,6 +298,18 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "rousi.pro": self.__rousi_test,
             "sunnypt.top": self.__sunnypt_test,
             "milkie.cc": self.__milkie_test,
+        }
+        # 资源的 schema 描述资料协议，parser 描述搜索协议；二者均可识别 API 站点。
+        self.protocol_site_test = {
+            "MTorrent": self.__mteam_test,
+            "mTorrent": self.__mteam_test,
+            "HDDolby": self.__hddolby_test,
+            "RousiPro": self.__rousi_test,
+            "SunnyPT": self.__sunnypt_test,
+            "Yema": self.__yema_api_test,
+            "Milkie": self.__milkie_test,
+            "TNode": self.__zhuque_test,
+            "TNodeSpider": self.__zhuque_test,
         }
 
     def refresh_userdata(self, site: dict = None) -> Optional[SiteUserData]:
@@ -409,7 +435,10 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def __zhuque_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
-        判断站点是否已经登陆：zhuique
+        提取 TNode CSRF 令牌并通过当前用户 API 验证 Cookie 会话。
+
+        :param site: TNode 协议站点配置
+        :return: 是否可用及认证或连接失败原因
         """
         token = None
         user_agent = site.ua or self.runtime_config.user_agent
@@ -463,7 +492,15 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         user_agent = site.ua or self.runtime_config.user_agent
         domain = site_rules.extract_domain(site.url)
-        url = f"https://api.{domain}/api/member/profile"
+        indexer = SitesHelper().get_indexer(domain) or {}
+        configured_host = indexer.get("api_domain") or indexer.get("api_host")
+        api_host = urlparse(site.url).netloc
+        if configured_host:
+            value = str(configured_host).strip()
+            api_host = urlparse(value if "://" in value else f"//{value}").netloc
+        elif not api_host.startswith("api."):
+            api_host = f"api.{domain}"
+        url = f"https://{api_host}/api/member/profile"
         headers = {
             "User-Agent": user_agent,
             "Accept": "application/json, text/plain, */*",
@@ -480,7 +517,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 return False, "无法打开网站！"
             if res.status_code == 200:
                 user_info = res.json() or {}
-                if user_info.get("data"):
+                if str(user_info.get("code")) == "0" and user_info.get("data"):
                     return True, "连接成功"
                 return False, user_info.get("message", "鉴权已过期或无效")
             return False, f"错误：{res.status_code} {res.reason}"
@@ -492,10 +529,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
         :param site: Milkie 站点配置
         :return: 是否可用及状态信息
         """
-        domain = site.domain or site_rules.extract_domain(site.url)
         with _open_site_response(
             method="GET",
-            url=f"https://{domain}/api/v1/torrents?ps=1",
+            url=f"{site.url.rstrip('/')}/api/v1/torrents?ps=1",
             headers={
                 "Accept": "application/json",
                 "User-Agent": site.ua or self.runtime_config.user_agent,
@@ -507,7 +543,10 @@ class SiteChain(InteractionChainMixin, ChainBase):
             if res is None:
                 return False, "无法打开网站！"
             if res.status_code == 200:
-                return True, "连接成功"
+                payload = res.json()
+                if isinstance(payload, dict) and isinstance(payload.get("torrents"), list):
+                    return True, "连接成功"
+                return False, "站点返回了无效的种子数据"
             if res.status_code in (401, 403):
                 return False, "API Key 无效或已过期"
             return False, f"错误：{res.status_code} {res.reason}"
@@ -522,7 +561,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         domain = site.domain or site_rules.extract_domain(site.url)
         indexer = SitesHelper().get_indexer(domain) or {}
         api_url = str(
-            indexer.get("api_url") or "https://api.sunnypt.top/api/v1/mp"
+            indexer.get("api_url") or f"https://api.{domain}/api/v1/mp"
         ).rstrip("/")
         with _open_site_response(
             method="GET",
@@ -553,8 +592,13 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def __yema_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
-        判断站点是否已经登陆：yemapt
+        优先验证 Yema AuthKey，未配置时保留旧版 Cookie 会话探测。
+
+        :param site: YemaPT 站点配置
+        :return: 是否可用及认证或连接失败原因
         """
+        if site.apikey:
+            return self.__yema_api_test(site)
         user_agent = site.ua or self.runtime_config.user_agent
         url = f"{site.url}api/consumer/fetchSelfDetail"
         headers = {
@@ -579,11 +623,45 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 return False, "Cookie已过期"
             return False, f"错误：{res.status_code} {res.reason}"
 
+    def __yema_api_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
+        """
+        通过 Yema 开放 API 验证 AuthKey，与搜索和资料解析使用相同认证方式。
+
+        :param site: Yema 协议站点配置
+        :return: 是否可用及认证或连接失败原因
+        """
+        if not site.apikey:
+            return False, "未配置 AuthKey"
+        with _open_site_response(
+            method="POST",
+            url=f"{site.url.rstrip('/')}/openApi/user/fetchBasicInfo.json",
+            headers={
+                "Authorization": site.apikey,
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/plain, */*",
+                "User-Agent": site.ua or self.runtime_config.user_agent,
+            },
+            json_body={},
+            proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
+            timeout=site.timeout or 15,
+        ) as res:
+            if res is None:
+                return False, "无法打开网站！"
+            if res.status_code != 200:
+                return False, f"错误：{res.status_code} {res.reason}"
+            payload = res.json() or {}
+            if payload.get("success") and isinstance(payload.get("data"), dict) and payload["data"].get("id"):
+                return True, "连接成功"
+            return False, payload.get("errorMessage") or "AuthKey 已过期或无效"
+
     def __hddolby_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
-        判断站点是否已经登陆：hddolby
+        通过 HDDolby 用户 API 验证 API Key，与资料解析使用相同 API 主机。
+
+        :param site: HDDolby 协议站点配置
+        :return: 是否可用及认证或连接失败原因
         """
-        url = f"{site.url}api/v1/user/data"
+        url = f"https://api.{site_rules.extract_domain(site.url)}/api/v1/user/data"
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*",
@@ -607,7 +685,10 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def __rousi_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
-        使用 PeerGo 个人 API Key 验证 Rousi.pro 站点连接。
+        使用 PeerGo 个人 API Key 验证 RousiPro 协议站点连接。
+
+        :param site: 使用 Bearer 个人 API Key 的站点配置
+        :return: 是否可用及认证或连接失败原因
         """
         if not site.apikey:
             return False, "未配置个人 API Key"
@@ -991,8 +1072,10 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 state, message = special_test(site_info)
             else:
                 indexer = SitesHelper().get_indexer(domain) or {}
-                if indexer.get("schema") == "MTorrent":
-                    state, message = self.__mteam_test(site_info)
+                protocol_test = self.protocol_site_test.get(str(indexer.get("schema") or "")) \
+                    or self.protocol_site_test.get(str(indexer.get("parser") or ""))
+                if protocol_test:
+                    state, message = protocol_test(site_info)
                 else:
                     state, message = self.__test(
                         replace(
