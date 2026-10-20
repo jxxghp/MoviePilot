@@ -975,8 +975,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9642,
-  "edge_sha256": "bace4b8791f142f8d9fdc9e12f532c562d7eec5bed42adb2d07bdb9c8ec8251a",
+  "edge_count": 9639,
+  "edge_sha256": "33f2426e9c4ab48bf751747cf33990aaccbfceb03200476db7baa457fa47b62e",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4690,8 +4690,6 @@
     "app.chain.download.ports -> app.runtime",
     "app.chain.download.ports -> app.runtime.log",
     "app.chain.download.processing -> app.application",
-    "app.chain.download.processing -> app.application.download",
-    "app.chain.download.processing -> app.application.download.admission",
     "app.chain.download.processing -> app.application.messaging",
     "app.chain.download.processing -> app.application.messaging.message",
     "app.chain.download.processing -> app.chain",
@@ -4705,7 +4703,6 @@
     "app.chain.download.processing -> app.runtime.log",
     "app.chain.download.processing -> app.runtime.thread",
     "app.chain.download.processing -> app.schemas",
-    "app.chain.download.processing -> app.schemas.common",
     "app.chain.download.processing -> app.schemas.message",
     "app.chain.download.processing -> app.schemas.types",
     "app.chain.download.selection -> app.application",
