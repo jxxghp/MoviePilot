@@ -10,6 +10,7 @@ from app.application.site.contract import (
     SitePriorityMutation,
     SiteSnapshot,
     SiteStatisticSnapshot,
+    SiteUserDataMutation,
     SiteUserDataSnapshot,
 )
 from app.application.site.query import SiteQueryService
@@ -126,6 +127,35 @@ async def test_transactional_repository_projects_related_snapshots(db) -> None:
     assert icon is not None and icon.domain == "related-site.example"
     assert isinstance(statistic, SiteStatisticSnapshot)
     assert statistic.note == {"2026-08-28 10:00:00": 3}
+
+
+@pytest.mark.parametrize(
+    ("ratio_fields", "expected_ratio"),
+    [({}, 0), ({"ratio": None}, None), ({"ratio": 0}, 0), ({"ratio": 1.23}, 1.23)],
+)
+def test_userdata_ratio_preserves_null_and_default_through_storage(db, ratio_fields, expected_ratio) -> None:
+    """
+    首次写入与当天更新均保留显式空分享率，省略字段仍使用默认零值。
+    """
+    db.watermark(SiteUserData)
+    domain = "nullable-ratio.example"
+    repository = _transactional_repository()
+    assert repository.update_userdata(
+        domain, "空分享率站点", SiteUserDataMutation({"download": 0, **ratio_fields}),
+    ).success
+
+    def read_ratio():
+        """
+        通过生产查询 DTO 读取已提交的分享率。
+        """
+        records = SiteQueryService(repository).userdata_latest_sync()
+        return next(item.ratio for item in records if item.domain == domain)
+
+    assert read_ratio() == expected_ratio
+    repository.update_userdata(domain, "空分享率站点", SiteUserDataMutation({"ratio": 2.5}))
+    assert read_ratio() == 2.5
+    repository.update_userdata(domain, "空分享率站点", SiteUserDataMutation({"ratio": None}))
+    assert read_ratio() is None
 
 
 def test_userdata_default_seeding_info_is_compatible_with_sync_query_dto(db) -> None:

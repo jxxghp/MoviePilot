@@ -37,8 +37,8 @@ class SiteUserData(Base):
     upload: Mapped[Optional[float]] = mapped_column(Float, default=0)
     # 下载量
     download: Mapped[Optional[float]] = mapped_column(Float, default=0)
-    # 分享率
-    ratio: Mapped[Optional[float]] = mapped_column(Float, default=0)
+    # 显式 None 必须写入 NULL；仅省略分享率时使用默认零值。
+    ratio: Mapped[Optional[float]] = mapped_column(Float().evaluates_none(), default=0)
     # 做种数
     seeding: Mapped[Optional[float]] = mapped_column(Float, default=0)
     # 下载数

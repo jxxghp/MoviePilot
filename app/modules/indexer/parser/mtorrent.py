@@ -82,7 +82,9 @@ class MTorrentSiteUserInfo(SiteParserBase):
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
-        解析用户基本信息，这里把_parse_user_traffic_info和_parse_user_detail_info合并到这里。
+        解析用户资料与流量，优先保留站点等级名及空分享率语义。
+
+        :param html_text: MTorrent 用户资料接口的 JSON 文本
         """
         if not html_text:
             return None
@@ -94,12 +96,13 @@ class MTorrentSiteUserInfo(SiteParserBase):
         user_info = detail.get("data", {})
         self.userid = user_info.get("id")
         self.username = user_info.get("username")
-        self.user_level = self.MTeam_sysRoleList.get(user_info.get("role") or "1")
+        self.user_level = user_info.get("roleName") or self.MTeam_sysRoleList.get(user_info.get("role") or "1")
         self.join_at = user_info.get("memberStatus", {}).get("createdDate")
 
         self.upload = int(user_info.get("memberCount", {}).get("uploaded") or '0')
         self.download = int(user_info.get("memberCount", {}).get("downloaded") or '0')
-        self.ratio = user_info.get("memberCount", {}).get("shareRate") or 0
+        # 空分享率表示站点未提供有效比值，不能与真实的 0 合并。
+        self.ratio = user_info.get("memberCount", {}).get("shareRate")
         self.bonus = user_info.get("memberCount", {}).get("bonus") or 0
         self.message_read_force = True
         self._torrent_seeding_params = {
