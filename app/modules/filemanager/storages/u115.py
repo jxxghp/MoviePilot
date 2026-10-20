@@ -770,7 +770,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                         if info_resp["file_category"] == "1"
                         else None,
                         pickcode=info_resp["pick_code"],
-                        size=size_tools.parse_size(info_resp["size"])
+                        # 展示用 size 已舍入；清理源文件的身份校验必须使用精确字节数。
+                        size=info_resp["size_byte"]
                         if info_resp["file_category"] == "1"
                         else None,
                         modify_time=info_resp["utime"],

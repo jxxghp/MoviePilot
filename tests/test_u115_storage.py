@@ -2,10 +2,16 @@
 验证115 存储客户端的目录和文件操作映射。
 """
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
+from app.application.transfer.execution import TransferExecutionConflictError
+from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.storages.u115 import U115Pan
+from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.file import FileItem
 
 
@@ -133,6 +139,72 @@ def test_upload_returns_target_fileitem_when_uploaded_metadata_is_delayed(tmp_pa
     assert uploaded_item.path == "/library/Test Show (2026)/Season 1/Test.Show.S01E01.mkv"
     assert uploaded_item.type == "file"
     assert uploaded_item.size == local_file.stat().st_size
+
+
+@pytest.mark.parametrize("changed_target", [False, True])
+def test_instant_upload_move_uses_exact_bytes_before_deleting_source(
+    tmp_path, monkeypatch, changed_target,
+):
+    """
+    秒传回执与严格查询使用相同字节数；真实大小变化仍必须保留源文件。
+    """
+    local_file = tmp_path / "Test.Show.S01E01.mkv"
+    local_file.write_bytes(b"movie" * 251)
+    file_size = local_file.stat().st_size
+    target_dir = _target_dir()
+    target_path = Path(target_dir.path) / local_file.name
+    info = {
+        "file_id": "200",
+        "file_category": "1",
+        "file_name": local_file.name,
+        "pick_code": "pickcode",
+        "size": "0.98 KB",
+        "size_byte": file_size,
+        "utime": 1,
+    }
+
+    def request_api(method, endpoint, *_args, **_kwargs):
+        """
+        按文件 ID 返回秒传详情，按路径返回删除前的最新详情。
+        """
+        if endpoint == "/open/upload/init":
+            return {"state": True, "data": {"status": 2, "file_id": "200"}}
+        assert endpoint == "/open/folder/get_info"
+        if method == "GET":
+            return info
+        return {"state": True, "data": {**info, "size_byte": file_size + int(changed_target)}}
+
+    storage = _build_storage()
+    storage._request_api = request_api
+    storage.get_folder = lambda _path: target_dir
+    monkeypatch.setattr("app.modules.filemanager.storages.u115.time.sleep", lambda _seconds: None)
+    local = object.__new__(LocalStorage)
+    source = local.get_item_strict(local_file)
+
+    def move():
+        """
+        执行真实跨存储移动编排，在 API 边界离线模拟 115。
+        """
+        return TransHandler._TransHandler__execute_transfer_with_steps(
+            step_runner=None,
+            source_fileitem=source.model_dump(mode="json"),
+            target_storage="u115",
+            source_oper=local,
+            target_oper=storage,
+            target_file=target_path,
+            transfer_type="move",
+        )
+
+    if changed_target:
+        with pytest.raises(TransferExecutionConflictError, match="size 已变化"):
+            move()
+        assert local_file.read_bytes() == b"movie" * 251
+    else:
+        item, error = move()
+        assert error == ""
+        assert item.size == file_size
+        assert item.fileid == "200"
+        assert not local_file.exists()
 
 
 def test_upload_returns_none_when_complete_callback_reports_failure(tmp_path):
