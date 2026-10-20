@@ -420,7 +420,7 @@ JSON values are copied so callers cannot mutate shared cache state.
 
 **Location:** `ConfigModel` and `Settings` in `app/runtime/config.py`
 
-These values are read from environment variables (or `.moviepilot.env`) at startup and are immutable at runtime. They are not stored in the database.
+These values are loaded at startup from process environment variables, `<CONFIG_DIR>/app.env`, secret files, and field defaults, in that order. Explicit constructor arguments take precedence. They are not stored in the database. Web/CLI updates write `app.env` only for locally managed fields; environment and secret-managed fields reject persistence. See [Secrets deployment](../secrets.md) for directory selection, formats, rotation, and migration.
 
 **Access:**
 
