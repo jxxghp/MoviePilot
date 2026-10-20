@@ -99,10 +99,12 @@ class _ProviderRuntime:
 
         if normalized_provider_id == "chatgpt":
             auth = None
+            auth_error: Exception = LLMProviderAuthError("请提供 API Key 或完成 ChatGPT 授权")
             try:
                 auth = await self._resolve_chatgpt_oauth()
             except Exception as err:
-                logger.debug(f"解析 ChatGPT OAuth 鉴权失败，回退 API Key 模式: {err}")
+                auth_error = err
+                logger.debug(f"解析 ChatGPT OAuth 鉴权失败: {err}")
 
             if auth:
                 headers = {"originator": "moviepilot"}
@@ -138,7 +140,7 @@ class _ProviderRuntime:
                 )
                 return result
 
-            raise LLMProviderAuthError("请提供 API Key 或完成 ChatGPT 授权")
+            raise auth_error
 
         if normalized_provider_id == "github-copilot":
             auth = self.get_saved_auth("github-copilot")
