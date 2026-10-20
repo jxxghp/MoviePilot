@@ -249,6 +249,36 @@ def test_season_dir_specials_poster_path(path_context) -> None:
     assert target_path == Path("/tv/Show/Specials/poster.jpg")
 
 
+@pytest.mark.parametrize("write_root", [True, False])
+@pytest.mark.parametrize("season_name", ["season01", "season-specials"])
+@pytest.mark.parametrize("image_type", ["poster", "banner", "thumb", "backdrop", "landscape"])
+def test_season_image_root_switch(path_context, write_root, season_name, image_type) -> None:
+    """
+    根目录开关覆盖普通季、特别篇及各类季图片，保留季目录文件名和扩展名。
+    """
+    chain = path_context.media_chain
+    chain.runtime_config = replace(chain.runtime_config, scrap_season_image_to_root=write_root)
+    parent = FileItem(path="/tv/Show", name="Show", type="dir", storage="local")
+    season = FileItem(path="/tv/Show/Season 1", name="Season 1", type="dir", storage="local")
+    chain.storagechain.get_parent_item.return_value = parent
+    filename = f"{season_name}-{image_type}.png"
+
+    targets = chain._get_target_fileitems_and_paths(
+        current_fileitem=season,
+        item_type=ScrapingTarget.SEASON,
+        metadata_type=ScrapingMetadata(image_type),
+        filename_hint=filename,
+    )
+
+    expected = [(season, Path(season.path) / f"{image_type}.png")]
+    if write_root:
+        expected.insert(0, (parent, Path(parent.path) / filename))
+        chain.storagechain.get_parent_item.assert_called_once_with(season)
+    else:
+        chain.storagechain.get_parent_item.assert_not_called()
+    assert targets == expected
+
+
 def test_movie_file_image_path_uses_parent_dir(path_context) -> None:
     """
     直接刮削电影文件时，图片应保存到父目录。
@@ -401,6 +431,56 @@ def test_scrape_images_season_filter(image_context) -> None:
         Path("/tv/Show/season01-poster.jpg"),
         Path("/tv/Show/Season 1/poster.jpg"),
     ]
+
+
+@pytest.mark.parametrize("write_root", [True, False])
+@pytest.mark.parametrize("root_exists,season_exists", [(False, False), (True, False), (False, True), (True, True)])
+def test_season_image_missing_only_checks_each_target(image_context, write_root, root_exists, season_exists) -> None:
+    """
+    仅缺失策略逐个补全启用的保存位置，关闭根目录写入时不再查询或下载根目录图片。
+    """
+    chain = image_context.media_chain
+    chain.runtime_config = replace(chain.runtime_config, scrap_season_image_to_root=write_root)
+    season = FileItem(path="/tv/Show/Season 1", name="Season 1", type="dir", storage="local")
+    parent = FileItem(path="/tv/Show", name="Show", type="dir", storage="local")
+    root_path = Path("/tv/Show/season01-poster.jpg")
+    season_path = Path("/tv/Show/Season 1/poster.jpg")
+    existing = {root_path: root_exists, season_path: season_exists}
+    chain.metadata_img.return_value = {"season01-poster.jpg": "http://season01"}
+    chain.scraping_policies = ScrapingConfig({})
+    chain.storagechain.get_file_item.side_effect = lambda *, storage, path: existing[path]
+
+    chain._scrape_images_generic(
+        season, MediaInfo(), ScrapingTarget.SEASON, parent_fileitem=parent, season_number=1
+    )
+
+    selected = [root_path, season_path] if write_root else [season_path]
+    assert [call.kwargs["path"] for call in chain.storagechain.get_file_item.call_args_list] == selected
+    assert [call.kwargs["path"] for call in chain._download_and_save_image.call_args_list] == [
+        path for path in selected if not existing[path]
+    ]
+
+
+@pytest.mark.parametrize("season_number,filename", [(1, "season01-thumb.jpg"), (0, "season-specials-thumb.jpg")])
+@pytest.mark.parametrize("policy", [ScrapingPolicy.SKIP, ScrapingPolicy.OVERWRITE])
+def test_season_image_root_disabled_preserves_policy_and_aliases(image_context, season_number, filename, policy) -> None:
+    """
+    关闭根目录后仍遵循跳过和覆盖策略，特别篇与普通季均只在季目录扩展图片别名。
+    """
+    chain = image_context.media_chain
+    chain.runtime_config = replace(chain.runtime_config, scrap_season_image_to_root=False)
+    season = FileItem(path="/tv/Show/Season 1", name="Season 1", type="dir", storage="local")
+    chain.metadata_img.return_value = {filename: "http://thumb"}
+    chain.scraping_policies = ScrapingConfig({"season_thumb": policy})
+    chain.storagechain.get_file_item.return_value = True
+
+    chain._scrape_images_generic(season, MediaInfo(), ScrapingTarget.SEASON, season_number=season_number)
+
+    paths = [call.kwargs["path"] for call in chain._download_and_save_image.call_args_list]
+    assert paths == ([] if policy == ScrapingPolicy.SKIP else [
+        Path("/tv/Show/Season 1/thumb.jpg"),
+        Path("/tv/Show/Season 1/landscape.jpg"),
+    ])
 
 
 def test_scrape_movie_file_images_when_initialized_directly(image_context) -> None:

@@ -331,6 +331,10 @@ class ConfigModel(BaseModel):
         default="themoviedb",
         description='刮削来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic',
     )
+    SCRAP_SEASON_IMAGE_TO_ROOT: bool = Field(
+        default=True,
+        description='季图片是否同时写入剧集根目录；关闭后仅写季目录，不清理已有图片',
+    )
     ANIME_GENREIDS: List[int] = Field(default=[16], description='电视剧动漫的分类genre_ids')
 
     # TMDB配置

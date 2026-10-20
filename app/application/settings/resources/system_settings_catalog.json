@@ -1327,6 +1327,12 @@
       "source_file": "app/runtime/config.py",
       "source_line": 586
     },
+    "SCRAP_SEASON_IMAGE_TO_ROOT": {
+      "description": "季图片是否同时写入剧集根目录；关闭后仅写季目录，不清理已有图片",
+      "group": "media_metadata",
+      "source_file": "app/runtime/config.py",
+      "source_line": 334
+    },
     "SCRAP_SOURCE": {
       "description": "刮削来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic",
       "group": "media_metadata",

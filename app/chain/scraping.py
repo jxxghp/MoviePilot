@@ -653,7 +653,16 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     ) -> List[Tuple[_SchemaFileItem, Path]]:
         """
         根据刮削上下文生成一个或多个保存目标。
-        季图片需要同时兼容根目录 seasonxx-poster 和季目录 poster 两种命名。
+
+        季目录始终使用通用图片名；开启根目录写入时额外保存 season 前缀图片。
+        是否补缺或覆盖仍由调用方对每个目标独立判断。
+
+        :param current_fileitem: 当前刮削的目录或文件
+        :param item_type: 刮削目标类型
+        :param metadata_type: 元数据类型
+        :param filename_hint: 刮削源返回的文件名，季图片可带 season 前缀
+        :param parent_fileitem: 已知父目录，未提供时按需查询存储
+        :return: 按保存顺序排列的目录项和目标路径
         """
         target_item, target_path = self._get_target_fileitem_and_path(
             current_fileitem=current_fileitem,
@@ -665,7 +674,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         targets = [(target_item, target_path)] if target_path else []
 
         if (
-                item_type != ScrapingTarget.SEASON
+                not self.runtime_config.scrap_season_image_to_root
+                or item_type != ScrapingTarget.SEASON
                 or not filename_hint
                 or not filename_hint.lower().startswith("season")
                 or metadata_type not in {
@@ -1041,7 +1051,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         )
                         continue
 
-                # 获取目标 FileItem 和 Path，季图片会同时写根目录和季目录。
+                # 按配置生成季图片的根目录和季目录目标，再逐个应用刮削策略。
                 image_targets = self._get_target_fileitems_and_paths(
                     current_fileitem=current_fileitem,
                     item_type=item_type,
