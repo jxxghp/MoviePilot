@@ -109,19 +109,21 @@ def test_activity_counts_survive_retry_and_bounded_details():
 @pytest.mark.parametrize(("kind", "full", "label"), [
     ("initial", False, "首次订阅"), ("upgrade", False, "洗版升级"), ("upgrade", True, "全集洗版"),
 ])
-def test_history_notification_and_durable_processing_preserve_same_source(monkeypatch, kind, full, label):
+@pytest.mark.parametrize("title", ["开始下载 Demo", "", None])
+def test_history_and_processing_keep_source_without_changing_template(monkeypatch, kind, full, label, title):
     """
-    下载结算在历史、冻结通知与可恢复上下文中保存一致来源，保持原模板正文。
+    下载历史与可恢复上下文保留来源，冻结通知的标题和正文保持模板原样。
     """
     context = _context([1])
     context.subscription_download = {"subscription_id": 17, "submission_type": kind, "best_version_full": full,
                                      "initial_episodes": [], "upgrade_episodes": [1]}
+    assert subscription_download_label(context.subscription_download) == label
     chain = DownloadHistoryOwner.__new__(DownloadHistoryOwner)
     chain.durable_event_writer = MagicMock()
     chain._build_download_notification = DownloadProcessingOwner._build_download_notification.__get__(chain)
     chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",), downloading_url="/downloading")
     monkeypatch.setattr("app.application.messaging.message.MessageTemplateHelper.render",
-                        lambda **_kwargs: Message(title="开始下载 Demo", text="自定义模板内容"))
+                        lambda **_kwargs: Message(title=title, text="自定义模板内容"))
     chain._settle_download_success(context=context, media=context.media_info, meta=context.meta_info,
                                    torrent=context.torrent_info, folder_name="Demo", file_list=[],
                                    download_dir=Path("/downloads"), layout=None, downloader="qb", download_hash="hash",
@@ -129,7 +131,7 @@ def test_history_notification_and_durable_processing_preserve_same_source(monkey
                                    userid=None, username="owner", torrent_content=b"torrent", custom_words=None)
     kwargs = chain.durable_event_writer.download_added.call_args.kwargs
     assert kwargs["history"].note["subscription_download"] == context.subscription_download
-    assert kwargs["notification_payload"]["message"]["title"] == f"【{label}】开始下载 Demo"
+    assert kwargs["notification_payload"]["message"]["title"] == title
     assert kwargs["notification_payload"]["message"]["text"] == "自定义模板内容"
     restored = restore_download_processing(kwargs["processing_payload"])
     assert restored.context.subscription_download == context.subscription_download

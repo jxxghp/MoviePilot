@@ -160,7 +160,6 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             userid=userid,
             username=username,
             download_episodes=download_episodes,
-            subscription_download=context.subscription_download,
         )
         notification_payload = snapshot_download_notification(notification)
         processing_payload = snapshot_download_processing(
