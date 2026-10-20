@@ -389,7 +389,8 @@ def test_downloader_task_identity_decides_reuse_flag(downloader, existing):
 ], ids=["matched", "all", "empty", "unrelated"])
 def test_reuse_settlement_keeps_history_and_skips_duplicate_effects(durable, existing, expected_files):
     """
-    复用已有任务时仍记录历史并触发整理与事件，但不生成通知意图，也不重复写入已记录的文件明细。
+    复用已有任务时仍记录历史并触发整理与事件，但不生成通知意图、不重复写入已记录的文件明细；
+    文件明细全部已记录时才为该资源登记退避，仍有新增文件则不退避。
     """
     recorded_file, new_file = _FILES
     records = {
@@ -408,6 +409,7 @@ def test_reuse_settlement_keeps_history_and_skips_duplicate_effects(durable, exi
     ]
     chain.durable_event_writer = MagicMock() if durable else None
     chain._build_download_notification = MagicMock(return_value=object())
+    chain._record_duplicate_download_backoff = MagicMock()
     chain._submit_download_added_task = MagicMock()
     chain.post_message = MagicMock()
     chain.eventmanager = MagicMock()
@@ -435,6 +437,10 @@ def test_reuse_settlement_keeps_history_and_skips_duplicate_effects(durable, exi
     assert [item.filepath for item in files] == list(expected_files)
     chain._build_download_notification.assert_not_called()
     chain.download_history_repository.get_files_by_hash.assert_called_once_with("reuse-hash", state=1)
+    assert chain._record_duplicate_download_backoff.called is (existing == "all")
+    if existing == "all":
+        assert chain._record_duplicate_download_backoff.call_args.kwargs["source"] == "subscribe"
+        assert chain._record_duplicate_download_backoff.call_args.kwargs["downloader"] == "qb"
 
 
 def test_reuse_settlement_without_media_files_skips_file_lookup():

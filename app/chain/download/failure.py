@@ -1,5 +1,5 @@
 """
-下载失败指纹、冷却和持久化 owner。
+下载资源级失败与退避指纹、冷却和持久化 owner。
 """
 
 import hashlib
@@ -27,6 +27,10 @@ from app.schemas.media import build_media_key, resolve_media_identity
 
 DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS = 24 * 60 * 60
 DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS = 60 * 60
+# 重复提交退避只压制单个资源指纹，必须长于订阅重新选源的周期，否则同一个整包仍会被反复接受。
+DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS = 7 * 24 * 60 * 60
+# 退避记录写入台账的成因说明，候选跳过日志直接引用它，不能再假设这是一次失败。
+DOWNLOAD_FAILURE_DUPLICATE_MESSAGE = "下载器已存在同一任务且本次无新增文件明细"
 DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS = (
     "无法读取种子文件",
     "无法获取下载地址",
@@ -44,7 +48,7 @@ DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS = (
 
 class DownloadFailureOwner(_DownloadOwnerBase):
     """
-    下载失败指纹、冷却和持久化 owner。
+    下载资源级失败与退避指纹、冷却和持久化 owner。
     """
 
     @staticmethod
@@ -153,9 +157,20 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             downloader: Optional[str] = None,
             source: Optional[str] = None,
             episodes: Optional[Set[int]] = None,
+            ttl_seconds: Optional[int] = None,
     ) -> Optional[str]:
         """
-        记录资源级下载失败，并返回本次失败指纹。
+        记录资源级冷却事实，并返回本次资源指纹。
+
+        该台账是资源级退避记录，既承载真实失败，也承载"重复提交但无新增交付"这类
+        没有失败、但不值得立刻再试一次的事实，因此 ``error_msg`` 只是跳过原因说明。
+
+        :param context: 本次提交的上下文，用于计算资源指纹
+        :param error_msg: 写入台账的跳过原因说明
+        :param downloader: 本次使用的下载器
+        :param source: 下载来源，仅订阅来源的冷却会被读取
+        :param episodes: 目标集数，缺省时按识别元数据记录
+        :param ttl_seconds: 显式冷却秒数，缺省时按原因文本推断
         """
         fingerprint = self._build_download_failure_fingerprint(context)
         if not fingerprint:
@@ -165,7 +180,9 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now_timestamp))
         next_retry_at = time.strftime(
             "%Y-%m-%d %H:%M:%S",
-            time.localtime(now_timestamp + self._download_failure_ttl(error_msg)),
+            time.localtime(now_timestamp + (
+                ttl_seconds if ttl_seconds is not None else self._download_failure_ttl(error_msg)
+            )),
         )
         media = context.media_info
         media_source, media_id = resolve_media_identity(media=media)
@@ -212,6 +229,36 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             logger.error(f"记录下载失败冷却失败：{str(err)}")
         return fingerprint
 
+    def _record_duplicate_download_backoff(
+            self,
+            context: Context,
+            downloader: Optional[str] = None,
+            source: Optional[str] = None,
+            episodes: Optional[Set[int]] = None,
+    ) -> Optional[str]:
+        """
+        为重复接受且未带来任何新增文件的资源记录退避，并返回该资源指纹。
+
+        退避只压制这一个资源指纹：订阅候选会继续尝试同媒体的其他资源，订阅本身既不会被
+        判定完成也不会被判失败，冷却到期后仍可重试。仅订阅来源需要记录，因为候选过滤
+        只在订阅来源读取该台账。
+
+        :param context: 本次结算的上下文，用于计算资源指纹
+        :param downloader: 本次使用的下载器
+        :param source: 下载来源
+        :param episodes: 目标集数
+        """
+        if not self._is_subscribe_source(source):
+            return None
+        return self._record_download_failure(
+            context=context,
+            error_msg=DOWNLOAD_FAILURE_DUPLICATE_MESSAGE,
+            downloader=downloader,
+            source=source,
+            episodes=episodes,
+            ttl_seconds=DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS,
+        )
+
     def _active_download_failure_fingerprints(
             self,
             contexts: List[Context],
@@ -248,17 +295,20 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             failure: Optional[DownloadFailureSnapshot],
     ) -> None:
         """
-        记录候选资源处于失败冷却期时的跳过原因和下次重试时间。
+        记录候选资源处于冷却期时的跳过原因和下次重试时间。
+
+        台账里的成因可能是真实失败，也可能是重复提交退避，所以这里只转述记录中的原因，
+        不把它断言成"添加下载失败"。
         """
         reason = getattr(failure, "error_message", None) or "未知原因"
         retry_at = getattr(failure, "next_retry_at", None)
         if retry_at:
             logger.info(
-                f"{context.torrent_info.title} 近期添加下载失败（失败原因：{reason}），"
-                f"暂时跳过该资源，将于 {retry_at} 后重试"
+                f"{context.torrent_info.title} 暂时跳过该资源（原因：{reason}），"
+                f"将于 {retry_at} 后重试，本次继续尝试其他资源"
             )
         else:
             logger.info(
-                f"{context.torrent_info.title} 近期添加下载失败（失败原因：{reason}），"
-                "暂时跳过该资源"
+                f"{context.torrent_info.title} 暂时跳过该资源（原因：{reason}），"
+                "本次继续尝试其他资源"
             )

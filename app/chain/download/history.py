@@ -82,7 +82,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         """
         提交下载历史、文件明细和 durable 下载事件。
 
-        :param already_exists: 下载器中已存在同一任务时为 True，仅补记历史，不再重复通知与文件明细
+        :param already_exists: 下载器中已存在同一任务时为 True，仅补记历史，不再重复通知与文件明细；
+                               若该任务的文件明细已全部记录过，同时为这个资源登记提交退避
         """
         if layout == "NoSubfolder" or not folder_name:
             download_path = download_dir / file_list[0] if file_list else download_dir
@@ -145,7 +146,16 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
                 )
             )
         if already_exists:
-            files_to_add = self._filter_unrecorded_download_files(files_to_add, download_hash)
+            retained_files = self._filter_unrecorded_download_files(files_to_add, download_hash)
+            if files_to_add and not retained_files:
+                # 文件明细全部已记录说明重投这个整包不会再带来新增内容，按资源退避让订阅改试其他种子。
+                self._record_duplicate_download_backoff(
+                    context=context,
+                    downloader=downloader,
+                    source=source,
+                    episodes=episodes,
+                )
+            files_to_add = retained_files
         frozen_files = tuple(files_to_add)
         event_payload = {
             "hash": download_hash, "context": context, "username": username,

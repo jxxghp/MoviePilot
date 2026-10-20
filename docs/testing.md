@@ -163,6 +163,11 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 短期签名或换票资源在下载链中屏蔽原始 enclosure，不将临时请求地址写入无效缓存。
 订阅持久化保留具体失败原因，无效种子使用 24 小时资源冷却，避免重启后每小时重复通知。
 网络异常、空响应、403/5xx 和限流仍沿用瞬时重试与流控规则，不因本次修改加入内容无效黑名单。
+下载器报告同一任务已存在且该任务的文件明细全部已记录时，按资源指纹登记 7 天提交退避，
+使订阅不再重投同一个已持有的整包；退避只压制该资源，候选仍继续尝试同媒体的其他种子，
+订阅不会被判定完成或失败，且仅订阅来源写台账（手动补投不留冷却记录）。冷却跳过日志转述台账
+中的原因，不再把它断言成"添加下载失败"。见 `tests/test_torrent_download_retry.py` 与
+`tests/test_downloader_submission.py`。
 
 换票资源的跨批次复用见 `tests/test_download_resource_cache.py`：种子成功解析后，
 本地 `torrents` 缓存以站点资源身份、原始换票请求和 Cookie 的摘要保存内容，命中后

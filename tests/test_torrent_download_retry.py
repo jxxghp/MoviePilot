@@ -5,15 +5,21 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 from requests import Response
 
 import app.application.torrent.download as download
+import app.chain.download.failure as failure_owner
 import app.chain.download.submission as submission
 from app.chain.download import DownloadChain
-from app.chain.download.failure import DownloadFailureOwner
+from app.chain.download.failure import (
+    DOWNLOAD_FAILURE_DUPLICATE_MESSAGE,
+    DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS,
+    DownloadFailureOwner,
+)
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaType
@@ -276,6 +282,94 @@ def test_invalid_content_preparation_preserves_persisted_resource_cooldown(bound
     assert failure.error_message == error == "种子数据有误，请确认链接是否正确"
     assert (datetime.fromisoformat(failure.next_retry_at)
             - datetime.fromisoformat(failure.failed_at)).total_seconds() == 86400
+
+
+def _duplicate_backoff_context():
+    """
+    构造可生成稳定资源指纹的重复提交上下文。
+    """
+    return Context(
+        torrent_info=TorrentInfo(site=1, site_name="test", title="Series S01", enclosure=URL),
+        media_info=MediaInfo(title="Series", type=MediaType.TV),
+        meta_info=MetaInfo("Series S01"),
+    )
+
+
+@pytest.mark.parametrize("source,recorded", [("Subscribe|1", True), ("MoviePilot|手动下载", False)])
+def test_duplicate_submission_backoff_is_subscribe_only_and_long(source, recorded):
+    """
+    重复提交退避只为订阅来源登记台账，并使用覆盖重新选源周期的长冷却与中性成因。
+    """
+    chain = object.__new__(DownloadChain)
+    chain.download_failure_repository = Mock()
+    context = _duplicate_backoff_context()
+
+    fingerprint = chain._record_duplicate_download_backoff(
+        context=context, downloader="qb", source=source,
+    )
+
+    if not recorded:
+        assert fingerprint is None
+        chain.download_failure_repository.record_failure.assert_not_called()
+        return
+    write = chain.download_failure_repository.record_failure.call_args.args[0]
+    assert write.error_message == DOWNLOAD_FAILURE_DUPLICATE_MESSAGE
+    assert write.downloader == "qb"
+    assert (datetime.fromisoformat(write.next_retry_at)
+            - datetime.fromisoformat(write.failed_at)).total_seconds() == DOWNLOAD_FAILURE_DUPLICATE_TTL_SECONDS
+    assert fingerprint == chain._build_download_failure_fingerprint(context)
+
+
+def test_duplicate_backoff_cools_only_that_resource_for_subscription_candidates():
+    """
+    退避按资源指纹生效：同一媒体的其他种子仍可被候选选中。
+    """
+    chain = object.__new__(DownloadChain)
+    chain.download_failure_repository = Mock()
+    cooled = _duplicate_backoff_context()
+    other = Context(
+        torrent_info=TorrentInfo(site=1, site_name="test", title="Series S01 1080p",
+                                 enclosure="https://tracker.example/download.php?id=40"),
+        media_info=cooled.media_info,
+        meta_info=MetaInfo("Series S01"),
+    )
+    fingerprint = chain._record_duplicate_download_backoff(
+        context=cooled, downloader="qb", source="Subscribe|1",
+    )
+    chain.download_failure_repository.get_active_by_fingerprints.return_value = {fingerprint: Mock()}
+
+    active = chain._active_download_failure_fingerprints(contexts=[cooled, other], source="Subscribe|1")
+
+    queried = chain.download_failure_repository.get_active_by_fingerprints.call_args.kwargs["fingerprints"]
+    assert list(active) == [fingerprint]
+    assert len(set(queried)) == 2
+    assert chain._build_download_failure_fingerprint(other) not in active
+
+
+def test_cooldown_log_keeps_backoff_reason_neutral(monkeypatch):
+    """
+    候选跳过日志转述台账成因，不把重复提交退避说成添加下载失败。
+    """
+    logger = Mock()
+    monkeypatch.setattr(failure_owner, "logger", logger)
+
+    DownloadFailureOwner._log_download_failure_cooldown(
+        Context(torrent_info=TorrentInfo(title="Series S01")),
+        SimpleNamespace(error_message=DOWNLOAD_FAILURE_DUPLICATE_MESSAGE,
+                       next_retry_at="2026-10-26 12:00:00"),
+    )
+
+    text = logger.info.call_args.args[0]
+    assert DOWNLOAD_FAILURE_DUPLICATE_MESSAGE in text
+    assert "将于 2026-10-26 12:00:00 后重试" in text
+    assert "添加下载失败" not in text
+
+    DownloadFailureOwner._log_download_failure_cooldown(
+        Context(torrent_info=TorrentInfo(title="Series S01")),
+        SimpleNamespace(error_message=None, next_retry_at=None),
+    )
+
+    assert logger.info.call_args.args[0] == "Series S01 暂时跳过该资源（原因：未知原因），本次继续尝试其他资源"
 
 
 def test_redirected_get_retries_at_destination(boundary):
