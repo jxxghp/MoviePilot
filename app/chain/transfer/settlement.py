@@ -593,11 +593,22 @@ class TransferSettlementOwner(_TransferOwnerBase):
         # 只要该种子的所有任务都已整理完成，则设置种子状态为已整理
         self._TransferChain__mark_torrent_completed_if_done(task.download_hash, task.downloader)
 
-        # 只有移动模式的全部任务成功后，才允许清理下载器和源目录。
-        if transferinfo.transfer_type == "move" and self.jobview.is_success(task):
+        # 种子按自身任务判定完成，避免同媒体的其它种子失败阻塞清理。
+        if transferinfo.transfer_type == "move" and self._can_cleanup_transfer(task):
             self._cleanup_successful_transfer(task, transferhis, history)
 
         return ret_status, ret_message
+
+    def _can_cleanup_transfer(self, task: TransferTask) -> bool:
+        """
+        下载任务按种子判定成功；无种子整理沿用整个媒体作业的完成边界。
+
+        :param task: 已完成结算的当前整理任务
+        :return: 该种子或无种子作业是否全部成功
+        """
+        if task.download_hash:
+            return self.jobview.is_torrent_success(task.download_hash)
+        return self.jobview.is_success(task)
 
     def _cleanup_successful_transfer(
             self, task: TransferTask, transferhis: TransferHistoryRepository,
