@@ -536,6 +536,53 @@ def test_python_subtitle_episode_range_end_variant():
     assert meta_cn.end_episode == 12
 
 
+@pytest.mark.parametrize(
+    "subtitle",
+    [
+        "【赛博朋克：边缘行者】 转载 不包含 第二季",
+        "赛博朋克：边缘行者 不含第2季",
+        "赛博朋克：边缘行者 不包括 第二季",
+    ],
+)
+def test_python_subtitle_negated_season_is_ignored(subtitle):
+    """
+    副标题中被“不包含/不含/不包括”否定的季号不应作为资源季号。
+    """
+    with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
+        meta = MetaInfo(
+            title="[Nekomoe kissaten&VCB-Studio] Cyberpunk Edgerunners [Ma10p_1080p]",
+            subtitle=subtitle,
+        )
+
+    assert meta.begin_season is None
+
+
+def test_python_subtitle_negated_season_keeps_affirmed_season():
+    """
+    副标题同时声明包含与不包含的季时，只采用未被否定的季号。
+    """
+    with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
+        meta = MetaInfo(
+            title="Cyberpunk Edgerunners 2022 1080p NF WEB-DL x264 DDP5.1-GRP",
+            subtitle="赛博朋克：边缘行者 第一季 不包含第二季",
+        )
+
+    assert meta.begin_season == 1
+
+
+def test_python_subtitle_negated_episode_is_ignored():
+    """
+    副标题中被否定的集号不应作为资源集号。
+    """
+    with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
+        meta = MetaInfo(
+            title="Some Show S01 2022 1080p WEB-DL H264-GRP",
+            subtitle="某剧 不含第13集",
+        )
+
+    assert meta.begin_episode is None
+
+
 def test_python_subtitle_year_range_not_treated_as_episodes():
     """
     年份范围（如 2019-2020）不得误识别为集数。
