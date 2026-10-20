@@ -175,12 +175,14 @@ def test_best_version_search_uses_normal_rules_for_never_downloaded_episodes(sub
 
 
 
-def test_best_version_candidate_filter_handles_full_pack_and_explicit_groups(subscription, monkeypatch):
+@pytest.mark.parametrize("full_upgrade", [0, 1])
+def test_best_version_candidate_filter_handles_full_pack_and_explicit_groups(subscription, monkeypatch, full_upgrade):
     """
-    全集候选按目标范围归类，订阅显式规则组同时覆盖两种候选。
+    显式规则组同时覆盖两种候选，全集洗版始终执行升级校验。
     """
     scope = subscription
-    subscribe = replace(scope.initial, best_version=1, total_episode=2, filter_groups=["custom"])
+    subscribe = replace(scope.initial, best_version=1, best_version_full=full_upgrade,
+                        total_episode=2, filter_groups=["custom"])
     target = SubscriptionSearchTarget(
         subscribe,
         build_subscribe_meta(subscribe),
@@ -198,9 +200,96 @@ def test_best_version_candidate_filter_handles_full_pack_and_explicit_groups(sub
     full_pack = Context(meta_info=MetaInfo("Example Show S01"), media_info=scope.media,
                         torrent_info=TorrentInfo(site=1, title="Example Show S01"))
     assert candidate_filter([full_pack]) == [full_pack]
-    assert calls[0][1] is False
+    assert calls[0][1] is bool(full_upgrade)
     assert subscribe_search._subscription_rule_groups(subscribe) == (["custom"], ["custom"])
     assert subscribe_search._best_version_target_episodes(subscribe, target) == {1, 2}
+
+
+@pytest.mark.parametrize("history", [{}, {"episode_priority": {"1": 80}}, {"note": [1, 2]}])
+@pytest.mark.parametrize("has_upgrade", [False, True])
+@pytest.mark.parametrize("pack_scope", ["S01 Complete", "S01E01-E02"])
+def test_full_best_version_search_does_not_fall_back_to_normal_rules(
+    subscription: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    history: dict[str, object],
+    has_upgrade: bool,
+    pack_scope: str,
+) -> None:
+    """
+    全集洗版拒绝仅普通规则放行的整包，无合格升级时不提交下载或推进进度。
+
+    覆盖无下载记录、部分已下载、全部已下载及显式集数与整季标题，保留真实分页和下载选集。
+    """
+    scope = subscription
+    current = replace(scope.initial, total_episode=2, manual_total_episode=2,
+                      best_version=1, best_version_full=1, current_priority=0, **history)
+    scope.current["value"] = current
+    target = SubscriptionSearchTarget(current, build_subscribe_meta(current), scope.media,
+                                      _missing(scope, current), "tmdb:1")
+    search = SearchChain()
+    monkeypatch.setattr(search, "_sync_indexers", lambda _sites: [{"id": 1, "name": "A"}])
+    monkeypatch.setattr(search, "get_search_page_size", lambda **_params: 100)
+    monkeypatch.setattr(search, "search_plugin_torrents", lambda **_params: [])
+    monkeypatch.setattr(scope.chain, "get_sub_sites", lambda _subscribe: [1])
+    monkeypatch.setattr(
+        subscribe_search,
+        "get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda key: {
+            SystemConfigKey.SubscribeFilterRuleGroups: ["normal"],
+            SystemConfigKey.BestVersionFilterRuleGroups: ["best"],
+        }.get(key)),
+    )
+
+    def filter_rules(
+        *, rule_groups: list[str], torrent_list: list[TorrentInfo], mediainfo: MediaInfo,
+    ) -> list[TorrentInfo]:
+        """
+        在模块边界模拟普通规则接受 1080p、洗版规则只接受杜比视界。
+        """
+        assert mediainfo.type == MediaType.TV
+        accepted = []
+        for torrent in torrent_list:
+            if rule_groups == ["normal"] or "DoVi" in torrent.title:
+                torrent.pri_order = 100
+                accepted.append(torrent)
+        return accepted
+
+    rules = Mock(side_effect=filter_rules)
+    monkeypatch.setattr(search, "filter_torrents", rules)
+
+    def request(**params: object) -> list[TorrentInfo]:
+        """
+        返回普通规则可接受的低画质整包，以及可选的合格升级整包。
+        """
+        titles = [f"Example Show {pack_scope} 1080p WEB-DL H.264"]
+        if has_upgrade:
+            titles.append(f"Example Show {pack_scope} 2160p DoVi WEB-DL H.265")
+        items = [TorrentInfo(site=1, site_name="A", title=title,
+                             enclosure=f"https://site.example/download?id={index}")
+                 for index, title in enumerate(titles)] if params["page"] == 0 else []
+        report_site_search_outcome(attempted=True, outcome="success")
+        report_site_search_page(raw_count=len(items))
+        return items
+
+    monkeypatch.setattr(search, "search_site_torrents", request)
+    _process_paged_subscription(scope.chain, current, search, target, SystemConfigKey.BestVersionFilterRuleGroups, None)
+
+    assert rules.call_count > 0
+    assert all(call.kwargs["rule_groups"] == ["best"] for call in rules.call_args_list)
+    if has_upgrade:
+        scope.download.download_single.assert_called_once()
+        call = scope.download.download_single.call_args
+        context = call.args[0] if call.args else call.kwargs["context"]
+        assert "DoVi" in context.torrent_info.title
+        assert context.confirmed_full_coverage
+        assert scope.current["value"].current_priority == 100
+        scope.finished.assert_called()
+    else:
+        scope.download.download_single.assert_not_called()
+        assert scope.current["value"].current_priority == 0
+        assert scope.current["value"].note == current.note
+        assert scope.current["value"].episode_priority == current.episode_priority
+        scope.finished.assert_not_called()
 
 
 def test_non_best_version_candidate_filter_keeps_existing_filtering(subscription, monkeypatch):
@@ -242,6 +331,9 @@ def test_paged_best_version_search_builds_dynamic_rule_checkpoint(subscription, 
         """
 
         def __init__(self, *, plan, **_kwargs):
+            """
+            保存待验证的搜索计划。
+            """
             captured["plan"] = plan
 
         def run(self, _submit):

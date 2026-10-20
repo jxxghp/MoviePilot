@@ -138,6 +138,9 @@ def _build_subscription_candidate_filter(
 ) -> Callable[[list[Context]], list[Context]]:
     """
     按资源覆盖范围选择普通规则或洗版规则，再执行订阅候选校验。
+
+    分集洗版允许从未下载的剧集使用普通规则；全集洗版始终使用洗版规则，
+    避免普通规则的优先级被当作全集升级优先级。订阅显式规则组在两种模式下均优先。
     """
     normal_groups, best_groups = _subscription_rule_groups(subscribe)
     if not subscribe.best_version or target.media.type != MediaType.TV:
@@ -153,7 +156,7 @@ def _build_subscription_candidate_filter(
 
     def filter_contexts(contexts: list[Context]) -> list[Context]:
         """
-        分别过滤首次下载候选和已有集数升级候选。
+        分集模式区分首次下载和升级候选，全集模式统一执行升级筛选。
         """
         initial_downloads: list[Context] = []
         upgrades: list[Context] = []
@@ -161,7 +164,7 @@ def _build_subscription_candidate_filter(
             episodes = set(context.meta_info.episode_list if context.meta_info else [])
             if not episodes:
                 episodes = set(target_episodes)
-            if episodes and episodes <= downloaded_episodes:
+            if subscribe.best_version_full or (episodes and episodes <= downloaded_episodes):
                 upgrades.append(context)
             else:
                 initial_downloads.append(context)
