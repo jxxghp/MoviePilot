@@ -10,6 +10,9 @@ import pytest
 from plexapi.library import MovieSection, MusicSection
 from pydantic import ValidationError
 
+from app.application.mediaserver import MEDIA_SERVER_EXISTENCE_QUERY, MediaServerSyncItem
+from app.chain.mediaserver import _SYNC_QUERY
+from app.modules._base.mediaserver import emby_query_params
 from app.modules.emby import EmbyModule
 from app.modules.emby.emby import Emby
 from app.modules.jellyfin import JellyfinModule
@@ -115,6 +118,114 @@ def _movie():
         "ProviderIds": {"Tmdb": "123"},
         "UserData": {"Played": True, "PlayCount": 2},
     }
+
+
+@pytest.mark.parametrize(
+    "query,expected_fields",
+    [
+        (MediaServerQueryOptions(fields={MediaServerField.YEAR}), {"ProductionYear"}),
+        (MEDIA_SERVER_EXISTENCE_QUERY, {"ProviderIds", "ProductionYear"}),
+        (_SYNC_QUERY, {"ParentId", "OriginalTitle", "ProductionYear", "ProviderIds", "Path", "ChildCount"}),
+    ],
+    ids=["year-only", "existence", "sync"],
+)
+def test_emby_projection_explicitly_requests_year(query, expected_fields):
+    """
+    年份投影必须显式追加 ProductionYear，不能依赖服务端默认返回。
+
+    :param query: 年份单字段、实际查重或同步使用的投影
+    :param expected_fields: 当前投影必须发送的字段集合
+    """
+    params = emby_query_params(query)
+
+    assert set(params["Fields"].split(",")) == expected_fields
+    assert params["EnableImages"] == "false"
+    assert params["EnableUserData"] == "false"
+
+
+@pytest.fixture
+def year_projected_client(emby_client):
+    """
+    模拟只有请求 ProductionYear 才返回年份的 Emby/Jellyfin 服务器。
+
+    :param emby_client: 无网络客户端及传输替身
+    :return: 客户端及按请求字段裁剪年份的传输替身
+    """
+    client, transport = emby_client
+
+    def respond(_url, params):
+        """
+        按字段请求生成媒体列表响应，涵盖电影和电视剧同步。
+
+        :param _url: 客户端请求地址
+        :param params: 实际发往服务端的查询参数
+        :return: 根据 Fields 决定是否带有年份的成功响应
+        """
+        movie = _movie()
+        if "ProductionYear" not in params.get("Fields", "").split(","):
+            movie.pop("ProductionYear")
+        series = {**movie, "Id": "series", "Type": "Series"}
+        items = [movie] if params.get("Ids") or params.get("SearchTerm") or params.get("searchTerm") else [movie, series]
+        return _response({"Items": items})
+
+    transport.get_res.side_effect = respond
+    return client, transport
+
+
+@pytest.mark.parametrize("year,media_id,expected", [(2026, "123", True), (2025, "123", False), (2026, "999", False)])
+def test_existence_projection_preserves_movie_year_matching(year_projected_client, year, media_id, expected):
+    """
+    实际查重投影能命中同年份同身份电影，并继续排除年份或身份冲突。
+
+    :param year_projected_client: 按请求字段返回年份的客户端及传输替身
+    :param year: 查重要求的年份
+    :param media_id: 查重要求的 TMDB 标识
+    :param expected: 是否应匹配库内电影
+    """
+    client, _ = year_projected_client
+
+    items = client.get_movies(
+        title="示例电影", year=str(year), media_source=MediaSource.TMDB, media_id=media_id,
+        query=MEDIA_SERVER_EXISTENCE_QUERY,
+    )
+
+    assert bool(items) is expected
+    if expected:
+        assert items[0].item_id == "movie"
+        assert str(items[0].year) == "2026"
+
+
+def test_existence_projection_preserves_detail_year(year_projected_client):
+    """
+    缓存条目按 ID 实时复核时也必须取回年份。
+
+    :param year_projected_client: 按请求字段返回年份的客户端及传输替身
+    """
+    client, transport = year_projected_client
+
+    item = client.get_iteminfo("movie", query=MEDIA_SERVER_EXISTENCE_QUERY)
+
+    assert item.media_id == "123"
+    assert str(item.year) == "2026"
+    assert transport.get_res.call_args.args[1]["Ids"] == "movie"
+
+
+def test_sync_projection_preserves_movie_and_series_year(year_projected_client):
+    """
+    实际同步投影把电影和电视剧年份保留到持久化写端快照。
+
+    :param year_projected_client: 按请求字段返回年份的客户端及传输替身
+    """
+    client, _ = year_projected_client
+
+    items = list(client.get_items("library", query=_SYNC_QUERY))
+    snapshots = [
+        MediaServerSyncItem.from_item(item, item_type=item.item_type, seasoninfo={}, sync_time="2026-10-20 12:00:00")
+        for item in items
+    ]
+
+    assert {item.item_type for item in snapshots} == {"Movie", "Series"}
+    assert all(str(item.year) == "2026" for item in snapshots)
 
 
 @pytest.mark.parametrize("query", [None, MediaServerQueryOptions()])

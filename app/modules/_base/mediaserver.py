@@ -23,7 +23,8 @@ def emby_query_params(query: Optional[MediaServerQueryOptions]) -> dict[str, str
     """
     把显式投影翻译为 Emby/Jellyfin 已公开的列表查询控制参数。
 
-    名称、类型、年份等基础字段由服务端默认返回；Fields 只追加当前投影所需的可选字段。
+    名称、类型由服务端默认返回；年份必须通过 Fields 显式请求，避免精简查询丢失匹配和同步依据。
+    Fields 只追加当前投影所需的字段。
     音乐完整性匹配需要 ChildCount，即使未请求额外统计也不能删除它。
 
     :param query: 调用方投影；None 或 fields=None 时不改变旧请求
@@ -34,6 +35,7 @@ def emby_query_params(query: Optional[MediaServerQueryOptions]) -> dict[str, str
     fields = {
         MediaServerField.LIBRARY: "ParentId",
         MediaServerField.ORIGINAL_TITLE: "OriginalTitle",
+        MediaServerField.YEAR: "ProductionYear",
         MediaServerField.IDENTITY: "ProviderIds",
         MediaServerField.PATH: "Path",
         MediaServerField.MUSIC: "ChildCount",
