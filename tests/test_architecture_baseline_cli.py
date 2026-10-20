@@ -854,7 +854,7 @@ def test_performance_check_is_read_only(tmp_path: Path, monkeypatch, capsys):
 
     assert output.read_bytes() == content_before
     output_text = capsys.readouterr().out
-    assert "启动性能采样：app.factory 中位数 90.0ms / 预算 1000.0ms" in output_text
+    assert "启动性能采样：app.factory 中位数 90.0ms / 预算 3000.0ms" in output_text
     assert "检查通过" in output_text
 
 
@@ -899,21 +899,14 @@ def test_performance_check_ignores_environment_provenance_drift():
 
 @pytest.mark.parametrize("target", startup_performance.IMPORT_TARGETS)
 @pytest.mark.parametrize(
-    ("baseline_median_ms", "budget_ms"),
-    (
-        (90.0, 1000.0),
-        (1000.0, 1000.0),
-        (1000.001, 2000.0),
-        (1122.382, 2000.0),
-        (2000.001, 3000.0),
-        (3000.0, 3000.0),
-    ),
+    "baseline_median_ms",
+    (90.0, 1000.0, 1000.001, 1122.382, 2000.001, 3000.0, 5000.0),
 )
-def test_performance_check_rounds_baseline_median_up_to_whole_seconds(
-    target, baseline_median_ms, budget_ms
-):
+def test_performance_check_uses_fixed_three_second_limit(
+    target: str, baseline_median_ms: float,
+) -> None:
     """
-    各入口按基线中位数向上取整秒，等于上限通过，超过失败，最大值不影响预算。
+    各入口固定三秒上限，等于上限通过，超过失败，历史中位数与最大值不改变预算。
     """
     expected = _performance_sample()
     expected_target = expected["targets"].pop("app.factory")
@@ -921,13 +914,13 @@ def test_performance_check_rounds_baseline_median_up_to_whole_seconds(
     expected_target["max_ms"] = baseline_median_ms + 5000.0
     expected["targets"][target] = expected_target
     within_limit = json.loads(json.dumps(expected))
-    within_limit["targets"][target]["median_ms"] = budget_ms
+    within_limit["targets"][target]["median_ms"] = 3000.0
     above_limit = json.loads(json.dumps(expected))
-    above_limit["targets"][target]["median_ms"] = budget_ms + 0.001
+    above_limit["targets"][target]["median_ms"] = 3000.001
 
     assert startup_performance.check_baseline(expected, within_limit) == []
     assert startup_performance.check_baseline(expected, above_limit) == [
-        f"{target} 冷导入中位数 {budget_ms + 0.001}ms 超过预算 {budget_ms}ms"
+        f"{target} 冷导入中位数 3000.001ms 超过预算 3000.0ms"
     ]
 
 

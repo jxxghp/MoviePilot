@@ -5,7 +5,6 @@
 
 import argparse
 import json
-import math
 import os
 import platform
 import statistics
@@ -28,6 +27,8 @@ IMPORT_TARGETS = (
     "app.factory",
     "app.main",
 )
+# 主启动各入口的冷导入中位数固定上限，单位为毫秒，不随历史采样变化。
+COLD_IMPORT_BUDGET_MS = 3000.0
 RESULT_PREFIX = "MOVIEPILOT_IMPORT_BASELINE="
 LIFECYCLE_RESULT_PREFIX = "MOVIEPILOT_LIFECYCLE_BASELINE="
 
@@ -305,7 +306,7 @@ def check_baseline(
     actual: dict[str, Any],
 ) -> list[str]:
     """
-    比较稳定资源契约与基线中位数向上取整秒的耗时上限，返回所有不符合项。
+    比较稳定资源契约与固定三秒的冷导入耗时上限，返回所有不符合项。
     """
     errors: list[str] = []
     if expected.get("schema_version") != actual.get("schema_version"):
@@ -328,7 +329,7 @@ def check_baseline(
                 f"{expected_target.get('loaded_app_module_count')} -> "
                 f"{actual_target.get('loaded_app_module_count')}"
             )
-        budget_ms = import_budget_ms(expected_target)
+        budget_ms = COLD_IMPORT_BUDGET_MS
         if actual_target["median_ms"] > budget_ms:
             errors.append(
                 f"{target} 冷导入中位数 {actual_target['median_ms']}ms "
@@ -364,16 +365,6 @@ def check_baseline(
     return errors
 
 
-def import_budget_ms(expected_target: dict[str, Any]) -> float:
-    """
-    将已提交基线中位数向上取整到整秒，作为对应入口的耗时上限。
-
-    :param expected_target: 对应入口的已提交冷导入采样，median_ms 的单位为毫秒
-    :return: 向上取整后的预算，单位为毫秒；整秒值保持不变
-    """
-    return math.ceil(expected_target["median_ms"] / 1000.0) * 1000.0
-
-
 def describe_import_measurements(
     expected: dict[str, Any],
     actual: dict[str, Any],
@@ -387,7 +378,7 @@ def describe_import_measurements(
         (
             f"启动性能采样：{target} 中位数 "
             f"{actual_targets[target]['median_ms']}ms / 预算 "
-            f"{import_budget_ms(expected_targets[target])}ms"
+            f"{COLD_IMPORT_BUDGET_MS}ms"
         )
         for target in sorted(set(expected_targets) & set(actual_targets))
     ]
@@ -411,7 +402,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         dest="operation",
         action="store_const",
         const="check",
-        help="检查资源契约，冷导入耗时上限按基线中位数向上取整秒",
+        help="检查资源契约，冷导入耗时上限固定为三秒",
     )
     action.add_argument(
         "--write",
