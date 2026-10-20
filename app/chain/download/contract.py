@@ -30,6 +30,7 @@ if TYPE_CHECKING:
         _matches_media_identity: Callable[..., bool]
         _prepare_batch_download_contexts: Callable[..., Any]
         _record_download_failure: Callable[..., Any]
+        _record_duplicate_download_backoff: Callable[..., Any]
         _record_music_album_track_keys: Callable[..., Any]
         _resolve_media_download_dir: Callable[..., Any]
         _settle_download_success: Callable[..., None]
