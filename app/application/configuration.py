@@ -429,6 +429,7 @@ class ChainRuntimeConfig:
     :param wallpaper_image_url: 静态壁纸地址，可使用前端可访问的本地路径或 URL
     :param customize_wallpaper_api_url: 自定义壁纸api地址
     :param security_image_suffixes: 允许的图片文件后缀格式
+    :param image_proxy_allowed_private_ranges: 图片代理允许访问的非公网 IP/CIDR
     :param cache_path: 运行缓存文件根目录
     :param global_image_cache_days: 全局图片缓存保留天数
     """
@@ -516,6 +517,7 @@ class ChainRuntimeConfig:
     wallpaper_image_url: Optional[str] = None
     customize_wallpaper_api_url: Optional[str] = None
     security_image_suffixes: tuple[str, ...] = ()
+    image_proxy_allowed_private_ranges: tuple[str, ...] = ()
     cache_path: Path = Path(".")
     global_image_cache_days: int = 7
 
