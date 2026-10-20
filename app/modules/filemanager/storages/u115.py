@@ -1048,16 +1048,14 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         向 115 提交文件或目录删除请求。
 
-        当前实现未检查空响应或业务错误，因此 True 不保证目标已经删除。
-
         :param fileitem: 带远端文件标识的待删除项
-        :return: 没有抛出 HTTP 请求异常时为 True，否则为 False
+        :return: 接口明确返回成功时为 True；请求失败或业务拒绝时为 False
         """
         try:
-            self._request_api(
+            resp = self._request_api(
                 "POST", "/open/ufile/delete", data={"file_ids": int(fileitem.fileid)}
             )
-            return True
+            return bool(isinstance(resp, dict) and resp.get("state"))
         except HttpRequestError:
             return False
 
@@ -1200,82 +1198,154 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str, **_kwargs: Any) -> bool:
         """
-        复制到已存在的目录，再重命名为目标名称。
-
-        源标识补查失败的日志分支仍可能抛出异常；返回 False 也可能已经完成复制。
+        兼容布尔复制接口，使用隔离暂存目录避免操作目标目录中的同名旧文件。
 
         :param fileitem: 源文件项；缺少远端标识时先按路径查询
         :param path: 已存在的目标目录路径
         :param new_name: 复制后的名称
-        :return: 复制、查询新文件和重命名均成功时为 True，否则为 False
+        :return: 完成复制、改名和目标身份核验时为 True，否则为 False
         """
-        if fileitem.fileid is None:
-            fileitem = self.get_item(Path(fileitem.path))
-            if not fileitem:
-                logger.warn(f"【115】获取文件 {fileitem.path} 失败！")
-                return False
-        dest_fileitem = self.get_item(path)
-        if not dest_fileitem or dest_fileitem.type != "dir":
-            logger.warn(f"【115】目标路径 {path} 不是一个有效的目录！")
+        try:
+            return self.copy_item(fileitem, path, new_name) is not None
+        except StorageQueryError as error:
+            logger.warn(f"【115】复制未完成: {error}")
             return False
 
+    def copy_item(
+            self, fileitem: _SchemaFileItem, path: Path, new_name: str,
+    ) -> Optional[_SchemaFileItem]:
+        """
+        在独立目录内复制和改名，再按文件 ID 移入目标，返回严格确认的文件项。
+
+        115 复制接口先保留源名；直接复制进媒体目录可能生成编号副本，按原名查询还
+        可能误改已有文件。暂存目录使用随机名称，异常时保留现场并交由人工复核。
+        复制请求不做 HTTP 层自动重放，空目录清理失败不撤销已经确认的传输成功。
+
+        :param fileitem: 带大小和远端文件 ID 的源文件
+        :param path: 已存在的目标目录
+        :param new_name: 最终文件名，已有同名目标时拒绝操作
+        :return: 最终文件项；明确失败时为 None
+        :raises StorageQueryError: 复制结果缺少身份或无法确认，保留暂存文件
+        """
+        destination = self.get_item_strict(path)
+        if not destination or not destination.fileid or destination.type != "dir":
+            return None
+        if self.get_item_strict(path / new_name) is not None:
+            return None
+        if not fileitem.path:
+            raise StorageQueryError("【115】复制源缺少路径")
+        source = self.get_item_strict(Path(fileitem.path))
+        if (not source or not source.fileid or not source.name
+                or source.type == "file" and source.size is None):
+            raise StorageQueryError(f"【115】复制源身份无法确认: {fileitem.path}")
+        if fileitem.fileid and fileitem.fileid != source.fileid:
+            raise StorageQueryError(f"【115】复制源已被替换: {fileitem.path}")
+        if source.size != fileitem.size or source.type != fileitem.type:
+            raise StorageQueryError(f"【115】复制源大小或类型已变化: {fileitem.path}")
+        staging = self.create_folder(destination, f"mp-transfer-{secrets.token_hex(16)}")
+        if not staging or not staging.fileid or not staging.path:
+            return None
+        if self.list(staging):
+            raise StorageQueryError(f"【115】复制暂存目录非空，保留现场: {staging.path}")
         resp = self._request_api(
-            "POST",
-            "/open/ufile/copy",
-            data={
-                "file_id": int(fileitem.fileid),
-                "pid": int(dest_fileitem.fileid),
-            },
+            "POST", "/open/ufile/copy", retry_limit=0,
+            data={"file_id": int(source.fileid), "pid": int(staging.fileid)},
         )
-        if not resp:
-            return False
-        if resp["state"]:
-            new_path = Path(path) / fileitem.name
-            new_item = self.get_item(new_path)
-            if not new_item:
-                return False
-            if self.rename(new_item, new_name):
-                return True
-        return False
+        if not isinstance(resp, dict) or not resp.get("state"):
+            raise StorageQueryError(f"【115】复制结果无法确认，保留暂存目录: {staging.path}")
+        copied = self.get_item_strict(Path(staging.path) / source.name)
+        if (not copied or not copied.fileid or copied.fileid == source.fileid
+                or copied.size != source.size or copied.type != source.type):
+            raise StorageQueryError(f"【115】复制文件身份无法确认，保留暂存目录: {staging.path}")
+        if copied.name != new_name:
+            if not self.rename(copied, new_name):
+                raise StorageQueryError(f"【115】复制后改名失败，保留暂存目录: {staging.path}")
+            copied = self.__confirm_transfer_item(copied, Path(staging.path) / new_name)
+        result = self.move_item(copied, path, new_name)
+        if result is None:
+            raise StorageQueryError(f"【115】复制后改名或移动未完成，保留暂存目录: {staging.path}")
+        self.__cleanup_transfer_directory(staging)
+        return result
+
+    def __cleanup_transfer_directory(self, staging: _SchemaFileItem) -> None:
+        """
+        只清理已经移出成功副本的空目录，清理失败不得再次执行复制。
+
+        :param staging: 本次复制创建的独立暂存目录；非空或查询失败时保留
+        """
+        try:
+            if self.list(staging) or not self.delete(staging):
+                logger.warn(f"【115】文件整理完成，暂存目录未清理: {staging.path}")
+        except Exception as error:
+            logger.warn(f"【115】文件整理完成，暂存目录清理失败: {staging.path} - {error}")
 
     def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
-        移动到已存在的目录，再重命名为目标名称。
-
-        源标识补查失败的日志分支仍可能抛出异常；返回 False 也可能已经完成移动。
+        兼容布尔移动接口，始终按源文件 ID 操作并严格确认最终目标。
 
         :param fileitem: 源文件项；缺少远端标识时先按路径查询
         :param path: 已存在的目标目录路径
         :param new_name: 移动后的名称
-        :return: 移动、查询新文件和重命名均成功时为 True，否则为 False
+        :return: 移动、改名及目标身份核验成功时为 True，否则为 False
         """
-        if fileitem.fileid is None:
-            fileitem = self.get_item(Path(fileitem.path))
-            if not fileitem:
-                logger.warn(f"【115】获取文件 {fileitem.path} 失败！")
-                return False
-        dest_fileitem = self.get_item(path)
-        if not dest_fileitem or dest_fileitem.type != "dir":
-            logger.warn(f"【115】目标路径 {path} 不是一个有效的目录！")
+        try:
+            return self.move_item(fileitem, path, new_name) is not None
+        except StorageQueryError as error:
+            logger.warn(f"【115】移动未完成: {error}")
             return False
+
+    def move_item(
+            self, fileitem: _SchemaFileItem, path: Path, new_name: str,
+    ) -> Optional[_SchemaFileItem]:
+        """
+        按 ID 移动和改名，避免查询原名时误操作目标目录中的旧文件。
+
+        改名或移动失败可能已有外部副作用，持久整理必须进入人工复核而非自动重放。
+
+        :param fileitem: 待移动文件的路径和冻结身份
+        :param path: 已存在的目标目录
+        :param new_name: 最终文件名
+        :return: 严格核验 ID、类型和大小后的目标；明确失败时为 None
+        :raises StorageQueryError: 源或目标身份变化，或无法取得严格查询结果
+        """
+        if not fileitem.path:
+            raise StorageQueryError("【115】移动源缺少路径")
+        source = self.get_item_strict(Path(fileitem.path))
+        if not source or not source.fileid:
+            return None
+        if fileitem.fileid and fileitem.fileid != source.fileid:
+            raise StorageQueryError(f"【115】移动源已被替换: {fileitem.path}")
+        if source.size != fileitem.size or source.type != fileitem.type:
+            raise StorageQueryError(f"【115】移动源大小或类型已变化: {fileitem.path}")
+        dest_fileitem = self.get_item_strict(path)
+        if not dest_fileitem or not dest_fileitem.fileid or dest_fileitem.type != "dir":
+            return None
+        if self.get_item_strict(path / new_name) is not None:
+            return None
         resp = self._request_api(
-            "POST",
-            "/open/ufile/move",
-            data={
-                "file_ids": int(fileitem.fileid),
-                "to_cid": int(dest_fileitem.fileid),
-            },
+            "POST", "/open/ufile/move", retry_limit=0,
+            data={"file_ids": int(source.fileid), "to_cid": int(dest_fileitem.fileid)},
         )
-        if not resp:
-            return False
-        if resp["state"]:
-            new_path = Path(path) / fileitem.name
-            new_file = self.get_item(new_path)
-            if not new_file:
-                return False
-            if self.rename(new_file, new_name):
-                return True
-        return False
+        if not isinstance(resp, dict) or not resp.get("state"):
+            return None
+        if source.name != new_name and not self.rename(source, new_name):
+            return None
+        return self.__confirm_transfer_item(source, path / new_name)
+
+    def __confirm_transfer_item(self, source: _SchemaFileItem, path: Path) -> _SchemaFileItem:
+        """
+        严格确认改名或移动后的对象仍具有原 ID、类型及精确大小。
+
+        :param source: 操作前已确认的对象身份
+        :param path: 操作后应出现的路径
+        :return: 严格查询确认的文件项
+        :raises StorageQueryError: 目标缺失、被替换或大小类型发生变化
+        """
+        result = self.get_item_strict(path)
+        if (not result or result.fileid != source.fileid
+                or result.type != source.type or result.size != source.size):
+            raise StorageQueryError(f"【115】传输目标身份无法确认: {path}")
+        return result
 
     def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
