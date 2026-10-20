@@ -5,6 +5,7 @@
 
 import argparse
 import json
+import math
 import os
 import platform
 import statistics
@@ -29,13 +30,6 @@ IMPORT_TARGETS = (
 )
 RESULT_PREFIX = "MOVIEPILOT_IMPORT_BASELINE="
 LIFECYCLE_RESULT_PREFIX = "MOVIEPILOT_LIFECYCLE_BASELINE="
-# 冷导入时间预算以历史最大耗时的两倍为候选上限。
-PERFORMANCE_FACTOR = 2.0
-# 另一个候选上限为历史最大耗时加 500 毫秒，取较大值后应用抖动系数。
-PERFORMANCE_SLACK_MS = 500.0
-# 基线由维护者平台生成、CI 在 Linux 托管执行器 检查；在既有 2 倍/500ms
-# 硬预算之外保留 15% 的跨平台与持续调度抖动带，结构契约仍保持精确比较。
-PERFORMANCE_JITTER_FACTOR = 1.15
 
 
 def measure_import(target: str) -> dict[str, Any]:
@@ -311,7 +305,7 @@ def check_baseline(
     actual: dict[str, Any],
 ) -> list[str]:
     """
-    比较稳定资源契约与宽松耗时预算，返回所有不符合项。
+    比较稳定资源契约与基线中位数向上取整秒的耗时上限，返回所有不符合项。
     """
     errors: list[str] = []
     if expected.get("schema_version") != actual.get("schema_version"):
@@ -338,7 +332,7 @@ def check_baseline(
         if actual_target["median_ms"] > budget_ms:
             errors.append(
                 f"{target} 冷导入中位数 {actual_target['median_ms']}ms "
-                f"超过预算 {round(budget_ms, 3)}ms"
+                f"超过预算 {budget_ms}ms"
             )
     expected_modes = expected.get("lifecycle", {}).get("modes", {})
     actual_modes = actual.get("lifecycle", {}).get("modes", {})
@@ -372,12 +366,12 @@ def check_baseline(
 
 def import_budget_ms(expected_target: dict[str, Any]) -> float:
     """
-    根据已提交样本计算跨平台冷导入中位数预算。
+    将已提交基线中位数向上取整到整秒，作为对应入口的耗时上限。
+
+    :param expected_target: 对应入口的已提交冷导入采样，median_ms 的单位为毫秒
+    :return: 向上取整后的预算，单位为毫秒；整秒值保持不变
     """
-    return max(
-        expected_target["max_ms"] * PERFORMANCE_FACTOR,
-        expected_target["max_ms"] + PERFORMANCE_SLACK_MS,
-    ) * PERFORMANCE_JITTER_FACTOR
+    return math.ceil(expected_target["median_ms"] / 1000.0) * 1000.0
 
 
 def describe_import_measurements(
@@ -393,7 +387,7 @@ def describe_import_measurements(
         (
             f"启动性能采样：{target} 中位数 "
             f"{actual_targets[target]['median_ms']}ms / 预算 "
-            f"{round(import_budget_ms(expected_targets[target]), 3)}ms"
+            f"{import_budget_ms(expected_targets[target])}ms"
         )
         for target in sorted(set(expected_targets) & set(actual_targets))
     ]
@@ -417,7 +411,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         dest="operation",
         action="store_const",
         const="check",
-        help="按已提交基线检查资源契约和宽松性能预算",
+        help="检查资源契约，冷导入耗时上限按基线中位数向上取整秒",
     )
     action.add_argument(
         "--write",

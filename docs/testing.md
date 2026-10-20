@@ -301,6 +301,7 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 - **去重脚本验证**：`node --test .github/scripts/reuse.test.mjs` 离线覆盖成功复用及保守回退，两个检查工作流均在判定前执行。复用 job 仅持有 contents/actions/pull-requests 读取权限；没有修改分支保护设置。
 
 - **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境。宿主架构门禁分为两个并行 job，`architecture` 运行宿主依赖、运行契约、事件政策测试和基线快照，`architecture-ratchets` 运行类型、复杂度、并发、Ruff/mypy ratchet 与启动性能检查；其余测试通过 `coverage run --parallel-mode tests/run.py --exclude-architecture-gate --shard N/6` 分到 6 个 job，一次执行同时验证单测并采集覆盖率；门禁已运行的架构测试不在分片中重复执行。每个分片都有独立进程和临时 `CONFIG_DIR`，不共用 SQLite 或进程级状态，由单一报告 job 合并后检查除 `app/plugins` 外全部 `app` Python 文件的逐文件低水位。
+- **启动性能**：`scripts/startup/performance.py --check --repeat 3` 对 `app.startup.lifecycle`、`app.factory`、`app.main` 分别执行三次冷导入采样。各入口的耗时上限为已提交基线中位数向上取整到整秒，即 `ceil(median_ms / 1000) * 1000` 毫秒，例如基线 1122.382ms 对应上限 2000ms，基线恰为 1000ms 时上限仍为 1000ms；本次采样中位数不超过对应上限即通过，超过则失败。宿主模块数量、生命周期组件集合与顺序、线程/任务释放和隔离采样无数据库连接的契约仍按原规则检查。
 - **跨仓观察**：`.github/workflows/architecture-observe.yml` 每周或手工检出官方插件仓最新 `main`，使用 `--check-plugins` 比较公开导入、Hook 和动态 API 契约。它只上传 `official-plugin-architecture-report.json`，不会自动刷新 fixture；语义变化必须人工审查后显式执行 `--write-plugins`。
 - **静态检查**：`.github/workflows/pylint.yml` 对指向 `v3` 的 PR、推送和手工触发运行 Pylint。PR/推送改动到的 Python 文件是硬门禁；`app/` 全量扫描保留为建议性 JSON 构建工件，存量告警不会掩盖或阻塞本次增量治理。
 - **PR 本地验证**：按上文「验证范围与维护者安排」选择 contributor 默认检查或已记录的维护者安排，统一处理证据复用与失败归属；需要断点、输出顺序或测试污染诊断时使用 `--serial`。确认受影响路径与零真实出站，准确标注验证范围；本地执行安排不改变 CI 的全量验证与复用合同。
