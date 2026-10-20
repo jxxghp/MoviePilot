@@ -157,6 +157,9 @@ def build_transfer_overwrite_paths(
 ) -> tuple[str, str]:
     """
     从冻结叶操作推导同目录暂存和备份路径，保证执行与账本验证使用相同身份。
+
+    115 重命名会分割主文件名与扩展名，不能使用仅含点号前缀的无扩展名临时文件；
+    其临时名保留目标扩展名，其他存储沿用原路径以保持已有步骤的恢复身份。
     """
     identity = _canonical_json({
         "source": dict(source), "storage": target_storage,
@@ -164,9 +167,11 @@ def build_transfer_overwrite_paths(
     })
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
     target = Path(target_path)
+    prefix = "mp" if target_storage == "u115" else ".mp"
+    suffix = target.suffix if target_storage == "u115" else ""
     return (
-        target.with_name(f".mp-stage-{digest}").as_posix(),
-        target.with_name(f".mp-backup-{digest}").as_posix(),
+        target.with_name(f"{prefix}-stage-{digest}{suffix}").as_posix(),
+        target.with_name(f"{prefix}-backup-{digest}{suffix}").as_posix(),
     )
 
 

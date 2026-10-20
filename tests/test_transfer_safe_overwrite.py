@@ -8,13 +8,18 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import Mock
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.application.transfer.execution import TransferExecutionState, TransferStepState
+from app.application.transfer.execution import (
+    TransferExecutionState,
+    TransferStepState,
+    build_transfer_overwrite_paths,
+)
 from app.application.transfer.workflow import (
     TransferPlanCheckpoint,
     TransferPlanItem,
@@ -30,9 +35,119 @@ from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.storages.local import LocalStorage
+from app.modules.filemanager.storages.u115 import U115Pan
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.file import FileItem
 from app.schemas.types import MediaType
+
+
+@pytest.mark.parametrize("filename", ["美人余.S01E23.mkv", "Movie.MP4", "archive.tar.gz", "Movie"])
+@pytest.mark.parametrize("storage", ["u115", "local", "alist", "alipan", "smb", "rclone"])
+def test_overwrite_paths_preserve_storage_filename_contract(filename: str, storage: str) -> None:
+    """
+    115 临时名称保留扩展名且有主文件名，其他存储保持既有路径以兼容恢复。
+    """
+    arguments = {
+        "source": {"storage": "local", "path": "/downloads/source.mkv"},
+        "target_storage": storage, "target_path": f"/library/{filename}",
+        "transfer_type": "copy",
+    }
+    paths = build_transfer_overwrite_paths(**arguments)
+    assert paths == build_transfer_overwrite_paths(**arguments)
+    assert len(set(paths)) == 2
+    for path, kind in zip(paths, ("stage", "backup")):
+        item = Path(path)
+        assert item.parent == Path("/library")
+        if storage == "u115":
+            assert item.name.startswith(f"mp-{kind}-")
+            assert item.suffix == Path(filename).suffix
+        else:
+            assert item.name.startswith(f".mp-{kind}-")
+            assert len(item.name) == len(f".mp-{kind}-") + 24
+
+
+@pytest.mark.parametrize("transfer_type", ["copy", "move"])
+@pytest.mark.parametrize("failed_rename", [None, "backup", "promote"])
+def test_u115_overwrite_obeys_rename_protocol(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        transfer_type: str, failed_rename: Optional[str],
+) -> None:
+    """
+    在真实文件上回放 115 重命名协议，验证覆盖成功及失败时保留完整副本。
+    """
+    source = tmp_path / "download.mkv"
+    target = tmp_path / "美人余.S01E23.mkv"
+    source.write_bytes(b"new-version")
+    target.write_bytes(b"old-version")
+    local = object.__new__(LocalStorage)
+    remote = object.__new__(U115Pan)
+    identifiers: dict[int, Path] = {}
+    operations: list[str] = []
+
+    def query(path: Path) -> Optional[FileItem]:
+        """
+        用临时文件系统提供云盘路径、大小和稳定文件标识。
+        """
+        item = local.get_item_strict(path)
+        if item is None:
+            return None
+        identifier = str(path.stat().st_ino)
+        identifiers[int(identifier)] = path
+        return item.model_copy(update={"storage": "u115", "fileid": identifier})
+
+    def upload(folder: FileItem, path: Path, name: str) -> Optional[FileItem]:
+        """
+        上传先写入完整暂存副本，期间旧目标必须仍然存在。
+        """
+        assert target.read_bytes() == b"old-version"
+        destination = Path(folder.path) / name
+        destination.write_bytes(path.read_bytes())
+        operations.append("upload")
+        return query(destination)
+
+    def request(method: str, endpoint: str, *, data: dict) -> dict:
+        """
+        回放更新接口按最后一个点分割主名并保留原扩展名的行为。
+        """
+        assert method == "POST" and endpoint == "/open/ufile/update"
+        current = identifiers[data["file_id"]]
+        name = data["file_name"]
+        basename = name.rsplit(".", 1)[0] if "." in name else name
+        kind = "backup" if current == target else "promote"
+        if not basename or kind == failed_rename:
+            return {"state": False}
+        assert source.exists()
+        current.rename(current.with_name(basename + current.suffix))
+        operations.append(kind)
+        return {"state": True}
+
+    monkeypatch.setattr(remote, "get_item_strict", query)
+    monkeypatch.setattr(remote, "get_folder", query)
+    monkeypatch.setattr(remote, "upload", upload)
+    monkeypatch.setattr(remote, "_request_api", request)
+    monkeypatch.setattr(remote, "delete", local.delete)
+    source_item = local.get_item_strict(source).model_dump(mode="json")
+    arguments = {
+        "step_runner": _ImmediateStepRunner(), "source_fileitem": source_item,
+        "target_storage": "u115", "source_oper": local, "target_oper": remote,
+        "target_file": target, "transfer_type": transfer_type,
+    }
+    execute = TransHandler._TransHandler__replace_target_with_steps
+    if failed_rename:
+        with pytest.raises(RuntimeError, match="重命名失败"):
+            execute(**arguments)
+        assert source.read_bytes() == b"new-version"
+        old_copy = target if failed_rename == "backup" else next(tmp_path.glob("mp-backup-*"))
+        assert old_copy.read_bytes() == b"old-version"
+        assert next(tmp_path.glob("mp-stage-*")).read_bytes() == b"new-version"
+    else:
+        result, error = execute(**arguments)
+        assert result.path == target.as_posix()
+        assert not error
+        assert target.read_bytes() == b"new-version"
+        assert source.exists() is (transfer_type == "copy")
+        assert operations == ["upload", "backup", "promote"]
+        assert not list(tmp_path.glob("mp-*"))
 
 
 class _ImmediateStepRunner:
@@ -450,13 +565,18 @@ def test_directory_leaf_overwrite_replays_from_real_ledger(
     assert not list(target.parent.glob(".mp-*"))
 
 
-def test_safe_overwrite_steps_reject_free_paths_and_unfinished_predecessors(tmp_path):
+@pytest.mark.parametrize("storage", ["local", "u115"])
+def test_safe_overwrite_steps_reject_free_paths_and_unfinished_predecessors(tmp_path, storage):
     """
     账本仅接收冻结计划推导路径，且每个新增覆盖步骤都必须有已完成前驱。
     """
     source = tmp_path / "download.mkv"
     source.write_bytes(b"new")
     checkpoint = _checkpoint(source, tmp_path / "Movie.mkv", transfer_type="move")
+    checkpoint = replace(
+        checkpoint, target_storage=storage,
+        items=tuple(replace(item, target_storage=storage) for item in checkpoint.items),
+    )
     repository = TransactionalTransferExecutionRepository
     item = checkpoint.items[0]
     previous = [SimpleNamespace(
