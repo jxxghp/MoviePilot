@@ -607,8 +607,8 @@ class TransferSettlementOwner(_TransferOwnerBase):
         :return: 该种子或无种子作业是否全部成功
         """
         if task.download_hash:
-            return self.jobview.is_torrent_success(task.download_hash)
-        return self.jobview.is_success(task)
+            return cast(bool, self.jobview.is_torrent_success(task.download_hash))
+        return cast(bool, self.jobview.is_success(task))
 
     def _cleanup_successful_transfer(
             self, task: TransferTask, transferhis: TransferHistoryRepository,
