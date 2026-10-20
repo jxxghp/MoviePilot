@@ -76,7 +76,7 @@ LLM_PROVIDER_DEFAULTS = {
         "base_url": "https://api.openai.com/v1",
     },
     "google": {
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
         "base_url": "",
     },
     "anthropic": {

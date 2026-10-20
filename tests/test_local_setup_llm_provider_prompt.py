@@ -296,3 +296,12 @@ def test_collect_agent_config_prompts_for_duplicate_base_url_presets() -> None:
         base_url_preset="minimax-cn-coding",
         runtime_python=None,
     )
+
+
+def test_google_default_model_is_not_a_gemini_2_5_model() -> None:
+    """
+    Google 的预设模型不能是新 API 密钥已无法访问的 Gemini 2.5 系列。
+    """
+    module = load_local_setup_module()
+
+    assert module.LLM_PROVIDER_DEFAULTS["google"]["model"] == "gemini-3.8-flash"
