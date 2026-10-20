@@ -12,6 +12,7 @@ import shutil
 import sys
 import threading
 from asyncio import AbstractEventLoop
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import (
@@ -29,8 +30,13 @@ from typing import (
 from urllib.parse import quote, urlencode, urlparse
 
 from dotenv import set_key, unset_key
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, TypeAdapter, model_validator
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SecretsSettingsSource,
+    SettingsConfigDict,
+)
 
 from app.foundation.environment import (
     cpu_arch,
@@ -774,26 +780,142 @@ class ConfigModel(BaseModel):
     AUDIO_OUTPUT_INCLUDE_TEXT: bool = Field(default=False, description='回复语音时是否同时附带文字说明')
 
 
+# 每次构造独立记录外部文件字段，避免并发构造配置时互相污染写回保护。
+_secret_fields_context: ContextVar[Optional[set[str]]] = ContextVar(
+    "settings_secret_fields", default=None
+)
+
+
+def _get_secrets_dir() -> Optional[str]:
+    """
+    从进程环境选择 secrets 目录；显式空值或 false 关闭文件来源。
+
+    :return: secrets 目录路径；关闭时返回 None
+    """
+    value = os.environ.get(
+        "MOVIEPILOT_SECRETS_DIR", os.environ.get("SECRETS_DIR", "/run/secrets")
+    ).strip()
+    return None if value.lower() in {"", "false", "off", "0"} else value
+
+
+# 严格类型检查跳过第三方源码导入，因此无法静态解析 Pydantic 来源基类。
+class _DeploymentSecretsSource(SecretsSettingsSource):  # type: ignore[misc]
+    """
+    按配置名读取外部文件，隔离坏文件并保护编排管理的字段不被写回。
+
+    复用 Pydantic 的来源顺序和复杂值解析；只记录字段名，不缓存或记录原文。
+    """
+
+    def __call__(self) -> dict[str, Any]:
+        """
+        逐项读取并校验 secret，缺失目录静默跳过，其余错误只告警字段名。
+
+        :return: 通过字段类型与约束校验的配置值
+        """
+        values: dict[str, Any] = {}
+        if self.secrets_dir is None:
+            return values
+        directories = (
+            [self.secrets_dir]
+            if isinstance(self.secrets_dir, (str, os.PathLike))
+            else self.secrets_dir
+        )
+        for directory in directories:
+            path = Path(directory).expanduser()
+            try:
+                if not path.exists():
+                    continue
+                if not path.is_dir():
+                    raise NotADirectoryError
+                self._read_directory(path, values)
+            except OSError:
+                logger.warning("secrets 目录不可用，请检查目录类型与读取权限")
+        return values
+
+    def _read_directory(self, directory: Path, values: dict[str, Any]) -> None:
+        """
+        一次索引目录后按精确字段名定位文件，支持 K8s 投影链接。
+
+        :param directory: 已确认存在的 secrets 目录
+        :param values: 按目录顺序合并的配置值，后面的同名文件优先
+        """
+        protected = _secret_fields_context.get()
+        entries = {entry.name: entry for entry in directory.iterdir()}
+        for name, field in self.settings_cls.model_fields.items():
+            path = entries.get(name)
+            if path is None:
+                continue
+            try:
+                if protected is not None:
+                    protected.add(name)
+                # 即使该文件无效，外部字段也不得被默认值或自动修正写回遮蔽。
+                values.pop(name, None)
+                if name in self.current_state:
+                    continue
+                raw = path.read_text(encoding="utf-8-sig").strip()
+                if not raw or (name == "API_TOKEN" and len(raw) < 16):
+                    raise ValueError
+                value = self.prepare_field_value(name, field, raw, False)
+                values[name] = TypeAdapter(field.rebuild_annotation()).validate_python(value)
+            except (OSError, ValueError):
+                if protected is not None:
+                    protected.add(name)
+                logger.warning(f"配置项 '{name}' 的 secret 无法读取或格式无效，已跳过，请检查文件与字段格式")
+
+
 class Settings(BaseSettings, ConfigModel, LogConfigModel):
     """
     加载部署环境配置并提供运行目录、外部地址和配置更新入口。
 
     字段语义继承配置模型；构造实例会创建配置目录，二进制部署还会补齐内置环境文件。
 
-    :cvar model_config: 环境加载策略，配置项区分大小写，并从部署环境文件按 UTF-8 读取
+    :cvar model_config: 来源优先级为构造参数、环境变量、环境文件、secrets、默认值
+    :ivar _secret_fields: 存在外部 secret 的字段名，包含被高优先级来源遮蔽或无效的文件
     """
 
     model_config = SettingsConfigDict(
         case_sensitive=True,
         env_file=get_env_path(),
         env_file_encoding="utf-8",
+        secrets_dir=_get_secrets_dir(),
     )
+    _secret_fields: set[str] = PrivateAttr(default_factory=set)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """
+        保持既有来源优先级，仅替换 secrets 读取以隔离文件错误。
+
+        :param settings_cls: 本次构造的设置类型
+        :param init_settings: 显式构造参数来源
+        :param env_settings: 进程环境来源
+        :param dotenv_settings: 部署环境文件来源
+        :param file_secret_settings: 框架按 model_config 或 _secrets_dir 创建的来源
+        :return: 从高到低排列的来源
+        """
+        secret_source = _DeploymentSecretsSource(
+            settings_cls, secrets_dir=file_secret_settings.secrets_dir
+        )
+        return init_settings, env_settings, dotenv_settings, secret_source
 
     def __init__(self, **kwargs):
         """
         加载环境配置并确保运行时目录和内置配置可用。
         """
-        super().__init__(**kwargs)
+        protected: set[str] = set()
+        token = _secret_fields_context.set(protected)
+        try:
+            super().__init__(**kwargs)
+            self._secret_fields = protected
+        finally:
+            _secret_fields_context.reset(token)
         for path in [self.CONFIG_PATH, self.TEMP_PATH, self.LOG_PATH, self.COOKIE_PATH]:
             if not path.exists():
                 path.mkdir(parents=True, exist_ok=True)
@@ -961,6 +1083,10 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         """
         按字段策略序列化并更新 env 配置。
         """
+        if field_name in (_secret_fields_context.get() or set()):
+            message = f"配置项 '{field_name}' 由 secret 文件管理，请修改文件并重启"
+            logger.warning(message)
+            return False, message
         policy = _get_setting_policy(Settings.model_fields.get(field_name))
         # 成功且无提示时使用空字符串，保证与 Tuple[bool, str] 返回类型一致
         message = ""
@@ -1022,6 +1148,10 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             if not field:
                 return False, f"配置项 '{key}' 不存在"
             original_value = getattr(self, key)
+            if key in self._secret_fields:
+                if value == original_value:
+                    return None, ""
+                return False, f"配置项 '{key}' 由 secret 文件管理，请修改文件并重启"
             converted_value, needs_update = self.generic_type_converter(
                 value, original_value, field.annotation, field.default, key
             )
