@@ -1211,11 +1211,13 @@ class TransHandler:
             target: Path,
             kind: str,
             expected_source: Optional[FileItem] = None,
-    ) -> FileItem:
+            allow_missing_source: bool = False,
+    ) -> Optional[FileItem]:
         """
         执行同目录无覆盖重命名，并用两端严格查询恢复中断操作。
 
-        两端同时存在或同时消失视为冲突；查询或身份无法确认时不自动重放。
+        两端同时存在或遗留步骤中同时消失视为冲突；只有覆盖备份在执行前明确
+        发现旧目标缺失时，才记录为无副作用的跳过。查询或身份无法确认时不自动重放。
 
         :param step_runner: 步骤执行器；None 时同步执行
         :param storage_oper: 负责查询和重命名的存储适配器
@@ -1224,14 +1226,18 @@ class TransHandler:
         :param target: 新路径，必须不存在且由调用方保持在同一目录
         :param kind: 步骤操作类别
         :param expected_source: 可选的冻结源身份；提供时在操作前后核对
-        :return: 重命名后的文件项
+        :param allow_missing_source: 旧目标已被外部删除时是否将重命名记录为跳过
+        :return: 重命名后的文件项；允许旧目标缺失并跳过时返回 None
         """
         def execute() -> TransferStepResult:
             """
             目标必须不存在，避免适配器的 rename 意外替换其它文件。
             """
             source_item = storage_oper.get_item_strict(source)
-            if source_item is None or storage_oper.get_item_strict(target) is not None:
+            target_item = storage_oper.get_item_strict(target)
+            if allow_missing_source and source_item is None and target_item is None:
+                return TransferStepResult(payload={"item": None, "skipped": True})
+            if source_item is None or target_item is not None:
                 raise RuntimeError(f"重命名路径状态冲突：{source} -> {target}")
             if expected_source is not None:
                 cls.__assert_file_identity(expected_source, source_item)
@@ -1285,7 +1291,9 @@ class TransHandler:
             execute=execute, observe=observe,
         )
         item = cls.__restore_step_item(renamed)
-        if item is None:
+        if item is None and not (
+                allow_missing_source and renamed.payload.get("skipped") is True
+        ):
             raise RuntimeError("重命名成功证据缺少目标文件")
         return item
 
@@ -1339,12 +1347,13 @@ class TransHandler:
             step_runner=step_runner, storage_oper=target_oper,
             storage=target_storage, source=target_file, target=backup,
             kind="backup_overwrite_target",
+            allow_missing_source=True,
         )
-        new_item = cls.__rename_with_step(
+        new_item = cast(FileItem, cls.__rename_with_step(
             step_runner=step_runner, storage_oper=target_oper,
             storage=target_storage, source=stage, target=target_file,
             kind="promote_overwrite_target", expected_source=new_item,
-        )
+        ))
 
         def confirm_replacement() -> None:
             """
