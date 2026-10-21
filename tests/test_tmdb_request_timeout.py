@@ -7,8 +7,6 @@
 留在了同步与异步客户端构造之后，使声明的 15 秒静默回退成 20 秒默认值。识别链因此
 按更长的时间等待抖动链路，连接失败退避重试进一步放大了占用。
 """
-import pytest
-
 from app.modules.themoviedb.tmdbv3api.tmdb import TMDb
 
 
