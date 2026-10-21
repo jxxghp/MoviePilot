@@ -244,7 +244,8 @@ def _rename(payload: _Request, _emit: _Emit) -> bool:
     跨存储的复制+删除不走这里，它需要单独的可恢复语义。
     """
     src, dst = payload["src"], payload["dst"]
-    if os.stat(src).st_dev != os.stat(os.path.dirname(dst) or ".").st_dev:
+    # rename 操作处理的是软链接目录项本身，不能把目标文件所在设备误当成源设备。
+    if os.lstat(src).st_dev != os.stat(os.path.dirname(dst) or ".").st_dev:
         raise OSError(18, "Cross-device rename is not handled by the proxy")
     os.rename(src, dst)
     return True

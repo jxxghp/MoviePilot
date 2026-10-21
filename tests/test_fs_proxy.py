@@ -137,6 +137,26 @@ def test_rename_within_same_storage(tmp_path, proxy):
     assert not src.exists()
 
 
+def test_rename_symlink_uses_link_device_not_target_device(tmp_path, proxy):
+    """
+    软链接所在目录与链接目标跨存储时，重命名仍应按链接目录项所在设备放行。
+
+    这是同目录 rename 的真实语义：内核只移动软链接目录项，不会移动其目标文件。
+    """
+    target = Path("/dev/null")
+    if os.stat(tmp_path).st_dev == os.stat(target).st_dev:
+        pytest.skip("测试环境没有可用的跨设备路径")
+
+    src = tmp_path / "linked.mkv"
+    dst = tmp_path / "renamed.mkv"
+    src.symlink_to(target)
+
+    assert proxy.rename(src, dst) is True
+    assert dst.is_symlink()
+    assert Path(os.readlink(dst)) == target
+    assert not src.exists()
+
+
 # --------------------------------------------------------------------------- #
 # 核心价值：超时可放弃
 # --------------------------------------------------------------------------- #
