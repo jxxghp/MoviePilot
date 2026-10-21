@@ -1216,8 +1216,8 @@ class TransHandler:
         """
         执行同目录无覆盖重命名，并用两端严格查询恢复中断操作。
 
-        两端同时存在或同时消失视为冲突；只有覆盖备份明确允许旧目标缺失时，
-        两端同时消失才记录为无副作用的跳过。查询或身份无法确认时不自动重放。
+        两端同时存在或遗留步骤中同时消失视为冲突；只有覆盖备份在执行前明确
+        发现旧目标缺失时，才记录为无副作用的跳过。查询或身份无法确认时不自动重放。
 
         :param step_runner: 步骤执行器；None 时同步执行
         :param storage_oper: 负责查询和重命名的存储适配器
@@ -1272,8 +1272,6 @@ class TransHandler:
             if source_item is None and target_item is not None:
                 state = TransferOperationObservationState.APPLIED
             elif source_item is not None and target_item is None:
-                state = TransferOperationObservationState.NOT_APPLIED
-            elif allow_missing_source and source_item is None and target_item is None:
                 state = TransferOperationObservationState.NOT_APPLIED
             else:
                 state = TransferOperationObservationState.CONFLICT
