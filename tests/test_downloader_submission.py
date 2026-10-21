@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 from torrentool.bencode import Bencode
 
+import app.modules.transmission.transmission as transmission_client
 from app.chain.download.facade import DownloadChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
@@ -68,6 +69,10 @@ def downloader(request):
     )
     for method in ("set_files", "set_unwanted_files", "start_torrents", "stop_torrents"):
         getattr(server, method).return_value = True
+    server.ensure_torrent_state.side_effect = (
+        lambda torrent_hash, *, paused:
+        server.stop_torrents(torrent_hash) if paused else server.start_torrents(torrent_hash)
+    )
     module = request.param.__new__(request.param)
     module.get_instance = Mock(return_value=server)
     module.normalize_path = Mock(side_effect=lambda path, _name: path)
@@ -151,12 +156,140 @@ def test_transmission_all_files_wanted_starts_without_unwanted_rpc(downloader, f
     server.start_torrents.assert_called_once_with(torrent_hash)
 
 
+def _use_transmission_rpc(module, server) -> Transmission:
+    """
+    保留真实客户端的启停逻辑，仅替换 RPC 和种子文件读取边界。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    client.add_torrent = server.add_torrent
+    client.get_files = server.get_files
+    module.get_instance.return_value = client
+    return client
+
+
+@pytest.fixture
+def transmission_clock(monkeypatch):
+    """
+    在真实模块和客户端的联动测试中推进虚拟轮询时间。
+    """
+    clock = SimpleNamespace(now=0.0)
+
+    def advance(seconds: float) -> None:
+        """
+        按客户端要求推进等待时间。
+        """
+        clock.now += seconds
+
+    monkeypatch.setattr(transmission_client, "time", SimpleNamespace(monotonic=lambda: clock.now, sleep=advance))
+    return clock
+
+
+def test_transmission_new_paused_task_starts_without_stop_rpc(downloader) -> None:
+    """
+    已暂停的新任务无需再次停止，防止停止请求覆盖选集后的启动请求。
+    """
+    module, server, content, torrent_hash = downloader
+    if not isinstance(module, TransmissionModule):
+        pytest.skip("Transmission 的异步启停状态确认")
+    client = _use_transmission_rpc(module, server)
+    state = {"status": "stopped"}
+    client.trc.get_torrent.side_effect = lambda *_args, **_kwargs: SimpleNamespace(status=state["status"])
+    client.trc.start_torrent.side_effect = lambda **_kwargs: state.update(status="download pending")
+
+    result = module.download(content, Path("/downloads"), "", episodes={170}, custom_words=_CUSTOM_WORDS)
+
+    assert result[1] == torrent_hash
+    assert client.add_torrent.call_args.kwargs["is_paused"] is True
+    client.trc.stop_torrent.assert_not_called()
+    client.trc.start_torrent.assert_called_once_with(ids=torrent_hash)
+
+
+def test_transmission_stopped_after_accepted_start_never_settles_success(downloader, transmission_clock) -> None:
+    """
+    启动 RPC 成功而任务持续停止时，下载链必须失败结算，不能记录订阅下载成功。
+    """
+    module, server, content, _torrent_hash = downloader
+    if not isinstance(module, TransmissionModule):
+        pytest.skip("Transmission 的异步启停状态确认")
+    client = _use_transmission_rpc(module, server)
+    client.trc.get_torrent.return_value = SimpleNamespace(status="stopped")
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+
+    result, message = _submit(chain, content, {170}, _CUSTOM_WORDS)
+
+    assert result is None
+    assert "启动任务未确认" in message and "未记录成功" in message
+    assert transmission_clock.now == transmission_client._TORRENT_STATE_TIMEOUT
+    chain._settle_accepted_download.assert_not_called()
+    chain._record_rejected_download.assert_called_once()
+
+
+@pytest.mark.parametrize("pause_completes", [True, False])
+def test_transmission_async_pause_guards_file_selection(downloader, transmission_clock, pause_completes) -> None:
+    """
+    重复任务异步暂停前不得选集；暂停超时也不能启动或记录订阅成功。
+    """
+    module, server, content, torrent_hash = downloader
+    if not isinstance(module, TransmissionModule):
+        pytest.skip("Transmission 的异步启停状态确认")
+    client = _use_transmission_rpc(module, server)
+    state = {"status": "downloading", "stop_queries": 0}
+    list_files = client.get_files.side_effect
+
+    def read_status(*_args, **_kwargs):
+        """
+        模拟暂停 RPC 返回后，任务仍需两次查询才能实际停止。
+        """
+        if client.trc.stop_torrent.called:
+            state["stop_queries"] += 1
+            if pause_completes and state["stop_queries"] >= 2:
+                state["status"] = "stopped"
+        if client.trc.start_torrent.called:
+            state["status"] = "download pending"
+        return SimpleNamespace(status=state["status"])
+
+    def read_paused_files(*args, **kwargs):
+        """
+        文件选择只能发生在实际暂停和下一次启动之间。
+        """
+        assert state["status"] == "stopped"
+        client.trc.start_torrent.assert_not_called()
+        return list_files(*args, **kwargs)
+
+    client.trc.get_torrent.side_effect = read_status
+    client.get_files.side_effect = read_paused_files
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+
+    result, message = _submit(chain, content, {170}, _CUSTOM_WORDS)
+
+    client.trc.stop_torrent.assert_called_once_with(ids=torrent_hash)
+    assert transmission_clock.now > 0
+    if pause_completes:
+        assert result == torrent_hash
+        chain._settle_accepted_download.assert_called_once()
+        client.trc.start_torrent.assert_called_once_with(ids=torrent_hash)
+    else:
+        assert result is None and "无法确认暂停" in message
+        client.get_files.assert_not_called()
+        client.trc.change_torrent.assert_not_called()
+        client.trc.start_torrent.assert_not_called()
+        chain._settle_accepted_download.assert_not_called()
+
+
 def test_transmission_empty_episode_selection_never_starts_task() -> None:
     """
     选集入口没有目标集数时应保留暂停状态，不把空数组转换为全部文件。
     """
     server = Mock()
     server.stop_torrents.return_value = True
+    server.ensure_torrent_state.return_value = True
     server.get_files.return_value = [SimpleNamespace(id=0, name="Show.S01E01.mkv")]
 
     selected, message = TransmissionModule._select_download_files(server, "hash", set(), None)

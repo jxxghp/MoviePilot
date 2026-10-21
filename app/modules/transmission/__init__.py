@@ -254,7 +254,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             server: Transmission, torrent_hash: str, episodes: Set[int], custom_words: Optional[str],
     ) -> Tuple[bool, str]:
         """
-        先确认任务暂停再按来源集数映射选集，兼容 RPC 返回正在运行的重复任务。
+        先确认任务暂停再按来源集数映射选集，确认启动状态后才返回成功。
 
         :param server: 已配置的 Transmission 客户端
         :param torrent_hash: 需要暂停、选集并恢复的任务哈希
@@ -262,7 +262,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :param custom_words: 来源识别词，按行参与物理文件名识别
         :return: 是否确认选集及启动成功，以及失败时的下载器核查说明
         """
-        if not server.stop_torrents(torrent_hash):
+        if not server.ensure_torrent_state(torrent_hash, paused=True):
             return False, f"选集失败，任务 {torrent_hash} 无法确认暂停，未执行选集，请在下载器核实"
         failure = f"选集失败，任务 {torrent_hash} 保持暂停，请在下载器检查"
         torrent_files = server.get_files(torrent_hash)
@@ -286,8 +286,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             return False, f"{failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
         if not server.set_files(torrent_hash, wanted) or not server.set_unwanted_files(torrent_hash, unwanted):
             return False, f"{failure}：文件选择设置未确认"
-        if not server.start_torrents(torrent_hash):
-            if server.stop_torrents(torrent_hash):
+        if not server.ensure_torrent_state(torrent_hash, paused=False):
+            if server.ensure_torrent_state(torrent_hash, paused=True):
                 return False, f"{failure}：启动任务未确认，未记录成功"
             return False, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
         return True, "添加下载任务成功"

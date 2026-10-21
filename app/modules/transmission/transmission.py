@@ -2,6 +2,7 @@
 Transmission 客户端连接与下载任务操作封装。
 """
 
+import time
 from typing import List, Optional, Sequence, Tuple, Union
 
 import transmission_rpc
@@ -12,6 +13,14 @@ from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 
 TorrentIds = Union[str, int, Sequence[Union[str, int]]]
+
+# 每次启停的状态确认窗口与轮询间隔，单位均为秒。
+_TORRENT_STATE_TIMEOUT = 5.0
+_TORRENT_STATE_POLL_INTERVAL = 0.5
+# 启动后允许等待校验、下载或做种队列，不要求已经产生下载流量。
+_TORRENT_STARTED_STATES = {
+    "check pending", "checking", "download pending", "downloading", "seed pending", "seeding",
+}
 
 
 class Transmission:
@@ -292,6 +301,43 @@ class Transmission:
         except Exception as err:
             logger.error(f"停止种子出错：{str(err)}")
             return False
+
+    def ensure_torrent_state(self, tid: str, *, paused: bool) -> bool:
+        """
+        在选集边界确认任务实际暂停或启动，避免异步停止覆盖后续启动。
+
+        已暂停的任务不再发送停止请求。启动后只在仍停止时重试启动，
+        校验、下载、做种及对应排队状态均视为已接管，不强制跳过队列。
+
+        :param tid: 需要确认状态的单个种子哈希
+        :param paused: 为 True 时等待实际停止，为 False 时请求启动并确认状态
+        :return: 状态已确认时返回 True；未连接、RPC 失败或五秒内未确认时返回 False
+        """
+        if not self.trc:
+            return False
+        if not paused and not self.start_torrents(tid):
+            return False
+        expected = {"stopped"} if paused else _TORRENT_STARTED_STATES
+        deadline = time.monotonic() + _TORRENT_STATE_TIMEOUT
+        stop_requested = False
+        while (remaining := deadline - time.monotonic()) > 0:
+            try:
+                status = self.trc.get_torrent(tid, arguments=["status"], timeout=remaining).status
+            except Exception as err:
+                logger.error(f"确认种子 {tid} 启停状态出错：{str(err)}")
+                return False
+            if status in expected:
+                return True
+            if paused:
+                if not stop_requested and not self.stop_torrents(tid):
+                    return False
+                stop_requested = True
+            elif status == "stopped" and not self.start_torrents(tid):
+                return False
+            time.sleep(min(_TORRENT_STATE_POLL_INTERVAL, max(0, deadline - time.monotonic())))
+        action = "暂停" if paused else "启动"
+        logger.warning(f"种子 {tid} 在 {_TORRENT_STATE_TIMEOUT} 秒内未确认{action}状态")
+        return False
 
     def delete_torrents(self, delete_file: Optional[bool], ids: TorrentIds) -> bool:
         """

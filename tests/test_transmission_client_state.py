@@ -2,12 +2,32 @@
 Transmission 未配置状态和 SDK 参数转发的兼容边界。
 """
 
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from transmission_rpc import Torrent
 
 import app.modules.transmission.transmission as client_module
 from app.modules.transmission.transmission import Transmission
+
+
+@pytest.fixture
+def state_clock(monkeypatch):
+    """
+    使用虚拟时钟验证启停等待上限，不让回归测试实际等待五秒。
+    """
+    clock = SimpleNamespace(now=0.0)
+
+    def advance(seconds: float) -> None:
+        """
+        记录每次轮询等待的时间。
+        """
+        assert seconds > 0
+        clock.now += seconds
+
+    monkeypatch.setattr(client_module, "time", SimpleNamespace(monotonic=lambda: clock.now, sleep=advance))
+    return clock
 
 
 @pytest.mark.parametrize("host", [None, "", "invalid-address"])
@@ -113,3 +133,126 @@ def test_file_selection_without_connection_keeps_failure(method, file_ids) -> No
     client.trc = None
 
     assert getattr(client, method)("hash", file_ids) is False
+
+
+@pytest.mark.parametrize("paused", [False, True])
+def test_state_confirmation_without_connection_fails(paused) -> None:
+    """
+    未连接时不能把启停状态解释为成功。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = None
+
+    assert client.ensure_torrent_state("hash", paused=paused) is False
+
+
+@pytest.mark.parametrize("status", [1, 2, 3, 4, 5, 6])
+def test_started_state_accepts_sdk_active_and_queued_statuses(state_clock, status) -> None:
+    """
+    启动请求后校验、下载及做种的活动或排队状态均可确认，不要求实际流量。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    client.trc.get_torrent.return_value = Torrent(fields={"id": 1, "status": status})
+
+    assert client.ensure_torrent_state("hash", paused=False) is True
+
+    client.trc.start_torrent.assert_called_once_with(ids="hash")
+    client.trc.stop_torrent.assert_not_called()
+    assert state_clock.now == 0
+    assert client.trc.get_torrent.call_args.kwargs["arguments"] == ["status"]
+
+
+def test_pause_waits_for_async_stop_to_complete(state_clock) -> None:
+    """
+    停止请求已接受但仍在运行时继续等待，确认暂停前不能返回成功。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    client.trc.get_torrent.side_effect = [
+        SimpleNamespace(status=status) for status in ["downloading", "downloading", "stopped"]
+    ]
+
+    assert client.ensure_torrent_state("hash", paused=True) is True
+
+    client.trc.stop_torrent.assert_called_once_with(ids="hash")
+    client.trc.start_torrent.assert_not_called()
+    assert state_clock.now > 0
+
+
+def test_start_retries_stopped_task_until_queue_accepts_it(state_clock) -> None:
+    """
+    启动后仍停止时重发启动，进入下载队列后立即确认，保留正常排队语义。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    client.trc.get_torrent.side_effect = [
+        SimpleNamespace(status=status) for status in ["stopped", "download pending"]
+    ]
+
+    assert client.ensure_torrent_state("hash", paused=False) is True
+
+    assert client.trc.start_torrent.call_count == 2
+    assert state_clock.now > 0
+
+
+def test_start_retry_rpc_failure_never_confirms_success(state_clock) -> None:
+    """
+    首次启动已接受但重试断连时，仍须返回失败而非沿用首次 RPC 的成功。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    client.trc.get_torrent.return_value = SimpleNamespace(status="stopped")
+    client.trc.start_torrent.side_effect = [None, ConnectionError("重试启动失败")]
+
+    assert client.ensure_torrent_state("hash", paused=False) is False
+    assert state_clock.now == 0
+
+
+@pytest.mark.parametrize("paused,status", [(True, "downloading"), (False, "stopped")])
+def test_state_confirmation_timeout_is_bounded(state_clock, paused, status) -> None:
+    """
+    RPC 接受命令但状态始终未改变时，在确认窗口内结束并报告失败。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    client.trc.get_torrent.return_value = SimpleNamespace(status=status)
+
+    assert client.ensure_torrent_state("hash", paused=paused) is False
+
+    assert state_clock.now == client_module._TORRENT_STATE_TIMEOUT
+    assert all(0 < call.kwargs["timeout"] <= client_module._TORRENT_STATE_TIMEOUT
+               for call in client.trc.get_torrent.call_args_list)
+    if paused:
+        client.trc.stop_torrent.assert_called_once_with(ids="hash")
+    else:
+        assert client.trc.start_torrent.call_count > 1
+
+
+@pytest.mark.parametrize("paused", [False, True])
+@pytest.mark.parametrize("error", [KeyError("任务不存在"), ConnectionError("RPC 查询失败")])
+def test_state_query_failure_never_confirms_success(state_clock, paused, error) -> None:
+    """
+    查询失败或任务已消失时返回失败，不能把 RPC 接受命令当成状态确认。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    client.trc.get_torrent.side_effect = error
+
+    assert client.ensure_torrent_state("hash", paused=paused) is False
+    assert state_clock.now == 0
+
+
+@pytest.mark.parametrize("paused", [False, True])
+def test_state_change_rpc_failure_never_confirms_success(state_clock, paused) -> None:
+    """
+    启停命令失败时立即返回，暂停失败不应继续查询或重发启动。
+    """
+    client = Transmission.__new__(Transmission)
+    client.trc = Mock()
+    client.trc.get_torrent.return_value = SimpleNamespace(status="downloading")
+    command = client.trc.stop_torrent if paused else client.trc.start_torrent
+    command.side_effect = ConnectionError("RPC 启停失败")
+
+    assert client.ensure_torrent_state("hash", paused=paused) is False
+    assert state_clock.now == 0
