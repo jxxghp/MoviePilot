@@ -8,7 +8,7 @@ import traceback
 from functools import partial
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -130,14 +130,14 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         """
         return "目录监控"
 
-    def save_snapshot(self, storage: str, snapshot: Dict, file_count: int = 0,
+    def save_snapshot(self, storage: str, snapshot: dict[str, Any], file_count: int = 0,
                       last_snapshot_time: Optional[float] = None) -> None:
         """
         保存快照到文件缓存。
         """
         self._store.save(storage, snapshot, file_count=file_count, last_snapshot_time=last_snapshot_time)
 
-    def load_snapshot(self, storage: str) -> Optional[Dict]:
+    def load_snapshot(self, storage: str) -> Optional[dict[str, Any]]:
         """
         从文件缓存加载快照。
         """
@@ -230,7 +230,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         for mon_dir in monitor_dirs:
             if not self.__accepting_work():
                 return False
-            if not mon_dir.library_path:
+            if not mon_dir.download_path or not mon_dir.library_path:
                 logger.warn(f"跳过监控配置 {mon_dir.download_path}：未设置媒体库目录")
                 continue
             if mon_dir.monitor_type != "monitor":
@@ -252,7 +252,8 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         # 启动定时服务进程
         if not self.__accepting_work():
             return False
-        self._scheduler = BackgroundScheduler(timezone=get_runtime_setting('TZ'))
+        scheduler = BackgroundScheduler(timezone=get_runtime_setting('TZ'))
+        self._scheduler = scheduler
 
         mon_storages: Dict[str, List[Path]] = {}
         # 本地监控启动结果计数，用于输出真实的启动总结
@@ -263,21 +264,23 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                 self.__abort_interrupted_startup()
                 return False
             # 检查媒体库目录是不是下载目录的子目录
-            mon_path = Path(mon_dir.download_path)
-            target_path = Path(mon_dir.library_path)
+            mon_path = Path(cast(str, mon_dir.download_path))
+            target_path = Path(cast(str, mon_dir.library_path))
             if target_path.is_relative_to(mon_path):
                 logger.warn(f"{target_path} 是监控目录 {mon_path} 的子目录，无法监控！")
                 messagehelper.put(f"{target_path} 是监控目录 {mon_path} 的子目录，无法监控", title="目录监控")
                 continue
 
             # 启动监控
-            if mon_dir.storage == "local":
-                if self.__start_local_monitor(mon_path=mon_path, monitor_mode=mon_dir.monitor_mode):
+            storage = mon_dir.storage or "local"
+            monitor_mode = mon_dir.monitor_mode or "fast"
+            if storage == "local":
+                if self.__start_local_monitor(mon_path=mon_path, monitor_mode=monitor_mode):
                     local_started += 1
                 else:
                     local_failed += 1
             else:
-                mon_storages.setdefault(mon_dir.storage, []).append(mon_path)
+                mon_storages.setdefault(storage, []).append(mon_path)
 
         for storage, paths in mon_storages.items():
             if not self.__accepting_work():
@@ -286,11 +289,14 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
             # 远程目录监控 - 使用智能间隔
             # 先尝试加载已有快照获取文件数量
             snapshot_data = self._store.load(storage)
-            snapshot_is_current = (
-                snapshot_data
-                and snapshot_data.get('version') == SnapshotStore.VERSION
+            snapshot_is_current = bool(
+                snapshot_data and snapshot_data.get('version') == SnapshotStore.VERSION
             )
-            file_count = snapshot_data.get('file_count', 0) if snapshot_is_current else 0
+            file_count = (
+                int(snapshot_data.get('file_count') or 0)
+                if snapshot_is_current and snapshot_data
+                else 0
+            )
             interval = SnapshotStore.adjust_interval(file_count)
             for path in paths:
                 logger.info(f"正在启动远程目录监控: {path} [{storage}]")
@@ -299,7 +305,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
                 logger.info(f"检测到旧版远程快照，将在首次轮询后重新校准: {storage}")
             logger.info(f"上次快照文件数量: {file_count}, 监控间隔: {interval}分钟")
 
-            self._scheduler.add_job(
+            scheduler.add_job(
                 self.polling_observer,
                 'interval',
                 minutes=interval,
@@ -314,7 +320,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
 
         # 监控健康检查：重建异常监控线程、重试启动失败目录、重试历史查询失败的文件
         if local_started or local_failed or mon_storages:
-            self._scheduler.add_job(
+            scheduler.add_job(
                 self.watchdog,
                 'interval',
                 seconds=self.WATCHDOG_INTERVAL,
@@ -327,9 +333,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         if not self.__accepting_work():
             self.__abort_interrupted_startup()
             return False
-        if self._scheduler.get_jobs():
-            self._scheduler.print_jobs()
-            self._scheduler.start()
+        if scheduler.get_jobs():
+            scheduler.print_jobs()
+            scheduler.start()
             logger.info("定时监控服务已启动")
 
         # 输出监控总结，报告实际启动成功数而不是配置数

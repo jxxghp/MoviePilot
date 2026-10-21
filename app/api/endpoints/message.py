@@ -144,7 +144,7 @@ async def user_message(
     form = await request.form()
     args = request.query_params
     source = args.get("source")
-    content_type = request.headers.get("content-type", "")
+    content_type = request.headers.get("content-type") or ""
     body_text = body.decode("utf-8", errors="replace")
     image_markers = [
         marker
@@ -183,7 +183,7 @@ async def web_message(
     WEB消息响应
     """
     images = None
-    content_type = request.headers.get("content-type", "")
+    content_type = request.headers.get("content-type") or ""
     if "application/json" in content_type:
         try:
             payload = await request.json()
@@ -218,11 +218,14 @@ async def get_web_message(
     service: MessageQueryService = Depends(get_message_query_service),
     page: Optional[int] = 1,
     count: Optional[int] = 20,
-):
+) -> List[dict[str, Any]]:
     """
     获取WEB消息列表
     """
-    return await service.list_web(page=page, count=count)
+    return await service.list_web(
+        page=page if page is not None else 1,
+        count=count if count is not None else 20,
+    )
 
 
 @router.get("/notification", summary="获取通知消息", response_model=List[_SchemaMessageHistoryItem])
@@ -237,8 +240,8 @@ async def get_notification_message(
     """
     clear_before = _get_notification_clear_before()
     messages = await service.list_notifications(
-        page=page,
-        count=count,
+        page=page if page is not None else 1,
+        count=count if count is not None else 20,
         all_clear_before=_format_notification_clear_time(clear_before.all),
         system_clear_before=_format_notification_clear_time(clear_before.system),
         media_clear_before=_format_notification_clear_time(clear_before.media),
@@ -254,7 +257,7 @@ async def get_notification_message(
 async def clear_notification_message(
     scope: _SchemaMessageClearScope = _SchemaMessageClearScope.All,
     _: _SchemaTokenPayload = Depends(verify_token),
-) -> _SchemaResponse[_SchemaMessageClearData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     记录通知中心清理时间，后续通知历史查询会在服务端过滤。
     """
@@ -285,18 +288,19 @@ def wechat_verify(
             for config in client_configs
             if config.type == "wechat"
             and config.enabled
-            and config.config.get("WECHAT_MODE", "app") != "bot"
+            and (config.config or {}).get("WECHAT_MODE", "app") != "bot"
             and (not source or config.name == source)
         ),
         None,
     )
     if not client_config:
         return "未找到对应的消息配置"
+    config = client_config.config or {}
     try:
         wxcpt = WXBizMsgCrypt(
-            sToken=client_config.config.get("WECHAT_TOKEN"),
-            sEncodingAESKey=client_config.config.get("WECHAT_ENCODING_AESKEY"),
-            sReceiveId=client_config.config.get("WECHAT_CORPID"),
+            sToken=config.get("WECHAT_TOKEN"),
+            sEncodingAESKey=config.get("WECHAT_ENCODING_AESKEY"),
+            sReceiveId=config.get("WECHAT_CORPID"),
         )
         ret, sEchoStr = wxcpt.VerifyURL(
             sMsgSignature=msg_signature,

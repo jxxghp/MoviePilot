@@ -718,7 +718,7 @@ def _runtime_settings_schema() -> dict[str, Any]:
     """
     缓存 Settings 生成的完整 JSON Schema，避免逐项重复建模。
     """
-    return cast(dict[str, Any], Settings.model_json_schema())
+    return Settings.model_json_schema()
 
 
 def validate_setting_value(spec: SettingSpec, value: Any) -> None:

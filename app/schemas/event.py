@@ -7,6 +7,7 @@ from enum import Enum as _Enum
 from pathlib import Path
 from typing import Annotated as _Annotated
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set
+from typing import Self as _Self
 from typing import Union as _Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -72,8 +73,7 @@ class ContextSnapshot(_ContextSnapshotBase):
         arbitrary_types_allowed=True,
     )
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="before")  # type: ignore[misc]
+    @model_validator(mode="before")
     @classmethod
     def coerce_runtime_context(cls, value: Any) -> Any:
         """
@@ -82,8 +82,7 @@ class ContextSnapshot(_ContextSnapshotBase):
         return _coerce_event_snapshot(value)
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class FileContextSnapshot(BaseModel):  # type: ignore[misc]
+class FileContextSnapshot(BaseModel):
     """
     音乐批次中单个文件的元数据上下文快照。
     """
@@ -94,8 +93,7 @@ class FileContextSnapshot(BaseModel):  # type: ignore[misc]
 
     model_config = ConfigDict(extra="allow", from_attributes=True)
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="before")  # type: ignore[misc]
+    @model_validator(mode="before")
     @classmethod
     def coerce_runtime_context(cls, value: Any) -> Any:
         """
@@ -110,7 +108,7 @@ class Event(BaseModel):
     """
 
     event_type: str = Field(..., description="事件类型")
-    event_data: Optional[dict] = Field(default={}, description="事件数据")
+    event_data: Optional[dict[str, Any]] = Field(default={}, description="事件数据")
     priority: Optional[int] = Field(0, description="事件优先级")
 
 
@@ -361,7 +359,7 @@ class ConfigChangeEventData(BaseEventData):
 
     @field_validator("key", mode="before")
     @classmethod
-    def convert_to_set(cls, v):
+    def convert_to_set(cls, v: Any) -> set[str]:
         """
         将输入的 str、list、dict.keys() 等转为 set。
         """
@@ -644,8 +642,7 @@ class AuthCredentials(ChainEventData):
 
     @model_validator(mode="before")
     @classmethod
-    # 保留既有校验器的参数签名，由 Pydantic 在验证前传入原始凭据映射。
-    def check_fields_based_on_grant_type(cls, values):  # noqa
+    def check_fields_based_on_grant_type(cls, values: dict[str, Any]) -> dict[str, Any]:
         """
         补齐默认密码认证类型，并检查对应凭据是否齐全。
 
@@ -697,7 +694,7 @@ class CommandRegisterEventData(ChainEventData):
     """
 
     # 输入参数
-    commands: Dict[str, dict] = Field(..., description="菜单命令")
+    commands: Dict[str, dict[str, Any]] = Field(..., description="菜单命令")
     origin: str = Field(..., description="事件源，可以是 Chain 或具体的模块名称")
     service: Optional[str] = Field(..., description="服务名称")
 
@@ -790,7 +787,7 @@ class ResourceDownloadEventData(ChainEventData):
     channel: Optional[NotificationChannel] = Field(None, description="通知渠道")
     origin: Optional[str] = Field(None, description="来源（消息通知、Subscribe、Manual等）")
     downloader: Optional[str] = Field(None, description="下载器")
-    options: Optional[dict] = Field(default={}, description="其他参数")
+    options: Optional[dict[str, Any]] = Field(default={}, description="其他参数")
 
     # 输出参数
     cancel: bool = Field(default=False, description="是否取消下载，默认值为 False")
@@ -810,7 +807,7 @@ class TransferInterceptEventData(ChainEventData):
     target_storage: str = Field(..., description="目标存储")
     target_path: Path = Field(..., description="目标路径")
     transfer_type: str = Field(..., description="整理方式（copy、move、link、softlink、reflink等）")
-    options: Optional[dict] = Field(default=None, description="其他参数")
+    options: Optional[dict[str, Any]] = Field(default=None, description="其他参数")
 
     # 输出参数
     cancel: bool = Field(default=False, description="是否取消下载，默认值为 False")
@@ -834,7 +831,7 @@ class TransferOverwriteCheckEventData(ChainEventData):
     target_path: Path = Field(..., description="目标文件路径")
     overwrite_mode: str = Field(..., description="覆盖模式（always、size、never、latest）")
     transfer_type: str = Field(..., description="整理方式（copy、move、link、softlink、reflink等）")
-    options: Optional[dict] = Field(default=None, description="其他参数")
+    options: Optional[dict[str, Any]] = Field(default=None, description="其他参数")
 
     # 输出参数
     source_size: Optional[int] = Field(
@@ -952,7 +949,7 @@ class MediaRecognizeConvertEventData(RequiredMediaIdentityMixin, ChainEventData)
     target_media_source: MediaSource = Field(..., description="需要转换到的内置或插件扩展媒体来源")
 
     # 输出参数
-    media_dict: dict = Field(
+    media_dict: dict[str, Any] = Field(
         default_factory=dict, description="TheMovieDb/豆瓣的媒体数据"
     )
 
@@ -966,7 +963,7 @@ class StorageOperSelectionEventData(ChainEventData):
     storage: Optional[str] = Field(default=None, description="存储类型")
 
     # 输出参数
-    storage_oper: Optional[Callable] = Field(default=None, description="存储操作对象")
+    storage_oper: Optional[Callable[..., Any]] = Field(default=None, description="存储操作对象")
 
 
 class SubscribeEpisodesRefreshEventData(OptionalMediaIdentityMixin, ChainEventData):
@@ -1012,7 +1009,7 @@ class SubscribeModifiedEventData(BaseEventData):
     idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
 
     @model_validator(mode="after")
-    def compute_fields(self):
+    def compute_fields(self) -> _Self:
         """
         比较新旧订阅快照，将真实变更字段写入事件。
 

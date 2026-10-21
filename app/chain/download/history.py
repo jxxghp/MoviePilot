@@ -96,7 +96,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         classification = effective_classification_snapshot(media)
         history = DownloadHistoryWrite(
             path=download_path.as_posix(),
-            type=media.type.value,
+            type=(media.type.value if media.type else ""),
             title=media.title or "",
             year=str(media.year) if media.year is not None else None,
             media_source=media_source,

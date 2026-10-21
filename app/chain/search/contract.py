@@ -96,7 +96,13 @@ if TYPE_CHECKING:
         cancel_ai_recommend: Callable[..., Any]
         get_current_recommend_status_only: Callable[..., Any]
         get_recommend_status: Callable[..., Any]
-        is_ai_recommend_enabled: Callable[..., Any]
+        @property
+        def is_ai_recommend_enabled(self) -> bool:
+            """
+            返回宿主是否同时启用 Agent 与 AI 搜索推荐。
+            """
+            ...
+
         last_search_params: Callable[..., Any]
         last_search_results: Callable[..., Any]
         matches_music_resource: Callable[..., Any]

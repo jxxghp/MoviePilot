@@ -484,14 +484,15 @@ def _scrape_impl(
                     message="音乐实体类型无效，仅支持 recording 或 album",
                 )
             # 音乐与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
-            music_info = MediaChain().recognize_media(
+            recognized_music = MediaChain().recognize_media(
                 media_source=media_source or MediaSource.MusicBrainz,
                 media_id=normalized_media_id,
                 mtype=MediaType.MUSIC,
                 music_type=normalized_music_type,
             )
-            if not music_info:
+            if not isinstance(recognized_music, MusicInfo):
                 return _SchemaResponse(success=False, message="刮削失败，无法识别音乐信息")
+            music_info = recognized_music
         success, message = ScrapingChain().scrape_music_metadata(
             fileitem=fileitem,
             mediainfo=music_info,
@@ -512,7 +513,7 @@ def _scrape_impl(
             media_id=normalized_media_id,
             episode_group=episode_group,
         )
-        if media_info:
+        if media_info and media_source:
             media_info.scrape_source = media_source
             chain.obtain_images(mediainfo=media_info)
     else:
@@ -578,7 +579,7 @@ def scrape(
 def get_category_config(
     _: object = Depends(get_current_active_user),
     classification: ClassificationRuntime = Depends(get_classification_runtime),
-):
+) -> Any:
     """
     获取分类策略配置
     """

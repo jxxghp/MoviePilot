@@ -100,7 +100,7 @@
         "owner": "$source",
         "reason": "精确 Adapter source 持有其 Redis、浏览器、HTTP 或 DNS transport；上层只能消费 Port 或统一 Facade。",
         "facts": [
-          {"source": "app.adapters.cache.redis", "target": "redis", "kind": "network_sdk", "fingerprint": "49f0b28ef731b25aa772d6887febd762d03b981a1f52d6dfc8dff82f2f489f81"},
+          {"source": "app.adapters.cache.redis", "target": "redis", "kind": "network_sdk", "fingerprint": "81a91a371296446093a9796421f72fb76ea54a040a3c288c469c6c5b4dfd6c39"},
           {"source": "app.adapters.network.browser", "target": "cloakbrowser", "kind": "network_sdk", "fingerprint": "15c1777b14eb9147d6cab9783f67577011714f9220600dda5db5269b59726173"},
           {"source": "app.adapters.network.doh", "target": "socket.getaddrinfo", "kind": "protocol_operation", "fingerprint": "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71"},
           {"source": "app.adapters.network.doh", "target": "urllib.request", "kind": "raw_transport", "fingerprint": "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b"},
@@ -143,7 +143,7 @@
           {"source": "app.modules.filemanager.storages.u115", "target": "oss2", "kind": "network_sdk", "fingerprint": "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae"},
           {"source": "app.modules.plex.plex", "target": "plexapi", "kind": "network_sdk", "fingerprint": "0fe42fa932618997d4f589a5217a36b45f7ac2947212a371bdfbbc55d9cf1def"},
           {"source": "app.modules.qbittorrent.qbittorrent", "target": "qbittorrentapi", "kind": "network_sdk", "fingerprint": "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d"},
-          {"source": "app.modules.slack.slack", "target": "slack_bolt", "kind": "network_sdk", "fingerprint": "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6"},
+          {"source": "app.modules.slack.slack", "target": "slack_bolt", "kind": "network_sdk", "fingerprint": "d970999c7c77ca5e93ec8a2773fa0b3db10df63ecce780b5fd52ca038734666a"},
           {"source": "app.modules.slack.slack", "target": "slack_sdk", "kind": "network_sdk", "fingerprint": "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14"},
           {"source": "app.modules.transmission.transmission", "target": "transmission_rpc", "kind": "network_sdk", "fingerprint": "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf"}
         ]

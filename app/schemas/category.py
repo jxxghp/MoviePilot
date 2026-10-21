@@ -109,8 +109,7 @@ ClassificationFieldValueType: TypeAlias = Literal[
 """
 字段目录支持的有限输入控件和值语义类型。
 """
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class _ClassificationModel(BaseModel):  # type: ignore[misc]
+class _ClassificationModel(BaseModel):
     """
     分类新契约的严格字段基类，避免静默吞掉前端字段拼写错误。
     """
@@ -167,8 +166,7 @@ class ClassificationConditionGroup(_ClassificationModel):
         serialize_by_alias=True,
     )
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def validate_group_operator(self) -> "ClassificationConditionGroup":
         """
         确保条件组恰好选择一个组操作符。
@@ -239,8 +237,7 @@ class ClassificationPolicyState(_ClassificationModel):
         description="按 revision 从新到旧排列的最近历史策略",
     )
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def validate_revisions(self) -> "ClassificationPolicyState":
         """
         保证活动 revision 有效，且历史 revision 唯一、降序并早于活动版本。
@@ -505,8 +502,7 @@ class ClassificationFieldDefinition(_ClassificationModel):
         description="退役字段建议替换为的标准字段 ID",
     )
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @field_validator("options", mode="before")  # type: ignore[misc]
+    @field_validator("options", mode="before")
     @classmethod
     def normalize_options(cls, value: object) -> object:
         """
@@ -614,8 +610,7 @@ class ClassificationMediaPreviewInput(_ClassificationModel):
     kind: Literal["media"] = Field(default="media", description="预览输入类型")
     media: dict[str, JsonData] = Field(description="从媒体搜索结果选择的媒体信息")
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def validate_media_identity(self) -> "ClassificationMediaPreviewInput":
         """
         确保搜索结果包含分类所需的来源、编号和媒体类型。

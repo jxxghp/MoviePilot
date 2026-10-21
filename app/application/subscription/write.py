@@ -462,7 +462,7 @@ def _translate(
         {
             "name": mediainfo.title,
             "year": mediainfo.year,
-            "type": mediainfo.type.value,
+            "type": (mediainfo.type.value if mediainfo.type else ""),
             "media_source": str(media_source),
             "media_id": media_id,
             "episode_group": mediainfo.episode_group,

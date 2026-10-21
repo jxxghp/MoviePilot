@@ -1,7 +1,7 @@
 """
 发送语音消息工具。
 """
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 from pydantic import BaseModel, Field
 
@@ -61,7 +61,7 @@ class SendVoiceMessageTool(MoviePilotTool):
         description="工具输入参数的验证模型或 JSON Schema",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         生成语音回复工具的执行提示。
         """
@@ -70,7 +70,7 @@ class SendVoiceMessageTool(MoviePilotTool):
             message = message[:40] + "..."
         return f"发送语音回复: {message}"
 
-    async def run(self, message: str, **kwargs: object) -> str:
+    async def run(self, message: str, **kwargs: Any) -> str:  # type: ignore[override]
         """
         合成语音并发送到当前对话渠道，不支持时回退为文字。
         """

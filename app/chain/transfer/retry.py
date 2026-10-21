@@ -278,9 +278,15 @@ class FailedRetryMixin(_TransferOwnerBase):
         redo_prompt = build_manual_redo_prompt(history)
 
         async def _run_ai_takeover() -> None:
+            """
+            运行整理失败后的 AI 接管流程，并收集最终处理说明。
+            """
             final_output = ""
 
             def _capture_output(text_output: str) -> None:
+                """
+                记录接管 Agent 的最新输出，供整理失败回执使用。
+                """
                 nonlocal final_output
                 final_output = text_output or ""
 
@@ -391,7 +397,7 @@ class FailedRetryMixin(_TransferOwnerBase):
             if durable_retry is not None:
                 return durable_retry
         # 按源目录路径重新整理
-        src_path = Path(history.src)
+        src_path = Path(cast(str, history.src))
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
         mediainfo: MediaInfo | MusicInfo | None

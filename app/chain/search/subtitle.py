@@ -370,7 +370,7 @@ class SearchSubtitleOwner(_SearchOwnerBase):
         """
         mediainfo = self._copy_media_input(mediainfo)
         if not mediainfo.tmdb_id:
-            meta = MetaInfo(title=mediainfo.title)
+            meta = MetaInfo(title=mediainfo.title or "")
             mediainfo.title = meta.name
             mediainfo.season = cast(int, meta.begin_season)
         logger.info(f"开始精确搜索字幕，关键词：{mediainfo.title} ...")
@@ -456,7 +456,7 @@ class SearchSubtitleOwner(_SearchOwnerBase):
         """
         mediainfo = self._copy_media_input(mediainfo)
         if not mediainfo.tmdb_id:
-            meta = MetaInfo(title=mediainfo.title)
+            meta = MetaInfo(title=mediainfo.title or "")
             mediainfo.title = meta.name
             mediainfo.season = cast(int, meta.begin_season)
         logger.info(f"开始渐进式精确搜索字幕，关键词：{mediainfo.title} ...")

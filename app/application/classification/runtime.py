@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Optional, cast
+from typing import Optional
 
 from app.application.classification.configuration import (
     ClassificationPolicyConfigurationService,
@@ -82,7 +82,7 @@ class ClassificationRuntime:
         if policy is not None:
             return project_policy_to_legacy_category_config(policy)
         with self._lock:
-            return cast(CategoryConfig, self._legacy_config.model_copy(deep=True))
+            return self._legacy_config.model_copy(deep=True)
 
     def media_categories(self) -> MediaCategoryMap:
         """

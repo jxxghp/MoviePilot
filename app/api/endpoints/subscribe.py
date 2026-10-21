@@ -137,7 +137,7 @@ def start_subscribe_add(
     media_id: str,
     season: int,
     username: str,
-):
+) -> None:
     """
     启动订阅任务
     """
@@ -152,11 +152,12 @@ def start_subscribe_add(
     )
 
 
-def build_subscribe_event_payload(subscribe: Any) -> dict:
+def build_subscribe_event_payload(subscribe: Any) -> dict[str, Any]:
     """
     从 ORM 已加载字段构造订阅事件快照，避免异步接口里属性懒加载触发隐式 IO。
     """
-    return subscribe.to_dict()
+    payload = subscribe.to_dict()
+    return payload if isinstance(payload, dict) else {}
 
 
 def can_access_subscribe(subscribe: Any, current_user: ApiPrincipal) -> bool:
@@ -204,7 +205,7 @@ def matches_subscribe_music_type(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_subscribes(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
@@ -229,7 +230,7 @@ async def read_subscribes(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_subscribes(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     _: Optional[Annotated[str, Depends(verify_apitoken)]] = None,
@@ -255,7 +256,7 @@ async def create_subscribe(
     *,
     subscribe_in: _SchemaSubscribe,
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     新增订阅
     """
@@ -266,7 +267,7 @@ async def create_subscribe(
         mtype = None
     # 非 TMDB 来源的标题可能自带季标记，入库前统一拆分。
     if mtype != MediaType.MUSIC and normalize_media_source(subscribe_in.media_source) not in (None, MediaSource.TMDB):
-        meta = MetaInfo(subscribe_in.name)
+        meta = MetaInfo(subscribe_in.name or "")
         subscribe_in.name = meta.name
         if subscribe_in.season is None:
             subscribe_in.season = meta.begin_season
@@ -320,7 +321,10 @@ async def update_subscribe(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
     )
-    subscribe = await mutation.get_accessible(subscribe_in.id, actor)
+    if subscribe_in.id is None:
+        return _SchemaResponse(success=False, message="订阅不存在")
+    subscribe_id = subscribe_in.id
+    subscribe = await mutation.get_accessible(subscribe_id, actor)
     if not subscribe:
         return _SchemaResponse(success=False, message="订阅不存在")
     subscribe_dict = subscribe_in.to_public_write_payload(exclude_unset=True)
@@ -373,7 +377,7 @@ async def update_subscribe(
     # 更新到数据库
     try:
         change = await mutation.update(
-            subscribe_in.id,
+            subscribe_id,
             subscribe_dict,
             actor,
             existing=subscribe,
@@ -554,12 +558,14 @@ async def subscribe_history(
     count: Optional[int] = 30,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
 ) -> Any:
     """
     查询电影、电视剧或音乐订阅历史
     """
     username = None if current_user.is_superuser else current_user.name
+    page = page if page is not None else 1
+    count = count if count is not None else 30
     results = await query.list_history(
         mtype,
         page=page,
@@ -694,7 +700,7 @@ async def popular_subscribes(
 )
 async def user_subscribes(
     username: str,
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),

@@ -448,6 +448,9 @@ class Discord:
             interaction: discord.Interaction,
             args: Optional[str] = None,
         ) -> None:
+            """
+            把 Discord 斜杠命令及参数交给统一命令处理流程。
+            """
             await self._handle_slash_command(interaction, command_text, args)
 
         _callback.__name__ = f"moviepilot_{command_name}"
@@ -1327,9 +1330,9 @@ class Discord:
         for index, media in enumerate(medias[:10], start=1):
             overview = media.get_overview_string(80)
             desc_parts = [
-                f"{media.type.value} | {media.vote_star}"
+                f"{media.type.value if media.type else ''} | {media.vote_star}"
                 if media.vote_star
-                else media.type.value,
+                else (media.type.value if media.type else ""),
                 overview,
             ]
             embed = discord.Embed(
@@ -1355,7 +1358,9 @@ class Discord:
         embeds: List[discord.Embed] = []
         for index, context in enumerate(torrents[:10], start=1):
             torrent = context.torrent_info
-            meta = MetaInfo(torrent.title, torrent.description)
+            if torrent is None:
+                continue
+            meta = MetaInfo(torrent.title or "", torrent.description)
             title_text = f"{meta.season_episode} {meta.resource_term} {meta.video_term} {meta.release_group}"
             title_text = re.sub(r"\s+", " ", title_text).strip()
             detail = [
@@ -1605,6 +1610,9 @@ class Discord:
         return False
 
     def _clean_bot_mention(self, content: str) -> str:
+        """
+        去除发给当前机器人的提及前缀，保留实际命令正文。
+        """
         if not content:
             return ""
         if self._bot_user_id:

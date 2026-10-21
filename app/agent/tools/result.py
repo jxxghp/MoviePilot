@@ -21,9 +21,7 @@ _ERROR_ENVELOPE_KEYS = frozenset({
 })
 
 
-# follow_imports=skip 下第三方异常基类按 Any 处理，仅忽略 SDK 边界。
-# 工具异常继承第三方动态基类，当前类型检查环境缺少完整基类信息。
-class ToolExecutionError(ToolException):  # type: ignore[misc]
+class ToolExecutionError(ToolException):
     """
     携带宿主已脱敏说明的可恢复工具故障，避免伪装为成功字符串。
     """

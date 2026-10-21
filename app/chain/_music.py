@@ -62,6 +62,8 @@ def _music_info_from_subscribe(subscribe: SubscriptionSnapshot) -> MusicInfo:
     """
     year_text = str(subscribe.year or "")[:4]
     music_type = getattr(subscribe, "music_type", None)
+    if not isinstance(music_type, str):
+        music_type = MUSIC_ENTITY_RECORDING
     # 音乐订阅的 description 由标准 MusicInfo.overview 生成，首段固定为艺术家。
     artist_text = str(getattr(subscribe, "description", None) or "") \
         .split(" · ", maxsplit=1)[0].strip()
@@ -150,7 +152,7 @@ class MusicSubscribeMixin:
 
     @staticmethod
     def _validate_music_subscribe_target(
-            mediainfo: MediaInfo,
+            mediainfo: MediaInfo | MusicInfo,
             requested_music_type: Optional[str] = None,
     ) -> Optional[str]:
         """
@@ -217,12 +219,13 @@ class MusicSubscribeMixin:
         mediainfo: Optional[MusicInfo]
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
-            recognized = media_chain.recognize_media(
+            recognized_raw = media_chain.recognize_media(
                 media_source=subscribe.media_source,
                 media_id=str(subscribe.media_id),
                 mtype=MediaType.MUSIC,
                 music_type=getattr(subscribe, "music_type", None),
             )
+            recognized = recognized_raw if isinstance(recognized_raw, MusicInfo) else None
             if recognized:
                 mediainfo = MusicSubscribeMixin._ensure_music_subscribe_entity(
                     subscribe,
@@ -241,12 +244,13 @@ class MusicSubscribeMixin:
             mediainfo = _music_info_from_subscribe(subscribe)
         else:
             # 旧订阅没有实体类型时只允许走 Recording 识别，不能从全局混合搜索中猜成专辑或艺术家。
-            recognized = media_chain.recognize_media(
+            recognized_raw = media_chain.recognize_media(
                 meta=build_subscribe_meta(subscribe),
                 mtype=MediaType.MUSIC,
                 media_source=subscribe.media_source,
                 music_type=MUSIC_ENTITY_RECORDING,
             )
+            recognized = recognized_raw if isinstance(recognized_raw, MusicInfo) else None
             mediainfo = MusicSubscribeMixin._ensure_music_subscribe_entity(
                 subscribe,
                 recognized,
@@ -266,12 +270,13 @@ class MusicSubscribeMixin:
         mediainfo: Optional[MusicInfo]
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
-            recognized = await media_chain.async_recognize_media(
+            recognized_raw = await media_chain.async_recognize_media(
                 media_source=subscribe.media_source,
                 media_id=str(subscribe.media_id),
                 mtype=MediaType.MUSIC,
                 music_type=getattr(subscribe, "music_type", None),
             )
+            recognized = recognized_raw if isinstance(recognized_raw, MusicInfo) else None
             if recognized:
                 mediainfo = MusicSubscribeMixin._ensure_music_subscribe_entity(
                     subscribe,
@@ -287,12 +292,13 @@ class MusicSubscribeMixin:
         elif getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
             mediainfo = _music_info_from_subscribe(subscribe)
         else:
-            recognized = await media_chain.async_recognize_media(
+            recognized_raw = await media_chain.async_recognize_media(
                 meta=build_subscribe_meta(subscribe),
                 mtype=MediaType.MUSIC,
                 media_source=subscribe.media_source,
                 music_type=MUSIC_ENTITY_RECORDING,
             )
+            recognized = recognized_raw if isinstance(recognized_raw, MusicInfo) else None
             mediainfo = MusicSubscribeMixin._ensure_music_subscribe_entity(
                 subscribe,
                 recognized,
@@ -311,7 +317,7 @@ class MusicSubscribeMixin:
         """
         把远端识别得到的专辑类型和总曲目数同步到订阅，供搜索失败与完成历史复用。
         """
-        update_data = {}
+        update_data: dict[str, JsonData] = {}
         if mediainfo.music_type and getattr(subscribe, "music_type", None) != mediainfo.music_type:
             update_data["music_type"] = mediainfo.music_type
         if mediainfo.music_type == MUSIC_ENTITY_ALBUM:
@@ -431,7 +437,8 @@ class MusicSubscribeMixin:
             return None
         subscribe = self._sync_music_subscribe_target(subscribe, mediainfo)
         meta = MetaMusic.from_music_info(mediainfo)
-        exists, _ = self.check_and_handle_existing_media(
+        host = cast(MusicSubscribeMixinHost, self)
+        exists, _ = host.check_and_handle_existing_media(
             subscribe=subscribe,
             meta=meta,
             mediainfo=mediainfo,
@@ -450,7 +457,8 @@ class MusicSubscribeMixin:
         """
         按站点、音乐实体、订阅参数和优先级规则筛选并绑定下载上下文。
         """
-        sites = self.get_sub_sites(subscribe)
+        host = cast(MusicSubscribeMixinHost, self)
+        sites = host.get_sub_sites(subscribe)
         default_rule_key = SystemConfigKey.BestVersionFilterRuleGroups \
             if subscribe.best_version else SystemConfigKey.SubscribeFilterRuleGroups
         rule_groups = subscribe.filter_groups or get_configured_system_config().get(default_rule_key) or []
@@ -465,27 +473,28 @@ class MusicSubscribeMixin:
             torrent = copy.copy(source_torrent)
             if sites and torrent.site not in sites:
                 continue
+            torrent_title = torrent.title or ""
             meta = cast(MetaMusic, MetaInfo(
-                title=torrent.title,
+                title=torrent_title,
                 subtitle=torrent.description,
                 custom_words=custom_words,
                 mtype=MediaType.MUSIC,
             ))
             match = match_music_resource(
-                mediainfo, torrent.title, torrent.description, torrent.category, meta=meta,
+                mediainfo, torrent_title, torrent.description or "", torrent.category, meta=meta,
             )
             if match.status != "exact":
                 continue
             activity = current_activity_run()
             if activity:
                 activity.resource(torrent, "rejected", "不符合音乐订阅条件或升级优先级")
-            filter_params = self.get_params(subscribe)
+            filter_params = host.get_params(subscribe)
             if not torrent_helper.filter_torrent(torrent, filter_params):
                 explain = getattr(torrent_helper, "filter_torrent_reason", None)
                 if activity and explain:
                     activity.resource(torrent, "rejected", explain(torrent, filter_params))
                 continue
-            filtered = self.filter_torrents(
+            filtered = host.filter_torrents(
                 rule_groups=rule_groups,
                 torrent_list=[torrent],
                 mediainfo=mediainfo,
@@ -568,7 +577,7 @@ class MusicSubscribeMixin:
             username=subscribe.username,
             save_path=subscribe.save_path,
             downloader=subscribe.downloader,
-            source=self.get_subscribe_source_keyword(subscribe),
+            source=cast(MusicSubscribeMixinHost, self).get_subscribe_source_keyword(subscribe),
             custom_words=subscribe.custom_words,
             governance=governance,
         )
@@ -606,7 +615,7 @@ class MusicSubscribeMixin:
         if current_subscribe is None:
             current_subscribe = repository.get(subscribe.id)
         if current_subscribe:
-            self.finish_subscribe_or_not(
+            cast(MusicSubscribeMixinHost, self).finish_subscribe_or_not(
                 subscribe=current_subscribe,
                 meta=MetaMusic.from_music_info(mediainfo),
                 mediainfo=mediainfo,
@@ -621,7 +630,9 @@ class MusicSubscribeMixin:
         """
         兼容音乐订阅入口，主动搜索、站点预算和结果处理统一由订阅搜索 任务持有者 编排。
         """
-        self._process_search_subscription(subscribe, None, execution_context=execution_context)
+        cast(MusicSubscribeMixinHost, self)._process_search_subscription(
+            subscribe, None, execution_context=execution_context
+        )
 
     def _match_music_subscribe(
             self,

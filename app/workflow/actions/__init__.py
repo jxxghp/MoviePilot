@@ -281,8 +281,10 @@ class BaseAction(ABC):
             return
         context.runtime_state = context.runtime_state or {}
         context.runtime_state["current_action_runtime"] = {
-            key: value for key, value in runtime.items()
+            key: value
+            for key, value in runtime.items()
             if key != "cancel_token"
+            and isinstance(value, (dict, list, str, int, float, type(None)))
         }
 
     def _extract_outputs_from_context(self, context: ActionContext) -> dict[str, Any]:

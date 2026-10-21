@@ -50,8 +50,7 @@ class _StoredResult:
     requires_admin: bool
 
 
-# follow_imports=skip 不分析第三方基类，仅在框架继承边界忽略 misc。
-class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
+class ToolOutputMiddleware(AgentMiddleware):
     """
     包装当前图的工具结果；读取按会话与当前管理员身份双重隔离。
     """

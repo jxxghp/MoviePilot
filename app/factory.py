@@ -3,13 +3,15 @@
 """
 
 import json
-from typing import Any, Awaitable, Callable
+from collections.abc import Mapping
+from typing import Any, Awaitable, Callable, cast
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
+from starlette.types import ExceptionHandler
 
 from app.adapters.observability.otel import build_observation_port
 from app.adapters.web.correlation import CorrelationIdMiddleware
@@ -98,7 +100,7 @@ def _native_ai_error_response(
         protocol: str,
         status_code: int,
         message: str,
-        headers: dict[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """
     按 OpenAI 或 Anthropic 兼容协议构造原生错误响应。
@@ -143,7 +145,7 @@ def _mcp_jsonrpc_error_response(
         status_code: int,
         code: int,
         message: str,
-        headers: dict[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """
     构造带 HTTP 状态码的 MCP JSON-RPC 原生错误响应。
@@ -380,14 +382,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
-    _app.add_exception_handler(HTTPException, localized_http_exception_handler)
+    _app.add_exception_handler(HTTPException, cast(ExceptionHandler, localized_http_exception_handler))
     _app.add_exception_handler(
         PersistenceUnavailableError,
-        persistence_unavailable_handler,
+        cast(ExceptionHandler, persistence_unavailable_handler),
     )
     _app.add_exception_handler(
         RequestValidationError,
-        localized_validation_exception_handler,
+        cast(ExceptionHandler, localized_validation_exception_handler),
     )
     _app.add_exception_handler(Exception, localized_unhandled_exception_handler)
     # 主程序静态路由统一使用 ResponseAPIRoute；动态插件注册时会显式覆盖为原生 APIRoute。

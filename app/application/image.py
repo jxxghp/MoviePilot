@@ -34,9 +34,9 @@ def _cached_wallpaper(*, skip_empty: bool = False) -> Callable[[_WallpaperFuncti
         """
         以相同有效期缓存壁纸，空列表仍按调用方策略处理。
         """
-        return cast(_WallpaperFunction, cached(
+        return cached(
             maxsize=1, ttl=3600, skip_empty=skip_empty, local_only=True,
-        )(function))
+        )(function)
 
     return decorate
 

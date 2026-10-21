@@ -60,8 +60,7 @@ class SubtitleDownloadData(BaseModel):
     files: list[str] = Field(default_factory=list, description="已保存字幕文件列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class DownloadTaskUpdateRequest(BaseModel):  # type: ignore[misc]
+class DownloadTaskUpdateRequest(BaseModel):
     """
     下载任务高级修改请求。
     """
@@ -78,8 +77,7 @@ class DownloadTaskUpdateRequest(BaseModel):  # type: ignore[misc]
     seeding_time_limit: Optional[int] = Field(default=None, description="做种时间限制，单位为分钟；具体支持范围由下载器决定")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class DownloadTaskMutationResult(BaseModel):  # type: ignore[misc]
+class DownloadTaskMutationResult(BaseModel):
     """
     下载任务单个修改动作的执行结果。
     """
@@ -89,8 +87,7 @@ class DownloadTaskMutationResult(BaseModel):  # type: ignore[misc]
     message: str = Field(description="动作结果说明")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class DownloadTaskUpdateData(BaseModel):  # type: ignore[misc]
+class DownloadTaskUpdateData(BaseModel):
     """
     一次下载任务高级修改的聚合结果。
     """
@@ -100,8 +97,7 @@ class DownloadTaskUpdateData(BaseModel):  # type: ignore[misc]
     results: list[DownloadTaskMutationResult] = Field(default_factory=list, description="各修改动作结果")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class DownloadSourceClassificationRequest(BaseModel):  # type: ignore[misc]
+class DownloadSourceClassificationRequest(BaseModel):
     """
     已有任务的识别、归类与种子根目录重命名请求。
     """
@@ -122,8 +118,7 @@ class DownloadSourceClassificationRequest(BaseModel):  # type: ignore[misc]
     expected_content_path: Optional[str] = Field(default=None, description="执行前预期的内容路径，用于检测状态变化")
     expected_root_name: Optional[str] = Field(default=None, description="执行前预期的根目录名称")
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @_model_validator(mode="after")  # type: ignore[misc]
+    @_model_validator(mode="after")
     def validate_mode_and_identity(self) -> "DownloadSourceClassificationRequest":
         """
         手动模式必须给出目录，ID 不能脱离其所属数据源。
@@ -135,8 +130,7 @@ class DownloadSourceClassificationRequest(BaseModel):  # type: ignore[misc]
         return self
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class DownloadSourceClassificationData(BaseModel):  # type: ignore[misc]
+class DownloadSourceClassificationData(BaseModel):
     """
     识别与资源目录变更计划，包含可审计的执行结果。
     """

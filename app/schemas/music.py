@@ -147,8 +147,7 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
         """
         return v.strip() if isinstance(v, str) and v.strip() else None
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="before")  # type: ignore[misc]
+    @model_validator(mode="before")
     @classmethod
     def _normalize_category_compatibility(cls, value: Any) -> Any:
         """
@@ -181,16 +180,14 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
         return None
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class MusicLibraryStatusRequest(BaseModel):  # type: ignore[misc]
+class MusicLibraryStatusRequest(BaseModel):
     """
     批量查询音乐媒体库状态的请求。
     """
 
     items: list[MusicInfo] = Field(min_length=1, max_length=500, description="待查询入库状态的音乐专辑列表，数量为 1 至 500 个")
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @field_validator("items")  # type: ignore[misc]
+    @field_validator("items")
     @classmethod
     def _validate_album_identities(cls, items: list[MusicInfo]) -> list[MusicInfo]:
         """
@@ -211,8 +208,7 @@ class MusicLibraryStatusRequest(BaseModel):  # type: ignore[misc]
         return items
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class MusicLibraryStatus(BaseModel):  # type: ignore[misc]
+class MusicLibraryStatus(BaseModel):
     """
     音乐专辑在媒体库中的存在状态。
     """
@@ -303,8 +299,7 @@ class MusicAlbumInfo(OptionalMediaIdentityMixin, BaseModel):
         """
         return v.strip() if isinstance(v, str) and v.strip() else None
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="before")  # type: ignore[misc]
+    @model_validator(mode="before")
     @classmethod
     def _normalize_category_compatibility(cls, value: Any) -> Any:
         """

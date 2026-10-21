@@ -10,7 +10,7 @@ import re
 import threading
 import time
 import uuid
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import websocket
 from Crypto.Cipher import AES
@@ -52,7 +52,7 @@ class WeChatBot:
                  WECHAT_BOT_WS_URL: Optional[str] = None,
                  WECHAT_ADMINS: Optional[str] = None,
                  name: Optional[str] = None,
-                 **kwargs):
+                 **kwargs: Any) -> None:
         """
         加载互动用户并启动网关和心跳线程。
 
@@ -83,7 +83,7 @@ class WeChatBot:
         self._authenticated = threading.Event()
         self._send_lock = threading.Lock()
         self._acks_lock = threading.Lock()
-        self._pending_acks: Dict[str, dict] = {}
+        self._pending_acks: Dict[str, Dict[str, Any]] = {}
 
         if not self._bot_id or not self._bot_secret:
             logger.error("企业微信智能机器人配置不完整！")
@@ -95,6 +95,9 @@ class WeChatBot:
 
     @staticmethod
     def _build_req_id(prefix: str) -> str:
+        """
+        为微信协议请求生成带操作前缀的独立请求标识。
+        """
         return f"{prefix}_{uuid.uuid4().hex}"
 
     @staticmethod
@@ -287,7 +290,7 @@ class WeChatBot:
                     return
                 time.sleep(0.1)
 
-    def _on_open(self, ws) -> None:
+    def _on_open(self, ws: Any) -> None:
         """
         连接建立后提交机器人订阅凭据。
 
@@ -303,7 +306,7 @@ class WeChatBot:
             },
         })
 
-    def _on_message(self, ws, message: str) -> None:
+    def _on_message(self, ws: Any, message: str) -> None:
         """
         解析确认、订阅结果和回调事件，并更新认证状态。
 
@@ -338,7 +341,7 @@ class WeChatBot:
         elif cmd == "aibot_event_callback":
             self._handle_callback_event(payload)
 
-    def _on_error(self, ws, error) -> None:
+    def _on_error(self, ws: Any, error: Any) -> None:
         """
         清除认证状态并记录连接错误。
 
@@ -348,7 +351,7 @@ class WeChatBot:
         self._authenticated.clear()
         logger.error(f"企业微信智能机器人 WebSocket 错误：{error}")
 
-    def _on_close(self, ws, close_status_code, close_msg) -> None:
+    def _on_close(self, ws: Any, close_status_code: Any, close_msg: Any) -> None:
         """
         连接关闭时清除认证状态并记录关闭原因。
 
@@ -359,7 +362,7 @@ class WeChatBot:
         self._authenticated.clear()
         logger.info(f"企业微信智能机器人连接关闭：{close_status_code} {close_msg}")
 
-    def _resolve_ack(self, req_id: str, payload: dict) -> None:
+    def _resolve_ack(self, req_id: str, payload: Dict[str, Any]) -> None:
         """
         将服务器确认交给等待同一请求标识的发送线程。
 
@@ -373,7 +376,7 @@ class WeChatBot:
         pending["payload"] = payload
         pending["event"].set()
 
-    def _send_raw(self, payload: dict) -> None:
+    def _send_raw(self, payload: Dict[str, Any]) -> None:
         """
         向当前连接发送未经确认等待的 JSON 报文。
 
@@ -385,7 +388,7 @@ class WeChatBot:
             raise RuntimeError("企业微信智能机器人未连接")
         self._ws_app.send(json.dumps(payload, ensure_ascii=False))
 
-    def _send_with_ack(self, payload: dict) -> bool:
+    def _send_with_ack(self, payload: Dict[str, Any]) -> bool:
         """
         等待认证后串行写入报文，并等待对应服务器确认。
 
@@ -402,17 +405,19 @@ class WeChatBot:
             logger.error("企业微信智能机器人未完成认证，无法发送消息")
             return False
 
-        pending = {"event": threading.Event(), "payload": None}
+        pending: Dict[str, Any] = {"event": threading.Event(), "payload": None}
         with self._acks_lock:
             self._pending_acks[req_id] = pending
 
         try:
             with self._send_lock:
                 self._send_raw(payload)
-            if not pending["event"].wait(timeout=self._ack_timeout):
+            event = pending["event"]
+            if not isinstance(event, threading.Event) or not event.wait(timeout=self._ack_timeout):
                 logger.error(f"企业微信智能机器人消息发送超时：req_id={req_id}")
                 return False
-            ack = pending["payload"] or {}
+            ack_value = pending.get("payload")
+            ack: Dict[str, Any] = ack_value if isinstance(ack_value, dict) else {}
             if ack.get("errcode") != 0:
                 logger.error(
                     f"企业微信智能机器人消息发送失败：{ack.get('errmsg')} ({ack.get('errcode')})"
@@ -423,7 +428,7 @@ class WeChatBot:
             with self._acks_lock:
                 self._pending_acks.pop(req_id, None)
 
-    def _handle_callback_event(self, payload: dict) -> None:
+    def _handle_callback_event(self, payload: Dict[str, Any]) -> None:
         """
         记录旧连接被服务器替换的事件；其他事件当前忽略。
 
@@ -434,7 +439,7 @@ class WeChatBot:
             logger.info(f"企业微信智能机器人旧连接被踢下线：{self._config_name}")
 
     @staticmethod
-    def _extract_text_from_body(body: dict) -> Optional[str]:
+    def _extract_text_from_body(body: Dict[str, Any]) -> Optional[str]:
         """
         提取文本、语音转写或混合消息文字，无正文时回退到引用文字。
 
@@ -469,7 +474,7 @@ class WeChatBot:
         return text or None
 
     @staticmethod
-    def _build_image_ref(image_payload: dict) -> Optional[str]:
+    def _build_image_ref(image_payload: Dict[str, Any]) -> Optional[str]:
         """
         将图片下载地址、可选密钥和格式封装为内部引用。
 
@@ -500,7 +505,7 @@ class WeChatBot:
 
     @classmethod
     def _extract_images_from_body(
-        cls, body: dict
+        cls, body: Dict[str, Any]
     ) -> Optional[List["IncomingMessage.MessageImage"]]:
         """
         提取图片或混合消息中的图片，无正文图片时回退到引用图片。
@@ -626,7 +631,7 @@ class WeChatBot:
         mime_type = self._guess_mime_type(content, payload.get("mime_type") or "image/jpeg")
         return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
 
-    def _handle_callback_message(self, payload: dict) -> None:
+    def _handle_callback_message(self, payload: Dict[str, Any]) -> None:
         """
         接收私聊文本或图片，记录互动用户并检查管理员命令权限。
 
@@ -673,7 +678,7 @@ class WeChatBot:
         )
         self._forward_to_message_chain(payload)
 
-    def _forward_to_message_chain(self, payload: dict) -> bool:
+    def _forward_to_message_chain(self, payload: Dict[str, Any]) -> bool:
         """
         通过受管线程池将原始回调提交给统一消息入口。
 
@@ -842,7 +847,9 @@ class WeChatBot:
 
         for index, context in enumerate(torrents, start=1):
             torrent = context.torrent_info
-            meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+            if torrent is None:
+                continue
+            meta = MetaInfo(title=torrent.title or "", subtitle=torrent.description)
             torrent_title = (
                 f"{index}.【{torrent.site_name}】"
                 f"{meta.season_episode} "
@@ -860,7 +867,7 @@ class WeChatBot:
 
         return self._send_markdown(content="\n\n".join(lines), userid=userid)
 
-    def create_menus(self, commands: Dict[str, dict]):
+    def create_menus(self, commands: Dict[str, Dict[str, Any]]) -> None:
         """
         保留客户端菜单接口；智能机器人模式不支持应用菜单。
 
@@ -868,7 +875,7 @@ class WeChatBot:
         """
         return
 
-    def delete_menus(self):
+    def delete_menus(self) -> None:
         """
         保留客户端菜单清理接口；智能机器人模式不执行菜单操作。
         """

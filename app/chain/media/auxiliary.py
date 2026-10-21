@@ -76,7 +76,7 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         tmdb_meta.begin_season = season
         season_year = None
         if season is not None and mediainfo.season_years:
-            season_year = mediainfo.season_years.get(season) or mediainfo.season_years.get(str(season))
+            season_year = mediainfo.season_years.get(season)
         tmdb_meta.year = season_year or mediainfo.year or getattr(metainfo, "year", None)
         return tmdb_meta
 

@@ -430,7 +430,7 @@ class MediaProjectionOwner(_MediaOwnerBase):
             event_data,
         )
         return (
-            cast(_ProjectionPayload, event_data.media_dict)
+            event_data.media_dict
             if event and event_data.media_dict
             else None
         )
@@ -452,7 +452,7 @@ class MediaProjectionOwner(_MediaOwnerBase):
             event_data,
         )
         return (
-            cast(_ProjectionPayload, event_data.media_dict)
+            event_data.media_dict
             if event and event_data.media_dict
             else None
         )

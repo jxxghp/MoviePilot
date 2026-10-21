@@ -6,7 +6,7 @@ import json
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Type, Union, cast
+from typing import Any, Dict, Literal, Optional, Type, Union
 
 from langchain_core.tools import ToolException
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
@@ -51,8 +51,7 @@ def _load_api_mcp_input_schema() -> dict[str, Any]:
     return payload
 
 
-# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
-class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
+class MoviePilotApiInput(BaseModel):
     """
     MoviePilot API 网关的结构化输入参数。
     """
@@ -82,7 +81,7 @@ class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
     )
 
     # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
-    @field_validator("body", mode="before")  # type: ignore[misc]
+    @field_validator("body", mode="before")
     @classmethod
     def _restore_json_string_body(cls, value: Any) -> Any:
         """
@@ -204,7 +203,7 @@ class MoviePilotApiTool(MoviePilotTool):
         return MoviePilotApiInput
 
     def _parse_input(
-        self, tool_input: Union[str, dict[str, Any]], tool_call_id: Optional[str],
+        self, tool_input: Union[str, dict[str, Any]], tool_call_id: Optional[str] = None,
     ) -> Union[str, dict[str, Any]]:
         """
         在 LangChain 解析前校验原始参数，让只读调用也能收到安全纠错回执。
@@ -215,7 +214,7 @@ class MoviePilotApiTool(MoviePilotTool):
                 self.canonical_arguments(tool_input)
             except (TypeError, ValueError) as error:
                 raise ToolException(self._invalid_input_result(operation_id, error)) from error
-        return cast(Union[str, dict[str, Any]], super()._parse_input(tool_input, tool_call_id))
+        return super()._parse_input(tool_input, tool_call_id)
 
     def canonical_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """

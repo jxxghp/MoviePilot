@@ -130,7 +130,7 @@ def get_moviepilot_agent_type() -> type:
     return agent_type
 
 
-def get_tool_factory() -> type:
+def get_tool_factory() -> Any:
     """
     返回 canonical 工具工厂类型。
     """

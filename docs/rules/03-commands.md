@@ -70,6 +70,11 @@ uv run --locked --no-sync pylint app/
 
 # 检查指定模块的代码质量
 uv run --locked --no-sync pylint app/chain/download.py
+
+# 检查全宿主类型及精确兼容例外，禁止新增豁免
+uv run --locked --no-sync python scripts/architecture/mypy_policy.py
+uv run --locked --no-sync mypy --config-file mypy.ini
+uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
 ```
 
 **Rules:**

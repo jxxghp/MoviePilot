@@ -518,6 +518,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
     """
 
     result_max_chars: ClassVar[Optional[int]] = DEFAULT_TOOL_RESULT_MAX_CHARS
+    return_direct: bool = False
 
     _session_id: str = PrivateAttr()
     _user_id: str = PrivateAttr()
@@ -722,7 +723,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         return None
 
     @abstractmethod
-    async def run(self, **kwargs) -> str:
+    async def run(self, *args: Any, **kwargs: Any) -> str:
         """
         子类实现具体的工具执行逻辑
         """

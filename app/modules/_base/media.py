@@ -45,7 +45,7 @@ class MediaAuxiliaryProviderMixin:
         if meta.begin_season is not None and mediainfo.season_years:
             season_year = (
                 mediainfo.season_years.get(meta.begin_season)
-                or mediainfo.season_years.get(str(meta.begin_season))
+                or mediainfo.season_years.get(int(meta.begin_season))
             )
         meta.year = season_year or mediainfo.year or getattr(metainfo, "year", None)
         return meta

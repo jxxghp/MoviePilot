@@ -42,8 +42,9 @@ class FileBackend(CacheBackend):
         self,
         key: str,
         value: Any,
+        ttl: Optional[int] = None,
         region: Optional[str] = DEFAULT_CACHE_REGION,
-        **_kwargs,
+        **_kwargs: object,
     ) -> None:
         """
         通过同目录临时文件替换目标，避免读者看到未写完的内容。
@@ -53,7 +54,8 @@ class FileBackend(CacheBackend):
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         :param _kwargs: 为缓存接口兼容保留，文件后端不处理这些选项
         """
-        cache_path = self.base / region / key
+        cache_region = region or DEFAULT_CACHE_REGION
+        cache_path = self.base / cache_region / key
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             dir=cache_path.parent,
@@ -75,7 +77,8 @@ class FileBackend(CacheBackend):
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         :return: 路径存在时返回 True
         """
-        return (self.base / region / key).exists()
+        cache_region = region or DEFAULT_CACHE_REGION
+        return (self.base / cache_region / key).exists()
 
     def get(
         self,
@@ -89,7 +92,8 @@ class FileBackend(CacheBackend):
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         :return: 文件内容；检查时目标不存在则返回 None
         """
-        cache_path = self.base / region / key
+        cache_region = region or DEFAULT_CACHE_REGION
+        cache_path = self.base / cache_region / key
         if not cache_path.exists():
             return None
         with cache_path.open("rb") as file_handle:
@@ -106,7 +110,8 @@ class FileBackend(CacheBackend):
         :param key: 区域内的相对缓存路径；不存在时不操作
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         """
-        cache_path = self.base / region / key
+        cache_region = region or DEFAULT_CACHE_REGION
+        cache_path = self.base / cache_region / key
         if cache_path.is_file():
             cache_path.unlink()
         elif cache_path.exists():
@@ -137,7 +142,7 @@ class FileBackend(CacheBackend):
         :param region: 要遍历的区域名称，使用时须为字符串
         :yields: 相对于区域目录的路径与完整文件字节组成的二元组
         """
-        cache_path = self.base / region
+        cache_path = self.base / region if region else self.base
         if not cache_path.exists():
             return
         for item in sorted(cache_path.rglob("*")):
@@ -168,12 +173,13 @@ class AsyncFileBackend(AsyncCacheBackend):
         self.base = base
         self.base.mkdir(parents=True, exist_ok=True)
 
-    async def set(
+    async def set(  # type: ignore[override]
         self,
         key: str,
         value: Any,
+        ttl: Optional[int] = None,
         region: Optional[str] = DEFAULT_CACHE_REGION,
-        **_kwargs,
+        **_kwargs: object,
     ) -> None:
         """
         通过同目录临时文件替换目标，避免读者看到未写完的内容。
@@ -183,7 +189,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         :param _kwargs: 为缓存接口兼容保留，文件后端不处理这些选项
         """
-        cache_path = AsyncPath(self.base) / region / key
+        cache_region = region or DEFAULT_CACHE_REGION
+        cache_path = AsyncPath(self.base) / cache_region / key
         await cache_path.parent.mkdir(parents=True, exist_ok=True)
         async with aiofiles.tempfile.NamedTemporaryFile(
             dir=cache_path.parent,
@@ -193,7 +200,7 @@ class AsyncFileBackend(AsyncCacheBackend):
             temp_path = AsyncPath(tmp_file.name)
         await temp_path.replace(cache_path)
 
-    async def exists(
+    async def exists(  # type: ignore[override]
         self,
         key: str,
         region: Optional[str] = DEFAULT_CACHE_REGION,
@@ -205,7 +212,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         :return: 路径存在时返回 True
         """
-        return await (AsyncPath(self.base) / region / key).exists()
+        cache_region = region or DEFAULT_CACHE_REGION
+        return bool(await (AsyncPath(self.base) / cache_region / key).exists())
 
     async def get(
         self,
@@ -219,13 +227,14 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         :return: 文件内容；检查时目标不存在则返回 None
         """
-        cache_path = AsyncPath(self.base) / region / key
+        cache_region = region or DEFAULT_CACHE_REGION
+        cache_path = AsyncPath(self.base) / cache_region / key
         if not await cache_path.exists():
             return None
         async with aiofiles.open(cache_path, "rb") as file_handle:
             return await file_handle.read()
 
-    async def delete(
+    async def delete(  # type: ignore[override]
         self,
         key: str,
         region: Optional[str] = DEFAULT_CACHE_REGION,
@@ -236,13 +245,14 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param key: 区域内的相对缓存路径；不存在时不操作
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         """
-        cache_path = AsyncPath(self.base) / region / key
+        cache_region = region or DEFAULT_CACHE_REGION
+        cache_path = AsyncPath(self.base) / cache_region / key
         if await cache_path.is_file():
             await cache_path.unlink()
         elif await cache_path.exists():
             await aioshutil.rmtree(cache_path, ignore_errors=True)
 
-    async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
+    async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:  # type: ignore[override]
         """
         清理缓存目录的内容，保留区域目录本身。
 
@@ -257,7 +267,7 @@ class AsyncFileBackend(AsyncCacheBackend):
             else:
                 await aioshutil.rmtree(item, ignore_errors=True)
 
-    async def items(
+    async def items(  # type: ignore[override]
         self,
         region: Optional[str] = DEFAULT_CACHE_REGION,
     ) -> AsyncGenerator[Tuple[str, Any], None]:
@@ -267,7 +277,8 @@ class AsyncFileBackend(AsyncCacheBackend):
         :param region: 要遍历的区域名称，使用时须为字符串
         :yields: 相对于区域目录的路径与完整文件字节组成的二元组
         """
-        cache_path = AsyncPath(self.base) / region
+        cache_region = region or DEFAULT_CACHE_REGION
+        cache_path = AsyncPath(self.base) / cache_region
         if not await cache_path.exists():
             return
         async for item in cache_path.rglob("*"):
@@ -276,7 +287,7 @@ class AsyncFileBackend(AsyncCacheBackend):
                 async with aiofiles.open(item, "rb") as file_handle:
                     yield key, await file_handle.read()
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # type: ignore[override]
         """
         异步文件缓存没有需要关闭的持久连接。
         """

@@ -84,7 +84,7 @@ class FileSystemProxy:
         :param path: 目标路径
         :return: {"size", "mtime", "dev", "ino", "is_dir", "is_file"}；dev/ino 标识当前文件身份
         """
-        return self._call("stat", path=str(path))
+        return cast(dict[str, Any], self._call("stat", path=str(path)))
 
     def exists(self, path: Path) -> bool:
         """
@@ -115,7 +115,7 @@ class FileSystemProxy:
         :param path: 目标目录
         :return: 条目名列表
         """
-        return self._call("listdir", path=str(path))
+        return cast(list[str], self._call("listdir", path=str(path)))
 
     def count_entries(self, path: Path, max_check: int = 10000) -> Dict[str, int]:
         """
@@ -125,7 +125,7 @@ class FileSystemProxy:
         :param max_check: 文件数上限，超过即提前结束
         :return: 文件与目录数量字典，分别使用 file_count 和 dir_count 键
         """
-        return self._call("count_entries", path=str(path), max_check=max_check)
+        return cast(dict[str, int], self._call("count_entries", path=str(path), max_check=max_check))
 
     def has_file_suffix(self, path: Path, extensions: List[str]) -> bool:
         """
@@ -141,7 +141,7 @@ class FileSystemProxy:
         :param dst: 目标路径
         :return: 是否成功
         """
-        return self._call("rename", src=str(src), dst=str(dst))
+        return cast(bool, self._call("rename", src=str(src), dst=str(dst)))
 
     def copy(self, src: Path, dst: Path,
              progress_cb: Optional[Callable[[float], None]] = None,
@@ -192,9 +192,12 @@ class FileSystemProxy:
         :return: 操作结果
         """
         self._ensure_worker()
+        process = self._process
+        if process is None or process.stdin is None:
+            raise BrokenPipeError("文件系统代理进程未启动")
         message = json.dumps({"op": "copy", **payload}) + "\n"
-        self._process.stdin.write(message.encode("utf-8"))
-        self._process.stdin.flush()
+        process.stdin.write(message.encode("utf-8"))
+        process.stdin.flush()
 
         while True:
             response = json.loads(self._read_line(timeout=self._stall_timeout).decode("utf-8"))
@@ -245,7 +248,7 @@ class FileSystemProxy:
         :param path: 目标文件
         :return: 是否成功
         """
-        return self._call("unlink", path=str(path))
+        return cast(bool, self._call("unlink", path=str(path)))
 
     def rmtree(self, path: Path) -> bool:
         """
@@ -254,7 +257,7 @@ class FileSystemProxy:
         :param path: 目标目录
         :return: 是否成功
         """
-        return self._call("rmtree", path=str(path))
+        return cast(bool, self._call("rmtree", path=str(path)))
 
     def close(self) -> None:
         """
@@ -384,9 +387,12 @@ class FileSystemProxy:
         :return: 操作结果
         """
         self._ensure_worker()
+        process = self._process
+        if process is None or process.stdin is None:
+            raise BrokenPipeError("文件系统代理进程未启动")
         message = json.dumps({"op": op, **payload}) + "\n"
-        self._process.stdin.write(message.encode("utf-8"))
-        self._process.stdin.flush()
+        process.stdin.write(message.encode("utf-8"))
+        process.stdin.flush()
 
         response = json.loads(self._read_line().decode("utf-8"))
         if response.get("ok"):
@@ -408,9 +414,13 @@ class FileSystemProxy:
         # 整理链每次 stat 都会直接失败。POSIX 继续用 selector，Windows 改走线程等待。
         if sys.platform == "win32":
             return self._read_line_windows(timeout)
-        if not self._selector.select(timeout=timeout):
+        selector = self._selector
+        process = self._process
+        if selector is None or process is None or process.stdout is None:
+            raise BrokenPipeError("文件系统代理进程未启动")
+        if not selector.select(timeout=timeout):
             self._raise_timeout(timeout)
-        line = self._process.stdout.readline()
+        line = process.stdout.readline()
         if not line:
             raise BrokenPipeError("文件系统代理进程已退出")
         return line
@@ -483,14 +493,19 @@ class FileSystemProxy:
         if sys.platform == "win32":
             # NSSM 服务里再拉 python.exe 时避免弹出控制台窗口
             popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        self._process = subprocess.Popen(
+        process = subprocess.Popen(
             [sys.executable, str(_WORKER_PATH)],
             **popen_kwargs,
         )
+        self._process = process
+        if process.stdin is None or process.stdout is None:
+            self._shutdown()
+            raise BrokenPipeError("文件系统代理进程管道创建失败")
         if sys.platform != "win32":
-            self._selector = selectors.DefaultSelector()
-            self._selector.register(self._process.stdout, selectors.EVENT_READ)
-        logger.debug(f"文件系统代理进程已启动: pid={self._process.pid}")
+            selector = selectors.DefaultSelector()
+            selector.register(process.stdout, selectors.EVENT_READ)
+            self._selector = selector
+        logger.debug(f"文件系统代理进程已启动: pid={process.pid}")
 
     def _shutdown(self) -> None:
         """

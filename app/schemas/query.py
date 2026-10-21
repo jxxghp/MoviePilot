@@ -17,8 +17,7 @@ DEFAULT_QUERY_PAGE_SIZE = 50
 MAX_QUERY_PAGE_SIZE = 200
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class _QueryInput(BaseModel):  # type: ignore[misc]  # 当前严格类型检查配置跳过 Pydantic 导入
+class _QueryInput(BaseModel):
     """
     查询输入共同的严格字段合同。
     """
@@ -73,8 +72,7 @@ class QueryPageRequest(_QueryInput):
     sort: QuerySort = Field(default_factory=QuerySort, description="分页查询的排序规则，默认按日期降序")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class QueryPage(BaseModel, Generic[T]):  # type: ignore[misc]  # 当前严格类型检查配置跳过 Pydantic 导入
+class QueryPage(BaseModel, Generic[T]):
     """
     公开查询返回的分页 DTO。
     """
@@ -103,8 +101,7 @@ class MediaIdentityQuery(_QueryInput):
     media_source: Optional[MediaSource] = Field(default=None, description="媒体数据源")
     media_id: Optional[str] = Field(default=None, description="数据源原生 ID")
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def _validate_media_identity(self) -> "MediaIdentityQuery":
         """
         规范化 ID，并拒绝显式半对、空白或零值身份。
@@ -120,8 +117,7 @@ class MediaIdentityQuery(_QueryInput):
         return self
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class _QuerySnapshot(BaseModel):  # type: ignore[misc]  # 当前严格类型检查配置跳过 Pydantic 导入
+class _QuerySnapshot(BaseModel):
     """
     只读查询 DTO 的媒体身份与脏数据归一化边界。
     """
@@ -131,8 +127,7 @@ class _QuerySnapshot(BaseModel):  # type: ignore[misc]  # 当前严格类型检�
 
     model_config = ConfigDict(from_attributes=True)
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @field_validator("media_source", mode="before")  # type: ignore[misc]
+    @field_validator("media_source", mode="before")
     @classmethod
     def _normalize_source(cls, value: Any) -> Optional[MediaSource]:
         """
@@ -140,8 +135,7 @@ class _QuerySnapshot(BaseModel):  # type: ignore[misc]  # 当前严格类型检�
         """
         return normalize_media_source(value)
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def _normalize_identity_pair(self) -> "_QuerySnapshot":
         """
         输出中的脏半对身份按无身份处理，避免向插件传播不可用主键。
@@ -337,8 +331,7 @@ class TransferHistorySnapshot(_QuerySnapshot):
     files: Optional[JsonData] = Field(default=None, description="文件清单")
     episode_group: Optional[str] = Field(default=None, description="剧集组")
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @field_validator("status", mode="before")  # type: ignore[misc]
+    @field_validator("status", mode="before")
     @classmethod
     def _normalize_status(cls, value: object) -> bool:
         """

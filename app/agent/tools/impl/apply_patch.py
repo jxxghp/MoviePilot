@@ -7,7 +7,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 from anyio import Path as AsyncPath
 from pydantic import BaseModel, Field
@@ -245,7 +245,7 @@ class ApplyPatchTool(MoviePilotTool):
         description="工具输入参数的验证模型或 JSON Schema",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据参数生成友好的提示消息
         """
@@ -258,17 +258,19 @@ class ApplyPatchTool(MoviePilotTool):
 
     async def _plan_operations(
         self, operations: list[FilePatch]
-    ) -> tuple[Optional[list], Optional[str]]:
+    ) -> tuple[Optional[list[tuple[FilePatch, Path, Path, Optional[str], Optional[str]]]], Optional[str]]:
         """
         校验每个文件操作并计算写入内容，全部通过才返回执行计划。
         """
-        planned = []
+        planned: list[tuple[FilePatch, Path, Path, Optional[str], Optional[str]]] = []
         for file_patch in operations:
             resolved_path, access_error = await self._check_local_file_access(
                 file_patch.path, operation="打补丁"
             )
             if access_error:
                 return None, access_error
+            if resolved_path is None:
+                return None, "错误：无法解析补丁路径"
 
             path = AsyncPath(resolved_path)
             exists = await path.exists()
@@ -310,14 +312,14 @@ class ApplyPatchTool(MoviePilotTool):
                 "default", calculate_file_sha256, local_path
             )
             new_content = apply_hunks_to_content(
-                content, file_patch.hunks, resolved_path
+                content, file_patch.hunks, str(resolved_path)
             )
             planned.append(
                 (file_patch, resolved_path, local_path, new_content, current_sha256)
             )
         return planned, None
 
-    async def run(self, patch: str, **kwargs) -> str:
+    async def run(self, patch: str, **kwargs: Any) -> str:  # type: ignore[override]
         """
         解析并整体校验补丁后，逐文件原子应用新增、更新和删除。
         """
@@ -332,6 +334,8 @@ class ApplyPatchTool(MoviePilotTool):
             planned, plan_error = await self._plan_operations(operations)
             if plan_error:
                 return plan_error
+            if planned is None:
+                return "错误：补丁规划失败"
 
             results = []
             for file_patch, resolved_path, local_path, new_content, sha256 in planned:

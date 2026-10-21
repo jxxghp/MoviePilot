@@ -44,7 +44,7 @@ def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
 )
 async def tmdb_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     查询可管理的 TheMovieDb 识别缓存。
     """
@@ -190,7 +190,11 @@ async def tmdb_collection(
     """
     medias = await TmdbChain().async_tmdb_collection(collection_id=collection_id)
     if medias:
-        return [media.to_dict() for media in medias][(page - 1) * count : page * count]
+        page_value = page if page is not None else 1
+        count_value = count if count is not None else 20
+        return _paginate_medias(
+            [media.to_dict() for media in medias], page_value, count_value
+        )
     return []
 
 

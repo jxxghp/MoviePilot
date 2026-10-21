@@ -145,7 +145,7 @@ class TemplateContextBuilder:
     def build(
             self,
             meta: Optional[MetaBase] = None,
-            mediainfo: Optional[MediaInfo] = None,
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             torrentinfo: Optional[TorrentInfo] = None,
             transferinfo: Optional[TransferInfo] = None,
             file_extension: Optional[str] = None,
@@ -206,7 +206,7 @@ class TemplateContextBuilder:
     def _add_media_info(
             cls,
             context: Dict[str, Any],
-            mediainfo: Optional[MediaInfo],
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             aggregate_music_album: bool = False,
     ) -> None:
         """
@@ -259,7 +259,7 @@ class TemplateContextBuilder:
                 else (context.get("track_number") or mediainfo.track_number)
             )
             context.update({
-                "type": mediainfo.type.value,
+                "type": (mediainfo.type.value if mediainfo.type else ""),
                 "title": title,
                 "name": title if is_album_context else (context.get("name") or title),
                 "artists": artists,
@@ -317,7 +317,7 @@ class TemplateContextBuilder:
         _meta_season = context.get("season")
         media_info = {
             # 类型
-            "type": mediainfo.type.value,
+            "type": (mediainfo.type.value if mediainfo.type else ""),
             # 类别
             "category": mediainfo.category,
             # 评分
@@ -542,7 +542,7 @@ class TemplateContextBuilder:
     def _add_raw_objects(
             context: Dict[str, Any],
             meta: Optional[MetaBase],
-            mediainfo: Optional[MediaInfo],
+            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             torrentinfo: Optional[TorrentInfo],
             transferinfo: Optional[TransferInfo],
             episodes_info: Optional[List[TmdbEpisode]],
@@ -568,11 +568,19 @@ class TemplateContextBuilder:
 
     @staticmethod
     @overload
-    def __convert_invalid_characters(filename: str) -> str: ...
+    def __convert_invalid_characters(filename: str) -> str:
+        """
+        按文件名输入是否存在声明对应的清理结果，保留 None 的缺省语义。
+        """
+        ...
 
     @staticmethod
     @overload
-    def __convert_invalid_characters(filename: None) -> None: ...
+    def __convert_invalid_characters(filename: None) -> None:
+        """
+        按文件名输入是否存在声明对应的清理结果，保留 None 的缺省语义。
+        """
+        ...
 
     @staticmethod
     def __convert_invalid_characters(filename: Optional[str]) -> Optional[str]:

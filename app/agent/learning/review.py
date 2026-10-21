@@ -4,11 +4,12 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
-from langchain.agents.middleware.types import ExtendedModelResponse, ModelRequest, ModelResponse
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain.agents.middleware.types import AgentState, ExtendedModelResponse, ModelRequest, ModelResponse
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
+from langgraph.types import Command
 
 from app.agent.learning.prompts import COMBINED_REVIEW_PROMPT, MEMORY_REVIEW_PROMPT, SKILL_REVIEW_PROMPT
 from app.agent.learning.tools import LearningTools
@@ -35,7 +36,7 @@ class ReviewSnapshot:
 
     model: Any
     system: SystemMessage | None
-    messages: list[BaseMessage]
+    messages: list[AnyMessage]
     schemas: list[dict[str, Any]]
     settings: dict[str, Any]
     tool_choice: Any
@@ -123,16 +124,19 @@ class ReviewLoop:
         for iteration in range(16):
             if self.cancelled() or self.consumed >= self.budget:
                 break
+            state: AgentState = {"messages": self.messages}
             request = ModelRequest(model=self.model, system_message=self.snapshot.system,
-                                   messages=self.messages, tools=self.snapshot.schemas,
+                                   messages=self.messages, tools=[*self.snapshot.schemas],
                                    model_settings=self.snapshot.settings, tool_choice=self.snapshot.tool_choice,
-                                   state={'messages': self.messages}, runtime=None)
+                                   state=state, runtime=None)
             response = await self._invoke(request) if iteration == 0 else await self.compaction.awrap_model_call(request, self._invoke)
             if isinstance(response, ExtendedModelResponse):
-                self.messages = response.command.update['messages'][1:]
+                # 压缩中间件的扩展响应始终携带消息状态命令。
+                update = cast(dict[str, Any], cast(Command[Any], response.command).update)
+                self.messages = update['messages'][1:]
                 message = response.model_response.result[-1]
             else:
-                self.messages.extend(response.result)
+                self.messages.extend(cast(list[AnyMessage], response.result))
                 message = response.result[-1]
             if not isinstance(message, AIMessage) or not message.tool_calls:
                 break

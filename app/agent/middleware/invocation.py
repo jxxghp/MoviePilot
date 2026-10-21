@@ -7,11 +7,11 @@ import hashlib
 import json
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, cast
 
-from langchain.agents.middleware.types import AgentMiddleware, PrivateStateAttr, ToolCallRequest
+from langchain.agents.middleware.types import AgentMiddleware, AgentState, PrivateStateAttr, ToolCallRequest
 from langchain_core.messages import ToolMessage
-from langchain_core.tools import StructuredTool, create_schema_from_function
+from langchain_core.tools import BaseTool, StructuredTool, create_schema_from_function
 from pydantic import Field
 
 from app.agent.policy.api import resolve_api_operation
@@ -33,7 +33,7 @@ from app.runtime.log import logger
 GET_TOOL_EXECUTION_NAME = "get_tool_execution"
 
 
-class InvocationState(TypedDict):
+class InvocationState(AgentState):
     """
     在同一轮模型工具循环内提供稳定去重范围，用户新请求使用新范围。
 
@@ -64,8 +64,7 @@ def _fingerprint(value: Any) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-# follow_imports=skip 下第三方中间件基类按 Any 处理，仅忽略 SDK 边界。
-class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
+class InvocationMiddleware(AgentMiddleware[InvocationState, Any, Any]):
     """
     维护真实工具写入的持久回执；未认领、未知或已完成调用不会盲目重放。
     """
@@ -245,6 +244,8 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
         """
         if not self._is_write(request):
             return await handler(request)
+        # _is_write 已确认工具实例存在，override 只替换规范化参数。
+        tool = cast(BaseTool, request.tool)
         try:
             canonical_arguments = _canonical_arguments(request)
             arguments_digest = _fingerprint(canonical_arguments)
@@ -252,16 +253,16 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
                 request = request.override(tool_call={**request.tool_call, "args": canonical_arguments})
                 previous = await run_agent_blocking(
                     "db", self.repository.find_unresolved, str(self.context.user_id or ""), self.context.session_id,
-                    tool_name=request.tool.name, arguments_digest=arguments_digest,
+                    tool_name=tool.name, arguments_digest=arguments_digest,
                 )
                 if previous is not None:
                     return await self._existing(request, previous)
-                invocation_id = _fingerprint([request.state.get("invocation_turn_id"), request.tool.name, arguments_digest])
+                invocation_id = _fingerprint([request.state.get("invocation_turn_id"), tool.name, arguments_digest])
             else:
                 invocation_id = str(request.tool_call.get("id") or uuid.uuid4().hex)
             claim = await run_agent_blocking(
                 "db", self.repository.claim, self._identity(invocation_id),
-                tool_name=request.tool.name, arguments_digest=arguments_digest,
+                tool_name=tool.name, arguments_digest=arguments_digest,
             )
         except InvocationConflictError:
             return self._message(request, "failed", "同一调用 ID 的工具或参数发生变化，未执行。")
@@ -269,7 +270,7 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
             detail = summarize_error(error, max_chars=240)
             logger.info(f"工具参数未通过 API 输入合同校验: {detail}")
             operation_id = str(request.tool_call.get("args", {}).get("operation_id", ""))
-            input_contract = request.tool.get_operation_input_contract(operation_id)
+            input_contract = cast(MoviePilotApiTool, tool).get_operation_input_contract(operation_id)
             return self._message(
                 request,
                 "failed",

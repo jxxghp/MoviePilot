@@ -182,7 +182,7 @@ def manage(request: _SchemaManageRequest, _: ApiPrincipal = Depends(get_current_
     )
     return _SchemaResponse(
         success=bool(result.get("success")),
-        message=result.get("message"),
+        message=result.get("message") or "",
         data=result.get("data"),
     )
 

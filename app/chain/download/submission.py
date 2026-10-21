@@ -282,7 +282,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             if on_failure:
                 on_failure(error_msg or "下载种子内容为空")
             if error_msg and "种子数据有误" in error_msg:
-                helper.add_invalid(torrent.enclosure)
+                helper.add_invalid(torrent.enclosure or "")
             logger.error(f"下载种子文件失败：{torrent.title}")
             self.post_message(Message(
                 channel=channel,
@@ -301,7 +301,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         以资源身份和换票凭据隔离缓存，临时链接不参与键，凭据不写入文件名。
         """
         identity = torrent_rules.resource_identity(torrent)
-        if not torrent.enclosure.startswith("[") or identity is None:
+        if not torrent.enclosure or not torrent.enclosure.startswith("[") or identity is None:
             return None
         scope = json.dumps((identity, torrent.enclosure, torrent.site_cookie))
         return f"resource-{hashlib.sha256(scope.encode('utf-8')).hexdigest()}.torrent"
@@ -312,6 +312,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         """
         先读取已验证的换票种子内容；缓存损坏时重新换票，失败与磁力链不缓存。
         """
+        if not torrent.enclosure:
+            return None
         cache_key = self._indirect_torrent_cache_key(torrent)
         cache = FileCache(local_only=True) if cache_key else None
         if cache is not None and cache_key is not None:
@@ -371,6 +373,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 return result
             if not self._refresh_signed_torrent(torrent):
                 return result
+            if not torrent.enclosure:
+                return result
             url, cookie = torrent.enclosure, torrent.site_cookie
         return result
 
@@ -420,7 +424,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         media = context.media_info
         event_data = ResourceDownloadEventData(
             context=context,
-            episodes=episodes or (meta.episode_list if meta else []),
+            episodes=set(episodes or (meta.episode_list if meta else [])),
             channel=channel,
             origin=source,
             downloader=downloader,
@@ -708,7 +712,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         if not download_dir or not storage:
             if error_msg == "未找到下载目录":
                 self.messagehelper.put(
-                    f"{media.type.value} {media.title_year} 未找到下载目录！",
+                    f"{(media.type.value if media.type else "")} {media.title_year} 未找到下载目录！",
                     title="下载失败",
                     role="system",
                     level="error",

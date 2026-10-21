@@ -10,7 +10,7 @@ import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, ClassVar, Dict, Optional, Type
+from typing import Any, ClassVar, Dict, Optional, Type, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,8 +21,7 @@ from app.runtime.settings import get_runtime_setting
 from app.schemas.mediaserver import MediaServerQueryOptions
 
 
-# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
-class DownloaderOperationInput(BaseModel):  # type: ignore[misc]
+class DownloaderOperationInput(BaseModel):
     """
     下载器操作工具的运行时输入模型。
     """
@@ -42,8 +41,7 @@ class DownloaderOperationInput(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid")
 
 
-# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
-class MediaServerOperationInput(BaseModel):  # type: ignore[misc]
+class MediaServerOperationInput(BaseModel):
     """
     媒体服务器操作工具的运行时输入模型。
     """
@@ -63,8 +61,7 @@ class MediaServerOperationInput(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(extra="forbid")
 
 
-# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
-class DatabaseOperationInput(BaseModel):  # type: ignore[misc]
+class DatabaseOperationInput(BaseModel):
     """
     数据库操作工具的运行时输入模型。
     """
@@ -408,7 +405,7 @@ class _ServiceOperationTool(MoviePilotTool):
         actions = _load_action_contracts(str(root_path / self._relative_script))
         selector_description = None
         if self._selector_name:
-            selector_description = self.args_schema.model_json_schema()["properties"][self._selector_name][
+            selector_description = cast(type[BaseModel], self.get_input_schema()).model_json_schema()["properties"][self._selector_name][
                 "description"
             ]
         return _build_mcp_input_schema(

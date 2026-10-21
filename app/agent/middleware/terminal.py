@@ -25,7 +25,7 @@ def _default_actions() -> list[Literal["read", "wait"]]:
     return ["read", "wait"]
 
 
-class SubAgentTerminalGrant(BaseModel):  # type: ignore[misc]
+class SubAgentTerminalGrant(BaseModel):
     """
     父任务明确授予子代理的单个终端读取能力，不扩大只读策略。
     """

@@ -219,6 +219,8 @@ class LocalStorage(StorageBase):
         :param fileitem: 目标文件项；调用方应传入普通文件
         :return: 最新文件信息；路径不存在时返回 None
         """
+        if not fileitem.path:
+            return None
         path_obj = Path(fileitem.path)
         if not path_obj.exists():
             return None
@@ -259,6 +261,8 @@ class LocalStorage(StorageBase):
         :param name: 目标名称，目标已存在时遵循操作系统重命名语义
         :return: 操作完成返回 True，源项缺失或其他失败返回 False
         """
+        if not fileitem.path:
+            return False
         path_obj = Path(fileitem.path)
         try:
             fsproxy.rename(path_obj, path_obj.parent / name)
@@ -277,6 +281,8 @@ class LocalStorage(StorageBase):
         :param path: 兼容远端存储接口的保存目录，当前忽略
         :return: 源文件 Path 对象，不在此方法检查是否存在
         """
+        if not fileitem.path:
+            raise ValueError("本地文件项缺少路径")
         return Path(fileitem.path)
 
     # 中间文件使用隐藏名称及专用后缀，降低媒体库把未完成内容当作成品的风险。
@@ -466,9 +472,8 @@ class LocalStorage(StorageBase):
                         break
                     fdst.write(buf)
                     copied_size += len(buf)
-                    if progress_callback:
-                        percent = copied_size / total_size * 100
-                        progress_callback(percent)
+                    percent = copied_size / total_size * 100
+                    progress_callback(percent)
             os.utime(dest, ns=(src_stat.st_atime_ns, src_stat.st_mtime_ns))
             return True
         except Exception as e:
@@ -492,6 +497,8 @@ class LocalStorage(StorageBase):
         :return: 目标文件项；复制、删除源文件或后续查询失败返回 None，目标文件可能已经写入
         """
         try:
+            if not fileitem.path:
+                return None
             dir_path = Path(fileitem.path)
             target_path = dir_path / (new_name or path.name)
             # 先原子地把内容落到目标，确认完整之后才删源
@@ -556,6 +563,8 @@ class LocalStorage(StorageBase):
         :param new_name: 目标文件名
         :return: 目标完成或源目标路径相同返回 True；复制失败返回 False
         """
+        if not fileitem.path:
+            return False
         src = Path(fileitem.path)
         dest = path / new_name
         if src == dest:
@@ -586,6 +595,8 @@ class LocalStorage(StorageBase):
         :param target_file: 完整目标链接路径
         :return: 系统操作返回成功时为 True，否则为 False
         """
+        if not fileitem.path:
+            return False
         file_path = Path(fileitem.path)
         code, message = SystemUtils.link(file_path, target_file)
         if code != 0:
@@ -601,6 +612,8 @@ class LocalStorage(StorageBase):
         :param target_file: 完整目标链接路径
         :return: 系统操作返回成功时为 True，否则为 False
         """
+        if not fileitem.path:
+            return False
         file_path = Path(fileitem.path)
         code, message = SystemUtils.softlink(file_path, target_file)
         if code != 0:

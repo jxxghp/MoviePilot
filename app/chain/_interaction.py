@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, Tuple, Union
 
 from app.chain._contracts import InteractionMixinHost
 from app.schemas.types import NotificationChannel
@@ -28,7 +28,7 @@ class InteractionChainMixin:
     - `_interaction_handler()`：按各链业务动作构造处理器实例。
     """
 
-    __mixin_host_protocol__ = InteractionMixinHost
+    __mixin_host_protocol__: ClassVar[Any] = InteractionMixinHost
 
     # 交互处理器类，子类注入（如 SubscribeInteractionHandler / SiteInteractionHandler）
     _interaction_handler_type: Optional[type[SiteInteractionHandler | SubscribeInteractionHandler]] = None

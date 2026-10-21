@@ -7,7 +7,7 @@ import re
 from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, List, Optional, Tuple, cast
+from typing import Any, Callable, List, Optional, Tuple, Union, cast
 
 from jinja2 import Template
 
@@ -107,7 +107,7 @@ class TransHandler:
         """
         disc_folder = cls.__normalize_disc_folder_name(getattr(meta, "part", None))
         if not disc_folder and source_item:
-            source_name = source_item.name or Path(source_item.path).name
+            source_name = source_item.name or (Path(source_item.path).name if source_item.path else "")
             disc_folder = cls.__normalize_disc_folder_name(source_name)
             if not disc_folder:
                 match = re.search(
@@ -123,7 +123,7 @@ class TransHandler:
         return rendered_path.parent / (disc_folder or "Disc")
 
     @staticmethod
-    def __update_result(result: TransferInfo, **kwargs):
+    def __update_result(result: TransferInfo, **kwargs: Any) -> None:
         """
         按字段类型合并整理结果，原地修改结果对象。
 
@@ -228,7 +228,7 @@ class TransHandler:
         :param fileitem: 待冻结的源或目标文件项
         :return: 采用 JSON 值类型的字典
         """
-        return cast(dict[str, Any], fileitem.model_dump(mode="json"))
+        return fileitem.model_dump(mode="json")
 
     @staticmethod
     def __serialize_transfer_model(value: object) -> dict[str, Any]:
@@ -332,6 +332,8 @@ class TransHandler:
             :param destination_dir: 对应的目标目录路径
             """
             for source_item in source_oper.list(source_dir) or []:
+                if not source_item.path or not source_item.name:
+                    raise ValueError("源文件项缺少路径或名称")
                 destination = destination_dir / source_item.name
                 if source_item.type == "dir":
                     collect(source_item, destination)
@@ -387,7 +389,8 @@ class TransHandler:
         :param preview: 是否仅预览；目录预览不遍历并冻结叶子操作
         :return: 包含最终路径、元数据快照和操作清单的检查点
         """
-        fileitem = FileItem(**planning_input.source_fileitem)
+        fileitem = FileItem.model_validate(planning_input.source_fileitem)
+        final_target: Optional[Path]
         rename_format = get_runtime_setting("RENAME_FORMAT")(mediainfo.type)
         planning_meta = deepcopy(meta)
         resolved_mediainfo = self.__serialize_transfer_model(mediainfo)
@@ -422,7 +425,7 @@ class TransHandler:
                 if not final_target:
                     raise ValueError("重命名格式无效")
             else:
-                final_target = target_path / fileitem.name
+                final_target = target_path / cast(str, fileitem.name)
             items = (
                 ()
                 if preview
@@ -532,7 +535,7 @@ class TransHandler:
                 # 整轨与索引只调整专辑目录，保留原名才能让 CUE FILE 引用继续有效。
                 final_target = final_target.parent / Path(str(fileitem.path)).name
         else:
-            final_target = target_path / fileitem.name
+            final_target = target_path / cast(str, fileitem.name)
 
         return TransferPlanCheckpoint(
             planning_input=planning_input,
@@ -661,7 +664,7 @@ class TransHandler:
                 success=False,
                 message=message,
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=need_notify,
             )
@@ -718,7 +721,7 @@ class TransHandler:
                 message=plugin_reason or "插件决定不覆盖已有文件",
                 fileitem=fileitem,
                 target_item=target_item,
-                fail_list=[fileitem.path],
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=need_notify,
                 overwrite_skipped=True,
@@ -731,7 +734,7 @@ class TransHandler:
                 message="媒体库存在同名文件，当前覆盖模式为不覆盖",
                 fileitem=fileitem,
                 target_item=target_item,
-                fail_list=[fileitem.path],
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=need_notify,
                 overwrite_skipped=True,
@@ -750,7 +753,7 @@ class TransHandler:
                     message="媒体库存在同名音乐文件，且目标音质更好",
                     fileitem=fileitem,
                     target_item=target_item,
-                    fail_list=[fileitem.path],
+                    fail_list=[fileitem.path] if fileitem.path else [],
                     transfer_type=transfer_type,
                     need_notify=need_notify,
                     overwrite_skipped=True,
@@ -765,17 +768,21 @@ class TransHandler:
                 if plugin_target_size is not None
                 else target_item.size
             )
-            if target_size < source_size:
+            sizes_known = source_size is not None and target_size is not None
+            if sizes_known and cast(int, target_size) < cast(int, source_size):
                 return True, False, None
             return False, False, TransferInfo(
                 success=False,
-                message="媒体库存在同名文件，且质量更好",
+                message=(
+                    "媒体库存在同名文件，且质量更好"
+                    if sizes_known else "无法确认源文件或目标文件大小，已跳过覆盖"
+                ),
                 fileitem=fileitem,
                 target_item=target_item,
-                fail_list=[fileitem.path],
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=need_notify,
-                overwrite_skipped=True,
+                overwrite_skipped=sizes_known,
             )
         return False, False, None
 
@@ -842,7 +849,7 @@ class TransHandler:
         if (source.storage == "local" and target.storage == "u115"
                 and source.type == target.type == "file" and target.fileid
                 and source.size is not None and target.size is not None):
-            return cast(FileItem, target.model_copy(update={"size": source.size}))
+            return target.model_copy(update={"size": source.size})
         return target
 
     @classmethod
@@ -980,8 +987,13 @@ class TransHandler:
         :param transfer_type: move、copy、link、softlink 或 reflink
         :return: 完成状态及文件证据；无法证明内容或查询失败时返回未知状态
         """
+        if not fileitem.path:
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.UNKNOWN,
+                evidence=TransferStepResult(payload={"reason": "源文件项缺少路径"}),
+            )
         try:
-            source_item = source_oper.get_item_strict(Path(cast(str, fileitem.path)))
+            source_item = source_oper.get_item_strict(Path(fileitem.path))
             target_item = target_oper.get_item_strict(target_file)
         except Exception as error:
             return TransferOperationObservation(
@@ -1029,7 +1041,7 @@ class TransHandler:
                 state=TransferOperationObservationState.UNKNOWN,
                 evidence=evidence,
             )
-        source_path = Path(cast(str, fileitem.path))
+        source_path = Path(fileitem.path)
         try:
             if transfer_type == "copy":
                 applied = source_path.is_file() and filecmp.cmp(
@@ -1100,7 +1112,10 @@ class TransHandler:
         :param materialize_kind: 目标落地步骤类别，默认 materialize_target
         :return: 目标文件项及提示；缺少成功目标证据时文件项为 None
         """
-        fileitem = FileItem(**source_fileitem)
+        fileitem = FileItem.model_validate(source_fileitem)
+        if not fileitem.path:
+            return None, "源文件项缺少路径"
+        source_path = Path(fileitem.path)
         cross_storage_move = (
             transfer_type == "move" and fileitem.storage != target_storage
         )
@@ -1167,7 +1182,7 @@ class TransHandler:
             在目标已落地后单独删除跨存储 move 的源文件。
             """
             confirm_materialized_target()
-            current_source = source_oper.get_item_strict(Path(cast(str, fileitem.path)))
+            current_source = source_oper.get_item_strict(source_path)
             if current_source is not None:
                 cls.__assert_file_identity(fileitem, current_source)
             if current_source is not None and not source_oper.delete(current_source):
@@ -1194,7 +1209,7 @@ class TransHandler:
             },
             execute=execute_source_delete,
             observe=lambda: cls.__observe_safe_delete(
-                source_oper, Path(cast(str, fileitem.path)),
+                source_oper, source_path,
                 frozen_item=fileitem, before_delete=confirm_materialized_target,
             ),
         )
@@ -1729,7 +1744,7 @@ class TransHandler:
         :param step_runner: 可恢复步骤执行器；None 时沿用同步执行
         :return: 整理结果，包含目标和成功文件统计或拒绝原因
         """
-        fileitem = FileItem(**checkpoint.planning_input.source_fileitem)
+        fileitem = FileItem.model_validate(checkpoint.planning_input.source_fileitem)
         frozen_source_payload = checkpoint.planning_input.source_fileitem
         target_storage = checkpoint.target_storage
         target_path = Path(checkpoint.final_target_path)
@@ -1768,7 +1783,7 @@ class TransHandler:
                 fileitem=fileitem,
                 target_item=preview_target_item,
                 target_diritem=preview_target_diritem,
-                file_list=[fileitem.path],
+                file_list=[cast(str, fileitem.path)],
                 file_list_new=[target_path.as_posix()],
                 file_count=0 if item_type == "dir" else 1,
                 total_size=0 if item_type == "dir" else fileitem.size or 0,
@@ -1780,7 +1795,7 @@ class TransHandler:
         if fileitem.type == "dir":
             stream_path = Path(cast(str, fileitem.path)) / "BDMV" / "STREAM"
             stream_sizes = [
-                FileItem(**item.source_fileitem).size or 0
+                FileItem.model_validate(item.source_fileitem).size or 0
                 for item in checkpoint.items
                 if Path(str(item.source_fileitem.get("path", ""))).parent
                 == stream_path
@@ -1838,7 +1853,7 @@ class TransHandler:
                         transfer_type=transfer_type,
                         need_notify=checkpoint.need_notify,
                     )
-                source_item = FileItem(**planned_item.source_fileitem)
+                source_item = FileItem.model_validate(planned_item.source_fileitem)
                 over_flag = self.__resolve_leaf_overwrite_with_step(
                     step_runner=step_runner, planned_item=planned_item,
                     target_oper=target_oper, transfer_type=transfer_type,
@@ -1892,7 +1907,7 @@ class TransHandler:
                 success=False,
                 message="单文件整理计划必须且只能包含一个操作",
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -1906,7 +1921,7 @@ class TransHandler:
                 success=False,
                 message="单文件整理计划与冻结目标不一致",
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -1950,7 +1965,7 @@ class TransHandler:
                 success=False,
                 message=reason,
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -1966,7 +1981,7 @@ class TransHandler:
                 success=False,
                 message=f"目标目录 {target_file.parent} 获取失败",
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -2009,7 +2024,7 @@ class TransHandler:
                 success=False,
                 message=error,
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -2131,7 +2146,7 @@ class TransHandler:
 
         if transfer_type in ("copy", "move"):
             target_fileitem = target_oper.get_folder(target_file.parent)
-            if not target_fileitem:
+            if not target_fileitem or not target_fileitem.path:
                 return None, f"【{target_storage}】{target_file.parent} 目录获取失败"
             action_name = "copy_item" if transfer_type == "copy" else "move_item"
             custom_item_action = getattr(source_oper, action_name, None)
@@ -2254,7 +2269,7 @@ class TransHandler:
                 return __get_targetitem(target_file), ""
             return None, error
         elif fileitem.storage == "local" and target_storage != "local":
-            filepath = Path(fileitem.path)
+            filepath = Path(cast(str, fileitem.path))
             if not filepath.exists():
                 return None, f"文件 {filepath} 不存在"
             if transfer_type == "copy":
@@ -2348,13 +2363,13 @@ class TransHandler:
         new_file_type = ""
 
         # 先识别繁中，避免“繁体中文/繁中字”等名称被后面的“中文/中字”简中兜底规则误判。
-        if re.search(_zhtw_sub_re, sub_item.name, re.I):
+        if re.search(_zhtw_sub_re, sub_item.name or "", re.I):
             new_file_type = ".zh-tw"
-        elif re.search(_zhcn_sub_re, sub_item.name, re.I):
+        elif re.search(_zhcn_sub_re, sub_item.name or "", re.I):
             new_file_type = ".chi.zh-cn"
-        elif re.search(_ja_sub_re, sub_item.name, re.I):
+        elif re.search(_ja_sub_re, sub_item.name or "", re.I):
             new_file_type = ".ja"
-        elif re.search(_eng_sub_re, sub_item.name, re.I):
+        elif re.search(_eng_sub_re, sub_item.name or "", re.I):
             new_file_type = ".eng"
 
         if (
@@ -2435,7 +2450,7 @@ class TransHandler:
 
     @staticmethod
     def get_dest_path(
-        mediainfo: MediaInfo,
+        mediainfo: Union[MediaInfo, MusicInfo],
         target_path: Path,
         need_type_folder: Optional[bool] = False,
         need_category_folder: Optional[bool] = False,
@@ -2470,7 +2485,7 @@ class TransHandler:
 
     @staticmethod
     def get_dest_dir(
-        mediainfo: MediaInfo,
+        mediainfo: Union[MediaInfo, MusicInfo],
         target_dir: TransferDirectoryConf,
         need_type_folder: Optional[bool] = None,
         need_category_folder: Optional[bool] = None,
@@ -2486,6 +2501,8 @@ class TransHandler:
         :param need_category_folder: 是否添加分类目录；None 时沿用目录设置
         :return: 最终媒体库目录路径；不创建目录
         """
+        if not target_dir.library_path:
+            raise ValueError("媒体库目录路径为空")
         if need_type_folder is None:
             need_type_folder = target_dir.library_type_folder
         if need_category_folder is None:
@@ -2524,10 +2541,10 @@ class TransHandler:
     @staticmethod
     def get_naming_dict(
         meta: MetaBase,
-        mediainfo: MediaInfo,
+        mediainfo: Union[MediaInfo, MusicInfo],
         file_ext: Optional[str] = None,
         episodes_info: Optional[List[TmdbEpisode]] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         构造重命名模板使用的媒体变量和安全分类路径。
 
@@ -2578,10 +2595,12 @@ class TransHandler:
         media_files = storage_oper.list(parent_item) or []
         result: list[FileItem] = []
         for media_file in media_files:
+            if not media_file.path or not media_file.extension:
+                continue
             media_path = Path(media_file.path)
             if media_path == path or media_file.type != "file":
                 continue
-            if f".{cast(str, media_file.extension).lower()}" not in get_runtime_setting('RMT_MEDIAEXT'):
+            if f".{media_file.extension.lower()}" not in get_runtime_setting('RMT_MEDIAEXT'):
                 continue
             filemeta = MetaInfoPath(media_path)
             if filemeta.season != meta.season or filemeta.episode != meta.episode:
@@ -2589,7 +2608,7 @@ class TransHandler:
             if meta.part and filemeta.part and filemeta.part != meta.part:
                 continue
             result.append(media_file)
-        return sorted(result, key=lambda item: (item.path, item.fileid or ""))
+        return sorted(result, key=lambda item: (item.path or "", item.fileid or ""))
 
     @classmethod
     def __delete_version_files_with_steps(
@@ -2707,6 +2726,8 @@ class TransHandler:
             logger.info(f"目录 {path.parent} 中没有文件")
             return False
         for media_file in media_files:
+            if not media_file.path or not media_file.extension:
+                continue
             media_path = Path(media_file.path)
             if media_path == path:
                 continue
@@ -2728,7 +2749,7 @@ class TransHandler:
     @staticmethod
     def get_rename_path(
         template_string: str,
-        rename_dict: dict,
+        rename_dict: dict[str, Any],
         path: Optional[Path] = None,
         source_path: Optional[str] = None,
         source_item: Optional[FileItem] = None,
@@ -2756,7 +2777,7 @@ class TransHandler:
         build_event = eventmanager.send_event(
             ChainEventType.TransferRenameBuild, build_event_data
         )
-        if build_event and build_event.event_data:
+        if build_event and isinstance(build_event.event_data, TransferRenameBuildEventData):
             rename_dict = build_event.event_data.rename_dict
 
         template = Template(template_string)
@@ -2772,8 +2793,8 @@ class TransHandler:
             source_item=source_item,
         )
         event = eventmanager.send_event(ChainEventType.TransferRename, event_data)
-        if event and event.event_data:
-            event_data: TransferRenameEventData = event.event_data
+        if event and isinstance(event.event_data, TransferRenameEventData):
+            event_data = event.event_data
             if event_data.updated and event_data.updated_str:
                 logger.debug(
                     f"Render string updated by event: "

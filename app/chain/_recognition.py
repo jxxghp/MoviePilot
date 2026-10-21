@@ -9,7 +9,7 @@ import copy
 import threading
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Generator, Optional, Protocol, TypeVar, cast
+from typing import Any, ClassVar, Generator, Optional, Protocol, TypeVar, cast
 
 from app.application.configuration import get_configured_system_config
 from app.application.music.observation import music_recognition_needs_confirmation
@@ -467,7 +467,7 @@ class _RecognitionPlanningMixin:
     封装识别计划构建及宿主协议收窄。
     """
 
-    __mixin_host_protocol__ = ChainRuntimeMixinHost
+    __mixin_host_protocol__: ClassVar[Any] = ChainRuntimeMixinHost
     eventmanager: Any
     _finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._finalize_recognition_result)
     _async_finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._async_finalize_recognition_result)
@@ -535,7 +535,7 @@ class RecognitionMixin:
     为媒体 Chain 提供本地识别、共享识别和插件补充识别流程。
     """
 
-    __mixin_host_protocol__ = ChainRuntimeMixinHost
+    __mixin_host_protocol__: ClassVar[Any] = ChainRuntimeMixinHost
     eventmanager: Any
     _finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._finalize_recognition_result)
     _async_finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._async_finalize_recognition_result)

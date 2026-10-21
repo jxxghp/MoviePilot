@@ -151,7 +151,7 @@ async def add_custom_rule(
         data = await _service(runtime).add_custom(**payload.model_dump())
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
 
 @router.put(
@@ -174,7 +174,7 @@ async def reorder_custom_rules(
         )
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
 
 @router.put(
@@ -198,7 +198,7 @@ async def update_custom_rule(
         )
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
 
 @router.delete(
@@ -218,7 +218,7 @@ async def delete_custom_rule(
         data = await _service(runtime).delete_custom(rule_id)
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
 
 @router.post(
@@ -238,7 +238,7 @@ async def add_rule_group(
         data = await _service(runtime).add_group(**payload.model_dump())
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
 
 @router.put(
@@ -261,7 +261,7 @@ async def reorder_rule_groups(
         )
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
 
 @router.put(
@@ -285,7 +285,7 @@ async def update_rule_group(
         )
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
 
 @router.delete(
@@ -305,4 +305,4 @@ async def delete_rule_group(
         data = await _service(runtime).delete_group(name)
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)

@@ -2,7 +2,7 @@
 从配置来源获取媒体列表并写入工作流上下文。
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import Field
 
@@ -38,6 +38,9 @@ class FetchMediasAction(BaseAction):
     }
 
     def __init__(self, action_id: str):
+        """
+        初始化获取媒体动作及本次执行的媒体结果列表。
+        """
         super().__init__(action_id)
 
         self._medias: list[MediaInfo] = []
@@ -115,9 +118,11 @@ class FetchMediasAction(BaseAction):
         event = eventmanager.send_event(ChainEventType.RecommendSource, event_data)
         # 使用事件返回的上下文数据
         if event and event.event_data:
-            event_data: RecommendSourceEventData = event.event_data
-            if event_data.extra_sources:
-                self.__inner_sources.extend([s.model_dump() for s in event_data.extra_sources])
+            source_data = event.event_data
+            if not isinstance(source_data, RecommendSourceEventData):
+                raise AttributeError("推荐来源事件载荷缺少 extra_sources")
+            if source_data.extra_sources:
+                self.__inner_sources.extend([s.model_dump() for s in source_data.extra_sources])
 
     name = "获取媒体数据"
     description = "获取榜单等媒体数据列表"
@@ -132,7 +137,7 @@ class FetchMediasAction(BaseAction):
         """
         return not self._has_error
 
-    def __get_source(self, source: str):
+    def __get_source(self, source: str) -> Optional[dict[str, Any]]:
         """
         获取数据源
         """
@@ -148,7 +153,7 @@ class FetchMediasAction(BaseAction):
         action_params = FetchMediasParams.model_validate(params)
         try:
             if action_params.source_type == "ranking":
-                for api_path in action_params.sources:
+                for api_path in action_params.sources or []:
                     if runtime_stop_state.is_workflow_stopped(workflow_id):
                         break
                     source = self.__get_source(api_path)
@@ -192,6 +197,8 @@ class FetchMediasAction(BaseAction):
             self._has_error = True
 
         if self._medias:
+            if context.medias is None:
+                context.medias = []
             context.medias.extend(self._medias)
 
         self.job_done(f"获取到 {len(self._medias)} 条媒数据")

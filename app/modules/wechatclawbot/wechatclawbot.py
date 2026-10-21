@@ -177,13 +177,15 @@ class ILinkClient:
         if not resp:
             return {}
         try:
-            return resp.json() or {}
+            payload = resp.json()
+            return payload if isinstance(payload, dict) else {}
         except Exception:
             text = (getattr(resp, "text", "") or "").strip()
             if not text:
                 return {}
             try:
-                return json.loads(text)
+                payload = json.loads(text)
+                return payload if isinstance(payload, dict) else {}
             except Exception:
                 return {}
 
@@ -1259,7 +1261,7 @@ class ILinkClient:
             if isinstance(child, dict):
                 message = child
                 break
-        sender = (
+        sender_value = (
             message.get("from")
             if isinstance(message.get("from"), dict)
             else message.get("sender")
@@ -1270,6 +1272,7 @@ class ILinkClient:
             if isinstance(message.get("from_user"), dict)
             else {}
         )
+        sender: Dict[str, Any] = sender_value if isinstance(sender_value, dict) else {}
         user_id = (
             self._pick_value(sender, ["user_id", "id", "wxid", "uid"])
             or self._pick_value(
@@ -1346,6 +1349,9 @@ class ILinkClient:
         files: List[Dict[str, Any]] = []
 
         def append_text(value: Any) -> None:
+            """
+            收集非空消息文本并处理嵌套载荷，避免把空字段加入正文。
+            """
             if value in (None, ""):
                 return
             if isinstance(value, dict):
@@ -1435,7 +1441,8 @@ class ILinkClient:
                         ref, _ = voice_ref
                         audio_refs.append(ref)
 
-        item_list = message.get("item_list") if isinstance(message.get("item_list"), list) else []
+        raw_item_list = message.get("item_list")
+        item_list: List[Any] = raw_item_list if isinstance(raw_item_list, list) else []
         for one in item_list:
             if not isinstance(one, dict):
                 continue
@@ -1952,7 +1959,8 @@ class WechatClawBot:
             if resp and resp.status_code == 200 and resp.content:
                 content_type = (resp.headers.get("Content-Type") or "").lower()
                 if not content_type or "image" in content_type:
-                    return resp.content
+                    content = resp.content
+                    return content if isinstance(content, bytes) else None
         except Exception as err:
             logger.warning(f"加载图片失败：{err}")
         return None
@@ -2046,13 +2054,16 @@ class WechatClawBot:
                     break
                 self._stop_event.wait(delay)
 
-    def _forward_to_message_chain(self, payload: dict) -> bool:
+    def _forward_to_message_chain(self, payload: Dict[str, Any]) -> bool:
         """
         把 WeChatClawBot 轮询消息同步转交统一消息入口。
         """
         return forward_message_to_host(payload, self._config_name)
 
     def _build_known_targets(self) -> List[Dict[str, Any]]:
+        """
+        把已记录的微信接收方状态转换为可查询列表。
+        """
         known_targets = self._state.get("known_targets") or {}
         items = []
         for userid, data in known_targets.items():
@@ -2221,7 +2232,9 @@ class WechatClawBot:
         return True, f"已将微信 ClawBot 登录缓存从 {source_name} 迁移到 {target_name}"
 
     @classmethod
-    def reconcile_cached_states(cls, previous: list[dict], current: list[dict]) -> Dict[str, Any]:
+    def reconcile_cached_states(
+        cls, previous: List[Dict[str, Any]], current: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """
         按稳定身份迁移改名缓存，并删除已移除渠道的缓存。
 
@@ -2248,29 +2261,36 @@ class WechatClawBot:
         for item in previous:
             if item.get("type") != "wechatclawbot" or str(item.get("id")) in current_ids:
                 continue
-            for identity in (item.get("id"), item.get("name")):
-                if identity:
-                    cache.delete(cls._build_cache_key(str(identity)))
+            for legacy_identity in (item.get("id"), item.get("name")):
+                if legacy_identity:
+                    cache.delete(cls._build_cache_key(str(legacy_identity)))
         return {"success": True, "message": "通知渠道缓存已同步"}
 
     @staticmethod
     def _decode_ref_payload(ref: str, kind: str) -> Optional[Dict[str, Any]]:
+        """
+        校验本地资源引用类别并解码载荷，非法引用不进入资源读取流程。
+        """
         prefix = f"wxclaw://{kind}/"
         if not ref or not ref.startswith(prefix):
             return None
         encoded = ref.replace(prefix, "", 1)
         padding = "=" * (-len(encoded) % 4)
         try:
-            return json.loads(
+            payload = json.loads(
                 base64.urlsafe_b64decode((encoded + padding).encode("ascii")).decode(
                     "utf-8"
                 )
             )
+            return payload if isinstance(payload, dict) else None
         except Exception:
             return None
 
     @staticmethod
     def _decode_aes_key(aeskey: Optional[str]) -> Optional[bytes]:
+        """
+        解析微信资源使用的 AES 密钥，无法识别时返回 None。
+        """
         if not aeskey:
             return None
         value = str(aeskey).strip()
@@ -2294,6 +2314,9 @@ class WechatClawBot:
 
     @staticmethod
     def _unpad_bytes(content: bytes) -> Optional[bytes]:
+        """
+        校验并移除资源明文的块填充，非法填充返回 None。
+        """
         if not content:
             return None
         padding_len = content[-1]
@@ -2358,6 +2381,9 @@ class WechatClawBot:
 
     @staticmethod
     def _guess_binary_mime(content: bytes, default: str = "application/octet-stream") -> str:
+        """
+        根据资源内容的文件签名识别 MIME，未知内容沿用调用方默认值。
+        """
         if not content:
             return default
         if content.startswith(b"\x89PNG\r\n\x1a\n"):
@@ -2603,7 +2629,9 @@ class WechatClawBot:
         lines = []
         for index, context in enumerate(torrents, start=1):
             torrent = context.torrent_info
-            meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+            if torrent is None:
+                continue
+            meta = MetaInfo(title=torrent.title or "", subtitle=torrent.description)
             text = (
                 f"{index}.【{torrent.site_name}】{meta.season_episode} {meta.resource_term} "
                 f"{meta.video_term} {meta.release_group} {size_tools.format_compact_size(torrent.size)} "

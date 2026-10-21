@@ -161,8 +161,30 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     auxiliary_media_source = MediaSource.Douban
     _music_source = MediaSource.DoubanMusic
-    doubanapi: DoubanApi = None
-    scraper: DoubanScraper = None
+    doubanapi: Optional[DoubanApi] = None
+    scraper: Optional[DoubanScraper] = None
+
+    def _require_api(self) -> DoubanApi:
+        """
+        取得模块激活时创建的豆瓣客户端，保留初始化前兼容属性为空的行为。
+
+        :return: 已初始化的豆瓣客户端
+        :raises RuntimeError: 模块尚未初始化
+        """
+        if self.doubanapi is None:
+            raise RuntimeError("豆瓣模块尚未初始化")
+        return self.doubanapi
+
+    def _require_scraper(self) -> DoubanScraper:
+        """
+        取得模块初始化时创建的豆瓣刮削器。
+
+        :return: 已初始化的豆瓣刮削器
+        :raises RuntimeError: 模块尚未初始化
+        """
+        if self.scraper is None:
+            raise RuntimeError("豆瓣刮削器尚未初始化")
+        return self.scraper
 
     def init_module(self) -> None:
         """
@@ -175,7 +197,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         关闭豆瓣同步 HTTP 客户端。
         """
-        self.doubanapi.close()
+        self._require_api().close()
 
     def test(self) -> Tuple[bool, str]:
         """
@@ -188,11 +210,11 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return False, "豆瓣网络连接失败"
         return True, ""
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         保留配置入口；豆瓣配置由运行设置管理，返回 None。
         """
-        pass
+        return None
 
     @staticmethod
     def get_name() -> str:
@@ -251,7 +273,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         keyword = meta.album or meta.title
         if not keyword:
             return []
-        result = self.doubanapi.music_search(keyword=keyword, count=max(1, min(limit, 100)))
+        result = self._require_api().music_search(keyword=keyword, count=max(1, min(limit, 100)))
         return self._build_music_search_results(result)
 
     def recognize_music(
@@ -304,7 +326,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         if media_source != self._music_source or not media_id:
             return None
-        info = self.doubanapi.music_detail(subject_id=str(media_id))
+        info = self._require_api().music_detail(subject_id=str(media_id))
         return self._douban_music_to_album(info) if info else None
 
     def music_discover(
@@ -335,14 +357,14 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         del entity
         if mode == "chart":
-            chart_items = self._build_music_search_results(self.doubanapi.music_chart())
+            chart_items = self._build_music_search_results(self._require_api().music_chart())
             start = max(page - 1, 0) * max(1, count)
             return chart_items[start:start + max(1, count)]
         selected_tags = [tag.strip() for tag in str(tags or "").split(",") if tag.strip()]
         if not selected_tags:
             selected_tags = ["流行"]
         if len(selected_tags) == 1:
-            result = self.doubanapi.music_tag(
+            result = self._require_api().music_tag(
                 tag=selected_tags[0],
                 start=max(page - 1, 0) * max(1, count),
                 count=max(1, count),
@@ -355,7 +377,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         scan_count = min(max(page * count * 4, 100), 300)
         tag_results = [
             self._build_music_search_results(
-                self.doubanapi.music_tag(tag=tag, start=0, count=scan_count, sort=sort)
+                self._require_api().music_tag(tag=tag, start=0, count=scan_count, sort=sort)
             )
             for tag in selected_tags
         ]
@@ -384,7 +406,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         if media_source != self._music_source or not media_id:
             return None
-        result = self.doubanapi.music_recommendations(
+        result = self._require_api().music_recommendations(
             subject_id=str(media_id),
             start=0,
             count=max(1, count),
@@ -407,12 +429,12 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if not plan:
             return None
         if plan.media_id:
-            info = self.doubanapi.music_detail(
+            info = self._require_api().music_detail(
                 subject_id=plan.require_album_id()
             )
             return self._project_music_detail(plan, info)
         meta = plan.require_meta()
-        result = self.doubanapi.music_search(
+        result = self._require_api().music_search(
             keyword=plan.require_keyword(), count=20
         )
         candidates = self._matching_music_candidates(
@@ -424,7 +446,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         tracks = []
         if plan.music_type != MUSIC_ENTITY_ALBUM and meta.album and meta.title:
             for candidate in candidates:
-                info = self.doubanapi.music_detail(subject_id=str(candidate.media_id))
+                info = self._require_api().music_detail(subject_id=str(candidate.media_id))
                 album = self._douban_music_to_album(info) if info else None
                 if album:
                     tracks.extend(album.tracks)
@@ -446,12 +468,12 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if not plan:
             return None
         if plan.media_id:
-            info = await self.doubanapi.async_music_detail(
+            info = await self._require_api().async_music_detail(
                 subject_id=plan.require_album_id()
             )
             return self._project_music_detail(plan, info)
         meta = plan.require_meta()
-        result = await self.doubanapi.async_music_search(
+        result = await self._require_api().async_music_search(
             keyword=plan.require_keyword(), count=20
         )
         candidates = self._matching_music_candidates(
@@ -463,7 +485,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         tracks = []
         if plan.music_type != MUSIC_ENTITY_ALBUM and meta.album and meta.title:
             for candidate in candidates:
-                info = await self.doubanapi.async_music_detail(
+                info = await self._require_api().async_music_detail(
                     subject_id=str(candidate.media_id)
                 )
                 album = self._douban_music_to_album(info) if info else None
@@ -594,7 +616,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     @classmethod
     def _build_music_search_results(
             cls,
-            result: Optional[dict | list],
+            result: Optional[dict[str, Any] | list[Any]],
     ) -> List[MusicInfo]:
         """
         把豆瓣音乐搜索响应转换为专辑候选列表。
@@ -940,7 +962,9 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return list(dict.fromkeys([k for k in [meta.cn_name, zh_name, meta.en_name] if k]))
 
     @staticmethod
-    def _build_search_medias_result(meta: MetaBase, items: Optional[List[dict]]) -> List[MediaInfo]:
+    def _build_search_medias_result(
+            meta: MetaBase, items: Optional[List[dict[str, Any]]]
+    ) -> List[MediaInfo]:
         """
         构建豆瓣搜索结果，并沿用原有的类型、标题包含和季信息处理规则。
         """
@@ -971,9 +995,9 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     def _recognize_media_core(self, meta: Optional[MetaBase] = None,
                               mtype: Optional[MediaType] = None,
                               doubanid: Optional[str] = None,
-                              douban_info_func=None,
-                              match_doubaninfo_func=None,
-                              **kwargs) -> Optional[MediaInfo]:
+                              douban_info_func: Any = None,
+                              match_doubaninfo_func: Any = None,
+                              **kwargs: Any) -> Optional[MediaInfo]:
         """
         识别媒体信息的核心逻辑。
 
@@ -1028,9 +1052,9 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     async def _async_recognize_media_core(self, meta: Optional[MetaBase] = None,
                                           mtype: Optional[MediaType] = None,
                                           doubanid: Optional[str] = None,
-                                          async_douban_info_func=None,
-                                          async_match_doubaninfo_func=None,
-                                          **kwargs) -> Optional[MediaInfo]:
+                                          async_douban_info_func: Any = None,
+                                          async_match_doubaninfo_func: Any = None,
+                                          **kwargs: Any) -> Optional[MediaInfo]:
         """
         识别媒体信息的核心逻辑（异步版本）。
 
@@ -1147,12 +1171,12 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         mediainfo = MediaInfo(douban_info=info)
         if plan.meta:
             logger.info(
-                f"{plan.meta.name} 豆瓣识别结果：{mediainfo.type.value} "
+                f"{plan.meta.name} 豆瓣识别结果：{mediainfo.type.value if mediainfo.type else ''} "
                 f"{mediainfo.title_year} {mediainfo.douban_id}"
             )
         else:
             logger.info(
-                f"{plan.douban_id} 豆瓣识别结果：{mediainfo.type.value} "
+                f"{plan.douban_id} 豆瓣识别结果：{mediainfo.type.value if mediainfo.type else ''} "
                 f"{mediainfo.title_year}"
             )
         return mediainfo
@@ -1161,7 +1185,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                         mtype: Optional[MediaType] = None,
                         media_source: Optional[MediaSource] = None,
                         media_id: Optional[str] = None,
-                        **kwargs) -> Optional[MediaInfo]:
+                        **kwargs: Any) -> Optional[Union[MediaInfo, MusicInfo]]:
         """
         识别媒体信息。
 
@@ -1201,7 +1225,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                                     mtype: Optional[MediaType] = None,
                                     media_source: Optional[MediaSource] = None,
                                     media_id: Optional[str] = None,
-                                    **kwargs) -> Optional[MediaInfo]:
+                                    **kwargs: Any) -> Optional[Union[MediaInfo, MusicInfo]]:
         """
         识别媒体信息（异步版本）。
 
@@ -1295,11 +1319,11 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         执行一次同步详情及人物查询，业务分类由共享状态机负责。
         """
         if mtype == MediaType.TV:
-            info = self.doubanapi.tv_detail(doubanid)
-            celebrity_loader = self.doubanapi.tv_celebrities
+            info = self._require_api().tv_detail(doubanid)
+            celebrity_loader = self._require_api().tv_celebrities
         else:
-            info = self.doubanapi.movie_detail(doubanid)
-            celebrity_loader = self.doubanapi.movie_celebrities
+            info = self._require_api().movie_detail(doubanid)
+            celebrity_loader = self._require_api().movie_celebrities
         if not self._accept_douban_detail(info):
             return None
         detail = cast(dict[str, Any], info)
@@ -1314,11 +1338,11 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         执行一次异步详情及人物查询，业务分类由共享状态机负责。
         """
         if mtype == MediaType.TV:
-            info = await self.doubanapi.async_tv_detail(doubanid)
-            celebrity_loader = self.doubanapi.async_tv_celebrities
+            info = await self._require_api().async_tv_detail(doubanid)
+            celebrity_loader = self._require_api().async_tv_celebrities
         else:
-            info = await self.doubanapi.async_movie_detail(doubanid)
-            celebrity_loader = self.doubanapi.async_movie_celebrities
+            info = await self._require_api().async_movie_detail(doubanid)
+            celebrity_loader = self._require_api().async_movie_celebrities
         if not self._accept_douban_detail(info):
             return None
         detail = cast(dict[str, Any], info)
@@ -1327,7 +1351,10 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
 
     @rate_limit_exponential(source="douban_info")
-    def douban_info(self, doubanid: str, mtype: Optional[MediaType] = None, raise_exception: bool = True) -> Optional[dict]:
+    def douban_info(
+            self, doubanid: str, mtype: Optional[MediaType] = None,
+            raise_exception: bool = True,
+    ) -> Optional[dict[str, Any]]:
         """
         获取豆瓣信息。
 
@@ -1348,8 +1375,10 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return None
 
     @rate_limit_exponential(source="douban_info")
-    async def async_douban_info(self, doubanid: str, mtype: Optional[MediaType] = None,
-                                raise_exception: bool = True) -> Optional[dict]:
+    async def async_douban_info(
+            self, doubanid: str, mtype: Optional[MediaType] = None,
+            raise_exception: bool = True,
+    ) -> Optional[dict[str, Any]]:
         """
         获取豆瓣信息（异步版本）。
 
@@ -1383,10 +1412,10 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         logger.info(f"开始发现豆瓣 {mtype.value} ...")
         if mtype == MediaType.MOVIE:
-            infos = self.doubanapi.movie_recommend(start=(page - 1) * count, count=count,
+            infos = self._require_api().movie_recommend(start=(page - 1) * count, count=count,
                                                    sort=sort, tags=tags)
         else:
-            infos = self.doubanapi.tv_recommend(start=(page - 1) * count, count=count,
+            infos = self._require_api().tv_recommend(start=(page - 1) * count, count=count,
                                                 sort=sort, tags=tags)
         return self._project_discover(infos)
 
@@ -1404,10 +1433,10 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         logger.info(f"开始发现豆瓣 {mtype.value} ...")
         if mtype == MediaType.MOVIE:
-            infos = await self.doubanapi.async_movie_recommend(start=(page - 1) * count, count=count,
+            infos = await self._require_api().async_movie_recommend(start=(page - 1) * count, count=count,
                                                                sort=sort, tags=tags)
         else:
-            infos = await self.doubanapi.async_tv_recommend(start=(page - 1) * count, count=count,
+            infos = await self._require_api().async_tv_recommend(start=(page - 1) * count, count=count,
                                                             sort=sort, tags=tags)
         return self._project_discover(infos)
 
@@ -1441,7 +1470,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = self.doubanapi.movie_showing(start=(page - 1) * count,
+        infos = self._require_api().movie_showing(start=(page - 1) * count,
                                              count=count)
         return self._project_collection(infos)
 
@@ -1453,7 +1482,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = await self.doubanapi.async_movie_showing(start=(page - 1) * count,
+        infos = await self._require_api().async_movie_showing(start=(page - 1) * count,
                                                          count=count)
         return self._project_collection(infos)
 
@@ -1465,7 +1494,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = self.doubanapi.tv_chinese_best_weekly(start=(page - 1) * count,
+        infos = self._require_api().tv_chinese_best_weekly(start=(page - 1) * count,
                                                       count=count)
         return self._project_collection(infos)
 
@@ -1477,7 +1506,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = await self.doubanapi.async_tv_chinese_best_weekly(start=(page - 1) * count,
+        infos = await self._require_api().async_tv_chinese_best_weekly(start=(page - 1) * count,
                                                                   count=count)
         return self._project_collection(infos)
 
@@ -1489,7 +1518,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = self.doubanapi.tv_global_best_weekly(start=(page - 1) * count,
+        infos = self._require_api().tv_global_best_weekly(start=(page - 1) * count,
                                                      count=count)
         return self._project_collection(infos)
 
@@ -1501,7 +1530,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = await self.doubanapi.async_tv_global_best_weekly(start=(page - 1) * count,
+        infos = await self._require_api().async_tv_global_best_weekly(start=(page - 1) * count,
                                                                  count=count)
         return self._project_collection(infos)
 
@@ -1513,7 +1542,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = self.doubanapi.tv_animation(start=(page - 1) * count,
+        infos = self._require_api().tv_animation(start=(page - 1) * count,
                                             count=count)
         return self._project_collection(infos)
 
@@ -1525,7 +1554,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = await self.doubanapi.async_tv_animation(start=(page - 1) * count,
+        infos = await self._require_api().async_tv_animation(start=(page - 1) * count,
                                                         count=count)
         return self._project_collection(infos)
 
@@ -1537,7 +1566,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = self.doubanapi.movie_hot_gaia(start=(page - 1) * count,
+        infos = self._require_api().movie_hot_gaia(start=(page - 1) * count,
                                               count=count)
         return self._project_collection(infos)
 
@@ -1549,7 +1578,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = await self.doubanapi.async_movie_hot_gaia(start=(page - 1) * count,
+        infos = await self._require_api().async_movie_hot_gaia(start=(page - 1) * count,
                                                           count=count)
         return self._project_collection(infos)
 
@@ -1561,7 +1590,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = self.doubanapi.tv_hot(start=(page - 1) * count,
+        infos = self._require_api().tv_hot(start=(page - 1) * count,
                                       count=count)
         return self._project_collection(infos)
 
@@ -1573,7 +1602,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = await self.doubanapi.async_tv_hot(start=(page - 1) * count,
+        infos = await self._require_api().async_tv_hot(start=(page - 1) * count,
                                                   count=count)
         return self._project_collection(infos)
 
@@ -1604,7 +1633,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         if not plan.query:
             return []
-        result = self.doubanapi.search(plan.query)
+        result = self._require_api().search(plan.query)
         return self._project_media_search(meta, result)
 
     async def async_search_medias(
@@ -1622,7 +1651,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         if not plan.query:
             return []
-        result = await self.doubanapi.async_search(plan.query)
+        result = await self._require_api().async_search(plan.query)
         return self._project_media_search(meta, result)
 
     def search_persons(
@@ -1640,7 +1669,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         if not plan.query:
             return []
-        result = self.doubanapi.person_search(keyword=plan.query)
+        result = self._require_api().person_search(keyword=plan.query)
         return self._project_person_search(plan.query, result)
 
     async def async_search_persons(
@@ -1658,7 +1687,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         if not plan.query:
             return []
-        result = await self.doubanapi.async_person_search(keyword=plan.query)
+        result = await self._require_api().async_person_search(keyword=plan.query)
         return self._project_person_search(plan.query, result)
 
     @staticmethod
@@ -1786,6 +1815,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             if mtype and mtype == MediaType.TV and season is None:
                 season = 1
             item = item_obj.get("target")
+            if not isinstance(item, dict):
+                continue
             title = item.get("title")
             if not title:
                 continue
@@ -1804,7 +1835,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     @rate_limit_exponential(source="match_doubaninfo")
     def match_doubaninfo(self, name: str, imdbid: Optional[str] = None,
                          mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None,
-                         raise_exception: bool = False) -> dict:
+                         raise_exception: bool = False) -> dict[str, Any]:
         """
         搜索和匹配豆瓣信息。
 
@@ -1821,20 +1852,20 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if imdbid:
             # 优先使用IMDBID查询
             logger.info(f"开始使用IMDBID {imdbid} 查询豆瓣信息 ...")
-            result = self.doubanapi.imdbid(imdbid)
+            result = self._require_api().imdbid(imdbid)
             processed_result = self._process_imdbid_result(result, imdbid)
             if processed_result:
                 return processed_result
 
         logger.info(f"开始使用名称 {name} 匹配豆瓣信息 ...")
-        result = self.doubanapi.search(f"{name} {year or ''}".strip())
+        result = self._require_api().search(f"{name} {year or ''}".strip())
         return self._process_search_results(result, name, mtype, year, season)
 
     @retry(Exception, 5, 3, 3, logger=logger)
     @rate_limit_exponential(source="match_doubaninfo")
     async def async_match_doubaninfo(self, name: str, imdbid: Optional[str] = None,
                                      mtype: Optional[MediaType] = None, year: Optional[str] = None, season: Optional[int] = None,
-                                     raise_exception: bool = False) -> dict:
+                                     raise_exception: bool = False) -> dict[str, Any]:
         """
         搜索和匹配豆瓣信息（异步版本）。
 
@@ -1851,13 +1882,13 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if imdbid:
             # 优先使用IMDBID查询
             logger.info(f"开始使用IMDBID {imdbid} 查询豆瓣信息 ...")
-            result = await self.doubanapi.async_imdbid(imdbid)
+            result = await self._require_api().async_imdbid(imdbid)
             processed_result = self._process_imdbid_result(result, imdbid)
             if processed_result:
                 return processed_result
 
         logger.info(f"开始使用名称 {name} 匹配豆瓣信息 ...")
-        result = await self.doubanapi.async_search(f"{name} {year or ''}".strip())
+        result = await self._require_api().async_search(f"{name} {year or ''}".strip())
         return self._process_search_results(result, name, mtype, year, season)
 
     def movie_top250(self, page: int = 1, count: int = 30) -> List[MediaInfo]:
@@ -1868,7 +1899,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = self.doubanapi.movie_top250(start=(page - 1) * count,
+        infos = self._require_api().movie_top250(start=(page - 1) * count,
                                             count=count)
         return self._project_collection(infos)
 
@@ -1880,11 +1911,14 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        infos = await self.doubanapi.async_movie_top250(start=(page - 1) * count,
+        infos = await self._require_api().async_movie_top250(start=(page - 1) * count,
                                                         count=count)
         return self._project_collection(infos)
 
-    def metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None, **kwargs) -> Optional[str]:
+    def metadata_nfo(
+            self, mediainfo: MediaInfo, season: Optional[int] = None,
+            **kwargs: Any,
+    ) -> Optional[str]:
         """
         获取包含 UTF-8 编码声明的 NFO XML 文本。
 
@@ -1895,9 +1929,12 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != "douban":
             return None
-        return self.scraper.get_metadata_nfo(mediainfo=mediainfo, season=season)
+        return self._require_scraper().get_metadata_nfo(mediainfo=mediainfo, season=season)
 
-    def metadata_img(self, mediainfo: MediaInfo, season: Optional[int] = None, episode: Optional[int] = None) -> Optional[dict]:
+    def metadata_img(
+            self, mediainfo: MediaInfo, season: Optional[int] = None,
+            episode: Optional[int] = None,
+    ) -> Optional[dict[str, Any]]:
         """
         获取图片名称和url。
 
@@ -1908,7 +1945,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != "douban":
             return None
-        return self.scraper.get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
+        return self._require_scraper().get_metadata_img(mediainfo=mediainfo, season=season, episode=episode)
 
     @staticmethod
     def _validate_douban_obtain_images_params(mediainfo: MediaInfo) -> Optional[MediaInfo]:
@@ -1921,9 +1958,9 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :return: 背景图已存在且来源满足条件时返回原对象；其他情况返回 None，交由调用方继续查询
         """
         if mediainfo.media_source != MediaSource.Douban and get_runtime_setting('RECOGNIZE_SOURCE') != "douban":
-            return None
+            return mediainfo
         if not mediainfo.douban_id:
-            return None
+            return mediainfo
         if mediainfo.backdrop_path:
             return mediainfo
         return None
@@ -1959,10 +1996,13 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if result is not None:
             return result
 
+        douban_id = mediainfo.douban_id
+        if not douban_id:
+            return mediainfo
         if mediainfo.type == MediaType.MOVIE:
-            info = self.doubanapi.movie_photos(mediainfo.douban_id)
+            info = self._require_api().movie_photos(douban_id)
         else:
-            info = self.doubanapi.tv_photos(mediainfo.douban_id)
+            info = self._require_api().tv_photos(douban_id)
 
         return self._process_douban_images(mediainfo, info)
 
@@ -1977,10 +2017,13 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if result is not None:
             return result
 
+        douban_id = mediainfo.douban_id
+        if not douban_id:
+            return mediainfo
         if mediainfo.type == MediaType.MOVIE:
-            info = await self.doubanapi.async_movie_photos(mediainfo.douban_id)
+            info = await self._require_api().async_movie_photos(douban_id)
         else:
-            info = await self.doubanapi.async_tv_photos(mediainfo.douban_id)
+            info = await self._require_api().async_tv_photos(douban_id)
 
         return self._process_douban_images(mediainfo, info)
 
@@ -1989,7 +2032,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         清除缓存。
         """
         logger.info("开始清除豆瓣缓存 ...")
-        self.doubanapi.clear_cache()
+        self._require_api().clear_cache()
         logger.info("豆瓣缓存清除完成")
 
     def douban_movie_credits(self, doubanid: str) -> List[_SchemaMediaPerson]:
@@ -2001,7 +2044,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param doubanid: 豆瓣影视条目原生标识
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        result = self.doubanapi.movie_celebrities(subject_id=doubanid)
+        result = self._require_api().movie_celebrities(subject_id=doubanid)
         return self._process_celebrity_data(result)
 
     def douban_tv_credits(self, doubanid: str) -> List[_SchemaMediaPerson]:
@@ -2013,7 +2056,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param doubanid: 豆瓣影视条目原生标识
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        result = self.doubanapi.tv_celebrities(subject_id=doubanid)
+        result = self._require_api().tv_celebrities(subject_id=doubanid)
         return self._process_celebrity_data(result)
 
     def douban_movie_recommend(self, doubanid: str) -> List[MediaInfo]:
@@ -2023,7 +2066,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param doubanid: 豆瓣影视条目原生标识
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        recommend = self.doubanapi.movie_recommendations(subject_id=doubanid)
+        recommend = self._require_api().movie_recommendations(subject_id=doubanid)
         return self._process_recommendations(recommend)
 
     def douban_tv_recommend(self, doubanid: str) -> List[MediaInfo]:
@@ -2033,7 +2076,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param doubanid: 豆瓣影视条目原生标识
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        recommend = self.doubanapi.tv_recommendations(subject_id=doubanid)
+        recommend = self._require_api().tv_recommendations(subject_id=doubanid)
         return self._process_recommendations(recommend)
 
     @staticmethod
@@ -2146,7 +2189,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 短评分页对象；没有响应时返回空分页对象
         """
-        result = self.doubanapi.movie_interests(subject_id=doubanid, start=start, count=count)
+        result = self._require_api().movie_interests(subject_id=doubanid, start=start, count=count)
         return self._process_interests(result)
 
     def douban_tv_interests(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaCommentPage:
@@ -2158,7 +2201,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 短评分页对象；没有响应时返回空分页对象
         """
-        result = self.doubanapi.tv_interests(subject_id=doubanid, start=start, count=count)
+        result = self._require_api().tv_interests(subject_id=doubanid, start=start, count=count)
         return self._process_interests(result)
 
     def douban_movie_reviews(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaReviewPage:
@@ -2170,7 +2213,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 影评分页对象；没有响应时返回空分页对象
         """
-        result = self.doubanapi.movie_reviews(subject_id=doubanid, start=start, count=count)
+        result = self._require_api().movie_reviews(subject_id=doubanid, start=start, count=count)
         return self._process_reviews(result)
 
     def douban_tv_reviews(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaReviewPage:
@@ -2182,7 +2225,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 影评分页对象；没有响应时返回空分页对象
         """
-        result = self.doubanapi.tv_reviews(subject_id=doubanid, start=start, count=count)
+        result = self._require_api().tv_reviews(subject_id=doubanid, start=start, count=count)
         return self._process_reviews(result)
 
     def douban_person_detail(self, person_id: int) -> _SchemaMediaPerson:
@@ -2192,7 +2235,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param person_id: 豆瓣人物原生标识
         :return: 豆瓣人物对象；没有详情时返回仅带豆瓣来源的空人物对象
         """
-        detail = self.doubanapi.person_detail(person_id)
+        detail = self._require_api().person_detail(person_id)
         if detail:
             also_known_as = []
             infos = detail.get("extra", {}).get("info")
@@ -2220,7 +2263,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param page: 请求页码，从 1 开始
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        personinfo = self.doubanapi.person_detail(person_id)
+        personinfo = self._require_api().person_detail(person_id)
         if not personinfo:
             return []
         collection_id = None
@@ -2228,7 +2271,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             if module.get("type") == "work_collections":
                 collection_id = module.get("payload", {}).get("id")
         if collection_id:
-            collections = self.doubanapi.person_work(subject_id=collection_id, start=(page - 1) * 20, count=20)
+            collections = self._require_api().person_work(subject_id=collection_id, start=(page - 1) * 20, count=20)
             if collections:
                 works = collections.get("works") or []
                 return [MediaInfo(douban_info=work.get("subject")) for work in works]
@@ -2263,7 +2306,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param doubanid: 豆瓣影视条目原生标识
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        result = await self.doubanapi.async_movie_celebrities(subject_id=doubanid)
+        result = await self._require_api().async_movie_celebrities(subject_id=doubanid)
         return self._process_celebrity_data(result)
 
     async def async_douban_tv_credits(self, doubanid: str) -> List[_SchemaMediaPerson]:
@@ -2275,7 +2318,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param doubanid: 豆瓣影视条目原生标识
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        result = await self.doubanapi.async_tv_celebrities(subject_id=doubanid)
+        result = await self._require_api().async_tv_celebrities(subject_id=doubanid)
         return self._process_celebrity_data(result)
 
     async def async_douban_movie_recommend(self, doubanid: str) -> List[MediaInfo]:
@@ -2285,7 +2328,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param doubanid: 豆瓣影视条目原生标识
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        recommend = await self.doubanapi.async_movie_recommendations(subject_id=doubanid)
+        recommend = await self._require_api().async_movie_recommendations(subject_id=doubanid)
         return self._process_recommendations(recommend)
 
     async def async_douban_tv_recommend(self, doubanid: str) -> List[MediaInfo]:
@@ -2295,7 +2338,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param doubanid: 豆瓣影视条目原生标识
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        recommend = await self.doubanapi.async_tv_recommendations(subject_id=doubanid)
+        recommend = await self._require_api().async_tv_recommendations(subject_id=doubanid)
         return self._process_recommendations(recommend)
 
     async def async_douban_movie_interests(self, doubanid: str, start: int = 0,
@@ -2308,7 +2351,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 短评分页对象；没有响应时返回空分页对象
         """
-        result = await self.doubanapi.async_movie_interests(subject_id=doubanid, start=start, count=count)
+        result = await self._require_api().async_movie_interests(subject_id=doubanid, start=start, count=count)
         return self._process_interests(result)
 
     async def async_douban_tv_interests(self, doubanid: str, start: int = 0,
@@ -2321,7 +2364,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 短评分页对象；没有响应时返回空分页对象
         """
-        result = await self.doubanapi.async_tv_interests(subject_id=doubanid, start=start, count=count)
+        result = await self._require_api().async_tv_interests(subject_id=doubanid, start=start, count=count)
         return self._process_interests(result)
 
     async def async_douban_movie_reviews(self, doubanid: str, start: int = 0,
@@ -2334,7 +2377,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 影评分页对象；没有响应时返回空分页对象
         """
-        result = await self.doubanapi.async_movie_reviews(subject_id=doubanid, start=start, count=count)
+        result = await self._require_api().async_movie_reviews(subject_id=doubanid, start=start, count=count)
         return self._process_reviews(result)
 
     async def async_douban_tv_reviews(self, doubanid: str, start: int = 0,
@@ -2347,7 +2390,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param count: 本次最多返回的条目数
         :return: 影评分页对象；没有响应时返回空分页对象
         """
-        result = await self.doubanapi.async_tv_reviews(subject_id=doubanid, start=start, count=count)
+        result = await self._require_api().async_tv_reviews(subject_id=doubanid, start=start, count=count)
         return self._process_reviews(result)
 
     async def async_douban_person_detail(self, person_id: int) -> _SchemaMediaPerson:
@@ -2357,7 +2400,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param person_id: 豆瓣人物原生标识
         :return: 豆瓣人物对象；没有详情时返回仅带豆瓣来源的空人物对象
         """
-        detail = await self.doubanapi.async_person_detail(person_id)
+        detail = await self._require_api().async_person_detail(person_id)
         if detail:
             also_known_as = []
             infos = detail.get("extra", {}).get("info")
@@ -2385,7 +2428,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param page: 请求页码，从 1 开始
         :return: 当前页或本次查询的标准对象列表；无结果时为空列表
         """
-        personinfo = await self.doubanapi.async_person_detail(person_id)
+        personinfo = await self._require_api().async_person_detail(person_id)
         if not personinfo:
             return []
         collection_id = None
@@ -2393,7 +2436,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             if module.get("type") == "work_collections":
                 collection_id = module.get("payload", {}).get("id")
         if collection_id:
-            collections = await self.doubanapi.async_person_work(subject_id=collection_id, start=(page - 1) * 20,
+            collections = await self._require_api().async_person_work(subject_id=collection_id, start=(page - 1) * 20,
                                                                  count=20)
             if collections:
                 works = collections.get("works") or []

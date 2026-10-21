@@ -2,7 +2,7 @@
 声明识别加速器契约，并保存启动层注入的文件类型与加速能力。
 """
 
-from typing import Callable, Optional, Protocol, Sequence
+from typing import Any, Callable, Optional, Protocol, Sequence
 
 
 class MetaInfoAccelerator(Protocol):
@@ -15,7 +15,7 @@ class MetaInfoAccelerator(Protocol):
         title: str,
         subtitle: Optional[str] = None,
         options: Optional[dict[str, object]] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         解析单个标题，无法处理时返回空值。
 
@@ -29,7 +29,7 @@ class MetaInfoAccelerator(Protocol):
         self,
         path: str,
         options: Optional[dict[str, object]] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         解析文件路径，无法处理时返回空值。
 
@@ -43,7 +43,7 @@ class MetaInfoAccelerator(Protocol):
         title: str,
         artists: Optional[list[str]] = None,
         year: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         解析音乐标题，无法处理时返回空值。
 
@@ -53,7 +53,7 @@ class MetaInfoAccelerator(Protocol):
         :return: 解析出的音乐字段字典；无法处理时返回 None
         """
 
-    def find_metainfo(self, title: str) -> Optional[dict]:
+    def find_metainfo(self, title: str) -> Optional[dict[str, Any]]:
         """
         提取标题中的显式媒体标签。
 

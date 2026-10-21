@@ -4,7 +4,7 @@
 
 import base64
 import json
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
@@ -54,7 +54,7 @@ class RousiSpider:
         """
         return cls._size
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
         """
         使用站点配置初始化 PeerGo 搜索和下载接口。
 
@@ -87,7 +87,7 @@ class RousiSpider:
         :return: 请求参数字典
         """
         params: dict[str, Union[int, str]] = {
-            "page": int(page) + 1,
+            "page": int(page or 0) + 1,
             "page_size": self._size
         }
         if keyword:
@@ -138,7 +138,9 @@ class RousiSpider:
 
         return category_names if category_names else None
 
-    def __process_response(self, res) -> Tuple[bool, List[dict]]:
+    def __process_response(
+        self, res: Any
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         处理 API 响应。
 
@@ -166,7 +168,7 @@ class RousiSpider:
             logger.warning(f"{self._name} 搜索失败，无法连接 {self._domain}")
             return True, []
 
-    def __parse_result(self, results: List[dict]) -> List[dict]:
+    def __parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
         解析搜索结果。
 
@@ -236,7 +238,13 @@ class RousiSpider:
             torrents.append(torrent)
         return torrents
 
-    def search(self, keyword: str, mtype: Optional[MediaType] = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def search(
+        self,
+        keyword: str,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         同步搜索种子。
 
@@ -264,7 +272,13 @@ class RousiSpider:
 
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, mtype: Optional[MediaType] = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    async def async_search(
+        self,
+        keyword: str,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索种子。
 

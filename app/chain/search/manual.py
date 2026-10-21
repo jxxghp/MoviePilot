@@ -122,7 +122,7 @@ class _ManualPage:
         torrents = self.torrents if torrents is None else torrents
         if self.raw_title:
             return SearchTitleOwner._resolve_title_request(cast(SearchTitleOwner, self.owner), _TitleSearchResolveRequest(
-                title=self.media.title, torrents=torrents, rule_groups=self.plan.rule_groups,
+                title=self.media.title or "", torrents=torrents, rule_groups=self.plan.rule_groups,
                 mtype=None if self.media.type == MediaType.UNKNOWN else self.media.type,
             )).contexts
         return SearchResultOwner._parse_result(

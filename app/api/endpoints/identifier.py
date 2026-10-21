@@ -81,4 +81,4 @@ async def update_custom_identifiers(
             detail=str(error),
         ) from error
     data.update({"count": len(identifiers), "identifiers": identifiers})
-    return Response(success=True, message=data.get("message"), data=data)
+    return Response(success=True, message=data.get("message") or "", data=data)

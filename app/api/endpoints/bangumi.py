@@ -33,7 +33,9 @@ async def bangumi_credits(
     """
     persons = await BangumiChain().async_bangumi_credits(bangumiid)
     if persons:
-        return persons[(page - 1) * count : page * count]
+        page_value = page or 1
+        count_value = count or 20
+        return persons[(page_value - 1) * count_value : page_value * count_value]
     return []
 
 
@@ -53,7 +55,12 @@ async def bangumi_recommend(
     """
     medias = await BangumiChain().async_bangumi_recommend(bangumiid)
     if medias:
-        return [media.to_dict() for media in medias[(page - 1) * count : page * count]]
+        page_value = page or 1
+        count_value = count or 20
+        return [
+            media.to_dict()
+            for media in medias[(page_value - 1) * count_value : page_value * count_value]
+        ]
     return []
 
 
@@ -85,7 +92,12 @@ async def bangumi_person_credits(
     """
     medias = await BangumiChain().async_person_credits(person_id=person_id)
     if medias:
-        return [media.to_dict() for media in medias[(page - 1) * count : page * count]]
+        page_value = page or 1
+        count_value = count or 20
+        return [
+            media.to_dict()
+            for media in medias[(page_value - 1) * count_value : page_value * count_value]
+        ]
     return []
 
 

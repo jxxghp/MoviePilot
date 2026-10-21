@@ -5,12 +5,12 @@
 import asyncio
 import json
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware.types import AgentMiddleware, ModelResponse, ToolCallRequest
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langgraph.config import get_config
 from langgraph.graph.message import add_messages
 from langgraph.types import Command
@@ -89,7 +89,7 @@ class GuardRun:
     identity: object | None = None
 
 
-class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
+class ToolGuardrailsMiddleware(AgentMiddleware):
     """
     交互式 Web/API 默认警告，消息网关及后台默认有界停止；新用户轮次重置。
     """
@@ -184,7 +184,7 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
             self.release(self._scope())
             raise
 
-    async def after_model_update(self, state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
+    async def after_model_update(self, state: Mapping[str, Any], runtime: Any) -> dict[str, Any] | None:
         """
         登记请求；只有短尾部行动或 Codex 特定碎片才最多追加两次继续提示。
         """
@@ -197,7 +197,7 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
         self._run().message_updates.clear()
         message = messages[-1]
         for call in message.tool_calls:
-            self.pending[call['id']] = CallObservation(call['name'], dict(call.get('args') or {}), None, ExecutionOutcome.UNKNOWN)
+            self.pending[cast(str, call['id'])] = CallObservation(call['name'], dict(call.get('args') or {}), None, ExecutionOutcome.UNKNOWN)
         continuation = None if message.tool_calls or not self._run().has_tools else self._continue(messages, message)
         if continuation:
             if continuation.get('jump_to') != 'model':
@@ -278,7 +278,7 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
             return ToolMessage(content=toolguard_synthetic_result(decision), tool_call_id=request.tool_call['id'],
                                name=request.tool_call['name'], status='error',
                                additional_kwargs={EXECUTION_OUTCOME_KEY: 'failed', GUARDRAIL_KEY: decision.to_metadata()})
-        self.pending[request.tool_call['id']] = CallObservation(name, arguments, None, ExecutionOutcome.UNKNOWN)
+        self.pending[cast(str, request.tool_call['id'])] = CallObservation(name, arguments, None, ExecutionOutcome.UNKNOWN)
         raw: dict[str, str] = {}
         previous = TOOL_RESULT_RECORDER.get()
 
@@ -349,7 +349,7 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
             return f"\nFull fresh result: read_tool_result(result_id={payload['result_id']!r}, offset=0)."
         return ''
 
-    async def prepare_model(self, state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
+    async def prepare_model(self, state: Mapping[str, Any], runtime: Any) -> dict[str, Any] | None:
         """
         批次结果按请求顺序判定短循环；触发停止时保留计划和未知副作用证据。
         """
@@ -357,7 +357,7 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
         messages = state.get('messages', [])
         active_ids = {message.tool_call_id for message in messages if isinstance(message, ToolMessage)}
         by_id = {message.tool_call_id: message for message in messages if isinstance(message, ToolMessage)}
-        updates = []
+        updates: list[AnyMessage] = []
         for message in messages:
             if isinstance(message, AIMessage):
                 for call in message.tool_calls:

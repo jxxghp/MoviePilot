@@ -71,8 +71,8 @@ class AddSubscribeAction(BaseAction):
             # 添加订阅
             _started = True
             sid, message = subscribechain.add(mtype=mediainfo.type,
-                                              title=mediainfo.title,
-                                              year=mediainfo.year,
+                                              title=mediainfo.title or "",
+                                              year=mediainfo.year or "",
                                               season=mediainfo.season,
                                               media_source=mediainfo.media_source,
                                               media_id=mediainfo.media_id,

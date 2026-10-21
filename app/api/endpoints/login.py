@@ -4,7 +4,7 @@
 
 import asyncio
 from datetime import timedelta
-from typing import Annotated, Any, List
+from typing import Annotated, Any, List, cast
 
 from fastapi import Depends, Form, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -34,6 +34,7 @@ from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import MfaChallenge as _SchemaMfaChallenge
 from app.schemas.token import Token as _SchemaToken
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.schemas.user import UserPermissions
 
 router = ResponseAPIRouter()
 _INITIALIZATION_LOCK = asyncio.Lock()
@@ -240,7 +241,7 @@ def login_access_token(
         user_name=user.name,
         avatar=user.avatar,
         level=level,
-        permissions=user.permissions or {},
+        permissions=cast(UserPermissions, user.permissions or {}),
     )
 
 

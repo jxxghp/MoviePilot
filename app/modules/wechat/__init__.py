@@ -38,7 +38,7 @@ def _resolve_wechat_admin_ids(config: Optional[dict[str, object]]) -> set[str]:
 register_channel_admin_resolver(NotificationChannel.Wechat, _resolve_wechat_admin_ids)
 
 
-class WechatModule(_MessageChannelModuleBase[WeChat]):
+class WechatModule(_MessageChannelModuleBase[WeChat | WeChatBot]):
 
     """
     按实例模式路由企业微信应用消息和智能机器人消息。
@@ -110,7 +110,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         return (config or {}).get("WECHAT_MODE", "app") == "bot"
 
     @classmethod
-    def _create_client(cls, conf):
+    def _create_client(cls, conf: Any) -> WeChat | WeChatBot:
         """
         按实例模式创建企业微信应用或智能机器人客户端。
         """
@@ -122,7 +122,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         """
         保留设置初始化钩子，实例配置由通知服务管理。
         """
-        pass
+        return None
 
     def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[IncomingMessage]:
@@ -144,16 +144,17 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
                 return None
             if self._is_bot_mode(client_config.config):
                 return self._parse_bot_message(source=source, body=body, client_config=client_config)
-            client: WeChat = self.get_instance(client_config.name)
+            client = cast(WeChat, self.get_instance(client_config.name))
             sVerifyMsgSig = args.get("msg_signature")
             sVerifyTimeStamp = args.get("timestamp")
             sVerifyNonce = args.get("nonce")
             if not sVerifyMsgSig or not sVerifyTimeStamp or not sVerifyNonce:
                 logger.debug(f"微信请求参数错误：{args}")
                 return None
-            wxcpt = WXBizMsgCrypt(sToken=client_config.config.get('WECHAT_TOKEN'),
-                                  sEncodingAESKey=client_config.config.get('WECHAT_ENCODING_AESKEY'),
-                                  sReceiveId=client_config.config.get('WECHAT_CORPID'))
+            config = client_config.config or {}
+            wxcpt = WXBizMsgCrypt(sToken=config.get('WECHAT_TOKEN'),
+                                  sEncodingAESKey=config.get('WECHAT_ENCODING_AESKEY'),
+                                  sReceiveId=config.get('WECHAT_CORPID'))
             if not body:
                 logger.debug("微信请求数据为空")
                 return None
@@ -247,7 +248,9 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             logger.error(f"微信消息处理发生错误：{str(err)}")
         return None
 
-    def _parse_bot_message(self, source: str, body: Any, client_config) -> Optional[IncomingMessage]:
+    def _parse_bot_message(
+        self, source: str, body: Any, client_config: Any
+    ) -> Optional[IncomingMessage]:
         """
         提取机器人私聊内容并检查管理员命令权限。
 
@@ -302,7 +305,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         if text and text.startswith("/") and self._should_reject_admin_command(
                 client_config.config, sender
         ):
-            client: WeChatBot = self.get_instance(client_config.name)
+            client = self.get_instance(client_config.name)
             if client:
                 client.send_msg(title="只有管理员才有权限执行此命令", userid=sender)
             return None
@@ -374,9 +377,11 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             return None
         if image_ref.startswith("wxwork://media_id/") and hasattr(client, "download_media_to_data_url"):
             media_id = image_ref.replace("wxwork://media_id/", "", 1)
-            return client.download_media_to_data_url(media_id)
+            result = client.download_media_to_data_url(media_id)
+            return result if isinstance(result, str) else None
         if image_ref.startswith("wxbot://image/") and hasattr(client, "download_image_to_data_url"):
-            return client.download_image_to_data_url(image_ref)
+            result = client.download_image_to_data_url(image_ref)
+            return result if isinstance(result, str) else None
         return None
 
     def download_wechat_media_bytes(self, media_ref: str, source: str) -> Optional[bytes]:
@@ -435,19 +440,20 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
                 client.send_torrents_msg(title=message.title, torrents=torrents,
                                          userid=userid, link=message.link)
 
-    def _commands_enabled(self, config: Optional[dict]) -> bool:
+    def _commands_enabled(self, config: Optional[dict[str, Any]]) -> bool:
         """
         菜单注册前置条件：智能机器人模式无传统菜单，缺少解密参数时无法调用菜单 API。
         """
         if self._is_bot_mode(config):
             logger.debug("智能机器人模式，跳过传统菜单初始化")
             return False
+        config = config or {}
         if not config.get("WECHAT_ENCODING_AESKEY") or not config.get("WECHAT_TOKEN"):
             logger.debug("缺少消息解密参数，跳过菜单初始化")
             return False
         return True
 
-    def _delete_commands(self, client) -> None:
+    def _delete_commands(self, client: Any) -> None:
         """
         企业微信使用自定义菜单 API 清理命令。
         """

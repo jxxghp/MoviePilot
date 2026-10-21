@@ -4,7 +4,7 @@
 
 import threading
 from datetime import datetime
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union, cast
 
 from app.application.mediaserver import (
     MediaServerRepository,
@@ -28,12 +28,12 @@ from app.schemas.types import MediaType
 lock = threading.Lock()
 
 # 同步只保存本地缓存实际使用的业务内容；播放状态和展示资源不进入同步写端。
-_SYNC_QUERY = MediaServerQueryOptions(fields={
+_SYNC_QUERY = MediaServerQueryOptions(fields=frozenset({
     MediaServerField.LIBRARY, MediaServerField.ORIGINAL_TITLE, MediaServerField.YEAR,
     MediaServerField.IDENTITY, MediaServerField.PATH, MediaServerField.MUSIC,
-})
-_LIBRARY_SYNC_QUERY = MediaServerQueryOptions(fields={MediaServerField.PATH, MediaServerField.COUNTS})
-_EPISODE_SYNC_QUERY = MediaServerQueryOptions(fields=set())
+}))
+_LIBRARY_SYNC_QUERY = MediaServerQueryOptions(fields=frozenset({MediaServerField.PATH, MediaServerField.COUNTS}))
+_EPISODE_SYNC_QUERY = MediaServerQueryOptions(fields=frozenset())
 
 
 class MediaServerChain(ChainBase):
@@ -84,11 +84,12 @@ class MediaServerChain(ChainBase):
             if library.image:
                 library.image = self._sign_image_url(library.image)
             if library.image_list:
-                library.image_list = [
-                    self._sign_image_url(image)
-                    for image in library.image_list
-                    if image
-                ]
+                signed_images: list[str] = []
+                for image in library.image_list:
+                    signed = self._sign_image_url(image)
+                    if signed:
+                        signed_images.append(signed)
+                library.image_list = signed_images
         return libraries
 
     def _sign_play_item_images(
@@ -117,15 +118,16 @@ class MediaServerChain(ChainBase):
 
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         """
-        return self._sign_library_images(
+        return self._sign_library_images(cast(
+            Optional[List[MediaServerLibrary]],
             self.run_module(
                 "mediaserver_librarys",
                 server=server,
                 username=username,
                 hidden=hidden,
                 **({"query": query} if query is not None else {}),
-            )
-        )
+            ),
+        ))
 
     def items(
         self,
@@ -191,11 +193,11 @@ class MediaServerChain(ChainBase):
         :param library_id: 媒体库ID
         :return: 媒体条目总数，无法获取时返回None
         """
-        return self.run_module(
+        return cast(Optional[int], self.run_module(
             "mediaserver_items_count",
             server=server,
             library_id=library_id,
-        )
+        ))
 
     def media_count(self, server: str) -> Optional[int]:
         """
@@ -222,9 +224,9 @@ class MediaServerChain(ChainBase):
 
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         """
-        return self.run_module(
+        return cast(MediaServerItem, self.run_module(
             "mediaserver_iteminfo", server=server, item_id=item_id, **({"query": query} if query is not None else {})
-        )
+        ))
 
     def episodes(
         self, server: str, item_id: Union[str, int], *, query: Optional[MediaServerQueryOptions] = None
@@ -234,9 +236,9 @@ class MediaServerChain(ChainBase):
 
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         """
-        return self.run_module(
+        return cast(List[MediaServerSeasonInfo], self.run_module(
             "mediaserver_tv_episodes", server=server, item_id=item_id, **({"query": query} if query is not None else {})
-        )
+        ))
 
     def playing(
         self,
@@ -306,7 +308,12 @@ class MediaServerChain(ChainBase):
             username=username,
             **({"query": query} if query is not None else {}),
         )
-        return [self._sign_image_url(wallpaper) for wallpaper in wallpapers or [] if wallpaper]
+        signed_wallpapers: list[str] = []
+        for wallpaper in wallpapers or []:
+            signed = self._sign_image_url(wallpaper)
+            if signed:
+                signed_wallpapers.append(signed)
+        return signed_wallpapers
 
     def get_latest_wallpaper(
         self,
@@ -334,7 +341,7 @@ class MediaServerChain(ChainBase):
         """
         获取播放地址
         """
-        return self.run_module("mediaserver_play_url", server=server, item_id=item_id)
+        return cast(Optional[str], self.run_module("mediaserver_play_url", server=server, item_id=item_id))
 
     def get_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None
@@ -355,17 +362,17 @@ class MediaServerChain(ChainBase):
             season=season,
             **({"query": query} if query is not None else {}),
         )
-        return result or {}
+        return cast(Dict[int, str], result or {})
 
     def get_image_cookies(
         self, server: Optional[str], image_url: str
-    ) -> Optional[str | dict]:
+    ) -> Optional[str | dict[str, Any]]:
         """
         获取图片的Cookies
         """
-        return self.run_module(
+        return cast(str | dict[str, Any] | None, self.run_module(
             "mediaserver_image_cookies", server=server, image_url=image_url
-        )
+        ))
 
     def _prepare_sync_contexts(
         self,
@@ -378,17 +385,22 @@ class MediaServerChain(ChainBase):
 
         :return: (待同步服务器、服务器数量、服务器同步上下文、全局媒体总数)
         """
-        enabled_servers = [item.name for item in mediaservers if item and item.enabled and item.name]
+        enabled_servers = [
+            item.name for item in mediaservers
+            if item and item.enabled and isinstance(item.name, str) and item.name
+        ]
         repository.delete_excluded_servers(enabled_servers)
         selected_servers = [
-            item for item in mediaservers if item and item.enabled and (not server or item.name == server)
+            item for item in mediaservers
+            if item and item.enabled and isinstance(item.name, str)
+            and (not server or item.name == server)
         ]
         total_servers = len(selected_servers)
         contexts: Dict[str, Any] = {}
         global_media_total = 0
         global_counts_available = True
         for mediaserver in selected_servers:
-            server_name = mediaserver.name
+            server_name = str(mediaserver.name or "")
             logger.info(f"正在统计媒体服务器 {server_name} 的待同步媒体数量")
             libraries = self.librarys(server_name, hidden=True, query=_LIBRARY_SYNC_QUERY)
             if not libraries:
@@ -402,6 +414,8 @@ class MediaServerChain(ChainBase):
             ]
             library_media_counts = {}
             for library in selected_libraries:
+                if library.id is None:
+                    continue
                 media_count = getattr(library, "item_count", None)
                 if media_count is None:
                     media_count = self.items_count(server=server_name, library_id=library.id)
@@ -440,6 +454,8 @@ class MediaServerChain(ChainBase):
             logger.info(f"正在同步 {server_name} 媒体库 {library.name} ...")
             library_media_total = library_media_counts.get(str(library.id))
             library_count = 0
+            if library.id is None:
+                continue
             for item in self.items(server=server_name, library_id=library.id, query=_SYNC_QUERY):
                 if runtime_stop_state.is_system_stopped:
                     return total_count, global_media_finished
@@ -587,7 +603,7 @@ class MediaServerChain(ChainBase):
                     logger.info(f"媒体服务器 {mediaserver.name} 未启用，跳过")
                     continue
                 server_index += 1
-                server_name = mediaserver.name
+                server_name = str(mediaserver.name or "")
                 if progress_callback:
                     progress_value = (
                         global_media_finished / global_media_total * 100

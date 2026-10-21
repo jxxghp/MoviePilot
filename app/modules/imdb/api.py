@@ -3,13 +3,13 @@ IMDb 免 Key 数据接口客户端。
 """
 
 import asyncio
-from typing import Any, Optional, TypeVar
+from typing import Any, Optional, TypeVar, cast
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
-from app.runtime.cache import cached
+from app.runtime.cache import AsyncCacheControls, CacheControls, cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import get_task_registry
@@ -17,7 +17,7 @@ from app.runtime.tasks import get_task_registry
 TModel = TypeVar("TModel", bound=BaseModel)
 
 
-def _is_graphql_error(value: Optional[dict]) -> bool:
+def _is_graphql_error(value: Optional[dict[str, Any]]) -> bool:
     """
     避免把 IMDb GraphQL 业务错误写入长期缓存。
     """
@@ -255,7 +255,7 @@ class ImdbApi:
     SEARCH_URL = "https://v2.sg.media-imdb.com/suggestion/x"
     GRAPHQL_URL = "https://caching.graphql.imdb.com/"
 
-    def __init__(self, proxies: Optional[dict] = None) -> None:
+    def __init__(self, proxies: Optional[dict[str, Any]] = None) -> None:
         """
         按一次模块配置快照创建网络请求适配器。
         """
@@ -291,11 +291,13 @@ class ImdbApi:
         return value
 
     @classmethod
-    def _freeze_params(cls, params: Optional[dict]) -> tuple[tuple[str, Any], ...]:
+    def _freeze_params(
+            cls, params: Optional[dict[str, Any]]
+    ) -> tuple[tuple[str, Any], ...]:
         """
         把请求参数冻结为可用于缓存键的有序元组。
         """
-        return cls._freeze_value(params or {})
+        return cast(tuple[tuple[str, Any], ...], cls._freeze_value(params or {}))
 
     @cached(
         maxsize=get_runtime_setting('CONF').imdb,
@@ -305,7 +307,7 @@ class ImdbApi:
     )
     def _cached_get_json(
         self, url: str, params_key: tuple[tuple[str, Any], ...]
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         同步读取并缓存一个 IMDb JSON GET 响应。
         """
@@ -319,7 +321,7 @@ class ImdbApi:
     )
     async def _async_cached_get_json(
         self, url: str, params_key: tuple[tuple[str, Any], ...]
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         异步读取并缓存一个 IMDb JSON GET 响应。
         """
@@ -334,7 +336,7 @@ class ImdbApi:
     )
     def _cached_graphql(
         self, query: str, variables_key: tuple[tuple[str, Any], ...]
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         同步读取并缓存一个 IMDb GraphQL 响应。
         """
@@ -352,7 +354,7 @@ class ImdbApi:
     )
     async def _async_cached_graphql(
         self, query: str, variables_key: tuple[tuple[str, Any], ...]
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         异步读取并缓存一个 IMDb GraphQL 响应。
         """
@@ -361,7 +363,9 @@ class ImdbApi:
             json={"query": query, "variables": dict(variables_key)},
         )
 
-    def _graphql(self, query: str, variables: dict) -> Optional[dict]:
+    def _graphql(
+            self, query: str, variables: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         """
         同步执行 GraphQL 查询并提取 data 区域。
         """
@@ -371,7 +375,9 @@ class ImdbApi:
             return None
         return response.get("data") if response else None
 
-    async def _async_graphql(self, query: str, variables: dict) -> Optional[dict]:
+    async def _async_graphql(
+            self, query: str, variables: dict[str, Any]
+    ) -> Optional[dict[str, Any]]:
         """
         异步执行 GraphQL 查询并提取 data 区域。
         """
@@ -387,8 +393,8 @@ class ImdbApi:
         """
         清理同步缓存，并在当前或临时事件循环中清理异步缓存。
         """
-        self._cached_get_json.cache_clear()
-        self._cached_graphql.cache_clear()
+        cast(CacheControls, self._cached_get_json).cache_clear()
+        cast(CacheControls, self._cached_graphql).cache_clear()
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -408,8 +414,8 @@ class ImdbApi:
         """
         清理 IMDb 异步 GET 与 GraphQL 请求缓存区。
         """
-        await self._async_cached_get_json.cache_clear()
-        await self._async_cached_graphql.cache_clear()
+        await cast(AsyncCacheControls, self._async_cached_get_json).cache_clear()
+        await cast(AsyncCacheControls, self._async_cached_graphql).cache_clear()
 
     def close(self) -> None:
         """
@@ -419,7 +425,7 @@ class ImdbApi:
 
     @staticmethod
     def _parse(
-        model: type[TModel], data: Optional[dict], operation: str
+        model: type[TModel], data: Optional[dict[str, Any]], operation: str
     ) -> Optional[TModel]:
         """
         把外部响应校验为内部模型，并隔离字段漂移错误。
@@ -433,7 +439,7 @@ class ImdbApi:
             return None
 
     @staticmethod
-    def _first_title(data: Optional[dict]) -> Optional[dict]:
+    def _first_title(data: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         """
         从 IMDb GraphQL data 中提取第一个标题对象。
         """
@@ -441,7 +447,9 @@ class ImdbApi:
         return titles[0] if titles else None
 
     @classmethod
-    def _parse_search_titles(cls, data: Optional[dict], limit: int) -> list[ImdbTitle]:
+    def _parse_search_titles(
+            cls, data: Optional[dict[str, Any]], limit: int
+    ) -> list[ImdbTitle]:
         """
         把 IMDb 搜索建议响应转换为稳定标题模型。
         """
@@ -474,7 +482,7 @@ class ImdbApi:
         return titles
 
     @classmethod
-    def _parse_title(cls, data: Optional[dict]) -> Optional[ImdbTitle]:
+    def _parse_title(cls, data: Optional[dict[str, Any]]) -> Optional[ImdbTitle]:
         """
         把 IMDb GraphQL 标题结构展平为内部详情模型。
         """
@@ -519,7 +527,7 @@ class ImdbApi:
         )
 
     @classmethod
-    def _parse_akas(cls, data: Optional[dict]) -> list[ImdbAka]:
+    def _parse_akas(cls, data: Optional[dict[str, Any]]) -> list[ImdbAka]:
         """
         解析 GraphQL 标题别名边。
         """
@@ -532,7 +540,7 @@ class ImdbApi:
         ]
 
     @classmethod
-    def _parse_credits(cls, data: Optional[dict]) -> list[ImdbCredit]:
+    def _parse_credits(cls, data: Optional[dict[str, Any]]) -> list[ImdbCredit]:
         """
         解析 GraphQL 导演和主演边。
         """
@@ -564,7 +572,7 @@ class ImdbApi:
         return credits
 
     @classmethod
-    def _parse_images(cls, data: Optional[dict]) -> list[ImdbImage]:
+    def _parse_images(cls, data: Optional[dict[str, Any]]) -> list[ImdbImage]:
         """
         解析 GraphQL 标题图片边。
         """
@@ -577,7 +585,7 @@ class ImdbApi:
         ]
 
     @classmethod
-    def _parse_seasons(cls, data: Optional[dict]) -> list[ImdbSeason]:
+    def _parse_seasons(cls, data: Optional[dict[str, Any]]) -> list[ImdbSeason]:
         """
         解析 GraphQL 季编号列表。
         """
@@ -587,7 +595,7 @@ class ImdbApi:
 
     @classmethod
     def _parse_episode_page(
-        cls, data: Optional[dict]
+        cls, data: Optional[dict[str, Any]]
     ) -> tuple[list[ImdbEpisode], Optional[str]]:
         """
         解析一页 GraphQL 单集边及下一页游标。

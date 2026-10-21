@@ -5,12 +5,12 @@
 import json
 import re
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
+from langchain.agents.middleware.types import AgentMiddleware, AgentState, ToolCallRequest
 from langchain_core.messages import BaseMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langgraph.types import Command
@@ -50,7 +50,7 @@ def _time_bound(value: str) -> float | None:
     return parsed.replace(tzinfo=parsed.tzinfo or timezone.utc).timestamp()
 
 
-class SearchHistoryInput(BaseModel):  # type: ignore[misc]
+class SearchHistoryInput(BaseModel):
     """
     检索参数只描述查询，不暴露可跨用户访问的 profile 或数据库路径。
     """
@@ -67,7 +67,7 @@ class SearchHistoryInput(BaseModel):  # type: ignore[misc]
     before: str = Field(default='', max_length=40, description="会话开始时间上界，不包含该时刻")
     exclude_session_ids: list[str] = Field(default_factory=list, max_length=20, description="已经检查过的会话标识，同时排除其关联会话链")
 
-    @model_validator(mode='after')  # type: ignore[misc]
+    @model_validator(mode='after')
     def validate_modes(self) -> 'SearchHistoryInput':
         """
         锚点必须属于显式会话；角色与时间条件在查询前验证。
@@ -85,7 +85,7 @@ class SearchHistoryInput(BaseModel):  # type: ignore[misc]
         return self
 
 
-class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
+class RecallMiddleware(AgentMiddleware):
     """
     身份绑定到宿主会话，工具只能查询；原始证据和可执行上下文独立保存。
     """
@@ -103,7 +103,7 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
         object.__setattr__(tool, '_agent_tool_source', 'middleware:recall')
         self.tools = [tool]
 
-    async def _archive(self, messages: list[BaseMessage], raw: dict[str, str] | None = None,
+    async def _archive(self, messages: Sequence[BaseMessage], raw: dict[str, str] | None = None,
                        call: dict[str, Any] | None = None) -> None:
         """
         完整脱敏在 worker 内执行；归档失败不能把已成功的工具副作用变成失败重放。
@@ -131,7 +131,7 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
         except Exception as error:
             logger.warning('历史消息归档未完成: %s', type(error).__name__)
 
-    async def abefore_model(self, state: dict[str, Any], runtime: Any) -> None:
+    async def abefore_model(self, state: AgentState, runtime: Any) -> None:
         """
         在最终请求压缩前保存原始消息。
         """
@@ -140,7 +140,7 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
         self._active_message_ids = {message.id for message in messages if message.id}
         await self._archive(messages)
 
-    async def aafter_model(self, state: dict[str, Any], runtime: Any) -> None:
+    async def aafter_model(self, state: AgentState, runtime: Any) -> None:
         """
         基于已提交图状态标记实际移出的原文，同时保存最终回复。
         """

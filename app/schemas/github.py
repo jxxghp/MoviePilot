@@ -7,8 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class GithubCommunityProfile(BaseModel):  # type: ignore[misc]
+class GithubCommunityProfile(BaseModel):
     """
     实例 Token 对应 GitHub 用户的社区勋章快照，不包含凭据。
 
@@ -43,8 +42,7 @@ class GithubCommunityProfile(BaseModel):  # type: ignore[misc]
     refreshing: bool = Field(default=False, description="后台正在预热或更新；接口已立即返回当前快照")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class GithubTokenStatus(BaseModel):  # type: ignore[misc]
+class GithubTokenStatus(BaseModel):
     """
     描述当前 GitHub Token 的可用状态，不包含 Token 原文。
     """
@@ -64,8 +62,7 @@ class GithubTokenStatus(BaseModel):  # type: ignore[misc]
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class GithubDeviceAuthStart(BaseModel):  # type: ignore[misc]
+class GithubDeviceAuthStart(BaseModel):
     """
     返回 GitHub Device Flow 的浏览器操作信息。
     """
@@ -77,8 +74,7 @@ class GithubDeviceAuthStart(BaseModel):  # type: ignore[misc]
     interval_seconds: int = Field(description="建议的轮询间隔秒数")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class GithubDeviceAuthPollRequest(BaseModel):  # type: ignore[misc]
+class GithubDeviceAuthPollRequest(BaseModel):
     """
     轮询 GitHub Device Flow 所需的会话标识。
     """
@@ -86,8 +82,7 @@ class GithubDeviceAuthPollRequest(BaseModel):  # type: ignore[misc]
     session_id: str = Field(min_length=1, max_length=128, description="待查询的 GitHub 设备授权会话标识")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class GithubDeviceAuthPoll(BaseModel):  # type: ignore[misc]
+class GithubDeviceAuthPoll(BaseModel):
     """
     返回设备授权当前阶段，授权成功时附带脱敏状态。
     """
@@ -100,8 +95,7 @@ class GithubDeviceAuthPoll(BaseModel):  # type: ignore[misc]
     status: GithubTokenStatus | None = Field(default=None, description="授权成功后的 Token 状态")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class GithubManualTokenRequest(BaseModel):  # type: ignore[misc]
+class GithubManualTokenRequest(BaseModel):
     """
     兼容手动填写 GitHub Token 的请求体。
     """

@@ -149,7 +149,7 @@ def _torrent_meta(torrent: TorrentInfo, custom_words: List[str], mediainfo: Medi
     解析一条资源的元数据，并记录识别词改写结果。
     """
     meta = MetaInfo(
-        title=torrent.title,
+        title=torrent.title or "",
         subtitle=torrent.description,
         custom_words=custom_words,
         mtype=mediainfo.type,
@@ -163,7 +163,7 @@ def _disambiguation_key(meta: MetaBase) -> Tuple[str, str, str]:
     """
     构造同名候选识别缓存键。
     """
-    return meta.cn_name or "", meta.en_name or "", meta.year or ""
+    return meta.cn_name or "", meta.en_name or "", str(meta.year or "")
 
 
 def _same_work_matched(
@@ -237,7 +237,7 @@ def _match_torrents(
     """
     按输入顺序匹配资源，并复用同名候选的识别结果。
     """
-    logger.info(f"开始匹配结果 类型：{mediainfo.type.value}，标题：{mediainfo.title}，别名：{mediainfo.names}")
+    logger.info(f"开始匹配结果 类型：{(mediainfo.type or MediaType.UNKNOWN).value}，标题：{mediainfo.title}，别名：{mediainfo.names}")
     progress.update(value=51, text=f"开始匹配，总 {len(torrents)} 个资源 ...")
     matches: List[MatchedTorrent] = []
     cache: DisambiguationCache = {}
@@ -394,7 +394,7 @@ class SearchResultOwner(_SearchOwnerBase):
             evidence.append(SearchResourceEvidence(key, matches, latest))
             if record["source"]:
                 meta = stored_meta(record)
-                meta.type = mediainfo.type
+                meta.type = mediainfo.type or MediaType.UNKNOWN
                 contexts[key] = _build_contexts([MatchedTorrent(torrent, meta, record["source"])], mediainfo)[0]
         # 临时识别失败下一页允许重试；成功消歧在本轮复用。
         for ambiguity_key in [entry for entry, value in disambiguation.items() if value is None]:
@@ -410,13 +410,23 @@ class SearchResultOwner(_SearchOwnerBase):
         就绪目标才应用下载规则，复用已识别上下文而不再次识别整个候选池。
         """
         if season_episodes:
-            contexts = [context for context in contexts if context.meta_info is not None and TorrentHelper.match_season_episodes(
-                torrent=context.torrent_info, meta=context.meta_info, season_episodes=season_episodes)]
-        filtered = _filter_torrents(owner=self, torrents=[context.torrent_info for context in contexts],
+            contexts = [
+                context
+                for context in contexts
+                if context.torrent_info is not None
+                and context.meta_info is not None
+                and TorrentHelper.match_season_episodes(
+                    torrent=context.torrent_info,
+                    meta=context.meta_info,
+                    season_episodes=season_episodes,
+                )
+            ]
+        valid_contexts = [context for context in contexts if context.torrent_info is not None]
+        filtered = _filter_torrents(owner=self, torrents=[context.torrent_info for context in valid_contexts if context.torrent_info is not None],
                                     mediainfo=mediainfo, rule_groups=rule_groups, filter_params=filter_params,
                                     progress=ProgressHelper(ProgressKey.Search), diagnostics=Counter())
         accepted = {id(torrent) for torrent in filtered}
-        result = [context for context in contexts if id(context.torrent_info) in accepted]
+        result = [context for context in valid_contexts if context.torrent_info is not None and id(context.torrent_info) in accepted]
         if candidate_filter:
             result = candidate_filter(result)
         return TorrentHelper.sort_torrents(result)
@@ -502,7 +512,7 @@ class SearchResultOwner(_SearchOwnerBase):
         """
         return list(
             {
-                f"{item.torrent_info.site_name}_{item.torrent_info.title}_{item.torrent_info.description}": item
+                f"{item.torrent_info.site_name if item.torrent_info else ''}_{item.torrent_info.title if item.torrent_info else ''}_{item.torrent_info.description if item.torrent_info else ''}": item
                 for item in _torrents
             }.values()
         )

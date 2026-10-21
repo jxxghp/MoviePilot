@@ -5,7 +5,7 @@ Plex 模块，将认证、媒体库查询和播放事件接入统一媒体服务
 from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple, Union
 
 from app.application.mediaserver import MusicMediaServerHelper
-from app.domain.context import MediaInfo
+from app.domain.context import MediaInfo, MusicInfo
 from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.plex.plex import Plex
 from app.runtime.events import eventmanager
@@ -106,6 +106,8 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         # Plex认证
         if not credentials or credentials.grant_type != "password":
             return None
+        if credentials.username is None or credentials.password is None:
+            return None
         # 确定要认证的服务器列表
         servers: Iterable[tuple[Optional[str], Plex]]
         if service_name:
@@ -116,14 +118,15 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             servers = self.get_instances().items()
         # 遍历要认证的服务器
         for name, server in servers:
+            service_name = name or self.get_name()
             # 触发认证拦截事件
             intercept_event = eventmanager.send_event(
                 etype=ChainEventType.AuthIntercept,
                 data=AuthInterceptCredentials(username=credentials.username, channel=self.get_name(),
-                                              service=name, status="triggered")
+                                              service=service_name, status="triggered")
             )
-            if intercept_event and intercept_event.event_data:
-                intercept_data: AuthInterceptCredentials = intercept_event.event_data
+            if intercept_event and isinstance(intercept_event.event_data, AuthInterceptCredentials):
+                intercept_data = intercept_event.event_data
                 if intercept_data.cancel:
                     continue
             auth_result = server.authenticate(credentials.username, credentials.password)
@@ -189,6 +192,8 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             if not s:
                 continue
             if mediainfo.type == MediaType.MUSIC:
+                if not isinstance(mediainfo, MusicInfo):
+                    continue
                 search_params = MusicMediaServerHelper.search_params(mediainfo)
                 matches = s.get_music(
                     title=search_params["title"],
@@ -207,19 +212,19 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                 continue
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
-                    movie = s.get_iteminfo(itemid, **({"query": query} if query is not None else {}))
+                    movie = s.get_iteminfo(itemid, **MediaServerQueryOptions.as_kwargs(query))
                     if movie:
                         logger.info(f"媒体库 {name} 中找到了 {movie}")
                         return _SchemaExistMediaInfo(
                             type=MediaType.MOVIE, server_type="plex", server=name, itemid=movie.item_id
                         )
                 movies = s.get_movies(
-                    title=mediainfo.title,
+                    title=mediainfo.title or "",
                     original_title=mediainfo.original_title,
                     year=mediainfo.year,
                     media_source=mediainfo.media_source,
                     media_id=mediainfo.media_id,
-                    **({"query": query} if query is not None else {}),
+                    **MediaServerQueryOptions.as_kwargs(query),
                 )
                 if not movies:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
@@ -237,7 +242,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                     media_source=mediainfo.media_source,
                     media_id=mediainfo.media_id,
                     item_id=itemid,
-                    **({"query": query} if query is not None else {}),
+                    **MediaServerQueryOptions.as_kwargs(query),
                 )
                 if not tvs:
                     logger.info(f"{mediainfo.title_year} 没有在媒体库 {name} 中")
@@ -291,7 +296,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         """
         server_obj = self.get_instance(server)
         if server_obj:
-            return server_obj.get_librarys(hidden, **({"query": query} if query is not None else {}))
+            return server_obj.get_librarys(hidden, **MediaServerQueryOptions.as_kwargs(query))
         return None
 
     def mediaserver_items(
@@ -316,7 +321,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_items(
-                library_id, start_index, limit, **({"query": query} if query is not None else {})
+                library_id, start_index, limit, **MediaServerQueryOptions.as_kwargs(query)
             )
         return None
 
@@ -346,7 +351,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         """
         server_obj = self.get_instance(server)
         if server_obj:
-            return server_obj.get_iteminfo(item_id, **({"query": query} if query is not None else {}))
+            return server_obj.get_iteminfo(item_id, **MediaServerQueryOptions.as_kwargs(query))
         return None
 
     def mediaserver_tv_episodes(
@@ -363,7 +368,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id, **({"query": query} if query is not None else {}))
+        _, seasoninfo = server_obj.get_tv_episodes(item_id=str(item_id), **MediaServerQueryOptions.as_kwargs(query))
         if not seasoninfo:
             return []
         return [
@@ -385,7 +390,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_resume(num=count, **({"query": query} if query is not None else {}))
+        return server_obj.get_resume(num=count, **MediaServerQueryOptions.as_kwargs(query))
 
     def mediaserver_latest(
         self,
@@ -406,7 +411,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_latest(num=count, **({"query": query} if query is not None else {}))
+        return server_obj.get_latest(num=count, **MediaServerQueryOptions.as_kwargs(query))
 
     def mediaserver_latest_images(
         self,
@@ -435,18 +440,20 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         links = []
         items = (
             self.mediaserver_latest(
-                server=server, count=count, username=username, **({"query": query} if query is not None else {})
+                server=server, count=count, username=username, **MediaServerQueryOptions.as_kwargs(query)
             )
             or []
         )
         for item in items:
             if item.type not in (MediaType.MOVIE.value, MediaType.TV.value):
                 continue
+            if not item.id:
+                continue
             link = server_obj.get_remote_image_by_id(
-                item_id=item.id,
+                item_id=str(item.id),
                 image_type="Backdrop",
                 plex_url=False,
-                **({"query": query} if query is not None else {}),
+                **MediaServerQueryOptions.as_kwargs(query),
             )
             if link:
                 links.append(link)
@@ -463,7 +470,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_play_url(item_id)
+        return server_obj.get_play_url(str(item_id))
 
     def mediaserver_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None
@@ -481,5 +488,5 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         if not server_obj:
             return None
         return server_obj.get_season_episode_ids(
-            str(item_id), season, **({"query": query} if query is not None else {})
+            str(item_id), season, **MediaServerQueryOptions.as_kwargs(query)
         )

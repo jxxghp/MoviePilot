@@ -1630,7 +1630,7 @@ class MusicBrainzModule(_ModuleBase):
             mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
-            **kwargs,
+            **kwargs: Any,
     ) -> Optional[MusicInfo]:
         """
         接收统一识别请求，按明确身份查询详情或按音乐线索匹配。
@@ -1715,7 +1715,7 @@ class MusicBrainzModule(_ModuleBase):
             mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
-            **kwargs,
+            **kwargs: Any,
     ) -> Optional[MusicInfo]:
         """
         异步接收统一识别请求，按明确身份查询详情或按音乐线索匹配。
@@ -2127,6 +2127,9 @@ class MusicBrainzModule(_ModuleBase):
         """
 
         def _convert(run: str) -> str:
+            """
+            把连续中文数字转换为阿拉伯数字，保留艺术家名称中的其他文本。
+            """
             total, current = 0, 0
             for char in run:
                 if char in cls._CJK_DIGIT_MAP:
@@ -2327,7 +2330,7 @@ class MusicBrainzModule(_ModuleBase):
             },
         )
         album = self._project_album_detail(payload)
-        if not album or (musicbrainz_release_id is not None and album.media_id != media_id):
+        if not payload or not album or (musicbrainz_release_id is not None and album.media_id != media_id):
             return None
         tracks_payload = await self._async_album_tracks_payload(
             payload.get("releases") or [],
@@ -2380,7 +2383,7 @@ class MusicBrainzModule(_ModuleBase):
             },
         )
         album = self._project_album_detail(payload)
-        if not album or (musicbrainz_release_id is not None and album.media_id != media_id):
+        if not payload or not album or (musicbrainz_release_id is not None and album.media_id != media_id):
             return None
         tracks_payload = self._album_tracks_payload(
             payload.get("releases") or [],

@@ -202,7 +202,9 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id)
+        _, seasoninfo = server_obj.get_tv_episodes(
+            item_id=str(item_id) if item_id is not None else None
+        )
         if not seasoninfo:
             return []
         return [_SchemaMediaServerSeasonInfo(
@@ -236,7 +238,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_play_url(item_id)
+        return server_obj.get_play_url(str(item_id))
 
     def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
                            username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
@@ -278,7 +280,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
             if item.type not in (MediaType.MOVIE.value, MediaType.TV.value):
                 continue
             if item.BackdropImageTags:
-                image_url = server_obj.get_backdrop_url(item_id=item.id,
+                image_url = server_obj.get_backdrop_url(item_id=str(item.id),
                                                         image_tag=item.BackdropImageTags[0],
                                                         remote=remote)
                 if image_url:

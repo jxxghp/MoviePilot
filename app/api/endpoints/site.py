@@ -2,7 +2,7 @@
 提供站点配置、认证、数据查询和状态管理接口。
 """
 
-from typing import Annotated, Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, List, Literal, Optional, cast
 
 from fastapi import Depends, HTTPException, Response
 
@@ -111,7 +111,7 @@ def _project_readable_site(
     return _project_agent_site(site, include_secrets=False)
 
 
-def _indexer_supports_media_type(indexer: dict, media_type: MediaType) -> bool:
+def _indexer_supports_media_type(indexer: dict[str, Any], media_type: MediaType) -> bool:
     """
     判断站点索引器是否支持指定媒体类型。
 
@@ -120,6 +120,7 @@ def _indexer_supports_media_type(indexer: dict, media_type: MediaType) -> bool:
     :return: 是否应在该媒体类型的站点选择列表中显示
     """
     declared_media_type = indexer.get("media_type")
+    site_media_type: Optional[MediaType]
     if isinstance(declared_media_type, MediaType):
         site_media_type = declared_media_type
     elif isinstance(declared_media_type, str):
@@ -167,12 +168,12 @@ def _normalize_site_ids(values: Any) -> list[int]:
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_sites(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-) -> List[dict]:
+) -> List[_SchemaSite]:
     """
     获取站点列表
     """
@@ -191,7 +192,7 @@ async def read_sites(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_agent_sites(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     status: Literal["active", "inactive", "all"] = "all",
     name: Optional[str] = None,
     query: SiteQueryService = Depends(get_site_query_service),
@@ -237,7 +238,7 @@ async def read_agent_sites(
 )
 async def read_sites_by_media_type(
     media_type: str,
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
     page: CompatiblePageParam = None,
@@ -396,7 +397,7 @@ def _update_site_cookie(
     password: str,
     code: Optional[str],
     query: SiteQueryService,
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     执行站点 Cookie 与 UA 更新。
 
@@ -509,6 +510,8 @@ def refresh_userdata(
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
+    if not site.domain:
+        return _SchemaResponse(success=False, message="站点域名未配置")
     indexer = SitesHelper().get_indexer(site.domain)
     if not indexer:
         return _SchemaResponse(
@@ -532,7 +535,7 @@ def refresh_userdata(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_userdata_latest(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
     page: CompatiblePageParam = None,
@@ -557,7 +560,7 @@ async def read_userdata_latest(
 )
 async def read_userdata(
     site_id: int,
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     workdate: Optional[str] = None,
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
@@ -609,6 +612,8 @@ def test_site(
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
+    if not site.domain:
+        return _SchemaResponse(success=False, message="站点域名未配置")
     status, message = SiteChain().test(site.domain)
     return _SchemaResponse(success=status, message=message)
 
@@ -632,6 +637,8 @@ async def site_icon(
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
+    if not site.domain:
+        return _SchemaResponse(success=False, message="站点域名未配置")
     icon = await query.icon(site.domain)
     if not icon:
         return _SchemaResponse(success=False, message="站点图标不存在！")
@@ -657,15 +664,18 @@ async def site_category(
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
+    if not site.domain:
+        raise HTTPException(status_code=400, detail="站点域名未配置")
     indexer = await SitesHelper().async_get_indexer(site.domain)
     if not indexer:
         raise HTTPException(
             status_code=404,
             detail=f"站点 {site.domain} 不支持",
         )
-    category: Dict[str, List[dict]] = indexer.get("category") or []
-    if not category:
+    category_value = indexer.get("category")
+    if not isinstance(category_value, dict):
         return []
+    category = cast(dict[str, list[dict[str, Any]]], category_value)
     result = []
     for cats in category.values():
         for cat in cats:
@@ -698,6 +708,8 @@ async def site_resource(
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
+    if not site.domain:
+        raise HTTPException(status_code=400, detail="站点域名未配置")
     torrents = await TorrentsChain().async_browse(
         domain=site.domain,
         keyword=keyword,
@@ -753,7 +765,7 @@ async def read_statistic_by_domain(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_statistics(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SiteQueryService = Depends(get_site_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
     page: CompatiblePageParam = None,
@@ -777,7 +789,7 @@ async def read_statistics(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_rss_sites(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: SiteQueryService = Depends(get_site_query_service),
     token_payload: _SchemaTokenPayload = Depends(verify_token),
     page: CompatiblePageParam = None,
@@ -804,7 +816,9 @@ async def read_rss_sites(
 
 
 @router.get("/auth", summary="查询认证站点", response_model=_SchemaJsonObject)
-async def read_auth_sites(_: _SchemaTokenPayload = Depends(verify_token)) -> dict:
+async def read_auth_sites(
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> dict[str, Any]:
     """
     获取可认证站点列表
     """
@@ -848,15 +862,16 @@ def auth_site(
 async def site_mapping(
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
-):
+) -> _SchemaResponse[dict[str, str]]:
     """
     获取站点域名到名称的映射关系
     """
     try:
         sites = await query.list_ordered()
-        mapping = {}
+        mapping: dict[str, str] = {}
         for site in sites:
-            mapping[site.domain] = site.name
+            if site.domain and site.name:
+                mapping[site.domain] = site.name
         return _SchemaResponse(success=True, data=mapping)
     except Exception as e:
         return _SchemaResponse(success=False, message=f"获取映射失败：{str(e)}")
@@ -867,7 +882,9 @@ async def site_mapping(
     summary="获取支持的站点列表",
     response_model=_SchemaJsonObject,
 )
-async def support_sites(_: ApiPrincipal = Depends(get_current_active_superuser_async)):
+async def support_sites(
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> dict[str, Any]:
     """
     获取支持的站点列表
     """

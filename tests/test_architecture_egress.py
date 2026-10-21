@@ -89,7 +89,8 @@ FROZEN_EGRESS_REASON_BY_EDGE = {
     for edge in edges
 }
 FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
-    ("app.adapters.cache.redis", "redis"): "49f0b28ef731b25aa772d6887febd762d03b981a1f52d6dfc8dff82f2f489f81",
+    # Redis 客户端局部化后，扫描器保留了完整调用面；传输边界未增加。
+    ("app.adapters.cache.redis", "redis"): "81a91a371296446093a9796421f72fb76ea54a040a3c288c469c6c5b4dfd6c39",
     ("app.adapters.external.server", "httpx2"): "e9aeb562213af38c644c457850853bba9f3043c56e710c3adde98adc6a4b9dba",
     ("app.adapters.external.server", "requests"): "e8c747a7a4e96c3b1dc102bf49a37881cc674bcfb17b98693cac966afc3c3037",
     ("app.adapters.external.plugin.client", "httpx2"): "2d249b0906bc7f8fa29f569d6bcc5667d4290a551b1a06bcdf85e09ec50a793d",
@@ -136,7 +137,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.rtorrent.rtorrent", "http.client"): "6adc93b3bc479dfe81197554c7977930a60abc51714f14ef29298eb40730aaf7",
     ("app.modules.rtorrent.rtorrent", "socket.create_connection"): "878114d6b1bda091bd3b3d8aa819831d84381682feba78267592d2593295af90",
     ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"): "2ac64b5670c930bc28bb2135cc4b73891c1cae01a74a9586f74e302878c45c85",
-    ("app.modules.slack.slack", "slack_bolt"): "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6",
+    # Slack 客户端守卫和返回类型收紧后，扫描器保留了完整调用面；传输边界未增加。
+    ("app.modules.slack.slack", "slack_bolt"): "d970999c7c77ca5e93ec8a2773fa0b3db10df63ecce780b5fd52ca038734666a",
     ("app.modules.slack.slack", "slack_sdk"): "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14",
     # Session 类型使扫描器识别原有的两处 close；未新增发送或会话关闭路径。
     ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "6c4ea48dd83616375a48785f9de9f477268f9236029e57b17ca1d2bde538fd4c",

@@ -3,7 +3,7 @@
 """
 
 from pathlib import Path
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 from anyio import Path as AsyncPath
 from pydantic import BaseModel, Field
@@ -70,7 +70,7 @@ class WriteFileTool(MoviePilotTool):
         description="工具输入参数的验证模型或 JSON Schema",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据参数生成友好的提示消息
         """
@@ -78,13 +78,13 @@ class WriteFileTool(MoviePilotTool):
         file_name = Path(file_path).name if file_path else "未知文件"
         return f"写入文件: {file_name}"
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         file_path: str,
         content: str,
         overwrite: bool = False,
         expected_sha256: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         创建或显式覆盖文件，并通过可选哈希阻止陈旧写入。
@@ -97,6 +97,8 @@ class WriteFileTool(MoviePilotTool):
             )
             if access_error:
                 return access_error
+            if resolved_path is None:
+                return "错误：无法解析写入路径"
 
             path = AsyncPath(resolved_path)
 
@@ -121,7 +123,7 @@ class WriteFileTool(MoviePilotTool):
                     "default", calculate_file_sha256, local_path
                 )
             if expected_sha256:
-                if current_sha256.casefold() != expected_sha256.casefold():
+                if current_sha256 is None or current_sha256.casefold() != expected_sha256.casefold():
                     return (
                         f"错误：文件 {resolved_path} 已在读取后发生变化，拒绝覆盖。"
                         "请重新读取文件并基于最新内容写入。"

@@ -82,6 +82,22 @@ def _missing(scope, item):
         subscribe=item, meta=build_subscribe_meta(item), mediainfo=scope.media, mediakey="tmdb:1")[1]
 
 
+def test_full_pack_candidate_without_torrent_cannot_submit_download(subscription, monkeypatch):
+    """
+    整包候选缺少种子信息时不比较优先级或提交下载，保留原始缺集范围。
+    """
+    scope = subscription
+    monkeypatch.setattr(scope.chain, "subscription_repository", SimpleNamespace())
+    context = Context(meta_info=MetaInfo("Example Show S01"), media_info=scope.media)
+    missing = {"tmdb:1": {1: NotExistMediaInfo(season=1, episodes=[1], total_episode=1, start_episode=1)}}
+    downloads, remaining = scope.chain._SubscribeChain__download_best_version_with_full_pack_first(
+        contexts=[context], no_exists=missing, subscribe=scope.initial, mediakey="tmdb:1",
+    )
+    assert downloads == []
+    assert remaining == missing
+    scope.download.download_single.assert_not_called()
+
+
 def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, monkeypatch):
     """
     搜索中扩展总集数后，下载结算保留新缺集，检查阶段可先同步旧范围。

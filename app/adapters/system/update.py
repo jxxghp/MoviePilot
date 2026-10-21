@@ -287,7 +287,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
         """
         校验并原子替换状态 JSON。
         """
-        validated = cast(dict[str, Any], SystemUpdateStatus.model_validate(state).model_dump())
+        validated = SystemUpdateStatus.model_validate(state).model_dump()
         self._root.mkdir(parents=True, exist_ok=True)
         temporary = self._state_file.with_suffix(".tmp")
         temporary.write_text(
@@ -414,7 +414,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
             state["auto_update"] = get_runtime_setting("MOVIEPILOT_AUTO_UPDATE") is True
             state["auto_update_resource"] = get_runtime_setting("AUTO_UPDATE_RESOURCE") is True
             state["supports_batch_update"] = True
-            return cast(SystemUpdateStatus, SystemUpdateStatus.model_validate(state))
+            return SystemUpdateStatus.model_validate(state)
 
     def _restore_prepared_resources(self, item: dict[str, Any]) -> bool:
         """

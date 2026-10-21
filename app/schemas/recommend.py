@@ -7,8 +7,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class AgentRecommendationItem(BaseModel):  # type: ignore[misc]
+class AgentRecommendationItem(BaseModel):
     """
     影视、动画与音乐推荐共用的有界字段投影。
     """

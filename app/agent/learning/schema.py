@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class SkillOperation(BaseModel):  # type: ignore[misc]
+class SkillOperation(BaseModel):
     """
     技能身份由名称选择，个人根与后台身份始终由宿主绑定。
     """
@@ -75,7 +75,7 @@ class DeleteSkill(SkillOperation):
     absorbed_into: str | None = Field(default=None, pattern=r'^(?:[a-z0-9][a-z0-9_-]{0,63})?$', description="合并后承接内容的技能名称，作为追溯依据；未合并时可为 None 或空字符串")
 
 
-class ManageSkillsInput(BaseModel):  # type: ignore[misc]
+class ManageSkillsInput(BaseModel):
     """
     最多二十个有序操作，任一失败回滚本次全部技能变更。
     """
@@ -85,7 +85,7 @@ class ManageSkillsInput(BaseModel):  # type: ignore[misc]
         min_length=1, max_length=20, description="按顺序执行的 1 至 20 个技能操作；任一操作失败时回滚本次全部变更")
 
 
-class ViewSkillInput(BaseModel):  # type: ignore[misc]
+class ViewSkillInput(BaseModel):
     """
     读取具体技能或支持文件，并登记本轮实际读取的版本。
     """
@@ -95,7 +95,7 @@ class ViewSkillInput(BaseModel):  # type: ignore[misc]
     file_path: str = Field(default='SKILL.md', max_length=255, description="待读取文件在技能目录内的相对路径，默认 SKILL.md")
 
 
-class MemoryOperation(BaseModel):  # type: ignore[misc]
+class MemoryOperation(BaseModel):
     """
     old_text 只定位整条记忆，replace 的 content 会替换整条而非子串。
     """
@@ -107,7 +107,7 @@ class MemoryOperation(BaseModel):  # type: ignore[misc]
     new_text: str | None = Field(default=None, max_length=100_000, description="替换操作兼容的新内容字段；未提供时为 None")
 
 
-class MemoryInput(BaseModel):  # type: ignore[misc]
+class MemoryInput(BaseModel):
     """
     支持单操作及原子批次形态，pending 只读列出等待人工处理的提案。
     """

@@ -53,8 +53,7 @@ class PluginSourceBindingStatus(str, _Enum):
     LOCAL_ONLY = "local_only"
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginUpdateCandidate(BaseModel):  # type: ignore[misc]
+class PluginUpdateCandidate(BaseModel):
     """
     插件市场为已安装插件选择的当前更新候选。
     """
@@ -117,7 +116,7 @@ class PluginInstance(BaseModel):
         return self.instance_id == self.source_plugin_id
 
     # mypy 尚不识别 computed_field 与 property 叠加时的装饰器顺序。
-    @_computed_field(  # type: ignore[prop-decorator, misc]
+    @_computed_field(  # type: ignore[prop-decorator]
         description="实例实现模式：virtual 为共享源码的分身，host 为源插件本体自身",
     )
     @property
@@ -128,8 +127,7 @@ class PluginInstance(BaseModel):
         return "host" if self.is_host else "virtual"
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginInstanceEnabledRequest(BaseModel):  # type: ignore[misc]
+class PluginInstanceEnabledRequest(BaseModel):
     """
     启用或停用一个插件实例的请求参数。
     """
@@ -139,8 +137,7 @@ class PluginInstanceEnabledRequest(BaseModel):  # type: ignore[misc]
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginInstancePurgeRequest(BaseModel):  # type: ignore[misc]
+class PluginInstancePurgeRequest(BaseModel):
     """
     彻底清理一个插件实例时选定的删除范围。
 
@@ -157,8 +154,7 @@ class PluginInstancePurgeRequest(BaseModel):  # type: ignore[misc]
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginInstancePurgeOutcome(BaseModel):  # type: ignore[misc]
+class PluginInstancePurgeOutcome(BaseModel):
     """
     彻底清理的执行结果。
     """
@@ -170,8 +166,7 @@ class PluginInstancePurgeOutcome(BaseModel):  # type: ignore[misc]
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginInstanceLogLevel(BaseModel):  # type: ignore[misc]
+class PluginInstanceLogLevel(BaseModel):
     """
     单个实例的日志等级设置与生效结果。
     """
@@ -182,8 +177,7 @@ class PluginInstanceLogLevel(BaseModel):  # type: ignore[misc]
     effective_level: str = Field(description="按过期回落判定后实际生效的日志等级")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginInstanceLogLevelOverview(BaseModel):  # type: ignore[misc]
+class PluginInstanceLogLevelOverview(BaseModel):
     """
     插件全部实例（含本体）的日志等级设置总览。
     """
@@ -194,8 +188,7 @@ class PluginInstanceLogLevelOverview(BaseModel):  # type: ignore[misc]
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginInstanceLogLevelUpdateRequest(BaseModel):  # type: ignore[misc]
+class PluginInstanceLogLevelUpdateRequest(BaseModel):
     """
     设置实例日志等级覆盖的请求参数。
     """
@@ -216,7 +209,7 @@ class Plugin(BaseModel):
 
     _package_version: Optional[str] = _PrivateAttr(default=None)
 
-    id: str = Field(default=None, description="记录标识")
+    id: Optional[str] = Field(default=None, description="记录标识")
     plugin_name: Optional[str] = Field(default=None, description="插件名称")
     plugin_desc: Optional[str] = Field(default=None, description="插件描述")
     plugin_icon: Optional[str] = Field(default=None, description="插件图标")
@@ -293,8 +286,7 @@ class PluginRuntimeSummary(BaseModel):
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginRuntimeCommandCapability(BaseModel):  # type: ignore[misc]
+class PluginRuntimeCommandCapability(BaseModel):
     """
     插件运行时注册命令的安全只读投影。
     """
@@ -304,8 +296,7 @@ class PluginRuntimeCommandCapability(BaseModel):  # type: ignore[misc]
     plugin_id: Optional[str] = Field(default=None, description="注册命令的插件 ID")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginRuntimeActionCapability(BaseModel):  # type: ignore[misc]
+class PluginRuntimeActionCapability(BaseModel):
     """
     插件运行时注册动作的安全只读投影。
     """
@@ -314,8 +305,7 @@ class PluginRuntimeActionCapability(BaseModel):  # type: ignore[misc]
     name: Optional[str] = Field(default=None, description="动作名称")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginRuntimeActionGroup(BaseModel):  # type: ignore[misc]
+class PluginRuntimeActionGroup(BaseModel):
     """
     按插件归组的运行时动作投影。
     """
@@ -325,8 +315,7 @@ class PluginRuntimeActionGroup(BaseModel):  # type: ignore[misc]
     actions: List[PluginRuntimeActionCapability] = Field(default_factory=list, description="可用动作列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginRuntimeServiceCapability(BaseModel):  # type: ignore[misc]
+class PluginRuntimeServiceCapability(BaseModel):
     """
     插件定时服务的安全只读投影。
     """
@@ -336,8 +325,7 @@ class PluginRuntimeServiceCapability(BaseModel):  # type: ignore[misc]
     trigger: Optional[str] = Field(default=None, description="定时触发器说明")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginRuntimeCapabilities(BaseModel):  # type: ignore[misc]
+class PluginRuntimeCapabilities(BaseModel):
     """
     插件命令、动作和定时服务的公共安全能力快照。
     """
@@ -347,8 +335,7 @@ class PluginRuntimeCapabilities(BaseModel):  # type: ignore[misc]
     services: List[PluginRuntimeServiceCapability] = Field(default_factory=list, description="插件声明的服务能力")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginDataKeySummary(BaseModel):  # type: ignore[misc]
+class PluginDataKeySummary(BaseModel):
     """
     单个插件持久化键的不含值诊断摘要。
     """
@@ -365,8 +352,7 @@ class PluginDataKeySummary(BaseModel):  # type: ignore[misc]
     sensitive: bool = Field(description="键名是否符合凭据字段规则")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginDataSummary(BaseModel):  # type: ignore[misc]
+class PluginDataSummary(BaseModel):
     """
     插件持久化数据的不含原值诊断摘要。
     """
@@ -432,8 +418,7 @@ class PluginCloneRequest(BaseModel):
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginCloneOutcome(BaseModel):  # type: ignore[misc]
+class PluginCloneOutcome(BaseModel):
     """
     一次分身创建或恢复的结果。
 
@@ -444,8 +429,7 @@ class PluginCloneOutcome(BaseModel):  # type: ignore[misc]
     instance_id: str = Field(description="新建或恢复出来的分身实例 ID")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginRestorableInstance(BaseModel):  # type: ignore[misc]
+class PluginRestorableInstance(BaseModel):
     """
     一个已停用、其设置仍留存可被恢复的分身实例。
 
@@ -460,8 +444,7 @@ class PluginRestorableInstance(BaseModel):  # type: ignore[misc]
     has_config: bool = Field(default=False, description="是否留有业务参数")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
+class PluginSourceIdentity(BaseModel):
     """
     显式换源确认所需的插件来源身份投影。
     """
@@ -481,8 +464,7 @@ class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
     revision: int = Field(ge=1, description="显式换源使用的身份 CAS revision")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginSourceCandidate(BaseModel):  # type: ignore[misc]
+class PluginSourceCandidate(BaseModel):
     """
     一个可供管理员识别的脱敏插件来源候选。
     """
@@ -503,8 +485,7 @@ class PluginSourceCandidate(BaseModel):  # type: ignore[misc]
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginSourceOptions(BaseModel):  # type: ignore[misc]
+class PluginSourceOptions(BaseModel):
     """
     来源选择界面所需的当前身份、候选和准入状态。
     """
@@ -525,8 +506,7 @@ class PluginSourceOptions(BaseModel):  # type: ignore[misc]
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginSourceInstallRequest(BaseModel):  # type: ignore[misc]
+class PluginSourceInstallRequest(BaseModel):
     """
     管理员为未绑定插件明确选择初始在线来源的请求参数。
     """
@@ -541,8 +521,7 @@ class PluginSourceInstallRequest(BaseModel):  # type: ignore[misc]
         description="是否强制重新下载并安装所选来源载荷",
     )
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @field_validator("repo_url")  # type: ignore[misc]
+    @field_validator("repo_url")
     @classmethod
     def normalize_repo_url(cls, value: str) -> str:
         """
@@ -556,8 +535,7 @@ class PluginSourceInstallRequest(BaseModel):  # type: ignore[misc]
         return normalized
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginSourceChangeRequest(BaseModel):  # type: ignore[misc]
+class PluginSourceChangeRequest(BaseModel):
     """
     管理员显式切换插件在线来源的请求参数。
     """
@@ -572,8 +550,7 @@ class PluginSourceChangeRequest(BaseModel):  # type: ignore[misc]
         description="指定安装的 Release 资产版本；为空时使用当前索引版本",
     )
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @field_validator("repo_url")  # type: ignore[misc]
+    @field_validator("repo_url")
     @classmethod
     def normalize_repo_url(cls, value: str) -> str:
         """
@@ -620,8 +597,7 @@ class PluginSidebarNavItem(BaseModel):
     order: int = Field(default=0, description="同组内排序，越小越靠前")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginAgentPet(BaseModel):  # type: ignore[misc]
+class PluginAgentPet(BaseModel):
     """
     插件声明的 Agent 助手形象（前端按 plugin_id + key 选择并挂载联邦组件）。
     """
@@ -780,8 +756,7 @@ class PluginFoldersData(RootModel[Dict[str, Union[List[str], PluginFolderConfigD
     """
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginFolderUpdateRequest(BaseModel):  # type: ignore[misc]
+class PluginFolderUpdateRequest(BaseModel):
     """
     插件文件夹名称和展示字段的增量更新请求。
     """
@@ -814,8 +789,7 @@ class PluginFolderUpdateRequest(BaseModel):  # type: ignore[misc]
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class PluginFolderPluginsUpdateRequest(BaseModel):  # type: ignore[misc]
+class PluginFolderPluginsUpdateRequest(BaseModel):
     """
     插件文件夹成员顺序的条件替换请求。
     """

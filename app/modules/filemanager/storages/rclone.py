@@ -4,13 +4,13 @@
 
 import json
 import subprocess
+import sys
 import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, List, Optional, Union
 
-from app.adapters.system.host import SystemUtils
 from app.foundation import temporal as time_tools
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.runtime.log import logger
@@ -68,7 +68,7 @@ class Rclone(StorageBase):
         """
         pass
 
-    def set_config(self, conf: dict) -> None:
+    def set_config(self, conf: dict[str, Any]) -> None:
         """
         先持久化存储配置，再将配置内容写入指定本地文件。
 
@@ -80,15 +80,19 @@ class Rclone(StorageBase):
         filepath = conf.get("filepath")
         if not filepath:
             logger.warn("【rclone】保存配置失败：未设置配置文件路径")
+            return
         logger.info(f"【rclone】配置写入文件：{filepath}")
         path = Path(filepath)
         if not path.parent.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(conf.get('content'), encoding='utf-8')
+        path.write_text(str(conf.get('content') or ''), encoding='utf-8')
 
     @staticmethod
-    def __get_hidden_shell():
-        if SystemUtils.is_windows():
+    def __get_hidden_shell() -> Optional[Any]:
+        """
+        在 Windows 下隐藏命令窗口，其他平台无需启动窗口配置。
+        """
+        if sys.platform == "win32":
             st = subprocess.STARTUPINFO()
             st.dwFlags = subprocess.STARTF_USESHOWWINDOW
             st.wShowWindow = subprocess.SW_HIDE
@@ -127,12 +131,13 @@ class Rclone(StorageBase):
 
         return None
 
-    def __get_rcloneitem(self, item: dict, parent: Optional[str] = "/") -> _SchemaFileItem:
+    def __get_rcloneitem(self, item: dict[str, Any], parent: Optional[str] = "/") -> _SchemaFileItem:
         """
         获取rclone文件项。
         """
-        if not item:
-            return _SchemaFileItem()
+        name = item.get("Name")
+        if not isinstance(name, str) or not name:
+            raise ValueError("rclone 文件项缺少名称")
         if item.get("IsDir"):
             return _SchemaFileItem(
                 storage=self.schema.value,
@@ -140,7 +145,7 @@ class Rclone(StorageBase):
                 path=f"{parent}{item.get('Name')}" + "/",
                 name=item.get("Name"),
                 basename=item.get("Name"),
-                modify_time=time_tools.parse_timestamp(item.get("ModTime"))
+                modify_time=time_tools.parse_timestamp(item.get("ModTime") or "")
             )
         else:
             return _SchemaFileItem(
@@ -148,10 +153,10 @@ class Rclone(StorageBase):
                 type="file",
                 path=f"{parent}{item.get('Name')}",
                 name=item.get("Name"),
-                basename=Path(item.get("Name")).stem,
-                extension=Path(item.get("Name")).suffix[1:],
+                basename=Path(name).stem,
+                extension=Path(name).suffix[1:],
                 size=item.get("Size"),
-                modify_time=time_tools.parse_timestamp(item.get("ModTime"))
+                modify_time=time_tools.parse_timestamp(item.get("ModTime") or "")
             )
 
     @staticmethod
@@ -220,6 +225,8 @@ class Rclone(StorageBase):
         :param fileitem: MP 远端目录或文件项；目录路径应保留末尾斜杠以便拼接子项
         :return: 直接子项列表；命令或解析失败返回空列表，不能据此区分空目录
         """
+        if not fileitem.path:
+            return []
         if fileitem.type == "file":
             return [fileitem]
         try:
@@ -246,6 +253,8 @@ class Rclone(StorageBase):
         :param name: 目标子目录名称
         :return: 查询到的目标项；创建或确认失败返回 None，即使创建命令已成功但目标暂不可见
         """
+        if not fileitem.path:
+            return None
         path = Path(self.__normalize_remote_path(Path(fileitem.path) / name))
         try:
             retcode = subprocess.run(
@@ -287,6 +296,8 @@ class Rclone(StorageBase):
             return folder
         fileitem = _SchemaFileItem(storage=self.schema.value, type="dir", path="/")
         for part in normalized.parts[1:]:
+            if not fileitem.path:
+                return None
             current_path = Path(self.__normalize_remote_path(Path(fileitem.path) / part))
             with self.__get_path_lock(current_path):
                 dir_file = self.get_item(current_path)
@@ -365,6 +376,8 @@ class Rclone(StorageBase):
         :param fileitem: 需要删除的文件项；此方法不递归删除目录
         :return: 命令退出码为 0 时返回 True，否则返回 False
         """
+        if not fileitem.path:
+            return False
         try:
             retcode = subprocess.run(
                 [
@@ -387,6 +400,8 @@ class Rclone(StorageBase):
         :param name: 目标名称，已存在目标的处理由 rclone 决定
         :return: 命令退出码为 0 时返回 True，否则返回 False
         """
+        if not fileitem.path:
+            return False
         try:
             retcode = subprocess.run(
                 [
@@ -412,6 +427,8 @@ class Rclone(StorageBase):
         :param path: 本地保存目录；为空时使用 TEMP_PATH
         :return: 成功下载的本地路径；路径无效或传输失败返回 None
         """
+        if not fileitem.path:
+            return None
         local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
         if not local_path:
             return None
@@ -435,6 +452,7 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
+            assert process.stdout is not None
             last_progress = 0.0
             for line in process.stdout:
                 if line:
@@ -470,6 +488,8 @@ class Rclone(StorageBase):
         :param new_name: 远端目标名称；为空时使用源文件名
         :return: 上传后查询到的目标项；传输或后续查询失败返回 None
         """
+        if not fileitem.path:
+            return None
         target_name = new_name or path.name
         new_path = Path(fileitem.path) / target_name
 
@@ -492,6 +512,7 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
+            assert process.stdout is not None
             last_progress = 0.0
             for line in process.stdout:
                 if line:
@@ -523,6 +544,8 @@ class Rclone(StorageBase):
         :param fileitem: 待查询的远端项
         :return: 首个结果构造的文件项；执行、解析或无结果时返回 None
         """
+        if not fileitem.path:
+            return None
         try:
             ret = subprocess.run(
                 [
@@ -548,6 +571,8 @@ class Rclone(StorageBase):
         :param new_name: 目标文件名
         :return: 命令退出码为 0 时返回 True，否则返回 False；具体移动语义由 rclone 后端决定
         """
+        if not fileitem.path:
+            return False
         target_path = path / new_name
 
         logger.info(f"【rclone】开始移动: {fileitem.path} -> {target_path}")
@@ -569,6 +594,7 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
+            assert process.stdout is not None
             last_progress = 0.0
             for line in process.stdout:
                 if line:
@@ -600,6 +626,8 @@ class Rclone(StorageBase):
         :param new_name: 目标文件名
         :return: 命令退出码为 0 时返回 True，否则返回 False；失败时不撤销已写入内容
         """
+        if not fileitem.path:
+            return False
         target_path = path / new_name
 
         logger.info(f"【rclone】开始复制: {fileitem.path} -> {target_path}")
@@ -621,6 +649,7 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
+            assert process.stdout is not None
             last_progress = 0.0
             for line in process.stdout:
                 if line:
@@ -649,9 +678,9 @@ class Rclone(StorageBase):
 
         :param fileitem: 兼容接口的源文件项，当前忽略
         :param target_file: 兼容接口的目标路径，当前忽略
-        :return: 固定返回 None，不创建链接
+        :return: 固定返回 False，不创建链接
         """
-        pass
+        return False
 
     def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
@@ -659,9 +688,9 @@ class Rclone(StorageBase):
 
         :param fileitem: 兼容接口的源文件项，当前忽略
         :param target_file: 兼容接口的目标路径，当前忽略
-        :return: 固定返回 None，不创建链接
+        :return: 固定返回 False，不创建链接
         """
-        pass
+        return False
 
     def usage(self) -> Optional[_SchemaStorageUsage]:
         """
@@ -672,7 +701,7 @@ class Rclone(StorageBase):
         conf = self.get_config()
         if not conf:
             return None
-        file_path = conf.config.get("filepath")
+        file_path = (conf.config or {}).get("filepath")
         if not file_path or not Path(file_path).exists():
             return None
         # 读取rclone文件，检查是否有[MP]节点配置

@@ -5,12 +5,12 @@ Fanart 图片查询、语言选择和媒体刮削清单生成。
 import asyncio
 import hashlib
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union, cast
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.context import MediaInfo
 from app.modules import _ModuleBase
-from app.runtime.cache import cached
+from app.runtime.cache import AsyncCacheControls, CacheControls, cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import get_task_registry
@@ -115,7 +115,9 @@ class FanartModule(_ModuleBase):
         return mediainfo
 
     @classmethod
-    def __set_mediainfo_images(cls, mediainfo: MediaInfo, images: dict) -> None:
+    def __set_mediainfo_images(
+        cls, mediainfo: MediaInfo, images: dict[str, Any]
+    ) -> None:
         """
         显式回填 MediaInfo 支持的展示图片字段。
         """
@@ -130,7 +132,7 @@ class FanartModule(_ModuleBase):
         mediainfo: MediaInfo,
         season: Optional[int] = None,
         episode: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         查询媒体级或指定季的图片清单。
 
@@ -146,7 +148,7 @@ class FanartModule(_ModuleBase):
 
     def __obtain_fanart_images(
         self, mediainfo: MediaInfo, season: Optional[int] = None
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         获取 Fanart 图片并转换为刮削图片名称。
         """
@@ -160,7 +162,7 @@ class FanartModule(_ModuleBase):
         self,
         mediainfo: MediaInfo,
         season: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         异步获取 Fanart 图片并转换为刮削图片名称。
         """
@@ -181,19 +183,19 @@ class FanartModule(_ModuleBase):
             return None
         if not mediainfo.tmdb_id and not mediainfo.tvdb_id:
             return None
-        if mediainfo.type == MediaType.MOVIE:
-            return mediainfo.type, mediainfo.tmdb_id
+        if mediainfo.type == MediaType.MOVIE and mediainfo.tmdb_id is not None:
+            return MediaType.MOVIE, mediainfo.tmdb_id
         if mediainfo.tvdb_id:
-            return mediainfo.type, mediainfo.tvdb_id
+            return MediaType.TV, mediainfo.tvdb_id
         logger.info(f"{mediainfo.title_year} 没有tvdbid，无法获取fanart图片")
         return None
 
     def __extract_images(
         self,
         mediainfo: MediaInfo,
-        result: Optional[dict],
+        result: Optional[dict[str, Any]],
         season: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         把服务端图片类型转换为刮削文件名，并筛选所需季号。
 
@@ -208,7 +210,7 @@ class FanartModule(_ModuleBase):
             logger.warn(f"没有获取到 {mediainfo.title_year} 的fanart图片数据")
             return None
 
-        ret = {}
+        ret: dict[str, Any] = {}
         for name, images in result.items():
             if not images:
                 continue
@@ -258,7 +260,7 @@ class FanartModule(_ModuleBase):
         return None
 
     @staticmethod
-    def __pick_best_image(_images: list):
+    def __pick_best_image(_images: list[dict[str, Any]]) -> dict[str, Any]:
         """
         按配置语言顺序选择图片，再按点赞数从高到低选择。
 
@@ -321,7 +323,7 @@ class FanartModule(_ModuleBase):
     @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     def __request_fanart(
         cls, media_type: MediaType, queryid: Union[str, int], _key_token: str = ""
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         查询 Fanart 图集并使用密钥指纹隔离缓存。
 
@@ -336,7 +338,8 @@ class FanartModule(_ModuleBase):
                 image_url, raise_exception=True
             )
             if ret:
-                return ret.json()
+                payload = ret.json()
+                return payload if isinstance(payload, dict) else {}
             else:
                 logger.debug(f"未能获取到 {queryid} 的Fanart图片")
                 return {}
@@ -348,7 +351,7 @@ class FanartModule(_ModuleBase):
     @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     async def __async_request_fanart(
         cls, media_type: MediaType, queryid: Union[str, int], _key_token: str = ""
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         异步查询 Fanart 图集并使用密钥指纹隔离缓存。
 
@@ -364,7 +367,7 @@ class FanartModule(_ModuleBase):
             ).get_json(
                 image_url
             )
-            if ret:
+            if isinstance(ret, dict):
                 return ret
             logger.debug(f"未能获取到 {queryid} 的Fanart图片")
             return {}
@@ -397,8 +400,8 @@ class FanartModule(_ModuleBase):
         清理同步缓存，并由宿主登记运行中事件循环的异步清理。
         """
         logger.info(f"开始清除{self.get_name()}缓存 ...")
-        self.__request_fanart.cache_clear()
-        async_cache_clear = self.__async_request_fanart.cache_clear()
+        cast(CacheControls, self.__request_fanart).cache_clear()
+        async_cache_clear = cast(AsyncCacheControls, self.__async_request_fanart).cache_clear()
         try:
             asyncio.get_running_loop()
         except RuntimeError:

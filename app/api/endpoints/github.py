@@ -3,6 +3,7 @@ GitHub Token 授权接口及首次初始化专用授权接口。
 """
 
 from dataclasses import asdict
+from typing import Literal, cast
 
 from fastapi import Depends, HTTPException
 
@@ -55,7 +56,7 @@ def _status_model(status: GithubAuthStatus) -> GithubTokenStatus:
     return GithubTokenStatus(
         configured=status.configured,
         valid=status.valid,
-        source=status.source,
+        source=cast(Literal["oauth", "manual"] | None, status.source),
         login=status.login,
         masked_token=status.masked_token,
         expires_at=status.expires_at,
@@ -142,7 +143,7 @@ async def poll_auth(
     return _SchemaResponse(
         success=True,
         data=GithubDeviceAuthPoll(
-            state=result.state,
+            state=cast(Literal["pending", "authorized", "slow_down", "denied", "expired", "failed"], result.state),
             message=result.message,
             retry_after=result.retry_after,
             status=status,
@@ -256,7 +257,7 @@ async def poll_initialization_auth(
     return _SchemaResponse(
         success=True,
         data=GithubDeviceAuthPoll(
-            state=result.state,
+            state=cast(Literal["pending", "authorized", "slow_down", "denied", "expired", "failed"], result.state),
             message=result.message,
             retry_after=result.retry_after,
             status=status,

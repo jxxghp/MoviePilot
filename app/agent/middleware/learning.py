@@ -13,7 +13,7 @@ from app.agent.tools.base import run_agent_blocking
 from app.runtime.log import logger
 
 
-class LearningMiddleware(AgentMiddleware):  # type: ignore[misc]
+class LearningMiddleware(AgentMiddleware):
     """
     放在最终请求压缩、视觉转换之后，复盘才能复用实际发出的缓存前缀。
     """
@@ -49,7 +49,7 @@ class LearningMiddleware(AgentMiddleware):  # type: ignore[misc]
         return await handler(request.override(system_message=append_to_system_message(request.system_message, self.prompt)))
 
 
-class LearningCaptureMiddleware(AgentMiddleware):  # type: ignore[misc]
+class LearningCaptureMiddleware(AgentMiddleware):
     """
     仅在最内层观察最终请求，避免保存压缩之前或缺少动态提示词的快照。
     """

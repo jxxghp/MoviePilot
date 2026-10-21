@@ -280,12 +280,9 @@ class SystemConfigClassificationPolicyStore:
         if value is None:
             return None
         try:
-            return cast(
-                ClassificationPolicyState,
-                ClassificationPolicyState.model_validate(
+            return ClassificationPolicyState.model_validate(
                     discard_removed_source_fallbacks(value)
-                ),
-            )
+                )
         except ValidationError as error:
             raise ClassificationPolicyStateCorruptError(
                 "MediaClassificationPolicy 配置结构无效"

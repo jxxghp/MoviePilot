@@ -5,7 +5,7 @@
 import base64
 import json
 import time
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.foundation import temporal as time_tools
@@ -23,7 +23,7 @@ class SunnyPTSpider:
     _category_cache_ttl = 3600
     _category_cache: dict[str, tuple[float, dict[str, list[str]]]] = {}
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
         """
         初始化 SunnyPT API 索引器。
 
@@ -56,7 +56,9 @@ class SunnyPTSpider:
         return cls._size
 
     @staticmethod
-    def _parse_configured_categories(category_config: dict) -> dict[str, list[str]]:
+    def _parse_configured_categories(
+        category_config: dict[str, Any],
+    ) -> dict[str, list[str]]:
         """
         从站点索引配置提取电影、电视剧和音乐分类 ID，作为分类接口不可用时的兜底。
 
@@ -116,7 +118,7 @@ class SunnyPTSpider:
         """
         cls._category_cache[api_url] = (time.monotonic(), category_map)
 
-    def _request_headers(self) -> dict:
+    def _request_headers(self) -> dict[str, Any]:
         """
         构造 SunnyPT API 请求头。
 
@@ -128,7 +130,7 @@ class SunnyPTSpider:
             "X-API-Key": self._api_key,
         }
 
-    def _response_data(self, response, operation: str):
+    def _response_data(self, response: Any, operation: str) -> Any:
         """
         校验 SunnyPT 通用响应并返回 data 字段。
 
@@ -219,8 +221,8 @@ class SunnyPTSpider:
         media_type: Optional[MediaType],
         category: Optional[str],
         page: Optional[int],
-        category_map: dict,
-    ) -> dict:
+        category_map: dict[str, list[str]],
+    ) -> dict[str, Any]:
         """
         构造 SunnyPT 种子搜索参数。
 
@@ -249,7 +251,7 @@ class SunnyPTSpider:
             params["categories"] = categories
         return params
 
-    def _parse_result(self, results: List[dict]) -> List[dict]:
+    def _parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
         将 SunnyPT API 种子数据转换为 MoviePilot 标准字段。
 
@@ -299,7 +301,9 @@ class SunnyPTSpider:
             })
         return torrents
 
-    def _process_search_response(self, response) -> Tuple[bool, List[dict]]:
+    def _process_search_response(
+        self, response: Any
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         处理 SunnyPT 种子搜索响应。
 
@@ -317,7 +321,7 @@ class SunnyPTSpider:
         mtype: Optional[MediaType] = None,
         cat: Optional[str] = None,
         page: Optional[int] = 0,
-    ) -> Tuple[bool, List[dict]]:
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         同步搜索 SunnyPT 种子。
 
@@ -345,7 +349,7 @@ class SunnyPTSpider:
         mtype: Optional[MediaType] = None,
         cat: Optional[str] = None,
         page: Optional[int] = 0,
-    ) -> Tuple[bool, List[dict]]:
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索 SunnyPT 种子。
 

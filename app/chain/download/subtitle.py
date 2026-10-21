@@ -365,7 +365,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         dir_info = DirectoryHelper().get_dir(media_info, include_unsorted=True)
         storage = (dir_info.storage or storage) if dir_info else storage
         if not dir_info:
-            logger.error(f"未找到下载目录：{media_info.type.value} {media_info.title_year}")
+            logger.error(f"未找到下载目录：{media_info.type.value if media_info.type else ""} {media_info.title_year}")
             return None, None, "未找到下载目录"
 
         if not dir_info.download_path:
@@ -449,7 +449,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         保存字幕下载响应到目标目录。
         """
         fallback_name = self._detect_subtitle_fallback_name(subtitle, response.content)
-        file_name = subtitle.file_name or TorrentHelper.get_url_filename(response, subtitle.enclosure)
+        file_name = subtitle.file_name or TorrentHelper.get_url_filename(response, subtitle.enclosure or "")
         if not Path(file_name).suffix:
             file_name = fallback_name
         file_name = self._safe_subtitle_file_name(
@@ -552,7 +552,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         if not subtitle or not subtitle.enclosure:
             return False, "字幕下载链接为空", []
 
-        metainfo = MetaInfo(title=subtitle.title, subtitle=subtitle.description)
+        metainfo = MetaInfo(title=subtitle.title or "", subtitle=subtitle.description)
         mediainfo = MediaChain().recognize_media(
             meta=metainfo,
             media_source=media_source,
@@ -709,7 +709,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             return
 
         torrent = context.torrent_info
-        if not torrent.page_url:
+        if not torrent or not torrent.page_url:
             return
         logger.info("开始从站点下载字幕：%s" % torrent.page_url)
         folder_name, _ = cast(Any, TorrentHelper)().get_fileinfo_from_torrent_content(

@@ -13,9 +13,10 @@ import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import (  # noqa: F401
     AIMessage,
     BaseMessage,
@@ -114,7 +115,7 @@ def _get_plugin_tools_revision() -> int:
     """
     读取插件工具目录修订号，避免 Agent 编排依赖具体管理器类型。
     """
-    return get_plugin_manager().get_plugin_agent_tools_revision()
+    return int(get_plugin_manager().get_plugin_agent_tools_revision())
 
 
 warnings.filterwarnings("ignore", message=".*allowed_objects.*")
@@ -569,7 +570,7 @@ class MoviePilotAgent:
         cls,
         role: str,
         content: str = "",
-        attachments: Optional[List[dict]] = None,
+        attachments: Optional[List[dict[str, Any]]] = None,
         status: str = "done",
     ) -> dict[str, Any]:
         """
@@ -594,7 +595,7 @@ class MoviePilotAgent:
         """
         return bool(self.channel and self.source)
 
-    async def _save_display_history_messages(self, messages: List[dict]) -> None:
+    async def _save_display_history_messages(self, messages: List[dict[str, Any]]) -> None:
         """
         将一组可见消息追加到 Agent 会话历史表。
         """
@@ -1283,7 +1284,7 @@ class MoviePilotAgent:
         self,
         message: str,
         images: Optional[List[str]],
-        files: Optional[List[dict]],
+        files: Optional[List[dict[str, Any]]],
         has_audio_input: bool,
     ) -> Optional[str]:
         """
@@ -1523,7 +1524,7 @@ class MoviePilotAgent:
         }
         return self._llm_runtime_config
 
-    async def _initialize_llm(self, streaming: bool = False):
+    async def _initialize_llm(self, streaming: bool = False) -> Any:
         """
         初始化 LLM
         :param streaming: 是否启用流式输出
@@ -1688,15 +1689,15 @@ class MoviePilotAgent:
         emitted_text = self.stream_handler.emit(text)
         self._emit_output(emitted_text)
 
-    def _initialize_tools(self) -> List:
+    def _initialize_tools(self) -> List[Any]:
         """
         初始化主 Agent 本地工具实例。
         """
         from app.agent.loader import get_tool_factory
 
-        return get_tool_factory().create_tools(
+        return list(get_tool_factory().create_tools(
             session_id=self.session_id,
-            user_id=self.user_id,
+            user_id=self.user_id or "",
             channel=self.channel,
             source=self.source,
             username=self.username,
@@ -1704,7 +1705,7 @@ class MoviePilotAgent:
             agent_context=self._tool_context,
             allow_message_tools=self.allow_message_tools,
             data=self._data,
-        )
+        ))
 
     def _initialize_local_tool_catalogs(
         self,
@@ -1744,7 +1745,7 @@ class MoviePilotAgent:
         return self._initialize_local_tool_catalogs()[0]
 
     @staticmethod
-    def _filter_local_web_search_tools(tools: List, enabled: bool) -> List:
+    def _filter_local_web_search_tools(tools: List[Any], enabled: bool) -> List[Any]:
         """
         按联网搜索策略保留或移除本地 search_web 工具。
         """
@@ -1763,7 +1764,7 @@ class MoviePilotAgent:
         self._tool_context.update(values)
 
     @staticmethod
-    def _public_runtime_config_signature(runtime_config: Dict[str, Any]) -> tuple:
+    def _public_runtime_config_signature(runtime_config: Dict[str, Any]) -> tuple[Any, ...]:
         """
         生成不包含密钥明文的 LLM 运行时签名。
         """
@@ -1846,7 +1847,7 @@ class MoviePilotAgent:
         """
         from app.agent.loader import get_tool_factory
 
-        return get_tool_factory().catalog_factory_revision()
+        return str(get_tool_factory().catalog_factory_revision())
 
     def begin_shutdown(self) -> None:
         """
@@ -1880,15 +1881,15 @@ class MoviePilotAgent:
         """
         return [messages[-1]] if messages else []
 
-    def _initialize_subagent_tools(self) -> List:
+    def _initialize_subagent_tools(self) -> List[Any]:
         """
         初始化子代理专用静默工具列表。
         """
         from app.agent.loader import get_tool_factory
 
-        return get_tool_factory().create_tools(
+        return list(get_tool_factory().create_tools(
             session_id=self.session_id,
-            user_id=self.user_id,
+            user_id=self.user_id or "",
             channel=self.channel,
             source=self.source,
             username=self.username,
@@ -1902,15 +1903,15 @@ class MoviePilotAgent:
             },
             allow_message_tools=False,
             data=self._data,
-        )
+        ))
 
-    async def _initialize_mcp_tools(self, specs=None) -> List:
+    async def _initialize_mcp_tools(self, specs: Optional[List[Any]] = None) -> List[Any]:
         """
         初始化外部 MCP 工具列表。
         """
         return await create_external_mcp_tools(
             session_id=self.session_id,
-            user_id=self.user_id,
+            user_id=self.user_id or "",
             channel=self.channel,
             source=self.source,
             username=self.username,
@@ -1919,13 +1920,13 @@ class MoviePilotAgent:
             specs=specs,
         )
 
-    async def _initialize_subagent_mcp_tools(self, specs=None) -> List:
+    async def _initialize_subagent_mcp_tools(self, specs: Optional[List[Any]] = None) -> List[Any]:
         """
         初始化子代理可用的外部 MCP 工具列表。
         """
         return await create_external_mcp_tools(
             session_id=self.session_id,
-            user_id=self.user_id,
+            user_id=self.user_id or "",
             channel=self.channel,
             source=self.source,
             username=self.username,
@@ -1961,7 +1962,7 @@ class MoviePilotAgent:
             enable_discovery=True,
         )
 
-    async def _create_agent(self, streaming: bool = False):
+    async def _create_agent(self, streaming: bool = False) -> Any:
         """
         创建 LangGraph Agent（使用 create_agent + SummarizationMiddleware）
         :param streaming: 是否启用流式输出
@@ -1983,7 +1984,7 @@ class MoviePilotAgent:
                     and (datetime.now() - cached_bundle.catalog_checked_at).total_seconds()
                     < self.TOOL_CATALOG_REFRESH_SECONDS
                 )
-                if catalog_is_fresh:
+                if catalog_is_fresh and cached_bundle is not None:
                     bundle_signature = await self._agent_bundle_signature(
                         streaming,
                         tool_catalog=cached_bundle.tool_catalog,
@@ -2097,6 +2098,9 @@ class MoviePilotAgent:
                 cached_agent = self._graphs.get(bundle_signature, streaming)
                 self._last_agent_cache_hit = bool(cached_agent)
                 if cached_agent:
+                    # 目录新鲜条件已要求 bundle 存在；这里显式恢复该不变量供静态检查。
+                    if cached_bundle is None:
+                        raise RuntimeError("Agent 图缓存缺少目录快照")
                     # 签名相同表示已编译图中的精确工具实例仍有效；新建快照仅用于复核。
                     cached_bundle.catalog_checked_at = datetime.now()
                     logger.debug(f"复用会话内 Agent 图: session_id={self.session_id}")
@@ -2113,7 +2117,7 @@ class MoviePilotAgent:
                     context=policy_context, catalog=tool_catalog, tools=tools, guardrails=guardrails,
                 )
                 code_middleware = CodeExecutionMiddleware(policy_middleware)
-                middlewares = [
+                middlewares: list[AgentMiddleware[Any, Any, Any]] = [
                     # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
                     policy_middleware,
                     code_middleware,
@@ -2269,7 +2273,7 @@ class MoviePilotAgent:
             messages = list(
                 await self._memory.async_get_agent_messages(
                     session_id=self.session_id,
-                    user_id=self.user_id,
+                    user_id=self.user_id or "",
                     allow_cross_owner=await self._can_restore_cross_owner_history(),
                     legacy_username=(
                         self.username if self.channel == NotificationChannel.WebAgent.value
@@ -2288,7 +2292,7 @@ class MoviePilotAgent:
                 "images": [{"index": index + 1, "type": "image"} for index, _ in enumerate(images or [])],
                 "files": files or [],
             }
-            content = [
+            content: list[str | dict[str, Any]] = [
                 {
                     "type": "text",
                     "text": json.dumps(request_payload, ensure_ascii=False, indent=2),
@@ -2320,8 +2324,8 @@ class MoviePilotAgent:
             # 执行推理
             result = await self._execute_agent(messages)
             if isinstance(result, tuple) and result:
-                return result[0]
-            return result
+                return cast(str, result[0])
+            return cast(str, result)
 
         except Exception as e:
             error_message = AGENT_EXECUTION_ERROR_MESSAGE
@@ -2347,13 +2351,13 @@ class MoviePilotAgent:
     def _build_input_display_attachments(
         self,
         images: Optional[List[str]] = None,
-        files: Optional[List[dict]] = None,
+        files: Optional[List[dict[str, Any]]] = None,
         has_audio_input: bool = False,
-    ) -> List[dict]:
+    ) -> List[dict[str, Any]]:
         """
         构造用户输入附件的展示记录。
         """
-        attachments: List[dict] = []
+        attachments: List[dict[str, Any]] = []
         for index, image in enumerate(images or [], start=1):
             attachments.append(
                 {
@@ -2383,7 +2387,7 @@ class MoviePilotAgent:
 
     @staticmethod
     async def _stream_agent_tokens(
-        agent,
+        agent: Any,
         messages: dict[str, Any],
         config: dict[str, Any],
         on_token: Callable[[str], None],
@@ -2623,12 +2627,12 @@ class MoviePilotAgent:
         if self._should_persist_agent_chat():
             await self._memory.async_save_agent_messages(
                 session_id=self.session_id,
-                user_id=self.user_id,
+                user_id=self.user_id or "",
                 messages=agent.get_state(agent_config).values.get("messages", []),
             )
         return display_text
 
-    async def _execute_agent(self, messages: List[BaseMessage]):
+    async def _execute_agent(self, messages: List[BaseMessage]) -> Any:
         """
         调用 LangGraph Agent 执行推理。
         根据运行环境选择不同的执行模式：

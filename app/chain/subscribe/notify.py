@@ -4,7 +4,7 @@
 
 import threading
 from collections.abc import Mapping
-from typing import Any, List, Optional, Protocol, cast
+from typing import Any, List, Optional, Protocol
 
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
@@ -270,7 +270,7 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
             )
             or message
         )
-        return cast(dict[str, Any], rendered.model_dump(mode="json"))
+        return rendered.model_dump(mode="json")
 
     def _SubscribeChain__notify_subscribe_create_failure(
         self,

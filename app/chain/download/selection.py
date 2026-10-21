@@ -191,7 +191,7 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
             if runtime_stop_state.is_system_stopped:
                 break
             media = context.media_info
-            if media is None:
+            if media is None or context.torrent_info is None:
                 continue
             media_type = media.type
             if media_type not in downloaded_keys:

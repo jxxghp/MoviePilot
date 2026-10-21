@@ -113,17 +113,17 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         """
         return client.test_connection()
 
-    def _service_kwargs(self, conf) -> Dict[str, Any]:
+    def _service_kwargs(self, conf: Any) -> Dict[str, Any]:
         """
         将稳定通知身份传递给 ClawBot 客户端。
         """
         return {"name": conf.name, "identity": conf.id, **conf.config}
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         保留设置初始化钩子，实例配置由通知服务管理。
         """
-        pass
+        return None
 
     def channel_manage(
             self,
@@ -246,7 +246,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         )
 
     @staticmethod
-    def _load_json(body: Any) -> Optional[dict]:
+    def _load_json(body: Any) -> Optional[Dict[str, Any]]:
         """
         将内容解析为 JSON 字典。
         """
@@ -371,7 +371,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
                 WechatClawBot._short_text(message, max_len=500),
             )
             return None
-        if self._is_duplicate_message(client_config.name, message_id):
+        if self._is_duplicate_message(client_config.name or "", message_id):
             logger.info(
                 "忽略重复的微信 ClawBot 消息：source=%s, userid=%s, message_id=%s",
                 client_config.name,
@@ -380,16 +380,17 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
             )
             return None
 
+        config = client_config.config or {}
         admins = [
             admin.strip()
-            for admin in str(client_config.config.get("WECHATCLAWBOT_ADMINS") or "").split(",")
+            for admin in str(config.get("WECHATCLAWBOT_ADMINS") or "").split(",")
             if admin.strip()
         ]
         callback_data = text[9:].strip() if text.startswith("CALLBACK:") else ""
         is_admin_command = text.startswith("/") or callback_data.startswith("/")
         is_channel_admin = matches_channel_admin(
             NotificationChannel.WechatClawBot,
-            client_config.config,
+            config,
             user_id,
         )
         if is_admin_command and admins and not is_channel_admin:
@@ -431,7 +432,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
             userid = self.get_notification_userid(
                 message, "wechatclawbot_userid"
             )
-            client: WechatClawBot = self.get_instance(conf.name)
+            client: Optional[WechatClawBot] = self.get_instance(conf.name)
             if not client:
                 continue
             if message.file_path:
@@ -508,7 +509,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: WechatClawBot = self.get_instance(conf.name)
+            client: Optional[WechatClawBot] = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(
                     medias=medias,
@@ -527,7 +528,7 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: WechatClawBot = self.get_instance(conf.name)
+            client: Optional[WechatClawBot] = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(
                     torrents=torrents,

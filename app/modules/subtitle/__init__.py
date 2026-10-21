@@ -166,12 +166,13 @@ class SubtitleModule(_ModuleBase):
         :return: 下载链接列表；页面为空时返回空列表，缺少地址、访问失败或站点使用独立接口时返回 None
         """
         torrent = context.torrent_info
-        if not torrent.page_url:
+        if torrent is None or not torrent.page_url:
             return None
+        page_url = torrent.page_url
         # 采用API访问的站点由对应爬虫模块处理，详情页HTML不含字幕元素
         if torrent.site is not None:
             site = get_configured_site_query_service().get_sync(torrent.site)
-            if site and (indexer := SitesHelper().get_indexer(site.domain)):
+            if site and site.domain and (indexer := SitesHelper().get_indexer(site.domain)):
                 if indexer.get("parser") == "mTorrent":
                     return None
         request = RequestUtils(
@@ -179,19 +180,19 @@ class SubtitleModule(_ModuleBase):
             ua=torrent.site_ua,
             proxies=get_runtime_setting('PROXY') if torrent.site_proxy else None,
         )
-        res = request.get_res(torrent.page_url)
+        res = request.get_res(page_url)
         if res and res.status_code == 200:
             if not res.text:
-                logger.warn(f"读取页面代码失败：{torrent.page_url}")
+                logger.warn(f"读取页面代码失败：{page_url}")
                 return []
             html = etree.HTML(res.text)
             try:
-                return self._parse_subtitle_links(html, torrent.page_url)
+                return self._parse_subtitle_links(html, page_url)
             finally:
                 if html is not None:
                     del html
         elif res is not None:
-            logger.warn(f"连接 {torrent.page_url} 失败，状态码：{res.status_code}")
+            logger.warn(f"连接 {page_url} 失败，状态码：{res.status_code}")
         else:
-            logger.warn(f"无法打开链接：{torrent.page_url}")
+            logger.warn(f"无法打开链接：{page_url}")
         return None

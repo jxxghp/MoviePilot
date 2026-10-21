@@ -119,8 +119,7 @@ class TransferJob(BaseModel):
     tasks: Optional[List[TransferJobTask]] = Field(default_factory=list, description="任务列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferQueueFileItemData(BaseModel):  # type: ignore[misc]
+class TransferQueueFileItemData(BaseModel):
     """
     整理队列快照只需要的源文件字段，不携带云盘目录树和 provider 扩展字段。
     """
@@ -132,8 +131,7 @@ class TransferQueueFileItemData(BaseModel):  # type: ignore[misc]
     size: Optional[int] = Field(default=None, description="文件大小，单位为字节")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferQueueMediaData(BaseModel):  # type: ignore[misc]
+class TransferQueueMediaData(BaseModel):
     """
     整理队列 UI 所需的媒体身份与海报摘要。
     """
@@ -148,8 +146,7 @@ class TransferQueueMediaData(BaseModel):  # type: ignore[misc]
     origin_country: Optional[List[str]] = Field(default_factory=list, description="原产国")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferQueueTaskData(BaseModel):  # type: ignore[misc]
+class TransferQueueTaskData(BaseModel):
     """
     整理队列 UI 所需的任务状态与源文件摘要。
     """
@@ -158,8 +155,7 @@ class TransferQueueTaskData(BaseModel):  # type: ignore[misc]
     state: Optional[str] = Field(default=None, description="当前业务状态")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferQueueItemData(BaseModel):  # type: ignore[misc]
+class TransferQueueItemData(BaseModel):
     """
     单个媒体分组的轻量整理队列投影。
     """
@@ -169,8 +165,7 @@ class TransferQueueItemData(BaseModel):  # type: ignore[misc]
     tasks: List[TransferQueueTaskData] = Field(default_factory=list, description="任务列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferQueuePageData(BaseModel):  # type: ignore[misc]
+class TransferQueuePageData(BaseModel):
     """
     前端整理队列的受限快照。
     """
@@ -191,10 +186,10 @@ class TransferInfo(BaseModel):
     target_item: Optional[FileItem] = Field(default=None, description="转移后路径")
     transfer_type: Optional[str] = Field(default=None, description="整理方式")
     file_count: Optional[int] = Field(default=0, description="处理文件数")
-    file_list: Optional[list] = Field(default_factory=list, description="处理文件清单")
-    file_list_new: Optional[list] = Field(default_factory=list, description="目标文件清单")
+    file_list: Optional[list[str]] = Field(default_factory=list, description="处理文件清单")
+    file_list_new: Optional[list[str]] = Field(default_factory=list, description="目标文件清单")
     total_size: Optional[int] = Field(default=0, description="本次处理文件的总大小，单位为字节")
-    fail_list: Optional[list] = Field(default_factory=list, description="失败清单")
+    fail_list: Optional[list[str]] = Field(default_factory=list, description="失败清单")
     message: Optional[str] = Field(default=None, description="错误信息")
     need_scrape: Optional[bool] = Field(default=False, description="是否需要刮削")
     need_notify: Optional[bool] = Field(default=False, description="是否需要通知")
@@ -217,8 +212,7 @@ class TransferInfo(BaseModel):
         return dicts
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferManualReviewRequest(BaseModel):  # type: ignore[misc]
+class TransferManualReviewRequest(BaseModel):
     """
     人工判定外部结果不确定整理步骤的请求。
     """
@@ -235,8 +229,7 @@ class TransferManualReviewRequest(BaseModel):  # type: ignore[misc]
         description="判定为 applied 时必填的外部结果证据",
     )
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def validate_result_payload(self) -> "TransferManualReviewRequest":
         """
         要求已发生判定携带可持久化的结果证据。
@@ -246,8 +239,7 @@ class TransferManualReviewRequest(BaseModel):  # type: ignore[misc]
         return self
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferManualReviewData(BaseModel):  # type: ignore[misc]
+class TransferManualReviewData(BaseModel):
     """
     人工复核提交后的公开状态投影。
     """
@@ -259,8 +251,7 @@ class TransferManualReviewData(BaseModel):  # type: ignore[misc]
     review_revision: int = Field(description="人工复核状态的版本号")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferManualReviewSourceData(BaseModel):  # type: ignore[misc]
+class TransferManualReviewSourceData(BaseModel):
     """
     人工复核任务的源文件身份。
     """
@@ -269,8 +260,7 @@ class TransferManualReviewSourceData(BaseModel):  # type: ignore[misc]
     path: str = Field(description="文件或目录路径")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferManualReviewStepData(BaseModel):  # type: ignore[misc]
+class TransferManualReviewStepData(BaseModel):
     """
     人工复核步骤的公开意图与事实证据。
     """
@@ -282,8 +272,7 @@ class TransferManualReviewStepData(BaseModel):  # type: ignore[misc]
     error: Optional[str] = Field(default=None, description="错误摘要")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferManualReviewTaskData(BaseModel):  # type: ignore[misc]
+class TransferManualReviewTaskData(BaseModel):
     """
     可由管理员发现和判定的 durable 整理任务。
     """
@@ -295,8 +284,7 @@ class TransferManualReviewTaskData(BaseModel):  # type: ignore[misc]
     review_revision: int = Field(description="人工复核状态的版本号")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferManualReviewPageData(BaseModel):  # type: ignore[misc]
+class TransferManualReviewPageData(BaseModel):
     """
     人工复核任务分页结果。
     """
@@ -341,7 +329,7 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     手动整理请求，媒体身份接受内置或插件来源与原生 ID。
     """
 
-    fileitem: FileItem = Field(default=None, description="文件项")
+    fileitem: Optional[FileItem] = Field(default=None, description="文件项")
     fileitems: Optional[List[FileItem]] = Field(default=None, description="文件项列表（前端多选时传入）")
     logid: Optional[int] = Field(default=None, description="日志ID")
     logids: Optional[List[int]] = Field(default=None, description="日志ID列表（前端多选历史记录时传入）")
@@ -383,8 +371,7 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     reorganize: Optional[bool] = Field(default=False, description="重新整理，清理命中的成功历史及其旧目标")
     skip_success: bool = Field(default=False, description="跳过成功历史，优先于重新整理；预览与执行使用相同过滤范围")
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def validate_music_release_selection(self) -> "ManualTransferItem":
         """
         具体发行只用于明确的 MusicBrainz 专辑，禁止混用录音或其它来源身份。
@@ -398,8 +385,7 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
         self.musicbrainz_release_id = self.musicbrainz_release_id.lower()
         return self
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def normalize_music_release_preferences(self) -> "ManualTransferItem":
         """
         规范手动发行偏好并拒绝重复或非法 ISO 代码。
@@ -453,8 +439,7 @@ class ManualTransferPreviewSummary(BaseModel):
     failed: int = Field(default=0, description="失败条目数量")
 
 
-# 与下方执行回执相同：mypy将Pydantic基类视为Any，字段仍由公开模型校验。
-class MusicTransferCandidate(BaseModel):  # type: ignore[misc]
+class MusicTransferCandidate(BaseModel):
     """
     待确认候选的最小身份摘要；录音、发行组和发行ID保持各自语义。
     """
@@ -469,8 +454,7 @@ class MusicTransferCandidate(BaseModel):  # type: ignore[misc]
     year: Optional[str] = Field(default=None, description="媒体发行年份")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class MusicTransferPreview(BaseModel):  # type: ignore[misc]
+class MusicTransferPreview(BaseModel):
     """
     音乐识别证据与当前扫描分组；与文件执行成功状态相互独立。
     """
@@ -552,8 +536,7 @@ class ManualTransferResultData(BaseModel):
     message: Optional[str] = Field(default=None, description="面向调用方的结果说明")
 
 
-# 现有 mypy 配置把 Pydantic 基类视为 Any，公开字段仍由显式模型校验。
-class ManualTransferSubmissionItem(BaseModel):  # type: ignore[misc]
+class ManualTransferSubmissionItem(BaseModel):
     """
     实际提交的逐文件回执，接收和等待重试均不表示已入库。
     """
@@ -571,8 +554,7 @@ class ManualTransferSubmissionItem(BaseModel):  # type: ignore[misc]
     overwrite_skipped: bool = Field(default=False, description="这是一次正常的策略裁决而非整理故障，调用方据此决定是否写失败历史与推送失败通知")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class ManualTransferSubmissionData(BaseModel):  # type: ignore[misc]
+class ManualTransferSubmissionData(BaseModel):
     """
     实际提交结果，即使批次失败也保留已接收、完成和跳过的文件。
     """

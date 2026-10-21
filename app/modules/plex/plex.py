@@ -510,11 +510,11 @@ class Plex:
                     title=title,
                     original_title=original_title,
                     year=year,
-                    **({"query": query} if query is not None else {}),
+                    **MediaServerQueryOptions.as_kwargs(query),
                 )
         else:
             videos = self.__search_show(
-                title=title, original_title=original_title, year=year, **({"query": query} if query is not None else {})
+                title=title, original_title=original_title, year=year, **MediaServerQueryOptions.as_kwargs(query)
             )
 
         if not videos:
@@ -527,7 +527,7 @@ class Plex:
             return None, {}
         episodes = videos.episodes(
             **(
-                {"params": self._query_params(MediaServerQueryOptions(fields=set()))}
+                {"params": self._query_params(MediaServerQueryOptions(fields=frozenset()))}
                 if query is not None and query.fields is not None
                 else {}
             )
@@ -559,13 +559,13 @@ class Plex:
         if not self._plex or not item_id:
             return {}
         try:
-            videos = self.__fetch_item(item_id, **({"query": query} if query is not None else {}))
+            videos = self.__fetch_item(item_id, **MediaServerQueryOptions.as_kwargs(query))
             if not videos:
                 return {}
             episode_ids: Dict[int, str] = {}
             for episode in videos.episodes(
                 **(
-                    {"params": self._query_params(MediaServerQueryOptions(fields=set()))}
+                    {"params": self._query_params(MediaServerQueryOptions(fields=frozenset()))}
                     if query is not None and query.fields is not None
                     else {}
                 )
@@ -644,7 +644,7 @@ class Plex:
             item = self._plex.fetchItem(
                 ekey=ekey,
                 **(
-                    {"params": self._query_params(MediaServerQueryOptions(fields={MediaServerField.IMAGES}))}
+                    {"params": self._query_params(MediaServerQueryOptions(fields=frozenset({MediaServerField.IMAGES})))}
                     if query is not None and query.fields is not None
                     else {}
                 ),
@@ -693,7 +693,7 @@ class Plex:
                         image_type=image_type,
                         depth=depth + 1,
                         plex_url=plex_url,
-                        **({"query": query} if query is not None else {}),
+                        **MediaServerQueryOptions.as_kwargs(query),
                     )
             return image_url
         except Exception as e:
@@ -820,8 +820,8 @@ class Plex:
         if not self._plex:
             return None
         try:
-            item = self.__fetch_item(itemid, **({"query": query} if query is not None else {}))
-            return self.__build_media_server_item(item, **({"query": query} if query is not None else {}))
+            item = self.__fetch_item(itemid, **MediaServerQueryOptions.as_kwargs(query))
+            return self.__build_media_server_item(item, **MediaServerQueryOptions.as_kwargs(query))
         except Exception as err:
             logger.error(f"获取项目详情出错：{str(err)}")
         return None
@@ -1054,7 +1054,7 @@ class Plex:
                     try:
                         media_item = self._retry_timeout(
                             lambda: self.__build_media_server_item(
-                                item, **({"query": query} if query is not None else {})
+                                item, **MediaServerQueryOptions.as_kwargs(query)
                             ),
                             f"处理媒体项目 {getattr(item, 'key', '')}",
                         )
@@ -1213,7 +1213,7 @@ class Plex:
         libraries = self.get_librarys(
             hidden=True,
             **(
-                {"query": MediaServerQueryOptions(fields=set())}
+                {"query": MediaServerQueryOptions(fields=frozenset())}
                 if query is not None and query.fields is not None
                 else {}
             ),
@@ -1271,7 +1271,7 @@ class Plex:
         libraries = self.get_librarys(
             hidden=True,
             **(
-                {"query": MediaServerQueryOptions(fields=set())}
+                {"query": MediaServerQueryOptions(fields=frozenset())}
                 if query is not None and query.fields is not None
                 else {}
             ),

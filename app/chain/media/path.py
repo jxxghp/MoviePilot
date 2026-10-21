@@ -347,7 +347,7 @@ def _fingerprint_info_matches_evidence(
         return False
     if weak_title:
         return native_strong
-    return _fingerprint_title_matches(info, primary.title)
+    return _fingerprint_title_matches(info, primary.title or "")
 
 
 def _fingerprint_title_matches(info: MusicInfo, title_evidence: str) -> bool:

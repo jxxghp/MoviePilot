@@ -3,6 +3,7 @@ RSS 订阅获取、站点链接生成、浏览器回退与资源解析。
 """
 
 import traceback
+from datetime import datetime
 from typing import Any, List, Optional, Protocol, Tuple, Union
 from urllib.parse import urljoin, urlparse
 
@@ -155,7 +156,7 @@ class RssHelper:
     MAX_RSS_ITEMS = 1000
 
     # 各站点RSS链接获取配置
-    rss_link_conf = {
+    rss_link_conf: dict[str, dict[str, Any]] = {
         "default": {
             "xpath": "//a[@class='faqlink']/@href",
             "url": "getrss.php",
@@ -374,7 +375,7 @@ class RssHelper:
         return ".".join(parts[-2:]) if len(parts) >= 2 else hostname
 
     @staticmethod
-    def _parse_publish_time(value: str):
+    def _parse_publish_time(value: str) -> Optional[datetime]:
         """
         将 RSS 常见日期表达解析为 datetime，无法解析时返回 None。
         """
@@ -383,7 +384,7 @@ class RssHelper:
         except dateutil.parser.ParserError:
             return None
 
-    def __parse_with_rust(self, ret_xml: Optional[str]) -> Optional[list]:
+    def __parse_with_rust(self, ret_xml: Optional[str]) -> Optional[list[dict[str, Any]]]:
         """
         调用 Rust RSS 解析器，并统一处理基础 XML 校验和最大条目限制。
         """
@@ -400,19 +401,19 @@ class RssHelper:
             logger.warning(f"RSS条目过多: 超过{self.MAX_RSS_ITEMS}，仅处理前{self.MAX_RSS_ITEMS}个")
         return rust_items[:self.MAX_RSS_ITEMS]
 
-    def parse(self, url, proxy: bool = False,
-              timeout: Optional[int] = 15, headers: dict = None, ua: str = None) -> Union[List[dict], None, bool]:
+    def parse(self, url: str, proxy: bool = False,
+              timeout: Optional[int] = 15, headers: Optional[dict[str, str]] = None, ua: Optional[str] = None) -> Union[List[dict[str, Any]], None, bool]:
         """
         解析 RSS 地址并保留插件兼容的返回约定。
         """
-        url = UrlUtils.normalize_http_url(url)
-        if url is None:
+        normalized_url = UrlUtils.normalize_http_url(url)
+        if normalized_url is None:
             return False
-        return self._parse_impl(url, proxy=proxy, timeout=timeout, headers=headers, ua=ua)
+        return self._parse_impl(normalized_url, proxy=proxy, timeout=timeout, headers=headers, ua=ua)
 
-    def _parse_impl(self, url, proxy: bool = False,
-                    timeout: Optional[int] = 15, headers: dict = None,
-                    ua: str = None) -> Union[List[dict], None, bool]:
+    def _parse_impl(self, url: str, proxy: bool = False,
+                    timeout: Optional[int] = 15, headers: Optional[dict[str, str]] = None,
+                    ua: Optional[str] = None) -> Union[List[dict[str, Any]], None, bool]:
         """
         解析RSS订阅URL，获取RSS中的种子信息
         :param url: RSS地址
@@ -422,7 +423,7 @@ class RssHelper:
         :param ua: 自定义User-Agent
         :return: 种子信息列表，如为None代表Rss过期，如果为False则为错误
         """
-        ret_array: list = []
+        ret_array: list[dict[str, Any]] = []
         http_port, _, _ = _require_rss_ports()
 
         try:
@@ -567,12 +568,12 @@ class RssHelper:
                             if not pubdate_nodes:
                                 pubdate_nodes = item.xpath('.//*[local-name()="pubDate"] | .//*[local-name()="published"] | .//*[local-name()="updated"]')
 
-                            pubdate = ""
+                            pubdate: Union[str, datetime] = ""
                             if pubdate_nodes and pubdate_nodes[0].text:
-                                pubdate = self._parse_publish_time(pubdate_nodes[0].text)
-                                if pubdate is not None:
+                                parsed_pubdate = self._parse_publish_time(pubdate_nodes[0].text)
+                                if parsed_pubdate is not None:
                                     # 转为本地时区
-                                    pubdate = pubdate.astimezone(tz=None)
+                                    pubdate = parsed_pubdate.astimezone(tz=None)
 
                             # 获取豆瓣昵称
                             nickname_nodes = item.xpath('.//*[local-name()="creator"]')
@@ -617,7 +618,7 @@ class RssHelper:
 
         return ret_array
 
-    def get_rss_link(self, url: str, cookie: str, ua: str, proxy: bool = False, timeout: int = None) -> Tuple[str, str]:
+    def get_rss_link(self, url: str, cookie: str, ua: str, proxy: bool = False, timeout: Optional[int] = None) -> Tuple[str, str]:
         """
         获取站点rss地址
         :param url: 站点地址
@@ -631,6 +632,8 @@ class RssHelper:
             http_port, browser_port, _ = _require_rss_ports()
             domain = self._get_site_domain(url)
             site_conf = self.rss_link_conf.get(domain) or self.rss_link_conf.get("default")
+            if site_conf is None:
+                return "", f"获取RSS链接失败：未找到站点配置 {url}"
             rss_url = urljoin(url, site_conf.get("url"))
             rss_params = site_conf.get("params")
             if site_conf.get("render"):
@@ -644,7 +647,7 @@ class RssHelper:
             else:
                 res = http_port.post(
                     url=rss_url,
-                    data=rss_params,
+                    data=rss_params if isinstance(rss_params, dict) else {},
                     cookie=cookie,
                     ua=ua,
                     proxies=get_chain_runtime_config_snapshot().proxy if proxy else None,

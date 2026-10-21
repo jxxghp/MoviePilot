@@ -25,7 +25,7 @@ from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.version import get_app_version
 from app.schemas.response import Response as _SchemaResponse
-from app.schemas.servarr import RadarrMovie, SonarrSeries
+from app.schemas.servarr import RadarrMovie, SonarrSeason, SonarrSeries
 from app.schemas.servarr import RadarrMovie as _SchemaRadarrMovie
 from app.schemas.servarr import ServarrIdResponse as _SchemaServarrIdResponse
 from app.schemas.servarr import ServarrLanguageProfile as _SchemaServarrLanguageProfile
@@ -75,15 +75,16 @@ def _resolve_series_media(
     meta = None
     if tvdbid:
         tvdbinfo = MediaChain().tvdb_info(tvdbid=tvdbid)
-        if tvdbinfo and tvdbinfo.get("name"):
-            meta = MetaInfo(tvdbinfo.get("name"))
+        tvdb_name = tvdbinfo.get("name") if tvdbinfo else None
+        if isinstance(tvdb_name, str) and tvdb_name:
+            meta = MetaInfo(tvdb_name)
     if not meta and title:
         meta = MetaInfo(title)
     if not meta:
         return None
     meta.type = MediaType.TV
     if year:
-        meta.year = year
+        meta.year = str(year)
     return MediaChain().recognize_by_meta(meta, obtain_images=False)
 
 
@@ -622,10 +623,7 @@ async def arr_series(
                 title=subscribe.name,
                 seasonCount=1,
                 seasons=[
-                    {
-                        "seasonNumber": subscribe.season,
-                        "monitored": True,
-                    }
+                    SonarrSeason(seasonNumber=subscribe.season, monitored=True)
                 ],
                 remotePoster=subscribe.poster,
                 year=subscribe.year,
@@ -675,17 +673,22 @@ def arr_series_lookup(
             continue
 
         # 季信息(只取默认季类型，排除特别季)
+        seasons_data = tvdbinfo.get("seasons") or []
         sea_num = len(
             [
                 season
-                for season in tvdbinfo.get("seasons")
+                for season in seasons_data
+                if isinstance(season, dict)
                 if season["type"]["id"] == tvdbinfo.get("defaultSeasonType") and season["number"] > 0
             ]
         )
         seas = list(range(1, int(sea_num) + 1)) if sea_num else []
 
         # 根据TVDB查询媒体信息
-        meta = MetaInfo(tvdbinfo.get("name"))
+        tvdb_name = tvdbinfo.get("name")
+        if not isinstance(tvdb_name, str) or not tvdb_name:
+            continue
+        meta = MetaInfo(tvdb_name)
         meta.type = MediaType.TV
         mediainfo = MediaChain().recognize_by_meta(
             meta,
@@ -704,7 +707,7 @@ def arr_series_lookup(
             hasfile = False
 
         # 查询订阅信息
-        seasons: List[dict] = []
+        seasons: List[SonarrSeason] = []
         subscribes = subscriptions.list_by_media_identity_sync(
             MediaSource.TMDB,
             str(mediainfo.tmdb_id),
@@ -717,17 +720,11 @@ def arr_series_lookup(
             for sea in seas:
                 if sea in sub_seas:
                     seasons.append(
-                        {
-                            "seasonNumber": sea,
-                            "monitored": True,
-                        }
+                        SonarrSeason(seasonNumber=sea, monitored=True)
                     )
                 else:
                     seasons.append(
-                        {
-                            "seasonNumber": sea,
-                            "monitored": False,
-                        }
+                        SonarrSeason(seasonNumber=sea, monitored=False)
                     )
             subid = subscribes[-1].id
         else:
@@ -735,10 +732,7 @@ def arr_series_lookup(
             monitored = False
             for sea in seas:
                 seasons.append(
-                    {
-                        "seasonNumber": sea,
-                        "monitored": False,
-                    }
+                    SonarrSeason(seasonNumber=sea, monitored=False)
                 )
         sonarr_series = SonarrSeries(
             id=subid,
@@ -781,10 +775,7 @@ async def arr_serie(
             title=subscribe.name,
             seasonCount=1,
             seasons=[
-                {
-                    "seasonNumber": subscribe.season,
-                    "monitored": True,
-                }
+                SonarrSeason(seasonNumber=subscribe.season, monitored=True)
             ],
             year=subscribe.year,
             remotePoster=subscribe.poster,

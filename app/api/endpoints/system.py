@@ -336,7 +336,7 @@ async def proxy_img(
     use_cookies: bool = False,
     if_none_match: Annotated[str | None, Header()] = None,
     _: _SchemaTokenPayload = Depends(verify_resource_token),
-) -> Response:
+) -> Optional[Response]:
     """
     图片代理，可选是否使用代理服务器，支持 HTTP 缓存
     """
@@ -373,7 +373,7 @@ async def cache_img(
     url: str,
     if_none_match: Annotated[str | None, Header()] = None,
     _: _SchemaTokenPayload = Depends(verify_resource_token),
-) -> Response:
+) -> Optional[Response]:
     """
     本地缓存图片文件，支持 HTTP 缓存，如果启用全局图片缓存，则使用磁盘缓存
     """
@@ -431,7 +431,7 @@ async def notification_image(
     summary="查询非敏感系统设置",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
-def get_global_setting(token: str) -> _SchemaResponse[_SchemaJsonObject]:
+def get_global_setting(token: str) -> _SchemaResponse[dict[str, Any]]:
     """
     查询非敏感系统设置（默认鉴权）
     仅包含登录前UI初始化必需的字段
@@ -471,7 +471,7 @@ def get_global_setting(token: str) -> _SchemaResponse[_SchemaJsonObject]:
 async def get_user_global_setting(
     _: ApiPrincipal = Depends(get_current_active_user_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse[_SchemaJsonObject]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     查询用户相关系统设置（登录后获取）
     包含业务功能相关的配置和用户权限信息
@@ -613,7 +613,7 @@ async def delete_database_backup(
 async def get_env_setting(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     查询系统环境变量，包括当前版本号（仅管理员）
     """
@@ -643,7 +643,7 @@ async def get_env_setting(
 async def usage_statistic(
     _: ApiPrincipal = Depends(get_current_active_user_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse[_SchemaJsonObject]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     查询安装版本统计报表
     """
@@ -664,17 +664,17 @@ async def ping(_: ApiPrincipal = Depends(get_current_active_user_async)) -> _Sch
     response_model=_SchemaResponse[_SchemaSystemEnvironmentUpdateData],
 )
 async def set_env_setting(
-    env: dict,
+    env: dict[str, Any],
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-):
+) -> _SchemaResponse[_SchemaSystemEnvironmentUpdateData]:
     """
     更新系统环境变量（仅管理员）
     """
     result = await runtime.system.update_environment(env)
     return _SchemaResponse(
         success=result.success,
-        message=result.message,
+        message=result.message or "",
         data=result.data,
     )
 
@@ -724,7 +724,7 @@ async def get_progress(
     summary="查询公开系统设置",
     response_model=_SchemaResponse[_SchemaValueData],
 )
-async def get_public_setting(key: str, _: ApiPrincipal = Depends(get_current_active_user_async)) -> _SchemaResponse[_SchemaValueData]:
+async def get_public_setting(key: str, _: ApiPrincipal = Depends(get_current_active_user_async)) -> _SchemaResponse[dict[str, Any]]:
     """
     查询普通用户可读取的非敏感系统设置，存储配置只返回名称和类型
     """
@@ -751,14 +751,14 @@ async def sync_plugin_market_from_wiki(
     request: Optional[_SchemaPluginMarketSyncRequest] = Body(default=None),
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[_SchemaPluginMarketSyncData]:
     """
     从 Wiki 插件文档同步插件市场仓库地址。
     """
     result = await runtime.system.sync_plugin_market(request.wiki_url if request else None)
     return _SchemaResponse(
         success=result.success,
-        message=result.message,
+        message=result.message or "",
         data=result.data,
     )
 
@@ -794,7 +794,7 @@ async def get_message(
                 if await request.is_disconnected():
                     break
                 # 一次推送全部积压消息，避免页面重新打开后按 3 秒一条逐条补弹
-                details = message.drain(role)
+                details = message.drain(role or "system")
                 if details:
                     for detail in details:
                         yield f"data: {detail}\n\n"
@@ -911,7 +911,7 @@ async def latest_version(
     runtime: HostRuntime = Depends(get_host_runtime),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-) -> _SchemaResponse[_SchemaJsonObjectList]:
+) -> _SchemaResponse[list[dict[str, Any]]]:
     """
     查询Github所有Release版本
     """
@@ -931,7 +931,7 @@ def ruletest(
     rulegroup_name: str,
     subtitle: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
-) -> _SchemaResponse[_SchemaRuleTestData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     过滤规则测试，规则类型 1-订阅，2-洗版，3-搜索
     """
@@ -1005,7 +1005,7 @@ def ruletest(
 )
 async def nettest_targets(
     _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None
-) -> _SchemaResponse[list[_SchemaNetTestTarget]]:
+) -> _SchemaResponse[list[dict[str, Any]]]:
     """
     获取网络测试目标。
 
@@ -1037,7 +1037,7 @@ async def nettest(
     url: Optional[str] = None,
     include: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
-) -> _SchemaResponse[_SchemaTimeData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     测试内置目标的网络连通性。
 
@@ -1052,8 +1052,8 @@ async def nettest(
     data = {"time": result.elapsed_ms} if result.elapsed_ms is not None else None
     return _SchemaResponse(
         success=result.success,
-        message=result.message,
-        data=data,
+        message=result.message or "",
+        data=data if data is not None else None,
     )
 
 
@@ -1066,7 +1066,7 @@ def restart_system(
     重启系统（仅管理员）
     """
     result = runtime.system.restart()
-    return _SchemaResponse(success=result.success, message=result.message)
+    return _SchemaResponse(success=result.success, message=result.message or "")
 
 
 @router.post("/upgrade", summary="Dev 更新并重启系统", response_model=_SchemaResponse[None])
@@ -1079,7 +1079,7 @@ def upgrade_system(
     保留 Dev 更新入口；Release 更新必须使用后台下载与确认安装流程。
     """
     result = runtime.system.upgrade(mode)
-    return _SchemaResponse(success=result.success, message=result.message)
+    return _SchemaResponse(success=result.success, message=result.message or "")
 
 
 @router.get(
@@ -1126,7 +1126,7 @@ def download_system_update(
     单类或合并下载更新并立即返回状态；all 准备全部最新制品（仅管理员）。
     """
     result = runtime.system.download_update(request.target if request else "application")
-    return _SchemaResponse(success=result.success, data=result.data, message=result.message)
+    return _SchemaResponse(success=result.success, data=result.data, message=result.message or "")
 
 
 @router.post(
@@ -1143,7 +1143,7 @@ def install_system_update(
     校验所选制品后重启安装；all 要求全部更新就绪并只重启一次（仅管理员）。
     """
     result = runtime.system.install_update(request.target if request else "application")
-    return _SchemaResponse(success=result.success, message=result.message)
+    return _SchemaResponse(success=result.success, message=result.message or "")
 
 
 @router.get("/runscheduler", summary="运行服务", response_model=_SchemaResponse[None])

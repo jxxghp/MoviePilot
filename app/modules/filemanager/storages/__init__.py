@@ -4,7 +4,7 @@
 
 from abc import ABCMeta, abstractmethod
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
 from tqdm import tqdm
 
@@ -16,6 +16,7 @@ from app.schemas.exception import StorageQueryError
 from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.system import StorageConf as _SchemaStorageConf
+from app.schemas.types import StorageSchema
 
 _SnapshotInfo = Dict[str, Dict[str, Any]]
 
@@ -55,7 +56,7 @@ class StorageBase(metaclass=ABCMeta):
     具体实现负责外部资源、路径含义和失败语义。普通查询可返回空结果，
     覆盖保护等需要区分不存在与失败的场景必须使用严格查询接口。
     """
-    schema = None
+    schema: ClassVar[StorageSchema]
     transtype: dict[str, str] = {}
 
     @property
@@ -97,7 +98,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
-    def generate_qrcode(self, *args, **kwargs) -> Optional[Tuple[dict[str, object], str]]:
+    def generate_qrcode(self, *args: Any, **kwargs: Any) -> Optional[Tuple[dict[str, object], str]]:
         """
         提供存储二维码登录扩展入口。
 
@@ -107,7 +108,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
-    def generate_auth_url(self, *args, **kwargs) -> Optional[Tuple[dict[str, object], str]]:
+    def generate_auth_url(self, *args: Any, **kwargs: Any) -> Optional[Tuple[dict[str, object], str]]:
         """
         提供存储 OAuth2 授权地址扩展入口。
 
@@ -117,7 +118,7 @@ class StorageBase(metaclass=ABCMeta):
         """
         return {}, "此存储不支持 OAuth2 授权"
 
-    def check_login(self, *args, **kwargs) -> Optional[Dict[str, str]]:
+    def check_login(self, *args: Any, **kwargs: Any) -> Optional[Tuple[dict[str, Any], str]]:
         """
         提供存储登录状态查询扩展入口。
 
@@ -135,14 +136,14 @@ class StorageBase(metaclass=ABCMeta):
         """
         return self.storagehelper.get_storage(self.schema.value)
 
-    def get_conf(self) -> dict:
+    def get_conf(self) -> dict[str, Any]:
         """
         读取当前存储的配置内容。
 
         :return: 配置字典；未配置时返回空字典
         """
         conf = self.get_config()
-        return conf.config if conf else {}
+        return conf.config or {} if conf else {}
 
     def set_config(self, conf: dict[str, object]) -> None:
         """
@@ -286,6 +287,8 @@ class StorageBase(metaclass=ABCMeta):
         :param fileitem: 需要查找父目录的文件或目录项
         :return: 父路径对应的存储项；普通查询无结果时返回 None
         """
+        if not fileitem.path:
+            return None
         return self.get_item(Path(fileitem.path).parent)
 
     @abstractmethod
@@ -509,8 +512,14 @@ class StorageBase(metaclass=ABCMeta):
         :param previous_children: 旧快照目录直接子项索引
         :param previous_files: 旧快照路径反向索引
         """
+        if not fileitem.path:
+            return
         directory_path = PurePosixPath(fileitem.path)
-        child_paths = {PurePosixPath(sub_file.path) for sub_file in sub_files}
+        child_paths = {
+            PurePosixPath(sub_file.path)
+            for sub_file in sub_files
+            if sub_file.path
+        }
         for direct_child_path in previous_children.pop(directory_path, ()):
             if direct_child_path not in child_paths:
                 StorageBase._snapshot_remove_previous_subtree(
@@ -539,6 +548,8 @@ class StorageBase(metaclass=ABCMeta):
         :param current_depth: 当前递归深度
         """
         try:
+            if not fileitem.path:
+                return
             if fileitem.type == "dir":
                 if current_depth >= max_depth:
                     return

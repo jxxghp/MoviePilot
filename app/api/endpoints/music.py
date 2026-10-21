@@ -2,7 +2,7 @@
 提供音乐身份、曲目、歌词与资源发现接口。
 """
 
-from typing import Annotated, Optional, Union
+from typing import Annotated, Any, Optional, Union
 
 from fastapi import Depends, HTTPException, Query
 
@@ -139,7 +139,7 @@ async def recognize_music(
 )
 async def music_recognition_cache(
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     查询可管理的 MusicBrainz 识别缓存。
     """
@@ -353,13 +353,12 @@ def music_library_status(
     media_chain = MediaChain()
     for item in request.items:
         # 音乐模型沿用动态反序列化入口，静态类型无法完整描述返回模型。
-        info = MusicInfo.from_dict(item.model_dump())  # type: ignore[misc]
+        info = MusicInfo.from_dict(item.model_dump())
         # 艺术家作品列表来自 Release Group，本身不包含曲数。此查询的语义
         # 是“已存在/已入库”，无曲数时一首匹配曲目即足以阻止重复下载。
         expected_tracks = info.total_tracks or 1
         info.total_tracks = expected_tracks
-        # 音乐媒体复用既有媒体存在性接口，其静态参数类型尚未包含音乐模型。
-        exists = media_chain.media_exists(mediainfo=info, query=MEDIA_SERVER_EXISTENCE_QUERY) is not None  # type: ignore[arg-type]
+        exists = media_chain.media_exists(mediainfo=info, query=MEDIA_SERVER_EXISTENCE_QUERY) is not None
         assert item.media_source is not None
         assert item.media_id is not None
         statuses.append(

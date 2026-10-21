@@ -12,8 +12,7 @@ from app.schemas.context import SubtitleInfo
 from app.schemas.context import TorrentInfo as TorrentInfo
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SearchSourcePage(BaseModel):  # type: ignore[misc]
+class SearchSourcePage(BaseModel):
     """
     单页 SSE 的来源结果；客户端持有页号并回传 source，原始页摘要由后端缓存。
     """
@@ -25,8 +24,7 @@ class SearchSourcePage(BaseModel):  # type: ignore[misc]
     error: Optional[str] = Field(default=None, description="本页请求失败的原因")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SearchLastContextData(BaseModel):  # type: ignore[misc]
+class SearchLastContextData(BaseModel):
     """
     上一次搜索的请求参数与结果。
     """
@@ -35,8 +33,7 @@ class SearchLastContextData(BaseModel):  # type: ignore[misc]
     results: list[Union[_Context, SubtitleInfo]] = Field(default_factory=list, description="查询结果列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SearchRecommendStatusData(BaseModel):  # type: ignore[misc]
+class SearchRecommendStatusData(BaseModel):
     """
     AI 搜索结果推荐任务状态。
     """

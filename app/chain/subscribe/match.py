@@ -4,7 +4,7 @@
 
 import copy
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional, cast
 
 from app.application.configuration import get_configured_system_config
 from app.application.subscription.activity import current_activity_run, subscription_activity_scope
@@ -60,7 +60,7 @@ def _record_filter_rejection(helper: TorrentHelper, context: Context, params: Di
     由筛选组件 提供未满足条件的解释，兼容旧插件和测试替身。
     """
     explain = getattr(helper, "filter_torrent_reason", None)
-    if explain:
+    if explain and context.torrent_info:
         _record_match_resource(context, "rejected", explain(context.torrent_info, params))
 
 
@@ -330,6 +330,9 @@ def _prepare_match_torrents(
                 # 音乐 RSS 使用订阅目标做实体匹配，不应进入影视识别并累计失败次数。
                 processed_torrents[domain].append(context)
                 continue
+            if context.torrent_info is None or context.meta_info is None:
+                processed_torrents[domain].append(context)
+                continue
             if (
                 not context.media_info or not resolve_media_identity(media=context.media_info)[1]
             ) and context.media_recognize_fail_count < 3:
@@ -398,7 +401,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     continue
                 with subscription_activity_scope(getattr(self, "subscription_activity", None), subscribe, "refresh", source) as activity:
                     activity.counts["sites"] = len(site_facts)
-                    activity.details["sites"] = list(site_facts)
+                    activity.details["sites"] = cast(Any, list(site_facts))
                     activity.details["reason"] = "本轮没有可供此订阅匹配的共享候选"
             logger.warn("当前没有可检查的订阅资源")
             if progress_callback:
@@ -590,7 +593,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         with subscription_activity_scope(getattr(self, "subscription_activity", None), subscribe, "refresh", execution_context.source) as activity:
             activity.counts["discovered"] = execution_context.refresh_candidates or sum(len(items) for items in processed_torrents.values())
             activity.counts["sites"] = len(execution_context.refresh_sites) or len(processed_torrents)
-            activity.details["sites"] = list(execution_context.refresh_sites)
+            activity.details["sites"] = cast(Any, list(execution_context.refresh_sites))
             activity.details["candidate_scope"] = "shared"
             result = self._execute_match(
                 subscribe=subscribe, processed_torrents=processed_torrents,
@@ -645,7 +648,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             return "completed"
 
         # 匹配前聚合多来源别名；清理大字段时保留匹配所需的标题合集。
-        mediainfo = MediaChain().supplement_media_info(mediainfo) or mediainfo
+        mediainfo = cast(MediaInfo, MediaChain().supplement_media_info(mediainfo) or mediainfo)
         auxiliary_names = list(getattr(mediainfo, "names", None) or [])
         mediainfo.clear()
         mediainfo.names = auxiliary_names
@@ -670,9 +673,9 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                 if runtime_stop_state.is_system_stopped or execution_context.should_stop():
                     break
                 _context = copy.copy(context)
-                torrent_meta = _context.meta_info
+                torrent_meta = cast(MetaBase, _context.meta_info)
                 torrent_mediainfo = _context.media_info
-                torrent_info = _context.torrent_info
+                torrent_info = cast(TorrentInfo, _context.torrent_info)
 
                 # 不在订阅站点范围的不处理
                 if sub_sites and torrent_info.site not in sub_sites:
@@ -683,14 +686,14 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                 if custom_words_list:
                     # 从原始标题重新应用识别词，避免对已改写文本重复替换。
                     _, apply_words = wordsmatcher.prepare(
-                        torrent_meta.org_string, custom_words=custom_words_list
+                        cast(str, torrent_meta.org_string), custom_words=custom_words_list
                     )
                     if apply_words:
                         logger.debug(
                             f"{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据..."
                         )
                         torrent_meta = MetaInfo(
-                            title=torrent_info.title,
+                            title=cast(str, torrent_info.title),
                             subtitle=torrent_info.description,
                             custom_words=custom_words_list,
                         )
@@ -736,7 +739,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         continue
                     torrent_mediainfo = self._SubscribeChain__reconcile_candidate_media(
                         target_mediainfo=mediainfo,
-                        candidate_mediainfo=torrent_mediainfo,
+                        candidate_mediainfo=cast(MediaInfo, torrent_mediainfo),
                         torrent_meta=torrent_meta,
                         torrent_info=torrent_info,
                         context=_context,

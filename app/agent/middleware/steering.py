@@ -32,7 +32,7 @@ def _to_human_message(message: SteeringMessage) -> HumanMessage:
         "images": [{"index": index + 1, "type": "image"} for index, _ in enumerate(message.images)],
         "files": list(message.files),
     }
-    content: list[dict[str, Any]] = [
+    content: list[str | dict[str, Any]] = [
         {
             "type": "text",
             "text": json.dumps(payload, ensure_ascii=False, indent=2),
@@ -45,7 +45,7 @@ def _to_human_message(message: SteeringMessage) -> HumanMessage:
     )
 
 
-class SteeringMiddleware(AgentMiddleware):  # type: ignore[misc]
+class SteeringMiddleware(AgentMiddleware):
     """
     在模型请求边界消费会话 inbox，避免并发启动第二条 Agent 图。
     """

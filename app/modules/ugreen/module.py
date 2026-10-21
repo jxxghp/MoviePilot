@@ -293,7 +293,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_latest(num=count)
+        return server_obj.get_latest(num=count if count is not None else 20)
 
     def mediaserver_latest_images(
         self,
@@ -314,7 +314,10 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if not server_obj:
             return []
-        return server_obj.get_latest_backdrops(num=count, remote=remote) or []
+        return server_obj.get_latest_backdrops(
+            num=count if count is not None else 20,
+            remote=remote if remote is not None else False,
+        ) or []
 
     def mediaserver_image_cookies(
         self,

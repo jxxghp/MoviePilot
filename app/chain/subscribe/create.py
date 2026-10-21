@@ -207,7 +207,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         mediainfo = context.mediainfo
         if context.mtype == MediaType.MUSIC or not mediainfo or mediainfo.media_source == MediaSource.TMDB:
             return
-        meta = MetaInfo(mediainfo.title)
+        meta = MetaInfo(mediainfo.title or "")
         mediainfo.title = meta.name
         if context.season is None:
             context.season = meta.begin_season
@@ -403,6 +403,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         同步补齐电视剧季集信息，并保持外部集数刷新只能扩展创建目标。
         """
         mediainfo = context.mediainfo
+        if mediainfo is None:
+            return "未识别到媒体信息"
         if mediainfo.type != MediaType.TV:
             context.season = None
             return None
@@ -417,6 +419,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
                     cache=False,
                 )
                 context.mediainfo = mediainfo
+                if mediainfo is None:
+                    return "未识别到媒体信息"
                 error = self._SubscribeChain__validate_subscribe_seasons(context)
                 if error:
                     return error
@@ -447,6 +451,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         异步补齐电视剧季集信息，并复用同步入口的结果校验和字段写入规则。
         """
         mediainfo = context.mediainfo
+        if mediainfo is None:
+            return "未识别到媒体信息"
         if mediainfo.type != MediaType.TV:
             context.season = None
             return None
@@ -461,6 +467,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
                     cache=False,
                 )
                 context.mediainfo = mediainfo
+                if mediainfo is None:
+                    return "未识别到媒体信息"
                 error = self._SubscribeChain__validate_subscribe_seasons(context)
                 if error:
                     return error
@@ -525,8 +533,11 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         """
         同步补图并写入规范媒体身份和订阅默认配置。
         """
-        if context.mediainfo.type != MediaType.MUSIC:
-            self.obtain_images(mediainfo=context.mediainfo)
+        mediainfo = context.mediainfo
+        if mediainfo is None:
+            return
+        if mediainfo.type != MediaType.MUSIC:
+            self.obtain_images(mediainfo=mediainfo)
         self._SubscribeChain__apply_subscribe_create_defaults(context)
 
     async def _SubscribeChain__async_finalize_subscribe_create_context(
@@ -536,22 +547,29 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         """
         异步补图并写入规范媒体身份和订阅默认配置。
         """
-        if context.mediainfo.type != MediaType.MUSIC:
-            await self.async_obtain_images(mediainfo=context.mediainfo)
+        mediainfo = context.mediainfo
+        if mediainfo is None:
+            return
+        if mediainfo.type != MediaType.MUSIC:
+            await self.async_obtain_images(mediainfo=mediainfo)
         self._SubscribeChain__apply_subscribe_create_defaults(context)
 
     def _SubscribeChain__apply_subscribe_create_defaults(self, context: _SubscribeCreateContext) -> None:
         """
         以最终识别结果覆盖身份字段，并补齐当前媒体类型的默认订阅参数。
         """
-        context.media_source, context.media_id = resolve_media_identity(media=context.mediainfo)
+        mediainfo = context.mediainfo
+        if mediainfo is None:
+            return
+        context.media_source, context.media_id = resolve_media_identity(media=mediainfo)
         context.options.update(
             {
                 "media_source": context.media_source,
                 "media_id": context.media_id,
             }
         )
-        context.options.update(self._SubscribeChain__get_default_kwargs(context.mediainfo.type, **context.options))
+        if mediainfo.type is not None:
+            context.options.update(self._SubscribeChain__get_default_kwargs(mediainfo.type, **context.options))
 
     @staticmethod
     def _SubscribeChain__subscribe_post_commit_context(
@@ -561,6 +579,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         """
         从创建阶段状态冻结提交后副作用需要的最小快照。
         """
+        if context.mediainfo is None:
+            raise ValueError("订阅提交上下文缺少媒体信息")
         return _SubscribePostCommitContext(
             title=context.title,
             year=context.year,
@@ -581,13 +601,16 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         """
         同步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。
         """
+        if context.mediainfo is None:
+            return None, "未识别到媒体信息"
+        mediainfo = context.mediainfo
         post_commit_context = self._SubscribeChain__subscribe_post_commit_context(
             context,
             self._SubscribeChain__build_subscribe_notification(context),
         )
         try:
             sid, err_msg = add_subscribe(
-                mediainfo=context.mediainfo,
+                mediainfo=mediainfo,
                 subscribe_oper=self.subscription_repository,
                 season=context.season,
                 username=context.username,
@@ -613,13 +636,16 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         """
         异步提交订阅，并在提交成功后按原顺序执行消息、事件和统计。
         """
+        if context.mediainfo is None:
+            return None, "未识别到媒体信息"
+        mediainfo = context.mediainfo
         post_commit_context = self._SubscribeChain__subscribe_post_commit_context(
             context,
             self._SubscribeChain__build_subscribe_notification(context),
         )
         try:
             sid, err_msg = await async_add_subscribe(
-                mediainfo=context.mediainfo,
+                mediainfo=mediainfo,
                 subscribe_oper=self.subscription_repository,
                 season=context.season,
                 username=context.username,
@@ -678,11 +704,13 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             media_id,
             kwargs,
         )
-        if error:
-            return None, error
+        if error or context is None:
+            return None, error or "订阅准备失败"
         error = self._SubscribeChain__recognize_subscribe_media(context)
         if error:
             return None, error
+        if context.mediainfo is None:
+            return None, "未识别到媒体信息"
         error = self._SubscribeChain__prepare_subscribe_episodes(context)
         if error:
             return None, error
@@ -726,7 +754,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             media_id,
             kwargs,
         )
-        if error or context is None:
+        if error or context is None or context.mediainfo is None:
             return None, error or "订阅准备失败"
         return await self._SubscribeChain__async_persist_subscribe_create(context)
 

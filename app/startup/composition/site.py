@@ -117,10 +117,7 @@ class _RssParserAdapter:
         """
         调用原生解析器，不可用时保留 None 兜底语义。
         """
-        return cast(
-            Optional[list[dict[str, Any]]],
-            rust_accel.parse_rss_items(content, max_items),
-        )
+        return rust_accel.parse_rss_items(content, max_items)
 
 
 class _CookieBrowserAdapter:

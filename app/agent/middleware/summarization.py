@@ -143,26 +143,26 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
                 None,
             )
             if first_human_index is None:
-                return trim_messages(
+                return cast(list[AnyMessage], trim_messages(
                     messages,
                     max_tokens=self.trim_tokens_to_summarize,
                     token_counter=self.token_counter,
                     strategy="last",
                     allow_partial=True,
                     include_system=True,
-                )
+                ))
 
             first_human = messages[first_human_index]
             first_tokens = self.token_counter([first_human])
             if first_tokens >= self.trim_tokens_to_summarize:
-                return trim_messages(
+                return cast(list[AnyMessage], trim_messages(
                     messages,
                     max_tokens=self.trim_tokens_to_summarize,
                     token_counter=self.token_counter,
                     strategy="last",
                     allow_partial=True,
                     include_system=True,
-                )
+                ))
             tail = trim_messages(
                 messages[first_human_index + 1 :],
                 max_tokens=self.trim_tokens_to_summarize - first_tokens,
@@ -171,7 +171,7 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
                 allow_partial=True,
                 include_system=True,
             )
-            return [first_human, *tail]
+            return [first_human, *cast(list[AnyMessage], tail)]
         except Exception:
             return trimmed_messages
 
@@ -182,17 +182,14 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         """
         显式标注摘要分区的返回类型，避免外部中间件类型缺失扩散。
         """
-        return cast(
-            tuple[list[AnyMessage], list[AnyMessage]],
-            SummarizationMiddleware._partition_messages(messages, cutoff_index),
-        )
+        return SummarizationMiddleware._partition_messages(messages, cutoff_index)
 
     def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
         """
         同步摘要失败时保持原图状态。
         """
         formatted_messages = self._prepare_summary_input(messages_to_summarize)
-        summary_model = getattr(self, "_summary_model", self.model)
+        summary_model = cast(Any, getattr(self, "_summary_model", self.model))
         try:
             response = summary_model.invoke(
                 self.summary_prompt.format(messages=formatted_messages).rstrip(),
@@ -205,14 +202,14 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
             )
         except Exception as err:
             raise ContextSummarizationError(self._ERROR_MESSAGE) from err
-        return self._require_valid_summary(response.text.strip())
+        return self._require_valid_summary(str(response.text).strip())
 
     async def _acreate_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
         """
         异步摘要失败时保持原图状态。
         """
         formatted_messages = self._prepare_summary_input(messages_to_summarize)
-        summary_model = getattr(self, "_summary_model", self.model)
+        summary_model = cast(Any, getattr(self, "_summary_model", self.model))
         try:
             response = await summary_model.ainvoke(
                 self.summary_prompt.format(messages=formatted_messages).rstrip(),
@@ -225,7 +222,7 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
             )
         except Exception as err:
             raise ContextSummarizationError(self._ERROR_MESSAGE) from err
-        return self._require_valid_summary(response.text.strip())
+        return self._require_valid_summary(str(response.text).strip())
 
     def partition_for_token_limit(
         self,
@@ -359,7 +356,7 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         """
         将摘要转换为 LangChain 约定的可识别历史消息。
         """
-        return self._build_new_messages(summary)
+        return [*self._build_new_messages(summary)]
 
     def ensure_message_ids(self, messages: list[AnyMessage]) -> None:
         """
@@ -403,6 +400,9 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         trigger_fraction: float = 0.85,
         keep_fraction: float = 0.10,
     ) -> None:
+        """
+        绑定摘要策略和预算比例，供最终模型请求执行有界上下文压缩。
+        """
         self.summarizer = summarizer
         self.trigger_fraction = trigger_fraction
         self.keep_fraction = keep_fraction

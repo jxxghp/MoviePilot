@@ -49,7 +49,10 @@ from app.application.plugin.identity import (
     TrustedPluginSourceType,
     normalize_physical_plugin_id,
 )
-from app.application.plugin.install import PluginInstallCommand
+from app.application.plugin.install import (
+    PluginInstallCommand,
+    PluginPackageTransactionPort,
+)
 from app.application.plugin.inventory import PluginCandidateInventoryReader
 from app.application.plugin.lifecycle import PluginStartupLease
 from app.application.plugin.migration import (
@@ -64,6 +67,7 @@ from app.application.plugin.rating import (
 )
 from app.application.plugin.recovery import (
     PluginInstallationRecoveryService,
+    PluginRecoveryPackagePort,
     configure_plugin_installation_recovery,
 )
 from app.application.plugin.release import (
@@ -658,7 +662,7 @@ def configure_plugin_services() -> None:
         ) or [],
         loadable_marker=plugin_manager.mark_plugin_loadable,
         plugin_ids_provider=plugin_manager.get_plugin_ids,
-        packages=package_manager,
+        packages=cast(PluginPackageTransactionPort, package_manager),
         install_reporter=lambda plugin_id, repo_url: (
             MoviePilotServerHelper.async_install_plugin_reg(
                 plugin_id=plugin_id,
@@ -689,7 +693,7 @@ def configure_plugin_services() -> None:
     configure_plugin_installation_recovery(
         PluginInstallationRecoveryService(
             persistence=persistence,
-            packages=package_manager,
+            packages=cast(PluginRecoveryPackagePort, package_manager),
         )
     )
     configure_plugin_identity_migration(
@@ -1095,6 +1099,8 @@ def _local_plugin_sources(plugin_manager: PluginManager) -> set[str]:
             logger.warning("跳过无效的已安装插件 ID %s：%s", plugin_id, error)
     candidates: set[str] = set()
     for plugin in plugin_manager.get_local_repo_plugins():
+        if not isinstance(plugin.id, str):
+            continue
         try:
             source_id = normalize_physical_plugin_id(plugin.id)
         except ValueError:

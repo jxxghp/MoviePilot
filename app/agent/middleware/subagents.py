@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, cast
 
 from langchain.agents import create_agent
 from langchain.agents.middleware.types import (
@@ -250,7 +250,7 @@ class _SubAgentRuntimeTask:
     task_id: str
     description: str
     subagent_type: str
-    task: asyncio.Task
+    task: asyncio.Task[Any]
     created_at: datetime
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
@@ -351,8 +351,8 @@ def _cached_builtin_subagent_profiles(
     raise RuntimeError("运行时未加载任何子代理定义")
 
 
-builtin_subagent_names.cache_clear = _cached_builtin_subagent_names.cache_clear
-_builtin_subagent_profiles.cache_clear = _cached_builtin_subagent_profiles.cache_clear
+cast(Any, builtin_subagent_names).cache_clear = cast(Any, _cached_builtin_subagent_names).cache_clear
+cast(Any, _builtin_subagent_profiles).cache_clear = cast(Any, _cached_builtin_subagent_profiles).cache_clear
 
 
 def _profile_from_runtime_definition(
@@ -505,7 +505,7 @@ class _SubAgentAgentProvider:
         self._server_tools = server_tools or []
         self._policy_context = policy_context or _default_subagent_policy_context(tools)
         self._catalog = catalog
-        self._agents = {}
+        self._agents: dict[str, Any] = {}
         self._guardrails: dict[str, ToolGuardrailsMiddleware] = {}
         self._default_agent_name = "general-purpose"
 
@@ -532,26 +532,27 @@ class _SubAgentAgentProvider:
             f"创建子代理图: subagent_type={profile.name}, tools={len(subagent_tools)}"
         )
         guardrails = ToolGuardrailsMiddleware(self._policy_context)
+        middlewares: list[AgentMiddleware[Any, Any, Any]] = [
+            AgentPolicyMiddleware(
+                context=self._policy_context,
+                catalog=subagent_catalog,
+                guardrails=guardrails,
+            ),
+            guardrails,
+            FinalRequestCompactionMiddleware(
+                summarizer=ContextPreservingSummarizationMiddleware(
+                    model=self._model,
+                    keep=("messages", 20),
+                ),
+            ),
+            VisionMiddleware(),
+        ]
         agent = create_agent(
             model=self._model,
             tools=[*subagent_tools, *self._server_tools],
             system_prompt=profile.prompt,
             name=profile.name,
-            middleware=[
-                AgentPolicyMiddleware(
-                    context=self._policy_context,
-                    catalog=subagent_catalog,
-                    guardrails=guardrails,
-                ),
-                guardrails,
-                FinalRequestCompactionMiddleware(
-                    summarizer=ContextPreservingSummarizationMiddleware(
-                        model=self._model,
-                        keep=("messages", 20),
-                    ),
-                ),
-                VisionMiddleware(),
-            ],
+            middleware=middlewares,
         )
         self._agents[profile.name] = agent
         self._guardrails[profile.name] = guardrails
@@ -765,7 +766,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         self._semaphore = asyncio.Semaphore(SUBAGENT_MAX_CONCURRENT_TASKS)
         self._tasks: dict[str, _SubAgentRuntimeTask] = {}
         self._accepting_tasks = True
-        self._close_cancel_requested: set[asyncio.Task] = set()
+        self._close_cancel_requested: set[asyncio.Task[Any]] = set()
         self.tools = [
             StructuredTool.from_function(
                 coroutine=self._control_task,
@@ -967,7 +968,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 )
                 raise
 
-    def _mark_task_finished(self, task_id: str, task: asyncio.Task) -> None:
+    def _mark_task_finished(self, task_id: str, task: asyncio.Task[Any]) -> None:
         """
         记录任务完成时间并取出异常避免未读取告警。
         """
@@ -995,7 +996,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 task_id=task_id,
                 description=spec.description.strip(),
                 subagent_type="general-purpose",
-                task=None,
+                task=cast(asyncio.Task[Any], None),
                 created_at=datetime.now(),
                 terminal_sessions=spec.terminal_sessions,
             )
@@ -1005,8 +1006,8 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             )
             record.task = task
             task.add_done_callback(
-                lambda finished_task, finished_task_id=task_id: self._mark_task_finished(
-                    finished_task_id,
+                lambda finished_task: self._mark_task_finished(
+                    task_id,
                     finished_task,
                 )
             )
@@ -1064,7 +1065,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
     async def _cancel_records(
         records: list[_SubAgentRuntimeTask],
         *,
-        cancel_requested: Optional[set[asyncio.Task]] = None,
+        cancel_requested: Optional[set[asyncio.Task[Any]]] = None,
     ) -> list[_SubAgentRuntimeTask]:
         """
         取消一组任务，并返回等待上限内仍未收敛的记录。
@@ -1263,7 +1264,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             task_id=task_id,
             description=spec.description.strip(),
             subagent_type="general-purpose",
-            task=None,
+            task=cast(asyncio.Task[Any], None),
             created_at=datetime.now(),
             terminal_sessions=spec.terminal_sessions,
         )
@@ -1271,15 +1272,15 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
     def _track_pipeline_task(
         self,
         record: _SubAgentRuntimeTask,
-        task: asyncio.Task,
+        task: asyncio.Task[Any],
     ) -> None:
         """
         登记管道步骤任务，复用统一的状态和异常收口逻辑。
         """
         record.task = task
         task.add_done_callback(
-            lambda finished_task, finished_task_id=record.task_id: self._mark_task_finished(
-                finished_task_id,
+            lambda finished_task: self._mark_task_finished(
+                record.task_id,
                 finished_task,
             )
         )

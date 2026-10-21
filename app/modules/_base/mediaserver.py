@@ -5,10 +5,10 @@
 定时重连与连接测试。服务器差异（认证 API、存在性检查端点、连接探测方式）
 通过类属性与钩子方法保留在各模块。
 """
-from typing import Iterable, Optional, Tuple
+from typing import Any, Iterable, Optional, Tuple, cast
 
 from app.application.mediaserver import MusicMediaServerHelper
-from app.domain.context import MediaInfo
+from app.domain.context import MediaInfo, MusicInfo
 from app.modules import TService, _MediaServerBase, _ModuleBase
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
@@ -85,23 +85,29 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
             servers = self.get_instances().items()
         # 遍历要认证的服务器
         for name, server in servers:
+            service_name = name or ""
+            channel_name = self.get_name() or ""
             # 触发认证拦截事件
             intercept_event = eventmanager.send_event(
                 etype=ChainEventType.AuthIntercept,
                 data=_SchemaAuthInterceptCredentials(
                     username=credentials.username,
-                    channel=self.get_name(),
-                    service=name,
+                    channel=channel_name,
+                    service=service_name,
                     status="triggered",
                 ),
             )
             if intercept_event and intercept_event.event_data:
-                intercept_data: _SchemaAuthInterceptCredentials = intercept_event.event_data
+                intercept_data = (
+                    intercept_event.event_data
+                    if isinstance(intercept_event.event_data, _SchemaAuthInterceptCredentials)
+                    else _SchemaAuthInterceptCredentials.model_validate(intercept_event.event_data)
+                )
                 if intercept_data.cancel:
                     continue
-            token = server.authenticate(credentials.username, credentials.password)
+            token = cast(Any, server).authenticate(credentials.username, credentials.password)
             if token:
-                credentials.channel = self.get_name()
+                credentials.channel = channel_name
                 credentials.service = name
                 credentials.token = token
                 return credentials
@@ -136,7 +142,9 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                 continue
             if mediainfo.type == MediaType.MUSIC:
                 # 部分服务器未实现音乐查询，退化为空列表
-                matches = getattr(s, "get_music", lambda **_: [])(
+                if not isinstance(mediainfo, MusicInfo):
+                    continue
+                matches: list[Any] = getattr(s, "get_music", lambda **_: [])(
                     **MusicMediaServerHelper.search_params(mediainfo),
                     **({"query": query.with_fields(MediaServerField.MUSIC)} if query is not None else {}),
                 )
@@ -149,15 +157,16 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                         itemid=match.item_id,
                     )
                 continue
+            service = cast(Any, s)
             if mediainfo.type == MediaType.MOVIE:
                 if itemid:
-                    movie = s.get_iteminfo(itemid, **({"query": query} if query is not None else {}))
+                    movie = service.get_iteminfo(itemid, **({"query": query} if query is not None else {}))
                     if movie:
                         logger.info(f"媒体库 {name} 中找到了 {movie}")
                         return _SchemaExistMediaInfo(
                             type=MediaType.MOVIE, server_type=self._server_type_value, server=name, itemid=movie.item_id
                         )
-                movies = s.get_movies(
+                movies = service.get_movies(
                     title=mediainfo.title,
                     year=mediainfo.year,
                     media_source=mediainfo.media_source,
@@ -173,7 +182,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                         type=MediaType.MOVIE, server_type=self._server_type_value, server=name, itemid=movies[0].item_id
                     )
             else:
-                itemid, tvs = s.get_tv_episodes(
+                itemid, tvs = service.get_tv_episodes(
                     title=mediainfo.title,
                     year=mediainfo.year,
                     media_source=mediainfo.media_source,
@@ -201,13 +210,13 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         for name, server in self.get_instances().items():
             if self._is_inactive(server):
                 logger.info(f"{self.get_name()}服务器 {name} 连接断开，尝试重连 ...")
-                server.reconnect()
+                cast(Any, server).reconnect()
 
-    def _is_inactive(self, server) -> bool:
+    def _is_inactive(self, server: Any) -> bool:
         """
         定时重连的失活判断钩子，子类可覆写（如增加配置完整性检查）。
         """
-        return server.is_inactive()
+        return bool(server.is_inactive())
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
@@ -223,7 +232,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                 return False, error
         return True, ""
 
-    def _test_server(self, server, name: Optional[str]) -> Optional[str]:
+    def _test_server(self, server: Any, name: Optional[str]) -> Optional[str]:
         """
         连接测试钩子，返回失败信息，None 表示就绪，子类可覆写。
         """

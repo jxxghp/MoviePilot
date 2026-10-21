@@ -2,22 +2,16 @@
 API 端点共享的小型业务数据模型。
 """
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
+from typing import Union as Union
 
 from pydantic import BaseModel, Field, RootModel
-from typing_extensions import TypeAliasType
+from typing_extensions import TypeAliasType as TypeAliasType
 
-JsonData = TypeAliasType(
-    "JsonData",
-    Union[
-        dict[str, "JsonData"],
-        list["JsonData"],
-        str,
-        int,
-        float,
-        bool,
-        None,
-    ],
+# 这些类型构造器曾由 app.schemas 根入口导出，保留兼容导出。
+
+type JsonData = (
+    dict[str, JsonData] | list[JsonData] | str | int | float | bool | None
 )
 """
 可递归序列化的 JSON 数据；OpenAPI 会展示每一种合法 JSON 结构。

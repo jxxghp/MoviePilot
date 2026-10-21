@@ -601,7 +601,7 @@ class MediaInteractionChain(ChainBase):
                 source=source,
                 userid=userid,
                 username=username,
-                title=f"开始搜索 {mediainfo.type.value} {mediainfo.title_year} ...",
+                    title=f"开始搜索 {(mediainfo.type or MediaType.UNKNOWN).value} {mediainfo.title_year} ...",
                 save_history=False,
             )
         )
@@ -1266,6 +1266,8 @@ class MediaInteractionChain(ChainBase):
         current_row: List[Dict[str, str]] = []
         for index, context in enumerate(items, start=1):
             torrent = context.torrent_info
+            if torrent is None:
+                continue
             if max_per_row == 1:
                 button_text = f"{index}. {torrent.site_name} - {torrent.seeders}↑"
                 if len(button_text) > max_text_length:

@@ -11,7 +11,7 @@ import urllib
 import urllib.request
 from concurrent.futures import as_completed
 from threading import Lock
-from typing import Dict, Optional
+from typing import Any, Callable, Dict, Optional, cast
 
 from app.foundation.singleton import Singleton
 from app.runtime.execution import OwnedThreadPoolExecutor, submit_with_context
@@ -30,10 +30,10 @@ _doh_timeout = 5
 _doh_cache: Dict[str, str] = {}
 _doh_lock = Lock()
 # 保存原始的 socket.getaddrinfo 方法
-_orig_getaddrinfo = socket.getaddrinfo
+_orig_getaddrinfo: Callable[..., Any] = socket.getaddrinfo
 
 
-def _doh_setting(key: str):
+def _doh_setting(key: str) -> Any:
     """
     读取 DoH 热更新配置，组合根未装配时兼容旧 Settings。
     """
@@ -60,7 +60,7 @@ def enable_doh(enable: bool) -> bool:
 
     global _doh_enabled, _executor
 
-    def _patched_getaddrinfo(host: str, *args, **kwargs):
+    def _patched_getaddrinfo(host: str, *args: Any, **kwargs: Any) -> Any:
         """
         socket.getaddrinfo的补丁版本。
         """
@@ -105,7 +105,9 @@ def enable_doh(enable: bool) -> bool:
                 return False
             _executor = None
         _doh_enabled = enable
-        socket.getaddrinfo = _patched_getaddrinfo if enable else _orig_getaddrinfo
+        socket.getaddrinfo = cast(
+            Any, _patched_getaddrinfo if enable else _orig_getaddrinfo
+        )
         return True
 
 
@@ -245,8 +247,11 @@ def doh_query_json(resolver: str, host: str) -> Optional[str]:
                 return None
             response_body = response.read().decode("utf-8")
             logger.debug(f"<== body: {response_body}")
-            answer = json.loads(response_body)["Answer"]
-            return answer[0]["data"]
+            answer = json.loads(response_body).get("Answer")
+            if not isinstance(answer, list) or not answer:
+                return None
+            value = answer[0].get("data") if isinstance(answer[0], dict) else None
+            return value if isinstance(value, str) else None
     except Exception as e:
         logger.error(f"解析器({resolver})请求错误: {e}")
         return None

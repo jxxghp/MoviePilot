@@ -1,0 +1,1359 @@
+{
+  "configuration": {
+    "mypy": {
+      "exclude": "^app/plugins(?:/|$)",
+      "files": "\napp,\nscripts/architecture/async_blocking.py,\nscripts/architecture/mypy_policy.py",
+      "follow_imports": "skip",
+      "ignore_missing_imports": "False",
+      "platform": "linux",
+      "pretty": "True",
+      "python_version": "3.14",
+      "show_error_codes": "True",
+      "strict": "True",
+      "warn_unused_configs": "True"
+    },
+    "mypy-app.*": {
+      "follow_imports": "silent",
+      "follow_imports_for_stubs": "True"
+    },
+    "mypy-click.*,fastapi.*": {
+      "follow_imports": "silent"
+    },
+    "mypy-langchain.*,langchain_core.*,langgraph.*,starlette.*": {
+      "follow_imports": "silent"
+    },
+    "mypy-lxml.*,Pinyin2Hanzi.*,anitopy.*,apscheduler.*,boto3.*,botocore.*,cloakbrowser.*,cn2an.*,http_ece.*,moviepilot_rust.*,oss2.*,pillow_avif.*,py_vapid.*,pyquery.*,pystray.*,smbclient.*,smbprotocol.*,telegramify_markdown.*,torrentool.*": {
+      "ignore_missing_imports": "True"
+    },
+    "mypy-pydantic.*,pydantic_settings.*,typing_extensions.*,uvicorn.*,pytest.*,_pytest.*": {
+      "follow_imports": "silent"
+    },
+    "mypy-slack_bolt.*,slack_sdk.*": {
+      "follow_imports": "silent"
+    }
+  },
+  "reasons": {
+    "async-tool-run": "宿主和插件调用 MoviePilotTool.run 的异步接口；LangChain BaseTool.run 是同步入口。保留既有公开参数和 await 合同，只豁免该签名的 override，方法体仍严格检查。",
+    "runtime-mro": "WebAgent 混入类由惰性加载器在运行时与实际 Agent/StreamingHandler 组合。静态 object 基类没有 super 成员；提前继承具体实现会改变惰性加载与 MRO，仅保留现有 super 调用。",
+    "classmethod-descriptor": "稳定 Facade 重绑 Owner 的原始 classmethod 描述符以保留类绑定、元数据和兼容身份；mypy 不能表达绑定方法 __func__ 的描述符再绑定。改成包装函数会改变公开身份和绑定行为。",
+    "sqlalchemy-runtime": "SQLAlchemy 声明式元类和 __table__ 在运行时生成；当前供应方导入边界不展开 ORM 实现。保留既有插件模型类型与装饰器，不通过伪造类型桩替代真实模型合同。",
+    "requests-adapter": "requests HTTPAdapter 的供应方导入边界保留原有不透明实现，TLS 适配器必须继承实际 SDK 类，不能替换为本地伪造基类。",
+    "scheduler-executor": "APScheduler 未提供可用的完整类型声明，自有执行器必须继承其运行时 BasePoolExecutor，保持调度器协议和生命周期。",
+    "spider-projection": "站点解析器刻意投影 __class__ 和 __dict__，兼容资源模块对解析结果身份及 JSON 字典的访问；更改特殊属性会破坏现有资源调用协议。",
+    "pydantic-computed": "Pydantic computed_field 需要叠加 property；mypy 的 prop-decorator 不能完整表达此组合。保留 Schema 和只读计算字段行为。",
+    "legacy-subscribe": "稳定 SDK 接收历史插件的宽参数/返回合同并转接新订阅服务；旧入口与新实现签名不同，不能直接修改插件可见 API。",
+    "legacy-config-int": "绿联历史配置接受任意对象尝试 int 转换，并在原有异常分支回退；静态 object 不承诺 __int__。提前收窄允许类型会改变旧配置转换和回退行为。",
+    "binary-site-contract": "站点资源是独立构建与发布的二进制模块，本地 sites.pyi 描述其公开接口。按文件摘要锁定，接口变化需与资源源码、宿主和插件调用方一并复核。",
+    "fastapi-response-default": "FastAPI 只把精确的 Response 类型识别为响应注入参数，Optional[Response] 会导致路由注册失败；None 默认值同时兼容旧的直接调用。保留原参数顺序和默认值，仅锁定 assignment 例外，接口方法体继续严格检查。",
+    "async-cache-compat": "异步缓存后端保留同步 CacheBackend 的公开继承关系，async 方法与同步父类返回合同天然不兼容；精确锁定 override 例外，避免改变插件的 isinstance 和生命周期行为。"
+  },
+  "ignores": [
+    {
+      "path": "app/adapters/cache/backends.py",
+      "owner": "AsyncFileBackend.clear",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "bc19c333b779598deafefc06b5826a7f128de97d72d668b8ab4a870bd0398ab9",
+      "statement": "async def clear(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/backends.py",
+      "owner": "AsyncFileBackend.close",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "78edb2946bb92329b0b3ed060c1db6f9053ba47361725801308f1ace2e4dc433",
+      "statement": "async def close(self) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/backends.py",
+      "owner": "AsyncFileBackend.delete",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "fddfa0d2ed7e7941772f3c6138cc6481f299c2f75484897a400c7da889958014",
+      "statement": "async def delete(self, key: str, region: Optional[str]=DEFAULT_CACHE_REGION) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/backends.py",
+      "owner": "AsyncFileBackend.exists",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "e282cac78a82d69f6af6790cd22e6fdea879906e68e8aa6638b9a465d80216f1",
+      "statement": "async def exists(self, key: str, region: Optional[str]=DEFAULT_CACHE_REGION) -> bool:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/backends.py",
+      "owner": "AsyncFileBackend.items",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "555bb945526fb79419457c217930b25ca98c9beffc87cfa31a8ca8ed6cdc6ed4",
+      "statement": "async def items(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/backends.py",
+      "owner": "AsyncFileBackend.set",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "e3600731a3292de4c39c9ec850a9b97611856942324d8e41da65247d7c151d61",
+      "statement": "async def set(self, key: str, value: Any, ttl: Optional[int]=None, region: Optional[str]=DEFAULT_CACHE_REGION, **_kwargs: object) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/redis.py",
+      "owner": "AsyncRedisBackend.clear",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "bc19c333b779598deafefc06b5826a7f128de97d72d668b8ab4a870bd0398ab9",
+      "statement": "async def clear(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/redis.py",
+      "owner": "AsyncRedisBackend.close",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "78edb2946bb92329b0b3ed060c1db6f9053ba47361725801308f1ace2e4dc433",
+      "statement": "async def close(self) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/redis.py",
+      "owner": "AsyncRedisBackend.delete",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "fddfa0d2ed7e7941772f3c6138cc6481f299c2f75484897a400c7da889958014",
+      "statement": "async def delete(self, key: str, region: Optional[str]=DEFAULT_CACHE_REGION) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/redis.py",
+      "owner": "AsyncRedisBackend.exists",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "e282cac78a82d69f6af6790cd22e6fdea879906e68e8aa6638b9a465d80216f1",
+      "statement": "async def exists(self, key: str, region: Optional[str]=DEFAULT_CACHE_REGION) -> bool:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/redis.py",
+      "owner": "AsyncRedisBackend.items",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "555bb945526fb79419457c217930b25ca98c9beffc87cfa31a8ca8ed6cdc6ed4",
+      "statement": "async def items(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/cache/redis.py",
+      "owner": "AsyncRedisBackend.set",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "05a96e54e25bfb59ad8727e5b0e7b5df755a202a93ea90c1bbf9ce13b388822a",
+      "statement": "async def set(self, key: str, value: Any, ttl: Optional[int]=None, region: Optional[str]=DEFAULT_CACHE_REGION, **kwargs: Any) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/adapters/network/http.py",
+      "owner": "_TLS12HttpAdapter",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "f4155d1f7d7f84695a2f9fc67b1f00784abcdb6eb40aad5fd3b6d07a65ab02b3",
+      "statement": "class _TLS12HttpAdapter(HTTPAdapter):",
+      "reason": "requests-adapter"
+    },
+    {
+      "path": "app/agent/tools/impl/agent_task.py",
+      "owner": "AgentTaskTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "a4fa8063df424138584a2003156c9e9b9c0fc53eac08c18cc9c5bd83f8a5f9bb",
+      "statement": "async def run(self, action: AgentTaskAction, task_id: Optional[int]=None, name: Optional[str]=None, content: Optional[str]=None, trigger_type: Optional[AgentTaskTriggerType]=None, trigger: Optional[str]=None, delay_minutes: Optional[int]=None, enabled: Optional[bool]=None, **kwargs: object) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/api.py",
+      "owner": "MoviePilotApiTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "aed418852cffcb505f0cd88dba48e7e9ceda36c9b36a7d7e5c37fbd2c47339b0",
+      "statement": "async def run(self, operation_id: str, path_params: Optional[Dict[str, Any]]=None, query: Optional[Dict[str, Any]]=None, body: Any=None, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/apply_patch.py",
+      "owner": "ApplyPatchTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "28f9f430879e4b1762b680ab287e67fcec74e7899976d71d1f233f5d09d26c9f",
+      "statement": "async def run(self, patch: str, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/ask_user_choice.py",
+      "owner": "AskUserChoiceTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "aa08e4f8127fe6b8220751aa4c0b6c9183a6ef6a37071c5ab58f3c541cb5dd3d",
+      "statement": "async def run(self, message: str, options: List[UserChoiceOptionInput], title: Optional[str]=None, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/browse_webpage.py",
+      "owner": "BrowseWebpageTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "81cf8e97a6185b6057d44621b89d4d6f4b2f5addcf38f7e04253560494573ff7",
+      "statement": "async def run(self, action: str, url: Optional[str]=None, selector: Optional[str]=None, ref: Optional[str]=None, value: Optional[str]=None, script: Optional[str]=None, content_type: Optional[str]='text', timeout: Optional[int]=DEFAULT_TIMEOUT, cookies: Optional[str]=None, user_agent: Optional[str]=None, session_key: Optional[str]=None, tab_index: Optional[int]=None, allow_private_network: bool=False, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/edit_file.py",
+      "owner": "EditFileTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "601a931d8a7d0e60b8cce97b87ab384b914ceecba3a9a0177159308159c7448d",
+      "statement": "async def run(self, file_path: str, old_text: str, new_text: str, replace_all: bool=False, expected_sha256: Optional[str]=None, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/execute_code.py",
+      "owner": "ExecuteCodeTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "b72afc2a3f7fed4d70ae51926c81297e5a899de770cfc501b5d3220e3a8ea4a2",
+      "statement": "async def run(self, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/execute_command.py",
+      "owner": "ExecuteCommandTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "73ff17b061a3770d723fce95ce25ffa6f7d04fbc9fe83a990ba6f8dd791a68a8",
+      "statement": "async def run(self, action: Optional[str]='start', command: Optional[str]=None, session_id: Optional[str]=None, input_text: Optional[str]=None, close_stdin: Optional[bool]=False, signal_name: Optional[str]='TERM', cwd: Optional[str]=None, env: Optional[dict[str, Any]]=None, shell: Optional[str]=None, login: Optional[bool]=None, use_pty: Optional[bool]=True, since_seq: Optional[int]=None, since_offset: Optional[int]=None, max_bytes: Optional[int]=TERMINAL_DEFAULT_READ_BYTES, timeout_ms: Optional[int]=TERMINAL_WAIT_DEFAULT_MS, yield_time_ms: Optional[int]=TERMINAL_YIELD_DEFAULT_MS, timeout: Optional[int]=60, confirm_dangerous: Optional[bool]=False, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/mcp.py",
+      "owner": "McpExternalTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "a27ae52f9f63fdf0a5a99d36881d89150185c12e19aafc622c836ebdebbd718f",
+      "statement": "async def run(self, **kwargs: object) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/persona.py",
+      "owner": "PersonaTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "6e18ee8f913ef1f522011d9531f558055fe0bff5c0d9d0bc371d9c094f5f7747",
+      "statement": "async def run(self, action: PersonaAction, query: Optional[str]=None, persona_id: Optional[str]=None, label: Optional[str]=None, description: Optional[str]=None, aliases: Optional[list[str]]=None, instructions: Optional[str]=None, append_instructions: Optional[list[str]]=None, create_if_missing: bool=False, **kwargs: object) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/query_doctor_report.py",
+      "owner": "QueryDoctorReportTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "6d4a61a3652e6318f9cb416c4f931921fdd47c6a76b44bc2c1f90aaecaab7a66",
+      "statement": "async def run(self, deep: Optional[bool]=False, include_details: Optional[bool]=True, **kwargs: object) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/read_file.py",
+      "owner": "ReadFileTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "797d2d7ca5120b395828831d6fc02a47cb7639e3e33839c413441e8ca5f89397",
+      "statement": "async def run(self, file_path: str, start_line: Optional[int]=None, end_line: Optional[int]=None, include_metadata: bool=False, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/recognize_captcha.py",
+      "owner": "RecognizeCaptchaTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "6475ed9eea3e63c5692b594a98eba7940c24f56c5ec715703194b7a07312e989",
+      "statement": "async def run(self, image_url: Optional[str]=None, cookie: Optional[str]=None, user_agent: Optional[str]=None, allow_private_network: bool=False, image_data: Optional[bytes]=None, **kwargs: object) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/search_web.py",
+      "owner": "SearchWebTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "b6f69ec94c24eabdf9e13790ecbb8547213de27fc9678a00912e7dec10c17583",
+      "statement": "async def run(self, query: str, max_results: Optional[int]=MAX_SEARCH_RESULTS, search_engine: Optional[str]=DEFAULT_SEARCH_ENGINE, site_url: Optional[str]=None, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/send_local_file.py",
+      "owner": "SendLocalFileTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "9bb59a2247715db217b01a8339bad4ca425257154dd09eb5669b6e7f19102540",
+      "statement": "async def run(self, file_path: str, message: Optional[str]=None, title: Optional[str]=None, file_name: Optional[str]=None, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/send_message.py",
+      "owner": "SendMessageTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "3df5820bef1ae2fe290acf99aacf15374fafcd07452b5a22268e24f7f7acb71d",
+      "statement": "async def run(self, message: Optional[str]=None, title: Optional[str]=None, image_url: Optional[str]=None, rich_message: Optional[str]=None, **kwargs: object) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/send_voice_message.py",
+      "owner": "SendVoiceMessageTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "549cf1b911dc465406799932690c206316c37b973ce3a9ee1dffd56b407c48f0",
+      "statement": "async def run(self, message: str, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/service.py",
+      "owner": "DatabaseOperationTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "38561b80a7162239f895942d0d6b7657c405fa1fbac1a2d53f4885de9d0ebd7e",
+      "statement": "async def run(self, action: str, arguments: Optional[Dict[str, Any]]=None) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/service.py",
+      "owner": "DownloaderOperationTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "53005c98e40dbb21d4c1dd722838ffb9fad460892833a66761602944680cf594",
+      "statement": "async def run(self, action: str, arguments: Optional[Dict[str, Any]]=None, client: Optional[str]=None) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/service.py",
+      "owner": "MediaServerOperationTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "4d73bd3f5b90da07c39715a2b85dc1878cb636d73c8912182fd5849387b97547",
+      "statement": "async def run(self, action: str, arguments: Optional[Dict[str, Any]]=None, server: Optional[str]=None) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/view_image.py",
+      "owner": "ViewImageTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "3fbaa5b2c4b8bee9d2ed56b607ff22ffc0daa0b149b9c2d7488cf7d57a20edee",
+      "statement": "async def run(self, url: Optional[str]=None, file_path: Optional[str]=None, image_data: Optional[Union[str, bytes]]=None, detail: Literal['auto', 'low', 'high']='auto', **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/tools/impl/write_file.py",
+      "owner": "WriteFileTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "c97ce49a816ace2f9d279602bc2c3ecd3ab69aa37465cde93ac9e41537610d01",
+      "statement": "async def run(self, file_path: str, content: str, overwrite: bool=False, expected_sha256: Optional[str]=None, **kwargs: Any) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentMoviePilotAgentMixin._build_tool_context",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "981be9c80d4a4b9973dd5204fafc707846fd56fd37074a996ca7827d56165ece",
+      "statement": "context = await super()._build_tool_context(should_dispatch_reply)",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin._uses_structured_tool_events",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "e3b187588ec63d629078672303101832847f97c17ffa225e9677de1f6653fa78",
+      "statement": "return bool(self._on_tool_event and super()._is_verbose_mode())",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin.emit",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "e123ca1bd891c68bd9eec991e259e1185a415e9e473b9b1a0e7440511b15d116",
+      "statement": "emitted = super().emit(token)",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin.emit_tool_message",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "c178a3f0b3d3c36dc3e71586a87d5b599d03d300c4d0105406645f1bf517b2f2",
+      "statement": "emitted = str(super().emit_tool_message(normalized_message))",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin.flush_pending_tool_summary",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "03a1ba19159b924ca480ca7fb24544433e242d095278a0a3555d5c02182cad46",
+      "statement": "emitted = super().flush_pending_tool_summary()",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin.record_tool_call",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "f86b77d69cdafe0787717188b4ad7fc0904e28c4aee079735d985f97255a54af",
+      "statement": "super().record_tool_call(tool_name=tool_name, tool_message=tool_message, tool_kwargs=tool_kwargs)",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin.report_tool_call",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "f4e107fca8878ad1c4300e4aaa0de6fc52fbda7ea855047cbe1c91b3923b2381",
+      "statement": "return str(super().report_tool_call(tool_name=tool_name, tool_message=tool_message, tool_kwargs=tool_kwargs) or '')",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin.thinking_finished",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "065bb44bb36070ffb0aefe2bd9c5cbdf3f65be80ee191de70adeadd066688d96",
+      "statement": "super().thinking_finished()",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin.thinking_started",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "753ebc3b9c3ba19544545d81c143478adbf7eca9a3a0931ddaa54d00def46183",
+      "statement": "super().thinking_started()",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin.tool_call_finished",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "61b7c164ce6f64b8e319db324357cbfa50e00434d8bcc42f20a0ff60eb20682a",
+      "statement": "super().tool_call_finished(tool_id, status)",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/agent/web.py",
+      "owner": "_WebAgentStreamingHandlerMixin.tool_call_started",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "741ca414f7a036bba0b3377d0e3037638aa98e1deff1909aa76a7bf15815c72c",
+      "statement": "super().tool_call_started(tool_name, tool_message)",
+      "reason": "runtime-mro"
+    },
+    {
+      "path": "app/api/endpoints/history.py",
+      "owner": "download_history",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "e7327c23ed2dd984fc664c9d0dc8341d955337c6472d02702665ac5e5ecdbad7",
+      "statement": "@router.get('/download', summary='查询下载历史记录', response_model=List[_SchemaDownloadHistory], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def download_history(page: Optional[int]=1, count: Optional[int]=30, query: HistoryQueryService=Depends(get_history_query_service), _: _SchemaTokenPayload=Depends(verify_token), response: Response=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/mfa.py",
+      "owner": "passkey_list",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "654f847b3b762dc8acb465d48dc8eb3ae4b4c5cc2d58b6462dcbea5d125c6dca",
+      "statement": "@router.get('/passkey/list', summary='获取当前用户的 PassKey 列表', response_model=_SchemaResponse[list[_SchemaPasskeyInfo]], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\ndef passkey_list(current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)], response: Response=None, service: PasskeyService=Depends(get_passkey_service), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/plugin.py",
+      "owner": "all_plugins",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "5f6a039d011683394079e360301c9a5ea1b5f5aa09ee4e4826c56fdaff1aaf4f",
+      "statement": "@router.get('/', summary='所有插件', response_model=List[_SchemaPlugin], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def all_plugins(_: ApiPrincipal=Depends(get_current_active_superuser_async), state: Optional[str]='all', force: bool=False, query: Optional[str]=None, max_results: Annotated[Optional[int], Query(ge=1, le=200)]=None, page: CompatiblePageParam=None, count: CompatibleCountParam=None, response: Response=None) -> List[_SchemaPlugin]:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/pluginclone.py",
+      "owner": "plugin_restorable_instances",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "d18fd318165eae7ef0aff5a8b88d0a1ea4c8b4d93a01d00155c6d779279a3d93",
+      "statement": "@router.get('/clone/{plugin_id}/restorable', summary='列出可恢复的已停用分身', response_model=List[_SchemaPluginRestorableInstance], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\ndef plugin_restorable_instances(plugin_id: str, _: ApiPrincipal=Depends(get_current_active_superuser), page: CompatiblePageParam=None, count: CompatibleCountParam=None, response: Response=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/site.py",
+      "owner": "read_agent_sites",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "ec4309e6fdb9f6bac1d58a2ca622738c53aa76a962db240f70c7e00fb1d7d644",
+      "statement": "@router.get('/agent', summary='查询 Agent 可用站点', response_model=List[_SchemaJsonObject], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_agent_sites(response: Response=None, status: Literal['active', 'inactive', 'all']='all', name: Optional[str]=None, query: SiteQueryService=Depends(get_site_query_service), current_user: Any=Depends(get_current_active_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> List[dict[str, JsonData]]:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/site.py",
+      "owner": "read_rss_sites",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "a0403da9f7c8b6b49abfc99b194cdd9e517c0913b8c9ef739a5dad2d2f213fa0",
+      "statement": "@router.get('/rss', summary='所有订阅站点', response_model=List[_SchemaSite], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_rss_sites(response: Response=None, query: SiteQueryService=Depends(get_site_query_service), token_payload: _SchemaTokenPayload=Depends(verify_token), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> List[_SchemaSite | dict[str, JsonData]]:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/site.py",
+      "owner": "read_sites",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "30da12edc5e17efcbac408a03e569d3367c434168c33838ecfec80d316ccafe9",
+      "statement": "@router.get('/', summary='所有站点', response_model=List[_SchemaSite], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_sites(response: Response=None, query: SiteQueryService=Depends(get_site_query_service), _: ApiPrincipal=Depends(get_current_active_manage_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> List[_SchemaSite]:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/site.py",
+      "owner": "read_sites_by_media_type",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "516f867a614eb3e4e087a2d68824f7bfc68394f4c6530af300914654724c46df",
+      "statement": "@router.get('/media/{media_type}', summary='按媒体类型获取可搜索站点', response_model=List[_SchemaSite], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_sites_by_media_type(media_type: str, response: Response=None, query: SiteQueryService=Depends(get_site_query_service), _: ApiPrincipal=Depends(get_current_active_manage_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> List[_SchemaSite]:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/site.py",
+      "owner": "read_statistics",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "4d039846f54c2384890bb483f6c01ed8c740811b7637fef6e65cc48fed74d98e",
+      "statement": "@router.get('/statistic', summary='所有站点统计信息', response_model=List[_SchemaSiteStatistic], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_statistics(response: Response=None, query: SiteQueryService=Depends(get_site_query_service), _: _SchemaTokenPayload=Depends(verify_token), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/site.py",
+      "owner": "read_userdata",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "e6e9db2ebeb1bfb88f648ee5a1a6f386574ecf1a0fee8e3a20f520809e463e3b",
+      "statement": "@router.get('/userdata/{site_id}', summary='查询某站点用户数据', response_model=_SchemaResponse[list[_SchemaSiteUserData]], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_userdata(site_id: int, response: Response=None, workdate: Optional[str]=None, query: SiteQueryService=Depends(get_site_query_service), _: ApiPrincipal=Depends(get_current_active_manage_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/site.py",
+      "owner": "read_userdata_latest",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "0227700f2929c70a4b0c7df9db8b69c5da7450092e7e260cf5598c834d0f7d12",
+      "statement": "@router.get('/userdata/latest', summary='查询所有站点最新用户数据', response_model=List[_SchemaSiteUserData], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_userdata_latest(response: Response=None, query: SiteQueryService=Depends(get_site_query_service), _: ApiPrincipal=Depends(get_current_active_manage_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/subscribe.py",
+      "owner": "list_subscribes",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "b36833696f77492798f44e25bc64c613b3a5b6e232a3df2d2337475afa2c30fa",
+      "statement": "@router.get('/list', summary='查询所有订阅（API_TOKEN）', response_model=List[_SchemaSubscribe], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def list_subscribes(response: Response=None, query: SubscriptionQueryService=Depends(get_subscription_query_service), status_service: SubscriptionExecutionStatusService=Depends(get_subscription_execution_status_service), _: Optional[Annotated[str, Depends(verify_apitoken)]]=None, page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/subscribe.py",
+      "owner": "read_subscribes",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "ed2e2a56d57aabca69b5a5778313547b43d081b1d98757758797c34aa5fb9f42",
+      "statement": "@router.get('/', summary='查询所有订阅', response_model=List[_SchemaSubscribe], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_subscribes(response: Response=None, query: SubscriptionQueryService=Depends(get_subscription_query_service), status_service: SubscriptionExecutionStatusService=Depends(get_subscription_execution_status_service), current_user: ApiPrincipal=Depends(get_current_active_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/subscribe.py",
+      "owner": "subscribe_history",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "ac30ef74741b93c556c16d34d74aa02334a761c24300522c16830145b72775de",
+      "statement": "@router.get('/history/{mtype}', summary='查询订阅历史', response_model=List[_SchemaSubscribe], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def subscribe_history(mtype: str, page: Optional[int]=1, count: Optional[int]=30, query: SubscriptionQueryService=Depends(get_subscription_query_service), current_user: ApiPrincipal=Depends(get_current_active_user_async), response: Response=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/subscribe.py",
+      "owner": "user_subscribes",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "c31b6cd8ff4195705e72c8c0d7c4a51ece77426c26fecc7e3f5c1369a34e045e",
+      "statement": "@router.get('/user/{username}', summary='用户订阅', response_model=List[_SchemaSubscribe], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def user_subscribes(username: str, response: Response=None, query: SubscriptionQueryService=Depends(get_subscription_query_service), status_service: SubscriptionExecutionStatusService=Depends(get_subscription_execution_status_service), current_user: ApiPrincipal=Depends(get_current_active_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/user.py",
+      "owner": "list_users",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "a58d920e4edf317adad4f8b110ce1a0a9d2f61ac27bf6ab7abe1bf129b8f6fc6",
+      "statement": "@router.get('/', summary='所有用户', response_model=List[_SchemaUser], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def list_users(response: Response=None, service: UserService=Depends(get_user_service), current_user: Any=Depends(get_current_active_superuser_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/workflow.py",
+      "owner": "list_agent_workflows",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "8f4f92cd77eb0ecd82aec77d674c4e0b3de719dee710552c359947504b9723c5",
+      "statement": "@router.get('/agent', summary='查询 Agent 可用工作流', response_model=List[_SchemaJsonObject], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def list_agent_workflows(response: Response=None, state: Literal['W', 'R', 'P', 'S', 'F', 'all']='all', name: Optional[str]=None, trigger_type: Literal['timer', 'event', 'manual', 'all']='all', query: WorkflowQueryService=Depends(get_workflow_query_service), _: Any=Depends(get_current_active_manage_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> List[dict[str, Any]]:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/api/endpoints/workflow.py",
+      "owner": "list_workflows",
+      "codes": [
+        "assignment"
+      ],
+      "fingerprint": "d1290f1c6190ea9bb8afe4f01985ff8aacc1e1cd0e1386b48c41539b0a5b12d1",
+      "statement": "@router.get('/', summary='所有工作流', response_model=List[_SchemaWorkflow], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def list_workflows(response: Response=None, query: WorkflowQueryService=Depends(get_workflow_query_service), _: Any=Depends(get_current_active_manage_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "reason": "fastapi-response-default"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "0570ed4bd4416ae711cf59f0de02402de4d715e79f2154a1a96c546ac51dc46f",
+      "statement": "_directory_audio_files = classmethod(MediaAlbumOwner._directory_audio_files.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "0d815e0793c1a5d359fe1dc0c6ce2fd349ec1a9c1b62baf927e1ea49a4167779",
+      "statement": "_validate_music_result = classmethod(MediaCatalogOwner._validate_music_result.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "0ec6075c461d12869f4476731fbae9f25105a3afa0b61eb37e329fcdd912c2f3",
+      "statement": "_align_selected_music_album = classmethod(MediaAlbumOwner._align_selected_music_album.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "2021a2bde9f0421ee0869a2a68e80a611fb52db3932c5051b02e7c28a9dce6fd",
+      "statement": "_album_track_map = classmethod(MediaAlbumOwner._album_track_map.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "22f1a54afdb0f2fc1c236e607431f3b15aacc1573b47fe69ef2218276065e2a2",
+      "statement": "_music_artist_aliases = classmethod(MediaCatalogOwner._music_artist_aliases.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "3706d107e669f4e49f925c244a9dd02439da46a95b02d970dfe25ef06805621d",
+      "statement": "is_audio_path = classmethod(MediaPathOwner.is_audio_path.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "38ad1ac372ca3694a71986d50695a8504cc254b078ba6ffd22c5b458b7710a30",
+      "statement": "read_path_meta = classmethod(MediaPathOwner.read_path_meta.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "3986bba4b0d8495d064469ce6a81922063a4b89efa38c864bae5339ff5c1a17e",
+      "statement": "read_path_meta = classmethod(MediaPathOwner.read_path_meta.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "44814ccb6d50080c435212e7314db50ad9145660dfc501e53053d07ca2e29e27",
+      "statement": "_music_artist_aliases = classmethod(MediaCatalogOwner._music_artist_aliases.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "46c14c1c79b9e0e6ee78eda4a7ce7541172afb8c1f1f6981d7567498652834d1",
+      "statement": "_simplify_recognized_music_info = classmethod(MediaCatalogOwner._simplify_recognized_music_info.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "4c3270411ac04c023ada518490c18ead3ea825e8cb07b2236c279ed6e22953d4",
+      "statement": "_simplify_music_artist_name = classmethod(MediaCatalogOwner._simplify_music_artist_name.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "56023b3a87d38e3fab51229441cfee4e8072c49af7dfd4f70593c823575e4f0a",
+      "statement": "_music_info_from_path_meta = classmethod(MediaPathOwner._music_info_from_path_meta.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "5842de98fec388475ad0888a0456c49881455f81fea7c285cc4d12a73b69e5e1",
+      "statement": "_simplify_recognized_music_mapping = classmethod(MediaCatalogOwner._simplify_recognized_music_mapping.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "5eca110a9187a19eabb1d22f2839b47e5486730cd94c7cf0a66af97ea822fce3",
+      "statement": "_music_info_from_path_meta = classmethod(MediaPathOwner._music_info_from_path_meta.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "63482c720b5edb1c03eb982a2311291cbc70abe5daed39288e70a1e14e421c93",
+      "statement": "_align_selected_music_album = classmethod(MediaAlbumOwner._align_selected_music_album.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "6ab399787808e43803877f367874bb7f9ecada613a15a1df842178cdb641e3d0",
+      "statement": "_validate_music_result = classmethod(MediaCatalogOwner._validate_music_result.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "6f5543c6f0f41dfadc72bf9a4d83c12b1f827298c698250d834b5758eb3b90ad",
+      "statement": "_music_search_sources = classmethod(MediaCatalogOwner._music_search_sources.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "6fe030a2c6b3a8afd4eed7ab080afe34ac40049de435316bf1cb757c1d5b80e3",
+      "statement": "_merge_media_auxiliary = classmethod(MediaAuxiliaryOwner._merge_media_auxiliary.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "7b28e3b4c3585055f2c14107789b81831545a0210b27aeb959278fa892ba2834",
+      "statement": "normalize_music_candidates = classmethod(MediaCatalogOwner.normalize_music_candidates.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "8a5a27268e65ef0ad5332c49884b334be83f2352b4bea845e8ce4c46a9e540f4",
+      "statement": "_album_track_map = classmethod(MediaAlbumOwner._album_track_map.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "9a4723753a8209e255b67f3e72a3eff388bbabe0778b26fde02b307097cfc4f0",
+      "statement": "_align_music_album_tracks = classmethod(MediaAlbumOwner._align_music_album_tracks.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "a097b7811a4ddd8adb7dcabb17e87de13025e261e944d8b5669ff2a6072f4c0a",
+      "statement": "_music_search_sources = classmethod(MediaCatalogOwner._music_search_sources.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "aee5477134432061fb49e4a5e3a59b55770a8fb950737b605f2cc8d482c88835",
+      "statement": "_merge_media_auxiliary = classmethod(MediaAuxiliaryOwner._merge_media_auxiliary.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "b41e20f699560cd62af6e41c62ec3aa63b8495ba4ea8d2732058f3918a5fc192",
+      "statement": "normalize_music_candidates = classmethod(MediaCatalogOwner.normalize_music_candidates.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "b93f7db5a7793838d6056c7d5cbcff2273809f3ca3289615a2d0a55f0637a50a",
+      "statement": "_simplify_music_artist_names = classmethod(MediaCatalogOwner._simplify_music_artist_names.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "c627d54cd8eea549612d88fdd2b2f9c6dd66385d0d5a855a99338272611bde64",
+      "statement": "_directory_audio_files = classmethod(MediaAlbumOwner._directory_audio_files.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "dae933a20547c02b187205ae4db227fce8b65a6f01db3e165bb3b6af3f0ff3a4",
+      "statement": "_simplify_recognized_music_info = classmethod(MediaCatalogOwner._simplify_recognized_music_info.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "e305787009b2eacd046687a66e08a8635bc64c2ba80e19c4f0e5019fd4ae8879",
+      "statement": "_simplify_music_artist_names = classmethod(MediaCatalogOwner._simplify_music_artist_names.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "f0cc91f248439ac1ac7a99155f1e5d69882ac9add4dc4a6effe0cc55e881d059",
+      "statement": "is_audio_path = classmethod(MediaPathOwner.is_audio_path.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "f9f6b52c3381ddff7c68dc4d5e98581bd6ccea6ed8b3220dc68aaedbef8c5e88",
+      "statement": "_simplify_recognized_music_mapping = classmethod(MediaCatalogOwner._simplify_recognized_music_mapping.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "fb2e55aec6b9d8ecdbdff858fadb834de3852d30f72d7c1ce0dcdd8e0ca32817",
+      "statement": "_simplify_music_artist_name = classmethod(MediaCatalogOwner._simplify_music_artist_name.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/media/facade.py",
+      "owner": "MediaChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "ff1854943abe279d9ffbda327bde936caee491e3077f474584102deb2e199e08",
+      "statement": "_align_music_album_tracks = classmethod(MediaAlbumOwner._align_music_album_tracks.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/search/facade.py",
+      "owner": "SearchChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "0534fa093d83e54f44f88cfe4a0e6b9911faf7b7f833555d44751546164eb0b4",
+      "statement": "music_site_keywords = classmethod(SearchMusicOwner.music_site_keywords.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/search/facade.py",
+      "owner": "SearchChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "13ffb6c0ef9f22ad52de3e09fab2bf6018460662d116b42a8998475b995a2a86",
+      "statement": "music_site_keywords = classmethod(SearchMusicOwner.music_site_keywords.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/search/facade.py",
+      "owner": "SearchChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "24a0f52fd733cbd71ba20345d48a15cbb94cdf83f1f9e1369a84794c813914b8",
+      "statement": "_build_search_pages = classmethod(SearchPaginationOwner._build_search_pages.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/search/facade.py",
+      "owner": "SearchChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "652a2dbd28d6178d912b65141be13ed5670a728dfa4c3bbb7a427dd0077228eb",
+      "statement": "matches_music_resource = classmethod(SearchMusicOwner.matches_music_resource.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/search/facade.py",
+      "owner": "SearchChain",
+      "codes": [
+        "var-annotated"
+      ],
+      "fingerprint": "6e4f93789e2fd8ae5371fe31a252e444a61aa59099e6442d35a52844a667797b",
+      "statement": "_build_search_pages = classmethod(SearchPaginationOwner._build_search_pages.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/chain/search/facade.py",
+      "owner": "SearchChain",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "f4872a6d3027bd98ce80f5beed79b0ed99d5a49eb3777b6796a361adb018f31d",
+      "statement": "matches_music_resource = classmethod(SearchMusicOwner.matches_music_resource.__func__)",
+      "reason": "classmethod-descriptor"
+    },
+    {
+      "path": "app/db/base.py",
+      "owner": "Base",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "3bb5a847e40d07c7e6f9dda4a26a277df7273d78589a9ceaee68558885493979",
+      "statement": "class Base(DeclarativeBase):",
+      "reason": "sqlalchemy-runtime"
+    },
+    {
+      "path": "app/db/base.py",
+      "owner": "Base.__tablename__",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "57c745aed8f43675bec5b346b56bd45fe081e37bf52d1c9650b2e8c9c4c0d629",
+      "statement": "@declared_attr.directive\ndef __tablename__(cls) -> str:",
+      "reason": "sqlalchemy-runtime"
+    },
+    {
+      "path": "app/db/plugin/base.py",
+      "owner": "plugin_declarative_base.PluginBase",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "eeb199e0d1a7909c5a89deb23631a06015c1414cfc2d4885df2c5b20395aea38",
+      "statement": "class PluginBase(DeclarativeBase):",
+      "reason": "sqlalchemy-runtime"
+    },
+    {
+      "path": "app/db/plugin/registry.py",
+      "owner": "_create_declared_tables",
+      "codes": [
+        "attr-defined"
+      ],
+      "fingerprint": "f8e4fe51dedb2b2d10fcc2311676590dba91d6c0a4eae5060ada81ac512e92bd",
+      "statement": "tables = list(dict.fromkeys((model.__table__ for model in models)))",
+      "reason": "sqlalchemy-runtime"
+    },
+    {
+      "path": "app/modules/indexer/spider/__init__.py",
+      "owner": "SiteSpider.__class__",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "ab6dfeaaf9542210a4f6c60ea7793021a25d56c5cfad2eb62dd166ff9e0f5c3d",
+      "statement": "@property\ndef __class__(self) -> type[object]:",
+      "reason": "spider-projection"
+    },
+    {
+      "path": "app/modules/indexer/spider/__init__.py",
+      "owner": "SiteSpider.__class__",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "ff6bea975fcee835bf85c3a2ea8150134a3b2d8bee2d38c9b859beccc5ea8e0a",
+      "statement": "@property\ndef __class__(self) -> type[object]:",
+      "reason": "spider-projection"
+    },
+    {
+      "path": "app/modules/indexer/spider/__init__.py",
+      "owner": "SiteSpider.__dict__",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "799037200dc4c488a45ccbfc321d617ced938fa21fddac5a130aa4759c4e637f",
+      "statement": "@property\ndef __dict__(self) -> JsonDict:",
+      "reason": "spider-projection"
+    },
+    {
+      "path": "app/modules/ugreen/ugreen.py",
+      "owner": "Ugreen.__resolve_scan_type",
+      "codes": [
+        "arg-type"
+      ],
+      "fingerprint": "c3a418491a2a1ec84cc8d579e4c354c1565adb1361e977b1536e18e4215fc877",
+      "statement": "parsed = int(value)",
+      "reason": "legacy-config-int"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.clear",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "bfdfeb2364e57a5e6d724bd50934c95c72c287132209bfda063bff4c956f64ed",
+      "statement": "@abstractmethod\nasync def clear(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.close",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "8ceae0aaadb21b36fcb1409e4823ffb19f58f637995ff26b3a93613b5a507c2a",
+      "statement": "@abstractmethod\nasync def close(self) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.delete",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "c3f5f2b08160396ac214922ddb4ee95f38035f1f4daf1a5ebb071e53d8f057ac",
+      "statement": "@abstractmethod\nasync def delete(self, key: str, region: Optional[str]=DEFAULT_CACHE_REGION) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.exists",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "c94771c944b6ae5bb5a2b5aa5359ee0b52c12b66bd226d0b0316da645a033b7b",
+      "statement": "@abstractmethod\nasync def exists(self, key: str, region: Optional[str]=DEFAULT_CACHE_REGION) -> bool:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.items",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "0f6ad6734a64b5ea7a2b077d5f05a430cad2fbdfc484b786b7bfd182b5f7748d",
+      "statement": "@abstractmethod\ndef items(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.keys",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "421a679f846b86fea8a52de57899f6db31b89d18b7eb6c81357055894ea2d9c1",
+      "statement": "async def keys(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> AsyncGenerator[str, None]:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.popitem",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "66bdcfff130aab0333d9d35d830a06f288b5368d7ed6f73dc9eb3711e69f761d",
+      "statement": "async def popitem(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> Tuple[str, Any]:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.set",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "3f3a256046828d07111e9da5a12981dfcf24450dbbe949fd1d870685d89443d7",
+      "statement": "@abstractmethod\nasync def set(self, key: str, value: Any, ttl: Optional[int]=None, region: Optional[str]=DEFAULT_CACHE_REGION, **kwargs: object) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.update",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "0203836f2d112deaf02950e2d6c7d5016dda24fc7232acdd5125b5f8c6739e3c",
+      "statement": "async def update(self, other: Dict[str, Any], region: Optional[str]=DEFAULT_CACHE_REGION, ttl: Optional[int]=None, **kwargs: object) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncCacheBackend.values",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "54c7fbfea95a0f431f714db5b2dc76e7232fe077049b497c434508fcf1c7eae2",
+      "statement": "async def values(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> AsyncGenerator[Any, None]:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncMemoryBackend.clear",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "bc19c333b779598deafefc06b5826a7f128de97d72d668b8ab4a870bd0398ab9",
+      "statement": "async def clear(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncMemoryBackend.close",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "78edb2946bb92329b0b3ed060c1db6f9053ba47361725801308f1ace2e4dc433",
+      "statement": "async def close(self) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncMemoryBackend.delete",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "fddfa0d2ed7e7941772f3c6138cc6481f299c2f75484897a400c7da889958014",
+      "statement": "async def delete(self, key: str, region: Optional[str]=DEFAULT_CACHE_REGION) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncMemoryBackend.exists",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "e282cac78a82d69f6af6790cd22e6fdea879906e68e8aa6638b9a465d80216f1",
+      "statement": "async def exists(self, key: str, region: Optional[str]=DEFAULT_CACHE_REGION) -> bool:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncMemoryBackend.items",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "555bb945526fb79419457c217930b25ca98c9beffc87cfa31a8ca8ed6cdc6ed4",
+      "statement": "async def items(self, region: Optional[str]=DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/runtime/cache.py",
+      "owner": "AsyncMemoryBackend.set",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "8c9fe376712df0536754bedef77de172907603767b149b0d2fb10472339b08d6",
+      "statement": "async def set(self, key: str, value: Any, ttl: Optional[int]=None, region: Optional[str]=DEFAULT_CACHE_REGION, **kwargs: object) -> None:",
+      "reason": "async-cache-compat"
+    },
+    {
+      "path": "app/scheduler/catalog.py",
+      "owner": "_SchedulerThreadPoolExecutor",
+      "codes": [
+        "misc"
+      ],
+      "fingerprint": "e7cc9561bf928fe6f284136818baaeb579644a0679b3d9b257944e75d87b5a74",
+      "statement": "class _SchedulerThreadPoolExecutor(BasePoolExecutor):",
+      "reason": "scheduler-executor"
+    },
+    {
+      "path": "app/schemas/plugin.py",
+      "owner": "PluginInstance.mode",
+      "codes": [
+        "prop-decorator"
+      ],
+      "fingerprint": "204f9df3bafb4ffc7804befd4ee2ba7f31c783e566211a534c5b57efa90b1195",
+      "statement": "@_computed_field(description='实例实现模式：virtual 为共享源码的分身，host 为源插件本体自身')\n@property\ndef mode(self) -> Literal['virtual', 'host']:",
+      "reason": "pydantic-computed"
+    },
+    {
+      "path": "app/sdk/_legacy/subscribe.py",
+      "owner": "SubscribeOper.add",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "702faa66888a04859e3bebf647d2b30c3f4fc329ce9a4be053e9fcc2dabb5dcf",
+      "statement": "def add(self, mediainfo: Optional[MediaInfo | MusicInfo]=None, **kwargs: Any) -> tuple[int, str]:",
+      "reason": "legacy-subscribe"
+    },
+    {
+      "path": "app/sdk/_legacy/subscribe.py",
+      "owner": "SubscribeOper.async_add",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "fa462ab703861b536ebdc33fa7e7f659e74b0858a80cb6f5ed6391797470078f",
+      "statement": "async def async_add(self, mediainfo: Optional[MediaInfo | MusicInfo]=None, **kwargs: Any) -> tuple[int, str]:",
+      "reason": "legacy-subscribe"
+    }
+  ],
+  "stubs": [
+    {
+      "path": "app/application/site/sites.pyi",
+      "sha256": "b3f0ded8022739b361b730c7dcc47b949c28f0be466d846c15b396937f8b86f0",
+      "reason": "binary-site-contract"
+    }
+  ]
+}

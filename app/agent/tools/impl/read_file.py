@@ -5,7 +5,7 @@
 import hashlib
 import json
 from pathlib import Path
-from typing import Optional, Type
+from typing import Any, Optional, Type, cast
 
 from anyio import Path as AsyncPath
 from pydantic import BaseModel, Field
@@ -67,7 +67,7 @@ class ReadFileTool(MoviePilotTool):
         description="工具输入参数的验证模型或 JSON Schema",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据参数生成友好的提示消息
         """
@@ -75,13 +75,13 @@ class ReadFileTool(MoviePilotTool):
         file_name = Path(file_path).name if file_path else "未知文件"
         return f"读取文件: {file_name}"
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         file_path: str,
         start_line: Optional[int] = None,
         end_line: Optional[int] = None,
         include_metadata: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         读取指定文本范围，必要时附带完整文件的 SHA-256 元数据。
@@ -100,8 +100,7 @@ class ReadFileTool(MoviePilotTool):
             )
             if access_error:
                 return access_error
-
-            path = AsyncPath(resolved_path)
+            path = AsyncPath(cast(Path, resolved_path))
 
             if not await path.exists():
                 return f"错误：文件 {resolved_path} 不存在"
@@ -150,7 +149,7 @@ class ReadFileTool(MoviePilotTool):
             if truncated:
                 return f"{content}\n\n[警告：{READ_FILE_TRUNCATION_MESSAGE}]"
 
-            return content
+            return str(content)
 
         except PermissionError:
             return f"错误：没有权限读取 {file_path}"

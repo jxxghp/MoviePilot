@@ -176,7 +176,7 @@ def _candidate_contexts(mediainfo: MediaInfo | MusicInfo, torrents: List[Torrent
     原始预览仅展示资源自身解析信息，不提前绑定未经匹配的目标媒体。
     """
     return [Context(
-        meta_info=MetaInfo(title=torrent.title, subtitle=torrent.description, mtype=mediainfo.type),
+        meta_info=MetaInfo(title=torrent.title or "", subtitle=torrent.description, mtype=mediainfo.type),
         torrent_info=torrent, resource_source="search", media_info_is_target=False,
         match_status="candidate", match_reason="unverified",
     ) for torrent in torrents]

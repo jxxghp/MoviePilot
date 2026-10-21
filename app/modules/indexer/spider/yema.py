@@ -39,7 +39,7 @@ class YemaSpider:
         "12": "完结",
     }
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
         """
         初始化 YemaPT 开放 API 索引器。
 
@@ -66,7 +66,7 @@ class YemaSpider:
         """
         return cls._size
 
-    def _request_headers(self) -> dict:
+    def _request_headers(self) -> dict[str, Any]:
         """
         构造开放 API 请求头。
 
@@ -121,7 +121,9 @@ class YemaSpider:
         return [None]
 
     @staticmethod
-    def _merge_search_results(result_groups: List[List[dict]]) -> List[dict]:
+    def _merge_search_results(
+        result_groups: List[List[dict[str, Any]]],
+    ) -> List[dict[str, Any]]:
         """
         按种子详情链接合并多个分类查询结果并保持首次出现顺序。
         """
@@ -137,7 +139,7 @@ class YemaSpider:
                 merged.append(torrent)
         return merged
 
-    def _parse_result(self, results: List[dict]) -> List[dict]:
+    def _parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
         将开放 API 种子数据转换为 MoviePilot 标准字段。
 
@@ -189,7 +191,9 @@ class YemaSpider:
             })
         return torrents
 
-    def _process_search_response(self, response) -> Tuple[bool, List[dict]]:
+    def _process_search_response(
+        self, response: Any
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         校验开放 API 通用响应并解析搜索结果。
 
@@ -270,7 +274,7 @@ class YemaSpider:
         mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
         cat: Optional[str] = None,
-    ) -> Tuple[bool, List[dict]]:
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         同步搜索 YemaPT 公开种子。
 
@@ -308,7 +312,7 @@ class YemaSpider:
         mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
         cat: Optional[str] = None,
-    ) -> Tuple[bool, List[dict]]:
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索 YemaPT 公开种子。
 

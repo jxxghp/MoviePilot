@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -28,8 +28,8 @@ class Slack:
     Slack 通知与交互客户端。
     """
 
-    _client: WebClient = None
-    _service: SocketModeHandler = None
+    _client: Optional[WebClient] = None
+    _service: Optional[SocketModeHandler] = None
     _channel = ""
     _oauth_token = ""
     # Slack 应用命令清单的最大命令数。
@@ -45,7 +45,7 @@ class Slack:
                  SLACK_APP_ID: Optional[str] = None,
                  SLACK_APP_CONFIG_TOKEN: Optional[str] = None,
                  SLACK_COMMAND_REQUEST_URL: Optional[str] = None,
-                 **kwargs):
+                 **kwargs: Any) -> None:
         """
         创建 Slack SDK 客户端，注册入站回调并连接 Socket Mode。
 
@@ -73,7 +73,7 @@ class Slack:
             return
 
         self._client = slack_app.client
-        self._channel = SLACK_CHANNEL
+        self._channel = SLACK_CHANNEL or ""
         self._oauth_token = SLACK_OAUTH_TOKEN
         self._config_name = kwargs.get("name")
         self._app_id = (SLACK_APP_ID or "").strip()
@@ -86,14 +86,14 @@ class Slack:
         self._registered_command_names: set[str] = set()
 
         @slack_app.event("message")
-        def slack_message(message):
+        def slack_message(message: dict[str, Any]) -> None:
             """
             将普通 Slack 消息转交消息链。
             """
             self._forward_to_message_chain(message, timeout=10)
 
         @slack_app.action(re.compile(r"actionId-.*"))
-        def slack_action(ack, body):
+        def slack_action(ack: Callable[[], Any], body: dict[str, Any]) -> None:
             """
             确认交互按钮事件，并转交消息链处理。
             """
@@ -101,7 +101,7 @@ class Slack:
             self._forward_to_message_chain(body, timeout=60)
 
         @slack_app.event("app_mention")
-        def slack_mention(say, body):
+        def slack_mention(say: Callable[[str], Any], body: dict[str, Any]) -> None:
             """
             回应应用提及事件，并转交消息链处理。
             """
@@ -109,7 +109,7 @@ class Slack:
             self._forward_to_message_chain(body, timeout=10)
 
         @slack_app.shortcut(re.compile(r"/*"))
-        def slack_shortcut(ack, body):
+        def slack_shortcut(ack: Callable[[], Any], body: dict[str, Any]) -> None:
             """
             确认快捷操作事件，并转交消息链处理。
             """
@@ -117,7 +117,7 @@ class Slack:
             self._forward_to_message_chain(body, timeout=10)
 
         @slack_app.command(re.compile(r"/*"))
-        def slack_command(ack, body):
+        def slack_command(ack: Callable[[], Any], body: dict[str, Any]) -> None:
             """
             确认斜杠命令事件，并转交消息链处理。
             """
@@ -129,12 +129,12 @@ class Slack:
                 slack_app,
                 SLACK_APP_TOKEN
             )
-            self._service.connect()
+            cast(Callable[[], None], self._service.connect)()
             logger.info("Slack消息接收服务启动")
         except Exception as err:
             logger.error("Slack消息接收服务启动失败: %s" % str(err))
 
-    def _forward_to_message_chain(self, payload: dict, *, timeout: float) -> bool:
+    def _forward_to_message_chain(self, payload: dict[str, Any], *, timeout: float) -> bool:
         """
         把 Slack SDK 回调同步转交统一消息入口。
         """
@@ -150,7 +150,7 @@ class Slack:
         """
         if self._service:
             try:
-                self._service.close()
+                cast(Callable[[], None], self._service.close)()
                 logger.info("Slack消息接收服务已停止")
             except Exception as err:
                 logger.error("Slack消息接收服务停止失败: %s" % str(err))
@@ -165,7 +165,7 @@ class Slack:
         """
         return True if self._client else False
 
-    def register_commands(self, commands: Dict[str, dict]) -> bool:
+    def register_commands(self, commands: Dict[str, dict[str, Any]]) -> bool:
         """
         通过 Slack App Manifest 注册 Slash Commands。
 
@@ -188,10 +188,12 @@ class Slack:
             return False
         return self._update_manifest_commands({})
 
-    def _update_manifest_commands(self, commands: Dict[str, dict]) -> bool:
+    def _update_manifest_commands(self, commands: Dict[str, dict[str, Any]]) -> bool:
         """
         更新 Slack Manifest 中的 Slash Commands，保留非本实例管理的命令。
         """
+        if self._manifest_client is None:
+            return False
         try:
             manifest = self._export_manifest()
             if not manifest:
@@ -239,6 +241,8 @@ class Slack:
         """
         导出 Slack App Manifest。
         """
+        if self._manifest_client is None:
+            return None
         result = self._manifest_client.apps_manifest_export(app_id=self._app_id)
         if result and result.get("ok") is False:
             logger.error(f"Slack Manifest 导出失败：{result.get('error')}")
@@ -248,7 +252,7 @@ class Slack:
             manifest = json.loads(manifest)
         return manifest if isinstance(manifest, dict) else None
 
-    def _build_slash_commands(self, commands: Dict[str, dict]) -> List[Dict[str, Any]]:
+    def _build_slash_commands(self, commands: Dict[str, dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         构建 Slack Manifest Slash Commands 配置。
         """
@@ -323,10 +327,10 @@ class Slack:
 
     def send_msg(self, title: Optional[str], text: Optional[str] = None,
                  image: Optional[str] = None, link: Optional[str] = None,
-                 userid: Optional[str] = None, buttons: Optional[List[List[dict]]] = None,
+                 userid: Optional[str] = None, buttons: Optional[List[List[dict[str, Any]]]] = None,
                  original_message_id: Optional[str] = None,
                  original_chat_id: Optional[str] = None,
-                 formatted_text: Optional[str] = None):
+                 formatted_text: Optional[str] = None) -> Tuple[bool, Any]:
         """
         发送或编辑 Slack 通知，必要时分批提交格式化内容。
 
@@ -343,6 +347,8 @@ class Slack:
         :param formatted_text: 可选 Slack mrkdwn 正文，按段落构建内容块
         :return: 成功时返回 (True, 最后一批 SDK 响应)，失败返回 (False, 错误文本)
         """
+        elements: list[dict[str, Any]]
+        blocks: list[dict[str, Any]]
         if not self._client:
             return False, "消息客户端未就绪"
         if not title and not text:
@@ -427,6 +433,7 @@ class Slack:
         """
         选择渠道正文或原有图文结构，按钮仍由发送入口统一添加。
         """
+        blocks: list[dict[str, Any]]
         blocks = cls._formatted_blocks(formatted_text) if formatted_text else []
         if blocks:
             blocks.insert(0, {"type": "header", "text": {
@@ -485,7 +492,7 @@ class Slack:
         text: Optional[str] = None,
         userid: Optional[str] = None,
         file_name: Optional[str] = None,
-    ):
+    ) -> Tuple[bool, Any]:
         """
         上传本地文件，并附带标题和正文。
 
@@ -572,7 +579,7 @@ class Slack:
             return False
 
     def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None, title: Optional[str] = None,
-                        buttons: Optional[List[List[dict]]] = None,
+                        buttons: Optional[List[List[dict[str, Any]]]] = None,
                         original_message_id: Optional[str] = None,
                         original_chat_id: Optional[str] = None) -> Optional[bool]:
         """
@@ -586,6 +593,9 @@ class Slack:
         :param original_chat_id: 原消息所属频道标识
         :return: 收到有效 SDK 响应时返回 True；发送失败返回 False；空媒体列表不发送
         """
+        elements: list[dict[str, Any]]
+        blocks: list[dict[str, Any]]
+        title_section: dict[str, Any]
         if not self._client:
             return False
         if not medias:
@@ -615,12 +625,12 @@ class Slack:
                         if media.get_poster_image():
                             if media.vote_star:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                    f"\n类型：{media.type.value}" \
+                                    f"\n类型：{media.type.value if media.type else ""}" \
                                     f"\n{media.vote_star}" \
                                     f"\n{media.get_overview_string(50)}"
                             else:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                    f"\n类型：{media.type.value}" \
+                                    f"\n类型：{media.type.value if media.type else ""}" \
                                     f"\n{media.get_overview_string(50)}"
                             blocks.append(
                                 {
@@ -673,12 +683,12 @@ class Slack:
                         if media.get_poster_image():
                             if media.vote_star:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                    f"\n类型：{media.type.value}" \
+                                    f"\n类型：{media.type.value if media.type else ""}" \
                                     f"\n{media.vote_star}" \
                                     f"\n{media.get_overview_string(50)}"
                             else:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                    f"\n类型：{media.type.value}" \
+                                    f"\n类型：{media.type.value if media.type else ""}" \
                                     f"\n{media.get_overview_string(50)}"
                             blocks.append(
                                 {
@@ -732,7 +742,7 @@ class Slack:
             return False
 
     def send_torrents_msg(self, torrents: List[Context], userid: Optional[str] = None, title: Optional[str] = None,
-                          buttons: Optional[List[List[dict]]] = None,
+                          buttons: Optional[List[List[dict[str, Any]]]] = None,
                           original_message_id: Optional[str] = None,
                           original_chat_id: Optional[str] = None) -> Optional[bool]:
         """
@@ -746,6 +756,9 @@ class Slack:
         :param original_chat_id: 原消息所属频道标识
         :return: 收到有效 SDK 响应时返回 True；发送失败返回 False；客户端未就绪返回 None
         """
+        elements: list[dict[str, Any]]
+        blocks: list[dict[str, Any]]
+        title_section: dict[str, Any]
         if not self._client:
             return None
 
@@ -770,8 +783,10 @@ class Slack:
             if buttons:
                 for context in torrents:
                     torrent = context.torrent_info
+                    if not torrent:
+                        continue
                     site_name = torrent.site_name
-                    meta = MetaInfo(torrent.title, torrent.description)
+                    meta = MetaInfo(torrent.title or "", torrent.description)
                     link = torrent.page_url
                     title_text = f"{meta.season_episode} " \
                         f"{meta.resource_term} " \
@@ -828,8 +843,10 @@ class Slack:
             else:
                 for context in torrents:
                     torrent = context.torrent_info
+                    if not torrent:
+                        continue
                     site_name = torrent.site_name
-                    meta = MetaInfo(torrent.title, torrent.description)
+                    meta = MetaInfo(torrent.title or "", torrent.description)
                     link = torrent.page_url
                     title_text = f"{meta.season_episode} " \
                         f"{meta.resource_term} " \
@@ -924,7 +941,7 @@ class Slack:
             logger.error(f"删除Slack消息异常: {str(e)}")
             return False
 
-    def __find_public_channel(self):
+    def __find_public_channel(self) -> str:
         """
         在可见公共及私有频道中按名称查找默认接收频道。
 
@@ -939,7 +956,7 @@ class Slack:
                     break
                 for channel in result["channels"]:
                     if channel.get("name") == (self._channel or "全体"):
-                        conversation_id = channel.get("id")
+                        conversation_id = str(channel.get("id") or "")
                         break
         except Exception as e:
             logger.error(f"查找Slack公共频道失败: {str(e)}")

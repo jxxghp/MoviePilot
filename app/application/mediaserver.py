@@ -7,7 +7,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Protocol, Union, cast
+from typing import Any, Optional, Protocol, Union
 
 from app.application.service import ServiceBaseHelper
 from app.domain.context import MusicInfo
@@ -25,9 +25,9 @@ from app.schemas.types import (
 )
 
 # 查重只需要来源身份与年份；具体音乐匹配由模块补充专辑完整性证据。
-MEDIA_SERVER_EXISTENCE_QUERY = MediaServerQueryOptions(fields={
+MEDIA_SERVER_EXISTENCE_QUERY = MediaServerQueryOptions(fields=frozenset({
     MediaServerField.IDENTITY, MediaServerField.YEAR,
-})
+}))
 
 
 @dataclass(frozen=True, slots=True)
@@ -548,7 +548,7 @@ def format_emby_family_item(
         }
         if include_server_id:
             fields["server_id"] = item.get("ServerId")
-        return cast(_SchemaMediaServerItem, _SchemaMediaServerItem.model_validate(fields))
+        return _SchemaMediaServerItem.model_validate(fields)
     except Exception as error:
         logger.error(error)
         return None

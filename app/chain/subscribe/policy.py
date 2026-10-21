@@ -18,6 +18,9 @@ from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.domain.context import (
     Context,
 )
+from app.domain.context import (
+    TorrentInfo as _TorrentInfo,
+)
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
@@ -374,6 +377,9 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         """
         TV 分集洗版及尚无已有剧集的普通订阅先尝试完整包，失败后回退到按集下载。
         """
+        contexts = [context for context in contexts if context.torrent_info is not None]
+        if not contexts:
+            return [], no_exists
         activity = current_activity_run()
         governance: Optional[SubscriptionDownloadGovernance] = None
         repository = getattr(self, "subscription_repository", None)
@@ -449,7 +455,8 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         episode_priority_gate = self._SubscribeChain__get_episode_priority(subscribe)
         full_pack_contexts = []
         for context in full_season_contexts:
-            candidate_priority = context.torrent_info.pri_order
+            # 入口已排除缺少种子信息的候选，沿用同一批上下文的资源优先级。
+            candidate_priority = cast(_TorrentInfo, context.torrent_info).pri_order
             accepted = self._SubscribeChain__should_prefer_full_pack_for_episode_best_version(
                 subscribe=subscribe,
                 priority=candidate_priority,

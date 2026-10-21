@@ -5,6 +5,7 @@
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+from typing import TypedDict as _TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
@@ -41,8 +42,7 @@ class MediaServerField(str, Enum):
     LINK = "link"
 
 
-# 当前 mypy 配置跳过 Pydantic 实现，无法静态解析 BaseModel 基类。
-class MediaServerQueryOptions(BaseModel):  # type: ignore[misc]
+class MediaServerQueryOptions(BaseModel):
     """
     不依赖服务端协议的媒体查询投影，未指定内容组时保留原行为。
 
@@ -56,6 +56,16 @@ class MediaServerQueryOptions(BaseModel):  # type: ignore[misc]
     )
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    @staticmethod
+    def as_kwargs(query: Optional["MediaServerQueryOptions"]) -> "_MediaServerQueryKwargs":
+        """
+        仅在指定投影时转发 query，保持旧客户端和插件未传该参数的调用约定。
+
+        :param query: 可选的媒体查询投影
+        :return: 有类型约束的可选关键字参数
+        """
+        return {"query": query} if query is not None else {}
 
     def includes(self, field: MediaServerField) -> bool:
         """
@@ -76,6 +86,16 @@ class MediaServerQueryOptions(BaseModel):  # type: ignore[misc]
         if self.fields is None:
             return self
         return MediaServerQueryOptions(fields=self.fields.union(fields))
+
+
+class _MediaServerQueryKwargs(_TypedDict, total=False):
+    """
+    媒体客户端调用中可省略的投影参数。
+
+    :param query: 仅在调用方明确指定时传入的查询投影
+    """
+
+    query: MediaServerQueryOptions
 
 
 class ExistMediaInfo(BaseModel):
@@ -100,7 +120,6 @@ class MediaServerPlayData(BaseModel):
     url: str = Field(description="播放地址")
     item_id: Optional[str] = Field(default=None, description="媒体项目 ID")
     server_id: Optional[str] = Field(default=None, description="媒体服务器 ID")
-    server_type: Optional[str] = Field(default=None, description="媒体服务器类型")
 
 
 class MediaServerExistsData(BaseModel):
@@ -147,6 +166,7 @@ class MediaServerLibrary(BaseModel):
     id: Optional[Union[str, int]] = Field(default=None, description="记录标识")
     item_id: Optional[Union[str, int]] = Field(default=None, description="媒体服务器项目ID")
     server_id: Optional[str] = Field(default=None, description="媒体服务器ID")
+    server_type: Optional[str] = Field(default=None, description="媒体服务器类型")
     name: Optional[str] = Field(default=None, description="名称")
     path: Optional[Union[str, List[str]]] = Field(default=None, description="路径")
     type: Optional[str] = Field(default=None, description="类型")
@@ -154,7 +174,6 @@ class MediaServerLibrary(BaseModel):
     image: Optional[str] = Field(default=None, description="封面图")
     image_list: Optional[List[str]] = Field(default=None, description="封面图列表")
     link: Optional[str] = Field(default=None, description="跳转链接")
-    server_type: Optional[str] = Field(default=None, description="服务器类型")
     use_cookies: Optional[bool] = Field(default=None, description="飞牛的图片需要Cookies")
 
 
@@ -178,6 +197,7 @@ class MediaServerItem(OptionalMediaIdentityMixin, BaseModel):
     server: Optional[str] = Field(default=None, description="服务器")
     library: Optional[Union[str, int]] = Field(default=None, description="媒体库ID")
     server_id: Optional[str] = Field(default=None, description="媒体服务器ID")
+    server_type: Optional[str] = Field(default=None, description="媒体服务器类型")
     item_id: Optional[str] = Field(default=None, description="媒体项目 ID")
     item_type: Optional[str] = Field(default=None, description="类型")
     title: Optional[str] = Field(default=None, description="标题")

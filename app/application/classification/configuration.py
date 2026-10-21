@@ -360,7 +360,7 @@ def with_default_music_classification(policy: ClassificationPolicy) -> Classific
     为尚未配置音乐分类的策略追加安全、结构化的常用专辑分类。
     """
     if not needs_default_music_classification(policy):
-        return cast(ClassificationPolicy, policy.model_copy(deep=True))
+        return policy.model_copy(deep=True)
 
     categories = [
         *(item.model_copy(deep=True) for item in policy.categories),
@@ -429,13 +429,10 @@ def with_default_music_classification(policy: ClassificationPolicy) -> Classific
             value=album_type,
             category_id=category_id,
         )
-    return cast(
-        ClassificationPolicy,
-        policy.model_copy(
+    return policy.model_copy(
             deep=True,
             update={"categories": categories, "rules": rules},
-        ),
-    )
+        )
 
 
 def needs_default_music_classification(policy: ClassificationPolicy) -> bool:
@@ -534,20 +531,14 @@ class ClassificationPolicyConfigurationService:
         返回与内部活动引用隔离的当前策略副本。
         """
         with self._lock:
-            return cast(
-                ClassificationPolicy,
-                self._require_state().active.model_copy(deep=True),
-            )
+            return self._require_state().active.model_copy(deep=True)
 
     def state(self) -> ClassificationPolicyState:
         """
         返回与内部活动引用隔离的完整状态包副本。
         """
         with self._lock:
-            return cast(
-                ClassificationPolicyState,
-                self._require_state().model_copy(deep=True),
-            )
+            return self._require_state().model_copy(deep=True)
 
     def history(self) -> tuple[ClassificationPolicy, ...]:
         """
@@ -763,10 +754,7 @@ class ClassificationPolicyConfigurationService:
                 self._publish_memory_snapshot(stored)
             raise
         self._publish_memory_snapshot(desired)
-        return cast(
-            ClassificationPolicy,
-            desired.active.model_copy(deep=True),
-        )
+        return desired.active.model_copy(deep=True)
 
     def _publish_memory_snapshot(self, state: ClassificationPolicyState) -> None:
         """

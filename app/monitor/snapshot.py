@@ -4,7 +4,7 @@
 
 import json
 import time
-from typing import Dict, Optional, Set, Tuple
+from typing import Any, Optional, Set, Tuple
 
 from app.runtime.cache import CacheBackend, FileCache
 from app.runtime.log import logger
@@ -41,7 +41,7 @@ class SnapshotStore:
         if legacy_cache.is_redis():
             self._legacy_cache = legacy_cache
 
-    def save(self, storage: str, snapshot: Dict, file_count: int = 0,
+    def save(self, storage: str, snapshot: dict[str, Any], file_count: int = 0,
              last_snapshot_time: Optional[float] = None,
              snapshot_time: Optional[float] = None) -> bool:
         """
@@ -79,7 +79,7 @@ class SnapshotStore:
             logger.error(f"保存快照失败: {e}")
             return False
 
-    def load_checked(self, storage: str) -> Tuple[Optional[Dict], bool]:
+    def load_checked(self, storage: str) -> Tuple[Optional[dict[str, Any]], bool]:
         """
         从文件缓存加载快照，并区分「快照不存在」与「读取失败」。
         读取失败时不能当作首次快照处理，否则会静默丢弃已有基线。
@@ -103,7 +103,7 @@ class SnapshotStore:
             logger.error(f"加载快照失败: {e}")
             return None, False
 
-    def load(self, storage: str) -> Optional[Dict]:
+    def load(self, storage: str) -> Optional[dict[str, Any]]:
         """
         从文件缓存加载快照。
         :param storage: 存储名称

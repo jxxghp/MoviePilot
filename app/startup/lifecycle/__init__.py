@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import time
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Awaitable, Callable
+from typing import AsyncIterator, Awaitable, Callable, cast
 
 from fastapi import FastAPI
 
@@ -196,6 +196,9 @@ def offload_shutdown_callback(
     """
 
     async def invoke() -> object:
+        """
+        把同步生命周期回调交给线程池，并等待其完整结束。
+        """
         return await run_in_threadpool_to_completion(callback)
 
     return invoke
@@ -236,7 +239,7 @@ async def stop_lifecycle_components(
     ):
         completed = await run_shutdown_step(
             component.name,
-            component.stop,
+            cast(Callable[[], object], component.stop),
             component.stop_timeout_seconds,
         )
         if completed:
@@ -779,7 +782,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             active_start_component = component
             await run_startup_step(
                 component.name,
-                component.start,
+                cast(Callable[[], object], component.start),
                 component.start_timeout_seconds,
             )
             started_component_names.add(component.name)

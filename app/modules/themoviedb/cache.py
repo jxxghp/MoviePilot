@@ -53,6 +53,8 @@ class TmdbCache(metaclass=WeakSingleton):
         """
         从统一文件缓存恢复仍在有效期内的 TMDB 识别数据。
         """
+        if self._file_cache is None or self._legacy_file_cache is None:
+            return
         try:
             content = self._file_cache.get(PERSISTENCE_KEY, region=PERSISTENCE_REGION)
             if not content:
@@ -101,7 +103,7 @@ class TmdbCache(metaclass=WeakSingleton):
         except Exception as err:
             logger.error(f"加载TMDB识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
-    def _set(self, key: str, value: dict, ttl: Optional[int] = None) -> None:
+    def _set(self, key: str, value: dict[str, Any], ttl: Optional[int] = None) -> None:
         """
         写入单条 TMDB 识别缓存并记录其独立过期时间，未指定 ttl 时用默认有效期。
         """
@@ -121,7 +123,7 @@ class TmdbCache(metaclass=WeakSingleton):
             self._dirty = True
             self.save(force=True)
 
-    def list_items(self) -> list[dict]:
+    def list_items(self) -> list[dict[str, Any]]:
         """
         生成按缓存键排序的管理界面条目列表。
 
@@ -180,9 +182,9 @@ class TmdbCache(metaclass=WeakSingleton):
                 media_type = MediaType(media_type)
             except (TypeError, ValueError):
                 return False
-        return media_type == MediaType.MOVIE
+        return bool(media_type == MediaType.MOVIE)
 
-    def get(self, meta: MetaBase):
+    def get(self, meta: MetaBase) -> dict[str, Any]:
         """
         读取元数据对应的有效识别缓存，并剔除类型冲突条目。
 
@@ -195,7 +197,9 @@ class TmdbCache(metaclass=WeakSingleton):
             cache_data = self._cache.get(key)
             if not cache_data and self._expires_at.pop(key, None) is not None:
                 self._dirty = True
-            if not cache_data or not isinstance(cache_data, dict):
+            if not isinstance(cache_data, dict):
+                return {}
+            if not cache_data:
                 return {}
             if self.__is_type_conflicted(meta, cache_data.get("type"), cache_data.get("id")):
                 # 脏条目不丢弃就会被无限期沿用，正确的识别逻辑永远没有执行机会
@@ -207,7 +211,7 @@ class TmdbCache(metaclass=WeakSingleton):
                 return {}
             return cache_data
 
-    def delete(self, key: str) -> dict:
+    def delete(self, key: str) -> dict[str, Any]:
         """
         删除指定识别缓存并立即保存本地持久化状态。
 
@@ -216,7 +220,7 @@ class TmdbCache(metaclass=WeakSingleton):
         """
         with lock:
             redis_data = self._cache.get(key)
-            if redis_data:
+            if isinstance(redis_data, dict) and redis_data:
                 self._cache.delete(key)
                 self._expires_at.pop(key, None)
                 self._dirty = True
@@ -224,7 +228,7 @@ class TmdbCache(metaclass=WeakSingleton):
                 return redis_data
             return {}
 
-    def modify(self, key: str, title: str) -> dict:
+    def modify(self, key: str, title: str) -> dict[str, Any]:
         """
         修改已有缓存标题，并重置该条目的默认有效期。
 
@@ -234,7 +238,7 @@ class TmdbCache(metaclass=WeakSingleton):
         """
         with lock:
             redis_data = self._cache.get(key)
-            if redis_data:
+            if isinstance(redis_data, dict) and redis_data:
                 redis_data['title'] = title
                 self._set(key, redis_data)
                 return redis_data
@@ -291,6 +295,8 @@ class TmdbCache(metaclass=WeakSingleton):
         :param force: True 时即使未标记变更也执行保存
         """
         if self._cache.is_redis():
+            return
+        if self._file_cache is None or self._legacy_file_cache is None:
             return
         with lock:
             now = time()

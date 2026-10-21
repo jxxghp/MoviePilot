@@ -51,7 +51,7 @@ router = ResponseAPIRouter()
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_workflows(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     query: WorkflowQueryService = Depends(get_workflow_query_service),
     _: Any = Depends(get_current_active_manage_user_async),
     page: CompatiblePageParam = None,
@@ -73,7 +73,7 @@ async def list_workflows(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_agent_workflows(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     state: Literal["W", "R", "P", "S", "F", "all"] = "all",
     name: Optional[str] = None,
     trigger_type: Literal["timer", "event", "manual", "all"] = "all",

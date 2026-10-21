@@ -134,7 +134,7 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
                 activity.status = "failed"
                 activity.details["phase"] = "refresh_failed"
                 activity.details["reason"] = "本轮站点候选刷新失败，尚未进入订阅匹配；请查看运行日志了解原因"
-                activity.details["sites"] = list(site_facts)
+                activity.details["sites"] = cast(Any, list(site_facts))
                 activity.counts["sites"] = len(site_facts)
 
     def check(
@@ -405,6 +405,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
 
         target_key = mediakey or subscribe_media_key(subscribe)
         target_season = subscribe.season
+        if target_key is None or target_season is None:
+            return candidate_total
         target_start = subscribe.start_episode or 1
         snapshot = replace(subscribe, total_episode=old_total)
         try:
@@ -510,8 +512,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             scene=scene,
         )
         event = eventmanager.send_event(ChainEventType.SubscribeEpisodesRefresh, event_data)
-        if event and event.event_data:
-            result: SubscribeEpisodesRefreshEventData = event.event_data
+        if event and isinstance(event.event_data, SubscribeEpisodesRefreshEventData):
+            result = event.event_data
             if result.updated and result.total_episode:
                 result.total_episode = max(current_total or 0, result.total_episode)
                 total_episode: int = result.total_episode
@@ -542,8 +544,8 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             scene=scene,
         )
         event = await eventmanager.async_send_event(ChainEventType.SubscribeEpisodesRefresh, event_data)
-        if event and event.event_data:
-            result: SubscribeEpisodesRefreshEventData = event.event_data
+        if event and isinstance(event.event_data, SubscribeEpisodesRefreshEventData):
+            result = event.event_data
             if result.updated and result.total_episode:
                 result.total_episode = max(current_total or 0, result.total_episode)
                 total_episode: int = result.total_episode

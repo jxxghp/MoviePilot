@@ -174,9 +174,8 @@ class SearchRecommendOwner(_SearchOwnerBase):
     AI 搜索推荐的任务协调、代际隔离与结果发布。
     """
 
-    # 组合契约以可调用成员声明此能力，实际门面对外暴露只读属性。
     @property
-    def is_ai_recommend_enabled(self) -> bool:  # type: ignore[override]
+    def is_ai_recommend_enabled(self) -> bool:
         """
         检查AI推荐功能是否已启用。
         """
@@ -364,6 +363,9 @@ class SearchRecommendOwner(_SearchOwnerBase):
         full_output = [""]
 
         def on_output(text: str) -> None:
+            """
+            保存推荐 Agent 最新输出，供任务完成后发布最终结果。
+            """
             full_output[0] = text
 
         manager = get_running_agent_manager()

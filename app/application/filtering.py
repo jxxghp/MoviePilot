@@ -6,7 +6,7 @@ import copy
 import re
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
-from typing import Any, Dict, Iterable, Optional, cast
+from typing import Any, Dict, Iterable, Optional
 
 from app.application.configuration import get_configured_system_config
 from app.application.rules import (
@@ -230,7 +230,7 @@ def serialize_custom_rule(
     """
     导出自定义规则并附带规则组引用，省略值为 None 的模型字段。
     """
-    data = cast(dict[str, Any], rule.model_dump(exclude_none=True))
+    data = rule.model_dump(exclude_none=True)
     data["source"] = "custom"
     data["referenced_by_rule_groups"] = group_refs or []
     return data
@@ -243,7 +243,7 @@ def serialize_rule_group(
     """
     查询时尽量附带解析结果，便于 Agent 理解优先级层级。
     """
-    data = cast(dict[str, Any], group.model_dump(exclude_none=True))
+    data = group.model_dump(exclude_none=True)
     if group.rule_string:
         try:
             parsed = parse_rule_string(group.rule_string)
@@ -291,6 +291,9 @@ async def collect_rule_group_usages(
     }
 
     def ensure_usage(name: str) -> dict[str, Any]:
+        """
+        为规则组创建并复用本次统计中的使用量记录。
+        """
         if name not in usage_map:
             usage_map[name] = default_rule_group_usage()
         return usage_map[name]

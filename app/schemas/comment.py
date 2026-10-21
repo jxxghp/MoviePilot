@@ -7,8 +7,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class MediaCommentAuthor(BaseModel):  # type: ignore[misc]
+class MediaCommentAuthor(BaseModel):
     """
     评论作者的身份投影。
     """
@@ -19,8 +18,7 @@ class MediaCommentAuthor(BaseModel):  # type: ignore[misc]
     url: Optional[str] = Field(default=None, description="作者主页地址")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class MediaComment(BaseModel):  # type: ignore[misc]
+class MediaComment(BaseModel):
     """
     豆瓣短评条目，评分按豆瓣五分制归一。
     """
@@ -34,8 +32,7 @@ class MediaComment(BaseModel):  # type: ignore[misc]
     url: Optional[str] = Field(default=None, description="短评地址")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class MediaReview(BaseModel):  # type: ignore[misc]
+class MediaReview(BaseModel):
     """
     豆瓣影评条目，正文以摘要形式返回。
     """
@@ -51,8 +48,7 @@ class MediaReview(BaseModel):  # type: ignore[misc]
     url: Optional[str] = Field(default=None, description="影评地址")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class MediaCommentPage(BaseModel):  # type: ignore[misc]
+class MediaCommentPage(BaseModel):
     """
     短评分页结果，total 为豆瓣侧的总条目数。
     """
@@ -63,8 +59,7 @@ class MediaCommentPage(BaseModel):  # type: ignore[misc]
     items: list[MediaComment] = Field(default_factory=list, description="短评列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class MediaReviewPage(BaseModel):  # type: ignore[misc]
+class MediaReviewPage(BaseModel):
     """
     影评分页结果，total 为豆瓣侧的总条目数。
     """

@@ -39,9 +39,9 @@ class MediaServerConf(BaseModel):
 
     name: Optional[str] = Field(default=None, description="名称")
     type: Optional[str] = Field(default=None, description="类型 emby/zspace/jellyfin/plex/trimemedia/ugreen/navidrome")
-    config: Optional[dict] = Field(default_factory=dict, description="配置")
+    config: Optional[dict[str, Any]] = Field(default_factory=dict, description="配置")
     enabled: Optional[bool] = Field(default=False, description="是否启用")
-    sync_libraries: Optional[list] = Field(default_factory=list, description="同步媒体体库列表")
+    sync_libraries: Optional[list[str]] = Field(default_factory=list, description="同步媒体体库列表")
     sync_interval: Optional[int] = Field(default=None, description="自动同步间隔（小时），未设置时使用旧全局配置")
 
     @field_validator("sync_interval", mode="before")
@@ -73,7 +73,7 @@ class DownloaderConf(BaseModel):
     name: Optional[str] = Field(default=None, description="名称")
     type: Optional[str] = Field(default=None, description="类型 qbittorrent/transmission/rtorrent")
     default: Optional[bool] = Field(default=False, description="是否默认")
-    config: Optional[dict] = Field(default_factory=dict, description="配置")
+    config: Optional[dict[str, Any]] = Field(default_factory=dict, description="配置")
     enabled: Optional[bool] = Field(default=False, description="是否启用")
     path_mapping: Optional[list[tuple[str, str]]] = Field(default_factory=list, description="路径映射")
 
@@ -102,7 +102,7 @@ class NotificationSwitchConf(BaseModel):
     通知场景开关配置。
     """
 
-    type: str = Field(default=None, description="场景名称")
+    type: Optional[str] = Field(default=None, description="场景名称")
     action: Optional[str] = Field(default="all", description="通知范围 all/user/admin")
 
 
@@ -124,7 +124,7 @@ class StorageConf(BaseModel):
 
     type: Optional[str] = Field(default=None, description="类型 local/alipan/u115/rclone/alist")
     name: Optional[str] = Field(default=None, description="名称")
-    config: Optional[dict] = Field(default_factory=dict, description="配置")
+    config: Optional[dict[str, Any]] = Field(default_factory=dict, description="配置")
 
 
 class SystemEnvironmentUpdateData(BaseModel):
@@ -136,8 +136,7 @@ class SystemEnvironmentUpdateData(BaseModel):
     failed_updates: dict[str, tuple[Optional[bool], str]] = Field(default_factory=dict, description="更新失败的环境项")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SystemSettingsUpdateRequest(BaseModel):  # type: ignore[misc]
+class SystemSettingsUpdateRequest(BaseModel):
     """
     统一系统设置更新请求。
     """
@@ -188,8 +187,7 @@ class SystemSettingsUpdateRequest(BaseModel):  # type: ignore[misc]
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class CustomIdentifiersUpdateRequest(BaseModel):  # type: ignore[misc]
+class CustomIdentifiersUpdateRequest(BaseModel):
     """
     完整替换自定义识别词的请求。
     """
@@ -210,8 +208,7 @@ SystemUpdateType = Literal["application", "resources"]
 SystemUpdateTarget = Literal["application", "resources", "all"]
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SystemUpdateItemStatus(BaseModel):  # type: ignore[misc]
+class SystemUpdateItemStatus(BaseModel):
     """
     单类升级的可恢复状态快照。
     """
@@ -244,8 +241,7 @@ class SystemUpdateItemStatus(BaseModel):  # type: ignore[misc]
     can_install: bool = Field(default=False, description="当前版本是否可以安装")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SystemUpdateRequest(BaseModel):  # type: ignore[misc]
+class SystemUpdateRequest(BaseModel):
     """
     单类或合并升级动作的请求体，all 在一次重启中安装全部已准备更新。
     """
@@ -350,8 +346,7 @@ class SystemModuleListData(BaseModel):
     modules: list[SystemModuleInfo] = Field(default_factory=list, description="模块列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SystemModuleSettingInfo(BaseModel):  # type: ignore[misc]
+class SystemModuleSettingInfo(BaseModel):
     """
     可由用户统一开关的内置模块设置摘要。
     """
@@ -365,8 +360,7 @@ class SystemModuleSettingInfo(BaseModel):  # type: ignore[misc]
     enabled: bool = Field(description="是否启用")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SystemModuleSettingListData(BaseModel):  # type: ignore[misc]
+class SystemModuleSettingListData(BaseModel):
     """
     可由用户统一开关的内置模块设置列表。
     """
@@ -374,8 +368,7 @@ class SystemModuleSettingListData(BaseModel):  # type: ignore[misc]
     modules: list[SystemModuleSettingInfo] = Field(default_factory=list, description="模块列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SystemModuleCatalogInfo(BaseModel):  # type: ignore[misc]
+class SystemModuleCatalogInfo(BaseModel):
     """
     前端服务选择器可消费的宿主模块目录项。
     """
@@ -393,8 +386,7 @@ class SystemModuleCatalogInfo(BaseModel):  # type: ignore[misc]
     active: bool = Field(default=False, description="当前模块是否处于活动状态")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SystemModuleCatalogListData(BaseModel):  # type: ignore[misc]
+class SystemModuleCatalogListData(BaseModel):
     """
     宿主模块及其服务类型目录。
     """
@@ -402,8 +394,7 @@ class SystemModuleCatalogListData(BaseModel):  # type: ignore[misc]
     modules: list[SystemModuleCatalogInfo] = Field(default_factory=list, description="模块列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class DatabaseBackupArtifactData(BaseModel):  # type: ignore[misc]
+class DatabaseBackupArtifactData(BaseModel):
     """
     Web 管理端可见的受管数据库备份摘要。
     """
@@ -418,8 +409,7 @@ class DatabaseBackupArtifactData(BaseModel):  # type: ignore[misc]
     size: int = Field(description="文件大小，单位为字节")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class DatabaseBackupVerificationData(BaseModel):  # type: ignore[misc]
+class DatabaseBackupVerificationData(BaseModel):
     """
     受管数据库备份的脱敏校验结果。
     """

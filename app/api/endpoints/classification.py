@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from enum import Enum
 from functools import partial
-from typing import cast
+from typing import Any, cast
 
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
@@ -61,7 +61,7 @@ from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
 
-_STRUCTURED_WRITE_RESPONSES = {
+_STRUCTURED_WRITE_RESPONSES: dict[int | str, dict[str, Any]] = {
     status.HTTP_409_CONFLICT: {
         "model": Response[ClassificationRevisionConflict],
         "description": "分类策略 revision 冲突",

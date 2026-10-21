@@ -471,7 +471,7 @@ class ClassificationEnrichmentService:
                     provider_id=call.provider.provider_id,
                     provider_name=call.provider.provider_name,
                 )
-        return cast(ClassificationFacts, merged)
+        return merged
 
     def _warn(self, message: str) -> None:
         """
@@ -576,10 +576,7 @@ def _validated_response(
         ):
             continue
         accepted[field_id] = value
-    return cast(
-        ClassificationEnrichmentResponse,
-        response.model_copy(deep=True, update={"facts": accepted}),
-    )
+    return response.model_copy(deep=True, update={"facts": accepted})
 
 
 def _validate_match(

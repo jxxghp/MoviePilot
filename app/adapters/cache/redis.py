@@ -43,7 +43,7 @@ def serialize(value: Any) -> bytes:
     :return: 格式名、零字节分隔符和编码内容组成的缓存数据
     """
 
-    def _is_container_type(t):
+    def _is_container_type(t: type[object]) -> bool:
         """
         判断是否为容器类型
         """
@@ -104,25 +104,25 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         "BIG_MEMORY_MODE",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化Redis助手实例
         """
         self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
-        self.client = None
+        self.client: Optional[redis.Redis] = None
         self._connect_lock = threading.RLock()
 
-    def _connect(self):
+    def _connect(self) -> redis.Redis:
         """
         建立Redis连接
         """
         if self.client is not None:
-            return
+            return self.client
         client = None
         try:
             with self._connect_lock:
                 if self.client is not None:
-                    return
+                    return self.client
                 self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
                 connection_pool = redis.BlockingConnectionPool.from_url(
                     self.redis_url,
@@ -139,6 +139,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
                 self.client = client
                 logger.info(f"Successfully connected to Redis：{self.redis_url}")
                 self.set_memory_limit()
+                return client
         except Exception as e:
             if client:
                 client.close()
@@ -146,7 +147,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
             self.client = None
             raise RuntimeError("Redis connection failed") from e
 
-    def on_config_changed(self):
+    def on_config_changed(self) -> None:
         """
         缓存配置变化后重建同步 Redis 连接。
         """
@@ -155,18 +156,20 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
             self.close()
         self._connect()
 
-    def get_reload_name(self):
+    def get_reload_name(self) -> str:
         """
         返回同步 Redis 配置重载名称。
         """
         return "Redis"
 
-    def set_memory_limit(self, policy: Optional[str] = "allkeys-lru"):
+    def set_memory_limit(self, policy: Optional[str] = "allkeys-lru") -> None:
         """
         动态设置Redis最大内存和内存淘汰策略
 
         :param policy: 淘汰策略（如'allkeys-lru'）
         """
+        if self.client is None:
+            return
         try:
             # 非空配置直接传给 Redis；未配置时按大内存模式选择 1024 MB 或 256 MB。
             maxmemory = get_runtime_setting('CACHE_REDIS_MAXMEMORY') or (
@@ -179,13 +182,13 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
             logger.error(f"Failed to set Redis maxmemory or policy: {e}")
 
     @staticmethod
-    def __get_region(region: Optional[str] = None):
+    def __get_region(region: Optional[str] = None) -> str:
         """
         获取缓存的区
         """
         return f"region:{region}" if region else "region:DEFAULT"
 
-    def __make_redis_key(self, region: str, key: str) -> str:
+    def __make_redis_key(self, region: Optional[str], key: str) -> str:
         """
         获取缓存Key
         """
@@ -203,11 +206,11 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
             parts = redis_key.split(":key:")
             return unquote(parts[-1])
         except Exception as e:
-            logger.warn(f"Failed to parse redis key: {redis_key}, error: {e}")
-            return redis_key
+            logger.warn("解析 Redis 缓存键失败：%r，错误：%s", redis_key, e)
+            return redis_key.decode("utf-8", errors="replace") if isinstance(redis_key, bytes) else redis_key
 
     def set(self, key: str, value: Any, ttl: Optional[int] = None,
-            region: Optional[str] = "DEFAULT", **kwargs) -> None:
+            region: Optional[str] = "DEFAULT", **kwargs: Any) -> None:
         """
         序列化并写入缓存，连接或写入异常仅记录日志。
 
@@ -234,11 +237,11 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :param kwargs: Redis set 的额外选项；兼容参数 maxsize 会被丢弃
         :raises RuntimeError: 连接建立失败，或写入未得到 True 确认
         """
-        self._connect()
+        client = self._connect()
         redis_key = self.__make_redis_key(region, key)
         serialized_value = serialize(value)
         kwargs.pop("maxsize", None)
-        stored = self.client.set(redis_key, serialized_value, ex=ttl, **kwargs)
+        stored = client.set(redis_key, serialized_value, ex=ttl, **kwargs)
         if stored is not True:
             raise RuntimeError("Redis cache write was not acknowledged")
 
@@ -251,9 +254,9 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :return: 键存在时返回 True；不存在或发生故障时返回 False
         """
         try:
-            self._connect()
+            client = self._connect()
             redis_key = self.__make_redis_key(region, key)
-            return self.client.exists(redis_key) == 1
+            return bool(client.exists(redis_key) == 1)
         except Exception as e:
             logger.error(f"Failed to exists key: {key} region: {region}, error: {e}")
             return False
@@ -267,9 +270,9 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :return: 解码后的值；键不存在或发生故障时返回 None
         """
         try:
-            self._connect()
+            client = self._connect()
             redis_key = self.__make_redis_key(region, key)
-            value = self.client.get(redis_key)
+            value = client.get(redis_key)
             if value is not None:
                 return deserialize(value)
             return None
@@ -303,9 +306,9 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :param region: 缓存区域；为空时使用 DEFAULT
         :return: 领取并解码的值；键不存在时返回 None
         """
-        self._connect()
+        client = self._connect()
         redis_key = self.__make_redis_key(region, key)
-        value = self.client.getdel(redis_key)
+        value = client.getdel(redis_key)
         return deserialize(value) if value is not None else None
 
     def delete(self, key: str, region: Optional[str] = "DEFAULT") -> None:
@@ -316,9 +319,9 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :param region: 缓存的区
         """
         try:
-            self._connect()
+            client = self._connect()
             redis_key = self.__make_redis_key(region, key)
-            self.client.delete(redis_key)
+            client.delete(redis_key)
         except Exception as e:
             logger.error(f"Failed to delete key: {key} in region: {region}, error: {e}")
 
@@ -331,17 +334,17 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :param region: 要清空的区域；None 或空字符串会执行 flushdb，影响当前数据库的全部键
         """
         try:
-            self._connect()
+            client = self._connect()
             if region:
                 cache_region = self.__get_region(region)
                 redis_key = f"{cache_region}:key:*"
-                with self.client.pipeline() as pipe:
-                    for key in self.client.scan_iter(redis_key):
+                with client.pipeline() as pipe:
+                    for key in client.scan_iter(redis_key):
                         pipe.delete(key)
                     pipe.execute()
                 logger.debug(f"Cleared Redis cache for region: {region}")
             else:
-                self.client.flushdb()
+                client.flushdb()
                 logger.info("All Redis cache Cleared！")
         except Exception as e:
             logger.error(f"Failed to clear cache, region: {region}, error: {e}")
@@ -356,17 +359,17 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :yields: 原始缓存键与解码后的值组成的二元组
         """
         try:
-            self._connect()
+            client = self._connect()
             if region:
                 cache_region = self.__get_region(region)
                 redis_key = f"{cache_region}:key:*"
-                for key in self.client.scan_iter(redis_key):
-                    value = self.client.get(key)
+                for key in client.scan_iter(redis_key):
+                    value = client.get(key)
                     if value is not None:
                         yield self.__get_original_key(key), deserialize(value)
             else:
-                for key in self.client.scan_iter("*"):
-                    value = self.client.get(key)
+                for key in client.scan_iter("*"):
+                    value = client.get(key)
                     if value is not None:
                         yield self.__get_original_key(key), deserialize(value)
         except Exception as e:
@@ -409,7 +412,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         "BIG_MEMORY_MODE",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化异步Redis助手实例
         """
@@ -505,7 +508,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             logger.error(f"Failed to connect to Redis (async): {e}")
             raise RuntimeError("Redis async connection failed") from e
 
-    async def _close_client(self):
+    async def _close_client(self) -> None:
         """
         关闭当前事件循环拥有的Redis客户端连接
         """
@@ -530,7 +533,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
                         self.client = None
                         self._loop = None
 
-    async def on_config_changed(self):
+    async def on_config_changed(self) -> None:
         """
         缓存配置变化后异步重建 Redis 连接。
         """
@@ -538,7 +541,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         await self._close_client()
         await self._connect()
 
-    def get_reload_name(self):
+    def get_reload_name(self) -> str:
         """
         返回异步 Redis 配置重载名称。
         """
@@ -548,7 +551,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         self,
         policy: Optional[str] = "allkeys-lru",
         client: Optional[Redis] = None,
-    ):
+    ) -> None:
         """
         动态设置Redis最大内存和内存淘汰策略
 
@@ -570,13 +573,13 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             logger.error(f"Failed to set Redis maxmemory or policy (async): {e}")
 
     @staticmethod
-    def __get_region(region: Optional[str] = "DEFAULT"):
+    def __get_region(region: Optional[str] = "DEFAULT") -> str:
         """
         获取缓存的区
         """
         return f"region:{region}" if region else "region:DEFAULT"
 
-    def __make_redis_key(self, region: str, key: str) -> str:
+    def __make_redis_key(self, region: Optional[str], key: str) -> str:
         """
         获取缓存Key
         """
@@ -594,11 +597,11 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             parts = redis_key.split(":key:")
             return unquote(parts[-1])
         except Exception as e:
-            logger.warn(f"Failed to parse redis key: {redis_key}, error: {e}")
-            return redis_key
+            logger.warn("解析 Redis 缓存键失败：%r，错误：%s", redis_key, e)
+            return redis_key.decode("utf-8", errors="replace") if isinstance(redis_key, bytes) else redis_key
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None,
-                  region: Optional[str] = "DEFAULT", **kwargs) -> None:
+                  region: Optional[str] = "DEFAULT", **kwargs: Any) -> None:
         """
         序列化并写入缓存，连接或写入异常仅记录日志。
 
@@ -631,7 +634,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             client = self.client if self.client is current_client else current_client
             redis_key = self.__make_redis_key(region, key)
             result = await client.exists(redis_key)
-            return result == 1
+            return bool(result == 1)
         except Exception as e:
             logger.error(f"Failed to exists key (async): {key} region: {region}, error: {e}")
             return False
@@ -764,7 +767,7 @@ class RedisBackend(AtomicCacheBackend):
         value: Any,
         ttl: Optional[int] = None,
         region: Optional[str] = DEFAULT_CACHE_REGION,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         写入缓存；非正有效期改为删除键，后端异常仅记录日志。
@@ -905,13 +908,13 @@ class AsyncRedisBackend(AsyncCacheBackend):
         self.ttl = ttl
         self.redis_helper = AsyncRedisHelper()
 
-    async def set(
+    async def set(  # type: ignore[override]
         self,
         key: str,
         value: Any,
         ttl: Optional[int] = None,
         region: Optional[str] = DEFAULT_CACHE_REGION,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         写入缓存；非正有效期改为删除键，后端异常仅记录日志。
@@ -928,7 +931,7 @@ class AsyncRedisBackend(AsyncCacheBackend):
             return
         await self.redis_helper.set(key, value, ttl=ttl, region=region, **kwargs)
 
-    async def exists(
+    async def exists(  # type: ignore[override]
         self,
         key: str,
         region: Optional[str] = DEFAULT_CACHE_REGION,
@@ -952,7 +955,7 @@ class AsyncRedisBackend(AsyncCacheBackend):
         """
         return await self.redis_helper.get(key, region=region)
 
-    async def delete(
+    async def delete(  # type: ignore[override]
         self,
         key: str,
         region: Optional[str] = DEFAULT_CACHE_REGION,
@@ -962,7 +965,7 @@ class AsyncRedisBackend(AsyncCacheBackend):
         """
         await self.redis_helper.delete(key, region=region)
 
-    async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
+    async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:  # type: ignore[override]
         """
         清空选定区域或当前 Redis 数据库，异常仅记录日志。
 
@@ -970,7 +973,7 @@ class AsyncRedisBackend(AsyncCacheBackend):
         """
         await self.redis_helper.clear(region=region)
 
-    async def items(
+    async def items(  # type: ignore[override]
         self,
         region: Optional[str] = DEFAULT_CACHE_REGION,
     ) -> AsyncGenerator[Tuple[str, Any], None]:
@@ -983,7 +986,7 @@ class AsyncRedisBackend(AsyncCacheBackend):
         async for item in self.redis_helper.items(region=region):
             yield item
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # type: ignore[override]
         """
         释放当前异步缓存实例；共享的异步 Redis 连接池由关闭流程的「异步Redis缓存连接」步骤统一关闭。
         """

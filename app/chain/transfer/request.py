@@ -20,13 +20,13 @@ from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfoPath
 from app.schemas.exception import OperationInterrupted
+from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,
     MediaType,
 )
-from app.schemas.workflow import FileItem
 
 
 def preview_media_title(
@@ -108,7 +108,7 @@ class _TransferCandidatePlanner:
             mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             continue_callback: Optional[Callable[[], bool]],
             has_episode_format_template: bool,
-            transfer_exclude_words: Optional[list],
+            transfer_exclude_words: Optional[list[str]],
             download_hash: Optional[str],
             sync_extra_files: bool,
             fileitem: FileItem,
@@ -248,14 +248,18 @@ class _TransferCandidatePlanner:
         """
         if self._continue_callback and not self._continue_callback():
             raise OperationInterrupted()
-        if self._has_episode_format_template and self._formaterHandler and not self._formaterHandler.match(item.name):
+        item_path = item.path
+        if not item_path:
+            return False
+        item_name = item.name or Path(item_path).name
+        if self._has_episode_format_template and self._formaterHandler and not self._formaterHandler.match(item_name):
             return False
         if any(
-                marker in item.path
+                marker in item_path
                 for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")
         ):
             return False
-        return not self._chain._is_blocked_by_exclude_words(item.path, self._transfer_exclude_words)
+        return not self._chain._is_blocked_by_exclude_words(item_path, self._transfer_exclude_words)
 
     def _build_main_meta(
             self,
@@ -266,7 +270,7 @@ class _TransferCandidatePlanner:
         """
         构建主视频元数据。
         """
-        main_path = Path(main_fileitem.path)
+        main_path = Path(main_fileitem.path or "")
         main_download_history = self._chain._resolve_download_history(
             repository=download_history_repository,
             file_path=main_path,
@@ -498,7 +502,7 @@ class _TransferCandidatePlanner:
             ):
                 continue
 
-            main_path = Path(main_item.path)
+            main_path = Path(main_item.path or "")
             main_download_history = self._chain._resolve_download_history(
                 repository=download_history_repository,
                 file_path=main_path,
@@ -546,10 +550,10 @@ class _TransferCandidatePlanner:
                     continue
 
                 extra_meta = _get_cached_extra_meta(
-                    Path(extra_item.path),
+                    Path(extra_item.path or ""),
                     subscribe_custom_words,
                 )
-                if not self._chain._is_same_media_meta(main_meta, extra_meta):
+                if extra_meta is None or not self._chain._is_same_media_meta(main_meta, extra_meta):
                     continue
                 if self._append_item(
                         planned_items,

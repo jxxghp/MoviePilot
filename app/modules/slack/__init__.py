@@ -4,7 +4,7 @@ Slack 通知路由、入站消息解析、附件下载与处理状态反馈。
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from urllib.parse import quote, unquote
 
 from app.application.messaging.channel.admin import (
@@ -155,10 +155,12 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 audio_refs = self._extract_audio_refs(msg_json)
                 files = self._extract_files(msg_json)
             elif msg_json.get("type") == "block_actions":
-                userid = msg_json.get("user", {}).get("id")
-                callback_data = msg_json.get("actions")[0].get("value")
+                user_data = cast(dict[str, Any], msg_json.get("user", {}))
+                actions = cast(list[dict[str, Any]], msg_json.get("actions", []))
+                userid = user_data.get("id")
+                callback_data = actions[0].get("value")
                 text = f"CALLBACK:{callback_data}"
-                username = msg_json.get("user", {}).get("name")
+                username = user_data.get("name")
                 if str(callback_data).strip().startswith("/") and self._should_reject_admin_command(
                         client_config.config, userid
                 ):
@@ -168,9 +170,9 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 message_info = msg_json.get("message", {})
                 # Slack消息的时间戳作为消息ID
                 message_ts = message_info.get("ts")
-                channel_id = msg_json.get("channel", {}).get("id") or msg_json.get(
-                    "container", {}
-                ).get("channel_id")
+                channel_data = cast(dict[str, Any], msg_json.get("channel", {}))
+                container_data = cast(dict[str, Any], msg_json.get("container", {}))
+                channel_id = channel_data.get("id") or container_data.get("channel_id")
 
                 logger.info(
                     f"收到来自 {client_config.name} 的Slack按钮回调："
@@ -253,7 +255,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
 
     @staticmethod
     def _extract_images(
-        msg_json: dict,
+        msg_json: dict[str, Any],
     ) -> Optional[List[IncomingMessage.MessageImage]]:
         """
         从Slack消息中提取图片URL。
@@ -284,7 +286,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         return images if images else None
 
     @classmethod
-    def _extract_audio_refs(cls, msg_json: dict) -> Optional[List[str]]:
+    def _extract_audio_refs(cls, msg_json: dict[str, Any]) -> Optional[List[str]]:
         """
         从Slack消息中提取音频文件引用。
         """
@@ -308,7 +310,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
 
     @classmethod
     def _extract_files(
-        cls, msg_json: dict
+        cls, msg_json: dict[str, Any]
     ) -> Optional[List[IncomingMessage.MessageAttachment]]:
         """
         从 Slack 消息中提取非图片/非音频文件。
@@ -414,24 +416,33 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     return
             client = self.get_instance(conf.name)
             if client:
+                userid_text = str(userid) if userid is not None else None
                 if message.file_path:
                     client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
-                        userid=userid,
+                        userid=userid_text,
                     )
                 else:
                     client.send_msg(
                         title=message.title,
                         text=message.text,
                         image=message.image,
-                        userid=userid,
+                        userid=userid_text,
                         link=message.link,
                         buttons=message.buttons,
-                        original_message_id=message.original_message_id,
-                        original_chat_id=message.original_chat_id,
+                        original_message_id=(
+                            str(message.original_message_id)
+                            if message.original_message_id is not None
+                            else None
+                        ),
+                        original_chat_id=(
+                            str(message.original_chat_id)
+                            if message.original_chat_id is not None
+                            else None
+                        ),
                         formatted_text=message.channel_text(NotificationChannel.Slack),
                     )
 
@@ -456,8 +467,16 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     medias=medias,
                     userid=self.get_notification_userid(message, "slack_userid"),
                     buttons=message.buttons,
-                    original_message_id=message.original_message_id,
-                    original_chat_id=message.original_chat_id,
+                    original_message_id=(
+                        str(message.original_message_id)
+                        if message.original_message_id is not None
+                        else None
+                    ),
+                    original_chat_id=(
+                        str(message.original_chat_id)
+                        if message.original_chat_id is not None
+                        else None
+                    ),
                 )
 
     def post_torrents_message(
@@ -481,8 +500,16 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     torrents=torrents,
                     userid=self.get_notification_userid(message, "slack_userid"),
                     buttons=message.buttons,
-                    original_message_id=message.original_message_id,
-                    original_chat_id=message.original_chat_id,
+                    original_message_id=(
+                        str(message.original_message_id)
+                        if message.original_message_id is not None
+                        else None
+                    ),
+                    original_chat_id=(
+                        str(message.original_chat_id)
+                        if message.original_chat_id is not None
+                        else None
+                    ),
                 )
 
     def delete_message(
@@ -522,8 +549,8 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         chat_id: Union[str, int],
         text: str,
         title: Optional[str] = None,
-        buttons: Optional[List[List[dict]]] = None,
-        metadata: Optional[dict] = None,
+        buttons: Optional[List[List[dict[str, Any]]]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[bool]:
         """
         编辑消息。
@@ -564,7 +591,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         message_id: Optional[Union[str, int]] = None,
         chat_id: Optional[Union[str, int]] = None,
         text: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         给入站消息添加正在处理的表情反应。
 
@@ -611,7 +638,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         userid: Optional[Union[str, int]] = None,
         message_id: Optional[Union[str, int]] = None,
         chat_id: Optional[Union[str, int]] = None,
-        status: Optional[dict] = None,
+        status: Optional[dict[str, Any]] = None,
     ) -> Optional[bool]:
         """
         清除入站消息的正在处理表情反应。
@@ -665,19 +692,20 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     return None
             client = self.get_instance(conf.name)
             if client:
+                userid_text = str(userid) if userid is not None else None
                 if message.file_path:
                     result = client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
-                        userid=userid,
+                        userid=userid_text,
                     )
                 else:
                     result = client.send_msg(
                         title=message.title or "",
                         text=message.text,
-                        userid=userid,
+                        userid=userid_text,
                         formatted_text=message.channel_text(NotificationChannel.Slack),
                     )
                 if result and result[0]:

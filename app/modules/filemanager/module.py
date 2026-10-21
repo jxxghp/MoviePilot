@@ -37,7 +37,7 @@ class FileManagerModule(_ModuleBase):
     按存储标识解析适配器；整理路径规划与写入执行分开，具体传输交给 TransHandler。
     """
 
-    _storage_schemas = []
+    _storage_schemas: list[type[StorageBase]] = []
     _support_storages: list[str] = []
 
     def __init__(self) -> None:
@@ -186,9 +186,11 @@ class FileManagerModule(_ModuleBase):
 
         :return: 当前返回 None，不提供额外设置初始化结果
         """
-        pass
+        return None
 
-    def storage_manage(self, storage: str, action: StorageAction, **params) -> Dict[str, Any]:
+    def storage_manage(
+        self, storage: str, action: StorageAction, **params: Any
+    ) -> Dict[str, Any]:
         """
         按存储标识路由配置、容量和登录管理操作。
 
@@ -260,7 +262,7 @@ class FileManagerModule(_ModuleBase):
             rename_dict=handler.get_naming_dict(meta=meta,
                                                 mediainfo=mediainfo,
                                                 episodes_info=episodes_info,
-                                                file_ext=Path(meta.title).suffix)
+                                                file_ext=Path(meta.title or "").suffix)
         )
         return path.as_posix() if path else ""
 
@@ -477,7 +479,7 @@ class FileManagerModule(_ModuleBase):
 
     def snapshot_storage(self, storage: str, path: Path,
                          last_snapshot_time: Optional[float] = None, max_depth: int = 5,
-                         previous_snapshot: Optional[Dict[str, Dict]] = None) -> Optional[Dict[str, Dict]]:
+                         previous_snapshot: Optional[Dict[str, Dict[str, Any]]] = None) -> Optional[Dict[str, Dict[str, Any]]]:
         """
         委托存储生成目录树快照或增量快照。
 
@@ -689,7 +691,7 @@ class FileManagerModule(_ModuleBase):
         :return: 整理执行结果；存储不支持时返回失败结果，执行冲突或清理异常可向上传播
         """
         del raise_exception
-        source_fileitem = FileItem(**checkpoint.planning_input.source_fileitem)
+        source_fileitem = FileItem.model_validate(checkpoint.planning_input.source_fileitem)
         cleanup_before_transfer = None
         observe_cleanup_before_transfer = None
         cleanup_payload = checkpoint.planning_input.options.get(
@@ -746,7 +748,7 @@ class FileManagerModule(_ModuleBase):
                 success=False,
                 message=f"不支持的存储类型：{source_storage}",
                 fileitem=source_fileitem,
-                fail_list=[source_fileitem.path],
+                fail_list=[source_fileitem.path or ""],
                 transfer_type=checkpoint.resolved_transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -757,7 +759,7 @@ class FileManagerModule(_ModuleBase):
                 success=False,
                 message=f"不支持的存储类型：{checkpoint.target_storage}",
                 fileitem=source_fileitem,
-                fail_list=[source_fileitem.path],
+                fail_list=[source_fileitem.path or ""],
                 transfer_type=checkpoint.resolved_transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -804,12 +806,20 @@ class FileManagerModule(_ModuleBase):
             album = getattr(mediainfo, "album", None)
             if not album and music_type == MUSIC_ENTITY_ALBUM:
                 album = mediainfo.title
+            year_value = mediainfo.year
+            year = (
+                year_value
+                if isinstance(year_value, int)
+                else int(year_value)
+                if isinstance(year_value, str) and year_value.isdigit()
+                else None
+            )
             return MetaMusic(
-                title=mediainfo.title,
+                title=mediainfo.title or "",
                 artists=list(getattr(mediainfo, "artists", None) or []),
                 album=album,
                 album_artist=getattr(mediainfo, "album_artist", None),
-                year=mediainfo.year,
+                year=year,
                 disc_number=getattr(mediainfo, "disc_number", None),
                 track_number=getattr(mediainfo, "track_number", None),
                 total_tracks=getattr(mediainfo, "total_tracks", None),
@@ -817,7 +827,7 @@ class FileManagerModule(_ModuleBase):
                 media_id=getattr(mediainfo, "media_id", None),
             )
 
-        meta = MetaInfo(mediainfo.title)
+        meta = MetaInfo(mediainfo.title or "")
         if meta.type == MediaType.UNKNOWN and mediainfo.type is not None:
             meta.type = mediainfo.type
         if meta.year is None:
@@ -1006,6 +1016,8 @@ class FileManagerModule(_ModuleBase):
                     getattr(mediainfo, "total_tracks", None),
                 )
             else:
+                if not isinstance(mediainfo, MusicInfo):
+                    return None
                 exists = self._music_recording_exists(fileitems, mediainfo)
             if not exists:
                 logger.debug(f"{mediainfo.title_year} 在本地音乐库中尚不完整")
@@ -1015,7 +1027,7 @@ class FileManagerModule(_ModuleBase):
         if mediainfo.type == MediaType.TV:
             seasons: Dict[int, list[int]] = {}
             for fileitem in fileitems:
-                file_meta = MetaInfo(fileitem.basename)
+                file_meta = MetaInfo(fileitem.basename or "")
                 season_index = file_meta.begin_season if file_meta.begin_season is not None else 1
                 episode_index = file_meta.begin_episode
                 if not episode_index:

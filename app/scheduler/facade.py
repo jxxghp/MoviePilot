@@ -159,7 +159,8 @@ class Scheduler(
         """
         插件重载后按当前实例重新注册全部定时服务
         """
-        plugin_id = event.event_data.get("plugin_id")
+        event_data = event.event_data if isinstance(event.event_data, dict) else {}
+        plugin_id = event_data.get("plugin_id")
         if not plugin_id:
             return
         self.update_plugin_job(plugin_id)

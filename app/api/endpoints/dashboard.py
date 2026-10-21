@@ -73,7 +73,7 @@ def _build_downloader(
     # 下载目录空间
     download_dirs = DirectoryHelper().get_local_download_dirs()
     _, free_space = SystemUtils.space_usage(
-        [Path(d.download_path) for d in download_dirs],
+        [Path(d.download_path) for d in download_dirs if d.download_path],
         btrfs_fsid_dedup=btrfs_fsid_dedup,
     )
     # 下载器信息
@@ -81,10 +81,10 @@ def _build_downloader(
     transfer_infos = DashboardChain().downloader_info(name)
     if transfer_infos:
         for transfer_info in transfer_infos:
-            downloader_info.download_speed += transfer_info.download_speed
-            downloader_info.upload_speed += transfer_info.upload_speed
-            downloader_info.download_size += transfer_info.download_size
-            downloader_info.upload_size += transfer_info.upload_size
+            downloader_info.download_speed = (downloader_info.download_speed or 0) + (transfer_info.download_speed or 0)
+            downloader_info.upload_speed = (downloader_info.upload_speed or 0) + (transfer_info.upload_speed or 0)
+            downloader_info.download_size = (downloader_info.download_size or 0) + (transfer_info.download_size or 0)
+            downloader_info.upload_size = (downloader_info.upload_size or 0) + (transfer_info.upload_size or 0)
         downloader_info.free_space = free_space
     return downloader_info
 
@@ -251,7 +251,7 @@ async def transfer(
     """
     查询文件整理统计信息
     """
-    return await service.transfer(days)
+    return await service.transfer(days or 7)
 
 
 @router.get("/cpu", summary="获取当前CPU使用率", response_model=float)

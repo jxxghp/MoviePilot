@@ -434,7 +434,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         seasons: dict[int, list[Any]] = {}
         season_info: _TmdbDataList = []
-        season_years: dict[Union[int, str], str] = {}
+        season_years: dict[int, str] = {}
         for group_season in group_seasons:
             season = group_season.get("order")
             episodes = group_season.get("episodes")
@@ -621,6 +621,9 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
 
         def _collect_titles(info: _TmdbData) -> set[str]:
+            """
+            收集 TMDB 记录中的本地和原始标题，供候选匹配使用。
+            """
             titles = set()
             for key in ("title", "name", "original_title", "original_name"):
                 if info.get(key):
@@ -630,6 +633,9 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return titles
 
         def _match_score(info: _TmdbData) -> int:
+            """
+            按候选标题和识别名称计算匹配分值，供媒体结果排序使用。
+            """
             score = 0
             titles = _collect_titles(info)
             meta_names = [n for n in [meta.cn_name, meta.en_name] if n]
@@ -668,15 +674,16 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         生成名称识别的有序回退计划，确保同步与异步分支完全一致。
         """
+        normalized_year = str(meta.year) if meta.year is not None else None
         if meta.type == MediaType.UNKNOWN and not meta.year:
             return (_MatchStep(name=name, multi=True),)
         if meta.type == MediaType.TV:
             return (
                 _MatchStep(
                     name=name,
-                    year=meta.year,
+                    year=normalized_year,
                     mtype=meta.type,
-                    season_year=meta.year,
+                    season_year=normalized_year,
                     season_number=meta.begin_season,
                     include_year=True,
                     include_season=True,
@@ -687,13 +694,13 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return (
             _MatchStep(
                 name=name,
-                year=meta.year,
+                year=normalized_year,
                 mtype=MediaType.MOVIE,
                 include_year=True,
             ),
             _MatchStep(
                 name=name,
-                year=meta.year,
+                year=normalized_year,
                 mtype=MediaType.TV,
                 include_year=True,
                 include_group_seasons=True,
@@ -783,11 +790,11 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     @staticmethod
     def _collect_group_season_years(
         group_seasons: _TmdbDataList,
-    ) -> Dict[Union[int, str], str]:
+    ) -> Dict[int, str]:
         """
         从已获取的剧集组详情中提取每季首播年份。
         """
-        season_years: Dict[Union[int, str], str] = {}
+        season_years: Dict[int, str] = {}
         for group_season in group_seasons:
             season = group_season.get("order")
             episodes = group_season.get("episodes")
@@ -799,7 +806,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return season_years
 
     @staticmethod
-    def _apply_group_season_years(mediainfo: MediaInfo, season_years: Dict[Union[int, str], str]) -> MediaInfo:
+    def _apply_group_season_years(mediainfo: MediaInfo, season_years: Dict[int, str]) -> MediaInfo:
         """
         把聚合后的剧集组年份写回媒体结果。
         """
@@ -813,7 +820,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         处理剧集组信息。
         """
-        season_years = {}
+        season_years: Dict[int, str] = {}
         for group_id in self._prepare_episode_group_queries(mediainfo, episode_group, group_seasons):
             fetched_seasons = self.tmdb.get_tv_group_seasons(group_id)
             if fetched_seasons:
@@ -826,7 +833,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         处理剧集组信息（异步版本）。
         """
-        season_years = {}
+        season_years: Dict[int, str] = {}
         for group_id in self._prepare_episode_group_queries(mediainfo, episode_group, group_seasons):
             fetched_seasons = await self.tmdb.async_get_tv_group_seasons(group_id)
             if fetched_seasons:
@@ -840,9 +847,9 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         mediainfo = MediaInfo(tmdb_info=info)
 
         if meta:
-            logger.info(f"{meta.name} TMDB识别结果：{mediainfo.type.value} {mediainfo.title_year} {mediainfo.tmdb_id}")
+            logger.info(f"{meta.name} TMDB识别结果：{(mediainfo.type or MediaType.UNKNOWN).value} {mediainfo.title_year} {mediainfo.tmdb_id}")
         else:
-            logger.info(f"{tmdbid} TMDB识别结果：{mediainfo.type.value} {mediainfo.title_year}")
+            logger.info(f"{tmdbid} TMDB识别结果：{(mediainfo.type or MediaType.UNKNOWN).value} {mediainfo.title_year}")
         return mediainfo
 
     def _build_media_info_result(

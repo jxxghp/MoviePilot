@@ -30,7 +30,7 @@ class Navidrome:
         username: Optional[str] = None,
         password: Optional[str] = None,
         play_host: Optional[str] = None,
-        sync_libraries: Optional[list] = None,
+        sync_libraries: Optional[list[str]] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -75,7 +75,7 @@ class Navidrome:
         params.update({key: value for key, value in kwargs.items() if value is not None})
         return params
 
-    def _call(self, method: str, **kwargs: Any) -> Optional[dict]:
+    def _call(self, method: str, **kwargs: Any) -> Optional[dict[str, Any]]:
         """
         通过 Subsonic 接口获取业务成功的响应体。
 
@@ -91,7 +91,12 @@ class Navidrome:
             response = RequestUtils().get_res(f"{url}/{method}", self._params(**kwargs))
             if not response:
                 return None
-            payload = response.json().get("subsonic-response", {})
+            response_data = response.json()
+            if not isinstance(response_data, dict):
+                return None
+            payload = response_data.get("subsonic-response", {})
+            if not isinstance(payload, dict):
+                return None
             if payload.get("status") != "ok":
                 logger.warning(f"Navidrome API {method} 返回失败：{payload.get('error')}")
                 return None
@@ -153,13 +158,13 @@ class Navidrome:
         return 1 if self.user else 0
 
     @staticmethod
-    def _album_name(album: dict) -> str:
+    def _album_name(album: dict[str, Any]) -> str:
         """
         从 Subsonic 专辑对象提取稳定标题。
         """
         return album.get("name") or album.get("album") or ""
 
-    def _album_to_item(self, album: dict) -> _SchemaMediaServerItem:
+    def _album_to_item(self, album: dict[str, Any]) -> _SchemaMediaServerItem:
         """
         将 Subsonic 专辑转换为统一媒体条目。
         """
@@ -176,7 +181,7 @@ class Navidrome:
             note={"artist": album.get("artist"), "song_count": album.get("songCount")},
         )
 
-    def _song_to_item(self, song: dict) -> _SchemaMediaServerItem:
+    def _song_to_item(self, song: dict[str, Any]) -> _SchemaMediaServerItem:
         """
         将 Subsonic 单曲转换为统一音乐条目。
         """
@@ -204,7 +209,7 @@ class Navidrome:
         return bool(normalized_left) and normalized_left == normalized_right
 
     @classmethod
-    def _same_artist(cls, item: dict, artist: Optional[str]) -> bool:
+    def _same_artist(cls, item: dict[str, Any], artist: Optional[str]) -> bool:
         """
         检查专辑或单曲的艺术家是否与目标一致；目标为空时不限制。
         """
@@ -215,7 +220,7 @@ class Navidrome:
             for candidate in (item.get("artist"), item.get("albumArtist"))
         )
 
-    def _album_cover(self, album: dict) -> Optional[str]:
+    def _album_cover(self, album: dict[str, Any]) -> Optional[str]:
         """
         返回专辑封面地址。
         """
@@ -227,7 +232,9 @@ class Navidrome:
             return None
         return f"{url}/getCoverArt?{urlencode(self._params(id=cover_id, size=512))}"
 
-    def _albums(self, list_type: str = "alphabeticalByName", size: int = 500) -> List[dict]:
+    def _albums(
+        self, list_type: str = "alphabeticalByName", size: int = 500
+    ) -> List[dict[str, Any]]:
         """
         分页读取专辑，直至短页、空页或接口失败。
 
@@ -235,7 +242,7 @@ class Navidrome:
         :param size: 每页请求数量，默认 500
         :return: 已读取的专辑列表；中途失败会返回此前已读取的部分结果
         """
-        albums: List[dict] = []
+        albums: List[dict[str, Any]] = []
         offset = 0
         while True:
             payload = self._call("getAlbumList2", type=list_type, size=size, offset=offset)
@@ -392,7 +399,7 @@ class Navidrome:
         ]
 
     def _to_play_item(
-        self, album: dict, *, query: Optional[MediaServerQueryOptions] = None
+        self, album: dict[str, Any], *, query: Optional[MediaServerQueryOptions] = None
     ) -> _SchemaMediaServerPlayItem:
         """
         将专辑转换为仪表盘播放/最新条目。
@@ -413,7 +420,7 @@ class Navidrome:
         )
 
     def _song_to_play_item(
-        self, song: dict, *, query: Optional[MediaServerQueryOptions] = None
+        self, song: dict[str, Any], *, query: Optional[MediaServerQueryOptions] = None
     ) -> _SchemaMediaServerPlayItem:
         """
         将正在播放的单曲转换为仪表盘条目，避免把所属专辑名误作曲名。

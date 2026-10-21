@@ -44,8 +44,7 @@ class Site(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SitePriorityUpdate(BaseModel):  # type: ignore[misc]
+class SitePriorityUpdate(BaseModel):
     """
     站点批量优先级更新项。
     """
@@ -118,8 +117,7 @@ class SiteCookieUpdate(BaseModel):
     code: Optional[str] = Field(None, description="二步验证码或密钥")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SiteCookieSet(BaseModel):  # type: ignore[misc]
+class SiteCookieSet(BaseModel):
     """
     直接保存浏览器登录后取得的站点 Cookie 与 User-Agent。
     """

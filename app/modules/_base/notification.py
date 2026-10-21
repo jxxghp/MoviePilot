@@ -6,7 +6,7 @@
 类属性与钩子方法保留在各模块。
 """
 import copy
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.messaging.channel.admin import (
     matches_channel_admin,
@@ -31,7 +31,7 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
     _command_origin: Optional[str] = None
 
     @classmethod
-    def _get_admins(cls, config: Optional[dict]) -> List[str]:
+    def _get_admins(cls, config: Optional[dict[str, Any]]) -> List[str]:
         """
         解析渠道管理员配置，兼容逗号分隔和首尾空白。
         """
@@ -39,7 +39,7 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
 
     def _should_reject_admin_command(
             self,
-            config: Optional[dict],
+            config: Optional[dict[str, Any]],
             *user_ids: Optional[Union[str, int]],
     ) -> bool:
         """
@@ -50,7 +50,7 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
         # 模块实例未初始化时 self._channel 为空，退回静态子类型声明
         channel = self._channel or self.get_subtype()
         return not matches_channel_admin(
-            channel,
+            cast(Any, channel),
             config,
             *user_ids,
         )
@@ -70,7 +70,7 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
                 return False, f"{self.get_name()} {name} 未就绪{suffix}"
         return True, ""
 
-    def _test_connection(self, client) -> Tuple[bool, str]:
+    def _test_connection(self, client: Any) -> Tuple[bool, str]:
         """
         连接测试钩子，返回 (是否就绪, 失败信息)，子类可覆写。
         """
@@ -93,7 +93,7 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
                 converged = False
         return converged
 
-    def register_commands(self, commands: Dict[str, dict]) -> None:
+    def register_commands(self, commands: Dict[str, dict[str, Any]]) -> None:
         """
         为每个启用命令菜单的渠道实例注册可用命令。
 
@@ -116,14 +116,18 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
                 ChainEventType.CommandRegister,
                 CommandRegisterEventData(
                     commands=scoped_commands,
-                    origin=self._command_origin or self.get_name(),
-                    service=client_config.name,
+                    origin=self._command_origin or self.get_name() or "",
+                    service=client_config.name or "",
                 ),
             )
 
             # 如果事件返回有效的 event_data，使用事件中调整后的命令
             if event and event.event_data:
-                event_data: CommandRegisterEventData = event.event_data
+                event_data = (
+                    event.event_data
+                    if isinstance(event.event_data, CommandRegisterEventData)
+                    else CommandRegisterEventData.model_validate(event.event_data)
+                )
                 # 如果事件被取消，跳过命令注册，并清理菜单
                 if event_data.cancel:
                     self._delete_commands(client)
@@ -153,19 +157,21 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
                 )
             self._apply_commands(client, filtered_scoped_commands)
 
-    def _commands_enabled(self, config: Optional[dict]) -> bool:
+    def _commands_enabled(self, config: Optional[dict[str, Any]]) -> bool:
         """
         命令注册前置条件钩子，返回 False 时跳过该实例，子类可覆写。
         """
         return True
 
-    def _delete_commands(self, client) -> None:
+    def _delete_commands(self, client: Any) -> None:
         """
         清理已注册命令的钩子，子类可覆写（如改用菜单 API）。
         """
         client.delete_commands()
 
-    def _apply_commands(self, client, commands: Dict[str, dict]) -> None:
+    def _apply_commands(
+        self, client: Any, commands: Dict[str, dict[str, Any]]
+    ) -> None:
         """
         应用命令集合的钩子，子类可覆写（如改用菜单 API）。
         """

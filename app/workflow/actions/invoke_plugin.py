@@ -2,6 +2,8 @@
 调用插件公开的工作流动作。
 """
 
+from typing import Optional
+
 from pydantic import Field
 
 from app.application.plugin.runtime import get_plugin_manager
@@ -15,8 +17,8 @@ class InvokePluginParams(ActionParams):
     """
     调用插件动作参数
     """
-    plugin_id: str = Field(default=None, description="插件ID")
-    action_id: str = Field(default=None, description="动作ID")
+    plugin_id: Optional[str] = Field(default=None, description="插件ID")
+    action_id: Optional[str] = Field(default=None, description="动作ID")
     action_params: dict[str, JsonData] = Field(default_factory=dict, description="动作参数")
 
 
@@ -28,6 +30,9 @@ class InvokePluginAction(BaseAction):
     contract = {}
 
     def __init__(self, action_id: str):
+        """
+        绑定工作流动作标识，并初始化插件执行结果状态。
+        """
         super().__init__(action_id)
         self._success = False
 

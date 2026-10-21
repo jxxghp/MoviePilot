@@ -121,6 +121,7 @@ class ScheduleInfo(BaseModel):
     name_i18n: Optional[str] = Field(default=None, description="多语言名称")
     provider: Optional[str] = Field(default=None, description="提供者")
     provider_i18n: Optional[str] = Field(default=None, description="多语言提供者")
+    execution_group: str = Field(default="default", description="调度执行组")
     status: Optional[str] = Field(default=None, description="调度器提供的服务运行状态展示文本，与最近一次执行结果分开")
     status_i18n: Optional[str] = Field(default=None, description="多语言状态")
     next_run: Optional[str] = Field(default=None, description="下次执行时间")

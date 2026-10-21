@@ -63,12 +63,12 @@ def _cached_request(shared_key: str) -> Callable[[_RequestFunction], _RequestFun
         """
         缓存查询结果而不转换返回载荷。
         """
-        return cast(_RequestFunction, cached(
+        return cached(
             maxsize=get_runtime_setting('CONF').anilist,
             ttl=get_runtime_setting('CONF').meta,
             skip_empty=True,
             shared_key=shared_key,
-        )(function))
+        )(function)
 
     return decorate
 

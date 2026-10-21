@@ -5,7 +5,7 @@
 import traceback
 from pathlib import Path, PurePosixPath
 from threading import Lock
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from app.chain.storage import StorageChain
 from app.monitor.dispatcher import TransferDispatcher
@@ -165,7 +165,12 @@ class RemotePoller:
                 self._note_failure(storage, str(e))
                 return None
 
-    def _handle_changes(self, storage: str, old_snapshot: dict, new_snapshot: dict) -> None:
+    def _handle_changes(
+        self,
+        storage: str,
+        old_snapshot: dict[str, Any],
+        new_snapshot: dict[str, Any],
+    ) -> None:
         """
         比对快照并把变化文件送入整理链。
         :param storage: 存储名称

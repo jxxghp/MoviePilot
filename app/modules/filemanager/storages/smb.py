@@ -232,7 +232,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         return "/" + file_path[len(prefix):].replace("\\", "/")
 
     def _create_fileitem(
-        self, stat_result, file_path: str, name: str, *, strict: bool = False
+        self, stat_result: Any, file_path: str, name: str, *, strict: bool = False
     ) -> _SchemaFileItem:
         """
         创建文件项；严格查询不能把元数据读取失败回退成普通文件。
@@ -339,22 +339,24 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         try:
             self._check_connection()
 
+            file_path = fileitem.path
+            if not file_path:
+                raise StorageQueryError("【SMB】文件查询缺少路径")
+
             if fileitem.type == "file":
-                if not fileitem.path:
-                    raise StorageQueryError("【SMB】文件查询缺少路径")
-                item = self.get_item_strict(Path(fileitem.path)) if strict else self.detail(fileitem)
+                item = self.get_item_strict(Path(file_path)) if strict else self.detail(fileitem)
                 if item:
                     return [item]
                 return []
 
-            if self._multi_share and not fileitem.path.rstrip("/\\"):
+            if self._multi_share and not file_path.rstrip("/\\"):
                 return [
                     _SchemaFileItem(storage=self.schema.value, type="dir", path=f"/{share}/",
                                     name=share, basename=share)
                     for share in self._shares.values()
                 ]
 
-            smb_path = self._normalize_path(fileitem.path.rstrip("/"))
+            smb_path = self._normalize_path(file_path.rstrip("/"))
 
             try:
                 entries = smbclient.listdir(smb_path)
@@ -400,15 +402,18 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         import smbclient
         try:
             self._check_connection()
+            file_path = fileitem.path
+            if not file_path:
+                raise ValueError("父目录路径不能为空")
 
-            new_path = self._normalize_path(Path(fileitem.path) / name, writable=True)
+            new_path = self._normalize_path(Path(file_path) / name, writable=True)
 
             smbclient.mkdir(new_path)
 
             return _SchemaFileItem(
                 storage=self.schema.value,
                 type="dir",
-                path=f"{fileitem.path.rstrip('/')}/{name}/",
+                path=f"{file_path.rstrip('/')}/{name}/",
                 name=name,
                 basename=name,
                 modify_time=int(time.time()),
@@ -522,7 +527,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         :param fileitem: 待查询的文件或目录项
         :return: 最新存储项；不存在或普通查询失败返回 None
         """
-        return self.get_item(Path(fileitem.path))
+        return self.get_item(Path(fileitem.path)) if fileitem.path else None
 
     def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
@@ -535,12 +540,15 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         from smbprotocol.exceptions import SMBException, SMBResponseException
         try:
             self._check_connection()
+            file_path = fileitem.path
+            if not file_path:
+                raise ValueError("文件路径不能为空")
 
-            smb_path = self._normalize_path(fileitem.path.rstrip("/"), writable=True)
-            logger.info(f"【SMB】开始删除: {fileitem.path} (类型: {fileitem.type})")
+            smb_path = self._normalize_path(file_path.rstrip("/"), writable=True)
+            logger.info(f"【SMB】开始删除: {file_path} (类型: {fileitem.type})")
 
             if not smbclient.path.exists(smb_path):
-                logger.warn(f"【SMB】路径不存在，跳过删除: {fileitem.path}")
+                logger.warn(f"【SMB】路径不存在，跳过删除: {file_path}")
                 return True
 
             if fileitem.type == "dir":
@@ -633,14 +641,17 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         import smbclient
         try:
             self._check_connection()
+            file_path = fileitem.path
+            if not file_path:
+                raise ValueError("文件路径不能为空")
 
-            old_path = self._normalize_path(fileitem.path.rstrip("/"), writable=True)
-            parent_path = Path(fileitem.path).parent
+            old_path = self._normalize_path(file_path.rstrip("/"), writable=True)
+            parent_path = Path(file_path).parent
             new_path = self._normalize_path(parent_path / name, writable=True)
 
             smbclient.rename(old_path, new_path)
 
-            logger.info(f"【SMB】重命名成功: {fileitem.path} -> {name}")
+            logger.info(f"【SMB】重命名成功: {file_path} -> {name}")
             return True
         except Exception as e:
             logger.error(f"【SMB】重命名失败: {e}")
@@ -657,10 +668,16 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         :return: 下载完成的本地路径；取消或传输失败返回 None
         """
         import smbclient
-        local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
+        file_path = fileitem.path
+        if not file_path:
+            return None
+        temp_path = path or get_runtime_setting('TEMP_PATH')
+        if not isinstance(temp_path, Path):
+            temp_path = Path(str(temp_path or "."))
+        local_path = self._build_download_path(fileitem, temp_path)
         if not local_path:
             return None
-        smb_path = self._normalize_path(fileitem.path)
+        smb_path = self._normalize_path(file_path)
         try:
             self._check_connection()
 
@@ -669,14 +686,14 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             file_size = fileitem.size
 
             logger.info(f"【SMB】开始下载: {fileitem.name} -> {local_path}")
-            progress_callback = transfer_process(Path(fileitem.path).as_posix())
+            progress_callback = transfer_process(Path(file_path).as_posix())
 
             with smbclient.open_file(smb_path, mode="rb") as src_file:
                 with open(local_path, "wb") as dst_file:
                     downloaded_size = 0
                     while True:
-                        if runtime_stop_state.consume_transfer_stop(fileitem.path):
-                            logger.info(f"【SMB】{fileitem.path} 下载已取消！")
+                        if runtime_stop_state.consume_transfer_stop(file_path):
+                            logger.info(f"【SMB】{file_path} 下载已取消！")
                             return None
                         chunk = src_file.read(self.chunk_size)
                         if not chunk:
@@ -710,6 +727,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         :return: 上传后查询到的文件项；取消、传输或查询失败返回 None，远端可能保留部分内容
         """
         import smbclient
+        if not fileitem.path:
+            return None
         target_name = new_name or path.name
         target_path = Path(fileitem.path) / target_name
         try:
@@ -835,6 +854,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         from smbprotocol.exceptions import SMBResponseException
         try:
             self._check_connection()
+            if not fileitem.path:
+                raise ValueError("源文件路径不能为空")
             src_path = self._normalize_path(fileitem.path, writable=True)
             dst_path = self._normalize_path(target_file, writable=True)
 
@@ -869,7 +890,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         :param target_file: 兼容接口的目标路径，当前忽略
         :return: 固定返回 None，不创建链接
         """
-        pass
+        return False
 
     def usage(self) -> Optional[_SchemaStorageUsage]:
         """

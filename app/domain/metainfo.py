@@ -119,7 +119,7 @@ class _PreparedMetaInput:
     explicit_metainfo: Mapping[str, Any]
 
 
-def _empty_metainfo() -> dict:
+def _empty_metainfo() -> dict[str, Any]:
     """
     返回媒体标签的默认结构，避免不同识别请求之间共享可变状态。
     """
@@ -137,7 +137,7 @@ def _empty_metainfo() -> dict:
     }
 
 
-def _normalize_metainfo_identity(metainfo: dict) -> dict:
+def _normalize_metainfo_identity(metainfo: dict[str, Any]) -> dict[str, Any]:
     """
     将解析器输出归一为唯一媒体身份，并移除历史来源专用字段。
 
@@ -159,7 +159,9 @@ def _normalize_metainfo_identity(metainfo: dict) -> dict:
     return normalized
 
 
-def _apply_range_total(metainfo: dict, begin_key: str, end_key: str, total_key: str) -> None:
+def _apply_range_total(
+    metainfo: dict[str, Any], begin_key: str, end_key: str, total_key: str
+) -> None:
     """
     计算季/集范围总数；保留原有倒序输入自动交换的兼容行为。
     """
@@ -171,7 +173,7 @@ def _apply_range_total(metainfo: dict, begin_key: str, end_key: str, total_key: 
         metainfo[total_key] = 1
 
 
-def _rust_parse_options_cache_key(options: dict) -> str:
+def _rust_parse_options_cache_key(options: dict[str, Any]) -> str:
     """
     生成 Rust Meta 配置缓存键，避免扩展层每次重新展开大配置。
     """
@@ -196,7 +198,7 @@ def _rust_parse_options_cache_key(options: dict) -> str:
     return digest.hexdigest()
 
 
-def _find_metainfo_python(title: str) -> Tuple[str, dict]:
+def _find_metainfo_python(title: str) -> Tuple[str, dict[str, Any]]:
     """
     使用 Python 解析标题中的显式媒体标签，作为 Rust 入口不可用时的兜底。
     """
@@ -390,7 +392,7 @@ def _build_python_meta_info(
 
 
 @lru_cache(maxsize=1)
-def _rust_default_parse_options() -> dict:
+def _rust_default_parse_options() -> dict[str, Any]:
     """
     缓存 Rust Meta 默认解析配置，避免热路径反复读取配置并复制流媒体平台大表。
     """
@@ -414,7 +416,7 @@ def _rust_default_parse_options() -> dict:
 
 
 @lru_cache(maxsize=256)
-def _rust_custom_parse_options(custom_words: Tuple[str, ...]) -> dict:
+def _rust_custom_parse_options(custom_words: Tuple[str, ...]) -> dict[str, Any]:
     """
     缓存带自定义识别词的 Rust Meta 配置，避免同一组识别词重复构造配置对象。
     """
@@ -424,7 +426,7 @@ def _rust_custom_parse_options(custom_words: Tuple[str, ...]) -> dict:
     return options
 
 
-def _rust_parse_options(custom_words: Optional[List[str]] = None) -> dict:
+def _rust_parse_options(custom_words: Optional[List[str]] = None) -> dict[str, Any]:
     """
     收集 Rust Meta 解析所需的运行时配置，避免 Rust 层直接访问数据库和 settings。
 
@@ -443,7 +445,7 @@ def clear_rust_parse_options_cache() -> None:
     _rust_custom_parse_options.cache_clear()
 
 
-def _meta_from_rust(parsed: Optional[dict]) -> Optional[MetaBase]:
+def _meta_from_rust(parsed: Optional[dict[str, Any]]) -> Optional[MetaBase]:
     """
     将 Rust 解析结果灌回现有 MetaVideo/MetaAnime 对象，保留下游属性和方法兼容性。
     """
@@ -631,7 +633,7 @@ def is_anime(name: str) -> bool:
     return False
 
 
-def find_metainfo(title: str) -> Tuple[str, dict]:
+def find_metainfo(title: str) -> Tuple[str, dict[str, Any]]:
     """
     从标题中提取媒体信息。
     """

@@ -228,7 +228,8 @@ class ListenBrainzModule(_ModuleBase):
                     f"ListenBrainz 请求失败：{response.status_code} {response.text[:200]}"
                 )
                 return None
-            return response.json()
+            payload = response.json()
+            return payload if isinstance(payload, dict) else None
         except (TypeError, ValueError) as err:
             logger.warning(f"ListenBrainz 响应解析失败：{err}")
             return None

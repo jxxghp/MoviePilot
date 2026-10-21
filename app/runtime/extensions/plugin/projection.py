@@ -63,7 +63,7 @@ class PluginProjection:
         """
         聚合插件命令并补充插件 ID。
         """
-        commands: list[dict] = []
+        commands: list[dict[str, Any]] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_command"):
                 continue
@@ -81,7 +81,7 @@ class PluginProjection:
         """
         聚合插件 API 并补充宿主路径和默认认证方式，端点绑定发起实例的日志上下文。
         """
-        apis: list[dict] = []
+        apis: list[dict[str, Any]] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_api"):
                 continue
@@ -103,7 +103,7 @@ class PluginProjection:
         """
         聚合启用插件的定时服务。
         """
-        services: list[dict] = []
+        services: list[dict[str, Any]] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_service"):
                 continue
@@ -114,11 +114,11 @@ class PluginProjection:
                 self._logger.error(f"获取插件 {plugin_id} 服务出错：{str(error)}")
         return services
 
-    def modules(self, pid: Optional[str] = None) -> Dict[tuple, Dict[str, Any]]:
+    def modules(self, pid: Optional[str] = None) -> Dict[tuple[str, str], Dict[str, Any]]:
         """
         聚合启用插件的模块方法清单。
         """
-        modules: dict[tuple, dict] = {}
+        modules: dict[tuple[str, str], dict[str, Any]] = {}
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_module"):
                 continue
@@ -133,7 +133,7 @@ class PluginProjection:
                             f"插件 {plugin_id} 的 get_module() 返回值必须是字典，实际是 {type(declared).__name__}"
                         )
                         continue
-                    modules[(plugin_id, plugin.get_name())] = declared
+                    modules[(plugin_id, plugin.get_name())] = dict(declared)
             except Exception as error:
                 self._logger.error(f"获取插件 {plugin_id} 模块出错：{str(error)}")
         return modules
@@ -142,7 +142,7 @@ class PluginProjection:
         """
         聚合启用插件声明的媒体数据源。
         """
-        sources: list[dict] = []
+        sources: list[dict[str, Any]] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_media_source"):
                 continue
@@ -176,7 +176,7 @@ class PluginProjection:
         """
         聚合启用插件的工作流动作。
         """
-        actions: list[dict] = []
+        actions: list[dict[str, Any]] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_actions"):
                 continue
@@ -541,7 +541,7 @@ class PluginProjection:
         """
         投影启用插件的单仪表板或多仪表板元信息。
         """
-        metadata = []
+        metadata: list[dict[str, str]] = []
         for plugin_id, plugin in self._items(None):
             if not supports_plugin_hook(plugin, "get_dashboard"):
                 continue

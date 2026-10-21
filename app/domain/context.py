@@ -205,12 +205,9 @@ def _classification_result(value: object) -> ClassificationResult | None:
     if value is None:
         return None
     if isinstance(value, ClassificationResult):
-        return typing.cast(ClassificationResult, value.model_copy(deep=True))
+        return value.model_copy(deep=True)
     if isinstance(value, Mapping):
-        return typing.cast(
-            ClassificationResult,
-            ClassificationResult.model_validate(dict(value)),
-        )
+        return ClassificationResult.model_validate(dict(value))
     raise TypeError("分类结果必须是 ClassificationResult、字典或空值")
 
 
@@ -1672,32 +1669,32 @@ class TorrentInfo:
     :param search_resource_id: 自动订阅分页搜索的内部候选标识，只用于提交结果与候选对应，不进入对外字典
     """
 
-    site: int = None
-    site_name: str = None
-    site_cookie: str = None
-    site_ua: str = None
+    site: Optional[int] = None
+    site_name: Optional[str] = None
+    site_cookie: Optional[str] = None
+    site_ua: Optional[str] = None
     site_proxy: bool = False
     site_order: int = 0
-    site_downloader: str = None
-    title: str = None
-    description: str = None
-    media_source: MediaSource = None
-    media_id: str = None
-    enclosure: str = None
-    page_url: str = None
+    site_downloader: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+    enclosure: Optional[str] = None
+    page_url: Optional[str] = None
     size: float = 0.0
     seeders: int = 0
     peers: int = 0
     grabs: int = 0
-    pubdate: str = None
-    date_elapsed: str = None
-    freedate: str = None
-    uploadvolumefactor: float = None
-    downloadvolumefactor: float = None
+    pubdate: Optional[str] = None
+    date_elapsed: Optional[str] = None
+    freedate: Optional[str] = None
+    uploadvolumefactor: Optional[float] = None
+    downloadvolumefactor: Optional[float] = None
     hit_and_run: bool = False
-    labels: list = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
     pri_order: int = 0
-    category: str = None
+    category: Optional[str] = None
     search_resource_id: Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -1841,27 +1838,27 @@ class SubtitleInfo:
     :param file_name: 下载文件名
     """
 
-    site: int = None
-    site_name: str = None
-    site_cookie: str = None
-    site_ua: str = None
+    site: Optional[int] = None
+    site_name: Optional[str] = None
+    site_cookie: Optional[str] = None
+    site_ua: Optional[str] = None
     site_proxy: bool = False
     site_order: int = 0
-    title: str = None
-    description: str = None
-    enclosure: str = None
-    page_url: str = None
-    language: str = None
-    language_icon: str = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    enclosure: Optional[str] = None
+    page_url: Optional[str] = None
+    language: Optional[str] = None
+    language_icon: Optional[str] = None
     size: float = 0.0
-    pubdate: str = None
-    date_elapsed: str = None
+    pubdate: Optional[str] = None
+    date_elapsed: Optional[str] = None
     grabs: int = 0
-    uploader: str = None
-    report_url: str = None
-    torrent_id: str = None
-    subtitle_id: str = None
-    file_name: str = None
+    uploader: Optional[str] = None
+    report_url: Optional[str] = None
+    torrent_id: Optional[str] = None
+    subtitle_id: Optional[str] = None
+    file_name: Optional[str] = None
 
     def __build_meta_info(self) -> Optional[dict[str, Any]]:
         """
@@ -1986,76 +1983,76 @@ class MediaInfo:
 
     # 内部标记：是否命中本地识别缓存，不参与序列化
     recognize_cache_hit = False
-    media_source: MediaSource = None
-    media_id: str = None
-    scrape_source: str = None
-    type: MediaType = None
-    title: str = None
-    en_title: str = None
-    hk_title: str = None
-    tw_title: str = None
-    sg_title: str = None
-    year: str = None
-    season: int = None
-    tmdb_id: int = None
-    imdb_id: str = None
-    tvdb_id: int = None
-    tvdb_slug: str = None
-    douban_id: str = None
-    bangumi_id: int = None
-    anilist_id: int = None
-    anidb_id: int = None
-    collection_id: int = None
-    original_language: str = None
-    original_title: str = None
-    release_date: str = None
-    backdrop_path: str = None
-    poster_path: str = None
-    logo_path: str = None
-    vote_average: float = None
-    overview: str = None
-    genre_ids: list = field(default_factory=list)
-    names: list = field(default_factory=list)
-    seasons: Dict[int, list] = field(default_factory=dict)
-    season_info: List[dict] = field(default_factory=list)
-    season_years: dict = field(default_factory=dict)
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+    scrape_source: Optional[str] = None
+    type: Optional[MediaType] = None
+    title: Optional[str] = None
+    en_title: Optional[str] = None
+    hk_title: Optional[str] = None
+    tw_title: Optional[str] = None
+    sg_title: Optional[str] = None
+    year: Optional[str] = None
+    season: Optional[int] = None
+    tmdb_id: Optional[int] = None
+    imdb_id: Optional[str] = None
+    tvdb_id: Optional[int] = None
+    tvdb_slug: Optional[str] = None
+    douban_id: Optional[str] = None
+    bangumi_id: Optional[int] = None
+    anilist_id: Optional[int] = None
+    anidb_id: Optional[int] = None
+    collection_id: Optional[int] = None
+    original_language: Optional[str] = None
+    original_title: Optional[str] = None
+    release_date: Optional[str] = None
+    backdrop_path: Optional[str] = None
+    poster_path: Optional[str] = None
+    logo_path: Optional[str] = None
+    vote_average: Optional[float] = None
+    overview: Optional[str] = None
+    genre_ids: list[int] = field(default_factory=list)
+    names: list[str] = field(default_factory=list)
+    seasons: dict[int, list[int]] = field(default_factory=dict)
+    season_info: list[dict[str, Any]] = field(default_factory=list)
+    season_years: dict[int, str] = field(default_factory=dict)
     category: str = ""
     library_category: str = ""
     metadata_category: str = ""
     classification: ClassificationResult | None = None
     classification_facts: dict[str, ClassificationFactValue] = field(default_factory=dict)
-    tmdb_info: dict = field(default_factory=dict)
-    douban_info: dict = field(default_factory=dict)
-    bangumi_info: dict = field(default_factory=dict)
-    anilist_info: dict = field(default_factory=dict)
-    directors: List[dict] = field(default_factory=list)
-    actors: List[dict] = field(default_factory=list)
+    tmdb_info: dict[str, Any] = field(default_factory=dict)
+    douban_info: dict[str, Any] = field(default_factory=dict)
+    bangumi_info: dict[str, Any] = field(default_factory=dict)
+    anilist_info: dict[str, Any] = field(default_factory=dict)
+    directors: List[dict[str, Any]] = field(default_factory=list)
+    actors: List[dict[str, Any]] = field(default_factory=list)
     adult: Optional[bool] = None
-    created_by: list = field(default_factory=list)
-    episode_run_time: list = field(default_factory=list)
-    genres: List[dict] = field(default_factory=list)
-    first_air_date: str = None
-    homepage: str = None
-    languages: list = field(default_factory=list)
-    last_air_date: str = None
-    networks: list = field(default_factory=list)
-    number_of_episodes: int = None
-    number_of_seasons: int = None
-    origin_country: list = field(default_factory=list)
-    original_name: str = None
-    production_companies: list = field(default_factory=list)
-    production_countries: list = field(default_factory=list)
-    spoken_languages: list = field(default_factory=list)
-    release_dates: list = field(default_factory=list)
-    status: str = None
-    tagline: str = None
-    vote_count: int = None
-    popularity: float = None
-    runtime: int = None
-    next_episode_to_air: dict = field(default_factory=dict)
-    content_rating: str = None
-    episode_groups: List[dict] = field(default_factory=list)
-    episode_group: str = None
+    created_by: list[dict[str, Any]] = field(default_factory=list)
+    episode_run_time: list[int] = field(default_factory=list)
+    genres: List[dict[str, Any]] = field(default_factory=list)
+    first_air_date: Optional[str] = None
+    homepage: Optional[str] = None
+    languages: list[str] = field(default_factory=list)
+    last_air_date: Optional[str] = None
+    networks: list[dict[str, Any]] = field(default_factory=list)
+    number_of_episodes: Optional[int] = None
+    number_of_seasons: Optional[int] = None
+    origin_country: list[str] = field(default_factory=list)
+    original_name: Optional[str] = None
+    production_companies: list[dict[str, Any]] = field(default_factory=list)
+    production_countries: list[dict[str, Any]] = field(default_factory=list)
+    spoken_languages: list[dict[str, Any]] = field(default_factory=list)
+    release_dates: list[dict[str, Any]] = field(default_factory=list)
+    status: Optional[str] = None
+    tagline: Optional[str] = None
+    vote_count: Optional[int] = None
+    popularity: Optional[float] = None
+    runtime: Optional[int] = None
+    next_episode_to_air: dict[str, Any] = field(default_factory=dict)
+    content_rating: Optional[str] = None
+    episode_groups: List[dict[str, Any]] = field(default_factory=list)
+    episode_group: Optional[str] = None
 
     def __post_init__(self) -> None:
         """
@@ -2268,10 +2265,16 @@ class MediaInfo:
 
     @typing.overload
     def get_backdrop_image(self) -> str:
+        """
+        按调用方指定的默认图策略获取背景图地址。
+        """
         ...
 
     @typing.overload
     def get_backdrop_image(self, default: bool) -> Union[str, bool]:
+        """
+        按调用方指定的默认图策略获取背景图地址。
+        """
         ...
 
     def get_backdrop_image(self, default: bool = False) -> Union[str, bool]:
@@ -2287,10 +2290,16 @@ class MediaInfo:
 
     @typing.overload
     def get_message_image(self) -> str:
+        """
+        按调用方指定的默认图策略获取通知消息图片。
+        """
         ...
 
     @typing.overload
     def get_message_image(self, default: Optional[bool]) -> Union[str, bool]:
+        """
+        按调用方指定的默认图策略获取通知消息图片。
+        """
         ...
 
     def get_message_image(self, default: Optional[bool] = None) -> Union[str, bool]:
@@ -2306,10 +2315,16 @@ class MediaInfo:
 
     @typing.overload
     def get_poster_image(self) -> str:
+        """
+        按调用方指定的默认图策略获取海报图片。
+        """
         ...
 
     @typing.overload
     def get_poster_image(self, default: Optional[bool]) -> Union[str, bool]:
+        """
+        按调用方指定的默认图策略获取海报图片。
+        """
         ...
 
     def get_poster_image(self, default: Optional[bool] = None) -> Union[str, bool]:
@@ -2407,7 +2422,7 @@ class Context:
 
     meta_info: Optional[MetaBase] = None
     media_info: Optional[Union[MediaInfo, MusicInfo]] = None
-    torrent_info: TorrentInfo = None
+    torrent_info: Optional[TorrentInfo] = None
     media_recognize_fail_count: int = 0
     resource_source: str = "unknown"
     match_source: str = "unknown"

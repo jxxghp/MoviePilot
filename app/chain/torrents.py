@@ -4,7 +4,7 @@
 
 import re
 import traceback
-from typing import Callable, Dict, List, Optional, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Union, cast
 
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
@@ -365,11 +365,18 @@ class TorrentsChain(ChainBase):
             # rss过期，尝试保留原配置生成新的rss
             self.__renew_rss_url(domain=domain, site=site)
             return []
+        if not isinstance(rss_items, list):
+            logger.error(f'站点 {domain} RSS返回格式无效！')
+            return []
         if not rss_items:
             logger.error(f'站点 {domain} 未获取到RSS数据！')
             return []
         # 站点级媒体类型，用于给缺少分类信息的 RSS 种子补充分类
-        site_media_type = MediaType.from_agent(site.get("media_type"))
+        media_type_value = site.get("media_type")
+        site_media_type = (
+            MediaType.from_agent(media_type_value)
+            if isinstance(media_type_value, str) else None
+        )
         ret_torrents: List[TorrentInfo] = []
         try:
             for item in rss_items:
@@ -380,13 +387,13 @@ class TorrentsChain(ChainBase):
                     site_name=site.get("name"),
                     site_cookie=site.get("cookie"),
                     site_ua=site.get("ua") or self.runtime_config.user_agent,
-                    site_proxy=site.get("proxy"),
-                    site_order=site.get("pri"),
+                    site_proxy=bool(site.get("proxy")),
+                    site_order=int(site.get("pri") or 0),
                     site_downloader=site.get("downloader"),
                     title=item.get("title"),
                     enclosure=item.get("enclosure"),
                     page_url=item.get("link"),
-                    size=item.get("size"),
+                    size=float(item.get("size") or 0),
                     pubdate=item["pubdate"].strftime("%Y-%m-%d %H:%M:%S") if item.get("pubdate") else None,
                     # RSS 报文不带站点分类，按站点媒体类型补充，否则音乐资源无法进入音乐订阅匹配
                     category=site_media_type.value if site_media_type else None,
@@ -398,7 +405,7 @@ class TorrentsChain(ChainBase):
         return ret_torrents
 
     @staticmethod
-    def _music_browse_paths(site: dict) -> List[str]:
+    def _music_browse_paths(site: dict[str, Any]) -> List[str]:
         """
         返回站点独立于默认浏览入口的音乐种子页面路径。
 
@@ -407,7 +414,8 @@ class TorrentsChain(ChainBase):
         默认入口已覆盖音乐（音乐站点或未定义独立入口）时返回空列表。
         """
         # 音乐站点全站都是音乐资源，默认浏览入口已经覆盖
-        if MediaType.from_agent(site.get("media_type")) == MediaType.MUSIC:
+        media_type_value = site.get("media_type")
+        if isinstance(media_type_value, str) and MediaType.from_agent(media_type_value) == MediaType.MUSIC:
             return []
         paths = (site.get("search") or {}).get("paths") or []
         if len(paths) <= 1:
@@ -451,7 +459,7 @@ class TorrentsChain(ChainBase):
 
     def _refresh_indexer(
             self,
-            indexer: dict,
+            indexer: dict[str, Any],
             stype: str,
             include_music: bool,
             torrents_cache: Dict[str, List[Context]],
@@ -523,7 +531,10 @@ class TorrentsChain(ChainBase):
         """
         刷新已有资源信息，保留未变标题的识别结果；标题变化时替换旧候选。
         """
-        contexts = {cls._torrent_cache_key(item.torrent_info): item for item in cached}
+        contexts: dict[tuple[object, ...], Context] = {}
+        for item in cached:
+            if item.torrent_info is not None:
+                contexts[cls._torrent_cache_key(item.torrent_info)] = item
         new_torrents: dict[tuple[object, ...], TorrentInfo] = {}
         for torrent in torrents:
             if not torrent.enclosure:
@@ -534,6 +545,9 @@ class TorrentsChain(ChainBase):
                 new_torrents[key] = torrent
                 continue
             previous = context.torrent_info
+            if previous is None:
+                new_torrents[key] = torrent
+                continue
             if (previous.title, previous.description) == (torrent.title, torrent.description):
                 context.torrent_info = torrent
             else:
@@ -557,12 +571,12 @@ class TorrentsChain(ChainBase):
         meta: MetaBase
         mediainfo: MediaInfo | MusicInfo
         if torrent.category == MediaType.MUSIC.value:
-            meta = MetaInfo(title=torrent.title, subtitle=torrent.description, mtype=MediaType.MUSIC)
+            meta = MetaInfo(title=torrent.title or "", subtitle=torrent.description, mtype=MediaType.MUSIC)
             mediainfo = MusicInfo.from_meta(cast(MetaMusic, meta))
             candidate_recognized = False
             match_source = "unknown"
         else:
-            video_meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+            video_meta = MetaInfo(title=torrent.title or "", subtitle=torrent.description)
             if torrent.title != video_meta.org_string:
                 logger.info(
                     f'种子名称应用识别词后发生改变：{torrent.title} => {video_meta.org_string}'
@@ -737,7 +751,7 @@ class TorrentsChain(ChainBase):
             return str(media_source)
         return "unknown"
 
-    def __renew_rss_url(self, domain: str, site: dict) -> None:
+    def __renew_rss_url(self, domain: str, site: dict[str, Any]) -> None:
         """
         保留原配置生成新的rss地址
         """
@@ -745,9 +759,14 @@ class TorrentsChain(ChainBase):
             # RSS链接过期
             logger.error(f"站点 {domain} RSS链接已过期，正在尝试自动获取！")
             # 自动生成rss地址
+            site_url = site.get("url")
+            site_cookie = site.get("cookie")
+            site_rss = site.get("rss")
+            if not isinstance(site_url, str) or not isinstance(site_cookie, str) or not isinstance(site_rss, str):
+                return
             rss_url, errmsg = RssHelper().get_rss_link(
-                url=site.get("url"),
-                cookie=site.get("cookie"),
+                url=site_url,
+                cookie=site_cookie,
                 ua=site.get("ua") or self.runtime_config.user_agent,
                 proxy=True if site.get("proxy") else False,
                 timeout=site.get("timeout"),
@@ -758,7 +777,7 @@ class TorrentsChain(ChainBase):
                 if match:
                     new_passkey = match.group(1)
                     # 获取过期rss除去passkey部分
-                    new_rss = re.sub(r'&passkey=([a-zA-Z0-9]+)', f'&passkey={new_passkey}', site.get("rss"))
+                    new_rss = re.sub(r'&passkey=([a-zA-Z0-9]+)', f'&passkey={new_passkey}', site_rss)
                     logger.info(f"更新站点 {domain} RSS地址 ...")
                     self.site_repository.update_rss(domain=domain, rss=new_rss)
                 else:

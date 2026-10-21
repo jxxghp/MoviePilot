@@ -3,7 +3,7 @@
 """
 
 from pathlib import Path
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -38,7 +38,7 @@ class SendLocalFileInput(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_file_path(self):
+    def validate_file_path(self) -> "SendLocalFileInput":
         """
         拒绝空的附件路径。
 
@@ -79,7 +79,7 @@ class SendLocalFileTool(MoviePilotTool):
         description="是否仅允许系统管理员调用",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据本地附件路径生成发送进度提示。
 
@@ -90,13 +90,13 @@ class SendLocalFileTool(MoviePilotTool):
         file_name = Path(file_path).name if file_path else "未知文件"
         return f"发送本地附件: {file_name}"
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         file_path: str,
         message: Optional[str] = None,
         title: Optional[str] = None,
         file_name: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         通过当前会话渠道发送已有本地附件。

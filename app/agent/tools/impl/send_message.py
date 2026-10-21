@@ -2,7 +2,7 @@
 发送消息工具
 """
 
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -94,7 +94,7 @@ class SendMessageTool(MoviePilotTool):
         description="是否仅允许系统管理员调用",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据消息参数生成友好的提示消息
         """
@@ -117,7 +117,7 @@ class SendMessageTool(MoviePilotTool):
             return f"发送图片消息: {message}"
         return f"发送消息: {message}"
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         message: Optional[str] = None,
         title: Optional[str] = None,

@@ -100,8 +100,7 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    # Pydantic 的动态装饰器类型会被存量 mypy 配置解析为 Any，公开 schema 仍需保留该校验。
-    @_field_validator("errmsg", mode="before")  # type: ignore[misc]
+    @_field_validator("errmsg", mode="before")
     @classmethod
     def _sanitize_error_message(cls, value: object) -> Optional[str]:
         """
@@ -122,8 +121,7 @@ class BatchTransferHistoryRedoRequest(BaseModel):
     history_ids: list[int] = Field(default_factory=list, description="历史记录 ID 列表")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferHistoryDiscardResult(BaseModel):  # type: ignore[misc]
+class TransferHistoryDiscardResult(BaseModel):
     """
     损坏整理任务清理结果，标识保留供后续操作的历史记录。
     """
@@ -140,8 +138,7 @@ class TransferHistoryPage(BaseModel):
     total: int = Field(default=0, description="记录总数")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferHistoryDeleteStep(BaseModel):  # type: ignore[misc]
+class TransferHistoryDeleteStep(BaseModel):
     """
     整理历史删除流程中单个文件目标的执行结果。
     """
@@ -152,8 +149,7 @@ class TransferHistoryDeleteStep(BaseModel):  # type: ignore[misc]
     message: str = Field(default="", description="仅用于无法继续处理时给出可读原因，正常状态为空")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class TransferHistoryDeleteResult(BaseModel):  # type: ignore[misc]
+class TransferHistoryDeleteResult(BaseModel):
     """
     整理历史删除及源/目标文件清理的分项结果。
     """

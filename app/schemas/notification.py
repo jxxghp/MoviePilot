@@ -11,8 +11,7 @@ from pydantic import BaseModel, Field
 from app.schemas.types import NotificationChannel
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class WechatClawBotKnownTarget(BaseModel):  # type: ignore[misc]
+class WechatClawBotKnownTarget(BaseModel):
     """
     微信 ClawBot 已知消息目标。
     """
@@ -22,8 +21,7 @@ class WechatClawBotKnownTarget(BaseModel):  # type: ignore[misc]
     last_active: Optional[int | float] = Field(default=None, description="消息目标最近活跃时间")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class WechatClawBotData(BaseModel):  # type: ignore[misc]
+class WechatClawBotData(BaseModel):
     """
     微信 ClawBot 登录状态或操作结果。
     """

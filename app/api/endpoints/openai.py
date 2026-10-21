@@ -8,7 +8,7 @@ import asyncio
 import time
 import uuid
 from threading import Lock
-from typing import TYPE_CHECKING, AsyncIterator, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, AsyncIterator, List, Optional, Tuple, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -77,7 +77,7 @@ class _CollectingMoviePilotAgentMixin:
 
     _graphs: AgentGraphCache
 
-    def __init__(self, *args, stream_mode: bool = False, **kwargs):
+    def __init__(self, *args: Any, stream_mode: bool = False, **kwargs: Any) -> None:
         """
         初始化协议 Agent 的消息收集与流式模式。
         """
@@ -144,6 +144,9 @@ class _OpenAIStreamingHandlerMixin:
     将 Agent 流式输出转发到 OpenAI SSE 队列，不向站内消息系统落消息。
     """
 
+    _lock: Lock
+    _buffer: str
+
     def __init__(self) -> None:
         """
         初始化流式事件队列绑定。
@@ -164,20 +167,23 @@ class _OpenAIStreamingHandlerMixin:
         if self._event_queue is queue:
             self._event_queue = None
 
-    def emit(self, token: str):
+    def emit(self, token: str) -> str:
         """
         发送已整理的流式文本到请求事件队列。
         """
-        emitted = super().emit(token)
+        emit_base = getattr(super(), "emit", None)
+        emitted = str(emit_base(token)) if callable(emit_base) else token
         if emitted and self._event_queue is not None:
             self._event_queue.put_nowait(emitted)
+        return emitted
 
     def emit_tool_message(self, message: str) -> str:
         """
         将工具提示转发到 OpenAI SSE 队列，同时保留流式缓冲内容。
         """
         # 沿用动态流式缓冲基类的方法调用，将返回值统一转换为文本。
-        emitted = str(super().emit_tool_message(message))  # type: ignore[misc]
+        emit_base = getattr(super(), "emit_tool_message", None)
+        emitted = str(emit_base(message)) if callable(emit_base) else message
         if emitted and self._event_queue is not None:
             self._event_queue.put_nowait(emitted)
         return emitted
@@ -186,10 +192,11 @@ class _OpenAIStreamingHandlerMixin:
         """
         结算待发送的工具摘要并写入事件队列。
         """
-        emitted = super().flush_pending_tool_summary()
+        flush_base = getattr(super(), "flush_pending_tool_summary", None)
+        emitted = str(flush_base()) if callable(flush_base) else ""
         if emitted and self._event_queue is not None:
             self._event_queue.put_nowait(emitted)
-        return emitted
+        return str(emitted)
 
     async def start_streaming(
         self,

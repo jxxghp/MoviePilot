@@ -7,13 +7,13 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, cast
 
 from app.adapters.network.http import RequestUtils
 from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
 from app.modules.filemanager.storages import StorageBase, transfer_process
-from app.runtime.cache import cached
+from app.runtime.cache import CacheControls, cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
@@ -63,7 +63,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         清除当前地址和账号对应的临时登录令牌缓存。
         """
         conf = self.get_conf()
-        self.__login_token.cache_delete(
+        cast(CacheControls, self.__login_token).cache_delete(
             self, self.__get_base_url, conf.get("username"), conf.get("password")
         )
 
@@ -117,7 +117,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         url = self.get_conf().get("url")
         if url is None:
             return ""
-        return UrlUtils.standardize_base_url(self.get_conf().get("url"))
+        return UrlUtils.standardize_base_url(str(url))
 
     def __get_api_url(self, path: str) -> str:
         """
@@ -126,7 +126,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param path: API路径
         :return: 基础地址与接口路径组合后的完整请求地址
         """
-        return UrlUtils.adapt_request_url(self.__get_base_url, path)
+        return UrlUtils.adapt_request_url(self.__get_base_url, path) or ""
 
     @property
     def __get_valuable_toke(self) -> str:
@@ -157,8 +157,11 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         使用账号密码生成一个临时 token。
         缓存2天，提前5分钟更新
         """
+        url = UrlUtils.adapt_request_url(base_url, "/api/auth/login")
+        if not url:
+            return ""
         resp = RequestUtils(headers={"Content-Type": "application/json"}).post_res(
-            UrlUtils.adapt_request_url(base_url, "/api/auth/login"),
+            url,
             data=json.dumps(
                 {
                     "username": username,
@@ -184,7 +187,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             return ""
 
         logger.debug("【OpenList】AList获取令牌成功")
-        return result["data"]["token"]
+        token = result["data"]["token"]
+        return token if isinstance(token, str) else ""
 
     def __get_header_with_token(self) -> dict[str, str]:
         """
@@ -220,6 +224,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param refresh: 是否要求服务端刷新列表缓存
         :return: 文件项列表；HTTP 或业务错误返回空列表，之前成功页的结果也会丢弃
         """
+        if not fileitem.path:
+            return []
         if fileitem.type == "file":
             item = self.get_item(Path(fileitem.path))
             if item:
@@ -303,6 +309,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param name: 要创建的子目录名称
         :return: 查询到的目录项；接口成功但暂不可见时按目标路径构造目录项，接口失败返回 None
         """
+        if not fileitem.path:
+            return None
         path = Path(fileitem.path) / name
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/mkdir"),
@@ -406,7 +414,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
         return self.__build_fileitem(path, result["data"])
 
-    def __build_fileitem(self, path: Path, data: dict) -> _SchemaFileItem:
+    def __build_fileitem(self, path: Path, data: dict[str, Any]) -> _SchemaFileItem:
         """
         根据接口返回数据构建文件项。
 
@@ -466,6 +474,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param fileitem: 目标存储项
         :return: 父目录信息；普通查询无结果时返回 None
         """
+        if not fileitem.path:
+            return None
         return self.get_folder(Path(fileitem.path).parent)
 
     def delete(self, fileitem: _SchemaFileItem) -> bool:
@@ -475,6 +485,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param fileitem: 目标存储项；优先使用 name，否则取 path 的末段
         :return: HTTP 与业务状态均为 200 返回 True；名称为空或接口失败返回 False
         """
+        if not fileitem.path:
+            return False
         path = Path(fileitem.path)
         name = fileitem.name or path.name
         if not name:
@@ -514,6 +526,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param name: 目标名称
         :return: HTTP 与业务状态均为 200 返回 True，否则返回 False；不原地修改输入项
         """
+        if not fileitem.path:
+            return False
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/rename"),
             json={
@@ -558,6 +572,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param password: 详情查询使用的可选访问密码
         :return: 本地目标路径；详情查询失败或取消返回 None
         """
+        if not fileitem.path:
+            return None
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/get"),
             json={
@@ -590,13 +606,12 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             download_url = UrlUtils.adapt_request_url(
                 self.__get_base_url, f"/d{fileitem.path}"
             )
-            if result["data"]["sign"]:
+            if download_url and result["data"]["sign"]:
                 download_url = download_url + "?sign=" + result["data"]["sign"]
 
-        if not path:
-            local_path = get_runtime_setting('TEMP_PATH') / fileitem.name
-        else:
-            local_path = path / fileitem.name
+        local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
+        if local_path is None or not download_url:
+            return None
 
         request_utils = RequestUtils(headers=self.__get_header_with_token())
         try:
@@ -633,6 +648,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param task: 是否要求服务端作为后台任务处理；默认 False，避免后续操作抢先执行
         :return: 上传后查询到的文件项；上传、取消或元数据确认失败返回 None
         """
+        if not fileitem.path:
+            return None
         try:
             target_name = new_name or path.name
             target_path = Path(fileitem.path) / target_name
@@ -723,7 +740,7 @@ class Alist(StorageBase, metaclass=WeakSingleton):
             progress_callback(100)
 
             new_item = self._delay_get_item(target_path, refresh=True)
-            if new_item and new_name and new_name != path.name:
+            if new_item and new_item.path and new_name and new_name != path.name:
                 if self.rename(new_item, new_name):
                     return self._delay_get_item(
                         Path(new_item.path).with_name(new_name), refresh=True
@@ -764,6 +781,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param fileitem: 目标文件或目录项
         :return: 最新文件项；普通查询失败返回 None
         """
+        if not fileitem.path:
+            return None
         return self.get_item(Path(fileitem.path))
 
     def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str, **_kwargs: Any) -> bool:
@@ -777,6 +796,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param new_name: 目标文件名
         :return: 复制接口成功返回 True，接口失败返回 False；后续重命名失败不改变成功结果
         """
+        if not fileitem.path or not fileitem.name:
+            return False
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
             self.__get_api_url("/api/fs/copy"),
             json={
@@ -819,6 +840,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param new_name: 目标文件名
         :return: 目标项；同名复制成功但暂不可见时按源元数据构造，改名无法确认时返回 None
         """
+        if not fileitem.path or not fileitem.name:
+            return None
         if not self.copy(fileitem=fileitem, path=path, new_name=new_name):
             return None
         target_path = path / new_name
@@ -844,6 +867,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         :param new_name: 目标文件名
         :return: 移动接口成功返回 True，否则返回 False；前置重命名的布尔结果不单独检查
         """
+        if not fileitem.path or not fileitem.name:
+            return False
         if fileitem.name != new_name:
             self.rename(fileitem, new_name)
         resp = RequestUtils(headers=self.__get_header_with_token()).post_res(
@@ -897,9 +922,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
         :param fileitem: 兼容接口的源文件项，当前忽略
         :param target_file: 兼容接口的目标路径，当前忽略
-        :return: 固定返回 None
+        :return: 固定返回 False
         """
-        pass
+        return False
 
     def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
@@ -907,9 +932,9 @@ class Alist(StorageBase, metaclass=WeakSingleton):
 
         :param fileitem: 兼容接口的源文件项，当前忽略
         :param target_file: 兼容接口的目标路径，当前忽略
-        :return: 固定返回 None
+        :return: 固定返回 False
         """
-        pass
+        return False
 
     def usage(self) -> Optional[_SchemaStorageUsage]:
         """

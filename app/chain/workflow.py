@@ -7,6 +7,7 @@ import copy
 import inspect
 import threading
 from collections import defaultdict, deque
+from concurrent.futures import Future
 from contextvars import Context, copy_context
 from dataclasses import is_dataclass
 from datetime import date, datetime
@@ -101,7 +102,7 @@ def _serialize_workflow_value(value: Any, stack: Optional[set[int]] = None) -> A
     return str(value)
 
 
-def _serialize_workflow_context(context: ActionContext) -> dict:
+def _serialize_workflow_context(context: ActionContext) -> dict[str, Any]:
     """
     构建可写入数据库的工作流上下文字典。
     """
@@ -171,11 +172,11 @@ class WorkflowExecutor:
         )
         self.actions: dict[str, Action] = {}
         for action_data in workflow.actions or ():
-            action = Action(**dict(action_data))
+            action = Action.model_validate(dict(action_data))
             if not action.id:
                 raise ValueError("工作流动作缺少 ID")
             self.actions[action.id] = action
-        self.flows = [ActionFlow(**dict(flow)) for flow in workflow.flows or ()]
+        self.flows = [ActionFlow.model_validate(dict(flow)) for flow in workflow.flows or ()]
         execution_config = getattr(workflow, "execution_config", None) or {}
         execution_state = {} if from_begin else (getattr(workflow, "execution_state", None) or {})
         self.execution_config = (
@@ -354,21 +355,21 @@ class WorkflowExecutor:
         except (TypeError, ValueError):
             return DEFAULT_WORKFLOW_MAX_WORKERS
 
-    def get_restored_node_metadata(self) -> dict:
+    def get_restored_node_metadata(self) -> dict[str, Any]:
         """
         获取已持久化的节点状态元数据。
         """
         nodes = self.restored_execution_state.get("nodes") if isinstance(self.restored_execution_state, dict) else {}
         return nodes if isinstance(nodes, dict) else {}
 
-    def get_restored_errors(self) -> dict:
+    def get_restored_errors(self) -> dict[str, Any]:
         """
         获取已持久化的错误状态。
         """
         errors = self.restored_execution_state.get("errors") if isinstance(self.restored_execution_state, dict) else {}
         return errors if isinstance(errors, dict) else {}
 
-    def get_restored_attempts(self) -> dict:
+    def get_restored_attempts(self) -> dict[str, Any]:
         """
         获取已持久化的节点尝试次数。
         """
@@ -378,7 +379,7 @@ class WorkflowExecutor:
                 attempts[action_id] = int(metadata.get("attempt") or 0)
         return attempts
 
-    def get_restored_node_states(self) -> dict:
+    def get_restored_node_states(self) -> dict[str, Any]:
         """
         获取结构化节点状态，兼容旧版 current_action 字符串。
         """
@@ -442,6 +443,8 @@ class WorkflowExecutor:
         """
         更新上下文中的运行期状态分区。
         """
+        if self.context.runtime_state is None:
+            self.context.runtime_state = {}
         self.context.runtime_state.update({
             "progress": self.context.progress,
             "finished_actions": self.finished_actions,
@@ -468,7 +471,7 @@ class WorkflowExecutor:
         self.node_states[action_id] = state
         self.update_runtime_state()
 
-    def build_execution_state(self) -> dict:
+    def build_execution_state(self) -> dict[str, Any]:
         """
         构建可持久化的结构化执行状态。
         """
@@ -532,7 +535,7 @@ class WorkflowExecutor:
                     node_id,
                     copy.deepcopy(self.context),
                 )
-                future.add_done_callback(partial(context.run, self.on_node_complete))
+                future.add_done_callback(partial(self._complete_in_context, context))
         except Exception as err:
             self.success = False
             self.has_failure = True
@@ -586,13 +589,25 @@ class WorkflowExecutor:
         )
         return action, action_result
 
-    def on_node_complete(self, future):
+    def _complete_in_context(
+            self,
+            context: Context,
+            future: Future[Tuple[Action, ActionResult]],
+    ) -> None:
+        """
+        在节点提交时的上下文中消费完成结果。
+        """
+        context.run(self.on_node_complete, future)
+
+    def on_node_complete(self, future: Future[Tuple[Action, ActionResult]]) -> None:
         """
         节点完成回调：更新上下文、处理后继节点
         """
         action = None
         try:
             action, action_result = future.result()
+            if not action.id:
+                raise ValueError("工作流动作缺少 ID")
             with self.lock:
                 if self._stop_requested():
                     self.success = False
@@ -606,6 +621,8 @@ class WorkflowExecutor:
 
                 self.finished_actions += 1
                 self.update_progress()
+                if self.context.execute_history is None:
+                    self.context.execute_history = []
                 self.context.execute_history.append(
                     ActionExecution(
                         action=action.name,
@@ -682,6 +699,8 @@ class WorkflowExecutor:
         self.finished_actions += 1
         self.update_progress()
         self.set_node_state(node_id, "skipped", message=message)
+        if self.context.execute_history is None:
+            self.context.execute_history = []
         self.context.execute_history.append(
             ActionExecution(
                 action=self.actions[node_id].name,
@@ -782,7 +801,7 @@ class WorkflowExecutor:
         self.context.progress = round(self.finished_actions / self.total_actions * 100) if self.total_actions else 100
         self.update_runtime_state()
 
-    def build_action_inputs(self, action: Action) -> dict:
+    def build_action_inputs(self, action: Action) -> dict[str, Any]:
         """
         根据动作输入声明读取上游节点输出。
         """
@@ -809,7 +828,7 @@ class WorkflowExecutor:
             return self.context.artifacts.get(input_path) if self.context.artifacts else value
         return self.resolve_context_path(input_path)
 
-    def build_action_runtime(self, action: Action) -> dict:
+    def build_action_runtime(self, action: Action) -> dict[str, Any]:
         """
         构建传递给动作的新运行期数据。
         """
@@ -831,7 +850,7 @@ class WorkflowExecutor:
         context.artifacts = context.artifacts or {}
 
     def normalize_action_outputs(self, action: Action, action_result: ActionResult,
-                                 result_context: ActionContext) -> dict:
+                                 result_context: ActionContext) -> dict[str, Any]:
         """
         根据动作输出声明整理当前节点输出。
         """
@@ -873,11 +892,15 @@ class WorkflowExecutor:
         merge_policy = output_config.get("merge") or self.get_default_merge_policy(action, target_key, value)
         return merge_policy == "replace"
 
-    def record_node_outputs(self, action_id: str, outputs: dict) -> None:
+    def record_node_outputs(self, action_id: str, outputs: dict[str, Any]) -> None:
         """
         记录当前节点输出，供后续条件表达式读取。
         """
         if outputs:
+            if self.context.node_outputs is None:
+                self.context.node_outputs = {}
+            if self.context.runtime_state is None:
+                self.context.runtime_state = {}
             self.context.node_outputs[action_id] = outputs
             self.context.runtime_state["last_outputs"] = outputs
 
@@ -893,7 +916,7 @@ class WorkflowExecutor:
             current_value.update(value)
             setattr(self.context, key, current_value)
 
-    def merge_action_outputs(self, action: Action, outputs: dict) -> None:
+    def merge_action_outputs(self, action: Action, outputs: dict[str, Any]) -> None:
         """
         按声明式合并策略写入全局上下文和 artifacts 分区。
         """
@@ -915,10 +938,12 @@ class WorkflowExecutor:
         if key in ActionContext.model_fields:
             setattr(self.context, key, merged_value)
         if key in ARTIFACT_FIELDS:
+            if self.context.artifacts is None:
+                self.context.artifacts = {}
             current_artifact = self.context.artifacts.get(key)
             self.context.artifacts[key] = self.apply_merge_policy(current_artifact, value, merge_policy, identity)
 
-    def get_action_output_config(self, action: Action, output_key: str) -> dict:
+    def get_action_output_config(self, action: Action, output_key: str) -> dict[str, Any]:
         """
         获取动作输出声明配置。
         """
@@ -981,7 +1006,7 @@ class WorkflowExecutor:
             return current_value or value
         return current_value or value
 
-    def append_unique_values(self, current_value: Any, value: Any, identity: Optional[str] = None) -> list:
+    def append_unique_values(self, current_value: Any, value: Any, identity: Optional[str] = None) -> list[Any]:
         """
         追加列表并按身份字段去重。
         """
@@ -1030,7 +1055,7 @@ class WorkflowExecutor:
         self.step_callback(action, self.context)
 
     @staticmethod
-    def extract_context_outputs(context: ActionContext) -> dict:
+    def extract_context_outputs(context: ActionContext) -> dict[str, Any]:
         """
         从动作上下文中提取非空业务字段作为节点默认输出。
         """
@@ -1096,7 +1121,7 @@ class WorkflowExecutor:
             or self.get_action_contract(action).get("concurrency_key")
         )
 
-    def get_action_contract(self, action: Action) -> dict:
+    def get_action_contract(self, action: Action) -> dict[str, Any]:
         """
         获取动作固定输入输出契约。
         """
@@ -1174,9 +1199,12 @@ class WorkflowExecutor:
         if isinstance(node, ast.Set):
             return {self.evaluate_condition_node(item) for item in node.elts}
         if isinstance(node, ast.Dict):
+            if any(key is None for key in node.keys):
+                raise ValueError("条件表达式不支持字典展开")
             return {
                 self.evaluate_condition_node(key): self.evaluate_condition_node(value)
                 for key, value in zip(node.keys, node.values)
+                if key is not None
             }
         raise ValueError(f"不支持的条件表达式：{ast.dump(node)}")
 
@@ -1224,8 +1252,9 @@ class WorkflowExecutor:
             return self.context.node_outputs or {}
         if name == "last":
             return self.context.runtime_state.get("last_outputs") if self.context.runtime_state else {}
-        if name in (self.context.node_outputs or {}):
-            return self.context.node_outputs[name]
+        node_outputs = self.context.node_outputs or {}
+        if name in node_outputs:
+            return node_outputs[name]
         if name in ActionContext.model_fields:
             return getattr(self.context, name, None)
         raise ValueError(f"未知上下文变量 {name}")
@@ -1271,17 +1300,17 @@ class WorkflowExecutor:
         """
         try:
             if isinstance(operator, ast.Eq):
-                return left == right
+                return bool(left == right)
             if isinstance(operator, ast.NotEq):
-                return left != right
+                return bool(left != right)
             if isinstance(operator, ast.Gt):
-                return left > right
+                return bool(left > right)
             if isinstance(operator, ast.GtE):
-                return left >= right
+                return bool(left >= right)
             if isinstance(operator, ast.Lt):
-                return left < right
+                return bool(left < right)
             if isinstance(operator, ast.LtE):
-                return left <= right
+                return bool(left <= right)
             if isinstance(operator, ast.In):
                 return left in right
             if isinstance(operator, ast.NotIn):
@@ -1323,10 +1352,12 @@ class WorkflowChain(ChainBase):
     """
 
     @eventmanager.register(EventType.WorkflowExecute)
-    def event_process(self, event: Event):
+    def event_process(self, event: Event) -> None:
         """
         事件触发工作流执行
         """
+        if not isinstance(event.event_data, dict):
+            return
         workflow_id = event.event_data.get('workflow_id')
         if not workflow_id:
             return
@@ -1362,7 +1393,7 @@ class WorkflowChain(ChainBase):
         def save_step(
                 action: Action,
                 context: ActionContext,
-                execution_state: dict,
+                execution_state: dict[str, Any],
                 completed: bool,
         ) -> None:
             """

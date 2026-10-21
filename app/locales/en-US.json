@@ -587,7 +587,12 @@
     "未配置 Follow 订阅用户，跳过刷新": "No Follow subscription users configured, skipping refresh",
     "订阅日历预缓存完成": "Subscription calendar precache completed",
     "订阅活动暂时不可用": "Subscription activity is temporarily unavailable",
-    "活动不存在或无权查看": "Activity does not exist or access is denied"
+    "活动不存在或无权查看": "Activity does not exist or access is denied",
+    "文件路径为空": "File path is empty",
+    "源文件路径为空": "Source file path is empty",
+    "未识别到媒体类型": "Media type could not be identified",
+    "站点域名未配置": "Site domain is not configured",
+    "站点配置不完整": "Site configuration is incomplete"
   },
   "message_patterns": [
     {

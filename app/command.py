@@ -6,7 +6,7 @@ import copy
 import threading
 import traceback
 from concurrent.futures import Future
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 from app.application.messaging.message import MessageHelper
 from app.application.messaging.skill import SkillInteractionHandler
@@ -37,7 +37,7 @@ class CommandChain(ChainBase):
     """
 
 
-def _finish_command_processing_status(status: Optional[dict], user_id: Optional[str] = None) -> None:
+def _finish_command_processing_status(status: Optional[dict[str, Any]], user_id: Optional[str] = None) -> None:
     """
     命令执行完成后通过消息模块收口渠道处理状态。
     """
@@ -54,15 +54,18 @@ class Command(metaclass=Singleton):
     全局命令管理，消费事件
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        绑定命令来源、消息网关与调度服务，并安排首次菜单注册。
+        """
         # 插件管理器
         super().__init__()
         # 注册的命令集合
-        self._registered_commands = {}
+        self._registered_commands: dict[str, dict[str, Any]] = {}
         # 所有命令集合
-        self._commands = {}
+        self._commands: dict[str, dict[str, Any]] = {}
         # 内建命令集合
-        self._preset_commands = {
+        self._preset_commands: dict[str, dict[str, Any]] = {
             "/cookiecloud": {
                 "id": "cookiecloud",
                 "type": "scheduler",
@@ -154,9 +157,9 @@ class Command(metaclass=Singleton):
             },
         }
         # 插件命令集合
-        self._plugin_commands = {}
+        self._plugin_commands: dict[str, dict[str, Any]] = {}
         # 其他命令集合
-        self._other_commands = {}
+        self._other_commands: dict[str, dict[str, Any]] = {}
         # 初始化锁
         self._rlock = threading.RLock()
         # 插件管理
@@ -168,7 +171,7 @@ class Command(metaclass=Singleton):
         # 初始化命令
         self.init_commands()
 
-    def init_commands(self, pid: Optional[str] = None) -> Future:
+    def init_commands(self, pid: Optional[str] = None) -> Future[None]:
         """
         提交菜单命令重建任务，并返回可等待的完成信号。
         """
@@ -193,9 +196,9 @@ class Command(metaclass=Singleton):
                 # 触发事件允许可以拦截和调整命令
                 event, initial_commands = self.__trigger_register_commands_event()
 
-                if event and event.event_data:
-                    # 如果事件返回有效的 event_data，使用事件中调整后的命令
-                    event_data: CommandRegisterEventData = event.event_data
+                if event and isinstance(event.event_data, CommandRegisterEventData):
+                    # 使用事件中调整后的命令。
+                    event_data = event.event_data
                     # 如果事件被取消，跳过命令注册
                     if event_data.cancel:
                         logger.debug(
@@ -243,12 +246,12 @@ class Command(metaclass=Singleton):
                 exc_info=True,
             )
 
-    def __trigger_register_commands_event(self) -> tuple[Optional[Event], dict]:
+    def __trigger_register_commands_event(self) -> tuple[Optional[Event], dict[str, dict[str, Any]]]:
         """
         触发事件，允许调整命令数据
         """
 
-        def add_commands(source, command_type):
+        def add_commands(source: dict[str, dict[str, Any]], command_type: str) -> None:
             """
             添加命令集合
             """
@@ -268,7 +271,7 @@ class Command(metaclass=Singleton):
                 commands[cmd] = command_data
 
         # 初始化命令字典
-        commands: Dict[str, dict] = {}
+        commands: Dict[str, dict[str, Any]] = {}
         add_commands(self._preset_commands, "preset")
         add_commands(self._plugin_commands, "plugin")
         add_commands(self._other_commands, "other")
@@ -280,7 +283,7 @@ class Command(metaclass=Singleton):
         event = eventmanager.send_event(ChainEventType.CommandRegister, event_data)
         return event, commands
 
-    def __build_plugin_commands(self, _: Optional[str] = None) -> Dict[str, dict]:
+    def __build_plugin_commands(self, _: Optional[str] = None) -> Dict[str, dict[str, Any]]:
         """
         构建插件命令
         """
@@ -304,12 +307,12 @@ class Command(metaclass=Singleton):
 
     def __run_command(
         self,
-        command: Dict[str, any],
+        command: Dict[str, Any],
         data_str: Optional[str] = "",
-        channel: NotificationChannel = None,
+        channel: Optional[NotificationChannel] = None,
         source: Optional[str] = None,
-        userid: Union[str, int] = None,
-    ):
+        userid: Optional[Union[str, int]] = None,
+    ) -> None:
         """
         运行定时服务
         """
@@ -339,7 +342,7 @@ class Command(metaclass=Singleton):
                 )
         else:
             # 命令
-            cmd_data = copy.deepcopy(command["data"]) if command.get("data") else {}
+            cmd_data: dict[str, Any] = copy.deepcopy(command["data"]) if command.get("data") else {}
             args_num = ObjectUtils.arguments(command["func"])
             if args_num > 0:
                 if cmd_data:
@@ -362,7 +365,7 @@ class Command(metaclass=Singleton):
                 # 没有参数
                 command["func"]()
 
-    def get_commands(self):
+    def get_commands(self) -> dict[str, dict[str, Any]]:
         """
         获取命令列表
         """
@@ -385,8 +388,8 @@ class Command(metaclass=Singleton):
     def register(
         self,
         cmd: str,
-        func: Any,
-        data: Optional[dict] = None,
+        func: Callable[..., Any],
+        data: Optional[dict[str, Any]] = None,
         desc: Optional[str] = None,
         category: Optional[str] = None,
         show: bool = True,
@@ -407,9 +410,9 @@ class Command(metaclass=Singleton):
         self,
         cmd: str,
         data_str: Optional[str] = "",
-        channel: NotificationChannel = None,
+        channel: Optional[NotificationChannel] = None,
         source: Optional[str] = None,
-        userid: Union[str, int] = None,
+        userid: Optional[Union[str, int]] = None,
     ) -> None:
         """
         执行命令
@@ -446,7 +449,7 @@ class Command(metaclass=Singleton):
                 )
 
     @staticmethod
-    def send_plugin_event(etype: EventType, data: dict) -> None:
+    def send_plugin_event(etype: EventType, data: dict[str, Any]) -> None:
         """
         发送插件命令
         """
@@ -460,6 +463,8 @@ class Command(metaclass=Singleton):
             "cmd": "/xxx args"
         }
         """
+        if not isinstance(event.event_data, dict):
+            return
         # 命令参数
         event_str = event.event_data.get("cmd")
         # 消息渠道
@@ -483,7 +488,7 @@ class Command(metaclass=Singleton):
         finally:
             _finish_command_processing_status(
                 event.event_data.get("processing_status"),
-                user_id=event_user,
+                user_id=str(event_user) if event_user is not None else None,
             )
 
     @eventmanager.register(EventType.ModuleReload)

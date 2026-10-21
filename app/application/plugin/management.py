@@ -2,7 +2,7 @@
 插件目录、生命周期和数据投影应用能力。
 """
 
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, cast
 
 from anyio import to_thread
 
@@ -60,7 +60,7 @@ def reload_plugin_runtime(plugin_id: str) -> PluginRuntimeStatus:
         runtime_status = plugin_manager.reload_plugin_tree(plugin_id)
         for reload_target in plugin_manager.get_plugin_reload_targets(plugin_id):
             refresh_plugin_registrations(reload_target)
-        return runtime_status
+        return cast(PluginRuntimeStatus, runtime_status)
 
 
 def summarize_plugin(plugin: Any) -> dict[str, Any]:
@@ -166,7 +166,7 @@ async def load_market_plugins(force_refresh: bool = False) -> list[Any]:
     local_repo_plugins = plugin_manager.get_local_repo_plugins()
     if not online_plugins and not local_repo_plugins:
         return []
-    return plugin_manager.process_plugins_list(online_plugins + local_repo_plugins, [])
+    return cast(list[Any], plugin_manager.process_plugins_list(online_plugins + local_repo_plugins, []))
 
 
 def list_installed_plugins() -> list[Any]:
@@ -178,6 +178,9 @@ def list_installed_plugins() -> list[Any]:
 
 
 def _normalize_text(value: Optional[str]) -> str:
+    """
+    规范化插件检索文本，空配置按空字符串处理。
+    """
     return (value or "").strip().lower()
 
 

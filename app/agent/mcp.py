@@ -12,7 +12,7 @@ import uuid
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, Union
 from urllib.parse import urljoin
 
 from app.adapters.network.http import AsyncRequestUtils
@@ -160,7 +160,7 @@ def _extract_jsonrpc_result(payload: Any, request_id: str) -> Any:
     return payload.get("result")
 
 
-async def _iter_sse_events(response: httpx2.Response) -> Any:
+async def _iter_sse_events(response: httpx2.Response) -> AsyncIterator[dict[str, str]]:
     """
     按 SSE 事件格式迭代响应流。
     """
@@ -238,6 +238,9 @@ class _StdioMcpSession:
     """
 
     def __init__(self, server: AgentMcpServerConfig) -> None:
+        """
+        绑定 MCP 服务配置并初始化当前传输会话的资源状态。
+        """
         self.server = server
         self.process: Optional[asyncio.subprocess.Process] = None
         self.stderr_task: Optional[asyncio.Task[None]] = None
@@ -355,6 +358,9 @@ class _HttpMcpSession:
     """
 
     def __init__(self, server: AgentMcpServerConfig) -> None:
+        """
+        绑定 MCP 服务配置并初始化当前传输会话的资源状态。
+        """
         self.server = server
         self.session_id: Optional[str] = None
 
@@ -443,11 +449,14 @@ class _SseMcpSession:
     """
 
     def __init__(self, server: AgentMcpServerConfig) -> None:
+        """
+        绑定 MCP 服务配置并初始化当前传输会话的资源状态。
+        """
         self.server = server
         self.response = None
         self.endpoint: Optional[str] = None
         self._stream_manager: Optional[AbstractAsyncContextManager[Optional[httpx2.Response]]] = None
-        self._event_iterator = None
+        self._event_iterator: Optional[AsyncIterator[dict[str, str]]] = None
 
     async def __aenter__(self) -> "_SseMcpSession":
         """
@@ -496,7 +505,10 @@ class _SseMcpSession:
         await self._post(_jsonrpc_message(method, params, request_id=request_id))
         timeout = _normalize_timeout(self.server.timeout)
         while True:
-            event = await asyncio.wait_for(self._event_iterator.__anext__(), timeout=timeout)
+            iterator = self._event_iterator
+            if iterator is None:
+                raise RuntimeError("SSE MCP 事件流未初始化")
+            event = await asyncio.wait_for(iterator.__anext__(), timeout=timeout)
             payload = _load_sse_json_payload(event.get("event", ""), event.get("data", ""))
             if isinstance(payload, dict) and payload.get("id") == request_id:
                 return _extract_jsonrpc_result(payload, request_id)
@@ -507,13 +519,19 @@ class _SseMcpSession:
         """
         timeout = _normalize_timeout(self.server.timeout)
         while True:
-            event = await asyncio.wait_for(self._event_iterator.__anext__(), timeout=timeout)
+            iterator = self._event_iterator
+            if iterator is None:
+                raise RuntimeError("SSE MCP 事件流未初始化")
+            event = await asyncio.wait_for(iterator.__anext__(), timeout=timeout)
             if event.get("event") != "endpoint":
                 continue
             endpoint = str(event.get("data") or "").strip()
             if not endpoint:
                 continue
-            return urljoin(self.server.url, endpoint)
+            server_url = self.server.url
+            if not server_url:
+                raise RuntimeError("SSE MCP 服务器缺少 URL")
+            return urljoin(server_url, endpoint)
 
     async def _post(self, payload: dict[str, object]) -> None:
         """

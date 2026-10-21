@@ -23,7 +23,7 @@ class SearchSiteOwner(_SearchOwnerBase):
         """
         if not event:
             return
-        event_data = event.event_data or {}
+        event_data = event.event_data if isinstance(event.event_data, dict) else {}
         site_id = event_data.get("site_id")
         if not site_id:
             return

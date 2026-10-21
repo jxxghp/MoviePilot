@@ -73,7 +73,7 @@ async def set_setting(
     更新系统设置（仅管理员）。
     """
     result = await runtime.system.update_setting(key, value)
-    return _SchemaResponse(success=result.success, message=result.message)
+    return _SchemaResponse(success=result.success, message=result.message or "")
 
 
 @router.get(
@@ -221,4 +221,4 @@ async def update_settings(
         raise HTTPException(status_code=409, detail=str(error)) from error
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)

@@ -285,10 +285,11 @@ def post_music_aware_torrents(
     if not torrents or not isinstance(torrents[0].media_info, MusicInfo):
         host.post_torrents_message(message, torrents)
         return
-    message.text = "\n".join(
-        f"{index}.【{context.torrent_info.site_name}】"
-        f"{context.torrent_info.title} {context.torrent_info.seeders}↑"
-        for index, context in enumerate(torrents, start=1)
-    )
+    lines = []
+    for index, context in enumerate(torrents, start=1):
+        torrent = context.torrent_info
+        if torrent is not None:
+            lines.append(f"{index}.【{torrent.site_name}】{torrent.title} {torrent.seeders}↑")
+    message.text = "\n".join(lines)
     message.parse_mode = ""
     host.post_message(message)

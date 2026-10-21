@@ -11,7 +11,7 @@ import asyncio
 import inspect
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, Hashable, Optional, Union
+from typing import Any, Awaitable, Callable, Dict, Hashable, Optional, Union, cast
 
 from app.runtime.log import logger
 
@@ -208,7 +208,7 @@ class EventCoalescer:
         try:
             if self._is_flush_async:
                 # 已通过协程函数检查确认回调可等待，联合回调类型无法静态表达该收窄。
-                await self._on_flush(summary)  # type: ignore[misc]
+                await cast(Callable[[CoalesceSummary], Awaitable[None]], self._on_flush)(summary)
             else:
                 self._on_flush(summary)
         # 基础设施不能因消费者异常崩溃

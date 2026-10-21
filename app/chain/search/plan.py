@@ -70,7 +70,7 @@ class SearchPlanOwner(_SearchOwnerBase):
         只规范化影视输入的标题和季号，音乐保留其实体字段及原始名称。
         """
         if not isinstance(mediainfo, MusicInfo) and not mediainfo.tmdb_id:
-            meta = MetaInfo(title=mediainfo.title)
+            meta = MetaInfo(title=mediainfo.title or "")
             mediainfo.title = meta.name
             if meta.begin_season is not None:
                 mediainfo.season = meta.begin_season

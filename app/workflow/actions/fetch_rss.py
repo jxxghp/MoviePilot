@@ -2,7 +2,7 @@
 解析 RSS 资源并按需匹配媒体信息。
 """
 
-from typing import Optional
+from typing import Any, Optional, cast
 
 from pydantic import Field
 
@@ -21,7 +21,7 @@ class FetchRssParams(ActionParams):
     """
     获取RSS资源列表参数
     """
-    url: str = Field(default=None, description="RSS地址")
+    url: Optional[str] = Field(default=None, description="RSS地址")
     proxy: Optional[bool] = Field(default=False, description="是否使用代理")
     timeout: Optional[int] = Field(default=15, description="超时时间")
     content_type: Optional[str] = Field(default=None, description="请求使用的 Content-Type 头；不传时由客户端决定")
@@ -46,7 +46,7 @@ class FetchRssAction(BaseAction):
         :param action_id: 当前工作流动作的标识
         """
         super().__init__(action_id)
-        self._rss_torrents = []
+        self._rss_torrents: list[Context] = []
         self._has_error = False
 
     name = "获取RSS资源"
@@ -62,7 +62,7 @@ class FetchRssAction(BaseAction):
         """
         return not self._has_error
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, Any], context: ActionContext) -> ActionContext:
         """
         请求 RSS 地址并将解析出的资源加入工作流上下文。
 
@@ -87,11 +87,11 @@ class FetchRssAction(BaseAction):
                                       proxy=(
                                           get_chain_runtime_config_snapshot().proxy
                                           if action_params.proxy
-                                          else None
+                                          else False
                                       ),
                                       timeout=action_params.timeout,
                                       headers=headers)
-        if rss_items is None or rss_items is False:
+        if not isinstance(rss_items, list):
             logger.error(f'RSS地址 {action_params.url} 请求失败！')
             self._has_error = True
             return context
@@ -110,10 +110,10 @@ class FetchRssAction(BaseAction):
                 title=item.get("title"),
                 enclosure=item.get("enclosure"),
                 page_url=item.get("link"),
-                size=item.get("size"),
+                size=float(item["size"]) if isinstance(item.get("size"), (int, float)) else 0.0,
                 pubdate=item["pubdate"].strftime("%Y-%m-%d %H:%M:%S") if item.get("pubdate") else None,
             )
-            meta = MetaInfo(title=torrentinfo.title, subtitle=torrentinfo.description)
+            meta = MetaInfo(title=torrentinfo.title or "", subtitle=torrentinfo.description)
             mediainfo = None
             if action_params.match_media:
                 mediainfo = MediaChain().recognize_by_meta(
@@ -127,7 +127,9 @@ class FetchRssAction(BaseAction):
 
         if self._rss_torrents:
             logger.info(f"获取到 {len(self._rss_torrents)} 个RSS资源")
-            context.torrents.extend(self._rss_torrents)
+            if context.torrents is None:
+                context.torrents = []
+            context.torrents.extend(cast(Any, self._rss_torrents))
 
         self.job_done(f"获取到 {len(self._rss_torrents)} 个资源")
         return context

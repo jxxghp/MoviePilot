@@ -537,6 +537,7 @@ class RuleHelper:
             if not group.media_type
             or (
                 media
+                and media.type
                 and group.media_type == media.type.value
                 and (not group.category or group.category == media.category)
             )

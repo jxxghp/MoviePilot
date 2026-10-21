@@ -6,14 +6,16 @@ import asyncio
 import json
 from copy import deepcopy
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain.agents import create_agent
-from langchain.agents.middleware.types import ModelRequest, ModelResponse
+from langchain.agents.middleware.types import ExtendedModelResponse, ModelRequest, ModelResponse
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import StructuredTool
+from langgraph.types import Command
 from pydantic import Field
 
 from app.agent.learning.review import ReviewLoop, ReviewSnapshot
@@ -116,6 +118,25 @@ def test_review_keeps_prefix_schema_and_denies_business_tools(tmp_path):
         assert '不能执行' in model.requests[1][0][-1].content
 
     asyncio.run(scenario())
+
+
+def test_review_compaction_uses_its_own_command_state(tmp_path, monkeypatch):
+    """
+    复盘压缩返回的消息状态替换隔离循环，不修改捕获的父对话快照。
+    """
+    owner = session(tmp_path)
+    model = ReviewModel(responses=[response('memory', {'action': 'list'})])
+    original = [HumanMessage(content='已交付任务')]
+    snapshot = ReviewSnapshot(model, SystemMessage(content='system'), original, [], {}, None)
+    loop = ReviewLoop(snapshot, owner.tools, review_memory=True, review_skills=False,
+                      cancelled=lambda: False, on_usage=lambda _usage: None)
+    compacted = [SystemMessage(content='system'), HumanMessage(content='压缩事实'), AIMessage(content='done')]
+    result = ExtendedModelResponse(model_response=ModelResponse(result=[compacted[-1]]),
+                                   command=Command(update={'messages': compacted}))
+    monkeypatch.setattr(loop.compaction, 'awrap_model_call', AsyncMock(return_value=result))
+    assert asyncio.run(loop.run()) == []
+    assert loop.messages == compacted[1:]
+    assert snapshot.messages == original
 
 
 @pytest.mark.parametrize('review_memory,review_skills,scope', [

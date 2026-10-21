@@ -300,8 +300,7 @@ class AgentWebCommandInfo(BaseModel):
     pid: Optional[str | int] = Field(default=None, description="插件 ID")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class AgentCommandRunRequest(BaseModel):  # type: ignore[misc]
+class AgentCommandRunRequest(BaseModel):
     """
     通过 Agent API 触发斜杠命令的请求。
     """
@@ -309,8 +308,7 @@ class AgentCommandRunRequest(BaseModel):  # type: ignore[misc]
     command: str = Field(description="要执行的完整斜杠命令")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class AgentCommandRunData(BaseModel):  # type: ignore[misc]
+class AgentCommandRunData(BaseModel):
     """
     斜杠命令进入事件队列后的稳定回执。
     """

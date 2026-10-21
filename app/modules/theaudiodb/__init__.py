@@ -3,7 +3,7 @@ TheAudioDB 音乐搜索、身份匹配和详情转换，统一同步与异步请
 """
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional, Tuple, Union
+from typing import Any, Iterable, Optional, Tuple, Union, cast
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.music.observation import music_request_timeout, report_music_recognition
@@ -32,7 +32,7 @@ from app.domain.music import (
     music_version_matches,
 )
 from app.modules import _ModuleBase
-from app.runtime.cache import cached
+from app.runtime.cache import CacheControls, cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import (
@@ -218,7 +218,7 @@ class TheAudioDbModule(_ModuleBase):
             mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
-            **kwargs,
+            **kwargs: Any,
     ) -> Optional[MusicInfo]:
         """
         响应明确选择 TheAudioDB 的音乐识别请求。
@@ -262,7 +262,7 @@ class TheAudioDbModule(_ModuleBase):
             mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
-            **kwargs,
+            **kwargs: Any,
     ) -> Optional[MusicInfo]:
         """
         异步响应明确选择 TheAudioDB 的音乐识别请求。
@@ -588,7 +588,7 @@ class TheAudioDbModule(_ModuleBase):
         """
         清除 TheAudioDB 请求缓存。
         """
-        self._request_json.cache_clear()
+        cast(CacheControls, self._request_json).cache_clear()
 
     def _search_tracks(self, meta: MetaMusic) -> list[MusicInfo]:
         """

@@ -14,6 +14,7 @@ import pytest
 from app.foundation.singleton import SingletonClass
 from app.monitor.monitor import Monitor
 from app.monitor.recovery import RecoveryExecutor, RecoveryState
+from app.monitor.snapshot import SnapshotStore
 from app.startup.initializers.monitor import init_monitor, stop_monitor
 
 
@@ -43,6 +44,28 @@ def _build_monitor() -> Monitor:
     monitor._recovery = RecoveryExecutor()
     monitor._dispatcher = MagicMock()
     return monitor
+
+
+def test_remote_monitor_missing_file_count_uses_initial_interval(monkeypatch):
+    """
+    旧远端快照的空文件计数按零处理，监控启动仍注册有效轮询与健康检查任务。
+    """
+    monitor = _build_monitor()
+    monitor._store = MagicMock()
+    monitor._store.load.return_value = {"version": SnapshotStore.VERSION, "file_count": None}
+    directory = SimpleNamespace(download_path="/remote/inbox", library_path="/remote/library",
+                                monitor_type="monitor", storage="smb", monitor_mode=None)
+    helper = SimpleNamespace(get_download_dirs=MagicMock(return_value=[directory]))
+    monkeypatch.setattr("app.monitor.monitor.DirectoryHelper", MagicMock(return_value=helper))
+    monkeypatch.setattr("app.monitor.monitor.MessageHelper", MagicMock())
+    scheduler = MagicMock()
+    monkeypatch.setattr("app.monitor.monitor.BackgroundScheduler", MagicMock(return_value=scheduler))
+    assert monitor._Monitor__initialize_monitors() is True
+    jobs = scheduler.add_job.call_args_list
+    polling = next(call for call in jobs if call.args[0] == monitor.polling_observer)
+    assert polling.kwargs["minutes"] == SnapshotStore.adjust_interval(0)
+    assert polling.kwargs["kwargs"]["storage"] == "smb"
+    scheduler.start.assert_called_once()
 
 
 def _blocking_watcher(mon_path: Path):

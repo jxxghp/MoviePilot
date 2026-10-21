@@ -40,7 +40,7 @@ class SendEventAction(BaseAction):
         发送工作流事件，以更插件干预工作流执行
         """
         # 触发资源下载事件，更新执行上下文
-        event = eventmanager.send_event(ChainEventType.WorkflowExecution, context)
+        event = eventmanager.send_event(ChainEventType.WorkflowExecution, context.model_dump())
         if event and isinstance(event.event_data, ActionContext):
             context = event.event_data
 

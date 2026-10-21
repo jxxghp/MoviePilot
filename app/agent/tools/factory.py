@@ -11,6 +11,7 @@ from typing import (
     Type,
     TypedDict,
     Unpack,
+    cast,
 )
 
 if TYPE_CHECKING:
@@ -97,7 +98,7 @@ def _get_plugin_agent_tools() -> list[_PluginToolInfo]:
     读取当前插件工具投影，隔离 Agent 工具工厂与 Runtime 管理器。
     """
     try:
-        return get_plugin_manager().get_plugin_agent_tools()
+        return cast(list[_PluginToolInfo], get_plugin_manager().get_plugin_agent_tools())
     except RuntimeError as error:
         # 纯工具目录探针可以在启动组合根之前运行；此时只跳过可选插件工具，
         # 不隐式创建 PluginManager，避免冷导入重新引入 Runtime 定位器。

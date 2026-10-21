@@ -7,7 +7,7 @@ import re
 import shutil
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Annotated, Any, List, NotRequired, Optional, TypedDict
+from typing import Annotated, Any, List, NotRequired, Optional, TypedDict, cast
 
 import yaml  # noqa
 from anyio import Path as AsyncPath
@@ -597,7 +597,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         """
         将技能文档注入模型请求的系统消息中。
         """
-        skills_metadata = request.state.get("skills_metadata", [])  # noqa
+        skills_metadata = cast(SkillsState, request.state).get("skills_metadata", [])  # noqa
         skills_list = self._format_skills_list(skills_metadata)
 
         skills_section = self.system_prompt_template.format(
@@ -608,10 +608,9 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
 
         return request.override(system_message=new_system_message)
 
-    # 框架允许此钩子返回局部状态更新，静态基类签名尚未表达这种返回类型。
     async def abefore_agent(  # noqa
-        self, state: SkillsState, runtime: Runtime, config: RunnableConfig
-    ) -> SkillsStateUpdate | None:  # ty: ignore[invalid-method-override]
+        self, state: SkillsState, runtime: Runtime[ContextT], config: RunnableConfig | None = None
+    ) -> dict[str, Any] | None:
         """
         在 Agent 执行前异步加载技能元数据。
 
@@ -634,7 +633,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
 
         skills = list(all_skills.values())
         self._refresh_skill_tool_description(skills)
-        return SkillsStateUpdate(skills_metadata=skills)
+        return {"skills_metadata": skills}
 
     async def awrap_model_call(
         self,

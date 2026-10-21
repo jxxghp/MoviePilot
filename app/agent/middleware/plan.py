@@ -3,11 +3,12 @@
 """
 
 import json
-from collections.abc import Awaitable, Callable
-from typing import Annotated, Any, Literal, NotRequired, Optional, TypedDict, cast
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Annotated, Any, Literal, NotRequired, Optional
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
+    AgentState,
     ModelRequest,
     ModelResponse,
     OmitFromInput,
@@ -52,8 +53,7 @@ PLAN_TOOL_DESCRIPTION = (
 )
 
 
-# follow_imports=skip 不分析第三方基类与装饰器；仅在这些 SDK 边界忽略 misc。
-class PlanStep(BaseModel):  # type: ignore[misc]
+class PlanStep(BaseModel):
     """
     保存一个执行步骤及模型声明的检查结果或阻塞原因。
     """
@@ -64,7 +64,7 @@ class PlanStep(BaseModel):  # type: ignore[misc]
     status: Literal["pending", "in_progress", "completed", "blocked"] = Field(description="步骤状态：pending、in_progress、completed 或 blocked")
     evidence: str = Field(default="", max_length=600, description="已观察的结果或具体阻塞原因，不得包含凭据；完成或阻塞状态必须填写")
 
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def require_result_context(self) -> "PlanStep":
         """
         避免把没有检查依据的完成声明或无原因的阻塞写入计划。
@@ -74,7 +74,7 @@ class PlanStep(BaseModel):  # type: ignore[misc]
         return self
 
 
-class TaskPlan(BaseModel):  # type: ignore[misc]
+class TaskPlan(BaseModel):
     """
     限定当前任务计划的大小，避免它本身耗尽不可压缩的系统上下文。
     """
@@ -86,7 +86,7 @@ class TaskPlan(BaseModel):  # type: ignore[misc]
     steps: list[PlanStep] = Field(min_length=1, max_length=MAX_PLAN_STEPS, description="完整步骤列表，至少 1 项，最多 12 项；步骤名称不能重复")
     explanation: str = Field(default="", max_length=800, description="计划变化原因或继续任务需要的重要上下文；没有补充时为空")
 
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def require_distinct_steps(self) -> "TaskPlan":
         """
         同名步骤无法稳定区分进度，因此要求单份计划内步骤名称唯一。
@@ -97,7 +97,7 @@ class TaskPlan(BaseModel):  # type: ignore[misc]
         return self
 
 
-class PlanState(TypedDict):
+class PlanState(AgentState):
     """
     计划独立于可压缩消息保存，只允许工具或内部历史恢复写入。
 
@@ -106,7 +106,6 @@ class PlanState(TypedDict):
     """
 
     # create_agent 将中间件 schema 与标准 AgentState 合并，保留框架消息 reducer。
-    messages: list[BaseMessage]
     task_plan: Annotated[NotRequired[dict[str, Any]], OmitFromInput]
 
 
@@ -116,13 +115,13 @@ def _validated_plan(value: Any) -> Optional[dict[str, Any]]:
     """
     try:
         plan = TaskPlan.model_validate(value)
-        return cast(dict[str, Any], TaskPlan.model_validate(sanitize_for_host(plan.model_dump())).model_dump())
+        return TaskPlan.model_validate(sanitize_for_host(plan.model_dump())).model_dump()
     except (ValidationError, TypeError, ValueError):
         return None
 
 
 def attach_plan_snapshot(
-    messages: list[BaseMessage], plan: Optional[dict[str, Any]],
+    messages: Sequence[BaseMessage], plan: Optional[dict[str, Any]],
 ) -> list[BaseMessage]:
     """
     把脱敏计划附在末条宿主消息上，让已有消息持久化同时保存恢复点。
@@ -141,7 +140,7 @@ def attach_plan_snapshot(
 
 def _update_plan(
     runtime: ToolRuntime, objective: str, steps: list[PlanStep], explanation: str = "",
-) -> Command:
+) -> Command[Any]:
     """
     一次原子替换计划及工具回执，供后续模型调用和中断恢复使用。
     """
@@ -158,14 +157,14 @@ def _update_plan(
 
 async def _aupdate_plan(
     runtime: ToolRuntime, objective: str, steps: list[PlanStep], explanation: str = "",
-) -> Command:
+) -> Command[Any]:
     """
     异步工具入口沿用相同的无 I/O 状态更新逻辑。
     """
     return _update_plan(runtime, objective, steps, explanation)
 
 
-class PlanMiddleware(AgentMiddleware):  # type: ignore[misc]
+class PlanMiddleware(AgentMiddleware[PlanState, Any, Any]):
     """
     注入任务计划工具，并在压缩、后续用户消息和图重建后恢复工作上下文。
     """

@@ -644,10 +644,10 @@ def annotate_subscription_download(subscribe: SubscriptionSnapshot, context: Con
     else:
         upgraded = set()
         is_upgrade = bool(subscribe.best_version and subscribe.current_priority)
-    context.subscription_download = {
+    context.subscription_download = cast(dict[str, JsonData], {
         "subscription_id": subscribe.id,
         "submission_type": "upgrade" if is_upgrade else "initial",
         "best_version_full": is_full_best_version_enabled(subscribe),
         "initial_episodes": sorted(selected - upgraded),
         "upgrade_episodes": sorted(upgraded),
-    }
+    })

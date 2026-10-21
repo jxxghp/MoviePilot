@@ -43,7 +43,7 @@ def plugin_restorable_instances(
     _: ApiPrincipal = Depends(get_current_active_superuser),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
 ) -> Any:
     """
     列出该插件名下已停用、设置仍留存可被恢复的分身

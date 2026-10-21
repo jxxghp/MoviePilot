@@ -112,7 +112,9 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         client_config = self.get_config(source)
         if not client_config:
             return None
-        client: Telegram = self.get_instance(client_config.name)
+        client = self.get_instance(client_config.name)
+        if client is None:
+            return None
         try:
             message = json.loads(body)
             while isinstance(message, str):
@@ -139,7 +141,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         return None
 
     def _handle_callback_query(
-        self, message: dict, client_config: NotificationConf, client: Telegram
+        self, message: dict[str, Any], client_config: NotificationConf, client: Telegram
     ) -> Optional[IncomingMessage]:
         """
         提取按钮回调并校验命令型回调的管理员身份。
@@ -197,7 +199,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         return None
 
     def _handle_text_message(
-        self, msg: dict, client_config: NotificationConf, client: Telegram
+        self, msg: dict[str, Any], client_config: NotificationConf, client: Telegram
     ) -> Optional[IncomingMessage]:
         """
         提取文本与附件，去除机器人提及并应用访问规则。
@@ -247,7 +249,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 else None
             )
 
-            user_list = client_config.config.get("TELEGRAM_USERS")
+            user_list = (client_config.config or {}).get("TELEGRAM_USERS")
 
             if cleaned_text and cleaned_text.startswith("/"):
                 if self._should_reject_admin_command(client_config.config, user_id):
@@ -284,7 +286,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         return None
 
     @staticmethod
-    def _extract_images(msg: dict) -> Optional[List[IncomingMessage.MessageImage]]:
+    def _extract_images(msg: dict[str, Any]) -> Optional[List[IncomingMessage.MessageImage]]:
         """
         从Telegram消息中提取图片file_id。
         """
@@ -319,7 +321,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         return images if images else None
 
     @staticmethod
-    def _extract_audio_refs(msg: dict) -> Optional[List[str]]:
+    def _extract_audio_refs(msg: dict[str, Any]) -> Optional[List[str]]:
         """
         从Telegram消息中提取语音/音频 file_id。
         """
@@ -339,7 +341,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         return audio_refs if audio_refs else None
 
     @staticmethod
-    def _extract_files(msg: dict) -> Optional[List[IncomingMessage.MessageAttachment]]:
+    def _extract_files(msg: dict[str, Any]) -> Optional[List[IncomingMessage.MessageAttachment]]:
         """
         从 Telegram 消息中提取非图片文件附件。
         """
@@ -362,7 +364,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         ]
 
     @staticmethod
-    def _embed_entity_links(text: str, entities: Optional[List[dict]]) -> str:
+    def _embed_entity_links(text: str, entities: Optional[List[dict[str, Any]]]) -> str:
         """
         将 text_link 实体中的 URL 嵌入到文本中。
 
@@ -390,7 +392,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         return text
 
     @staticmethod
-    def _append_reply_markup_links(text: Optional[str], reply_markup: Optional[dict]) -> Optional[str]:
+    def _append_reply_markup_links(text: Optional[str], reply_markup: Optional[dict[str, Any]]) -> Optional[str]:
         """
         将 reply_markup 中的 URL 按钮信息追加到文本末尾。
 
@@ -486,14 +488,14 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         file_name=message.file_name,
                         title=message.title,
                         text=message.text,
-                        userid=userid,
+                        userid=str(userid) if userid is not None else None,
                         original_chat_id=message.original_chat_id,
                         parse_mode=message.parse_mode,
                     )
                 elif message.voice_path:
                     result = client.send_voice(
                         voice_path=message.voice_path,
-                        userid=userid,
+                        userid=str(userid) if userid is not None else None,
                         caption=message.voice_caption,
                         original_chat_id=message.original_chat_id,
                         parse_mode=message.parse_mode,
@@ -509,11 +511,11 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         title=message.title,
                         text=message.text,
                         image=message.image,
-                        userid=userid,
+                        userid=str(userid) if userid is not None else None,
                         link=message.link,
                         buttons=message.buttons,
                         force_reply=message.force_reply,
-                        original_message_id=original_message_id,
+                        original_message_id=int(original_message_id) if original_message_id else None,
                         original_chat_id=message.original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
@@ -544,7 +546,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     userid=self.get_notification_userid(message, "telegram_userid"),
                     link=message.link,
                     buttons=message.buttons,
-                    original_message_id=message.original_message_id,
+                    original_message_id=int(message.original_message_id) if message.original_message_id else None,
                     original_chat_id=message.original_chat_id,
                     parse_mode=message.parse_mode,
                 )
@@ -569,7 +571,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     userid=self.get_notification_userid(message, "telegram_userid"),
                     link=message.link,
                     buttons=message.buttons,
-                    original_message_id=message.original_message_id,
+                    original_message_id=int(message.original_message_id) if message.original_message_id else None,
                     original_chat_id=message.original_chat_id,
                     parse_mode=message.parse_mode,
                 )
@@ -611,8 +613,8 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         chat_id: Union[str, int],
         text: str,
         title: Optional[str] = None,
-        buttons: Optional[List[List[dict]]] = None,
-        metadata: Optional[dict] = None,
+        buttons: Optional[List[List[dict[str, Any]]]] = None,
+        metadata: Optional[dict[str, Any]] = None,
         parse_mode: Optional[str] = None,
     ) -> Optional[bool]:
         """
@@ -657,7 +659,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             message_id: Optional[Union[str, int]] = None,
             chat_id: Optional[Union[str, int]] = None,
             text: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         启动定期续发的“正在输入”状态任务。
 
@@ -696,7 +698,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             userid: Optional[Union[str, int]] = None,
             message_id: Optional[Union[str, int]] = None,
             chat_id: Optional[Union[str, int]] = None,
-            status: Optional[dict] = None,
+            status: Optional[dict[str, Any]] = None,
     ) -> Optional[bool]:
         """
         请求停止此前启动的输入状态任务。
@@ -744,7 +746,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 if message.voice_path:
                     result = client.send_voice(
                         voice_path=message.voice_path,
-                        userid=userid,
+                        userid=str(userid) if userid is not None else None,
                         caption=message.voice_caption,
                         original_chat_id=message.original_chat_id,
                         parse_mode=message.parse_mode,
@@ -758,10 +760,10 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         title=message.title,
                         text=message.text,
                         image=message.image,
-                        userid=userid,
+                        userid=str(userid) if userid is not None else None,
                         link=message.link,
                         force_reply=message.force_reply,
-                        original_message_id=original_message_id,
+                        original_message_id=int(original_message_id) if original_message_id else None,
                         original_chat_id=original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,

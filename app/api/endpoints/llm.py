@@ -47,7 +47,7 @@ async def manage_provider(
     )
     return _SchemaResponse(
         success=bool(result.get("success")),
-        message=result.get("message"),
+        message=result.get("message") or "",
         data=result.get("data"),
     )
 

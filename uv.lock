@@ -1764,9 +1764,12 @@ dev = [
     { name = "ruff" },
     { name = "types-aiofiles" },
     { name = "types-dateparser" },
+    { name = "types-psutil" },
     { name = "types-python-dateutil" },
     { name = "types-pytz" },
     { name = "types-pyyaml" },
+    { name = "types-regex" },
+    { name = "types-tqdm" },
 ]
 runtime-free-threaded = [
     { name = "bcrypt", version = "5.0.0", source = { registry = "https://pypi.org/simple" } },
@@ -1890,9 +1893,12 @@ dev = [
     { name = "ruff", specifier = "~=0.16.4" },
     { name = "types-aiofiles", specifier = "~=25.1.0.20260518" },
     { name = "types-dateparser", specifier = "~=1.4.3.20260907" },
+    { name = "types-psutil", specifier = "~=7.2.2.20260906" },
     { name = "types-python-dateutil", specifier = "~=2.9.0.20260807" },
     { name = "types-pytz", specifier = "~=2026.5.0.20261006" },
     { name = "types-pyyaml", specifier = "~=6.0.12.20260906" },
+    { name = "types-regex", specifier = "~=2026.9.29.20261017" },
+    { name = "types-tqdm", specifier = "~=4.70.0.20260906" },
 ]
 runtime-free-threaded = [
     { name = "bcrypt", specifier = "~=5.0.0" },
@@ -1920,6 +1926,13 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/23/74/50964e19b2be867b7f9d191cd18e8ffaed3303028d94303fdc23759f4f89/moviepilot_rust-0.3.9-cp314-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:63f7ed8ad85c308072977ac53c97844e7d930372493853092c68d7544eac0d38", size = 5730756, upload-time = "2026-10-20T05:48:07.794Z" },
     { url = "https://files.pythonhosted.org/packages/3a/02/ceda2e6cb607eb401f527ec1d13840e271f8d01b84f41e44bdcc8d6000bf/moviepilot_rust-0.3.9-cp314-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:98c98bd8ff89a0254d4c586f33e3f7e7223611525bd60fea2959cae2fd16363c", size = 5954183, upload-time = "2026-10-20T05:48:09.693Z" },
     { url = "https://files.pythonhosted.org/packages/15/2c/f01cb31fd62ce21d207b33ea6ea3005d89c326c3237f60b52f4f1a0b1f68/moviepilot_rust-0.3.9-cp314-abi3-win_amd64.whl", hash = "sha256:a40362d9ac729cc1b4e3567609ad700722b192748c5c33618e35ca53c0289382", size = 5520554, upload-time = "2026-10-20T05:48:11.625Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/02/3038623acb0522a9f04541f284545656dce75a8d3d9b161f5da785531a42/moviepilot_rust-0.3.9-cp314-cp314t-macosx_10_12_x86_64.whl", hash = "sha256:78bff5beaf9564f66275e74abfa5c0f095e8019b9c2ebbafa5151f5b78cd4e7e", size = 5494495, upload-time = "2026-10-20T05:48:13.862Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/35/647212eba221293c79427e60a00e1491b3e1a2ba0815f6041d7fdf813aa3/moviepilot_rust-0.3.9-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:54bde70d09165a67aeb267ff8614d9c9170e274dc067af6572ee6603d714a8e5", size = 5386670, upload-time = "2026-10-20T05:48:15.955Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/cb/63730ee1679a5348013640d3328eb42d70bb26eb1b3bfb779a973703683b/moviepilot_rust-0.3.9-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:bacee0b6adfc3c833dac3b21f77830f8758962535e81cc0d01b325028b07f152", size = 5518623, upload-time = "2026-10-20T05:48:17.816Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/ad/56dc8830f89831c9fc09babb15749c27d77d11e60376e93f991f587c79a9/moviepilot_rust-0.3.9-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:dddb686771c64b884afd8ab27c680d12d26ec77cb326e504cce1622f0f6d9abe", size = 5713813, upload-time = "2026-10-20T05:48:19.738Z" },
+    { url = "https://files.pythonhosted.org/packages/31/51/fc3a23ddeb34580b973ebdd31daf20886848ccdffad332ae9daa61ff4f49/moviepilot_rust-0.3.9-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:9c45b0a787463f2cfd196cdce1d59890988505a36f7866048cdfa3cd880668ea", size = 5728684, upload-time = "2026-10-20T05:48:21.873Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/dc/2130a5e68f0e61dbbd824cbb5f50a98012ee8c4f7f271ea61e453b7ee3c4/moviepilot_rust-0.3.9-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:1cdc56c0978eff23821de33e98848d2a9519d91dcdf10df3811634585c2b0f12", size = 5953102, upload-time = "2026-10-20T05:48:23.785Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/eb/2bfc9351648a73319bafc16777b7efee7a3e20cc38c0aaf902fca613cc75/moviepilot_rust-0.3.9-cp314-cp314t-win_amd64.whl", hash = "sha256:9f9e9738e851ee9a1aea96e0b9afc5ed4d5401c0ba170f95f8e08b483f048375", size = 5519802, upload-time = "2026-10-20T05:48:25.556Z" },
 ]
 
 [[package]]
@@ -3269,6 +3282,15 @@ wheels = [
 ]
 
 [[package]]
+name = "types-psutil"
+version = "7.2.2.20260906"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/97/0a/f48b9b0ab5ba8599fd117309e345152bf82c756c72be2ff0f635780c2792/types_psutil-7.2.2.20260906.tar.gz", hash = "sha256:93abf22cf9a62b915f724e433bde702995ac274865425fd4a76d1d9b5828da1a", size = 27396, upload-time = "2026-09-06T06:35:24.499Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/8d/81a86107486e1c23f5ca21bea1e9e5b18a50754242e7a0b82f41f9ae8384/types_psutil-7.2.2.20260906-py3-none-any.whl", hash = "sha256:db00baf7f96c3f63421c4d3d68d373923094a0dfddf13e922c5c5fbc42488159", size = 33383, upload-time = "2026-09-06T06:35:23.575Z" },
+]
+
+[[package]]
 name = "types-python-dateutil"
 version = "2.9.0.20260807"
 source = { registry = "https://pypi.org/simple" }
@@ -3293,6 +3315,24 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/90/6e/abec85b9013db5b934b0280a6dd104904d84f7bcbaab2e2f3def87ac7463/types_pyyaml-6.0.12.20260906.tar.gz", hash = "sha256:f59c1cc05010b833d2d72287bbaa72610106b28d42d89a907313117faba85212", size = 18649, upload-time = "2026-09-06T06:35:35.362Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/15/c0/fc0644b7ddcfb969e95845837143cb5173ddd6e06ee4ba5fc493cd9329b7/types_pyyaml-6.0.12.20260906-py3-none-any.whl", hash = "sha256:bca893ff0d51df5c9053137d5d0e6ccd36e939a196356f1d5c16372422f5137b", size = 21282, upload-time = "2026-09-06T06:35:34.372Z" },
+]
+
+[[package]]
+name = "types-regex"
+version = "2026.9.29.20261017"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/bb/15d3c5f2f21ebf040430970e57bf8c438701e21ecd155607860e1dcff4f2/types_regex-2026.9.29.20261017.tar.gz", hash = "sha256:1eb0d21f77331e0f87268eeb1a75c4ac8025665a211c6e2e8ba084504b1c299f", size = 13971, upload-time = "2026-10-17T06:20:04.659Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/2d/4a7cde6131caf872b33d25a66ffd938ebd10758e84527eb3c456cb558e77/types_regex-2026.9.29.20261017-py3-none-any.whl", hash = "sha256:d0bc5d8f44d2039f40f52b272e672266ba6cc1710956c6c7f5045000fea433b8", size = 11194, upload-time = "2026-10-17T06:20:03.623Z" },
+]
+
+[[package]]
+name = "types-tqdm"
+version = "4.70.0.20260906"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/92/517d71d5a399cd2f8ead3b4328d987262478f22fbbe7f8312360d4c321d0/types_tqdm-4.70.0.20260906.tar.gz", hash = "sha256:6581dc996152a87d51ce2ea169169187ffc0a96dacdb8adbdef29cbee8c1e631", size = 19309, upload-time = "2026-09-06T06:35:31.916Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/ea/d12697988ab2c672877796ecaea69666e2379ee7b40f01f4540250d5a97b/types_tqdm-4.70.0.20260906-py3-none-any.whl", hash = "sha256:c3b88c694928515d601f73fa6646aa43adc0ef735bedbeebf0cc543f6a201ae8", size = 25181, upload-time = "2026-09-06T06:35:30.931Z" },
 ]
 
 [[package]]

@@ -58,6 +58,8 @@ class FetchDownloadsAction(BaseAction):
             if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
             logger.info(f"获取下载任务 {download.download_id} 状态 ...")
+            if not download.download_id:
+                continue
             torrents = ActionChain().list_torrents(
                 hashs=[download.download_id],
                 downloader=download.downloader,

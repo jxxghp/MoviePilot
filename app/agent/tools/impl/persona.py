@@ -15,8 +15,7 @@ from app.runtime.log import logger
 PersonaAction = Literal["list", "switch", "update"]
 
 
-# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
-class PersonaInput(BaseModel):  # type: ignore[misc]
+class PersonaInput(BaseModel):
     """
     查询、切换或更新 Agent 人格的统一输入参数。
     """
@@ -59,7 +58,7 @@ class PersonaInput(BaseModel):  # type: ignore[misc]
     )
 
     # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def validate_action(self) -> "PersonaInput":
         """
         按动作校验目标人格和更新字段。

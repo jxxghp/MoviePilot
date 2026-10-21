@@ -13,7 +13,7 @@ import subprocess
 from collections import deque
 from dataclasses import dataclass, field
 from tempfile import NamedTemporaryFile
-from typing import Any, Literal, Optional, TextIO, Type
+from typing import Any, Literal, Optional, TextIO, Type, cast
 
 from pydantic import BaseModel, Field
 
@@ -113,7 +113,7 @@ class _CommandOutput:
             delete=False,
         )
         self.temp_file_path = temp_file.name
-        self.temp_file_handle = temp_file
+        self.temp_file_handle = cast(TextIO, temp_file)
         for stream_name, chunk in self.preview_entries:
             self._write_chunk(stream_name, chunk)
 
@@ -370,7 +370,7 @@ class ExecuteCommandTool(MoviePilotTool):
     )
     result_max_chars = TERMINAL_MAX_READ_BYTES + 4096
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据命令动作生成友好的提示消息。
         """
@@ -445,7 +445,7 @@ class ExecuteCommandTool(MoviePilotTool):
         return normalized, None
 
     @staticmethod
-    def _subprocess_kwargs() -> dict:
+    def _subprocess_kwargs() -> dict[str, Any]:
         """
         为一次性命令创建独立进程组，便于超时清理整棵子进程。
         """
@@ -691,9 +691,10 @@ class ExecuteCommandTool(MoviePilotTool):
             )
             output = _CommandOutput(preview_limit_bytes=MAX_OUTPUT_PREVIEW_BYTES)
             wait_task = asyncio.create_task(process.wait())
+            # _subprocess_kwargs 固定把两个输出流设为 PIPE，创建成功后均为 StreamReader。
             reader_tasks = [
-                asyncio.create_task(self._read_stream(process.stdout, "stdout", output)),
-                asyncio.create_task(self._read_stream(process.stderr, "stderr", output)),
+                asyncio.create_task(self._read_stream(cast(asyncio.StreamReader, process.stdout), "stdout", output)),
+                asyncio.create_task(self._read_stream(cast(asyncio.StreamReader, process.stderr), "stderr", output)),
             ]
 
             timed_out = False
@@ -735,7 +736,7 @@ class ExecuteCommandTool(MoviePilotTool):
         finally:
             _command_semaphore.release()
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         action: Optional[str] = "start",
         command: Optional[str] = None,
@@ -755,7 +756,7 @@ class ExecuteCommandTool(MoviePilotTool):
         yield_time_ms: Optional[int] = TERMINAL_YIELD_DEFAULT_MS,
         timeout: Optional[int] = 60,
         confirm_dangerous: Optional[bool] = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         按同一启动策略执行命令，区分写入/EOF、一次中断与会话终止。

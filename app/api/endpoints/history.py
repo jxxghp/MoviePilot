@@ -483,7 +483,7 @@ def _submit_legacy_batch_ai_redo(
     all_history_ids: list[int],
     messages: list[str],
     task_registry: TaskRegistry,
-) -> _SchemaResponse[_SchemaBatchProgressKeyData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     提交旧整理历史给 Agent，并构造批量进度兼容响应。
     """
@@ -517,11 +517,13 @@ async def download_history(
     count: Optional[int] = 30,
     query: HistoryQueryService = Depends(get_history_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
 ) -> Any:
     """
     按下载时间倒序查询下载历史记录
     """
+    page = page if page is not None else 1
+    count = count if count is not None else 30
     results = await query.list_download(page=page, count=count)
     if response is not None:
         response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download())
@@ -561,6 +563,8 @@ async def transfer_history(
     """
     查询整理记录，title 支持通配符 * 和 ?（如 *.mkv、*2024*）
     """
+    page = page if page is not None else 1
+    count = count if count is not None else 30
     result = await query.list_transfer(
         title=title,
         page=page,

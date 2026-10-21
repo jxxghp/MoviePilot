@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from enum import Enum
-from typing import Final, Protocol, TypeAlias, cast
+from typing import Final, Protocol, TypeAlias
 
 from app.application.classification.legacy import (
     build_legacy_tmdb_extension_facts,
@@ -536,13 +536,10 @@ def _legacy_tmdb_compatibility_facts(
         target = extensions.setdefault(source, {})
         for field, value in values.items():
             target.setdefault(field, value)
-    return cast(
-        ClassificationFacts,
-        facts.model_copy(
+    return facts.model_copy(
             deep=True,
             update={"extensions": extensions},
-        ),
-    )
+        )
 
 
 def evaluate_classification_facts(
@@ -686,7 +683,7 @@ def _degraded_automatic_selection(
         return None
     if not str(selection.category_id or "").strip():
         return None
-    return cast(ClassificationSelection, selection.model_copy(deep=True))
+    return selection.model_copy(deep=True)
 
 
 def _enum_text(value: object) -> str:

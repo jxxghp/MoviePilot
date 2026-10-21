@@ -7,7 +7,7 @@ import inspect
 import json
 import time
 from functools import wraps
-from typing import TYPE_CHECKING, Any, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, cast
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -116,7 +116,7 @@ def _patch_gemini_thought_signature() -> None:
         # 消息中所有 function_call 都带有 thought_signature。
         _original_parse_chat_history = _cm._parse_chat_history  # noqa
 
-        def _patched_parse_chat_history(*args, **kwargs):
+        def _patched_parse_chat_history(*args: Any, **kwargs: Any) -> Any:
             """
             为同一消息中的每个 Gemini 工具调用补齐缺失签名。
             """
@@ -337,7 +337,9 @@ def _patch_interleaved_reasoning_request_support(
         return
 
     @wraps(original_get_request_payload)
-    def _patched_get_request_payload(self, input_, *, stop=None, **kwargs):
+    def _patched_get_request_payload(
+            self: Any, input_: Any, *, stop: Any = None, **kwargs: Any
+    ) -> Any:
         """
         按模型思考协议把历史消息中的思考内容补回出站请求。
         """
@@ -425,7 +427,7 @@ def _patch_openai_interleaved_reasoning_content_support() -> None:
 
         if callable(original_convert_dict):
             @wraps(original_convert_dict)
-            def _patched_convert_dict_to_message(message_dict):
+            def _patched_convert_dict_to_message(message_dict: Any) -> Any:
                 """
                 保留普通响应中的 reasoning_content 以供后续工具轮次复用。
                 """
@@ -443,7 +445,9 @@ def _patch_openai_interleaved_reasoning_content_support() -> None:
 
         if callable(original_convert_delta):
             @wraps(original_convert_delta)
-            def _patched_convert_delta_to_message_chunk(delta, default_class):
+            def _patched_convert_delta_to_message_chunk(
+                    delta: Any, default_class: Any
+            ) -> Any:
                 """
                 保留流式思考增量，避免聚合后丢失工具轮次所需的思考内容。
                 """
@@ -495,7 +499,9 @@ def _patch_openai_responses_instructions_support() -> None:
         return
 
     @wraps(original_get_request_payload)
-    def _patched_get_request_payload(self, input_, *, stop=None, **kwargs):
+    def _patched_get_request_payload(
+            self: Any, input_: Any, *, stop: Any = None, **kwargs: Any
+    ) -> Any:
         """
         适配 Copilot 与 Codex 端点的参数限制及 Responses 系统指令。
         """
@@ -590,7 +596,9 @@ def _patch_openai_responses_empty_output_support() -> None:
         return response
 
     @wraps(original_construct)
-    def _patched_construct_lc_result_from_responses_api(response, *args, **kwargs):
+    def _patched_construct_lc_result_from_responses_api(
+            response: Any, *args: Any, **kwargs: Any
+    ) -> Any:
         """
         在 Responses API 收尾 chunk 缺少 output 时跳过空内容遍历。
         """
@@ -980,7 +988,7 @@ class LLMHelper:
 
     @classmethod
     def _build_google_thinking_kwargs(
-            cls, model_name: str, thinking_level: str
+            cls, model_name: str, thinking_level: Optional[str]
     ) -> dict[str, Any]:
         """
         Gemini 3 使用 thinking_level；Gemini 2.5 使用 thinking_budget。
@@ -991,11 +999,12 @@ class LLMHelper:
         :param thinking_level: 用户选择的统一思考级别
         :return: 当前模型支持的 Google 原生思考参数
         """
-        if not model_name or thinking_level == "auto":
+        level = thinking_level or "auto"
+        if not model_name or level == "auto":
             return {}
 
         if "gemini-2.5" in model_name:
-            if thinking_level == "off":
+            if level == "off":
                 if "pro" in model_name:
                     # Gemini 2.5 Pro 官方不支持完全关闭思考，回退到最小预算。
                     return {
@@ -1015,7 +1024,7 @@ class LLMHelper:
                 "max": 24576,
                 "xhigh": 24576,
             }
-            budget = budget_map.get(thinking_level)
+            budget = budget_map.get(level)
             return (
                 {
                     "thinking_budget": budget,
@@ -1036,7 +1045,7 @@ class LLMHelper:
                 "max": "high",
                 "xhigh": "high",
             }
-            google_level = level_map.get(thinking_level)
+            google_level = level_map.get(level)
             return (
                 {
                     "thinking_level": google_level,
@@ -1050,7 +1059,7 @@ class LLMHelper:
 
     @classmethod
     def _build_kimi_thinking_kwargs(
-            cls, model_name: str, thinking_level: str
+            cls, model_name: str, thinking_level: Optional[str]
     ) -> dict[str, Any]:
         """
         Kimi 当前公开文档仅支持思考开关，不支持显式深度调节。
@@ -1356,20 +1365,21 @@ class LLMHelper:
         创建在最终模型绑定阶段保留缓存控制参数的适配类。
         """
 
-        class PromptCachingModel(model_cls):
-            """
-            在 LangChain 工具绑定后仍保留提示词缓存参数的模型适配器。
-            """
+        base_bind = cast(Callable[..., Any], getattr(model_cls, "bind"))
 
-            def bind(self, **kwargs: Any) -> Any:
-                """
-                绑定调用参数，并补入当前 Provider 的默认缓存控制。
-                """
-                kwargs.setdefault("cache_control", dict(cache_control))
-                return super().bind(**kwargs)
+        def bind(self: Any, **kwargs: Any) -> Any:
+            """
+            绑定调用参数，并补入当前 Provider 的默认缓存控制。
+            """
+            kwargs.setdefault("cache_control", dict(cache_control))
+            return base_bind(self, **kwargs)
 
-        PromptCachingModel.__name__ = f"PromptCaching{model_cls.__name__}"
-        return PromptCachingModel
+        model_name = f"PromptCaching{model_cls.__name__}"
+        return type(
+            model_name,
+            (model_cls,),
+            {"__doc__": "保留提示词缓存参数的模型适配器。", "bind": bind},
+        )
 
     @classmethod
     def _use_anthropic_prompt_cache(
@@ -1577,7 +1587,7 @@ class LLMHelper:
             web_search_mode: str | None = None,
             prompt_cache_key: str | None = None,
             provider_runtime: LLMProviderRuntimePort | None = None,
-    ):
+    ) -> Any:
         """
         获取 LLM 实例；调用方负责在请求或缓存图不再使用模型时调用 close_llm。
         :param streaming: 是否启用流式输出
@@ -1691,6 +1701,7 @@ class LLMHelper:
         )
         llm_proxy = _resolve_llm_proxy(use_proxy)
 
+        llm_model: Any
         if runtime["runtime"] == "google":
             # 修补 Gemini 2.5 思考模型的 thought_signature 兼容性
             _patch_gemini_thought_signature()
@@ -1701,7 +1712,7 @@ class LLMHelper:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
             # Google SDK 不接受 None；留空时保留 SDK 对各模型默认温度的选择。
-            model = ChatGoogleGenerativeAI(
+            llm_model = ChatGoogleGenerativeAI(
                 model=model_name,
                 api_key=runtime["api_key"],
                 retries=3,
@@ -1726,7 +1737,7 @@ class LLMHelper:
                 normalize_deepseek_messages=True,
                 inject_missing_as_empty=True,
             )
-            model = ChatDeepSeek(
+            llm_model = ChatDeepSeek(
                 model=model_name,
                 api_key=runtime["api_key"],
                 api_base=runtime["base_url"],
@@ -1763,7 +1774,7 @@ class LLMHelper:
                 use_proxy=use_proxy,
                 read_timeout=get_runtime_setting('LLM_TOOL_TIMEOUT'),
             )
-            model = bedrock_model_cls(
+            llm_model = bedrock_model_cls(
                 model_id=model_name,
                 client=bedrock_client,
                 temperature=temperature_value,
@@ -1783,7 +1794,7 @@ class LLMHelper:
                     {"type": "ephemeral"},
                 )
 
-            model = anthropic_model_cls(
+            llm_model = anthropic_model_cls(
                 model=model_name,
                 api_key=runtime["api_key"],
                 base_url=runtime["base_url"],
@@ -1808,7 +1819,7 @@ class LLMHelper:
             if runtime.get("use_responses_api") and "chatgpt.com/backend-api/codex" in str(runtime.get("base_url") or ""):
                 streaming = True
 
-            model = ChatOpenAI(
+            llm_model = ChatOpenAI(
                 model=model_name,
                 api_key=runtime["api_key"],
                 max_retries=3,
@@ -1831,19 +1842,19 @@ class LLMHelper:
                 **openai_model_kwargs,
             )
 
-        model.profile = cls._normalize_model_profile(
-            model_profile=getattr(model, "profile", None),
+        llm_model.profile = cls._normalize_model_profile(
+            model_profile=getattr(llm_model, "profile", None),
             runtime=runtime,
         )
         # ChatBedrockConverse 等模型类没有 model 属性，模型名存放在 model_id。
-        logged_model_name = getattr(model, "model", None) or getattr(
-            model, "model_id", model_name
+        logged_model_name = getattr(llm_model, "model", None) or getattr(
+            llm_model, "model_id", model_name
         )
-        logger.debug(f"使用LLM模型: {logged_model_name}，Profile: {model.profile}")
+        logger.debug(f"使用LLM模型: {logged_model_name}，Profile: {llm_model.profile}")
 
-        cls._attach_runtime_metadata(model, runtime)
-        cls._attach_server_tool_metadata(model, server_tool_resolution)
-        return model
+        cls._attach_runtime_metadata(llm_model, runtime)
+        cls._attach_server_tool_metadata(llm_model, server_tool_resolution)
+        return llm_model
 
     @staticmethod
     async def close_llm(model: Any) -> bool:
@@ -1898,7 +1909,9 @@ class LLMHelper:
                     ):
                         continue
                     if block_type == "text":
-                        text_parts.append(block.get("text", ""))
+                        text_value = block.get("text", "")
+                        if isinstance(text_value, str):
+                            text_parts.append(text_value)
                         continue
                     if not block_type and isinstance(block.get("text"), str):
                         text_parts.append(block.get("text", ""))
@@ -1907,9 +1920,11 @@ class LLMHelper:
             if content.get("thought"):
                 return ""
             if content.get("type") == "text":
-                return content.get("text", "")
+                text_value = content.get("text", "")
+                return text_value if isinstance(text_value, str) else ""
             if not content.get("type") and isinstance(content.get("text"), str):
-                return content.get("text", "")
+                text_value = content.get("text", "")
+                return text_value if isinstance(text_value, str) else ""
         return str(content) if fallback_to_string else ""
 
     @staticmethod
@@ -1928,7 +1943,7 @@ class LLMHelper:
             api_protocol: str | None = None,
             web_search_mode: str | None = None,
             provider_runtime: LLMProviderRuntimePort | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         使用当前配置或显式传入的临时配置执行一次最小 LLM 调用。
 
@@ -1940,7 +1955,7 @@ class LLMHelper:
         provider_name = provider if provider is not None else get_runtime_setting('LLM_PROVIDER')
         model_name = model if model is not None else get_runtime_setting('LLM_MODEL')
         start = time.perf_counter()
-        llm_kwargs = {
+        llm_kwargs: dict[str, Any] = {
             "streaming": False,
             "provider": provider_name,
             "model": model_name,

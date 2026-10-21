@@ -458,7 +458,7 @@ class SearchTitleOwner(_SearchOwnerBase):
         """
         根据限定媒体类型构造模糊搜索结果的上下文元数据。
         """
-        return MetaInfo(title=torrent.title, subtitle=torrent.description, mtype=mtype)
+        return MetaInfo(title=torrent.title or "", subtitle=torrent.description, mtype=mtype)
 
     def _filter_title_search_torrents(
         self, torrents: List[TorrentInfo], rule_groups: Optional[List[str]] = None

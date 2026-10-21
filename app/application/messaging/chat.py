@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, List, Optional, Protocol, cast
+from typing import Any, List, Optional, Protocol
 from weakref import WeakValueDictionary
 
 from app.application.database import (
@@ -467,13 +467,10 @@ class AgentChatService:
         """
         把持久化投影转换为会话详情 DTO。
         """
-        return cast(
-            AgentChatSessionDetail,
-            AgentChatSessionDetail.model_validate({
+        return AgentChatSessionDetail.model_validate({
                 **cls.to_summary(record).model_dump(),
                 "messages": record.messages,
-            }),
-        )
+            })
 
     @staticmethod
     def _project(record: Any) -> AgentChatRecord:

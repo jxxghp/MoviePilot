@@ -4,7 +4,7 @@
 """
 
 import json
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from urllib.parse import urlencode, urljoin
 
 from app.foundation import temporal as time_tools
@@ -39,7 +39,9 @@ class SunnyPTSiteUserInfo(SiteParserBase):
             "X-API-Key": self.apikey,
         }
 
-    def _load_api_payload(self, html_text: SitePage, operation: str) -> Optional[dict]:
+    def _load_api_payload(
+        self, html_text: SitePage, operation: str
+    ) -> Optional[dict[str, Any]]:
         """
         解析并校验 SunnyPT 通用 JSON 响应。
 

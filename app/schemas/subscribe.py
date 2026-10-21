@@ -13,8 +13,7 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM as _MUSIC_ENTITY_ALBUM
 from app.schemas.types import MediaSource, MediaType
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SubscriptionActivityEvent(BaseModel):  # type: ignore[misc]
+class SubscriptionActivityEvent(BaseModel):
     """
     面向用户的结构化业务活动，明细只包含安全资源摘要。
     """
@@ -30,8 +29,7 @@ class SubscriptionActivityEvent(BaseModel):  # type: ignore[misc]
     details_loaded: bool = Field(default=True, description="是否已加载活动详情")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SubscriptionActivityPage(BaseModel):  # type: ignore[misc]
+class SubscriptionActivityPage(BaseModel):
     """
     业务活动游标分页；升级前的记录不会由运行日志补造。
     """
@@ -118,8 +116,7 @@ def compute_subscribe_completed_tracks(subscribe: Any) -> Optional[int]:
     return min(completed_tracks, total_tracks)
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SubscriptionExecutionStatus(BaseModel):  # type: ignore[misc]
+class SubscriptionExecutionStatus(BaseModel):
     """
     订阅列表可见的当前业务执行状态。
     """
@@ -138,8 +135,7 @@ class SubscriptionExecutionStatus(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(from_attributes=True)
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SubscriptionBatchStatus(BaseModel):  # type: ignore[misc]
+class SubscriptionBatchStatus(BaseModel):
     """
     订阅搜索批次的用户可见进度和操作能力。
     """
@@ -167,8 +163,7 @@ class SubscriptionBatchStatus(BaseModel):  # type: ignore[misc]
     model_config = ConfigDict(from_attributes=True)
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SubscriptionSearchSubmission(BaseModel):  # type: ignore[misc]
+class SubscriptionSearchSubmission(BaseModel):
     """
     手工订阅搜索已安排后的轻量跟踪信息。
     """
@@ -432,8 +427,7 @@ class SubscrbieInfo(BaseModel):
     )
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class SubscribeDeletionResult(BaseModel):  # type: ignore[misc]
+class SubscribeDeletionResult(BaseModel):
     """
     订阅删除成功后的机器可判断结果。
     """

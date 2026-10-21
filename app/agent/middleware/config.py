@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
+    AgentState,
     ContextT,
     ModelRequest,
     ModelResponse,
@@ -18,7 +19,7 @@ from app.agent.runtime import agent_runtime_manager
 from app.runtime.settings import get_runtime_setting
 
 
-class RuntimeConfigMiddleware(AgentMiddleware[dict, ContextT, ResponseT]):  # noqa
+class RuntimeConfigMiddleware(AgentMiddleware[AgentState, ContextT, ResponseT]):  # noqa
     """
     在每次模型调用前动态加载运行时配置。
 

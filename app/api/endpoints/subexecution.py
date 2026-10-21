@@ -6,7 +6,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
-from typing import Any, List, Optional, cast
+from typing import Any, List, Optional
 
 from fastapi import Depends, HTTPException, Path, Query, Request
 from starlette.responses import Response, StreamingResponse
@@ -64,7 +64,7 @@ async def list_subscription_activity(
     if result is None:
         raise HTTPException(status_code=404, detail="订阅不存在或无权查看")
     events, next_cursor = result
-    return cast(_SchemaSubscriptionActivityPage, _SchemaSubscriptionActivityPage.model_validate({
+    return _SchemaSubscriptionActivityPage.model_validate({
         "items": [
             {**{key: value for key, value in asdict(event).items() if key not in {"activity_key", "tracking", "details"}},
              "details_loaded": False,
@@ -72,7 +72,7 @@ async def list_subscription_activity(
             for event in events
         ],
         "next_cursor": next_cursor,
-    }))
+    })
 
 
 @router.get(
@@ -98,9 +98,9 @@ async def get_subscription_activity(
     )
     if event is None:
         raise HTTPException(status_code=404, detail="活动不存在或无权查看")
-    return cast(_SchemaSubscriptionActivityEvent, _SchemaSubscriptionActivityEvent.model_validate({
+    return _SchemaSubscriptionActivityEvent.model_validate({
         key: value for key, value in asdict(event).items() if key not in {"activity_key", "tracking"}
-    }))
+    })
 
 
 async def _accessible_subscription_ids(

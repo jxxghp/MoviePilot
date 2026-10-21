@@ -2,7 +2,7 @@
 提供种子详情、状态查询和资源处理接口。
 """
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends
 
@@ -35,7 +35,7 @@ router = ResponseAPIRouter()
 )
 async def torrents_cache(
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse[_SchemaTorrentCacheData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     获取当前种子缓存数据
     """
@@ -54,19 +54,22 @@ async def torrents_cache(
     torrent_data = []
     for domain, contexts in cache_info.items():
         for context in contexts:
+            torrent_info = context.torrent_info
+            if torrent_info is None:
+                continue
             torrent_hash = HashUtils.md5(
-                f"{context.torrent_info.title}{context.torrent_info.description}"
+                f"{torrent_info.title}{torrent_info.description}"
             )
             media_source, media_id = resolve_media_identity(media=context.media_info)
             torrent_data.append(
                 {
                     "hash": torrent_hash,
                     "domain": domain,
-                    "title": context.torrent_info.title,
-                    "description": context.torrent_info.description,
-                    "size": context.torrent_info.size,
-                    "pubdate": context.torrent_info.pubdate,
-                    "site_name": context.torrent_info.site_name,
+                    "title": torrent_info.title,
+                    "description": torrent_info.description,
+                    "size": torrent_info.size,
+                    "pubdate": torrent_info.pubdate,
+                    "site_name": torrent_info.site_name,
                     "media_name": context.media_info.title
                     if context.media_info
                     else "",
@@ -81,8 +84,8 @@ async def torrents_cache(
                     "resource_term": context.meta_info.resource_term
                     if context.meta_info
                     else "",
-                    "enclosure": context.torrent_info.enclosure,
-                    "page_url": context.torrent_info.page_url,
+                    "enclosure": torrent_info.enclosure,
+                    "page_url": torrent_info.page_url,
                     "poster_path": context.media_info.get_poster_image()
                     if context.media_info
                     else "",
@@ -130,6 +133,7 @@ async def delete_cache(
         cache_data[domain] = [
             context
             for context in cache_data[domain]
+            if context.torrent_info is not None
             if HashUtils.md5(
                 f"{context.torrent_info.title}{context.torrent_info.description}"
             )
@@ -204,7 +208,7 @@ async def reidentify_cache(
     media_id: Optional[str] = None,
     music_type: Optional[MusicTargetEntityType] = None,
     _: object = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse[_SchemaTorrentReidentifyData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     重新识别指定的种子
 
@@ -228,7 +232,7 @@ async def reidentify_cache(
         return _SchemaResponse(
             success=success,
             message=message,
-            data=data,
+            data=data if data is not None else None,
         )
     except Exception as e:
         return _SchemaResponse(success=False, message=f"重新识别失败：{str(e)}")

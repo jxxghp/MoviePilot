@@ -9,7 +9,7 @@
 **表示规则**而非领域策略——真正的策略（按配置选来源、判音乐实体类型）仍留在
 app/domain/media.py。放在这里，持久化层就不必为了一条表示规则去依赖领域层。
 """
-from typing import Any, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Optional, Self, Tuple, Union
 
 from pydantic import model_validator
 
@@ -171,7 +171,16 @@ def normalize_media_identity_payload(
 class OptionalMediaIdentityMixin:
     """
     为可选媒体身份模型统一校验内置或插件来源与原生 ID 的成对约束。
+
+    :ivar model_fields_set: Pydantic 记录的显式输入字段
+    :ivar media_source: 宿主模型声明的可选媒体来源
+    :ivar media_id: 宿主模型声明的可选来源原生标识
     """
+
+    if TYPE_CHECKING:
+        model_fields_set: set[str]
+        media_source: Optional[MediaSource]
+        media_id: Optional[str]
 
     @model_validator(mode="before")
     @classmethod
@@ -199,7 +208,7 @@ class OptionalMediaIdentityMixin:
         return value
 
     @model_validator(mode="after")
-    def _validate_optional_media_identity(self):
+    def _validate_optional_media_identity(self) -> Self:
         """
         规范化 ID，并拒绝显式半对、空白或零值身份。
         """
@@ -224,10 +233,15 @@ class OptionalMediaIdentityMixin:
 class RequiredMediaIdentityMixin:
     """
     为必填媒体身份模型统一校验内置或插件来源与原生 ID。
+
+    :ivar media_id: 宿主模型声明的必填来源原生标识
     """
 
+    if TYPE_CHECKING:
+        media_id: str
+
     @model_validator(mode="after")
-    def _validate_required_media_identity(self):
+    def _validate_required_media_identity(self) -> Self:
         """
         去除 ID 两端空白，并拒绝空白或零值身份。
         """

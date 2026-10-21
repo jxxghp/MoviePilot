@@ -2,7 +2,7 @@
 让用户通过按钮进行选择的工具。
 """
 
-from typing import List, Optional, Type
+from typing import Any, List, Optional, Type
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -34,7 +34,7 @@ class UserChoiceOptionInput(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_option(self):
+    def validate_option(self) -> "UserChoiceOptionInput":
         """
         校验按钮选项的文案和值不能为空。
         """
@@ -66,7 +66,7 @@ class AskUserChoiceInput(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_payload(self):
+    def validate_payload(self) -> "AskUserChoiceInput":
         """
         校验按钮选择工具必须提供问题和选项。
         """
@@ -113,7 +113,7 @@ class AskUserChoiceTool(MoviePilotTool):
         description="工具输入参数的验证模型或 JSON Schema",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         生成工具执行提示文案。
         """
@@ -143,12 +143,12 @@ class AskUserChoiceTool(MoviePilotTool):
         """
         return bool(self._agent_context.get("feedback_issue_rejected_quality"))
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         message: str,
         options: List[UserChoiceOptionInput],
         title: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         发送按钮选择消息，并登记待回调的交互上下文。

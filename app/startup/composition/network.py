@@ -320,7 +320,7 @@ class _MessageIngressAdapter:
         同步投递消息，关闭响应后返回状态码。
         """
         response = RequestUtils(
-            timeout=timeout,  # type: ignore[arg-type]
+            timeout=timeout,
             headers=dict(headers),
         ).post_res(
             url,
@@ -348,7 +348,7 @@ class _MessageIngressAdapter:
         异步投递消息，关闭响应后返回状态码。
         """
         response = await AsyncRequestUtils(
-            timeout=timeout,  # type: ignore[arg-type]
+            timeout=timeout,
             headers=dict(headers),
         ).post_res(
             url,

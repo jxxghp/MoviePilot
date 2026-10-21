@@ -599,7 +599,7 @@ class Emby:
             return None, None
         cached_item_id = item_id
         if not item_id:
-            item_id = self.__get_emby_series_id_by_name(title, year, **({"query": query} if query is not None else {}))
+            item_id = self.__get_emby_series_id_by_name(title, year, **MediaServerQueryOptions.as_kwargs(query))
             if item_id is None:
                 return None, None
             if not item_id:
@@ -612,7 +612,7 @@ class Emby:
         if not item_info and cached_item_id and title:
             # 媒体删除后重新入库会导致缓存ID失效，回退到标题搜索避免误判整部剧缺失。
             logger.warning(f"Emby缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
-            item_id = self.__get_emby_series_id_by_name(title, year, **({"query": query} if query is not None else {}))
+            item_id = self.__get_emby_series_id_by_name(title, year, **MediaServerQueryOptions.as_kwargs(query))
             if item_id is None:
                 return None, None
             if not item_id:
@@ -632,7 +632,7 @@ class Emby:
             params = {"Season": season, "IsMissing": "false", "api_key": self._apikey}
             params.update(
                 emby_query_params(
-                    MediaServerQueryOptions(fields=set()) if query is not None and query.fields is not None else None
+                    MediaServerQueryOptions(fields=frozenset()) if query is not None and query.fields is not None else None
                 )
             )
             res_json = RequestUtils().get_res(url, params)
@@ -676,7 +676,7 @@ class Emby:
             params = {"Season": season, "IsMissing": "false", "api_key": self._apikey}
             params.update(
                 emby_query_params(
-                    MediaServerQueryOptions(fields=set()) if query is not None and query.fields is not None else None
+                    MediaServerQueryOptions(fields=frozenset()) if query is not None and query.fields is not None else None
                 )
             )
             res_json = RequestUtils().get_res(url, params)
@@ -1004,7 +1004,7 @@ class Emby:
                     continue
                 if "Folder" in item.get("Type"):
                     for items in self.get_items(
-                        parent=item.get("Id"), **({"query": query} if query is not None else {})
+                        parent=item.get("Id"), **MediaServerQueryOptions.as_kwargs(query)
                     ):
                         yield items
                 elif item.get("Type") in ["Movie", "Series", "MusicAlbum"]:

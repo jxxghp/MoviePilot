@@ -375,16 +375,19 @@ class TransferSettlementOwner(_TransferOwnerBase):
         """
         ret_status = True
         ret_message = ""
+        meta = cast(MetaBase, task.meta)
+        mediainfo = cast(Union[MediaInfo, MusicInfo], task.mediainfo)
+        transfer_mode = transferinfo.transfer_type or ""
 
         def __notify() -> None:
             """
             完成时发送消息、移除任务等
             """
             transferinfo.file_count = (
-                self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
+                self.jobview.count(task.mediainfo, meta.begin_season) or 1
             )
             transferinfo.total_size = (
-                self.jobview.size(task.mediainfo, task.meta.begin_season)
+                self.jobview.size(task.mediainfo, meta.begin_season)
                 or task.fileitem.size
             )
             # 发送通知，实时手动整理时不发
@@ -393,17 +396,17 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     and not self.runtime_config.transfer_success_notification_aggregation
             ):
                 se_str = None
-                if task.mediainfo.type == MediaType.TV:
+                if mediainfo.type == MediaType.TV:
                     season_episodes = self.jobview.season_episodes(
-                        task.mediainfo, task.meta.begin_season
+                        mediainfo, meta.begin_season
                     )
                     if season_episodes:
-                        se_str = f"{task.meta.season} {episode_rules.format_ranges(season_episodes)}"
+                        se_str = f"{meta.season} {episode_rules.format_ranges(season_episodes)}"
                     else:
-                        se_str = f"{task.meta.season}"
+                        se_str = f"{meta.season}"
                 self.send_transfer_message(
-                    meta=task.meta,
-                    mediainfo=task.mediainfo,
+                    meta=meta,
+                    mediainfo=mediainfo,
                     transferinfo=transferinfo,
                     season_episode=se_str,
                     episodes_info=task.episodes_info,
@@ -475,10 +478,10 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     topic=topic,
                     stage_history=lambda writer: add_transfer_fail(
                         fileitem=task.fileitem,
-                        mode=transferinfo.transfer_type if transferinfo else "",
+                        mode=transfer_mode,
                         downloader=task.downloader,
                         download_hash=task.download_hash,
-                        meta=task.meta,
+                        meta=meta,
                         mediainfo=task.mediainfo,
                         transferinfo=transferinfo,
                         retry_count=failure_count,
@@ -523,7 +526,6 @@ class TransferSettlementOwner(_TransferOwnerBase):
 
         else:
             logger.info(f"{task.fileitem.name} 入库成功：{target_dir_path or ''}")
-
             # 静默跳过沿用成功终态，但没有目标文件可供完成事件的消费者处理。
             durable_event = (
                 self._durable_transfer_event(task, success=True)
@@ -537,11 +539,11 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 topic=topic,
                 stage_history=lambda writer: add_transfer_success(
                     fileitem=task.fileitem,
-                    mode=transferinfo.transfer_type if transferinfo else "",
+                    mode=transfer_mode,
                     downloader=task.downloader,
                     download_hash=task.download_hash,
-                    meta=task.meta,
-                    mediainfo=task.mediainfo,
+                    meta=meta,
+                    mediainfo=mediainfo,
                     transferinfo=transferinfo,
                     transfer_history_oper=writer,
                 ),
@@ -618,7 +620,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
         成功移动结算后清理下载器和空目录，清理失败仅更新反馈状态。
         """
         tasks = self.jobview.success_tasks(
-            task.mediainfo, task.meta.begin_season
+            task.mediainfo, cast(MetaBase, task.meta).begin_season
         )
         system_config_oper = get_configured_system_config()
         transfer_exclude_words = system_config_oper.get(

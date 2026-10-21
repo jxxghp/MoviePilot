@@ -4,7 +4,7 @@ TVDB 模块，负责会话管理、电视剧详情及补充媒体别名。
 
 from dataclasses import dataclass
 from threading import Lock
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 from app.domain.context import MediaInfo
 from app.domain.media import is_media_source_enabled
@@ -87,7 +87,7 @@ class TheTvDbModule(_ModuleBase):
                 if not self.tvdb or is_retry:
                     self._initialize_tvdb_session(is_retry=is_retry)
 
-    def _handle_tvdb_call(self, method_name: str, *args, **kwargs):
+    def _handle_tvdb_call(self, method_name: str, *args: Any, **kwargs: Any) -> Any:
         """
         调用客户端方法，令牌失效时重新登录并最多重试一次。
 
@@ -181,7 +181,7 @@ class TheTvDbModule(_ModuleBase):
         """
         pass
 
-    def tvdb_info(self, tvdbid: int) -> Optional[dict]:
+    def tvdb_info(self, tvdbid: int) -> Optional[dict[str, Any]]:
         """
         查询电视剧扩展详情，必要时建立会话或刷新失效令牌。
 
@@ -190,7 +190,8 @@ class TheTvDbModule(_ModuleBase):
         """
         try:
             logger.info(f"开始获取TVDB信息: {tvdbid} ...")
-            return self._handle_tvdb_call("get_series_extended", tvdbid)
+            result = self._handle_tvdb_call("get_series_extended", tvdbid)
+            return result if isinstance(result, dict) else None
         except Exception as err:
             logger.error(f"获取TVDB信息失败: {str(err)}")
             return None
@@ -205,13 +206,14 @@ class TheTvDbModule(_ModuleBase):
         try:
             result = self._handle_tvdb_call("get_series", tvdbid)
             if result and isinstance(result, dict):
-                return result.get("slug")
+                slug = result.get("slug")
+                return slug if isinstance(slug, str) else None
             return None
         except Exception as err:
             logger.error(f"获取TVDB slug 失败: {str(err)}")
             return None
 
-    def search_tvdb(self, title: str) -> list:
+    def search_tvdb(self, title: str) -> list[dict[str, Any]]:
         """
         按标题搜索 TVDB，并仅保留电视剧类型的候选。
 
@@ -226,7 +228,11 @@ class TheTvDbModule(_ModuleBase):
             if not isinstance(res, list):
                 logger.warning(f"TVDB 搜索 '{title}' 未返回列表：{type(res)}")
                 return []
-            return [item for item in res if isinstance(item, dict) and item.get("type") == "series"]
+            return [
+                item
+                for item in res
+                if isinstance(item, dict) and item.get("type") == "series"
+            ]
         except Exception as err:
             logger.error(f"用标题搜索TVDB剧集失败 ({title}): {str(err)}")
             return []
@@ -316,13 +322,18 @@ class TheTvDbModule(_ModuleBase):
                 mediainfo.media_source == MediaSource.TVDB
                 and str(mediainfo.media_id or "").isdigit()
         ):
-            return _TvdbAuxiliaryLookup(
-                method_name="tvdb_info",
-                argument=int(mediainfo.media_id),
-            )
+            media_id = mediainfo.media_id
+            if isinstance(media_id, str) and media_id.isdigit():
+                return _TvdbAuxiliaryLookup(
+                    method_name="tvdb_info",
+                    argument=int(media_id),
+                )
+        title = mediainfo.title
+        if not isinstance(title, str):
+            return None
         return _TvdbAuxiliaryLookup(
             method_name="search_tvdb",
-            argument=mediainfo.title,
+            argument=title,
         )
 
     def _load_auxiliary_candidates(

@@ -88,7 +88,7 @@ class WebPushModule(_ModuleBase, _MessageBase[object]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            webpush_users = conf.config.get("WEBPUSH_USERNAME") or ""
+            webpush_users = (conf.config or {}).get("WEBPUSH_USERNAME") or ""
             if webpush_users:
                 # 设定了接收用户时，非该用户的消息不接收
                 if not message.username or message.username not in webpush_users.split(","):

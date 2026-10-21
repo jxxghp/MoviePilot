@@ -43,7 +43,7 @@ from app.foundation.environment import is_free_threaded_runtime
 from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
 from app.foundation.version import compare_version
-from app.runtime.cache import async_fresh, cached, fresh, is_fresh
+from app.runtime.cache import AsyncCacheControls, async_fresh, cached, fresh, is_fresh
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import get_task_registry
@@ -1358,8 +1358,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         except Exception as error:  # noqa: BLE001
             return None, error
 
-    # 缓存装饰器的动态包装未保留静态类型，保留既有类型豁免。
-    @cached(maxsize=1024, ttl=1800, skip_none=False)  # type: ignore[misc]
+    @cached(maxsize=1024, ttl=1800, skip_none=False)
     def get_plugin_index_result(
             self,
             repo_url: str,
@@ -1414,8 +1413,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             return None
         return payload if payload is not None else {}
 
-    # 缓存装饰器的动态包装未保留静态类型，保留既有类型豁免。
-    @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")  # type: ignore[misc]
+    @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")
     def _get_plugin_repo_releases(
         self, repo_url: str
     ) -> Optional[PluginReleaseList]:
@@ -1736,8 +1734,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             logger.warning(f"获取插件 {pid} 元数据失败：{error}")
             return {}
 
-    # 缓存装饰器的动态包装未保留静态类型，保留既有类型豁免。
-    @cached(maxsize=1024, ttl=1800, skip_none=False)  # type: ignore[misc]
+    @cached(maxsize=1024, ttl=1800, skip_none=False)
     async def async_get_plugin_index_result(
             self,
             repo_url: str,
@@ -1804,8 +1801,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             return None
         return payload if payload is not None else {}
 
-    # 缓存装饰器的动态包装未保留静态类型，保留既有类型豁免。
-    @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")  # type: ignore[misc]
+    @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")
     async def _async_get_plugin_repo_releases(
         self, repo_url: str
     ) -> Optional[PluginReleaseList]:
@@ -1895,7 +1891,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         if not repo_url:
             return False
         return bool(
-            await self._async_get_plugin_repo_releases.cache_exists(
+            await cast(AsyncCacheControls, self._async_get_plugin_repo_releases).cache_exists(
                 self, repo_url.rstrip("/")
             )
         )
@@ -1913,10 +1909,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                 await asyncio.shield(pending_normal_task)
             except (Exception, asyncio.CancelledError):
                 pass
-        return cast(
-            Optional[PluginReleaseList],
-            await self._async_get_plugin_repo_releases(repo_url),
-        )
+        return await self._async_get_plugin_repo_releases(repo_url)
 
     @classmethod
     def _remove_release_task(
@@ -1977,10 +1970,7 @@ class PluginMarketClient:
         读取插件索引的三态结果，供库存读取保留失败事实。
         """
         with fresh(force):
-            return cast(
-                Optional[PluginIndex],
-                self._transport.get_plugin_index_result(repo_url, package_version),
-            )
+            return self._transport.get_plugin_index_result(repo_url, package_version)
 
     async def async_get_plugin_index_result(
         self,
@@ -1992,13 +1982,10 @@ class PluginMarketClient:
         异步读取插件索引的三态结果，供库存读取保留失败事实。
         """
         async with async_fresh(force):
-            return cast(
-                Optional[PluginIndex],
-                await self._transport.async_get_plugin_index_result(
+            return await self._transport.async_get_plugin_index_result(
                     repo_url,
                     package_version,
-                ),
-            )
+                )
 
     def get_local_candidates(self) -> PluginIndex:
         """

@@ -5,7 +5,7 @@ Navidrome 媒体服务器模块。
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app.application.mediaserver import MusicMediaServerHelper
-from app.domain.context import MediaInfo
+from app.domain.context import MediaInfo, MusicInfo
 from app.modules import _MediaServerBase, _ModuleBase
 from app.modules.navidrome.navidrome import Navidrome
 from app.runtime.events import eventmanager
@@ -112,6 +112,8 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         """
         if not credentials or credentials.grant_type != "password":
             return None
+        if credentials.username is None or credentials.password is None:
+            return None
         servers: list[tuple[Optional[str], Optional[Navidrome]]] = (
             [(service_name, self.get_instance(service_name))]
             if service_name and self.get_instance(service_name)
@@ -120,16 +122,21 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         for name, server in servers:
             if not server:
                 continue
+            service_name_value = name or self.get_name()
             intercept_event = eventmanager.send_event(
                 etype=ChainEventType.AuthIntercept,
                 data=AuthInterceptCredentials(
                     username=credentials.username,
                     channel=self.get_name(),
-                    service=name,
+                    service=service_name_value,
                     status="triggered",
                 ),
             )
-            if intercept_event and intercept_event.event_data and intercept_event.event_data.cancel:
+            if (
+                intercept_event
+                and isinstance(intercept_event.event_data, AuthInterceptCredentials)
+                and intercept_event.event_data.cancel
+            ):
                 continue
             token = server.authenticate(credentials.username, credentials.password)
             if token:
@@ -156,7 +163,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :return: 首个匹配项的服务器和条目标识；非音乐或未找到匹配项时返回 None
         """
-        if mediainfo.type != MediaType.MUSIC:
+        if mediainfo.type != MediaType.MUSIC or not isinstance(mediainfo, MusicInfo):
             return None
         servers: list[tuple[Optional[str], Optional[Navidrome]]] = (
             [(server, self.get_instance(server))] if server else list(self.get_instances().items())
@@ -255,7 +262,11 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         """
         service = self.get_instance(server)
         return (
-            service.get_items(start_index, limit, **({"query": query} if query is not None else {}))
+            service.get_items(
+                start_index if start_index is not None else 0,
+                limit if limit is not None else -1,
+                **({"query": query} if query is not None else {}),
+            )
             if service
             else None
         )
@@ -316,7 +327,10 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :return: 播放条目列表；实例不存在时返回 None，服务端请求失败时返回空列表
         """
         service = self.get_instance(server)
-        return service.get_resume(count, **({"query": query} if query is not None else {})) if service else None
+        return service.get_resume(
+            count if count is not None else 20,
+            **({"query": query} if query is not None else {}),
+        ) if service else None
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
@@ -347,7 +361,10 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         :return: 最近新增专辑列表；实例不存在时返回 None
         """
         service = self.get_instance(server)
-        return service.get_latest(count, **({"query": query} if query is not None else {})) if service else None
+        return service.get_latest(
+            count if count is not None else 20,
+            **({"query": query} if query is not None else {}),
+        ) if service else None
 
     def mediaserver_latest_images(
         self,

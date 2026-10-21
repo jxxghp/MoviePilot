@@ -58,7 +58,7 @@ def build_media_download_path(
         not directory.media_type and directory.download_type_folder
     )
     if type_folder_enabled:
-        download_path = download_path / media.type.value
+        download_path = download_path / (media.type or MediaType.UNKNOWN).value
 
     helper = directory_helper or DirectoryHelper()
     if helper.has_fixed_category(directory) or not directory.download_category_folder:
@@ -382,7 +382,7 @@ class DirectoryHelper:
         """
         获取所有下载目录
         """
-        dir_confs: List[dict] = get_configured_system_config().get(SystemConfigKey.Directories)
+        dir_confs: List[dict[str, Any]] = get_configured_system_config().get(SystemConfigKey.Directories)
         if not dir_confs:
             return []
         return [_SchemaTransferDirectoryConf(**d) for d in dir_confs]
@@ -391,7 +391,7 @@ class DirectoryHelper:
         """
         获取所有下载目录
         """
-        return sorted([d for d in self.get_dirs() if d.download_path], key=lambda x: x.priority)
+        return sorted([d for d in self.get_dirs() if d.download_path], key=lambda x: x.priority or 0)
 
     def get_local_download_dirs(self) -> List[_SchemaTransferDirectoryConf]:
         """
@@ -480,7 +480,7 @@ class DirectoryHelper:
         """
         获取所有媒体库目录
         """
-        return sorted([d for d in self.get_dirs() if d.library_path], key=lambda x: x.priority)
+        return sorted([d for d in self.get_dirs() if d.library_path], key=lambda x: x.priority or 0)
 
     def get_local_library_dirs(self) -> List[_SchemaTransferDirectoryConf]:
         """
@@ -566,7 +566,10 @@ class DirectoryHelper:
         dirs = self.get_dirs()
 
         # 如果存在源目录，并源目录为任一下载目录的子目录时，则进行源目录匹配，否则，允许源目录按同盘优先的逻辑匹配
-        matching_dirs = [d for d in dirs if src_path.is_relative_to(d.download_path)] if src_path else []
+        matching_dirs = [
+            d for d in dirs
+            if src_path and d.download_path and src_path.is_relative_to(d.download_path)
+        ]
         dirs_to_consider = matching_dirs if matching_dirs else dirs
 
         matched_dirs: list[tuple[int, int, _SchemaTransferDirectoryConf]] = []
@@ -577,7 +580,7 @@ class DirectoryHelper:
                 continue
             if target_storage and d.library_storage != target_storage:
                 continue
-            if dest_path and dest_path != Path(d.library_path):
+            if dest_path and d.library_path and dest_path != Path(d.library_path):
                 continue
             rank = self.media_match_rank(d, media)
             if rank is not None:
@@ -599,8 +602,13 @@ class DirectoryHelper:
             if src_path:
                 # 同一匹配等级内优先源目录同盘，不能盖过更精确的分类引用。
                 for _, matched_dir in best_dirs:
+                    if not matched_dir.download_path:
+                        continue
                     matched_path = Path(matched_dir.download_path)
-                    if self._is_same_source((src_path, storage or "local"), (matched_path, matched_dir.library_storage)):
+                    if self._is_same_source(
+                        (src_path, storage or "local"),
+                        (matched_path, matched_dir.library_storage or "local"),
+                    ):
                         return matched_dir
             return best_dirs[0][1]
         return None

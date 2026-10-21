@@ -321,15 +321,16 @@ class DownloadFailureOwner(_DownloadOwnerBase):
         台账里的成因可能是真实失败，也可能是重复提交退避，所以这里只转述记录中的原因，
         不把它断言成"添加下载失败"。
         """
+        torrent_title = context.torrent_info.title if context.torrent_info else "未知资源"
         reason = getattr(failure, "error_message", None) or "未知原因"
         retry_at = getattr(failure, "next_retry_at", None)
         if retry_at:
             logger.info(
-                f"{context.torrent_info.title} 暂时跳过该资源（原因：{reason}），"
+                f"{torrent_title} 暂时跳过该资源（原因：{reason}），"
                 f"将于 {retry_at} 后重试，本次继续尝试其他资源"
             )
         else:
             logger.info(
-                f"{context.torrent_info.title} 暂时跳过该资源（原因：{reason}），"
+                f"{torrent_title} 暂时跳过该资源（原因：{reason}），"
                 "本次继续尝试其他资源"
             )

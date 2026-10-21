@@ -69,6 +69,8 @@ def _prepare_subtitle_download(
     """
     if subtitle.site is None:
         return False, "字幕站点信息为空"
+    if not subtitle.enclosure:
+        return False, "字幕下载链接为空"
 
     clean_url = SecurityUtils.verify_signed_url(
         subtitle.enclosure,
@@ -102,19 +104,21 @@ def _build_unrecognized_media_info(
     两者都不再要求识别出统一媒体信息即可继续下载。
     """
     if is_music:
+        raw_year = metainfo.year
+        music_year = int(raw_year) if isinstance(raw_year, str) and raw_year.isdigit() else raw_year if isinstance(raw_year, int) else None
         return MusicInfo(
             title=metainfo.title or torrent.title,
-            year=metainfo.year,
+            year=music_year,
             music_type=music_type or MUSIC_ENTITY_RECORDING,
         )
     try:
         media_type = MediaType(torrent.category)
     except (TypeError, ValueError):
-        media_type = MediaType.from_agent(torrent.category)
+        media_type = MediaType.from_agent(torrent.category or "") or MediaType.UNKNOWN
     if media_type == MediaType.COLLECTION:
         media_type = MediaType.MOVIE
     if media_type not in (MediaType.MOVIE, MediaType.TV):
-        media_type = metainfo.type
+        media_type = metainfo.type or MediaType.UNKNOWN
         # 合集类型在回退到元数据后同样归一为电影，避免落到 UNKNOWN
         if media_type == MediaType.COLLECTION:
             media_type = MediaType.MOVIE
@@ -123,7 +127,7 @@ def _build_unrecognized_media_info(
     return MediaInfo(
         type=media_type,
         title=metainfo.name or torrent.title,
-        year=metainfo.year,
+        year=str(metainfo.year) if metainfo.year is not None else None,
     )
 
 
@@ -173,7 +177,7 @@ def _resolve_add_media(
         )
     if is_music and not normalized_music_type:
         normalized_music_type = MUSIC_ENTITY_RECORDING
-    metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description,
+    metainfo = MetaInfo(title=torrent_in.title or "", subtitle=torrent_in.description,
                         mtype=MediaType.MUSIC if is_music else None)
     if media_source and media_id:
         mediainfo = MediaChain().recognize_media(
@@ -238,12 +242,13 @@ def download(
     """
     添加下载任务（含媒体信息）
     """
+    mediainfo: MediaInfo | MusicInfo
     if isinstance(media_in, _SchemaMusicInfo):
         mediainfo = MusicInfo.from_dict(media_in.model_dump())
     else:
         mediainfo = MediaInfo()
         mediainfo.from_dict(media_in.model_dump())
-    metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description, mtype=mediainfo.type)
+    metainfo = MetaInfo(title=torrent_in.title or "", subtitle=torrent_in.description, mtype=mediainfo.type)
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())

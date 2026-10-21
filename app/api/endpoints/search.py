@@ -5,7 +5,7 @@
 import asyncio
 import json
 import time
-from typing import Any, AsyncIterator, Iterator, List, Optional
+from typing import Any, AsyncGenerator, AsyncIterator, Coroutine, Iterator, List, Optional, cast
 from uuid import uuid4
 
 from fastapi import Body, Depends, Request
@@ -75,7 +75,7 @@ async def _resolve_media_search_params(
         media_id: str,
         media_type: Optional[MediaType] = None,
         music_type: Optional[str] = None,
-) -> tuple[Optional[dict], str]:
+) -> tuple[Optional[dict[str, Any]], str]:
     """
     校验统一媒体身份并构造 SearchChain 精确搜索参数。
     """
@@ -102,7 +102,7 @@ async def _resolve_media_search_params(
     return params, ""
 
 
-def _sse_event(data: dict, locale: Optional[str] = None) -> str:
+def _sse_event(data: dict[str, Any], locale: Optional[str] = None) -> str:
     """
     转换为SSE事件
     """
@@ -120,21 +120,24 @@ def _sse_event(data: dict, locale: Optional[str] = None) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _serialize_signed_subtitle_result(subtitle: Any) -> dict:
+def _serialize_signed_subtitle_result(subtitle: Any) -> dict[str, Any]:
     """
     序列化字幕结果并签名下载链接，签名用途绑定站点 ID。
     """
     data = subtitle.to_dict() if hasattr(subtitle, "to_dict") else dict(subtitle)
     enclosure = data.get("enclosure")
+    site_id = data.get("site")
     if enclosure:
+        if not isinstance(site_id, int):
+            raise ValueError("字幕结果缺少有效站点 ID，无法签名下载链接")
         data["enclosure"] = SecurityUtils.sign_url(
             enclosure,
-            purpose=SecurityUtils.subtitle_download_purpose(data.get("site")),
+            purpose=SecurityUtils.subtitle_download_purpose(site_id),
         )
     return data
 
 
-def _serialize_signed_subtitle_results(subtitles: List[Any]) -> List[dict]:
+def _serialize_signed_subtitle_results(subtitles: List[Any]) -> List[dict[str, Any]]:
     """
     批量序列化字幕结果，确保返回给客户端的下载链接均已签名。
     """
@@ -148,7 +151,7 @@ def _serialize_context_results(contexts: list[Context]) -> list[dict[str, Any]]:
     return [context.to_dict() for context in contexts]
 
 
-def _sign_subtitle_search_event(event: dict) -> dict:
+def _sign_subtitle_search_event(event: dict[str, Any]) -> dict[str, Any]:
     """
     签名字幕搜索流事件中的下载链接。
     """
@@ -161,8 +164,8 @@ def _sign_subtitle_search_event(event: dict) -> dict:
 
 
 async def _iter_signed_subtitle_search_events(
-    event_source: AsyncIterator[dict],
-) -> AsyncIterator[dict]:
+    event_source: AsyncIterator[dict[str, Any]],
+) -> AsyncIterator[dict[str, Any]]:
     """
     输出仅包含签名字幕下载链接的搜索流事件。
     """
@@ -170,7 +173,7 @@ async def _iter_signed_subtitle_search_events(
         yield _sign_subtitle_search_event(event)
 
 
-def _merge_append_event(pending_event: Optional[dict], event: dict) -> dict:
+def _merge_append_event(pending_event: Optional[dict[str, Any]], event: dict[str, Any]) -> dict[str, Any]:
     """
     合并短时间内连续到达的 append 事件，降低前端刷新频率。
     """
@@ -187,7 +190,7 @@ def _merge_append_event(pending_event: Optional[dict], event: dict) -> dict:
     return merged_event
 
 
-def _iter_replace_event_batches(event: dict) -> Iterator[dict]:
+def _iter_replace_event_batches(event: dict[str, Any]) -> Iterator[dict[str, Any]]:
     """
     将超大的最终替换事件拆成有序批次，避免单个 SSE 消息承载全部完整对象。
     """
@@ -217,19 +220,21 @@ def _iter_replace_event_batches(event: dict) -> Iterator[dict]:
 
 
 async def _iter_batched_search_events(
-    event_source: AsyncIterator[dict],
-) -> AsyncIterator[dict]:
+    event_source: AsyncIterator[dict[str, Any]],
+) -> AsyncGenerator[dict[str, Any], None]:
     """
     对搜索流事件做轻量批处理，并在上游长时间静默时发送心跳。
     """
     iterator = event_source.__aiter__()
-    pending_append_event: Optional[dict] = None
-    next_event_task: Optional[asyncio.Task] = None
+    pending_append_event: Optional[dict[str, Any]] = None
+    next_event_task: Optional[asyncio.Future[dict[str, Any]]] = None
 
     try:
         while True:
             if next_event_task is None:
-                next_event_task = asyncio.create_task(anext(iterator))
+                next_event_task = asyncio.create_task(
+                    cast(Coroutine[Any, Any, dict[str, Any]], anext(iterator))
+                )
 
             timeout = (
                 _SSE_APPEND_FLUSH_INTERVAL
@@ -283,7 +288,9 @@ async def _iter_batched_search_events(
         yield pending_append_event
 
 
-async def _stream_search_events(request: Request, event_source: AsyncIterator[dict]):
+async def _stream_search_events(
+        request: Request, event_source: AsyncIterator[dict[str, Any]],
+) -> AsyncGenerator[str, None]:
     """
     输出搜索 SSE 事件，并记录连接生命周期与传输规模。
     """
@@ -429,7 +436,7 @@ async def search_by_id_stream(
     media_season = int(season) if season else None
     site_list = _parse_site_list(sites)
 
-    async def event_source():
+    async def event_source() -> AsyncGenerator[dict[str, Any], None]:
         """
         解析媒体身份并输出精确搜索流事件。
         """
@@ -676,7 +683,7 @@ async def _build_subtitle_search_source(
     media_episode = int(episode) if episode else None
     site_list = _parse_site_list(sites)
 
-    def call_search(**kwargs):
+    def call_search(**kwargs: Any) -> Any:
         """
         根据调用模式返回普通搜索协程或流式搜索迭代器。
         """
@@ -738,7 +745,7 @@ async def search_subtitle_by_id_stream(
         stream=True,
     )
 
-    async def event_source():
+    async def event_source() -> AsyncGenerator[dict[str, Any], None]:
         """
         输出字幕精确搜索流事件。
         """

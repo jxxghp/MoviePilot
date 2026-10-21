@@ -200,6 +200,8 @@ class TrimeMedia:
             )
         else:
             return False
+        if self._username is None or self._password is None:
+            return False
         if self._api.login(self._username, self._password) is None:
             return False
         self._userinfo = self._api.user_info()

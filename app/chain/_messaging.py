@@ -9,7 +9,7 @@ import copy
 from collections.abc import Generator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Union, cast
 
 from app.application.messaging.message import MessageTemplateHelper
 from app.application.notification import get_notification_switch
@@ -197,6 +197,8 @@ def _render_notification_message(
     使用同步和异步入口共用的上下文规范化并渲染通知。
     """
     kwargs.setdefault("current_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    if message is None:
+        return None
     return MessageTemplateHelper.render(
         message=message,
         meta=meta,
@@ -223,7 +225,8 @@ class MessageProcessingMixin:
     消息输入/处理状态机与通知派发规范化。
     """
 
-    __mixin_host_protocol__ = ChainRuntimeMixinHost
+    __mixin_host_protocol__: ClassVar[Any] = ChainRuntimeMixinHost
+    run_module: Callable[..., Any]
 
     def start_message_processing_status(
             self,
@@ -233,7 +236,7 @@ class MessageProcessingMixin:
             message_id: Optional[Union[str, int]] = None,
             chat_id: Optional[Union[str, int]] = None,
             text: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         启动渠道侧消息输入/处理状态。
         具体表现由消息模块实现，例如 typing 保活或消息 reaction。
@@ -259,7 +262,7 @@ class MessageProcessingMixin:
 
     def finish_message_processing_status(
             self,
-            status: Optional[dict] = None,
+            status: Optional[dict[str, Any]] = None,
             channel: Optional[NotificationChannel] = None,
             source: Optional[str] = None,
             userid: Optional[Union[str, int]] = None,
@@ -309,7 +312,7 @@ class MessageProcessingMixin:
         return dispatch_message
 
     @staticmethod
-    def _build_notice_message_data(message: Message) -> dict:
+    def _build_notice_message_data(message: Message) -> dict[str, Any]:
         """
         构造消息通知事件数据。
         """
@@ -321,8 +324,16 @@ class NotificationMixin:
     通知消息发送域：渲染、隔离路由、队列发送与消息编辑。
     """
 
-    __mixin_host_protocol__ = ChainRuntimeMixinHost
+    __mixin_host_protocol__: ClassVar[Any] = ChainRuntimeMixinHost
     user_repository: ChainUserRepository
+    runtime_config: Any
+    eventmanager: Any
+    messageoper: Any
+    messagequeue: Any
+    run_module: Callable[..., Any]
+    run_module_strict: Callable[..., Any]
+    _normalize_notification_for_dispatch: Callable[[Message], Message]
+    _build_notice_message_data: Callable[[Message], dict[str, Any]]
 
     def post_message(
             self,
@@ -331,7 +342,7 @@ class NotificationMixin:
             mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             torrentinfo: Optional[TorrentInfo] = None,
             transferinfo: Optional[TransferInfo] = None,
-            **kwargs,
+            **kwargs: Any,
     ) -> None:
         """
         发送消息
@@ -463,7 +474,7 @@ class NotificationMixin:
             mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
             torrentinfo: Optional[TorrentInfo] = None,
             transferinfo: Optional[TransferInfo] = None,
-            **kwargs,
+            **kwargs: Any,
     ) -> None:
         """
         异步发送消息
@@ -553,7 +564,7 @@ class NotificationMixin:
         if message.save_history:
             self.messageoper.add(**message.model_dump(), note=note_list)
         dispatch_message = self._normalize_notification_for_dispatch(message)
-        return self.messagequeue.send_message(
+        self.messagequeue.send_message(
             "post_medias_message",
             message=dispatch_message,
             medias=medias,
@@ -569,11 +580,14 @@ class NotificationMixin:
         :param message:  消息体
         :param torrents:  种子列表
         """
-        note_list = [torrent.torrent_info.to_dict() for torrent in torrents]
+        note_list = [
+            torrent.torrent_info.to_dict() if torrent.torrent_info else {}
+            for torrent in torrents
+        ]
         if message.save_history:
             self.messageoper.add(**message.model_dump(), note=note_list)
         dispatch_message = self._normalize_notification_for_dispatch(message)
-        return self.messagequeue.send_message(
+        self.messagequeue.send_message(
             "post_torrents_message",
             message=dispatch_message,
             torrents=torrents,
@@ -596,13 +610,13 @@ class NotificationMixin:
         :param chat_id: 聊天ID（如群组ID）
         :return: 删除是否成功
         """
-        return self.run_module(
+        return bool(self.run_module(
             "delete_message",
             channel=channel,
             source=source,
             message_id=message_id,
             chat_id=chat_id,
-        )
+        ))
 
     def edit_message(
             self,
@@ -612,7 +626,7 @@ class NotificationMixin:
             chat_id: Union[str, int],
             text: str,
             title: Optional[str] = None,
-            buttons: Optional[List[List[dict]]] = None,
+            buttons: Optional[List[List[dict[str, Any]]]] = None,
             metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
@@ -645,7 +659,7 @@ class NotificationMixin:
                 logger.debug(f"编辑 WebAgent 消息失败: {err}")
                 return False
 
-        return self.run_module(
+        return bool(self.run_module(
             "edit_message",
             channel=channel,
             source=source,
@@ -655,7 +669,7 @@ class NotificationMixin:
             title=title,
             buttons=buttons,
             metadata=metadata,
-        )
+        ))
 
     def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
@@ -665,10 +679,10 @@ class NotificationMixin:
         :param message: 消息体
         :return: 消息响应（包含message_id, chat_id等）
         """
-        return self.run_module(
+        return cast(Optional[MessageResponse], self.run_module(
             "send_direct_message",
             message=self._normalize_notification_for_dispatch(message),
-        )
+        ))
 
     def finalize_message(
             self,
@@ -678,4 +692,4 @@ class NotificationMixin:
         对已发送消息执行渠道收尾动作。
         例如关闭流式卡片状态；无特殊收尾的渠道直接返回 False。
         """
-        return self.run_module("finalize_message", response=response)
+        return bool(self.run_module("finalize_message", response=response))

@@ -8,7 +8,7 @@ import asyncio
 import concurrent.futures
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, cast
+from typing import Any, Literal, Optional
 
 from app.application.plugin.identity import (
     OFFICIAL_PLUGIN_SOURCE_KEY,
@@ -632,17 +632,17 @@ class PluginCatalogQuery:
         """
         按绑定来源收敛更新标记，不修改共享的市场候选快照。
         """
-        if identity is None or not identity.trusted_source_key:
+        if identity is None or not identity.trusted_source_key or not plugin.id:
             return plugin
+        trusted_source_key = identity.trusted_source_key
+        plugin_id = plugin.id
         bound_updates = [
             candidate
             for candidate in online_plugins
-            if _matches_trusted_source(candidate, plugin.id, identity.trusted_source_key)
+            if _matches_trusted_source(candidate, plugin_id, trusted_source_key)
         ]
         preferred = self._process_plugins(bound_updates, []) if bound_updates else []
-        return preferred[0] if preferred else cast(
-            Plugin, plugin.model_copy(update={"has_update": False})
-        )
+        return preferred[0] if preferred else plugin.model_copy(update={"has_update": False})
 
 
 _catalog_query: PluginCatalogQuery | None = None
@@ -710,9 +710,7 @@ def _project_update_candidate(
     source_type: Literal["official", "third_party"] = (
         "official" if source_key == OFFICIAL_PLUGIN_SOURCE_KEY else "third_party"
     )
-    return cast(
-        Plugin,
-        plugin.model_copy(
+    return plugin.model_copy(
             update={
                 "update_candidate": PluginUpdateCandidate(
                     source_type=source_type,
@@ -724,5 +722,4 @@ def _project_update_candidate(
                     ),
                 )
             },
-        ),
-    )
+        )

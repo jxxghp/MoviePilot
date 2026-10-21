@@ -185,7 +185,7 @@ class DataQueryService:
             return QueryPageRequest()
         if isinstance(page, QueryPageRequest):
             return page
-        return cast(QueryPageRequest, QueryPageRequest.model_validate(page))
+        return QueryPageRequest.model_validate(page)
 
     @staticmethod
     def _filter(

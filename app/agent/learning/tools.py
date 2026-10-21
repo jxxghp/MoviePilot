@@ -16,7 +16,7 @@ from app.agent.tools.base import run_agent_blocking
 from app.agent.tools.tags import ToolTag
 
 
-class ListSkillsInput(BaseModel):  # type: ignore[misc]
+class ListSkillsInput(BaseModel):
     """
     技能枚举只接受当前宿主作用域，不允许传入任意目录。
     """

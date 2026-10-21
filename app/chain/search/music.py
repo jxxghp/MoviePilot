@@ -110,7 +110,7 @@ class SearchMusicOwner(_SearchOwnerBase):
         保留严格音乐候选筛选入口；底层匹配消费资源解析结果。
         """
         return [torrent for torrent in torrents or [] if match_music_resource(
-            mediainfo, torrent.title, torrent.description, torrent.category,
+            mediainfo, torrent.title or "", torrent.description, torrent.category,
         ).status == "exact"]
 
     def _process_music(

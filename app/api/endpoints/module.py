@@ -2,6 +2,8 @@
 系统内置模块目录、开关和可用性测试接口。
 """
 
+from typing import Any
+
 from fastapi import Depends
 
 from app.adapters.web.security.access import verify_token
@@ -52,7 +54,7 @@ def _module_description(module_id: str, name: str, module_type: str) -> str:
 )
 def modulelist(
     _: _SchemaTokenPayload = Depends(verify_token),
-) -> _SchemaResponse[_SchemaSystemModuleListData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     查询当前配置下应参与健康检查的模块 ID 列表。
     """
@@ -81,7 +83,7 @@ def modulelist(
 )
 def module_catalog(
     _: _SchemaTokenPayload = Depends(verify_token),
-) -> _SchemaResponse[_SchemaSystemModuleCatalogListData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     返回模块及其服务类型目录，供前端选择器统一构造选项。
     """
@@ -127,7 +129,7 @@ def module_catalog(
 )
 async def module_settings(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse[_SchemaSystemModuleSettingListData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     查询没有其它激活配置、可由用户统一控制的内置模块。
     """

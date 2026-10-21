@@ -166,6 +166,16 @@ class MusicSubscribeMixinHost(Protocol):
         """
         ...
 
+    def _process_search_subscription(self, *args: Any, **kwargs: Any) -> Any:
+        """
+        交给订阅搜索组件处理一次订阅搜索或匹配任务。
+
+        :param args: 订阅搜索组件的定位参数
+        :param kwargs: 搜索执行上下文及可选控制参数
+        :return: 搜索组件返回的任务结果
+        """
+        ...
+
     def _SubscribeChain__candidate_contract_changed(
         self,
         prepared: Any,

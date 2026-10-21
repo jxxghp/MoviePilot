@@ -8,7 +8,7 @@ import re
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, cast
 
 from telegramify_markdown import richify, split_rich, standardize, telegramify
 
@@ -96,7 +96,7 @@ class Telegram:
 
     _bot: Optional[TelegramBotApi] = None
     # 按回调命令保存自定义处理器
-    _callback_handlers: Dict[str, Callable] = {}
+    _callback_handlers: Dict[str, Callable[..., Any]] = {}
     # 用于群聊提及识别的机器人用户名
     _bot_username: Optional[str] = None
     # 输入状态续发、首发延迟及各场景最长展示时间，单位均为秒
@@ -116,8 +116,8 @@ class Telegram:
             TELEGRAM_TOKEN: Optional[str] = None,
             TELEGRAM_CHAT_ID: Optional[str] = None,
             TELEGRAM_TOPIC_ID: Optional[str] = None,
-            **kwargs,
-    ):
+            **kwargs: Any,
+    ) -> None:
         """
         创建独立机器人客户端并启动长轮询接收线程。
 
@@ -441,14 +441,14 @@ class Telegram:
             logger.error(f"处理按钮回调失败：{str(err)}")
             self._api.answer_callback_query(call["id"], "处理失败，请重试")
 
-    def _forward_to_message_chain(self, payload: dict) -> bool:
+    def _forward_to_message_chain(self, payload: dict[str, Any]) -> bool:
         """
         把 Telegram SDK 回调同步转交统一消息入口。
         """
         return forward_message_to_host(payload, self._config_name)
 
     @property
-    def bot(self):
+    def bot(self) -> Optional[TelegramBotApi]:
         """
         获取Telegram Bot实例。
 
@@ -490,7 +490,7 @@ class Telegram:
                     file_path,
                     len(resp.content),
                 )
-                return resp.content
+                return cast(bytes, resp.content)
             logger.warn(
                 "Telegram文件下载失败: file_id=%s, file_path=%s, proxy_enabled=%s",
                 file_id,
@@ -507,8 +507,8 @@ class Telegram:
         将 telegramify 文本片段转换为 Telegram MarkdownV2 字符串。
         """
         if entities_to_markdownv2:
-            return entities_to_markdownv2(item.text, item.entities)
-        return standardize(item.text)
+            return cast(str, entities_to_markdownv2(item.text, item.entities))
+        return cast(str, standardize(item.text))
 
     @staticmethod
     def _telegramify_item_caption(item: Text | File | Photo) -> str:
@@ -518,8 +518,8 @@ class Telegram:
         if isinstance(item, Text):
             return Telegram._telegramify_item_text(item)
         if entities_to_markdownv2:
-            return entities_to_markdownv2(item.caption_text, item.caption_entities)
-        return standardize(item.caption_text)
+            return cast(str, entities_to_markdownv2(item.caption_text, item.caption_entities))
+        return cast(str, standardize(item.caption_text))
 
     @staticmethod
     def _normalize_parse_mode(parse_mode: Optional[str] = None) -> str:
@@ -606,7 +606,7 @@ class Telegram:
                 or Telegram._is_html_parse_mode(parse_mode)
         ):
             return text
-        return standardize(text)
+        return cast(str, standardize(text))
 
     @staticmethod
     def _split_plain_text(text: str, limit: int) -> List[str]:
@@ -892,7 +892,7 @@ class Telegram:
             image: Optional[str] = None,
             userid: Optional[str] = None,
             link: Optional[str] = None,
-            buttons: Optional[List[List[dict]]] = None,
+            buttons: Optional[List[List[dict[str, Any]]]] = None,
             force_reply: bool = False,
             original_message_id: Optional[int] = None,
             original_chat_id: Optional[str] = None,
@@ -1252,7 +1252,7 @@ class Telegram:
             # 如果映射中没有，回退到使用userid作为聊天ID (私聊场景)
             return userid
 
-        return self._telegram_chat_id
+        return self._telegram_chat_id or ""
 
     def _topic_kwargs(self, chat_id: Optional[Union[str, int]]) -> dict[str, int]:
         """
@@ -1269,12 +1269,12 @@ class Telegram:
             userid: Optional[str] = None,
             title: Optional[str] = None,
             link: Optional[str] = None,
-            buttons: Optional[List[List[Dict]]] = None,
+            buttons: Optional[List[List[dict[str, Any]]]] = None,
             original_message_id: Optional[int] = None,
             original_chat_id: Optional[str] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
-    ) -> Optional[bool]:
+    ) -> Optional[Union[bool, JsonDict]]:
         """
         发送或编辑媒体候选列表。
 
@@ -1304,7 +1304,7 @@ class Telegram:
                 media_link = self._format_link(
                     media.title_year, media.detail_link, parse_mode
                 )
-                type_text = f"类型：{media.type.value}"
+                type_text = f"类型：{media.type.value if media.type else ""}"
                 if media.vote_average:
                     score_text = f"评分：{media.vote_average}"
                     caption = (
@@ -1355,12 +1355,12 @@ class Telegram:
             userid: Optional[str] = None,
             title: Optional[str] = None,
             link: Optional[str] = None,
-            buttons: Optional[List[List[Dict]]] = None,
+            buttons: Optional[List[List[dict[str, Any]]]] = None,
             original_message_id: Optional[int] = None,
             original_chat_id: Optional[str] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
-    ) -> Optional[bool]:
+    ) -> Optional[Union[bool, JsonDict]]:
         """
         发送或编辑种子候选列表。
 
@@ -1384,12 +1384,17 @@ class Telegram:
         try:
             index = 1
             caption = self._format_title(title, parse_mode) or ""
-            image = torrents[0].media_info.get_message_image()
+            if not torrents:
+                return False
+            first_media = torrents[0].media_info
+            image = first_media.get_message_image() if first_media else None
             for context in torrents:
                 torrent = context.torrent_info
-                site_name = torrent.site_name
-                meta = MetaInfo(torrent.title, torrent.description)
-                link = torrent.page_url
+                if not torrent:
+                    continue
+                site_name = torrent.site_name or ""
+                meta = MetaInfo(torrent.title or "", torrent.description)
+                link = torrent.page_url or ""
                 title = (
                     f"{meta.season_episode} "
                     f"{meta.resource_term} "
@@ -1444,7 +1449,7 @@ class Telegram:
             self._stop_typing_if_needed(chat_id, stop_typing)
 
     @staticmethod
-    def _create_inline_keyboard(buttons: List[List[Dict]]) -> JsonDict:
+    def _create_inline_keyboard(buttons: List[List[dict[str, Any]]]) -> JsonDict:
         """
         创建内联键盘，忽略没有有效链接或回调数据的按钮及空行。
 
@@ -1508,6 +1513,7 @@ class Telegram:
         if not self._telegram_token or not self._telegram_chat_id:
             return None
 
+        target_chat_id: Union[str, int]
         try:
             if chat_id:
                 target_chat_id = chat_id
@@ -1537,7 +1543,7 @@ class Telegram:
             message_id: Union[str, int],
             text: str,
             title: Optional[str] = None,
-            buttons: Optional[List[List[dict]]] = None,
+            buttons: Optional[List[List[dict[str, Any]]]] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
             rich_message: Optional[str] = None,
@@ -1693,7 +1699,7 @@ class Telegram:
             chat_id: str,
             message_id: int,
             text: str,
-            buttons: Optional[List[List[dict]]] = None,
+            buttons: Optional[List[List[dict[str, Any]]]] = None,
             image: Optional[str] = None,
             disable_web_page_preview: Optional[bool] = None,
             parse_mode: Optional[str] = None,
@@ -1956,13 +1962,13 @@ class Telegram:
     def __send_request(
             self,
             userid: Optional[str] = None,
-            image="",
-            caption="",
+            image: Optional[str] = "",
+            caption: str = "",
             reply_markup: Optional[JsonDict] = None,
             disable_web_page_preview: Optional[bool] = None,
             parse_mode: Optional[str] = None,
             reply_to_message_id: Optional[int] = None,
-    ):
+    ) -> Optional[JsonDict]:
         """
         按内容长度和媒体类型拆分并发送普通消息。
 
@@ -1984,13 +1990,13 @@ class Telegram:
         kwargs.update(self._topic_kwargs(kwargs["chat_id"]))
         if reply_to_message_id:
             kwargs["reply_to_message_id"] = reply_to_message_id
-        image = self.__process_image(image)
+        image_bytes = self.__process_image(image)
 
         try:
             # 图片消息的标题长度限制为1024，文本消息为4096
-            caption_limit = 1024 if image else 4096
+            caption_limit = 1024 if image_bytes else 4096
             if len(caption) < caption_limit:
-                ret = self.__send_short_message(image, caption,
+                ret = self.__send_short_message(image_bytes, caption,
                                                 disable_web_page_preview=disable_web_page_preview,
                                                 **kwargs)
             elif (
@@ -1998,15 +2004,15 @@ class Telegram:
                     or self._is_html_parse_mode(parse_mode)
             ):
                 ret = self.__send_long_plain_message(
-                    image,
+                    image_bytes,
                     caption,
                     caption_limit,
                     disable_web_page_preview=disable_web_page_preview,
                     **kwargs,
                 )
             else:
-                sent_idx = set()
-                ret = self.__send_long_message(image, caption, sent_idx,
+                sent_idx: set[int] = set()
+                ret = self.__send_long_message(image_bytes, caption, sent_idx,
                                                disable_web_page_preview=disable_web_page_preview,
                                                **kwargs)
 
@@ -2029,7 +2035,7 @@ class Telegram:
 
     @retry(RetryException, logger=logger)
     def __send_short_message(self, image: Optional[bytes], caption: str,
-                             disable_web_page_preview: Optional[bool] = None, **kwargs):
+                             disable_web_page_preview: Optional[bool] = None, **kwargs: Any) -> Optional[JsonDict]:
         """
         发送短消息。
         """
@@ -2060,7 +2066,7 @@ class Telegram:
     def __send_photo_or_text(
             self, *, photo: Any, caption: Optional[str],
             disable_web_page_preview: Optional[bool] = None, **kwargs: Any,
-    ) -> Any:
+    ) -> Optional[JsonDict]:
         """
         海报上传失败立即降级为同一正文，保留会话、话题和按钮；429 不追加请求。
         """
@@ -2081,8 +2087,8 @@ class Telegram:
             caption: str,
             caption_limit: int,
             disable_web_page_preview: Optional[bool] = None,
-            **kwargs,
-    ):
+            **kwargs: Any,
+    ) -> Optional[JsonDict]:
         """
         按字符上限拆分普通或 HTML 正文并发送各分块。
 
@@ -2131,9 +2137,9 @@ class Telegram:
 
     @retry(RetryException, logger=logger)
     def __send_long_message(
-            self, image: Optional[bytes], caption: str, sent_idx: set,
-            disable_web_page_preview: Optional[bool] = None, **kwargs
-    ):
+            self, image: Optional[bytes], caption: str, sent_idx: set[int],
+            disable_web_page_preview: Optional[bool] = None, **kwargs: Any
+    ) -> Optional[JsonDict]:
         """
         通过 Markdown 转换器拆分长消息，并跳过已经发送的分块。
 
@@ -2210,7 +2216,7 @@ class Telegram:
 
         return ret
 
-    def register_commands(self, commands: Dict[str, dict]) -> None:
+    def register_commands(self, commands: Dict[str, dict[str, Any]]) -> None:
         """
         先清除旧菜单，再按输入顺序注册命令。
 

@@ -284,7 +284,7 @@ def _legacy_config_snapshot(value: Mapping[str, Any]) -> CategoryConfig:
     为兼容 GET 保存可解析的旧配置快照；异常结构由迁移诊断负责说明。
     """
     try:
-        return cast(CategoryConfig, CategoryConfig.model_validate(value))
+        return CategoryConfig.model_validate(value)
     except ValidationError:
         return CategoryConfig()
 

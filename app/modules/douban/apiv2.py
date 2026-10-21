@@ -40,10 +40,10 @@ def _cached_music_request(function: Callable[_MusicParams, _MusicReturn]) -> Cal
     """
     在保持原函数签名的缓存边界上应用音乐专用命名空间与短负缓存。
     """
-    return cast(Callable[_MusicParams, _MusicReturn], cached(
+    return cached(
         maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True,
         shared_key="music_get_v2", empty_ttl=300, empty_if=_empty_music_response,
-    )(function))
+    )(function)
 
 
 _QueryValue = Optional[Union[str, int]]
@@ -86,10 +86,10 @@ def _cached_api_request(
         """
         保留底层装饰器的调用方式与缓存属性，不额外包装请求执行过程。
         """
-        return cast(Callable[_MusicParams, _MusicReturn], cached(
+        return cached(
             maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta,
             skip_none=True, shared_key=shared_key,
-        )(function))
+        )(function)
 
     return decorate
 

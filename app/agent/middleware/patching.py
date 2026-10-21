@@ -2,10 +2,11 @@
 修复消息历史中缺少结果的工具调用，保留执行结果未知的事实。
 """
 
+from collections.abc import Sequence
 from typing import Any, Optional
 
 from langchain.agents.middleware import AgentMiddleware, AgentState
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, ToolCall, ToolMessage
 from langgraph.runtime import Runtime
 from langgraph.types import Overwrite
 
@@ -16,7 +17,7 @@ class PatchToolCallsMiddleware(AgentMiddleware):
     """
 
     @staticmethod
-    def _build_cancelled_tool_message(tool_call: dict[str, Any]) -> ToolMessage:
+    def _build_cancelled_tool_message(tool_call: ToolCall) -> ToolMessage:
         """
         缺少回执只表示结果未知，不能据此重放可能已生效的写操作。
         """
@@ -36,19 +37,19 @@ class PatchToolCallsMiddleware(AgentMiddleware):
         )
 
     @classmethod
-    def _normalize_messages(cls, messages: list[BaseMessage]) -> list[BaseMessage]:
+    def _normalize_messages(cls, messages: Sequence[BaseMessage]) -> list[BaseMessage]:
         """
         规范化工具调用消息顺序，满足 OpenAI tool_calls 协议要求。
         """
         if not messages or len(messages) == 0:
-            return messages
+            return list(messages)
 
         tool_messages = {
             msg.tool_call_id: msg
             for msg in messages
             if isinstance(msg, ToolMessage) and msg.tool_call_id
         }
-        patched_messages = []
+        patched_messages: list[BaseMessage] = []
         for msg in messages:
             if isinstance(msg, ToolMessage):
                 continue
@@ -59,7 +60,7 @@ class PatchToolCallsMiddleware(AgentMiddleware):
 
             for tool_call in msg.tool_calls:
                 tool_call_id = tool_call.get("id")
-                corresponding_tool_msg = tool_messages.get(tool_call_id)
+                corresponding_tool_msg = tool_messages.get(tool_call_id or "")
                 if corresponding_tool_msg:
                     patched_messages.append(corresponding_tool_msg)
                 else:

@@ -4,7 +4,7 @@
 
 import re
 from collections.abc import Awaitable, Callable
-from typing import Annotated, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict, cast
 
 import yaml  # noqa
 from anyio import Path as AsyncPath
@@ -279,7 +279,7 @@ class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
         """
         将任务文档注入模型请求的系统消息中。
         """
-        jobs_metadata = request.state.get("jobs_metadata", [])  # noqa
+        jobs_metadata = cast(JobsState, request.state).get("jobs_metadata", [])  # noqa
 
         # 仅注入真正活跃的任务，避免把已完成任务继续塞进心跳上下文。
         active_jobs = filter_active_jobs(jobs_metadata)
@@ -297,12 +297,12 @@ class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
         return request.override(system_message=new_system_message)
 
     async def abefore_agent(  # noqa
-        self, state: JobsState, runtime: Runtime, config: RunnableConfig
-    ) -> JobsStateUpdate | None:
+        self, state: JobsState, runtime: Runtime[ContextT], config: RunnableConfig | None = None
+    ) -> dict[str, Any] | None:
         """
         在 Agent 执行前异步加载任务元数据。
         """
-        return JobsStateUpdate(jobs_metadata=await load_jobs_metadata(self.sources))
+        return {"jobs_metadata": await load_jobs_metadata(self.sources)}
 
     async def awrap_model_call(
         self,

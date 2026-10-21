@@ -224,7 +224,7 @@ def test_legacy_facades_record_public_and_private_hits() -> None:
     assert MoviePilotServerHelper._has_header({}, "X-Test") is False
     assert inspect.iscoroutinefunction(MoviePilotServerHelper.async_subscribe_done)
     assert str(inspect.signature(MoviePilotServerHelper.async_subscribe_done)) == (
-        "(payload: Dict[str, Any])"
+        "(payload: Dict[str, Any]) -> httpx2.Response | None"
     )
 
     hits = [

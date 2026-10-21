@@ -175,7 +175,8 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                     f"files={len(files) if files else 0}"
                 )
                 return IncomingMessage(channel=NotificationChannel.SynologyChat, source=client_config.name,
-                                       userid=user_id, username=user_name,
+                                       userid=user_id,
+                                       username=str(user_name) if user_name is not None else None,
                                        is_channel_admin=matches_channel_admin(
                                            NotificationChannel.SynologyChat,
                                            client_config.config,

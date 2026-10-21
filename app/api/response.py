@@ -184,7 +184,8 @@ class ResponseAPIRoute(APIRoute):
             force_raw=force_raw,
         )
         if should_wrap:
-            kwargs["response_model"] = Response.__class_getitem__(response_model)
+            # Pydantic 同时接受运行时类型别名；其类型声明只列出了 type。
+            kwargs["response_model"] = Response.__class_getitem__(cast(type[Any], response_model))
             endpoint = self._wrap_endpoint(endpoint)
 
         kwargs["responses"] = self._merge_error_responses(

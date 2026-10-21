@@ -18,6 +18,7 @@ from app.application.messaging.site import SiteInteractionHandler
 from app.application.rss import RssHelper
 from app.application.security.cookie import CookieHelper
 from app.application.site.contract import (
+    SiteCookieLoginSource,
     SiteMutation,
     SiteRepository,
     SiteSnapshot,
@@ -312,7 +313,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "TNodeSpider": self.__zhuque_test,
         }
 
-    def refresh_userdata(self, site: dict = None) -> Optional[SiteUserData]:
+    def refresh_userdata(self, site: Optional[dict[str, Any]] = None) -> Optional[SiteUserData]:
         """
         刷新站点的用户数据
 
@@ -344,7 +345,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 ))
         return userdata
 
-    def _post_site_messages(self, site: dict, userdata: SiteUserData) -> None:
+    def _post_site_messages(self, site: dict[str, Any], userdata: SiteUserData) -> None:
         """
         发送站点未读消息，并按解析器提供的来源标识做持久化去重。
 
@@ -386,7 +387,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         :param progress_callback: 定时服务进度更新回调
         """
         any_site_updated = False
-        result = {}
+        result: dict[str, SiteUserData] = {}
         sites = [site for site in SitesHelper().get_indexers() if site.get("is_active")]
         total_num = len(sites)
         if progress_callback:
@@ -411,7 +412,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
             userdata = self.refresh_userdata(site)
             if userdata and userdata.userid:
                 any_site_updated = True
-                result[site.get("name")] = userdata
+                site_name = str(site.get("name") or site.get("domain") or "")
+                if site_name:
+                    result[site_name] = userdata
             if progress_callback:
                 progress_callback(
                     value=index / total_num * 100 if total_num else 100,
@@ -839,7 +842,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             self,
             domain: str,
             cookie: str,
-            indexer: Optional[dict],
+            indexer: Optional[dict[str, Any]],
             site_info: Optional[SiteSnapshot],
             repository: SiteRepository,
             rsshelper: RssHelper,
@@ -913,19 +916,22 @@ class SiteChain(InteractionChainMixin, ChainBase):
         )
 
     @staticmethod
-    def _cookiecloud_indexer_domain(indexer: dict, sub_domain: str) -> str:
+    def _cookiecloud_indexer_domain(indexer: dict[str, Any], sub_domain: str) -> str:
         """
         根据索引器主域名和扩展域名解析实际访问地址。
         """
-        if site_rules.extract_domain(indexer.get("domain")) == sub_domain:
-            return indexer.get("domain")
-        for ext_domain in indexer.get("ext_domains", []):
-            if site_rules.extract_domain(ext_domain) == sub_domain:
-                return ext_domain
+        indexer_domain = indexer.get("domain")
+        if isinstance(indexer_domain, str) and site_rules.extract_domain(indexer_domain) == sub_domain:
+            return indexer_domain
+        ext_domains = indexer.get("ext_domains")
+        if isinstance(ext_domains, list):
+            for ext_domain in ext_domains:
+                if isinstance(ext_domain, str) and site_rules.extract_domain(ext_domain) == sub_domain:
+                    return ext_domain
         return sub_domain
 
     def _cookiecloud_connect(
-        self, domain_url: str, cookie: str, indexer: dict
+        self, domain_url: str, cookie: str, indexer: dict[str, Any]
     ) -> Tuple[bool, Optional[_SiteConnectionResponse]]:
         """
         连接新站点，必要时通过已配置代理重试。
@@ -972,7 +978,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         if not event:
             return
-        event_data = event.event_data or {}
+        event_data = event.event_data if isinstance(event.event_data, dict) else {}
         domain = event_data.get("domain")
         if not domain:
             return
@@ -1017,7 +1023,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         if not event:
             return
-        event_data = event.event_data or {}
+        event_data = event.event_data if isinstance(event.event_data, dict) else {}
         domain = event_data.get("domain")
         if not domain:
             return
@@ -1041,7 +1047,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         if not event:
             return
-        event_data = event.event_data or {}
+        event_data = event.event_data if isinstance(event.event_data, dict) else {}
         domain = event_data.get("domain")
         if not domain:
             return
@@ -1216,7 +1222,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             repository.update(site_id, SiteMutation({"is_active": True}))
         self.remote_list(channel=channel, userid=userid, source=source)
 
-    def update_cookie(self, site_info: SiteSnapshot,
+    def update_cookie(self, site_info: SiteCookieLoginSource,
                       username: str, password: str, two_step_code: Optional[str] = None) -> Tuple[bool, str]:
         """
         根据用户名密码更新站点Cookie
@@ -1227,8 +1233,12 @@ class SiteChain(InteractionChainMixin, ChainBase):
         :param two_step_code: 二步验证码或密钥
         :return: (是否成功, 错误信息)
         """
+        site_id = site_info.id
+        site_url = site_info.url
+        if site_id is None or not site_url:
+            return False, "站点配置不完整"
         result = CookieHelper().get_site_cookie_ua(
-            url=site_info.url,
+            url=site_url,
             username=username,
             password=password,
             two_step_code=two_step_code,
@@ -1239,7 +1249,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             cookie, ua, msg = result
             if not cookie:
                 return False, msg
-            self.site_repository.update(site_info.id, SiteMutation({
+            self.site_repository.update(site_id, SiteMutation({
                 "cookie": cookie,
                 "ua": ua
             }))

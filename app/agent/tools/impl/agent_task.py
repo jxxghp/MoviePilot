@@ -19,8 +19,7 @@ AgentTaskAction = Literal["create", "list", "update", "run", "delete"]
 AgentTaskTriggerType = Literal["date", "cron"]
 
 
-# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
-class AgentTaskInput(BaseModel):  # type: ignore[misc]
+class AgentTaskInput(BaseModel):
     """
     统一管理 Agent 自主定时任务的输入参数。
     """
@@ -68,7 +67,7 @@ class AgentTaskInput(BaseModel):  # type: ignore[misc]
     )
 
     # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def validate_action(self) -> "AgentTaskInput":
         """
         按动作校验必填字段和触发参数组合。
@@ -132,7 +131,7 @@ class AgentTaskInput(BaseModel):  # type: ignore[misc]
             normalized_type, normalized_trigger = TimerUtils.normalize_schedule_trigger(
                 trigger_type=self.trigger_type,
                 # 前置分支已拒绝缺失触发值，延迟任务也已提前返回。
-                trigger_value=self.trigger,  # type: ignore[arg-type]
+                trigger_value=cast(str, self.trigger),
                 timezone_name=get_runtime_setting("TZ"),
                 require_future=True,
             )

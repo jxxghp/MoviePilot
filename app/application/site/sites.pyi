@@ -4,7 +4,7 @@
 实现由发布资源提供，此文件供宿主静态检查使用。
 """
 
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 class SitesHelper:
     """
@@ -44,37 +44,37 @@ class SitesHelper:
         """
         ...
 
-    def get_indexers(self) -> List[dict]:
+    def get_indexers(self) -> List[dict[str, Any]]:
         """
         返回全部可用站点索引配置。
         """
         ...
 
-    async def async_get_indexers(self) -> List[dict]:
+    async def async_get_indexers(self) -> List[dict[str, Any]]:
         """
         异步返回全部可用站点索引配置。
         """
         ...
 
-    def get_indexer(self, domain: str) -> Optional[dict]:
+    def get_indexer(self, domain: str) -> Optional[dict[str, Any]]:
         """
         按域名返回单个站点索引配置。
         """
         ...
 
-    async def async_get_indexer(self, domain: str) -> Optional[dict]:
+    async def async_get_indexer(self, domain: str) -> Optional[dict[str, Any]]:
         """
         异步按域名返回单个站点索引配置。
         """
         ...
 
-    def get_authsites(self) -> dict:
+    def get_authsites(self) -> dict[str, Any]:
         """
         返回认证站点配置。
         """
         ...
 
-    def get_indexsites(self) -> dict:
+    def get_indexsites(self) -> dict[str, Any]:
         """
         返回内置站点索引配置。
         """
@@ -83,7 +83,7 @@ class SitesHelper:
     def check_user(
         self,
         site: Optional[str] = None,
-        params: Optional[dict] = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> Tuple[bool, str]:
         """
         校验用户站点认证信息并返回状态与消息。

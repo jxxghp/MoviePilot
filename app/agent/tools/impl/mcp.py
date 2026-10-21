@@ -66,7 +66,7 @@ class McpExternalTool(MoviePilotTool):
         """
         return f"调用 MCP 工具: {self._spec.server.name}/{self._spec.name}"
 
-    async def run(self, **kwargs: object) -> str:
+    async def run(self, **kwargs: object) -> str:  # type: ignore[override]
         """
         调用外部 MCP 工具。
 

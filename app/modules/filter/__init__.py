@@ -5,7 +5,7 @@
 import re
 from copy import deepcopy
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from app.adapters.system import rust as rust_accel
 from app.application.rules import BUILTIN_RULE_SET, RuleHelper, RuleParser
@@ -84,9 +84,9 @@ class FilterModule(_ModuleBase):
     }
 
     # 保留一份只读内置规则定义，方便查询工具准确区分“内置规则”和“自定义规则”。
-    builtin_rule_set: Dict[str, dict] = deepcopy(BUILTIN_RULE_SET)
+    builtin_rule_set: Dict[str, dict[str, Any]] = deepcopy(BUILTIN_RULE_SET)
     # 运行期规则集 = 内置规则 + 自定义规则覆盖。
-    rule_set: Dict[str, dict] = {}
+    rule_set: Dict[str, dict[str, Any]] = {}
 
     def __init__(self) -> None:
         """
@@ -110,7 +110,8 @@ class FilterModule(_ModuleBase):
         custom_rules = self.rulehelper.get_custom_rules()
         for rule in custom_rules:
             logger.info(f"加载自定义规则 {rule.id} - {rule.name}")
-            self.rule_set[rule.id] = rule.model_dump()
+            if rule.id:
+                self.rule_set[rule.id] = rule.model_dump()
 
     @staticmethod
     def get_name() -> str:
@@ -150,7 +151,7 @@ class FilterModule(_ModuleBase):
         """
         保留模块自检入口；过滤器不依赖外部服务，无需执行探测。
         """
-        pass
+        return None
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
@@ -176,7 +177,10 @@ class FilterModule(_ModuleBase):
             return torrent_list
         groups = self.rulehelper.get_rule_group_by_media(media=mediainfo, group_names=rule_groups)
         if groups:
-            group_defs = [group.model_dump() if hasattr(group, "model_dump") else vars(group) for group in groups]
+            group_defs: list[dict[str, Any]] = [
+                group.model_dump() if hasattr(group, "model_dump") else vars(group)
+                for group in groups
+            ]
             matched_orders = rust_accel.filter_torrents(
                 groups=group_defs,
                 torrent_list=torrent_list,
@@ -190,10 +194,10 @@ class FilterModule(_ModuleBase):
                     torrent_list=torrent_list,
                     mediainfo=mediainfo
                 )
-            matched_orders, traces = self.__parse_rust_filter_result(matched_orders)
+            parsed_orders, traces = self.__parse_rust_filter_result(matched_orders)
             self.__log_rust_filter_traces(traces)
-            ret_torrents = []
-            for index, pri_order in matched_orders:
+            ret_torrents: list[TorrentInfo] = []
+            for index, pri_order in parsed_orders:
                 torrent = torrent_list[index]
                 torrent.pri_order = pri_order
                 ret_torrents.append(torrent)
@@ -201,7 +205,9 @@ class FilterModule(_ModuleBase):
         return torrent_list
 
     @staticmethod
-    def __parse_rust_filter_result(result) -> Tuple[list, list]:
+    def __parse_rust_filter_result(
+            result: object,
+    ) -> Tuple[list[tuple[int, int]], list[Any]]:
         """
         兼容新旧 Rust 过滤返回值，统一拆出匹配结果和调试日志。
         """
@@ -210,18 +216,32 @@ class FilterModule(_ModuleBase):
                 and len(result) == 2
                 and isinstance(result[1], list)
         ):
-            return result
-        return result, []
+            orders, traces = result
+            parsed_orders = [
+                (int(item[0]), int(item[1]))
+                for item in orders
+                if isinstance(item, (tuple, list)) and len(item) == 2
+            ]
+            parsed_traces = list(traces)
+            return parsed_orders, parsed_traces
+        if isinstance(result, list):
+            parsed_orders = [
+                (int(item[0]), int(item[1]))
+                for item in result
+                if isinstance(item, (tuple, list)) and len(item) == 2
+            ]
+            return parsed_orders, []
+        return [], []
 
     @staticmethod
-    def __log_rust_filter_traces(traces: list) -> None:
+    def __log_rust_filter_traces(traces: list[Any]) -> None:
         """
         输出 Rust 过滤路径返回的规则级调试日志。
         """
         for trace in traces:
             logger.debug(trace)
 
-    def __filter_torrents_with_python(self, groups: List[dict],
+    def __filter_torrents_with_python(self, groups: List[dict[str, Any]],
                                       torrent_list: List[TorrentInfo],
                                       mediainfo: Optional[MediaInfo] = None) -> List[TorrentInfo]:
         """
@@ -248,7 +268,7 @@ class FilterModule(_ModuleBase):
                 break
         return ret_torrents
 
-    def __needs_metainfo_options(self, groups: List[dict]) -> bool:
+    def __needs_metainfo_options(self, groups: List[dict[str, Any]]) -> bool:
         """
         判断当前规则链是否会触发 size_range，避免无大小规则时读取 MetaInfo 运行配置。
         """
@@ -264,7 +284,7 @@ class FilterModule(_ModuleBase):
                           torrent_list: List[TorrentInfo],
                           mediainfo: Optional[MediaInfo],
                           parser: RuleParser,
-                          parsed_rule_cache: Dict[str, Union[list, str]]) -> List[TorrentInfo]:
+                          parsed_rule_cache: Dict[str, Any]) -> List[TorrentInfo]:
         """
         筛选命中任一优先级层级的种子，并保留输入顺序。
 
@@ -286,7 +306,7 @@ class FilterModule(_ModuleBase):
 
     def __get_order(self, torrent: TorrentInfo, rule_groups: List[str],
                     mediainfo: Optional[MediaInfo], parser: RuleParser,
-                    parsed_rule_cache: Dict[str, Union[list, str]]) -> Optional[TorrentInfo]:
+                    parsed_rule_cache: Dict[str, Any]) -> Optional[TorrentInfo]:
         """
         按层级顺序匹配种子，在原对象上记录首个命中的优先级。
 
@@ -310,7 +330,7 @@ class FilterModule(_ModuleBase):
 
     @staticmethod
     def __parse_rule_group(rule_group: str, parser: RuleParser,
-                           parsed_rule_cache: Dict[str, Union[list, str]]) -> Union[list, str]:
+                           parsed_rule_cache: Dict[str, Any]) -> Any:
         """
         解析单个优先级层级，并将结果写入调用方缓存。
 
@@ -320,7 +340,7 @@ class FilterModule(_ModuleBase):
             parsed_rule_cache[rule_group] = parser.parse(rule_group).as_list()[0]
         return parsed_rule_cache[rule_group]
 
-    def __match_group(self, torrent: TorrentInfo, rule_group: Union[list, str],
+    def __match_group(self, torrent: TorrentInfo, rule_group: Any,
                       mediainfo: Optional[MediaInfo]) -> Optional[bool]:
         """
         递归计算规则项以及 not、and、or 组成的布尔表达式。
@@ -329,7 +349,9 @@ class FilterModule(_ModuleBase):
         """
         if not isinstance(rule_group, list):
             return self.__match_rule(torrent, rule_group, mediainfo)
-        elif isinstance(rule_group, list) and len(rule_group) == 1:
+        if not rule_group:
+            return False
+        if len(rule_group) == 1:
             return self.__match_group(torrent, rule_group[0], mediainfo)
         elif rule_group[0] == "not":
             return not self.__match_group(torrent, rule_group[1:], mediainfo)
@@ -359,7 +381,7 @@ class FilterModule(_ModuleBase):
             logger.debug(f"种子 {torrent.site_name} - {torrent.title} 符合 {rule_name} 的TMDB规则，匹配成功")
             return True
         content = f"{torrent.title} {torrent.description} {' '.join(torrent.labels or [])}"
-        match_content = []
+        match_content: list[str] = []
         matchs = rule.get("match") or []
         if matchs:
             for match in matchs:
@@ -369,9 +391,9 @@ class FilterModule(_ModuleBase):
                 if not match_value:
                     continue
                 if isinstance(match_value, list):
-                    match_content.extend(match_value)
+                    match_content.extend(str(value) for value in match_value)
                 else:
-                    match_content.append(match_value)
+                    match_content.append(str(match_value))
         if match_content:
             content = " ".join(match_content)
         includes = rule.get("include") or []
@@ -383,7 +405,7 @@ class FilterModule(_ModuleBase):
         size_range = rule.get("size_range")
         seeders = rule.get("seeders")
         downloadvolumefactor = rule.get("downloadvolumefactor")
-        pubdate: str = rule.get("publish_time")
+        pubdate = cast(str, rule.get("publish_time") or "")
         if includes and not any(_regex_search(include, content) for include in includes):
             logger.debug(f"种子 {torrent.site_name} - {torrent.title} 不包含任何项 {includes}")
             return False
@@ -422,7 +444,7 @@ class FilterModule(_ModuleBase):
         return True
 
     @staticmethod
-    def __match_tmdb(tmdb: dict, mediainfo: Optional[MediaInfo]) -> bool:
+    def __match_tmdb(tmdb: dict[str, Any], mediainfo: Optional[MediaInfo]) -> bool:
         """
         检查媒体属性是否满足规则中的全部非空 TMDB 条件。
 
@@ -431,7 +453,10 @@ class FilterModule(_ModuleBase):
         :return: 每个条件与对应媒体属性至少有一个值相交时返回 True；没有媒体信息时返回 False
         """
 
-        def __get_media_value(key: str):
+        def __get_media_value(key: str) -> Any:
+            """
+            读取过滤表达式需要的媒体属性，并沿用无效属性的回退行为。
+            """
             try:
                 return getattr(mediainfo, key)
             except ValueError:
@@ -473,17 +498,17 @@ class FilterModule(_ModuleBase):
         """
         if not size_range:
             return True
-        meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+        meta = MetaInfo(title=torrent.title or "", subtitle=torrent.description)
         episode_count = meta.total_episode or 1
         torrent_size = torrent.size / episode_count
         size_rule, size_min, size_max = _parse_size_range(size_range)
         if size_rule == "between":
-            if size_min <= torrent_size <= size_max:
+            if size_max is not None and size_min <= torrent_size <= size_max:
                 return True
         elif size_rule == "gte":
             if torrent_size >= size_min:
                 return True
         elif size_rule == "lte":
-            if torrent_size <= size_max:
+            if size_max is not None and torrent_size <= size_max:
                 return True
         return False

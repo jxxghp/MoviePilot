@@ -7,8 +7,7 @@ import re
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class InitializationStatus(BaseModel):  # type: ignore[misc]
+class InitializationStatus(BaseModel):
     """
     描述 MoviePilot 的首次初始化状态。
 
@@ -19,8 +18,7 @@ class InitializationStatus(BaseModel):  # type: ignore[misc]
     configured_username: str | None = Field(default=None, description="部署配置指定的管理员名，未指定时为空")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class InitializationRequest(BaseModel):  # type: ignore[misc]
+class InitializationRequest(BaseModel):
     """
     首次初始化超级管理员、密码和 API Key 所需的提交数据。
     """
@@ -30,8 +28,7 @@ class InitializationRequest(BaseModel):  # type: ignore[misc]
     confirm_password: str = Field(min_length=6, max_length=50, description="再次输入的管理员密码，必须与 password 完全一致")
     api_key: str = Field(min_length=16, max_length=256, description="接口访问密钥，长度为 16 至 256 个字符")
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @field_validator("username", "api_key")  # type: ignore[misc]
+    @field_validator("username", "api_key")
     @classmethod
     def strip_text(cls, value: str) -> str:
         """
@@ -39,8 +36,7 @@ class InitializationRequest(BaseModel):  # type: ignore[misc]
         """
         return value.strip()
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @field_validator("password", "confirm_password")  # type: ignore[misc]
+    @field_validator("password", "confirm_password")
     @classmethod
     def validate_password_shape(cls, value: str) -> str:
         """
@@ -50,8 +46,7 @@ class InitializationRequest(BaseModel):  # type: ignore[misc]
             raise ValueError("密码需要同时包含字母、数字、特殊字符中的至少两项，且长度为 6-50 位")
         return value
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def passwords_match(self) -> "InitializationRequest":
         """
         确保两次输入的密码完全一致。

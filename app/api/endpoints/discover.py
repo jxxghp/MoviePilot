@@ -38,8 +38,8 @@ def source(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageP
     event_data = DiscoverSourceEventData()
     event = eventmanager.send_event(ChainEventType.DiscoverSource, event_data)
     # 使用事件返回的上下文数据
-    if event and event.event_data:
-        event_data: DiscoverSourceEventData = event.event_data
+    if event and isinstance(event.event_data, DiscoverSourceEventData):
+        event_data = event.event_data
         if event_data.extra_sources:
             return event_data.extra_sources
     return []
@@ -59,7 +59,7 @@ async def bangumi(
     探索Bangumi
     """
     medias = await BangumiChain().async_discover(
-        type=type, cat=cat, sort=sort, year=year, limit=count, offset=(page - 1) * count
+        type=type, cat=cat, sort=sort, year=year, limit=count, offset=((page or 1) - 1) * (count if count is not None else 30)
     )
     if medias:
         return [media.to_dict() for media in medias]
@@ -80,7 +80,7 @@ async def douban_movies(
     浏览豆瓣电影信息
     """
     movies = await DoubanChain().async_douban_discover(
-        mtype=MediaType.MOVIE, sort=sort, tags=tags, page=page, count=count
+        mtype=MediaType.MOVIE, sort=sort or "R", tags=tags or "", page=page, count=count
     )
     return [media.to_dict() for media in movies] if movies else []
 
@@ -99,7 +99,7 @@ async def douban_tvs(
     浏览豆瓣剧集信息
     """
     tvs = await DoubanChain().async_douban_discover(
-        mtype=MediaType.TV, sort=sort, tags=tags, page=page, count=count
+        mtype=MediaType.TV, sort=sort or "R", tags=tags or "", page=page, count=count
     )
     return [media.to_dict() for media in tvs] if tvs else []
 
@@ -124,14 +124,14 @@ async def tmdb_movies(
     """
     movies = await TmdbChain().async_tmdb_discover(
         mtype=MediaType.MOVIE,
-        sort_by=sort_by,
-        with_genres=with_genres,
-        with_original_language=with_original_language,
-        with_keywords=with_keywords,
-        with_watch_providers=with_watch_providers,
-        vote_average=vote_average,
-        vote_count=vote_count,
-        release_date=release_date,
+        sort_by=sort_by or "popularity.desc",
+        with_genres=with_genres or "",
+        with_original_language=with_original_language or "",
+        with_keywords=with_keywords or "",
+        with_watch_providers=with_watch_providers or "",
+        vote_average=vote_average or 0.0,
+        vote_count=vote_count or 0,
+        release_date=release_date or "",
         page=page,
     )
     return [movie.to_dict() for movie in movies] if movies else []
@@ -155,14 +155,14 @@ async def tmdb_tvs(
     """
     tvs = await TmdbChain().async_tmdb_discover(
         mtype=MediaType.TV,
-        sort_by=sort_by,
-        with_genres=with_genres,
-        with_original_language=with_original_language,
-        with_keywords=with_keywords,
-        with_watch_providers=with_watch_providers,
-        vote_average=vote_average,
-        vote_count=vote_count,
-        release_date=release_date,
+        sort_by=sort_by or "popularity.desc",
+        with_genres=with_genres or "",
+        with_original_language=with_original_language or "",
+        with_keywords=with_keywords or "",
+        with_watch_providers=with_watch_providers or "",
+        vote_average=vote_average or 0.0,
+        vote_count=vote_count or 0,
+        release_date=release_date or "",
         page=page,
     )
     return [tv.to_dict() for tv in tvs] if tvs else []

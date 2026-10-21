@@ -6,7 +6,7 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.messages import AIMessage, ToolMessage
@@ -19,7 +19,7 @@ from app.agent.tools.impl.execute_code import ExecuteCodeTool
 from app.agent.tools.result import inspect_tool_result
 
 
-class CodeExecutionMiddleware(AgentMiddleware):  # type: ignore[misc]
+class CodeExecutionMiddleware(AgentMiddleware):
     """
     外层绑定执行窗口；内层调用保留策略、Skill、日志和原始结果归档行为。
     """
@@ -93,7 +93,7 @@ class CodeExecutionMiddleware(AgentMiddleware):  # type: ignore[misc]
         return payload
 
 
-class CodeCaptureMiddleware(AgentMiddleware):  # type: ignore[misc]
+class CodeCaptureMiddleware(AgentMiddleware):
     """
     筛选后、压缩前生成真实 helper 合同，新增说明必须计入最终请求预算。
     """
@@ -124,7 +124,7 @@ class CodeCaptureMiddleware(AgentMiddleware):  # type: ignore[misc]
         result = await handler(request)
         if scope is None or not any(type(tool) is ExecuteCodeTool for tool in request.tools):
             return result
-        selections = {call['id']: tools for message in result.result if isinstance(message, AIMessage)
+        selections = {cast(str, call['id']): tools for message in result.result if isinstance(message, AIMessage)
                       for call in message.tool_calls if call['name'] == 'execute_code'}
         if selections:
             self.execution.selections[scope] = selections

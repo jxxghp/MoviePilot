@@ -3,7 +3,7 @@
 """
 
 import json
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -47,7 +47,7 @@ class RecognizeCaptchaInput(BaseModel):
     )
 
     # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def require_image_source(self) -> "RecognizeCaptchaInput":
         """
         确保验证码工具至少收到图片地址或原始图片字节。
@@ -88,7 +88,7 @@ class RecognizeCaptchaTool(MoviePilotTool):
         description="工具输入参数的验证模型或 JSON Schema",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据验证码图片参数生成友好的提示消息。
         """
@@ -178,7 +178,7 @@ class RecognizeCaptchaTool(MoviePilotTool):
             ensure_ascii=False,
         )
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         image_url: Optional[str] = None,
         cookie: Optional[str] = None,

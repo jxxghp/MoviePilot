@@ -8,6 +8,8 @@ DNS 查询与套接字连接，并在用例结束时检查是否发生了被业�
 from __future__ import annotations
 
 import ipaddress
+from collections.abc import Iterator
+from typing import Any, NoReturn
 
 import pytest
 
@@ -16,7 +18,7 @@ _ALLOWED_NETWORK_HOSTS = {"127.0.0.1", "::1", "localhost", "0.0.0.0", "::", ""}
 
 
 @pytest.fixture(autouse=True)
-def block_real_network(monkeypatch):
+def block_real_network(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """
     拦截测试中的非本地主机访问，并在用例结束时复核违规尝试。
 
@@ -30,9 +32,9 @@ def block_real_network(monkeypatch):
 
     _real_getaddrinfo = socket.getaddrinfo
     _real_connect = socket.socket.connect
-    attempts = []
+    attempts: list[tuple[str, object]] = []
 
-    def _is_allowed_host(host) -> bool:
+    def _is_allowed_host(host: object) -> bool:
         """
         判断主机参数是否属于无需外部出站的本地地址。
 
@@ -48,7 +50,7 @@ def block_real_network(monkeypatch):
         except ValueError:
             return False
 
-    def _blocked(operation: str, host):
+    def _blocked(operation: str, host: object) -> NoReturn:
         """
         记录违规访问并立即抛出异常，使收尾也能发现被吞掉的尝试。
 
@@ -61,7 +63,7 @@ def block_real_network(monkeypatch):
             f"测试禁止真实出站网络：尝试通过 {operation} 访问 {host!r}；请 mock 对应外部依赖"
         )
 
-    def _guarded_getaddrinfo(host, *args, **kwargs):
+    def _guarded_getaddrinfo(host: Any, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
         """
         先检查主机范围，再委托原 DNS 解析函数。
 
@@ -74,7 +76,7 @@ def block_real_network(monkeypatch):
             _blocked("DNS", host)
         return _real_getaddrinfo(host, *args, **kwargs)
 
-    def _guarded_connect(sock, address):
+    def _guarded_connect(sock: socket.socket, address: Any) -> None:
         """
         检查网络地址元组中的主机，允许本地套接字继续连接。
 

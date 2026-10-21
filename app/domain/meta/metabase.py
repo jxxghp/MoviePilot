@@ -105,7 +105,7 @@ class MetaInfoSnapshot:
     cn_name: Optional[str]
     en_name: Optional[str]
     original_name: Optional[str]
-    year: Optional[str]
+    year: Optional[Union[str, int]]
     total_season: int
     begin_season: Optional[int]
     end_season: Optional[int]
@@ -213,14 +213,14 @@ class MetaBase(object):
     :ivar fps: 帧率信息（纯数值）
     """
     isfile: bool = False
-    title: str = ""
+    title: Optional[str] = ""
     org_string: Optional[str] = None
     subtitle: Optional[str] = None
     type: MediaType = MediaType.UNKNOWN
     cn_name: Optional[str] = None
     en_name: Optional[str] = None
     original_name: Optional[str] = None
-    year: Optional[str] = None
+    year: Optional[Union[str, int]] = None
     total_season: int = 0
     begin_season: Optional[int] = None
     end_season: Optional[int] = None
@@ -369,10 +369,10 @@ class MetaBase(object):
             # 第x-x集 第x集-x集
             episode_between_str = SUBTITLE_EPISODE_BETWEEN_RE.search(title_text)
             if episode_between_str:
-                episodes = episode_between_str.groups()
-                if episodes:
-                    begin_episode = episodes[0]
-                    end_episode = episodes[1]
+                episode_range = episode_between_str.groups()
+                if episode_range:
+                    begin_episode = episode_range[0]
+                    end_episode = episode_range[1]
                 else:
                     return
                 try:
@@ -408,10 +408,10 @@ class MetaBase(object):
                 try:
                     end_episode = None
                     if episodes.find('-') != -1:
-                        episodes = episodes.split('-')
-                        begin_episode = int(cn2an.cn2an(episodes[0].strip(), mode='smart'))
-                        if len(episodes) > 1:
-                            end_episode = int(cn2an.cn2an(episodes[1].strip(), mode='smart'))
+                        episode_parts = episodes.split('-')
+                        begin_episode = int(cn2an.cn2an(episode_parts[0].strip(), mode='smart'))
+                        if len(episode_parts) > 1:
+                            end_episode = int(cn2an.cn2an(episode_parts[1].strip(), mode='smart'))
                     else:
                         begin_episode = int(cn2an.cn2an(episodes, mode='smart'))
                 except Exception as err:
@@ -480,7 +480,7 @@ class MetaBase(object):
             self._subtitle_flag = True
 
     @property
-    def season(self) -> str:
+    def season(self) -> Optional[str]:
         """
         返回开始季、结束季字符串，确定是剧集没有季的返回S01。
         """
@@ -502,7 +502,7 @@ class MetaBase(object):
         返回开始季字符串，确定是剧集没有季的返回空。
         """
         if self.begin_season is not None:
-            return self.season
+            return self.season or ""
         else:
             return ""
 
@@ -535,7 +535,7 @@ class MetaBase(object):
             return [self.begin_season]
 
     @property
-    def episode(self) -> str:
+    def episode(self) -> Optional[str]:
         """
         返回开始集、结束集字符串。
         """
@@ -688,24 +688,18 @@ class MetaBase(object):
         :param season: 单季或季列表；未标季数的资源按第 1 季处理
         :return: 全部指定季均在识别范围内时为 True
         """
+        begin_season = self.begin_season if self.begin_season is not None else 1
         if isinstance(season, list):
             if self.end_season is not None:
-                meta_season = list(range(self.begin_season, self.end_season + 1))
+                meta_season = list(range(begin_season, self.end_season + 1))
             else:
-                if self.begin_season is not None:
-                    meta_season = [self.begin_season]
-                else:
-                    meta_season = [1]
+                meta_season = [begin_season]
 
             return set(meta_season).issuperset(set(season))
         else:
             if self.end_season is not None:
-                return self.begin_season <= int(season) <= self.end_season
-            else:
-                if self.begin_season is not None:
-                    return int(season) == self.begin_season
-                else:
-                    return int(season) == 1
+                return begin_season <= int(season) <= self.end_season
+            return int(season) == begin_season
 
     def is_in_episode(self, episode: Union[list[Union[int, str]], int, str]) -> bool:
         """
@@ -714,17 +708,19 @@ class MetaBase(object):
         :param episode: 单集或集列表
         :return: 全部指定集均在识别范围内时为 True
         """
+        begin_episode = self.begin_episode
+        if begin_episode is None:
+            return isinstance(episode, list) and not episode
         if isinstance(episode, list):
             if self.end_episode is not None:
-                meta_episode = list(range(self.begin_episode, self.end_episode + 1))
+                meta_episode = list(range(begin_episode, self.end_episode + 1))
             else:
-                meta_episode = [self.begin_episode]
+                meta_episode = [begin_episode]
             return set(meta_episode).issuperset(set(episode))
         else:
             if self.end_episode is not None:
-                return self.begin_episode <= int(episode) <= self.end_episode
-            else:
-                return int(episode) == self.begin_episode
+                return begin_episode <= int(episode) <= self.end_episode
+            return int(episode) == begin_episode
 
     def set_season(self, sea: Union[list[Union[int, str]], int, str]) -> None:
         """

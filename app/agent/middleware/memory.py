@@ -7,7 +7,7 @@ import re
 from collections.abc import Awaitable, Callable
 from functools import partial
 from pathlib import Path
-from typing import Annotated, Any, Literal, NotRequired, Optional, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, Optional, TypedDict, cast
 
 import anyio
 from anyio import Path as AsyncPath
@@ -79,7 +79,7 @@ class MemoryStateUpdate(TypedDict):
     memory_empty: bool
 
 
-class SearchMemoryInput(BaseModel):  # type: ignore[misc]
+class SearchMemoryInput(BaseModel):
     """
     只检索稳定偏好与主题知识，不再提供活动摘要分类。
     """
@@ -451,9 +451,9 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
     async def abefore_agent(  # noqa
         self,
         state: MemoryState,
-        runtime: Runtime,  # noqa
-        config: RunnableConfig,
-    ) -> MemoryStateUpdate | None:
+        runtime: Runtime[ContextT],  # noqa
+        config: RunnableConfig | None = None,
+    ) -> dict[str, Any] | None:
         """
         在代理执行前仅加载公共与当前用户的主记忆。
         """
@@ -466,14 +466,14 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
             logger.info("Loaded primary memory from: %s", self.default_memory_file)
         if is_empty:
             logger.info("Primary memory is empty; onboarding prompt will be activated.")
-        return MemoryStateUpdate(memory_contents=contents, memory_empty=is_empty)
+        return {"memory_contents": contents, "memory_empty": is_empty}
 
     def modify_request(self, request: ModelRequest[ContextT]) -> ModelRequest[ContextT]:
         """
         把主记忆和按需检索规则注入系统消息。
         """
-        contents = request.state.get("memory_contents", {})  # noqa
-        memory_empty = request.state.get("memory_empty", False)  # noqa
+        contents = cast(MemoryState, request.state).get("memory_contents", {})  # noqa
+        memory_empty = cast(MemoryState, request.state).get("memory_empty", False)  # noqa
         memory_prompt = self._format_agent_memory(contents, memory_empty=memory_empty)
         return request.override(
             system_message=append_to_system_message(request.system_message, memory_prompt)

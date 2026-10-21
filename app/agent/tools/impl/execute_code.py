@@ -15,8 +15,7 @@ from app.agent.tools.tags import ToolTag
 from app.runtime.settings import get_runtime_setting
 
 
-# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
-class ExecuteCodeInput(BaseModel):  # type: ignore[misc]
+class ExecuteCodeInput(BaseModel):
     """
     代码与显式重置状态；身份、工具集合和预算由宿主提供，不由模型选择。
     """
@@ -88,7 +87,7 @@ class ExecuteCodeTool(MoviePilotTool):
         """
         return None
 
-    async def run(self, **kwargs: Any) -> str:
+    async def run(self, **kwargs: Any) -> str:  # type: ignore[override]
         """
         只有真实宿主工具链绑定的当前 cell 可执行，直接外部调用不能获得默认身份。
         """

@@ -145,7 +145,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_librarys(
-                username=username, hidden=hidden, **({"query": query} if query is not None else {})
+                username=username, hidden=hidden, **MediaServerQueryOptions.as_kwargs(query)
             )
         return None
 
@@ -171,7 +171,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         server_obj = self.get_instance(server)
         if server_obj:
             return server_obj.get_items(
-                library_id, start_index, limit, **({"query": query} if query is not None else {})
+                library_id, start_index, limit, **MediaServerQueryOptions.as_kwargs(query)
             )
         return None
 
@@ -201,7 +201,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         """
         server_obj = self.get_instance(server)
         if server_obj:
-            return server_obj.get_iteminfo(item_id, **({"query": query} if query is not None else {}))
+            return server_obj.get_iteminfo(item_id, **MediaServerQueryOptions.as_kwargs(query))
         return None
 
     def mediaserver_tv_episodes(
@@ -218,7 +218,10 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        _, seasoninfo = server_obj.get_tv_episodes(item_id=item_id, **({"query": query} if query is not None else {}))
+        _, seasoninfo = server_obj.get_tv_episodes(
+            item_id=str(item_id) if item_id is not None else None,
+            **MediaServerQueryOptions.as_kwargs(query),
+        )
         if not seasoninfo:
             return []
         return [
@@ -245,7 +248,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_resume(num=count, username=username, **({"query": query} if query is not None else {}))
+        return server_obj.get_resume(num=count, username=username, **MediaServerQueryOptions.as_kwargs(query))
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
@@ -258,7 +261,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_play_url(item_id)
+        return server_obj.get_play_url(str(item_id))
 
     def mediaserver_season_episode_ids(
         self, server: str, item_id: Union[str, int], season: int, *, query: Optional[MediaServerQueryOptions] = None
@@ -276,7 +279,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         if not server_obj:
             return None
         return server_obj.get_season_episode_ids(
-            str(item_id), season, **({"query": query} if query is not None else {})
+            str(item_id), season, **MediaServerQueryOptions.as_kwargs(query)
         )
 
     def mediaserver_latest(
@@ -299,7 +302,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         server_obj = self.get_instance(server)
         if not server_obj:
             return None
-        return server_obj.get_latest(num=count, username=username, **({"query": query} if query is not None else {}))
+        return server_obj.get_latest(num=count, username=username, **MediaServerQueryOptions.as_kwargs(query))
 
     def mediaserver_latest_images(
         self,
@@ -329,7 +332,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         links = []
         items = (
             self.mediaserver_latest(
-                server=server, count=count, username=username, **({"query": query} if query is not None else {})
+                server=server, count=count, username=username, **MediaServerQueryOptions.as_kwargs(query)
             )
             or []
         )
@@ -338,7 +341,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
                 continue
             if item.BackdropImageTags:
                 image_url = server_obj.get_backdrop_url(
-                    item_id=item.id, image_tag=item.BackdropImageTags[0], remote=remote
+                    item_id=str(item.id), image_tag=item.BackdropImageTags[0], remote=remote
                 )
                 if image_url:
                     links.append(image_url)

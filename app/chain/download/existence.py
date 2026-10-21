@@ -55,7 +55,7 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
             exists_movies = self._media_exists_with_server_cache(
                 mediainfo=cast(MediaInfo, mediainfo),
                 query={
-                    "mtype": mediainfo.type.value,
+                    "mtype": (mediainfo.type.value if mediainfo.type else ""),
                     "title": mediainfo.title,
                     "year": mediainfo.year,
                     "media_source": media_source,
@@ -71,7 +71,7 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
             exists_music = self._media_exists_with_server_cache(
                 mediainfo=cast(MediaInfo, mediainfo),
                 query={
-                    "mtype": mediainfo.type.value,
+                    "mtype": (mediainfo.type.value if mediainfo.type else ""),
                     "title": mediainfo.title,
                     "year": mediainfo.year,
                 },
@@ -100,7 +100,7 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
             exists_tvs = self._media_exists_with_server_cache(
                 mediainfo=mediainfo,
                 query={
-                    "mtype": mediainfo.type.value,
+                    "mtype": (mediainfo.type.value if mediainfo.type else ""),
                     "title": mediainfo.title,
                     "year": mediainfo.year,
                     "media_source": media_source,

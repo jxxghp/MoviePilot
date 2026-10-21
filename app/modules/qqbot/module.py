@@ -104,7 +104,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         """
         return 10
 
-    def _commands_enabled(self, config: Optional[dict]) -> bool:
+    def _commands_enabled(self, config: Optional[dict[str, Any]]) -> bool:
         """
         QQ 机器人客户端未提供命令注册/删除 API，跳过命令注册，。
         避免基类默认钩子调用不存在的 client.register_commands。
@@ -117,11 +117,11 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         """
         return self._stop_service_instances()
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         保留设置初始化钩子，实例配置由通知服务管理。
         """
-        pass
+        return None
 
     @staticmethod
     def _send_admin_denied(
@@ -150,7 +150,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         client_config = self.get_config(source)
         if not client_config:
             return None
-        client: QQBot = self.get_instance(client_config.name)
+        client = self.get_instance(client_config.name)
         try:
             if isinstance(body, bytes):
                 msg_body = json.loads(body)
@@ -235,7 +235,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
 
     @classmethod
     def _extract_images(
-        cls, msg_body: dict
+        cls, msg_body: dict[str, Any]
     ) -> Optional[List[IncomingMessage.MessageImage]]:
         """
         提取 QQ 图片附件与兼容图片字段，按引用去重。
@@ -300,7 +300,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         return deduped or None
 
     @classmethod
-    def _extract_audio_refs(cls, msg_body: dict) -> Optional[List[str]]:
+    def _extract_audio_refs(cls, msg_body: dict[str, Any]) -> Optional[List[str]]:
         """
         提取音频附件，并生成可回读的 QQ 文件引用。
         """
@@ -334,7 +334,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
 
     @classmethod
     def _extract_files(
-        cls, msg_body: dict
+        cls, msg_body: dict[str, Any]
     ) -> Optional[List[IncomingMessage.MessageAttachment]]:
         """
         提取图片和音频以外的文件附件，保留文件元数据。
@@ -389,11 +389,11 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
             return None
         file_url = unquote(file_ref.replace("qq://file/", "", 1))
         resp = RequestUtils(timeout=30).get_res(file_url)
-        if resp and resp.content:
+        if resp and isinstance(resp.content, bytes) and resp.content:
             return resp.content
         return None
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: Any) -> None:
         """
         按通知路由发送 QQ 消息，并保留原正文作为权限不足时的回退。
         """
@@ -409,14 +409,14 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
                     if userid:
                         userid = f"group:{userid}"
             # 无 userid 且无默认配置时，由 client 向曾发过消息的用户/群广播
-            client: QQBot = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_msg(
-                    title=message.title,
+                    title=message.title or "",
                     text=message.text,
                     image=message.image,
                     link=message.link,
-                    userid=userid,
+                    userid=str(userid) if userid is not None else None,
                     targets=targets,
                     formatted_texts=message.channel_text_chunks(NotificationChannel.QQ),
                 )
@@ -436,11 +436,11 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
                     g = targets.get("qq_group_openid") or targets.get("qq_group")
                     if g:
                         userid = f"group:{g}"
-            client: QQBot = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(
                     medias=medias,
-                    userid=userid,
+                    userid=str(userid) if userid is not None else None,
                     title=message.title,
                     link=message.link,
                     targets=targets,
@@ -463,11 +463,11 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
                     g = targets.get("qq_group_openid") or targets.get("qq_group")
                     if g:
                         userid = f"group:{g}"
-            client: QQBot = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(
                     torrents=torrents,
-                    userid=userid,
+                    userid=str(userid) if userid is not None else None,
                     title=message.title,
                     link=message.link,
                     targets=targets,

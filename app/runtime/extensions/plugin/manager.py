@@ -343,7 +343,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                 return {pid: PluginRuntimeStatus.LOAD_FAILED}
             return {}
 
-    def init_plugin(self, plugin_id: str, conf: dict) -> None:
+    def init_plugin(self, plugin_id: str, conf: Dict[str, Any]) -> None:
         """
         初始化插件。
 
@@ -623,7 +623,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def _get_federated_plugin_change(
         self,
         event_path: Path,
-    ) -> Optional[Tuple[str, Optional[dict], bool]]:
+    ) -> Optional[Tuple[str, Optional[Dict[str, Any]], bool]]:
         """
         识别运行态 Vue 插件声明目录内的构建产物变化。
 
@@ -640,13 +640,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_paths.runtime_plugin(event_path)
 
-    def _get_local_plugin_candidate_from_path(self, event_path: Path) -> Optional[dict]:
+    def _get_local_plugin_candidate_from_path(self, event_path: Path) -> Optional[Dict[str, Any]]:
         """
         根据本地插件仓库路径解析具体插件候选，保留 plugins/plugins.v2 来源差异。
         """
         return self._plugin_paths.local_candidate(event_path)
 
-    def _sync_local_plugin_if_installed(self, pid: str, candidate: Optional[dict] = None) -> bool:
+    def _sync_local_plugin_if_installed(self, pid: str, candidate: Optional[Dict[str, Any]] = None) -> bool:
         """
         已安装本地插件源码变化时，同步到运行目录。
         """
@@ -877,7 +877,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_registry.settling
 
-    def get_plugin_config(self, pid: str) -> dict:
+    def get_plugin_config(self, pid: str) -> Dict[str, Any]:
         """
         获取插件配置。
 
@@ -984,7 +984,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_instance_store.get(instance_id) is not None
 
-    def save_plugin_config(self, pid: str, conf: dict, force: bool = False) -> bool:
+    def save_plugin_config(self, pid: str, conf: Dict[str, Any], force: bool = False) -> bool:
         """
         保存插件配置。
 
@@ -1000,7 +1000,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return False
 
     async def async_save_plugin_config(
-        self, pid: str, conf: dict, force: bool = False
+        self, pid: str, conf: Dict[str, Any], force: bool = False
     ) -> bool:
         """
         异步保存插件配置。
@@ -1099,7 +1099,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_projection().services(pid)
 
-    def get_plugin_modules(self, pid: Optional[str] = None) -> Dict[tuple, Dict[str, Any]]:
+    def get_plugin_modules(self, pid: Optional[str] = None) -> Dict[tuple[str, str], Dict[str, Any]]:
         """
         收集插件对模块方法的实现。
 
@@ -1357,7 +1357,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             base_version_plugins,
         )
 
-    def _process_plugin_info(self, pid: str, plugin_info: dict, market: str,
+    def _process_plugin_info(self, pid: str, plugin_info: Dict[str, Any], market: str,
                              installed_apps: List[str], add_time: int,
                              package_version: Optional[str] = None) -> Optional[_SchemaPlugin]:
         """
@@ -1435,7 +1435,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def __set_and_check_auth_level(
         self,
         plugin: Union[_SchemaPlugin, Type[Any]],
-        source: Optional[Union[dict, Type[Any]]] = None,
+        source: Optional[Union[Dict[str, Any], Type[Any]]] = None,
     ) -> bool:
         """
         设置并检查插件的认证级别。

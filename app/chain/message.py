@@ -10,10 +10,11 @@ import threading
 import uuid
 from collections.abc import Mapping
 from concurrent.futures import CancelledError as FutureCancelledError
+from concurrent.futures import Future
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union, cast
 from urllib.parse import unquote, urlparse
 
 from app.application.agent import (
@@ -146,7 +147,7 @@ class MessageChain(ChainBase):
     _ai_prefix = "/ai"
     _no_ai_prefix = "/noai"
     # 用户会话信息 {userid: (session_id, last_time)}
-    _user_sessions: Dict[Union[str, int], tuple] = {}
+    _user_sessions: Dict[Union[str, int], tuple[str, datetime]] = {}
     # 会话超时时间（分钟）
     _session_timeout_minutes: int = 24 * 60
 
@@ -242,8 +243,11 @@ class MessageChain(ChainBase):
         if not info:
             logger.info("消息链路未识别到有效消息: source=%s", source)
             return
-        source = info.source
+        source = str(info.source or source or "")
         channel = info.channel
+        if channel is None:
+            logger.warning("消息缺少有效通知渠道：source=%s", source)
+            return
         userid = info.userid
         # 用户名（当渠道未提供公开用户名时，回退为 userid 的字符串，避免后续类型校验异常）
         username = (
@@ -306,6 +310,7 @@ class MessageChain(ChainBase):
         """
         识别消息内容，执行操作
         """
+        text = text or ""
         images = IncomingMessage.MessageImage.normalize_list(images)
 
         # 兼容归一化：结构化回调优先，CALLBACK: 文本前缀作为旧渠道和插件直接调用的兼容入口
@@ -509,6 +514,7 @@ class MessageChain(ChainBase):
         """
         执行实际消息路由，便于统一包裹处理中状态。
         """
+        text = text or ""
 
         context = InteractionContext(
             channel=channel,
@@ -793,6 +799,9 @@ class MessageChain(ChainBase):
         ]
 
         def _dispatch_agent_choice(callback_data: str, context: InteractionContext) -> InteractionDispatch:
+            """
+            将已解析的选择回调交给当前 Agent，并返回是否处理的结果。
+            """
             handled = self._handle_agent_choice_callback(
                 callback_data=callback_data,
                 context=context,
@@ -801,6 +810,9 @@ class MessageChain(ChainBase):
             return InteractionDispatch(handled=handled, defer_processing_finish=handled)
 
         def _dispatch_plugin_callback(callback_data: str, context: InteractionContext) -> InteractionDispatch:
+            """
+            校验插件回调格式后派发交互，不接收无法识别的载荷。
+            """
             parsed = PluginInputInteractionHandler.parse_callback(callback_data)
             if not parsed:
                 return InteractionDispatch(handled=False)
@@ -946,7 +958,7 @@ class MessageChain(ChainBase):
         selected_text = option.value
         self._update_interaction_message_feedback(
             channel=context.channel,
-            source=context.source,
+            source=context.source or "",
             original_message_id=context.original_message_id,
             original_chat_id=context.original_chat_id,
             title=request.title,
@@ -957,9 +969,9 @@ class MessageChain(ChainBase):
         return self._handle_ai_message(
             text=selected_text,
             channel=context.channel,
-            source=context.source,
+            source=context.source or "",
             userid=context.user_id,
-            username=context.username,
+            username=context.username or str(context.user_id),
             is_channel_admin=context.is_channel_admin,
             session_id=request.session_id,
         )
@@ -1068,7 +1080,7 @@ class MessageChain(ChainBase):
             channel: NotificationChannel,
             userid: Union[str, int],
             source: Optional[str] = None,
-    ):
+    ) -> None:
         """
         清除用户会话（远程命令接口）
         """
@@ -1105,7 +1117,7 @@ class MessageChain(ChainBase):
             channel: NotificationChannel,
             userid: Union[str, int],
             source: Optional[str] = None,
-    ):
+    ) -> None:
         """
         应急停止当前正在执行的Agent推理（远程命令接口）。
         与 /clear_session 不同，此命令不会清除会话和记忆，
@@ -1162,10 +1174,16 @@ class MessageChain(ChainBase):
 
     @staticmethod
     def _format_token_count(value: Optional[int]) -> str:
+        """
+        格式化 token 数量，未报告的用量显示为未知。
+        """
         return f"{value:,}" if value is not None else "未知"
 
     @classmethod
     def _format_session_status_text(cls, status: Dict[str, Any]) -> str:
+        """
+        把会话上下文、模型调用和用量统计转换为用户可读状态。
+        """
         context_window_tokens = status.get("context_window_tokens")
         last_input_tokens = status.get("last_input_tokens")
         if context_window_tokens and status.get("model_call_count"):
@@ -1281,7 +1299,7 @@ class MessageChain(ChainBase):
             channel: NotificationChannel,
             userid: Union[str, int],
             source: Optional[str] = None,
-    ):
+    ) -> None:
         """
         查询当前用户的智能体会话状态。
         """
@@ -1395,15 +1413,16 @@ class MessageChain(ChainBase):
 
             # 将可直接输入给 LLM 的附件统一转换为 data URL
             original_images = images
+            image_data_urls: Optional[list[str]] = None
             all_files = list(files or [])
             if images and supports_image_input(
                     provider=self.runtime_config.llm_provider,
                     model=self.runtime_config.llm_model,
             ):
-                images = self._download_attachments_to_data_urls(
+                image_data_urls = self._download_attachments_to_data_urls(
                     images, channel, source
                 )
-                if original_images and not images and not user_message and not files:
+                if original_images and not image_data_urls and not user_message and not files:
                     self.post_message(
                         Message(
                             channel=channel,
@@ -1443,7 +1462,7 @@ class MessageChain(ChainBase):
                 channel=channel,
                 source=source,
             )
-            if all_files and not prepared_files and not user_message and not images:
+            if all_files and not prepared_files and not user_message and not image_data_urls:
                 self.post_message(
                     Message(
                         channel=channel,
@@ -1460,7 +1479,7 @@ class MessageChain(ChainBase):
                 "session_id": session_id,
                 "user_id": str(userid),
                 "message": user_message,
-                "images": images,
+                "images": image_data_urls,
                 "files": prepared_files,
                 "channel": channel.value if channel else None,
                 "source": source,
@@ -1479,7 +1498,10 @@ class MessageChain(ChainBase):
                 main_loop_registry.require(),
             )
 
-            def _report_agent_submission_failure(completed) -> None:
+            def _report_agent_submission_failure(completed: Future[Any]) -> None:
+                """
+                消费跨线程消息提交结果并反馈排队或服务错误。
+                """
                 try:
                     completed.result()
                 except BaseException as error:
@@ -1681,7 +1703,7 @@ class MessageChain(ChainBase):
         normalized_attachments = IncomingMessage.MessageImage.normalize_list(attachments) or []
         if not normalized_attachments:
             return None
-        data_urls = []
+        data_urls: list[str] = []
         for attachment in normalized_attachments:
             attachment_ref = attachment.ref
             try:
@@ -1774,7 +1796,7 @@ class MessageChain(ChainBase):
         """
         将图片引用转换为附件描述，以便按文件方式交给 Agent 处理。
         """
-        images = IncomingMessage.MessageImage.normalize_list(images)
+        images = IncomingMessage.MessageImage.normalize_list(images) or []
         if not images:
             return []
 
@@ -1801,7 +1823,7 @@ class MessageChain(ChainBase):
             files: Optional[List[IncomingMessage.MessageAttachment]],
             channel: NotificationChannel,
             source: str,
-    ) -> Optional[List[dict]]:
+    ) -> Optional[List[dict[str, Any]]]:
         """
         下载用户上传的附件，落盘到临时目录，并生成 Agent 可消费的文件描述。
         """
@@ -1858,22 +1880,22 @@ class MessageChain(ChainBase):
             return self._decode_data_url_bytes(file_ref)
         if file_ref.startswith("tg://file_id/"):
             file_id = file_ref.replace("tg://file_id/", "", 1)
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_telegram_file_bytes", file_id=file_id, source=source
-            )
+            ))
         if file_ref.startswith("tg://document_file_id/"):
             file_id = file_ref.replace("tg://document_file_id/", "", 1)
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_telegram_file_bytes", file_id=file_id, source=source
-            )
+            ))
         if file_ref.startswith("wxwork://media_id/"):
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_wechat_media_bytes", media_ref=file_ref, source=source
-            )
+            ))
         if file_ref.startswith("wxwork://file_media_id/"):
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_wechat_media_bytes", media_ref=file_ref, source=source
-            )
+            ))
         if file_ref.startswith("wxbot://image/"):
             data_url = self.run_module(
                 "download_wechat_image_to_data_url", image_ref=file_ref, source=source
@@ -1889,33 +1911,33 @@ class MessageChain(ChainBase):
             content, _ = _read_message_http(file_url)
             return content
         if file_ref.startswith("wxclaw://file/") or file_ref.startswith("wxclaw://voice/"):
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_wechat_media_bytes", media_ref=file_ref, source=source
-            )
+            ))
         if file_ref.startswith("feishu://file/"):
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_feishu_file_bytes", file_ref=file_ref, source=source
-            )
+            ))
         if file_ref.startswith("slack://file/"):
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_slack_file_bytes", file_ref=file_ref, source=source
-            )
+            ))
         if file_ref.startswith("discord://file/"):
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_discord_file_bytes", file_ref=file_ref, source=source
-            )
+            ))
         if file_ref.startswith("qq://file/"):
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_qq_file_bytes", file_ref=file_ref, source=source
-            )
+            ))
         if file_ref.startswith("vocechat://file/"):
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_vocechat_file_bytes", file_ref=file_ref, source=source
-            )
+            ))
         if file_ref.startswith("synology://file/"):
-            return self.run_module(
+            return cast(Optional[bytes], self.run_module(
                 "download_synologychat_file_bytes", file_ref=file_ref, source=source
-            )
+            ))
         if file_ref.startswith("http"):
             if channel == NotificationChannel.Slack:
                 data_url = self.run_module(

@@ -19,12 +19,8 @@ import time
 import urllib.parse
 import uuid
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
-
-try:
-    import fcntl
-except ImportError:
-    fcntl = None
+from types import ModuleType
+from typing import List, Optional, Sequence, Tuple, Union
 
 import psutil
 
@@ -42,6 +38,13 @@ from app.runtime.version import get_app_version
 from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
 from app.schemas.dashboard import ProcessInfo as _SchemaProcessInfo
+
+try:
+    import fcntl as _fcntl
+except ImportError:
+    fcntl: Optional[ModuleType] = None
+else:
+    fcntl = _fcntl
 
 # Linux amd64/arm64 的用户空间接口定义：_IOR(BTRFS_IOCTL_MAGIC, 31, struct btrfs_ioctl_fs_info_args)
 _BTRFS_IOC_FS_INFO = 0x8400941F
@@ -75,6 +78,9 @@ class SystemUtils:
         脱敏 URL 中的 userinfo，避免命令输出泄露镜像源或代理凭据。
         """
         def replace(match: re.Match[str]) -> str:
+            """
+            把文本中的链接规范化为消息入口可识别的形式，并保留链接后的标点。
+            """
             candidate = match.group(1)
             trailing = ""
             while candidate and candidate[-1] in ".,;:)":
@@ -104,7 +110,7 @@ class SystemUtils:
 
     @staticmethod
     def execute_with_subprocess(
-            command: list,
+            command: list[str],
             env: Optional[dict[str, str]] = None,
             safe_command: Optional[list[str]] = None,
             timeout: Optional[float] = 300,
@@ -319,7 +325,7 @@ class SystemUtils:
 
     @staticmethod
     async def execute_with_subprocess_async(
-            command: list,
+            command: list[str],
             env: Optional[dict[str, str]] = None,
             safe_command: Optional[list[str]] = None,
             timeout: Optional[float] = 300,
@@ -617,7 +623,7 @@ class SystemUtils:
         return -1, f"当前操作系统 ({sys.platform}) 不支持引用链接 (reflink)"
 
     @staticmethod
-    def list_files(directory: Path, extensions: list = None,
+    def list_files(directory: Path, extensions: Optional[Sequence[str]] = None,
                    min_filesize: int = 0, recursive: bool = True) -> List[Path]:
         """
         获取目录下所有指定扩展名的文件（包括子目录）
@@ -645,7 +651,10 @@ class SystemUtils:
         else:
             pattern = re.compile(r".*")
 
-        def _scan_directory(dir_path: Path, is_recursive: bool):
+        def _scan_directory(dir_path: Path, is_recursive: bool) -> None:
+            """
+            扫描当前目录并将满足扩展名和大小要求的文件追加到结果列表。
+            """
             try:
                 with os.scandir(dir_path) as entries:
                     for entry in entries:
@@ -744,7 +753,7 @@ class SystemUtils:
         raise RuntimeError(f"RAR 压缩包解压失败：{'；'.join(errors)}")
 
     @staticmethod
-    def exits_files(directory: Path, extensions: list, min_filesize: int = 0, recursive: bool = True) -> bool:
+    def exits_files(directory: Path, extensions: Sequence[str], min_filesize: int = 0, recursive: bool = True) -> bool:
         """
         判断目录下是否存在指定扩展名的文件
 
@@ -773,6 +782,9 @@ class SystemUtils:
             return True
 
         def _search_files(dir_path: Path, is_recursive: bool) -> bool:
+            """
+            扫描目录中的有效文件，按调用方要求递归并隔离不可访问的目录。
+            """
             try:
                 with os.scandir(dir_path) as entries:
                     for entry in entries:
@@ -795,7 +807,7 @@ class SystemUtils:
         return _search_files(directory, recursive)
 
     @staticmethod
-    def list_sub_files(directory: Path, extensions: list) -> List[Path]:
+    def list_sub_files(directory: Path, extensions: Sequence[str]) -> List[Path]:
         """
         列出当前目录下的所有指定扩展名的文件(不包括子目录)
         """
@@ -872,16 +884,16 @@ class SystemUtils:
         """
         计算目录的大小
 
-        参数:
-            directory_path (Path): 目录路径
-
-        返回:
-            int: 目录的大小（以字节为单位）
+        :param path: 待统计的文件或目录
+        :return: 总字节数；不存在或无法读取时按可统计部分返回
         """
         if not path or not path.exists():
             return 0
 
-        def _calc_dir_size(dir_path):
+        def _calc_dir_size(dir_path: Union[Path, str]) -> int:
+            """
+            递归统计目录内可读取文件的字节数。
+            """
             total = 0
             try:
                 with os.scandir(dir_path) as entries:
@@ -948,10 +960,11 @@ class SystemUtils:
             and (SystemUtils.is_x86_64() or SystemUtils.is_aarch64())
         if not use_btrfs_fsid:
             # 默认分支保留原有行为，不打开目录或调用 ioctl。
-            disk_set = set()
+            disk_set: set[Union[str, int]] = set()
             total_free_space = 0.0
             total_space = 0.0
             for dir_path in dir_list:
+                disk: Union[str, int]
                 if not dir_path:
                     continue
                 if not dir_path.exists():
@@ -969,7 +982,7 @@ class SystemUtils:
         total_free_space = 0.0
         total_space = 0.0
         # 先按 st_dev 恢复原有去重语义，再用组内唯一可信的 FSID 合并 Btrfs 子卷。
-        disk_groups = {}
+        disk_groups: dict[int, tuple[Path, set[bytes]]] = {}
         for dir_path in dir_list:
             if not dir_path or not dir_path.exists():
                 continue
@@ -980,13 +993,13 @@ class SystemUtils:
             if btrfs_fsid:
                 disk_groups[st_dev][1].add(btrfs_fsid)
 
-        disk_set = set()
+        grouped_disks: set[Union[tuple[str, bytes], tuple[str, int]]] = set()
         for st_dev, (dir_path, fsids) in disk_groups.items():
             # 同一 st_dev 出现冲突 FSID 可能是挂载变化导致的不一致快照，
             # 此时禁止跨 st_dev 合并，避免少计独立存储。
-            disk = ("btrfs_fsid", next(iter(fsids))) if len(fsids) == 1 else ("st_dev", st_dev)
-            if disk not in disk_set:
-                disk_set.add(disk)
+            disk_key = ("btrfs_fsid", next(iter(fsids))) if len(fsids) == 1 else ("st_dev", st_dev)
+            if disk_key not in grouped_disks:
+                grouped_disks.add(disk_key)
                 total_space += SystemUtils.total_space(dir_path)
                 total_free_space += SystemUtils.free_space(dir_path)
         return total_space, total_free_space
@@ -998,7 +1011,7 @@ class SystemUtils:
         """
         if not os.path.exists(path):
             return 0.0
-        return psutil.disk_usage(str(path)).free
+        return float(psutil.disk_usage(str(path)).free)
 
     @staticmethod
     def total_space(path: Path) -> float:
@@ -1007,7 +1020,7 @@ class SystemUtils:
         """
         if not os.path.exists(path):
             return 0.0
-        return psutil.disk_usage(str(path)).total
+        return float(psutil.disk_usage(str(path)).total)
 
     @staticmethod
     def processes() -> List[_SchemaProcessInfo]:
@@ -1019,8 +1032,8 @@ class SystemUtils:
             try:
                 if proc.status() != psutil.STATUS_ZOMBIE:
                     runtime = datetime.datetime.now() - datetime.datetime.fromtimestamp(
-                        int(getattr(proc, 'create_time', 0)()))
-                    mem_info = getattr(proc, 'memory_info', None)()
+                        int(proc.create_time()))
+                    mem_info = proc.memory_info()
                     if mem_info is not None:
                         mem_mb = round(mem_info.rss / (1024 * 1024), 1)
                         processes.append(_SchemaProcessInfo(
@@ -1092,11 +1105,11 @@ class SystemUtils:
         return vols
 
     @staticmethod
-    def cpu_usage():
+    def cpu_usage() -> float:
         """
         获取CPU使用率
         """
-        return psutil.cpu_percent()
+        return float(psutil.cpu_percent())
 
     @staticmethod
     def memory_usage() -> _SchemaDashboardMemoryInfo:
@@ -1251,7 +1264,7 @@ class SystemUtils:
         return SystemUtils.get_config_path() / "app.env"
 
     @staticmethod
-    def clear(temp_path: Path, days: int):
+    def clear(temp_path: Path, days: int) -> None:
         """
         清理指定目录中指定天数前的文件，递归删除子文件及空文件夹
         """
@@ -1270,7 +1283,7 @@ class SystemUtils:
                 folder.rmdir()
 
     @staticmethod
-    def generate_user_unique_id():
+    def generate_user_unique_id() -> Optional[str]:
         """
         根据优先级依次尝试生成稳定唯一ID：
         1. 文件系统唯一标识符。
@@ -1278,7 +1291,7 @@ class SystemUtils:
         3. 主机名。
         """
 
-        def get_filesystem_unique_id():
+        def get_filesystem_unique_id() -> Optional[str]:
             """
             获取文件系统的唯一标识符。
             使用根目录的设备号和 inode。
@@ -1291,7 +1304,7 @@ class SystemUtils:
                 print(str(e))
                 return None
 
-        def get_mac_address_id():
+        def get_mac_address_id() -> Optional[str]:
             """
             获取设备的 MAC 地址并生成唯一标识符。
             """

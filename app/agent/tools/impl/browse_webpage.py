@@ -7,7 +7,7 @@ import binascii
 import json
 from enum import Enum
 from io import BytesIO
-from typing import Any, Optional, Type, Union
+from typing import Any, Optional, Type, Union, cast
 
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -249,7 +249,7 @@ class BrowseWebpageTool(MoviePilotTool):
             "success": False, "execution_outcome": "failed", "action": "screenshot", "error": code, "message": message,
         })
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据操作类型生成友好的提示消息
         """
@@ -278,7 +278,7 @@ class BrowseWebpageTool(MoviePilotTool):
         }
         return action_messages.get(action, f"执行浏览器操作: {action}")
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         action: str,
         url: Optional[str] = None,
@@ -293,7 +293,7 @@ class BrowseWebpageTool(MoviePilotTool):
         session_key: Optional[str] = None,
         tab_index: Optional[int] = None,
         allow_private_network: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         执行浏览器操作
@@ -378,7 +378,7 @@ class BrowseWebpageTool(MoviePilotTool):
                 tab_index=tab_index,
                 allow_private_network=allow_private_network,
             )
-            return result
+            return cast(str, result)
 
         except Exception as e:
             error_summary = summarize_error(e)
@@ -448,7 +448,7 @@ class BrowseWebpageTool(MoviePilotTool):
                 },
             )
 
-            def _callback(session) -> str:
+            def _callback(session: Any) -> str:
                 """
                 在浏览器会话所属线程执行操作，不把页面对象带回 Agent 线程。
                 """
@@ -467,14 +467,14 @@ class BrowseWebpageTool(MoviePilotTool):
                     allow_private_network=allow_private_network,
                 )
 
-            return helper.with_session(
+            return cast(str, helper.with_session(
                 session_key=session_key,
                 callback=_callback,
                 user_agent=user_agent,
                 cookies=cookies,
                 timeout=timeout,
                 owner=owner,
-            )
+            ))
 
         except Exception as e:
             error_summary = summarize_error(e)
@@ -500,7 +500,7 @@ class BrowseWebpageTool(MoviePilotTool):
     def _do_action(
         self,
         helper: BrowserSessionHelper,
-        session,
+        session: Any,
         browser_action: BrowserAction,
         url: Optional[str],
         selector: Optional[str],
@@ -532,7 +532,7 @@ class BrowseWebpageTool(MoviePilotTool):
             return self._action_goto(
                 helper,
                 page,
-                url,
+                cast(str, url),
                 timeout,
                 allow_private_network=allow_private_network,
             )
@@ -559,59 +559,59 @@ class BrowseWebpageTool(MoviePilotTool):
             return self._action_get_cookies(session, page)
 
         elif browser_action == BrowserAction.CLICK:
-            result = self._action_click(page, selector, timeout)
+            result = self._action_click(page, cast(str, selector), timeout)
             validate_after_action()
             return result
 
         elif browser_action == BrowserAction.CLICK_REF:
             result = self._action_click(
                 page,
-                BrowserSessionHelper.ref_to_selector(ref),
+                BrowserSessionHelper.ref_to_selector(cast(str, ref)),
                 timeout,
-                ref=ref,
+                ref=cast(str, ref),
             )
             validate_after_action()
             return result
 
         elif browser_action == BrowserAction.FILL:
-            result = self._action_fill(page, selector, value, timeout)
+            result = self._action_fill(page, cast(str, selector), cast(str, value), timeout)
             validate_after_action()
             return result
 
         elif browser_action == BrowserAction.FILL_REF:
             result = self._action_fill(
                 page,
-                BrowserSessionHelper.ref_to_selector(ref),
-                value,
+                BrowserSessionHelper.ref_to_selector(cast(str, ref)),
+                cast(str, value),
                 timeout,
-                ref=ref,
+                ref=cast(str, ref),
             )
             validate_after_action()
             return result
 
         elif browser_action == BrowserAction.SELECT:
-            result = self._action_select(page, selector, value, timeout)
+            result = self._action_select(page, cast(str, selector), value, timeout)
             validate_after_action()
             return result
 
         elif browser_action == BrowserAction.SELECT_REF:
             result = self._action_select(
                 page,
-                BrowserSessionHelper.ref_to_selector(ref),
+                BrowserSessionHelper.ref_to_selector(cast(str, ref)),
                 value,
                 timeout,
-                ref=ref,
+                ref=cast(str, ref),
             )
             validate_after_action()
             return result
 
         elif browser_action == BrowserAction.EVALUATE:
-            result = self._action_evaluate(page, script)
+            result = self._action_evaluate(page, cast(str, script))
             validate_after_action()
             return result
 
         elif browser_action == BrowserAction.WAIT:
-            return self._action_wait(page, selector, timeout)
+            return self._action_wait(page, cast(str, selector), timeout)
 
         elif browser_action == BrowserAction.LIST_TABS:
             return self._json_response({"tabs": BrowserSessionHelper.list_tabs(session)})
@@ -619,7 +619,7 @@ class BrowseWebpageTool(MoviePilotTool):
         elif browser_action == BrowserAction.OPEN_TAB:
             page = helper.open_tab(
                 session,
-                url=url,
+                url=cast(str, url),
                 timeout=timeout,
                 allow_private_network=allow_private_network,
             )
@@ -636,7 +636,7 @@ class BrowseWebpageTool(MoviePilotTool):
             )
 
         elif browser_action == BrowserAction.FOCUS_TAB:
-            page = BrowserSessionHelper.focus_tab(session, tab_index)
+            page = BrowserSessionHelper.focus_tab(session, cast(int, tab_index))
             validate_after_action()
             return self._json_response(
                 {
@@ -651,7 +651,7 @@ class BrowseWebpageTool(MoviePilotTool):
             )
 
         elif browser_action == BrowserAction.CLOSE_TAB:
-            tabs = BrowserSessionHelper.close_tab(session, tab_index)
+            tabs = BrowserSessionHelper.close_tab(session, cast(int, tab_index))
             return self._json_response({"success": True, "tabs": tabs})
 
         return f"未知操作: {browser_action}"
@@ -681,7 +681,7 @@ class BrowseWebpageTool(MoviePilotTool):
     @staticmethod
     def _action_goto(
         helper: BrowserSessionHelper,
-        page,
+        page: Any,
         url: str,
         timeout: int,
         allow_private_network: bool,
@@ -705,7 +705,7 @@ class BrowseWebpageTool(MoviePilotTool):
         return BrowseWebpageTool._json_response(result)
 
     @staticmethod
-    def _action_get_content(page, content_type: Optional[str]) -> str:
+    def _action_get_content(page: Any, content_type: Optional[str]) -> str:
         """
         获取页面内容
         """
@@ -730,7 +730,7 @@ class BrowseWebpageTool(MoviePilotTool):
         return BrowseWebpageTool._json_response(result)
 
     @staticmethod
-    def _action_screenshot(page, selector: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT) -> str:
+    def _action_screenshot(page: Any, selector: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT) -> str:
         """
         截取当前视口或唯一元素，保留验证码会话并对两种截图应用相同大小上限。
         """
@@ -782,7 +782,7 @@ class BrowseWebpageTool(MoviePilotTool):
 
     @staticmethod
     def _action_click(
-        page,
+        page: Any,
         selector: str,
         timeout: int,
         ref: Optional[str] = None,
@@ -811,7 +811,7 @@ class BrowseWebpageTool(MoviePilotTool):
 
     @staticmethod
     def _action_fill(
-        page,
+        page: Any,
         selector: str,
         value: str,
         timeout: int,
@@ -835,7 +835,7 @@ class BrowseWebpageTool(MoviePilotTool):
 
     @staticmethod
     def _action_select(
-        page,
+        page: Any,
         selector: str,
         value: Optional[str],
         timeout: int,
@@ -861,7 +861,7 @@ class BrowseWebpageTool(MoviePilotTool):
         )
 
     @staticmethod
-    def _action_evaluate(page, script: str) -> str:
+    def _action_evaluate(page: Any, script: str) -> str:
         """
         执行 JavaScript
         """
@@ -887,7 +887,7 @@ class BrowseWebpageTool(MoviePilotTool):
         )
 
     @staticmethod
-    def _action_wait(page, selector: str, timeout: int) -> str:
+    def _action_wait(page: Any, selector: str, timeout: int) -> str:
         """
         等待元素出现
         """

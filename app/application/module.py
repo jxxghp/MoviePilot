@@ -75,9 +75,9 @@ class ModuleManager(metaclass=_ModuleRuntimeProxy):
     应用层兼容门面，实例调用返回组合根装配的模块管理器。
     """
 
-    def __new__(cls) -> ModuleRuntime:
+    def __new__(cls) -> Any:
         """
-        返回实际模块管理器，不复制运行态注册表。
+        返回组合根提供的对象，其具体类型由装配决定，兼容门面不持有运行态注册表。
         """
         return get_module_manager()
 

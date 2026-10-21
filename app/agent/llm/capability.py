@@ -75,16 +75,25 @@ class OpenAIAudioProvider(AudioCapabilityProvider):
 
     @staticmethod
     def _build_client(api_key: str, base_url: Optional[str]) -> OpenAI:
+        """
+        按当前语音服务凭据创建兼容 OpenAI 协议的客户端。
+        """
         from openai import OpenAI
 
         return OpenAI(api_key=api_key, base_url=base_url, max_retries=3)
 
     @staticmethod
     def _input_credentials() -> tuple[Optional[str], Optional[str]]:
+        """
+        读取语音输入服务的独立凭据和入口。
+        """
         return get_runtime_setting('AUDIO_INPUT_API_KEY'), get_runtime_setting('AUDIO_INPUT_BASE_URL')
 
     @staticmethod
     def _output_credentials() -> tuple[Optional[str], Optional[str]]:
+        """
+        读取语音输出服务的独立凭据和入口。
+        """
         return get_runtime_setting('AUDIO_OUTPUT_API_KEY'), get_runtime_setting('AUDIO_OUTPUT_BASE_URL')
 
     def is_available_for_audio_input(self) -> bool:
@@ -195,6 +204,9 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
     TRANSCODED_STT_SAMPLE_RATE = "16000"
 
     def _build_client(self, api_key: str, base_url: Optional[str]) -> OpenAI:
+        """
+        按当前语音服务凭据创建兼容 OpenAI 协议的客户端。
+        """
         from openai import OpenAI
 
         return OpenAI(
@@ -205,13 +217,22 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
 
     @staticmethod
     def _input_credentials() -> tuple[Optional[str], Optional[str]]:
+        """
+        读取语音输入服务的独立凭据和入口。
+        """
         return get_runtime_setting('AUDIO_INPUT_API_KEY'), get_runtime_setting('AUDIO_INPUT_BASE_URL')
 
     @staticmethod
     def _output_credentials() -> tuple[Optional[str], Optional[str]]:
+        """
+        读取语音输出服务的独立凭据和入口。
+        """
         return get_runtime_setting('AUDIO_OUTPUT_API_KEY'), get_runtime_setting('AUDIO_OUTPUT_BASE_URL')
 
     def _normalize_stt_model(self) -> str:
+        """
+        规范化语音识别模型配置，缺省时采用供应方默认模型。
+        """
         return self._normalize_model(
             model=get_runtime_setting('AUDIO_INPUT_MODEL'),
             supported_models=self.SUPPORTED_STT_MODELS,
@@ -219,6 +240,9 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
         )
 
     def _normalize_tts_model(self) -> str:
+        """
+        规范化语音合成模型配置，缺省时采用供应方默认模型。
+        """
         return self._normalize_model(
             model=get_runtime_setting('AUDIO_OUTPUT_MODEL'),
             supported_models=self.SUPPORTED_TTS_MODELS,
@@ -231,6 +255,9 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
         supported_models: Optional[frozenset[str]],
         default_model: Optional[str],
     ) -> str:
+        """
+        按供应方支持的模型集合规范化配置，并保留允许的自定义模型名称。
+        """
         model = (model or "").strip()
         if not model:
             return default_model or ""
@@ -242,6 +269,9 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
         return default_model or model
 
     def _is_supported_tts_model(self) -> bool:
+        """
+        确认当前语音合成模型属于该供应方可用的能力范围。
+        """
         model = self._normalize_tts_model()
         if not model:
             return False
@@ -252,6 +282,9 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
 
     @classmethod
     def _guess_audio_mime_type(cls, filename: str) -> str:
+        """
+        根据文件扩展名选择供应方支持的音频 MIME，未知后缀使用默认类型。
+        """
         suffix = Path(filename or "").suffix.lower()
         if suffix in cls.SUPPORTED_AUDIO_MIME_TYPES:
             return cls.SUPPORTED_AUDIO_MIME_TYPES[suffix]
@@ -260,6 +293,9 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
 
     @staticmethod
     def _guess_audio_format(filename: str) -> str:
+        """
+        把音频文件后缀转换为接口约定的格式名称。
+        """
         suffix = Path(filename or "").suffix.lower().lstrip(".")
         if suffix == "opus":
             return "ogg"
@@ -377,6 +413,9 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
 
     @staticmethod
     def _extract_audio_data(message: object) -> Optional[str]:
+        """
+        从供应方消息的字典或对象载荷中提取音频数据。
+        """
         audio = getattr(message, "audio", None)
         if isinstance(audio, dict):
             return audio.get("data")
@@ -384,8 +423,11 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
             return getattr(audio, "data", None)
 
         extra = getattr(message, "model_extra", None)
-        if isinstance(extra, dict) and isinstance(extra.get("audio"), dict):
-            return extra["audio"].get("data")
+        if isinstance(extra, dict):
+            audio_data = extra.get("audio")
+            if isinstance(audio_data, dict):
+                data = audio_data.get("data")
+                return data if isinstance(data, str) else None
         return None
 
     def _convert_wav_to_opus(self, wav_path: Path) -> Optional[Path]:
@@ -569,6 +611,9 @@ class MiMoAudioProvider(OpenAIChatAudioProvider):
     )
 
     def _normalize_tts_model(self) -> str:
+        """
+        规范化语音合成模型配置，缺省时采用供应方默认模型。
+        """
         model = (get_runtime_setting('AUDIO_OUTPUT_MODEL') or "").strip().lower()
         if not model or not model.startswith("mimo-"):
             return self.DEFAULT_TTS_MODEL
@@ -779,10 +824,16 @@ class AgentCapabilityManager:
 
     @staticmethod
     def _normalize_provider_name(provider: Optional[str]) -> str:
+        """
+        规范化供应方名称，未配置时使用 OpenAI。
+        """
         return (provider or "openai").strip().lower()
 
     @staticmethod
     def _get_provider_log_name(provider: AudioCapabilityProvider) -> str:
+        """
+        使用供应方公开名称生成日志标识，缺失时回退到类名。
+        """
         provider_name = getattr(provider, "name", None)
         return provider_name if isinstance(provider_name, str) else provider.__class__.__name__
 

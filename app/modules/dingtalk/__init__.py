@@ -112,6 +112,8 @@ class DingTalkModule(_MessageChannelModuleBase[DingTalk]):
         lines = []
         for index, context in enumerate(torrents, start=1):
             torrent = context.torrent_info
+            if torrent is None:
+                continue
             label = torrent.title
             if torrent.page_url:
                 label = f"[{label}]({torrent.page_url})"

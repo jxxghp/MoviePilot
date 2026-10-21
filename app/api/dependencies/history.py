@@ -2,6 +2,8 @@
 历史、媒体服务器与 Dashboard 查询依赖。
 """
 
+from typing import cast
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -9,13 +11,22 @@ from sqlalchemy.orm import Session
 from app.api.context import get_async_session, get_host_runtime, get_sync_session
 from app.application.dashboard import DashboardQueryService
 from app.application.history import (
+    AsyncDownloadHistoryQueryRepository,
     DownloadHistoryMutationCommand,
     HistoryQueryService,
     TransferHistoryLookupService,
     TransferHistoryMutationCommand,
 )
+from app.application.history.mutation import (
+    DownloadFileMutationRepository,
+    DownloadHistoryMutationRepository,
+    HistoryUnitOfWork,
+)
 from app.application.history.retry import clear_transfer_failures
-from app.application.mediaserver import MediaServerQueryService
+from app.application.mediaserver import (
+    AsyncMediaServerQueryRepository,
+    MediaServerQueryService,
+)
 from app.application.transfer.execution import TransferExecutionRepository
 from app.chain.storage import StorageChain
 from app.runtime.events import eventmanager
@@ -32,7 +43,10 @@ def get_mediaserver_query_service(
     组装媒体服务器本地条目异步查询服务。
     """
     return MediaServerQueryService(
-        repository=runtime.history.media_server_repository(db)
+        repository=cast(
+            AsyncMediaServerQueryRepository,
+            runtime.history.media_server_repository(db),
+        )
     )
 
 
@@ -58,8 +72,13 @@ def get_download_history_mutation_command(
     组装下载历史删除用例及其请求级事务。
     """
     return DownloadHistoryMutationCommand(
-        repository=runtime.history.download_repository(db),
-        unit_of_work=runtime.persistence.sync_transaction(db),
+        repository=cast(
+            DownloadHistoryMutationRepository,
+            runtime.history.download_repository(db),
+        ),
+        unit_of_work=cast(
+            HistoryUnitOfWork, runtime.persistence.sync_transaction(db)
+        ),
     )
 
 
@@ -71,7 +90,10 @@ def get_history_query_service(
     组装历史列表和详情异步查询服务。
     """
     return HistoryQueryService(
-        download_repository=runtime.history.download_repository(db),
+        download_repository=cast(
+            AsyncDownloadHistoryQueryRepository,
+            runtime.history.download_repository(db),
+        ),
         transfer_repository=runtime.history.transfer_repository,
     )
 
@@ -113,10 +135,15 @@ def get_transfer_history_mutation_command(
 
     return TransferHistoryMutationCommand(
         repository=runtime.history.transfer_mutation_repository(db),
-        download_repository=runtime.history.download_repository(db),
+        download_repository=cast(
+            DownloadFileMutationRepository,
+            runtime.history.download_repository(db),
+        ),
         transfer_execution_repository=runtime.history.transfer_execution_repository,
-        unit_of_work=runtime.persistence.sync_transaction(db),
-        file_item_factory=lambda payload: _SchemaFileItem(**payload),
+        unit_of_work=cast(
+            HistoryUnitOfWork, runtime.persistence.sync_transaction(db)
+        ),
+        file_item_factory=lambda payload: _SchemaFileItem.model_validate(payload),
         file_exists=storage_chain.exists,
         delete_media_file=storage_chain.delete_media_file,
         publish_download_file_deleted=publish_download_file_deleted,

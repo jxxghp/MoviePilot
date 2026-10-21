@@ -6,10 +6,10 @@ import ipaddress
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextvars import Context, copy_context
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol, cast
 from urllib.parse import urlparse
 
 from app.adapters.network.http import RequestUtils, cookie_parse
@@ -253,7 +253,7 @@ def launch_browser_context(headless: bool = True, **kwargs: Any) -> BrowserConte
         )
     from cloakbrowser import launch_context
 
-    return launch_context(headless=headless, **kwargs)
+    return cast(BrowserContext, launch_context(headless=headless, **kwargs))
 
 
 async def launch_browser_context_async(
@@ -423,15 +423,16 @@ class BrowserSessionHelper:
         if executor:
             context = copy_context()
             # 会话线程保持空底层上下文，每次操作只使用当前调用快照。
-            future = Context().run(
-                executor.submit,
-                context.run,
-                cls._run_session_task,
-                session_key,
-                cls._close_session_in_thread,
-                session_key,
-                owner=owner,
-            )
+            def close_in_context() -> bool:
+                """
+                在调用方上下文中关闭会话，保持会话线程底层上下文为空。
+                """
+                return bool(context.run(
+                    cls._run_session_task, session_key, cls._close_session_in_thread,
+                    session_key, owner=owner,
+                ))
+
+            future: Future[bool] = Context().run(executor.submit, close_in_context)
             try:
                 return future.result()
             finally:
@@ -557,16 +558,16 @@ class BrowserSessionHelper:
             try:
                 context = copy_context()
                 # 会话线程保持空底层上下文，每次操作只使用当前调用快照。
-                future = Context().run(
-                    executor.submit,
-                    context.run,
-                    cls._run_session_task,
-                    session_key,
-                    callback,
-                    *args,
-                    owner=owner,
-                    **kwargs,
-                )
+                def invoke_in_context() -> Any:
+                    """
+                    在当前调用方快照中执行会话操作，避免上下文在会话线程间泄漏。
+                    """
+                    return context.run(
+                        cls._run_session_task, session_key, callback,
+                        *args, owner=owner, **kwargs,
+                    )
+
+                future: Future[Any] = Context().run(executor.submit, invoke_in_context)
             except RuntimeError:
                 cls._discard_session_executor(session_key, executor)
                 continue
@@ -914,13 +915,12 @@ class BrowserSessionHelper:
         :return: 页面快照字典
         """
         text_content = cls._safe_inner_text(page, "body")
-        result = {
+        elements = cls._extract_interactive_elements(page, max_elements=max_elements)
+        result: dict[str, Any] = {
             "url": getattr(page, "url", ""),
             "title": cls._safe_page_title(page),
             "text_content": cls._truncate_text(text_content, max_text_chars),
-            "interactive_elements": cls._extract_interactive_elements(
-                page, max_elements=max_elements
-            ),
+            "interactive_elements": elements,
         }
         if status is not None:
             result["status"] = status
@@ -931,12 +931,12 @@ class BrowserSessionHelper:
                 "text": element.get("text"),
                 "href": element.get("href"),
             }
-            for element in result["interactive_elements"]
+            for element in elements
             if element.get("tag") == "a" and element.get("href")
         ][:30]
         forms = [
             element
-            for element in result["interactive_elements"]
+            for element in elements
             if element.get("tag") in {"input", "textarea", "select", "button"}
         ][:30]
         if links:
@@ -1190,7 +1190,7 @@ class PlaywrightHelper:
     为旧插件浏览器调用提供统一的 CloakBrowser 适配。
     """
 
-    def __init__(self, browser_type: Optional[str] = None, *args, **kwargs):
+    def __init__(self, browser_type: Optional[str] = None, *args: Any, **kwargs: Any) -> None:
         """
         兼容旧的 PlaywrightHelper(browser_type=...) 构造方式。
         """
@@ -1210,7 +1210,7 @@ class PlaywrightHelper:
     @staticmethod
     def __launch_cloakbrowser_context(headless: bool,
                                       user_agent: Optional[str] = None,
-                                      proxies: Optional[dict] = None) -> BrowserContext:
+                                      proxies: Optional[dict[str, Any]] = None) -> BrowserContext:
         """
         启动 CloakBrowser 上下文。
         """
@@ -1221,7 +1221,7 @@ class PlaywrightHelper:
                                       human_preset=get_runtime_setting('CLOAKBROWSER_HUMAN_PRESET'))
 
     @staticmethod
-    def __fs_cookie_str(cookies: list) -> str:
+    def __fs_cookie_str(cookies: list[dict[str, Any]]) -> str:
         """
         将 FlareSolverr Cookie 列表转换为请求头字符串。
         """
@@ -1232,8 +1232,8 @@ class PlaywrightHelper:
     @staticmethod
     def __flaresolverr_request(url: str,
                                cookies: Optional[str] = None,
-                               proxy_config: Optional[dict] = None,
-                               timeout: Optional[int] = 60) -> Optional[dict]:
+                               proxy_config: Optional[dict[str, Any]] = None,
+                               timeout: Optional[int] = 60) -> Optional[dict[str, Any]]:
         """
         调用 FlareSolverr 解决 Cloudflare 并返回 solution 结果
         参考: https://github.com/FlareSolverr/FlareSolverr
@@ -1256,14 +1256,14 @@ class PlaywrightHelper:
                 logger.debug("检测到flaresolverr代理需要认证，使用 session 模式")
 
                 session_id = str(uuid.uuid4())
-                create_payload: dict = {
+                create_payload: dict[str, Any] = {
                     "cmd": "sessions.create",
                     "session": session_id
                 }
 
                 # 添加代理配置到会话创建请求
                 if proxy_config and proxy_config.get("server"):
-                    proxy_payload: dict = {"url": proxy_config["server"]}
+                    proxy_payload: dict[str, Any] = {"url": proxy_config["server"]}
                     if proxy_config.get("username"):
                         proxy_payload["username"] = proxy_config["username"]
                     if proxy_config.get("password"):
@@ -1330,7 +1330,7 @@ class PlaywrightHelper:
                callback: Callable[[BrowserPage], Any],
                cookies: Optional[str] = None,
                ua: Optional[str] = None,
-               proxies: Optional[dict] = None,
+               proxies: Optional[dict[str, Any]] = None,
                headless: Optional[bool] = False,
                timeout: Optional[int] = 60) -> Any:
         """
@@ -1364,7 +1364,7 @@ class PlaywrightHelper:
                         fs_cookie_header = self.__fs_cookie_str(solution.get("cookies", []))
                         fs_ua = solution.get("userAgent")
 
-                context = self.__launch_cloakbrowser_context(headless=headless,
+                context = self.__launch_cloakbrowser_context(headless=bool(headless),
                                                              user_agent=fs_ua or ua,
                                                              proxies=proxies)
                 page = context.new_page()
@@ -1401,7 +1401,7 @@ class PlaywrightHelper:
     def get_page_source(self, url: str,
                         cookies: Optional[str] = None,
                         ua: Optional[str] = None,
-                        proxies: Optional[dict] = None,
+                        proxies: Optional[dict[str, Any]] = None,
                         headless: Optional[bool] = False,
                         timeout: Optional[int] = 60) -> Optional[str]:
         """
@@ -1432,7 +1432,7 @@ class PlaywrightHelper:
             context = None
             page = None
             try:
-                context = self.__launch_cloakbrowser_context(headless=headless,
+                context = self.__launch_cloakbrowser_context(headless=bool(headless),
                                                              user_agent=ua,
                                                              proxies=proxies)
                 page = context.new_page()

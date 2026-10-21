@@ -5,14 +5,14 @@ LRCLIB 歌词检索、严格候选匹配与请求缓存。
 import re
 import threading
 import time
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union, cast
 
 from app.adapters.network.http import RequestUtils
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
-from app.runtime.cache import cached
+from app.runtime.cache import CacheControls, cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import ModuleType, OtherModulesType
@@ -34,7 +34,7 @@ class LrclibModule(_ModuleBase):
         """
         配置变化后清理跨实例请求缓存和供应商冷却状态。
         """
-        self._request_json.cache_clear()
+        cast(CacheControls, self._request_json).cache_clear()
         type(self)._cooldown_until = 0.0
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:

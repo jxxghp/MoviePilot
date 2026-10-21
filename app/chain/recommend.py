@@ -2,7 +2,7 @@
 影视和音乐推荐聚合、分页缓存与定期刷新。
 """
 
-from typing import Any, Callable, List, Optional, Protocol, Sequence, TypeVar, cast
+from typing import Any, Callable, List, Optional, Protocol, Sequence, TypeVar
 
 # 导入时为 Pillow 注册 AVIF 解码能力，因此需要保留未直接引用的模块。
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import
@@ -39,9 +39,9 @@ def _cached_recommendation(ttl: int, region: str) -> Callable[[_RecommendationFu
         """
         应用同步或异步缓存，保留原始函数身份与返回载荷。
         """
-        return cast(_RecommendationFunction, cached(
+        return cached(
             ttl=ttl, region=region, skip_empty=True,
-        )(function))
+        )(function)
 
     return decorate
 

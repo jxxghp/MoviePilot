@@ -59,7 +59,7 @@ class UserChain(ChainBase):
             password=password,
             mfa_code=mfa_code,
             code=code,
-            grant_type=grant_type
+            grant_type=grant_type or "password"
         )
         logger.debug(f"认证类型：{grant_type}，开始准备对用户 {username} 进行身份校验")
         if credentials.grant_type == "password":

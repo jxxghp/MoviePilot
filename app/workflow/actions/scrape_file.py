@@ -63,7 +63,7 @@ class ScrapeFileAction(BaseAction):
         """
         # 失败次数
         _failed_count = 0
-        for fileitem in context.fileitems:
+        for fileitem in context.fileitems or []:
             if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
             if fileitem in self._scraped_files:

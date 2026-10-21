@@ -361,8 +361,7 @@ class MediaInfo(OptionalMediaIdentityMixin, BaseModel):
     bangumi_info: Optional[dict[str, JsonData]] = Field(default=None, description="Bangumi 返回的媒体详情")
     anilist_info: Optional[dict[str, JsonData]] = Field(default=None, description="AniList 返回的媒体详情")
 
-    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-    @model_validator(mode="before")  # type: ignore[misc]
+    @model_validator(mode="before")
     @classmethod
     def _normalize_category_compatibility(cls, value: Any) -> Any:
         """

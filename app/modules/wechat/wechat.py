@@ -9,7 +9,7 @@ import subprocess
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.adapters.network.http import RequestUtils
 from app.application.messaging.image import build_wechat_image_url
@@ -37,9 +37,9 @@ class WeChat:
     # 最近一次成功取得的企业微信访问令牌
     _access_token = None
     # 企业微信访问令牌有效期，单位为秒
-    _expires_in: int = None
+    _expires_in: Optional[int] = None
     # 最近一次成功获取访问令牌的本地时间
-    _access_token_time: datetime = None
+    _access_token_time: Optional[datetime] = None
     # 企业标识
     _corpid = None
     # 自建应用密钥
@@ -83,12 +83,18 @@ class WeChat:
         self._proxy = WECHAT_PROXY or "https://qyapi.weixin.qq.com"
 
         if self._proxy:
-            self._send_msg_url = UrlUtils.adapt_request_url(self._proxy, self._send_msg_url)
-            self._token_url = UrlUtils.adapt_request_url(self._proxy, self._token_url)
-            self._create_menu_url = UrlUtils.adapt_request_url(self._proxy, self._create_menu_url)
-            self._delete_menu_url = UrlUtils.adapt_request_url(self._proxy, self._delete_menu_url)
-            self._download_media_url = UrlUtils.adapt_request_url(self._proxy, self._download_media_url)
-            self._upload_media_url = UrlUtils.adapt_request_url(self._proxy, self._upload_media_url)
+            urls = (
+                ("_send_msg_url", self._send_msg_url),
+                ("_token_url", self._token_url),
+                ("_create_menu_url", self._create_menu_url),
+                ("_delete_menu_url", self._delete_menu_url),
+                ("_download_media_url", self._download_media_url),
+                ("_upload_media_url", self._upload_media_url),
+            )
+            for attribute, template in urls:
+                adapted_url = UrlUtils.adapt_request_url(self._proxy, template)
+                if isinstance(adapted_url, str):
+                    setattr(self, attribute, adapted_url)
 
         if self._corpid and self._appsecret and self._appid:
             self.__get_access_token()
@@ -102,7 +108,7 @@ class WeChat:
         return True if self.__get_access_token() else False
 
     @retry(RetryException, logger=logger)
-    def __get_access_token(self, force=False):
+    def __get_access_token(self, force: bool = False) -> Optional[str]:
         """
         复用未过期访问令牌，必要时请求新令牌。
 
@@ -115,7 +121,11 @@ class WeChat:
         if not self._access_token:
             token_flag = False
         else:
-            if (datetime.now() - self._access_token_time).total_seconds() >= self._expires_in:
+            if (
+                self._access_token_time is None
+                or self._expires_in is None
+                or (datetime.now() - self._access_token_time).total_seconds() >= self._expires_in
+            ):
                 token_flag = False
 
         if not token_flag or force:
@@ -126,9 +136,12 @@ class WeChat:
             if res:
                 ret_json = res.json()
                 if ret_json.get("errcode") == 0:
-                    self._access_token = ret_json.get("access_token")
-                    self._expires_in = ret_json.get("expires_in")
-                    self._access_token_time = datetime.now()
+                    access_token = ret_json.get("access_token")
+                    expires_in = ret_json.get("expires_in")
+                    if isinstance(access_token, str) and isinstance(expires_in, int):
+                        self._access_token = access_token
+                        self._expires_in = expires_in
+                        self._access_token_time = datetime.now()
             elif res is not None:
                 logger.error(f"获取微信access_token失败，错误码：{res.status_code}，错误原因：{res.reason}")
             else:
@@ -387,7 +400,8 @@ class WeChat:
             except Exception:
                 logger.error(f"企业微信媒体下载失败：{res.text}")
             return None
-        return res.content
+        content = res.content
+        return content if isinstance(content, bytes) else None
 
     @staticmethod
     def _convert_voice_to_amr(voice_path: str) -> Optional[Path]:
@@ -492,7 +506,8 @@ class WeChat:
         if ret_json.get("errcode") != 0:
             logger.error(f"上传企业微信临时素材失败：{ret_json}")
             return None
-        return ret_json.get("media_id")
+        media_id = ret_json.get("media_id")
+        return media_id if isinstance(media_id, str) else None
 
     def send_voice(self, voice_path: str, userid: Optional[str] = None) -> Optional[bool]:
         """
@@ -558,9 +573,9 @@ class WeChat:
             index = 1
             for media in medias:
                 if media.vote_average:
-                    title = f"{index}. {media.title_year}\n类型：{media.type.value}，评分：{media.vote_average}"
+                        title = f"{index}. {media.title_year}\n类型：{media.type.value if media.type else ''}，评分：{media.vote_average}"
                 else:
-                    title = f"{index}. {media.title_year}\n类型：{media.type.value}"
+                    title = f"{index}. {media.title_year}\n类型：{media.type.value if media.type else ''}"
                 articles.append({
                     "title": title,
                     "description": "",
@@ -610,7 +625,9 @@ class WeChat:
             index = 1
             for context in torrents:
                 torrent = context.torrent_info
-                meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+                if torrent is None:
+                    continue
+                meta = MetaInfo(title=torrent.title or "", subtitle=torrent.description)
                 mediainfo = context.media_info
                 torrent_title = f"{index}.【{torrent.site_name}】" \
                     f"{meta.season_episode} " \
@@ -625,7 +642,7 @@ class WeChat:
                     "title": torrent_title,
                     "description": torrent.description if index == 1 else "",
                     "picurl": build_wechat_image_url(
-                        mediainfo.get_message_image() if index == 1 else ""
+                        mediainfo.get_message_image() if index == 1 and mediainfo else ""
                     ),
                     "url": torrent.page_url
                 })
@@ -645,7 +662,7 @@ class WeChat:
             return False
 
     @retry(RetryException, logger=logger)
-    def __post_request(self, url: str, req_json: dict) -> bool:
+    def __post_request(self, url: str, req_json: Dict[str, Any]) -> bool:
         """
         提交企业微信 JSON 请求并处理令牌过期。
 
@@ -681,7 +698,7 @@ class WeChat:
                 logger.error(f"发送请求失败，错误信息：{ret_json.get('errmsg')}")
                 return False
 
-    def create_menus(self, commands: Dict[str, dict]) -> None:
+    def create_menus(self, commands: Dict[str, Dict[str, Any]]) -> None:
         """
         按命令分类创建应用菜单，忽略没有分类的命令。
 
@@ -692,9 +709,11 @@ class WeChat:
         try:
             req_url = self._create_menu_url.format(access_token="{access_token}", agentid=self._appid)
 
-            category_dict = {}
+            category_dict: Dict[str, Dict[str, Dict[str, Any]]] = {}
             for key, value in commands.items():
-                category: str = value.get("category")
+                category = value.get("category")
+                if not isinstance(category, str):
+                    continue
                 if category:
                     if not category_dict.get(category):
                         category_dict[category] = {}

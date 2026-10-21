@@ -802,7 +802,7 @@ flowchart LR
 | 事件合同 | `scripts/architecture/event_facts.py` 是生产/消费事实的唯一收集器；`runtime-contract-policy.json` 独立准入消费者身份，禁止靠生成快照绕过语义检查 |
 | 事务和配置 | `transaction-debt-baseline.json`、`configuration-debt-baseline.json` 检查底层事务所有权和配置边界；Model/Oper 不得重新创建或提交独立 Session |
 | SDK / Compat | manifest、SDK 导出和官方插件快照共同核对旧导入路径、符号身份与行为边界；迁移时同步 canonical 导入、公开契约及兼容测试 |
-| 类型与复杂度 | `mypy.ini` 严格清单与全宿主逐文件/错误码 ratchet；未列入 mypy 债务基线的新文件必须零错误，既有债务只能减少；复杂度约束 C901/PLR1702，行数只作观察 |
+| 类型与复杂度 | `mypy.ini` 默认严格检查全部宿主，类型错误预算为零；`mypy_policy.py` 锁定兼容例外、检查配置与本地类型桩，禁止新增豁免；复杂度约束 C901/PLR1702，行数只作观察 |
 | 后台与启动 | 并发所有权、异步阻塞、TaskRegistry/生命周期测试和启动性能检查；结构计数与耗时预算分开维护 |
 | 行为与覆盖率 | pytest 离线隔离执行；CI 按全部宿主文件的覆盖率低水位检查，新文件至少 80%，本机覆盖率不能回写 canonical baseline |
 
@@ -811,13 +811,13 @@ flowchart LR
 
 ### 10.2 当前架构快照
 
-以下是 2026-10-20 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
+以下是 2026-10-21 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
 不代表某个已发布镜像或正在运行的实例已经验证。
 
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1127 |
-| 内部导入边 | 9,639 |
+| 内部导入边 | 9,640 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |

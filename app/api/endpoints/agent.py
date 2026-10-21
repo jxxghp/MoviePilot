@@ -131,7 +131,7 @@ async def save_agent_mcp_servers(
     _ensure_superuser(current_user)
     success = await agent_mcp_manager.save_servers(request.servers)
     return _SchemaResponse(
-        success=success,
+        success=bool(success),
         message="保存MCP配置成功" if success else "保存MCP配置失败",
     )
 
@@ -373,7 +373,7 @@ async def run_agent_command(
         )
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+    return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
 
 @router.get(

@@ -4,7 +4,7 @@
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.classification.reference import effective_classification_snapshot
 from app.application.subscription.contract import (
@@ -51,7 +51,14 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
         """
         if not downloads:
             return subscribe
-        priority = max([item.torrent_info.pri_order for item in downloads])
+        priorities = [
+            item.torrent_info.pri_order
+            for item in downloads
+            if item.torrent_info is not None
+        ]
+        if not priorities:
+            return subscribe
+        priority = max(priorities)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         if subscribe.type != MediaType.MOVIE.value:
@@ -241,6 +248,8 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
         for context in downloads:
             meta = context.meta_info
             mediainfo = context.media_info
+            if meta is None or not isinstance(mediainfo, (MediaInfo, MusicInfo)):
+                continue
             subscribe_source, subscribe_media_id = resolve_media_identity(media=subscribe)
             media_source, media_id = resolve_media_identity(media=mediainfo)
             if (
@@ -351,7 +360,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
         update_data: Dict[str, Any] = {}
 
         for download in downloads:
-            media = download.media_info
+            media = cast(Union[MediaInfo, MusicInfo], download.media_info)
             subscribe_identity = resolve_media_identity(media=subscribe)
             media_identity = resolve_media_identity(media=media)
             if subscribe_identity != media_identity:
@@ -388,7 +397,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
             if not valid_episodes:
                 continue
 
-            priority = download.torrent_info.pri_order
+            priority = cast(Any, download.torrent_info).pri_order
             if (
                 self._SubscribeChain__is_full_best_version_enabled(subscribe)
                 and download.confirmed_full_coverage
@@ -455,7 +464,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
         # 用订阅限定的总集数和起始集裁剪缺集范围。
         if not no_exists or not no_exists.get(mediakey):
             return False, no_exists
-        no_exists_item = no_exists.get(mediakey)
+        no_exists_item = no_exists[mediakey]
         if total_episode or start_episode:
             logger.info(f"订阅 {subscribe_name} 设定的开始集数：{start_episode}、总集数：{total_episode}")
             no_exist_season = no_exists_item.get(begin_season)
@@ -482,7 +491,9 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
                         start_episode = start
                     if not total_episode:
                         total_episode = total
-                    new_episodes = list(range(max(start_episode, start), total_episode + 1))
+                    effective_start = start_episode if start_episode is not None else (start or 1)
+                    effective_total = total_episode if total_episode is not None else (total or effective_start - 1)
+                    new_episodes = list(range(max(effective_start, start or effective_start), effective_total + 1))
                     episodes = list(set(episode_list).intersection(set(new_episodes)))
                     # 交集为空时，说明订阅的剧集均已入库
                     if not episodes:
@@ -503,7 +514,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
                 total = no_exist_season.total_episode
                 start = no_exist_season.start_episode
                 if not episode_list:
-                    episode_list = list(range(start, total + 1))
+                    episode_list = list(range(start or 1, (total or (start or 1) - 1) + 1))
                 episodes = list(set(episode_list).difference(set(downloaded_episodes)))
                 # 如果存在已下载剧集，则差集为空时，说明所有均已存在
                 if not episodes:
@@ -517,7 +528,9 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
                 )
             else:
                 start = start_episode or 1
-                episodes = list(set(range(start, total_episode + 1)).difference(set(downloaded_episodes)))
+                effective_start = start or 1
+                effective_total = total_episode or (effective_start - 1)
+                episodes = list(set(range(effective_start, effective_total + 1)).difference(set(downloaded_episodes)))
                 # 如果存在已下载剧集，则差集为空时，说明所有均已存在
                 if not episodes:
                     return True, {}

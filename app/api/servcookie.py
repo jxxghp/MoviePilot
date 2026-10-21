@@ -10,9 +10,10 @@ from typing import Annotated, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.routing import APIRoute
+from starlette.requests import Request
 
 from app.api.response import ERROR_RESPONSES
 from app.application.configuration import get_api_runtime_config_snapshot

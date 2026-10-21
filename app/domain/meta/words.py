@@ -114,7 +114,7 @@ def _format_episode_offset(episode_num_str: str, episode_num_offset_int: int) ->
     按原集数字符串格式返回偏移后的集数字符串。
     """
     if not episode_num_str.isdigit():
-        return cn2an.an2cn(episode_num_offset_int, "low")
+        return str(cn2an.an2cn(episode_num_offset_int, "low"))
     width = len(episode_num_str) if _LEADING_ZERO_RE.search(episode_num_str) else 0
     if episode_num_offset_int < 0:
         return f"-{str(abs(episode_num_offset_int)).zfill(width)}"
@@ -168,7 +168,10 @@ class WordsMatcher(metaclass=Singleton):
         按识别词顺序处理标题，并在需要时更新副标题中的集数。
         """
         appley_words = []
-        words: List[str] = custom_words or get_custom_words() or []
+        configured_words = get_custom_words()
+        words: List[str] = custom_words or (
+            configured_words if isinstance(configured_words, list) else []
+        )
         for word in words:
             if not word or word.startswith("#"):
                 continue

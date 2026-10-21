@@ -113,7 +113,8 @@ class DownloadTaskOwner(_DownloadOwnerBase):
         """
         if not event:
             return
-        hash_str = event.event_data.get("hash")
+        event_data = event.event_data if isinstance(event.event_data, dict) else {}
+        hash_str = event_data.get("hash")
         if not hash_str:
             return
         logger.warn(f"检测到下载源文件被删除，删除下载任务（不含文件）：{hash_str}")

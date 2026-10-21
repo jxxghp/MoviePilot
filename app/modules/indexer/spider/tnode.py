@@ -35,7 +35,7 @@ class TNodeSpider(metaclass=SingletonClass):
         """
         return cls._size
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
         """
         使用站点配置初始化 TNode 请求上下文。
         """
@@ -92,7 +92,7 @@ class TNodeSpider(metaclass=SingletonClass):
         """
         search_type = "imdbid" if (keyword and keyword.startswith('tt')) else "title"
         return {
-            "page": int(page) + 1,
+            "page": int(page or 0) + 1,
             "size": self._size,
             "type": search_type,
             "keyword": keyword or "",
@@ -107,7 +107,7 @@ class TNodeSpider(metaclass=SingletonClass):
             "group": []
         }
 
-    def __parse_result(self, results: List[dict]) -> List[dict]:
+    def __parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
         解析搜索结果。
         """
@@ -147,7 +147,9 @@ class TNodeSpider(metaclass=SingletonClass):
         logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
         return True, []
 
-    def search(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def search(
+        self, keyword: str, page: Optional[int] = 0
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         同步搜索 TNode 种子。
 
@@ -174,7 +176,9 @@ class TNodeSpider(metaclass=SingletonClass):
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    async def async_search(
+        self, keyword: str, page: Optional[int] = 0
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索 TNode 种子。
 

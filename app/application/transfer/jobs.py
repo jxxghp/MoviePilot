@@ -92,7 +92,7 @@ def _job_task_fileitem(task: TransferJobTask) -> FileItem:
     return cast(FileItem, task.fileitem)
 
 
-def _queue_media_snapshot(media: Optional[Union[MediaInfo, MusicInfo]]) -> Optional[TransferQueueMediaData]:
+def _queue_media_snapshot(media: Optional[object]) -> Optional[TransferQueueMediaData]:
     """
     只复制整理队列页面会展示的媒体字段，避免重复输出完整刮削结果。
     """
@@ -336,13 +336,13 @@ class JobManager:
                 )
             return _SchemaMediaInfo(
                 title=meta.name,
-                year=meta.year,
+                year=str(meta.year) if meta.year is not None else None,
                 title_year=f"{meta.name} ({meta.year})",
                 type=meta.type.value if meta.type else None,
             )
 
     @staticmethod
-    def __get_meta(task: TransferTask) -> _SchemaMetaInfo:
+    def __get_meta(task: TransferTask) -> Union[_SchemaMetaInfo, _SchemaMusicMeta]:
         """
         获取元数据
         """

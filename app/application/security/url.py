@@ -1063,9 +1063,11 @@ def _log_image_proxy_block_summary(summary: CoalesceSummary) -> None:
     `(host, reason_label)` 二元组；摘要保留首条事件的 URL 与解析 IP，
     避免运维只看到 count 而无法定位是哪批请求被合并。
     """
-    host, reason = summary.key
-    payload = summary.first_payload or {}
-    sample_ips = ",".join(payload.get("ips") or [])
+    key = cast(tuple[Optional[str], str], summary.key)
+    host, reason = key
+    payload = summary.first_payload if isinstance(summary.first_payload, dict) else {}
+    raw_ips = payload.get("ips")
+    sample_ips = ",".join(str(ip) for ip in raw_ips) if isinstance(raw_ips, list) else ""
     logger.warn(
         "Blocked unsafe image URL (aggregated): "
         f"host={host or ''}, reason={reason}, "

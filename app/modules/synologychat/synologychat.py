@@ -144,14 +144,14 @@ class SynologyChat:
                                                             index,
                                                             media.detail_link,
                                                             media.title_year,
-                                                            f"类型：{media.type.value}",
+                                                            f"类型：{media.type.value if media.type else ''}",
                                                             f"评分：{media.vote_average}")
                 else:
                     caption = "%s\n%s. <%s|%s>\n_%s_" % (caption,
                                                          index,
                                                          media.detail_link,
                                                          media.title_year,
-                                                         f"类型：{media.type.value}")
+                                                         f"类型：{media.type.value if media.type else ''}")
                 index += 1
 
             userids: List[object]
@@ -190,8 +190,10 @@ class SynologyChat:
             index, caption = 1, "*%s*" % title
             for context in torrents:
                 torrent = context.torrent_info
-                site_name = torrent.site_name
-                meta = MetaInfo(torrent.title, torrent.description)
+                if torrent is None:
+                    continue
+                site_name = torrent.site_name or ""
+                meta = MetaInfo(torrent.title or "", torrent.description)
                 link = torrent.page_url
                 title = f"{meta.season_episode} " \
                     f"{meta.resource_term} " \

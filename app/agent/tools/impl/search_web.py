@@ -5,7 +5,7 @@
 import json
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 from urllib.parse import urlparse
 
 from ddgs import DDGS
@@ -100,7 +100,7 @@ class SearchWebTool(MoviePilotTool):
         description="工具输入参数的验证模型或 JSON Schema",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据搜索参数生成友好的提示消息
         """
@@ -115,13 +115,13 @@ class SearchWebTool(MoviePilotTool):
             message += f"，限定站点: {site_url}"
         return f"{message})"
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         query: str,
         max_results: Optional[int] = MAX_SEARCH_RESULTS,
         search_engine: Optional[str] = DEFAULT_SEARCH_ENGINE,
         site_url: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         执行网络搜索。
@@ -156,7 +156,7 @@ class SearchWebTool(MoviePilotTool):
                 max(1, max_results or MAX_SEARCH_RESULTS),
                 MAX_SEARCH_RESULTS,
             )
-            results: List[Dict] = []
+            results: List[Dict[str, Any]] = []
 
             for engine in self._get_search_plan(search_engine):
                 results = await self._search_with_backend(
@@ -210,7 +210,7 @@ class SearchWebTool(MoviePilotTool):
         query: str,
         max_results: int,
         site_filter: Optional[_SearchSiteFilter],
-    ) -> List[Dict]:
+    ) -> List[Dict[str, Any]]:
         """
         使用指定后端执行搜索。
 
@@ -284,9 +284,9 @@ class SearchWebTool(MoviePilotTool):
 
     @staticmethod
     def _filter_results_by_site(
-        results: List[Dict],
+        results: List[Dict[str, Any]],
         site_filter: Optional[_SearchSiteFilter],
-    ) -> List[Dict]:
+    ) -> List[Dict[str, Any]]:
         """
         根据指定站点过滤搜索结果。
 
@@ -370,40 +370,43 @@ class SearchWebTool(MoviePilotTool):
         )
 
     @staticmethod
-    def _extract_result_url(result: Dict) -> str:
+    def _extract_result_url(result: Dict[str, Any]) -> str:
         """
         从不同搜索引擎结果结构中提取 URL。
 
         :param result: 搜索引擎返回的单条结果
         :return: URL 字符串
         """
-        return result.get("href") or result.get("url") or ""
+        value = result.get("href") or result.get("url") or ""
+        return str(value) if value else ""
 
     @staticmethod
-    def _extract_result_snippet(result: Dict) -> str:
+    def _extract_result_snippet(result: Dict[str, Any]) -> str:
         """
         从不同搜索引擎结果结构中提取摘要。
 
         :param result: 搜索引擎返回的单条结果
         :return: 摘要字符串
         """
-        return (
+        value = (
             result.get("body")
             or result.get("snippet")
             or result.get("content")
             or ""
         )
+        return str(value) if value else ""
 
     @staticmethod
-    def _get_proxy_url(proxy_setting) -> Optional[str]:
+    def _get_proxy_url(proxy_setting: Any) -> Optional[str]:
         """
         从代理设置中提取代理URL
         """
         if not proxy_setting:
             return None
         if isinstance(proxy_setting, dict):
-            return proxy_setting.get("http") or proxy_setting.get("https")
-        return proxy_setting
+            value = proxy_setting.get("http") or proxy_setting.get("https")
+            return str(value) if value else None
+        return str(proxy_setting) if isinstance(proxy_setting, str) else None
 
     async def _search_ddgs(
         self,
@@ -411,7 +414,7 @@ class SearchWebTool(MoviePilotTool):
         max_results: int,
         search_engine: str = DEFAULT_SEARCH_ENGINE,
         site_filter: Optional[_SearchSiteFilter] = None,
-    ) -> List[Dict]:
+    ) -> List[Dict[str, Any]]:
         """
         使用 DDGS 搜索引擎后端进行搜索。
 
@@ -423,12 +426,12 @@ class SearchWebTool(MoviePilotTool):
         """
         try:
 
-            def sync_search():
+            def sync_search() -> list[dict[str, Any]]:
                 """
                 在线程中执行同步搜索
                 """
-                results = []
-                ddgs_kwargs = {"timeout": SEARCH_TIMEOUT}
+                results: list[dict[str, Any]] = []
+                ddgs_kwargs: dict[str, Any] = {"timeout": SEARCH_TIMEOUT}
                 proxy_url = self._get_proxy_url(get_runtime_setting('PROXY'))
                 if proxy_url:
                     ddgs_kwargs["proxy"] = proxy_url
@@ -459,7 +462,8 @@ class SearchWebTool(MoviePilotTool):
                     logger.warning(f"搜索引擎搜索进程失败: {err}")
                 return results
 
-            results = await self.run_blocking("web", sync_search)
+            raw_results = await self.run_blocking("web", sync_search)
+            results = raw_results if isinstance(raw_results, list) else []
             return self._filter_results_by_site(results, site_filter)
 
         except Exception as e:
@@ -467,11 +471,14 @@ class SearchWebTool(MoviePilotTool):
             return []
 
     @staticmethod
-    def _format_and_truncate_results(results: List[Dict], max_results: int) -> Dict:
+    def _format_and_truncate_results(
+            results: List[Dict[str, Any]], max_results: int
+    ) -> Dict[str, Any]:
         """
         格式化并裁剪搜索结果
         """
-        formatted = {"total_results": len(results), "results": []}
+        formatted: dict[str, Any] = {"total_results": len(results)}
+        formatted_results: list[dict[str, Any]] = []
 
         for idx, result in enumerate(results[:max_results], 1):
             title = result.get("title", "")[:200]
@@ -487,7 +494,7 @@ class SearchWebTool(MoviePilotTool):
             # 清理文本
             snippet = re.sub(r"\s+", " ", snippet).strip()
 
-            formatted["results"].append(
+            formatted_results.append(
                 {
                     "rank": idx,
                     "title": title,
@@ -497,6 +504,7 @@ class SearchWebTool(MoviePilotTool):
                 }
             )
 
+        formatted["results"] = formatted_results
         if len(results) > max_results:
             formatted["note"] = f"仅显示前 {max_results} 条结果。"
 

@@ -51,8 +51,7 @@ class ViewImageError(ValueError):
         self.message = message
 
 
-# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
-class ViewImageInput(BaseModel):  # type: ignore[misc]
+class ViewImageInput(BaseModel):
     """
     图片查看工具的输入参数模型。
     """
@@ -75,7 +74,7 @@ class ViewImageInput(BaseModel):  # type: ignore[misc]
     )
 
     # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
-    @model_validator(mode="after")  # type: ignore[misc]
+    @model_validator(mode="after")
     def require_one_source(self) -> "ViewImageInput":
         """
         确保图片来源恰好是 URL、本地路径或图片内容中的一个。
@@ -196,7 +195,7 @@ class ViewImageTool(MoviePilotTool):
                 failure = ViewImageError("invalid_image_result", "图片数据无效或超过大小上限")
             return self._failure(failure.code, failure.message)
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         url: Optional[str] = None,
         file_path: Optional[str] = None,

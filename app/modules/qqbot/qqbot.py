@@ -46,7 +46,7 @@ class QQBot:
             QQ_OPENID: Optional[str] = None,
             QQ_GROUP_OPENID: Optional[str] = None,
             name: Optional[str] = None,
-            **kwargs: object,
+            **kwargs: Any,
     ) -> None:
         """
         保存机器人配置、恢复已互动对象，并启动后台网关线程。
@@ -62,7 +62,7 @@ class QQBot:
         """
         self._gateway_stop = None
         self._gateway_thread: Optional[threading.Thread] = None
-        self._gateway_ws_holder: list = []
+        self._gateway_ws_holder: list[Any] = []
         if not QQ_APP_ID or not QQ_APP_SECRET:
             logger.error("QQ Bot 配置不完整：缺少 AppID 或 AppSecret")
             self._ready = False
@@ -76,7 +76,7 @@ class QQBot:
         self._ready = True
 
         # 曾发过消息的用户/群，用于无默认接收者时的广播 {(target_id, is_group), ...}
-        self._known_targets: set = set()
+        self._known_targets: set[tuple[str, bool]] = set()
         _safe_name = hashlib.md5(self._config_name.encode()).hexdigest()[:12]
         self._cache_key = f"__qqbot_known_targets_{_safe_name}__"
         self._filecache = FileCache()
@@ -113,7 +113,7 @@ class QQBot:
         except Exception as e:
             logger.debug(f"QQ Bot 保存 known_targets 失败: {e}")
 
-    def _forward_to_message_chain(self, payload: dict) -> bool:
+    def _forward_to_message_chain(self, payload: dict[str, Any]) -> bool:
         """
         通过受管线程池把 QQ Bot 入站载荷 转交统一消息入口。
         """
@@ -123,7 +123,7 @@ class QQBot:
             submit=ThreadHelper().submit,
         )
 
-    def _on_gateway_message(self, payload: dict) -> None:
+    def _on_gateway_message(self, payload: dict[str, Any]) -> None:
         """
         Gateway 收到消息时转发至 MP 消息链，并记录发送者用于广播。
         """
@@ -211,7 +211,7 @@ class QQBot:
         return self._ready
 
     def _get_target(
-        self, userid: Optional[str] = None, targets: Optional[dict] = None
+        self, userid: Optional[str] = None, targets: Optional[dict[str, Any]] = None
     ) -> tuple[Optional[str], bool]:
         """
         按显式接收人、目标字典、默认配置的顺序选择发送目标。
@@ -240,7 +240,7 @@ class QQBot:
 
         return None, False
 
-    def _get_broadcast_targets(self) -> list:
+    def _get_broadcast_targets(self) -> list[tuple[str, bool]]:
         """
         获取广播目标列表（曾发过消息的用户/群）。
         """
@@ -353,8 +353,8 @@ class QQBot:
             image: Optional[str] = None,
             link: Optional[str] = None,
             userid: Optional[str] = None,
-            targets: Optional[dict] = None,
-            **kwargs,
+            targets: Optional[dict[str, Any]] = None,
+            **kwargs: Any,
     ) -> bool:
         """
         向指定目标或历史互动对象发送主动通知。
@@ -471,7 +471,7 @@ class QQBot:
             userid: Optional[str] = None,
             title: Optional[str] = None,
             link: Optional[str] = None,
-            **kwargs,
+            **kwargs: Any,
     ) -> bool:
         """
         将媒体列表转为文本后按主动消息规则发送。
@@ -485,7 +485,10 @@ class QQBot:
         """
         if not medias:
             return False
-        lines = [f"{i + 1}. {m.title_year} - {m.type.value}" for i, m in enumerate(medias)]
+        lines = [
+            f"{i + 1}. {m.title_year} - {(m.type.value if m.type else '')}"
+            for i, m in enumerate(medias)
+        ]
         text = "\n".join(lines)
         return self.send_msg(
             title=title or "媒体列表",
@@ -501,7 +504,7 @@ class QQBot:
             userid: Optional[str] = None,
             title: Optional[str] = None,
             link: Optional[str] = None,
-            **kwargs,
+            **kwargs: Any,
     ) -> bool:
         """
         将种子列表转为文本后按主动消息规则发送。
@@ -518,7 +521,9 @@ class QQBot:
         lines = []
         for i, ctx in enumerate(torrents):
             t = ctx.torrent_info
-            meta = MetaInfo(t.title, t.description)
+            if t is None:
+                continue
+            meta = MetaInfo(str(t.title or ""), t.description)
             name = f"{meta.season_episode} {meta.resource_term} {meta.video_term}"
             name = " ".join(name.split())
             lines.append(f"{i + 1}.【{t.site_name}】{name} {size_tools.format_compact_size(t.size)} {t.seeders}↑")

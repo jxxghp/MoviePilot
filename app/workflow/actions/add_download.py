@@ -3,7 +3,7 @@
 """
 
 from dataclasses import fields
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, cast
 
 from pydantic import Field
 
@@ -50,7 +50,7 @@ class AddDownloadAction(BaseAction):
         初始化下载结果集合和动作错误状态。
         """
         super().__init__(action_id)
-        self._added_downloads: list[str | tuple[Optional[str], Optional[str]]] = []
+        self._added_downloads: list[str] = []
         self._has_error = False
 
     name = "添加下载"
@@ -98,21 +98,21 @@ class AddDownloadAction(BaseAction):
                     else:
                         # 电视剧
                         exists_seasons = exists_info.seasons or {}
-                        if len(t.meta_info.season_list) > 1:
+                        meta_info = cast(MetaBase, t.meta_info)
+                        season_list = getattr(meta_info, "season_list", []) or []
+                        if len(season_list) > 1:
                             # 多季不下载
                             logger.warning(f"{t.meta_info.title} 有多季，跳过")
                             continue
                         else:
-                            season_num = (
-                                t.meta_info.begin_season
-                                if t.meta_info.begin_season is not None
-                                else (t.meta_info.season_list[0] if t.meta_info.season_list else 1)
-                            )
+                            begin_season = getattr(meta_info, "begin_season", None)
+                            season_num = begin_season if begin_season is not None else (season_list[0] if season_list else 1)
                             exists_episodes = exists_seasons.get(season_num)
-                            if exists_episodes and t.meta_info.episode_list:
-                                if set(t.meta_info.episode_list).issubset(exists_episodes):
+                            episode_list = getattr(meta_info, "episode_list", []) or []
+                            if exists_episodes and episode_list:
+                                if set(episode_list).issubset(exists_episodes):
                                     logger.warning(
-                                        f"{t.meta_info.title} 第 {season_num} 季第 {t.meta_info.episode_list} 集已存在，跳过"
+                                        f"{meta_info.title} 第 {season_num} 季第 {episode_list} 集已存在，跳过"
                                     )
                                     continue
 
@@ -124,7 +124,8 @@ class AddDownloadAction(BaseAction):
                 label=action_params.labels,
             )
             if did:
-                self._added_downloads.append(did)
+                download_id = cast(str, did[1] if isinstance(did, tuple) else did)
+                self._added_downloads.append(download_id)
                 # 保存缓存
                 self.save_cache(workflow_id, cache_key)
 

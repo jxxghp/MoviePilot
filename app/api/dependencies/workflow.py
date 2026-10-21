@@ -2,6 +2,8 @@
 工作流领域的请求级 command/query 依赖。
 """
 
+from typing import cast
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -10,8 +12,11 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.api.context import get_async_session, get_host_runtime, get_sync_session
 from app.application.scheduling import get_scheduler
 from app.application.workflow import (
+    AsyncWorkflowDefinitionRepository,
+    UnitOfWork,
     WorkflowDefinitionCommand,
     WorkflowMutationCommand,
+    WorkflowMutationRepository,
     WorkflowQueryService,
     get_workflow_manager,
 )
@@ -30,8 +35,10 @@ def get_workflow_mutation_command(
     workflow_manager = get_workflow_manager()
     system_config = runtime.workflow.system_config()
     return WorkflowMutationCommand(
-        repository=runtime.workflow.repository(db),
-        unit_of_work=runtime.persistence.sync_transaction(db),
+        repository=cast(
+            WorkflowMutationRepository, runtime.workflow.repository(db)
+        ),
+        unit_of_work=cast(UnitOfWork, runtime.persistence.sync_transaction(db)),
         add_timer=scheduler.update_workflow_job,
         remove_timer=scheduler.remove_workflow_job,
         load_event=workflow_manager.load_workflow_events,
@@ -53,7 +60,9 @@ def get_workflow_definition_command(
     """
     system_config = runtime.workflow.system_config()
     return WorkflowDefinitionCommand(
-        repository=runtime.workflow.repository(db),
+        repository=cast(
+            AsyncWorkflowDefinitionRepository, runtime.workflow.repository(db)
+        ),
         unit_of_work=runtime.persistence.async_transaction(db),
         stop_running=runtime_stop_state.stop_workflow,
         async_delete_cache=lambda workflow_id: system_config.async_delete(

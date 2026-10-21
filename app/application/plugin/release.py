@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from app.application.plugin.catalog import apply_declared_metadata_fallback
 from app.application.plugin.identity import PluginIdentity, PluginPayloadSourceType
@@ -238,9 +238,7 @@ def _merge_market_metadata(plugin: Plugin, market_plugin: Plugin) -> Plugin:
     """
     在隔离副本上合并市场展示元数据。
     """
-    return cast(
-        Plugin,
-        plugin.model_copy(
+    return plugin.model_copy(
             update={
                 "repo_url": market_plugin.repo_url or plugin.repo_url,
                 "history": market_plugin.history or {},
@@ -259,8 +257,7 @@ def _merge_market_metadata(plugin: Plugin, market_plugin: Plugin) -> Plugin:
                     market_plugin.runtime_message or plugin.runtime_message
                 ),
             }
-        ),
-    )
+        )
 
 
 def _project_release_item(

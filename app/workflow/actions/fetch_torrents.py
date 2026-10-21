@@ -4,7 +4,7 @@
 
 import random
 import time
-from typing import List, Optional, cast
+from typing import List, Optional
 
 from pydantic import Field
 
@@ -93,7 +93,7 @@ class FetchTorrentsAction(BaseAction):
                         obtain_images=False,
                     )
                     if not torrent.media_info:
-                        logger.warning(f"{torrent.torrent_info.title} 未识别到媒体信息")
+                        logger.warning(f"{torrent.torrent_info.title if torrent.torrent_info else ''} 未识别到媒体信息")
                         continue
                 self._torrents.append(self._to_workflow_context(torrent))
         else:
@@ -132,4 +132,4 @@ class FetchTorrentsAction(BaseAction):
         """
         把领域搜索结果投影为工作流传输上下文。
         """
-        return cast(WorkflowContext, WorkflowContext.model_validate(context.to_dict()))
+        return WorkflowContext.model_validate(context.to_dict())

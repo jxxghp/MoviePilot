@@ -63,17 +63,14 @@ async def _async_start_processing_status(
         在线程池中通过统一 Chain 接口启动处理状态。
         """
         try:
-            return cast(
-                Optional[dict[str, Any]],
-                AgentChain().start_message_processing_status(
+            return AgentChain().start_message_processing_status(
                     channel=NotificationChannel(task.channel),
                     source=task.source,
                     userid=task.user_id,
                     message_id=task.original_message_id,
                     chat_id=task.original_chat_id,
                     text=task.message,
-                ),
-            )
+                )
         except Exception as err:
             logger.debug(f"启动Agent消息处理状态失败: {err}")
             return None
@@ -1095,6 +1092,9 @@ class AgentSessionOwner:
             self._session_shutdown_pending[session_id] = worker
 
             def _clear_pending(done: asyncio.Task[None]) -> None:
+                """
+                仅清理当前会话所属的已结束关闭任务，避免覆盖后续任务状态。
+                """
                 if (
                         self._session_shutdown_pending.get(session_id) is done
                         and session_id not in self._session_cleanup_pending

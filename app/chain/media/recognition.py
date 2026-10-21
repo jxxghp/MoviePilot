@@ -247,7 +247,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         为同步与异步标题识别冻结相同的元数据副本和来源语义。
         """
         return _MetaRecognitionRequest(
-            title=metainfo.title,
+            title=metainfo.title or "",
             metainfo=metainfo,
             share_meta=deepcopy(metainfo),
             mtype=mtype,
@@ -283,7 +283,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             return None
         logger.info(
             f"{request.title} 识别到媒体信息："
-            f"{mediainfo.type.value} {mediainfo.title_year}"
+            f"{(mediainfo.type or MediaType.UNKNOWN).value} {mediainfo.title_year}"
         )
         return mediainfo
 

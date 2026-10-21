@@ -77,8 +77,7 @@ class UserUpdate(UserBase):
     permissions: Optional[UserPermissions] = Field(default_factory=UserPermissions, description="权限")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class CurrentUserUpdate(BaseModel):  # type: ignore[misc]
+class CurrentUserUpdate(BaseModel):
     """
     当前用户可自助更新的资料与通知身份设置。
     """

@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 # mypy 严格检查跳过第三方实现导入，因此无法在本文件解析 Pydantic 元类类型。
-class LogConfigModel(BaseModel):  # type: ignore[misc]
+class LogConfigModel(BaseModel):
     """
     描述日志级别、格式和文件写入策略。
 

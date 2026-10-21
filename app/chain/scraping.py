@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
-from typing import Any, Iterable, List, Optional, Protocol, Self, Tuple, Union
+from typing import Any, Iterable, List, Optional, Protocol, Self, Tuple, Union, cast
 
 from app.application.audio import AudioMetadataHelper
 from app.application.configuration import (
@@ -551,7 +551,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         处理 NFO 和图片文件的命名约定及存储位置
         """
         target_dir_item = current_fileitem
-        target_dir_path = Path(current_fileitem.path)
+        target_dir_path = Path(cast(str, current_fileitem.path))
         final_filename = filename_hint
 
         # 针对 NFO 文件的特殊命名和存储逻辑
@@ -564,7 +564,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         parent_fileitem
                         or self.storagechain.get_parent_item(current_fileitem)
                     )
-                    if not parent_item:
+                    if not parent_item or not parent_item.path:
                         logger.error(
                             f"无法获取文件 {current_fileitem.path} 的父目录项。"
                         )
@@ -573,7 +573,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             None,
                         )
                     target_dir_item = parent_item
-                    target_dir_path = Path(target_dir_item.path)
+                    target_dir_path = Path(parent_item.path)
                 else:
                     # 电影目录NFO (例如蓝光原盘): 放在电影目录内，名称与目录名主体一致，后缀.nfo
                     final_filename = f"{target_dir_path.name}.nfo"
@@ -589,11 +589,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 parent_item = parent_fileitem or self.storagechain.get_parent_item(
                     current_fileitem
                 )
-                if not parent_item:
+                if not parent_item or not parent_item.path:
                     logger.error(f"无法获取文件 {current_fileitem.path} 的父目录项。")
                     return current_fileitem, None
                 target_dir_item = parent_item
-                target_dir_path = Path(target_dir_item.path)
+                target_dir_path = Path(parent_item.path)
         # 图片通常是放在当前目录 (current_fileitem) 下
         # Jellyfin/Kodi 等在季目录内使用通用图片名，而不是 season01-poster.jpg
         elif item_type == ScrapingTarget.SEASON:
@@ -612,11 +612,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             parent_item = parent_fileitem or self.storagechain.get_parent_item(
                 current_fileitem
             )
-            if not parent_item:
+            if not parent_item or not parent_item.path:
                 logger.error(f"无法获取文件 {current_fileitem.path} 的父目录项。")
                 return current_fileitem, None
             target_dir_item = parent_item
-            target_dir_path = Path(target_dir_item.path)
+            target_dir_path = Path(parent_item.path)
         # 如果是 EPISODE 类型的图片（如thumb），通常也是放在文件同级目录，文件名与视频文件一致
         elif (
                 metadata_type in [ScrapingMetadata.THUMB]
@@ -627,11 +627,11 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             parent_item = parent_fileitem or self.storagechain.get_parent_item(
                 current_fileitem
             )
-            if not parent_item:
+            if not parent_item or not parent_item.path:
                 logger.error(f"无法获取文件 {current_fileitem.path} 的父目录项。")
                 return current_fileitem, None
             target_dir_item = parent_item
-            target_dir_path = Path(target_dir_item.path)
+            target_dir_path = Path(parent_item.path)
         # TODO: 考虑其他图片类型是否也需要保存到父目录
 
         if not final_filename:
@@ -676,6 +676,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if (
                 not self.runtime_config.scrap_season_image_to_root
                 or item_type != ScrapingTarget.SEASON
+                or not current_fileitem.path
                 or not filename_hint
                 or not filename_hint.lower().startswith("season")
                 or metadata_type not in {
@@ -749,13 +750,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param season: 季号
         :param episode: 集号
         """
-        return self.run_module(
+        return cast(Optional[str], self.run_module(
             "metadata_nfo",
             meta=meta,
             mediainfo=mediainfo,
             season=season,
             episode=episode,
-        )
+        ))
 
     def metadata_img(
             self,
@@ -801,13 +802,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         if not event:
             return
-        event_data = event.event_data or {}
-        fileitem: _SchemaFileItem = event_data.get("fileitem")
+        event_data = event.event_data if isinstance(event.event_data, dict) else {}
+        fileitem = event_data.get("fileitem")
         file_list: List[str] = list(dict.fromkeys(event_data.get("file_list") or []))
-        meta: MetaBase = event_data.get("meta")
-        mediainfo: MediaInfo = event_data.get("mediainfo")
+        meta: Optional[MetaBase] = event_data.get("meta")
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]] = event_data.get("mediainfo")
         overwrite = event_data.get("overwrite", False)
-        if not fileitem:
+        if not isinstance(fileitem, _SchemaFileItem) or not fileitem.path or not fileitem.storage:
             return
 
         with scraping_lock:
@@ -820,11 +821,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         file_list=file_list,
                     )
                     scrape_kwargs["media_by_path"] = {
-                        Path(context.get("path")).as_posix(): context.get("mediainfo")
+                        Path(context_path).as_posix(): context.get("mediainfo")
                         for context in event_data.get("file_contexts") or []
                         if (
                             isinstance(context, dict)
-                            and context.get("path")
+                            and isinstance(context_path := context.get("path"), str)
+                            and context_path
                             and isinstance(context.get("mediainfo"), MusicInfo)
                         )
                     }
@@ -966,7 +968,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             parent_fileitem=parent_fileitem,
         )
 
-        if not nfo_path:
+        if not nfo_path or not base_item.storage:
             return
 
         file_exists = self.storagechain.get_file_item(
@@ -1064,7 +1066,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 image_targets = self._expand_with_aliases(image_targets, item_type)
 
                 for base_item, image_path in image_targets:
-                    if not image_path:
+                    if not image_path or not base_item.storage:
                         continue
 
                     file_exists = self.storagechain.get_file_item(
@@ -1105,8 +1107,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param audio_files: 音乐批次已确认成功的音频文件清单
         :param media_by_path: 音乐批次每个音频文件对应的标准身份
         """
-        if not fileitem:
-            return False, "未提供刮削文件"
+        if not fileitem or not fileitem.path or not fileitem.storage:
+            return False, "未提供有效的刮削文件路径和存储类型"
 
         filepath = Path(fileitem.path)
         is_music = (
@@ -1120,7 +1122,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if is_music:
             music_info = (
                 mediainfo
-                if getattr(mediainfo, "type", None) == MediaType.MUSIC
+                if isinstance(mediainfo, MusicInfo)
                 else None
             )
             music_kwargs: dict[str, Any] = {}
@@ -1144,7 +1146,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             meta = MetaInfoPath(filepath)
         if not mediainfo:
             mediainfo = MediaChain().recognize_by_meta(meta)
-        if not mediainfo:
+        if not isinstance(mediainfo, MediaInfo):
             logger.warn(f"{filepath} 无法识别文件媒体信息！")
             return False, "未识别到媒体信息"
 
@@ -1205,7 +1207,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if isinstance(info, MusicInfo)
         }
         file_media = [
-            normalized_media_by_path.get(Path(item.path).as_posix(), mediainfo)
+            normalized_media_by_path.get(Path(item.path or "").as_posix(), mediainfo)
             for item in files
         ]
         distinct_recordings = {
@@ -1396,6 +1398,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if (
                     not item
                     or item.type != "file"
+                    or not item.path
                     or not cls._is_music_audio_file(item.path or "")
             ):
                 continue
@@ -1414,6 +1417,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         把刮削事件中的成功路径恢复为文件项，并限制在事件媒体根目录内。
         """
+        if not root.path or not root.storage:
+            return []
         root_path = Path(root.path)
         selected: list[_SchemaFileItem] = []
         for raw_path in file_list or []:
@@ -1814,6 +1819,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         查找音轨旁已存在的同步或纯文本歌词文件。
         """
+        if not fileitem.path or not fileitem.storage:
+            return None
         audio_path = Path(fileitem.path)
         for extension in self.MUSIC_LYRICS_EXTENSIONS:
             target_path = self._music_lyrics_path(audio_path, extension)
@@ -1858,6 +1865,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         按独立字形设置写入本地或远端歌词，保留来源内容并遵守覆盖策略。
         """
+        if not fileitem.path:
+            return False
         extension = lyrics.extension
         content = lyrics.content
         if not extension or not content:
@@ -1944,6 +1953,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         保留来源返回的标准 Lyricsfile，同时由主写入流程生成播放器兼容歌词。
         """
+        if not fileitem.path:
+            return False
         target_path = self._music_lyrics_path(Path(fileitem.path), ".lyricsfile.yaml")
         try:
             if fileitem.storage == "local":
@@ -1970,6 +1981,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         覆盖歌词格式后删除同音轨的旧扩展名文件，避免播放器优先读取过期内容。
         """
+        if not fileitem.path or not fileitem.storage:
+            return
         audio_path = Path(fileitem.path)
         for extension in self.MUSIC_LYRICS_EXTENSIONS:
             if extension in (keep_extension, ".lyricsfile.yaml"):
@@ -2082,6 +2095,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         处理电视剧刮削
         """
+        if not fileitem.path:
+            return
         filepath = Path(fileitem.path)
 
         if fileitem.type == "file":
@@ -2177,7 +2192,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 if (
                         file.type == "dir"
                         and file.name not in self.runtime_config.season_zero_names
-                        and MetaInfo(file.name).begin_season is None
+                        and MetaInfo(file.name or "").begin_season is None
                 ):
                     # 电视剧不处理非季子目录
                     continue

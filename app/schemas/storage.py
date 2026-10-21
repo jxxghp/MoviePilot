@@ -34,8 +34,7 @@ class StorageLoginStatusData(BaseModel):
     tip: str = Field(description="状态提示")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class StorageOption(BaseModel):  # type: ignore[misc]
+class StorageOption(BaseModel):
     """
     前端选择控件可安全消费的存储摘要。
     """
@@ -44,8 +43,7 @@ class StorageOption(BaseModel):  # type: ignore[misc]
     type: str = Field(description="存储类型标识")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class StorageCatalogOption(BaseModel):  # type: ignore[misc]
+class StorageCatalogOption(BaseModel):
     """
     前端新增存储和路径选择器可消费的存储类型目录项。
     """

@@ -5,17 +5,18 @@
 import base64
 import binascii
 import json
-from collections.abc import Awaitable, Callable
-from typing import Annotated, Any, NotRequired, Optional, TypedDict
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Annotated, Any, NotRequired, Optional, cast
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
+    AgentState,
     ExtendedModelResponse,
     ModelRequest,
     ModelResponse,
     OmitFromInput,
 )
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from app.agent.llm.helper import LLMHelper
@@ -27,7 +28,7 @@ VISION_UNAVAILABLE = "当前模型未接收这张工具图片，不能据此声�
 MAX_INLINE_IMAGE_CHARS = 1024 * 1024
 
 
-class VisionState(TypedDict):
+class VisionState(AgentState):
     """
     视觉拒绝事实只属于当前图调用，主子任务不共享可变能力缓存。
 
@@ -35,12 +36,10 @@ class VisionState(TypedDict):
     :ivar tool_vision_rejected_model: 已拒绝工具图片输入的模型标识；缺失时尚未记录，不接受外部输入覆盖
     """
 
-    messages: list[BaseMessage]
     tool_vision_rejected_model: Annotated[NotRequired[str], OmitFromInput]
 
 
-# follow_imports=skip 不展开第三方中间件基类，只在框架继承边界忽略 misc。
-class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
+class VisionMiddleware(AgentMiddleware[VisionState, Any, Any]):
     """
     在最终压缩之后投影工具图片，确保 Chat 与 Responses 都收到真实图像输入。
     """
@@ -79,7 +78,7 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
         return f"{type(model).__module__}.{type(model).__qualname__}:{id(model)}"
 
     @staticmethod
-    def _has_tool_images(messages: list[BaseMessage]) -> bool:
+    def _has_tool_images(messages: Sequence[BaseMessage]) -> bool:
         """
         只检查真实 ToolMessage，用户附件不由工具视觉回退擅自移除。
         """
@@ -111,7 +110,7 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _flush_observation(
-        output: list[BaseMessage], observations: list[dict[str, Any]], pending: set[str],
+        output: list[AnyMessage], observations: list[dict[str, Any]], pending: set[str | None],
     ) -> None:
         """
         完整工具回复批次之后再附加观察，保持并行 tool_call 的协议配对。
@@ -141,9 +140,9 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
             return request
         enabled = not force_text and self.supports_images(request.model)
         enabled = enabled and (request.state or {}).get(VISION_REJECTED_MODEL) != self._model_key(request.model)
-        output: list[BaseMessage] = []
+        output: list[AnyMessage] = []
         observations: list[dict[str, Any]] = []
-        pending: set[str] = set()
+        pending: set[str | None] = set()
         for original in request.messages:
             if not isinstance(original, ToolMessage):
                 self._flush_observation(output, observations, pending)
@@ -158,7 +157,7 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
                         if enabled and not matched:
                             raise ValueError("图片缺少配对的工具调用，不能生成观察消息")
                         message.content = [block for block in message.content if not is_image_content_block(block)]
-                        images = [image for block in image_blocks if (image := self._image_for_model(block)) is not None]
+                        images = [image for block in image_blocks if (image := self._image_for_model(cast(dict[str, Any], block))) is not None]
                         if enabled and images:
                             source = json.dumps({"source": "tool", "tool": message.name, "tool_call_id": message.tool_call_id},
                                                 ensure_ascii=False)

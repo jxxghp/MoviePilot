@@ -50,7 +50,7 @@ def _public_subscribe_view(subscribe: SubscriptionSnapshot) -> _SchemaSubscribe:
     payload = subscribe.to_dict()
     payload["completed_tracks"] = compute_subscribe_completed_tracks(subscribe)
     payload.pop("downloaded_tracks", None)
-    return _SchemaSubscribe(**payload)
+    return _SchemaSubscribe.model_validate(payload)
 
 
 class SubscribeQueryOwner(_SubscribeOwnerBase):
@@ -193,14 +193,14 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                     None,
                     MediaSource.TMDB,
                 ):
-                    meta = MetaInfo(subscribe_in.name)
+                    meta = MetaInfo(subscribe_in.name or "")
                     subscribe_in.name = meta.name
                     if subscribe_in.season is None:
                         subscribe_in.season = meta.begin_season
                 if subscribe_in.name:
                     title = subscribe_in.name
                 else:
-                    title = None
+                    title = ""
                 sid, message = type(self)().add(
                     mtype=mtype,
                     title=title,
@@ -304,8 +304,9 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
             and str(subscribe.media_id).isdigit()
             and subscribe.type == MediaType.TV.value
         ):
+            season = subscribe.season if subscribe.season is not None else 1
             tmdb_episodes = TmdbChain().tmdb_episodes(
-                tmdbid=int(subscribe.media_id), season=subscribe.season, episode_group=subscribe.episode_group
+                tmdbid=int(subscribe.media_id), season=season, episode_group=subscribe.episode_group
             )
             if tmdb_episodes:
                 for episode in tmdb_episodes:
@@ -313,10 +314,11 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                     info.title = episode.name
                     info.description = episode.overview
                     info.backdrop = self.runtime_config.tmdb_image_url(episode.still_path, "w500")
-                    episodes[episode.episode_number] = info
+                    episodes[cast(int, episode.episode_number)] = info
         elif subscribe.type == MediaType.TV.value:
             # 根据开始结束集计算集信息
-            for i in range(subscribe.start_episode or 1, subscribe.total_episode + 1):
+            total_episode = subscribe.total_episode or 0
+            for i in range(subscribe.start_episode or 1, total_episode + 1):
                 info = _SchemaSubscribeEpisodeInfo()
                 info.title = f"第 {i} 集"
                 episodes[i] = info
@@ -356,9 +358,13 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                                 continue
                             episode_number = file_meta.begin_episode
                             if episode_number and episodes.get(episode_number):
-                                episodes[episode_number].download.append(download_file_info)
+                                downloads = episodes[episode_number].download or []
+                                episodes[episode_number].download = downloads
+                                downloads.append(download_file_info)
                         else:
-                            episodes[0].download.append(download_file_info)
+                            downloads = episodes[0].download or []
+                            episodes[0].download = downloads
+                            downloads.append(download_file_info)
 
         try:
             meta = build_subscribe_meta(subscribe)
@@ -393,9 +399,13 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                         continue
                     episode_number = file_meta.begin_episode
                     if episode_number and episodes.get(episode_number):
-                        episodes[episode_number].library.append(library_file_info)
+                        library = episodes[episode_number].library or []
+                        episodes[episode_number].library = library
+                        library.append(library_file_info)
                 else:
-                    episodes[0].library.append(library_file_info)
+                    library = episodes[0].library or []
+                    episodes[0].library = library
+                    library.append(library_file_info)
 
         self._append_subscribe_media_servers(subscribe, mediainfo, episodes)
 
@@ -416,7 +426,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         server_names = list(MediaServerHelper().get_services().keys())
 
         def has_server_entry(
-            library_list: List[_SchemaSubscribeLibraryFileInfo],
+            library_list: Optional[List[_SchemaSubscribeLibraryFileInfo]],
             server_name: Optional[str],
             server_type: Optional[str],
         ) -> bool:
@@ -457,7 +467,9 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                 if episode_info and not has_server_entry(
                     episode_info.library, resolved_server, exists_media.server_type
                 ):
-                    episode_info.library.append(
+                    library = episode_info.library or []
+                    episode_info.library = library
+                    library.append(
                         _SchemaSubscribeLibraryFileInfo(
                             storage=server_storage,
                             file_path=series_detail_url,
@@ -476,7 +488,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                     server=resolved_server,
                     item_id=exists_media.itemid,
                     season=season_number,
-                    query=MediaServerQueryOptions(fields=set()),
+                    query=MediaServerQueryOptions(fields=frozenset()),
                 )
             for episode_number in exist_episodes:
                 episode_info = episodes.get(episode_number)
@@ -490,11 +502,13 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                     detail_url = (
                         mediaserver_chain.get_play_url(
                             server=resolved_server,
-                            item_id=episode_itemid,
+                            item_id=cast(str, episode_itemid),
                         )
                         or series_detail_url
                     )
-                episode_info.library.append(
+                library = episode_info.library or []
+                episode_info.library = library
+                library.append(
                     _SchemaSubscribeLibraryFileInfo(
                         storage=server_storage,
                         file_path=detail_url,

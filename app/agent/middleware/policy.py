@@ -7,8 +7,8 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from langchain.agents.middleware import AgentMiddleware, ToolCallRequest, hook_config
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain.agents.middleware import AgentMiddleware, AgentState, ToolCallRequest, hook_config
+from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 
 from app.agent.policy.api import resolve_api_operation
 from app.agent.policy.contracts import (
@@ -45,8 +45,7 @@ SUBAGENT_READ_ACTIONS = {
 }
 
 
-# follow_imports=skip 下只在第三方中间件基类和装饰器边界忽略 misc。
-class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
+class AgentPolicyMiddleware(AgentMiddleware):
     """
     观测进入本地 ToolNode 的 client-side 工具调用和结果。
 
@@ -73,8 +72,8 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
         self.catalog = catalog
         self._tools = {tool.name: tool for tool in (tools or []) if getattr(tool, "name", None)}
 
-    @hook_config(can_jump_to=["end", "model"])  # type: ignore[misc]
-    async def aafter_model(self, state: dict[str, Any], runtime: Any) -> Any:
+    @hook_config(can_jump_to=["end", "model"])
+    async def aafter_model(self, state: AgentState, runtime: Any) -> Any:
         """
         复用原有模型后置节点合并检测更新，不消耗额外图递归步数。
         """
@@ -83,7 +82,7 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
             return paused
         return await self.guardrails.after_model_update(state, runtime) if self.guardrails else None
 
-    async def _sensitive_pause(self, state: dict[str, Any]) -> Any:
+    async def _sensitive_pause(self, state: AgentState) -> Any:
         """
         敏感设置暂停优先于自动续行，绝不因纠偏放行未确认的调用。
         """
@@ -121,7 +120,7 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
                 sensitive_call.get("args") or {},
             )
 
-        paused_messages = [
+        paused_messages: list[AnyMessage] = [
             ToolMessage(
                 content=("本轮工具调用已暂停，未执行任何操作；请等待用户确认或取消敏感设置读取。"),
                 tool_call_id=str(tool_call.get("id") or ""),

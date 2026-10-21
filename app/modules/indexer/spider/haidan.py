@@ -66,7 +66,7 @@ class HaiDanSpider:
         """
         return None
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
         """
         使用站点配置初始化 HaiDan API 请求上下文。
         """
@@ -123,7 +123,7 @@ class HaiDanSpider:
             "cat": categories
         })
 
-    def __parse_result(self, result: dict) -> list[dict[str, object]]:
+    def __parse_result(self, result: dict[str, Any]) -> list[dict[str, object]]:
         """
         解析结果。
         """

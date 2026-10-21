@@ -236,7 +236,7 @@ class IndexerModule(_ModuleBase):
 
         :return: 无需初始化设置，返回 None
         """
-        pass
+        return None
 
     def site_subtitle_links(self, context: Context) -> Optional[List[str]]:
         """
@@ -246,15 +246,21 @@ class IndexerModule(_ModuleBase):
         :return: 字幕下载链接列表，不适用时返回None
         """
         torrent = context.torrent_info
+        if torrent is None:
+            return None
         if torrent.site is None:
             return None
         site = get_configured_site_query_service().get_sync(torrent.site)
         if not site:
             return None
+        if not site.domain:
+            return None
         indexer = SitesHelper().get_indexer(site.domain)
         if not indexer:
             return None
         if indexer.get("parser") == "mTorrent":
+            if not torrent.page_url:
+                return None
             return MTorrentSpider(indexer).get_subtitle_links(
                 torrent.page_url
             )
@@ -262,7 +268,7 @@ class IndexerModule(_ModuleBase):
         return None
 
     @staticmethod
-    def __search_check(site: dict, search_word: Optional[str] = None) -> bool:
+    def __search_check(site: dict[str, Any], search_word: Optional[str] = None) -> bool:
         """
         检查是否可以执行搜索。
         """
@@ -297,7 +303,7 @@ class IndexerModule(_ModuleBase):
         return text_tools.remove_punctuation(text, replacement=" ", allow_space=True)
 
     @staticmethod
-    def __indexer_statistic(site: dict, error_flag: bool = False, seconds: int = 0) -> None:
+    def __indexer_statistic(site: dict[str, Any], error_flag: bool = False, seconds: int = 0) -> None:
         """
         索引器统计。
         """
@@ -311,7 +317,7 @@ class IndexerModule(_ModuleBase):
             )
 
     @staticmethod
-    async def __async_indexer_statistic(site: dict, error_flag: bool = False, seconds: int = 0) -> None:
+    async def __async_indexer_statistic(site: dict[str, Any], error_flag: bool = False, seconds: int = 0) -> None:
         """
         异步索引器统计。
         """
@@ -325,7 +331,7 @@ class IndexerModule(_ModuleBase):
             )
 
     @staticmethod
-    def __parse_result(site: dict, result_array: list, seconds: int) -> List[TorrentInfo]:
+    def __parse_result(site: dict[str, Any], result_array: list[dict[str, Any]], seconds: int) -> List[TorrentInfo]:
         """
         解析搜索结果为 TorrentInfo 对象。
 
@@ -337,7 +343,7 @@ class IndexerModule(_ModuleBase):
             return []
         logger.info(
             f"{site.get('name')} 搜索完成，耗时 {seconds} 秒，返回数据：{len(result_array)}")
-        torrents = []
+        torrents: List[TorrentInfo] = []
         for result in result_array:
             result = dict(result)
             legacy_imdb_id = result.pop("imdbid", None)
@@ -351,15 +357,15 @@ class IndexerModule(_ModuleBase):
                 site_name=site.get("name"),
                 site_cookie=site.get("cookie"),
                 site_ua=site.get("ua"),
-                site_proxy=site.get("proxy"),
-                site_order=site.get("pri"),
+                site_proxy=bool(site.get("proxy")),
+                site_order=int(site.get("pri") or 0),
                 site_downloader=site.get("downloader"),
                 **result,
             ))
         return torrents
 
     @staticmethod
-    def __parse_subtitle_result(site: dict, result_array: list, seconds: int) -> List[SubtitleInfo]:
+    def __parse_subtitle_result(site: dict[str, Any], result_array: list[dict[str, Any]], seconds: int) -> List[SubtitleInfo]:
         """
         解析字幕搜索结果为 SubtitleInfo 对象。
         """
@@ -372,13 +378,13 @@ class IndexerModule(_ModuleBase):
                              site_name=site.get("name"),
                              site_cookie=site.get("cookie"),
                              site_ua=site.get("ua"),
-                             site_proxy=site.get("proxy"),
-                             site_order=site.get("pri"),
+                             site_proxy=bool(site.get("proxy")),
+                             site_order=int(site.get("pri") or 0),
                              **result) for result in result_array if
                 result.get("language") and result.get("enclosure") and result.get("title") and result.get("size")]
 
     @staticmethod
-    def get_search_page_size(site: dict, keyword: Optional[str] = None) -> Optional[int]:
+    def get_search_page_size(site: dict[str, Any], keyword: Optional[str] = None) -> Optional[int]:
         """
         获取站点搜索入口的单页容量。
 
@@ -555,7 +561,7 @@ class IndexerModule(_ModuleBase):
         resource_name = "字幕" if search_type == "subtitles" else ""
         logger.error(f"{site.get('name')} {resource_name}搜索出错：{str(error)}")
 
-    def search_torrents(self, site: dict,
+    def search_torrents(self, site: dict[str, Any],
                         keyword: Optional[str] = None,
                         mtype: Optional[MediaType] = None,
                         cat: Optional[str] = None,
@@ -617,7 +623,7 @@ class IndexerModule(_ModuleBase):
             seconds=outcome.seconds,
         )
 
-    def search_subtitles(self, site: dict,
+    def search_subtitles(self, site: dict[str, Any],
                          keyword: Optional[str] = None,
                          page: Optional[int] = 0) -> List[SubtitleInfo]:
         """
@@ -677,7 +683,7 @@ class IndexerModule(_ModuleBase):
             seconds=outcome.seconds,
         )
 
-    async def async_search_torrents(self, site: dict,
+    async def async_search_torrents(self, site: dict[str, Any],
                                     keyword: Optional[str] = None,
                                     mtype: Optional[MediaType] = None,
                                     cat: Optional[str] = None,
@@ -739,7 +745,7 @@ class IndexerModule(_ModuleBase):
             seconds=outcome.seconds,
         )
 
-    async def async_search_subtitles(self, site: dict,
+    async def async_search_subtitles(self, site: dict[str, Any],
                                      keyword: Optional[str] = None,
                                      page: Optional[int] = 0) -> List[SubtitleInfo]:
         """
@@ -800,12 +806,12 @@ class IndexerModule(_ModuleBase):
         )
 
     @staticmethod
-    def __spider_search(indexer: dict,
+    def __spider_search(indexer: dict[str, Any],
                         search_word: Optional[str] = None,
                         mtype: Optional[MediaType] = None,
                         cat: Optional[str] = None,
                         page: Optional[int] = 0,
-                        search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict], Optional[str]]:
+                        search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
         """
         根据关键字搜索单个站点。
 
@@ -830,12 +836,12 @@ class IndexerModule(_ModuleBase):
             del _spider
 
     @staticmethod
-    async def __async_spider_search(indexer: dict,
+    async def __async_spider_search(indexer: dict[str, Any],
                                     search_word: Optional[str] = None,
                                     mtype: Optional[MediaType] = None,
                                     cat: Optional[str] = None,
                                     page: Optional[int] = 0,
-                                    search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict], Optional[str]]:
+                                    search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
         """
         异步根据关键字搜索单个站点。
 
@@ -859,7 +865,7 @@ class IndexerModule(_ModuleBase):
         finally:
             del _spider
 
-    def refresh_torrents(self, site: dict,
+    def refresh_torrents(self, site: dict[str, Any],
                          keyword: Optional[str] = None,
                          cat: Optional[str] = None,
                          page: Optional[int] = 0,
@@ -878,7 +884,7 @@ class IndexerModule(_ModuleBase):
             site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
         )
 
-    async def async_refresh_torrents(self, site: dict,
+    async def async_refresh_torrents(self, site: dict[str, Any],
                                      keyword: Optional[str] = None,
                                      cat: Optional[str] = None,
                                      page: Optional[int] = 0,
@@ -897,7 +903,7 @@ class IndexerModule(_ModuleBase):
             site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
         )
 
-    def refresh_userdata(self, site: dict) -> Optional[SiteUserData]:
+    def refresh_userdata(self, site: dict[str, Any]) -> Optional[SiteUserData]:
         """
         刷新站点的用户数据。
 
@@ -914,7 +920,7 @@ class IndexerModule(_ModuleBase):
             schema_value = schema_value or site.get("schema")
             for site_schema in self._site_schemas:
                 if site_schema.schema and site_schema.schema.value == schema_value:
-                    site_url = site.get("url")
+                    site_url = cast(str, site.get("url"))
                     userdata_path = str(site.get("userdata_path") or "").strip()
                     if userdata_path and site_url:
                         if userdata_path.startswith(("http://", "https://")):

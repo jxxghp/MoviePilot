@@ -4,7 +4,10 @@
 
 import logging
 from functools import lru_cache
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union, cast
+
+if TYPE_CHECKING:
+    from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 
 from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.log import log_settings, logger
@@ -76,14 +79,14 @@ def import_error() -> Optional[Exception]:
     return _import_error
 
 
-def parse_filter_rule(expression: str) -> Optional[list]:
+def parse_filter_rule(expression: str) -> Optional[list[Any]]:
     """
     使用 Rust 解析过滤规则表达式，不可用时返回 None。
     """
     if not is_enabled():
         return None
     try:
-        return _moviepilot_rust.parse_filter_rule_fast(expression)
+        return cast(Optional[list[Any]], _moviepilot_rust.parse_filter_rule_fast(expression))
     except BaseException as err:
         _raise_non_rust_panic(err)
         logger.debug(f"Rust 过滤规则解析失败，回退 Python：{err}")
@@ -91,12 +94,12 @@ def parse_filter_rule(expression: str) -> Optional[list]:
 
 
 def filter_torrents(
-        groups: list,
-        torrent_list: list,
-        rule_set: dict,
-        mediainfo=None,
-        metainfo_options: Optional[dict] = None,
-) -> Optional[Tuple[list, list]]:
+        groups: list[dict[str, Any]],
+        torrent_list: list["TorrentInfo"],
+        rule_set: dict[str, Any],
+        mediainfo: Optional[Union["MediaInfo", "MusicInfo"]] = None,
+        metainfo_options: Optional[dict[str, Any]] = None,
+) -> Optional[Tuple[list[tuple[int, int]], list[dict[str, Any]]]]:
     """
     使用 Rust 执行完整种子过滤入口，返回原列表下标、优先级和可选调试日志。
     """
@@ -112,8 +115,8 @@ def filter_torrents(
         )
         if is_debug_log_enabled() and hasattr(_moviepilot_rust, "filter_torrents_with_trace_fast"):
             matched_orders, traces = _moviepilot_rust.filter_torrents_with_trace_fast(*args)
-            return matched_orders, traces
-        return _moviepilot_rust.filter_torrents_fast(*args), []
+            return cast(list[tuple[int, int]], matched_orders), cast(list[dict[str, Any]], traces)
+        return cast(list[tuple[int, int]], _moviepilot_rust.filter_torrents_fast(*args)), []
     except BaseException as err:
         _raise_non_rust_panic(err)
         logger.debug(f"Rust 种子过滤失败，回退 Python：{err}")
@@ -132,25 +135,25 @@ def is_debug_log_enabled() -> bool:
 def parse_indexer_torrents(
         html_text: str,
         domain: str,
-        list_config: dict,
-        fields: dict,
-        category: Optional[dict] = None,
+        list_config: dict[str, Any],
+        fields: dict[str, Any],
+        category: Optional[dict[str, Any]] = None,
         result_num: int = 100
-) -> Optional[List[dict]]:
+) -> Optional[List[dict[str, Any]]]:
     """
     使用 Rust 批量解析普通配置站点种子列表，不可用时返回 None。
     """
     if not is_enabled():
         return None
     try:
-        return _moviepilot_rust.parse_indexer_torrents_fast(
+        return cast(Optional[List[dict[str, Any]]], _moviepilot_rust.parse_indexer_torrents_fast(
             html_text,
             domain,
             list_config,
             fields,
             category,
             result_num
-        )
+        ))
     except BaseException as err:
         _raise_non_rust_panic(err)
         logger.debug(f"Rust 站点列表解析失败，使用 Python 解析兜底：{err}")
@@ -160,65 +163,65 @@ def parse_indexer_torrents(
 def parse_indexer_subtitles(
         html_text: str,
         domain: str,
-        list_config: dict,
-        fields: dict,
+        list_config: dict[str, Any],
+        fields: dict[str, Any],
         result_num: int = 100
-) -> Optional[List[dict]]:
+) -> Optional[List[dict[str, Any]]]:
     """
     使用 Rust 批量解析普通配置站点字幕列表，不可用时返回 None。
     """
     if not is_enabled():
         return None
     try:
-        return _moviepilot_rust.parse_indexer_subtitles_fast(
+        return cast(Optional[List[dict[str, Any]]], _moviepilot_rust.parse_indexer_subtitles_fast(
             html_text,
             domain,
             list_config,
             fields,
             result_num
-        )
+        ))
     except BaseException as err:
         _raise_non_rust_panic(err)
         logger.debug(f"Rust 字幕列表解析失败，使用 Python 解析兜底：{err}")
         return None
 
 
-def parse_rss_items(xml_text: str, max_items: int = 1000) -> Optional[List[dict]]:
+def parse_rss_items(xml_text: str, max_items: int = 1000) -> Optional[List[dict[str, Any]]]:
     """
     使用 Rust 解析 RSS/Atom 条目，不可用或异常时返回 None。
     """
     if not is_enabled():
         return None
     try:
-        return _moviepilot_rust.parse_rss_items_fast(xml_text, max_items)
+        return cast(Optional[List[dict[str, Any]]], _moviepilot_rust.parse_rss_items_fast(xml_text, max_items))
     except BaseException as err:
         _raise_non_rust_panic(err)
         logger.debug(f"Rust RSS解析失败，使用 Python 解析兜底：{err}")
         return None
 
 
-def parse_metainfo(title: str, subtitle: Optional[str] = None, options: Optional[dict] = None) -> Optional[dict]:
+def parse_metainfo(title: str, subtitle: Optional[str] = None, options: Optional[dict[str, Any]] = None) -> Optional[dict[str, Any]]:
     """
     使用 Rust 从标题入口解析 MetaInfo，不可用或异常时返回 None。
     """
     if not is_enabled():
         return None
     try:
-        return _moviepilot_rust.parse_metainfo_fast(title, subtitle, options or {})
+        return cast(Optional[dict[str, Any]], _moviepilot_rust.parse_metainfo_fast(title, subtitle, options or {}))
     except BaseException as err:
         _raise_non_rust_panic(err)
         logger.debug(f"Rust MetaInfo解析失败，使用 Python 解析兜底：{err}")
         return None
 
 
-def parse_metainfo_path(path: str, options: Optional[dict] = None) -> Optional[dict]:
+def parse_metainfo_path(path: str, options: Optional[dict[str, Any]] = None) -> Optional[dict[str, Any]]:
     """
     使用 Rust 从路径入口解析 MetaInfoPath，不可用或异常时返回 None。
     """
     if not is_enabled():
         return None
     try:
-        return _moviepilot_rust.parse_metainfo_path_fast(path, options or {})
+        return cast(Optional[dict[str, Any]], _moviepilot_rust.parse_metainfo_path_fast(path, options or {}))
     except BaseException as err:
         _raise_non_rust_panic(err)
         logger.debug(f"Rust MetaInfoPath解析失败，使用 Python 解析兜底：{err}")
@@ -229,7 +232,7 @@ def parse_metamusic(
         title: str,
         artists: Optional[List[str]] = None,
         year: Optional[int] = None,
-) -> Optional[dict]:
+) -> Optional[dict[str, Any]]:
     """
     使用 Rust 解析音乐资源标题，旧扩展不支持时返回 None。
 
@@ -252,14 +255,14 @@ def parse_metamusic(
     return result if isinstance(result, dict) and result else None
 
 
-def find_metainfo(title: str) -> Optional[dict]:
+def find_metainfo(title: str) -> Optional[dict[str, Any]]:
     """
     使用 Rust 提取标题中的显式媒体标签，不可用或异常时返回 None。
     """
     if not is_enabled():
         return None
     try:
-        return _moviepilot_rust.find_metainfo_fast(title)
+        return cast(Optional[dict[str, Any]], _moviepilot_rust.find_metainfo_fast(title))
     except BaseException as err:
         _raise_non_rust_panic(err)
         logger.debug(f"Rust 显式媒体标签解析失败，使用 Python 解析兜底：{err}")

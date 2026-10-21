@@ -213,6 +213,7 @@ class _BatchDownloadRun:
         """
         读取真实文件集数；保留站点失败原因用于冷却，磁力链只跳过当前阶段。
         """
+        assert context.torrent_info is not None
         torrent = context.torrent_info
         meta = context.meta_info
         assert meta is not None
@@ -338,6 +339,7 @@ class _BatchDownloadRun:
         """
         单季核对真实文件后提交，多季沿用整包提交；成功后标记下载。
         """
+        assert context.torrent_info is not None
         complete = False
         if len(seasons) == 1:
             inspected = self._inspect_whole_season(context, media_key, seasons[0])
@@ -489,6 +491,7 @@ class _BatchDownloadRun:
         """
         只在成功提交选中文件后更新识别集数，失败时保留原候选供换源记账。
         """
+        assert context.torrent_info is not None
         parsed = self._read_torrent(context, partial=True)
         if parsed is None:
             return set()

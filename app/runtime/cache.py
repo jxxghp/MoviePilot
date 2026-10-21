@@ -14,12 +14,15 @@ from typing import (
     Any,
     AsyncGenerator,
     Callable,
+    Coroutine,
     Dict,
     Generator,
     Literal,
     Optional,
+    Protocol,
     Tuple,
     TypedDict,
+    TypeVar,
     Union,
     Unpack,
     cast,
@@ -349,11 +352,13 @@ class AtomicCacheBackend(CacheBackend):
 
 class AsyncCacheBackend(CacheBackend):
     """
-    缓存后端基类，定义通用的缓存接口（异步）。
+    异步缓存契约，保留插件依赖的同步基类继承关系。
+
+    异步返回值无法满足同步父类的返回合同，兼容例外仅登记对应方法签名。
     """
 
     @abstractmethod
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None,
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None,  # type: ignore[override]
                   region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs: object) -> None:
         """
         设置缓存。
@@ -367,7 +372,7 @@ class AsyncCacheBackend(CacheBackend):
         pass
 
     @abstractmethod
-    async def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
+    async def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:  # type: ignore[override]
         """
         判断缓存键是否存在。
 
@@ -389,7 +394,7 @@ class AsyncCacheBackend(CacheBackend):
         pass
 
     @abstractmethod
-    async def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
+    async def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:  # type: ignore[override]
         """
         删除缓存。
 
@@ -399,7 +404,7 @@ class AsyncCacheBackend(CacheBackend):
         pass
 
     @abstractmethod
-    async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
+    async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:  # type: ignore[override]
         """
         清除指定区域的缓存或全部缓存。
 
@@ -408,7 +413,7 @@ class AsyncCacheBackend(CacheBackend):
         pass
 
     @abstractmethod
-    async def items(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:
+    def items(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:  # type: ignore[override]
         """
         获取指定区域的所有缓存项。
 
@@ -417,21 +422,21 @@ class AsyncCacheBackend(CacheBackend):
         """
         pass
 
-    async def keys(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[str, None]:
+    async def keys(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[str, None]:  # type: ignore[override]
         """
         获取所有缓存键，类似 dict.keys()（异步）。
         """
         async for key, _ in self.items(region=region):
             yield key
 
-    async def values(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[Any, None]:
+    async def values(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[Any, None]:  # type: ignore[override]
         """
         获取所有缓存值，类似 dict.values()（异步）。
         """
         async for _, value in self.items(region=region):
             yield value
 
-    async def update(self, other: Dict[str, Any], region: Optional[str] = DEFAULT_CACHE_REGION,
+    async def update(self, other: Dict[str, Any], region: Optional[str] = DEFAULT_CACHE_REGION,  # type: ignore[override]
                      ttl: Optional[int] = None, **kwargs: object) -> None:
         """
         更新缓存，类似 dict.update()（异步）。
@@ -451,7 +456,7 @@ class AsyncCacheBackend(CacheBackend):
             return default
         raise KeyError(key)
 
-    async def popitem(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> Tuple[str, Any]:
+    async def popitem(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> Tuple[str, Any]:  # type: ignore[override]
         """
         弹出最后一个缓存项，类似 dict.popitem()（异步）。
         """
@@ -476,7 +481,7 @@ class AsyncCacheBackend(CacheBackend):
         return value
 
     @abstractmethod
-    async def close(self) -> None:
+    async def close(self) -> None:  # type: ignore[override]
         """
         关闭缓存连接。
         """
@@ -728,7 +733,7 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         """
         self._backend = MemoryBackend(cache_type=cache_type, maxsize=maxsize, ttl=ttl)
 
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None,
+    async def set(self, key: str, value: Any, ttl: Optional[int] = None,  # type: ignore[override]
                   region: Optional[str] = DEFAULT_CACHE_REGION, **kwargs: object) -> None:
         """
         设置缓存值支持每个 key 独立配置 TTL。
@@ -740,7 +745,7 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         """
         return self._backend.set(key=key, value=value, ttl=ttl, region=region, **kwargs)
 
-    async def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:
+    async def exists(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> bool:  # type: ignore[override]
         """
         判断缓存键是否存在。
 
@@ -760,7 +765,7 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         """
         return self._backend.get(key=key, region=region)
 
-    async def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
+    async def delete(self, key: str, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:  # type: ignore[override]
         """
         删除缓存。
 
@@ -769,7 +774,7 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         """
         return self._backend.delete(key=key, region=region)
 
-    async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
+    async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:  # type: ignore[override]
         """
         清除指定区域的缓存或全部缓存。
 
@@ -777,7 +782,7 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         """
         return self._backend.clear(region=region)
 
-    async def items(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:
+    async def items(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> AsyncGenerator[Tuple[str, Any], None]:  # type: ignore[override]
         """
         获取指定区域的所有缓存项。
 
@@ -787,7 +792,7 @@ class AsyncMemoryBackend(AsyncCacheBackend):
         for item in self._backend.items(region):
             yield item
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # type: ignore[override]
         """
         内存缓存不需要关闭资源。
         """
@@ -938,12 +943,47 @@ def AsyncCache(cache_type: Literal['ttl', 'lru'] = 'ttl',
     return AsyncMemoryBackend(cache_type=cache_type, maxsize=maxsize, ttl=ttl)
 
 
+_CachedFunction = TypeVar("_CachedFunction", bound=Callable[..., Any])
+
+
+class CacheControls(Protocol):
+    """
+    同步缓存包装器附加的管理接口，不改变原函数签名。
+
+    :ivar cache_region: 包装函数使用的缓存区域
+    :ivar cache_clear: 清空该函数的缓存区域
+    :ivar cache_exists: 检查完整调用参数对应的缓存；实例方法需显式传入实例
+    :ivar cache_delete: 删除完整调用参数对应的缓存；实例方法需显式传入实例
+    """
+
+    cache_region: str
+    cache_clear: Callable[[], None]
+    cache_exists: Callable[..., bool]
+    cache_delete: Callable[..., None]
+
+
+class AsyncCacheControls(Protocol):
+    """
+    异步缓存包装器附加的管理接口，各操作需要等待完成。
+
+    :ivar cache_region: 包装函数使用的缓存区域
+    :ivar cache_clear: 清空该函数的缓存区域
+    :ivar cache_exists: 检查完整调用参数对应的缓存；实例方法需显式传入实例
+    :ivar cache_delete: 删除完整调用参数对应的缓存；实例方法需显式传入实例
+    """
+
+    cache_region: str
+    cache_clear: Callable[[], Coroutine[Any, Any, None]]
+    cache_exists: Callable[..., Coroutine[Any, Any, bool]]
+    cache_delete: Callable[..., Coroutine[Any, Any, None]]
+
+
 def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Optional[int] = None,
            ttl_provider: Optional[Callable[[], Optional[int]]] = None,
            skip_none: Optional[bool] = True, skip_empty: Optional[bool] = False, shared_key: Optional[str] = None,
            skip_if: Optional[Callable[[Any], bool]] = None,
            empty_ttl: Optional[int] = None, empty_if: Optional[Callable[[Any], bool]] = None,
-           local_only: bool = False):
+           local_only: bool = False) -> Callable[[_CachedFunction], _CachedFunction]:
     """
     自定义缓存装饰器，支持配置缓存区域的 maxsize 和每个 key 的 ttl。
 
@@ -969,14 +1009,11 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
     :return: 装饰器函数
     """
 
-    def decorator(func):
+    def decorator(func: _CachedFunction) -> _CachedFunction:
         """
         按函数签名创建保留同步或异步调用方式的缓存包装。
         """
         # 函数签名在装饰后不会变化，预计算可避免每次缓存访问都重复反射。
-        """
-        为目标函数绑定独立缓存区域，并保留其参数签名供缓存键计算。
-        """
         signature = inspect.signature(func)
         parameter_names = list(signature.parameters.keys())
         cache_parameter_names = (
@@ -1097,7 +1134,7 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
             )
 
             @wraps(func)
-            async def async_wrapper(*args, **kwargs):
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 """
                 异步读取有效缓存；强制刷新或未命中时等待原函数并按策略写入结果。
                 """
@@ -1139,11 +1176,12 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 cache_key = __get_cache_key(args, kwargs)
                 await async_cache_backend.delete(cache_key, region=cache_region)
 
-            async_wrapper.cache_region = cache_region
-            async_wrapper.cache_clear = async_cache_clear
-            async_wrapper.cache_exists = async_cache_exists
-            async_wrapper.cache_delete = async_cache_delete
-            return async_wrapper
+            async_cached = cast(AsyncCacheControls, async_wrapper)
+            async_cached.cache_region = cache_region
+            async_cached.cache_clear = async_cache_clear
+            async_cached.cache_exists = async_cache_exists
+            async_cached.cache_delete = async_cache_delete
+            return cast(_CachedFunction, async_wrapper)
         else:
             sync_cache_backend = Cache(
                 cache_type="ttl" if ttl is not None or ttl_provider is not None else "lru",
@@ -1153,7 +1191,7 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
             )
 
             @wraps(func)
-            def wrapper(*args, **kwargs):
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
                 """
                 优先返回有效缓存；强制刷新或未命中时执行同步函数并按策略写入结果。
                 """
@@ -1193,11 +1231,12 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 cache_key = __get_cache_key(args, kwargs)
                 sync_cache_backend.delete(cache_key, region=cache_region)
 
-            wrapper.cache_region = cache_region
-            wrapper.cache_clear = cache_clear
-            wrapper.cache_exists = cache_exists
-            wrapper.cache_delete = cache_delete
-            return wrapper
+            sync_cached = cast(CacheControls, wrapper)
+            sync_cached.cache_region = cache_region
+            sync_cached.cache_clear = cache_clear
+            sync_cached.cache_exists = cache_exists
+            sync_cached.cache_delete = cache_delete
+            return cast(_CachedFunction, wrapper)
 
     return decorator
 

@@ -103,9 +103,9 @@ class TransferHistoryOper(CanonicalTransferHistoryOper):
             transfer_history_oper=_LegacyTransferHistoryStager(self),
         )
 
-    def add_force(  # type: ignore[no-untyped-def]
+    def add_force(
         self,
-        **kwargs,
+        **kwargs: Any,
     ) -> Optional[TransferHistorySnapshot]:
         """
         按旧动态字段签名替换同源历史，并返回脱离 Session 的快照。

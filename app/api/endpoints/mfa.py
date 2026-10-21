@@ -7,6 +7,7 @@ import json
 from typing import Annotated, Any, Optional
 
 from fastapi import Body, Depends, HTTPException, Request, Response
+from pydantic import BaseModel as _SchemaBaseModel
 from pydantic import Field as _Field
 
 from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
@@ -41,8 +42,7 @@ from app.application.security.user import (
     get_configured_user_name_lookup,
 )
 from app.runtime.log import logger
-from app.schemas.mcp import BaseModel as _SchemaBaseModel
-from app.schemas.mcp import JsonData as _SchemaJsonData
+from app.schemas.common import JsonData as _SchemaJsonData
 from app.schemas.mfa import OtpGenerateData as _SchemaOtpGenerateData
 from app.schemas.mfa import PasskeyInfo as _SchemaPasskeyInfo
 from app.schemas.mfa import PasskeyStartData as _SchemaPasskeyStartData
@@ -70,7 +70,7 @@ def _build_credential_list(passkeys: list[Any]) -> list[dict[str, Any]]:
     )
 
 
-def _extract_and_standardize_credential_id(credential: dict) -> str:
+def _extract_and_standardize_credential_id(credential: dict[str, _SchemaJsonData]) -> str:
     """
     从凭证中提取并标准化 credential_id
 
@@ -79,13 +79,13 @@ def _extract_and_standardize_credential_id(credential: dict) -> str:
     :raises ValueError: 如果凭证无效
     """
     credential_id_raw = credential.get("id") or credential.get("rawId")
-    if not credential_id_raw:
+    if not isinstance(credential_id_raw, str) or not credential_id_raw:
         raise ValueError("无效的凭证")
     return PassKeyHelper.standardize_credential_id(credential_id_raw)
 
 
 def _verify_passkey_and_update(
-    credential: dict,
+    credential: dict[str, _SchemaJsonData],
     challenge: str,
     passkey: Any,
     service: PasskeyService,
@@ -256,8 +256,8 @@ def passkey_register_start(
         options_json, challenge = PassKeyHelper.generate_registration_options(
             user_id=current_user.id,
             username=current_user.name,
-            display_name=current_user.settings.get("nickname")
-            if current_user.settings
+            display_name=getattr(current_user, "settings", {}).get("nickname")
+            if getattr(current_user, "settings", None)
             else None,
             existing_credentials=existing_credentials,
         )
@@ -313,11 +313,13 @@ def passkey_register_finish(
 
         # 提取transports
         transports = None
-        if (
-            "response" in passkey_req.credential
-            and "transports" in passkey_req.credential["response"]
-        ):
-            transports = ",".join(passkey_req.credential["response"]["transports"])
+        response_data = passkey_req.credential.get("response")
+        if isinstance(response_data, dict):
+            transport_data = response_data.get("transports")
+            if isinstance(transport_data, list):
+                transport_values = [item for item in transport_data if isinstance(item, str)]
+                if len(transport_values) == len(transport_data):
+                    transports = ",".join(transport_values)
 
         # 保存到数据库
         service.create({
@@ -481,7 +483,7 @@ def passkey_authenticate_finish(
 )
 def passkey_list(
     current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     service: PasskeyService = Depends(get_passkey_service),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,

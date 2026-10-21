@@ -4,7 +4,7 @@
 
 import json
 from pathlib import Path
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 from anyio import Path as AsyncPath
 from pydantic import BaseModel, Field
@@ -76,7 +76,7 @@ class EditFileTool(MoviePilotTool):
         description="工具输入参数的验证模型或 JSON Schema",
     )
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """
         根据参数生成友好的提示消息
         """
@@ -84,14 +84,14 @@ class EditFileTool(MoviePilotTool):
         file_name = Path(file_path).name if file_path else "未知文件"
         return f"编辑文件: {file_name}"
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         file_path: str,
         old_text: str,
         new_text: str,
         replace_all: bool = False,
         expected_sha256: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """
         校验精确匹配和可选文件版本后，以原子方式写入编辑结果。
@@ -104,6 +104,8 @@ class EditFileTool(MoviePilotTool):
             )
             if access_error:
                 return access_error
+            if resolved_path is None:
+                return "错误：无法解析编辑路径"
 
             if not old_text:
                 return "错误：old_text 不能为空；创建或完整写入文件请使用 write_file。"

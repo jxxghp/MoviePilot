@@ -73,7 +73,7 @@ class HddolbySpider:
         """
         return cls._size
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
         """
         使用站点配置初始化 HDDolby API 请求上下文。
         """
@@ -122,7 +122,7 @@ class HddolbySpider:
             "visible": 1,
         }
 
-    def __parse_result(self, results: List[dict]) -> List[dict]:
+    def __parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
         解析搜索结果。
         """
@@ -186,7 +186,7 @@ class HddolbySpider:
                 'downloadvolumefactor': self.__get_downloadvolumefactor(result.get('promotion_time_type')),
                 'uploadvolumefactor': self.__get_uploadvolumefactor(result.get('promotion_time_type')),
                 'freedate': result.get('promotion_until'),
-                'page_url': self._pageurl % result.get('id'),
+                'page_url': self._pageurl % result.get('id') if self._pageurl else '',
                 'labels': torrentLabels,
                 'category': category
             }
@@ -210,7 +210,7 @@ class HddolbySpider:
         return True, []
 
     def search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
-               cat: Optional[str] = None) -> Tuple[bool, List[dict]]:
+               cat: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         同步搜索 HDDolby 种子。
 
@@ -221,6 +221,9 @@ class HddolbySpider:
         :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
 
+        if not self._searchurl:
+            logger.warning(f"{self._name} 未配置搜索地址，无法搜索")
+            return True, []
         params = self.__get_params(keyword, mtype, page, cat)
 
         res = RequestUtils(
@@ -237,7 +240,7 @@ class HddolbySpider:
         return self.__process_response(res)
 
     async def async_search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,
-                           cat: Optional[str] = None) -> Tuple[bool, List[dict]]:
+                           cat: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索 HDDolby 种子。
 
@@ -247,6 +250,9 @@ class HddolbySpider:
         :param cat: 逗号分隔的站点分类 ID，优先于媒体类型
         :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
+        if not self._searchurl:
+            logger.warning(f"{self._name} 未配置搜索地址，无法搜索")
+            return True, []
         params = self.__get_params(keyword, mtype, page, cat)
 
         res = await AsyncRequestUtils(

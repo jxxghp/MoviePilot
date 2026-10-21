@@ -3,7 +3,7 @@ rTorrent 下载模块，负责实例路由、任务投影与下载文件选择�
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union, cast
 
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
@@ -114,9 +114,15 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         )
         if not torrent_from_file and not is_magnet:
             return None, None, None, "添加种子任务失败：无法读取种子文件"
+        resolved_content = cast(Union[str, bytes], resolved_content)
 
         # 失败提示使用种子名称（磁力链接保留原文），不拼接种子文件的二进制内容
         torrent_desc = torrent_from_file.name if torrent_from_file else resolved_content
+        torrent_desc_text = (
+            torrent_desc.decode(errors="replace")
+            if isinstance(torrent_desc, bytes)
+            else str(torrent_desc)
+        )
 
         server = self.get_instance(downloader)
         if not server:
@@ -157,7 +163,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                         ) and torrent.get("total_size") == getattr(
                             torrent_from_file, "total_size", 0
                         ):
-                            torrent_hash = torrent.get("hash")
+                            torrent_hash = cast(str, torrent.get("hash"))
                             torrent_tags = [
                                 str(t).strip()
                                 for t in torrent.get("tags", "").split(",")
@@ -189,17 +195,18 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                 finally:
                     torrents.clear()
                     del torrents
-            return None, None, None, f"添加种子任务失败：{torrent_desc}"
+            return None, None, None, f"添加种子任务失败：{torrent_desc_text}"
         else:
-            torrent_hash = server.get_torrent_id_by_tag(tags=tag)
-            if not torrent_hash:
+            added_torrent_hash = server.get_torrent_id_by_tag(tags=tag)
+            if not added_torrent_hash:
                 return (
                     None,
                     None,
                     None,
-                    f"下载任务添加成功，但获取rTorrent任务信息失败：{torrent_desc}",
+                    f"下载任务添加成功，但获取rTorrent任务信息失败：{torrent_desc_text}",
                 )
             else:
+                torrent_hash = added_torrent_hash
                 if episodes:
                     torrent_files = server.get_files(torrent_hash)
                     if not torrent_files:
@@ -301,7 +308,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                 hash=torrent_data.get("hash"),
                 title=torrent_data.get("name"),
                 name=meta.name,
-                year=meta.year,
+                year=str(meta.year) if meta.year is not None else None,
                 season_episode=meta.season_episode,
                 path=Path(self.normalize_return_path(torrent_path, downloader_name)),
                 save_path=self.normalize_return_path(
@@ -414,13 +421,11 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         server = self.get_instance(downloader)
         if not server:
             return None
-        org_tags = server.get_torrent_tags(ids=hashs)
-        if org_tags:
-            tags = org_tags + ["已整理"]
-        else:
-            tags = ["已整理"]
-        # 直接设置完整标签（覆盖）
-        server.set_torrents_tag(ids=hashs, tags=tags, overwrite=True)
+        for torrent_hash in [hashs] if isinstance(hashs, str) else hashs:
+            org_tags = server.get_torrent_tags(ids=torrent_hash)
+            tags = org_tags + ["已整理"] if org_tags else ["已整理"]
+            # 每个任务独立保留原标签，避免批量整理时覆盖其他任务的标签。
+            server.set_torrents_tag(ids=torrent_hash, tags=tags, overwrite=True)
         return None
 
     def remove_torrents(
@@ -440,7 +445,10 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         server = self.get_instance(downloader)
         if not server:
             return None
-        return server.delete_torrents(delete_file=delete_file, ids=hashs)
+        return server.delete_torrents(
+            delete_file=delete_file if delete_file is not None else True,
+            ids=hashs,
+        )
 
     def set_torrents_tag(
         self, hashs: Union[str, list[str]], tags: list[str],
@@ -565,24 +573,29 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :return: 各可用实例的统计列表，速度单位为字节/秒、传输量为字节；
             指定实例不可用时返回 None，统计查询失败的实例被跳过
         """
+        servers: list[Rtorrent]
         if downloader:
-            server: Rtorrent = self.get_instance(downloader)
+            server = self.get_instance(downloader)
             if not server:
                 return None
             servers = [server]
         else:
-            servers = self.get_instances().values()
+            servers = list(self.get_instances().values())
         ret_info = []
         for server in servers:
             info = server.transfer_info()
             if not info:
                 continue
+            download_speed = info.get("dl_info_speed")
+            upload_speed = info.get("up_info_speed")
+            download_size = info.get("dl_info_data")
+            upload_size = info.get("up_info_data")
             ret_info.append(
                 _SchemaDownloaderInfo(
-                    download_speed=info.get("dl_info_speed"),
-                    upload_speed=info.get("up_info_speed"),
-                    download_size=info.get("dl_info_data"),
-                    upload_size=info.get("up_info_data"),
+                    download_speed=float(download_speed) if isinstance(download_speed, (int, float)) else None,
+                    upload_speed=float(upload_speed) if isinstance(upload_speed, (int, float)) else None,
+                    download_size=float(download_size) if isinstance(download_size, (int, float)) else None,
+                    upload_size=float(upload_size) if isinstance(upload_size, (int, float)) else None,
                 )
             )
         return ret_info

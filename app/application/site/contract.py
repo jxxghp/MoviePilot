@@ -62,6 +62,40 @@ _SITE_USERDATA_MUTATION_FIELDS = frozenset(
 )
 
 
+class SiteCookieLoginSource(Protocol):
+    """
+    Cookie 登录消费的只读站点字段，兼容持久化快照和 API 查询 DTO。
+    """
+
+    @property
+    def id(self) -> Optional[int]:
+        """
+        返回站点主键，未保存的配置可为空。
+        """
+        ...
+
+    @property
+    def url(self) -> Optional[str]:
+        """
+        返回站点登录入口。
+        """
+        ...
+
+    @property
+    def proxy(self) -> Optional[int]:
+        """
+        返回是否使用宿主代理的配置。
+        """
+        ...
+
+    @property
+    def timeout(self) -> Optional[int]:
+        """
+        返回登录请求的超时秒数。
+        """
+        ...
+
+
 class _FrozenJsonDict(dict[str, JsonData]):
     """
     保留 JSON 字典兼容读取，并拒绝原地修改。

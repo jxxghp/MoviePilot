@@ -238,7 +238,7 @@ def _text_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content: 
         ("effect", "特效", torrent.title, True),
     ):
         pattern = params.get(key)
-        if pattern and _filter_pattern_search(pattern, subject) != expected:
+        if isinstance(pattern, str) and pattern and _filter_pattern_search(pattern, subject or "") != expected:
             diagnostic = f"{subject} {'不匹配' if expected else '匹配'}{label}规则 {pattern}"
             return f"不符合{label}条件：{pattern}", diagnostic
     return None
@@ -565,12 +565,12 @@ class TorrentHelper:
             for site in get_configured_site_query_service().userdata_latest_sync()
         }
 
-        def get_sort_str(_context):
+        def get_sort_str(_context: Context) -> str:
             """
             拼装排序字段
             """
-            _meta = _context.meta_info
-            _torrent = _context.torrent_info
+            _meta = _context.meta_info or MetaInfo("")
+            _torrent = _context.torrent_info or TorrentInfo()
             _media = _context.media_info
             _title = str(_media.title if _media else _meta.name).ljust(200, ' ')
             _site_order = str(999 - (_torrent.site_order or 0)).rjust(3, '0')
@@ -615,6 +615,8 @@ class TorrentHelper:
             # 控重的主链是名称、年份、季、集
             meta = context.meta_info
             media = context.media_info
+            if meta is None or media is None:
+                continue
             if media.type == MediaType.TV:
                 media_name = "%s%s" % (media.title_year,
                                        meta.season_episode)
@@ -695,13 +697,14 @@ class TorrentHelper:
             text_tools.normalize_upper(torrent_meta.cn_name),
             text_tools.normalize_upper(torrent_meta.en_name)
         } - {""}
-        if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
+        media_type = mediainfo.type or MediaType.UNKNOWN
+        if torrent_meta.type == MediaType.TV and media_type != MediaType.TV:
             logger.debug(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'
-                         f'不匹配 {mediainfo.type.value}')
+                         f'不匹配 {media_type.value}')
             return False
-        if torrent.category == MediaType.TV.value and mediainfo.type != MediaType.TV:
+        if torrent.category == MediaType.TV.value and media_type != MediaType.TV:
             logger.debug(f'{torrent.site_name} - {torrent.title} 种子在站点中归类为 {torrent.category}，'
-                         f'不匹配 {mediainfo.type.value}')
+                         f'不匹配 {media_type.value}')
             return False
         if mediainfo.year:
             if mediainfo.type == MediaType.TV:

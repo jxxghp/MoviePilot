@@ -36,7 +36,7 @@ class TorrentLeech:
         """
         return None if keyword else cls._size
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
         """
         初始化站点认证信息和媒体分类配置。
         """
@@ -78,7 +78,11 @@ class TorrentLeech:
             )
         return self._searchurl % (domain, encoded_keyword)
 
-    def __parse_result(self, results: List[dict], mtype: Optional[MediaType] = None) -> List[dict]:
+    def __parse_result(
+        self,
+        results: List[dict[str, Any]],
+        mtype: Optional[MediaType] = None,
+    ) -> List[dict[str, Any]]:
         """
         解析搜索结果。
         """
@@ -136,7 +140,7 @@ class TorrentLeech:
         keyword: str,
         mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
-    ) -> Tuple[bool, List[dict]]:
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         同步搜索 TorrentLeech 种子。
 
@@ -152,7 +156,7 @@ class TorrentLeech:
         if keyword:
             url = self.__get_search_url(keyword, mtype)
         else:
-            url = self._browseurl % (self._indexer.get('domain'), int(page) + 1)
+            url = self._browseurl % (self._indexer.get('domain'), int(page or 0) + 1)
 
         res = RequestUtils(
             headers={
@@ -170,7 +174,7 @@ class TorrentLeech:
         keyword: str,
         mtype: Optional[MediaType] = None,
         page: Optional[int] = 0,
-    ) -> Tuple[bool, List[dict]]:
+    ) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索 TorrentLeech 种子。
 
@@ -186,7 +190,7 @@ class TorrentLeech:
         if keyword:
             url = self.__get_search_url(keyword, mtype)
         else:
-            url = self._browseurl % (self._indexer.get('domain'), int(page) + 1)
+            url = self._browseurl % (self._indexer.get('domain'), int(page or 0) + 1)
 
         res = await AsyncRequestUtils(
             headers={

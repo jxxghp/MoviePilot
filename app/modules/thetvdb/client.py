@@ -36,11 +36,11 @@ def _cache_request(function: _RequestFunction) -> _RequestFunction:
     """
     缓存保持原始参数和返回值，类型桥接不改变缓存配置。
     """
-    return cast(_RequestFunction, cached(
+    return cached(
         maxsize=get_runtime_setting('CONF').tmdb,
         ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
-    )(function))
+    )(function)
 
 
 class Auth:

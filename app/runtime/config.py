@@ -24,6 +24,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    cast,
     get_args,
     get_origin,
 )
@@ -205,7 +206,7 @@ class ConfigModel(BaseModel):
     # 安全认证配置
     SECRET_KEY: str = Field(default=secrets.token_urlsafe(32), description='密钥')
     RESOURCE_SECRET_KEY: str = Field(default=secrets.token_urlsafe(32), description='RESOURCE密钥')
-    ALLOWED_HOSTS: list = Field(
+    ALLOWED_HOSTS: list[str] = Field(
         default_factory=lambda: ["*"],
         description='允许的跨域来源；为 "*" 时浏览器跨域请求不携带凭据，需要跨域带 Cookie 请列出显式来源',
     )
@@ -263,7 +264,7 @@ class ConfigModel(BaseModel):
             'feishu/discord 循环不访问数据库，走此路径的只有插件与调度器兜底分支的零星调用，因此取值不必大——它直接计入连接总额度'
         ),
     )
-    DB_CONNECT_ARGS: dict = Field(
+    DB_CONNECT_ARGS: dict[str, Any] = Field(
         default_factory=dict,
         description=(
             '驱动级连接参数，透传给 create_engine/create_async_engine 的 connect_args。例如经 PgBouncer 事务模式接入时 asyncpg 需要 '
@@ -416,7 +417,7 @@ class ConfigModel(BaseModel):
     AUTO_UPDATE_RESOURCE: bool = Field(default=True, description='后台检查站点资源包，确认后由启动器在进程拉起前应用')
 
     # 媒体文件格式配置
-    RMT_MEDIAEXT: list = Field(
+    RMT_MEDIAEXT: list[str] = Field(
             default_factory=lambda: [
                 ".mp4",
                 ".mkv",
@@ -437,8 +438,8 @@ class ConfigModel(BaseModel):
                 ".tp",
                 ".f4v",
             ], description='支持的视频文件后缀格式')
-    RMT_SUBEXT: list = Field(default_factory=lambda: [".srt", ".ass", ".ssa", ".sup"], description='支持的字幕文件后缀格式')
-    RMT_AUDIOEXT: list = Field(
+    RMT_SUBEXT: list[str] = Field(default_factory=lambda: [".srt", ".ass", ".ssa", ".sup"], description='支持的字幕文件后缀格式')
+    RMT_AUDIOEXT: list[str] = Field(
             default_factory=lambda: [
                 ".aac",
                 ".ac3",
@@ -513,7 +514,7 @@ class ConfigModel(BaseModel):
     TORRENT_TAG: str = Field(default="MOVIEPILOT", description='种子标签')
     DOWNLOAD_SUBTITLE: bool = Field(default=True, description='下载站点字幕')
     AUTO_DOWNLOAD_USER: Optional[str] = Field(default=None, description='交互搜索自动下载用户ID，使用,分割')
-    DOWNLOAD_TMPEXT: list = Field(default_factory=lambda: [".!qb", ".part"], description='下载器临时文件后缀')
+    DOWNLOAD_TMPEXT: list[str] = Field(default_factory=lambda: [".!qb", ".part"], description='下载器临时文件后缀')
 
     # 目录监控配置
     MONITOR_NETWORK_FAST_MODE: bool = Field(
@@ -591,7 +592,7 @@ class ConfigModel(BaseModel):
             "/{{album or 'Unknown Album'}}{% if year %} ({{year}}){% endif %}"
             "{% if total_discs and total_discs > 1 %}/Disc {{disc_number or 1}}{% endif %}"
             "/{% if track %}{{track}} - {% endif %}{{title}}{{fileExt}}", description='音乐重命名格式')
-    RENAME_FORMAT_S0_NAMES: list = Field(default=["Specials", "SPs"], description='重命名时支持的S0别名')
+    RENAME_FORMAT_S0_NAMES: list[str] = Field(default=["Specials", "SPs"], description='重命名时支持的S0别名')
     DEFAULT_SUB: Optional[str] = Field(default="zh-cn", description='为指定默认字幕添加.default后缀')
     SCRAP_FOLLOW_TMDB: bool = Field(default=True, description='新增已入库媒体是否跟随TMDB信息变化')
     RECOGNIZE_PLUGIN_FIRST: bool = Field(default=False, description='优先使用辅助识别')
@@ -669,7 +670,7 @@ class ConfigModel(BaseModel):
     MEMORY_GC_INTERVAL: int = Field(default=30, description='主动内存回收时间间隔（分钟），0为不启用')
 
     # 安全配置
-    SECURITY_IMAGE_DOMAINS: list = Field(
+    SECURITY_IMAGE_DOMAINS: list[str] = Field(
             default=[
                 "image.tmdb.org",
                 "images.tmdb.org",
@@ -696,8 +697,8 @@ class ConfigModel(BaseModel):
                 "commons.wikimedia.org",
                 "upload.wikimedia.org",
             ], description='允许的图片缓存域名')
-    IMAGE_PROXY_ALLOWED_PRIVATE_RANGES: list = Field(default=[], description='图片代理允许访问的非公网 IP/CIDR，默认不放行任何非公网解析结果')
-    SECURITY_IMAGE_SUFFIXES: list = Field(
+    IMAGE_PROXY_ALLOWED_PRIVATE_RANGES: list[str] = Field(default=[], description='图片代理允许访问的非公网 IP/CIDR，默认不放行任何非公网解析结果')
+    SECURITY_IMAGE_SUFFIXES: list[str] = Field(
             default=[".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"], description='允许的图片文件后缀格式')
     PASSKEY_REQUIRE_UV: bool = Field(default=True, description='PassKey 是否强制用户验证（生物识别等）')
     API_DOCS_ENABLE: bool = Field(
@@ -798,8 +799,7 @@ def _get_secrets_dir() -> Optional[str]:
     return None if value.lower() in {"", "false", "off", "0"} else value
 
 
-# 严格类型检查跳过第三方源码导入，因此无法静态解析 Pydantic 来源基类。
-class _DeploymentSecretsSource(SecretsSettingsSource):  # type: ignore[misc]
+class _DeploymentSecretsSource(SecretsSettingsSource):
     """
     按配置名读取外部文件，隔离坏文件并保护编排管理的字段不被写回。
 
@@ -901,11 +901,11 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         :return: 从高到低排列的来源
         """
         secret_source = _DeploymentSecretsSource(
-            settings_cls, secrets_dir=file_secret_settings.secrets_dir
+            settings_cls, secrets_dir=cast(SecretsSettingsSource, file_secret_settings).secrets_dir
         )
         return init_settings, env_settings, dotenv_settings, secret_source
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         """
         加载环境配置并确保运行时目录和内置配置可用。
         """
@@ -1586,7 +1586,7 @@ class GlobalVar(object):
         self._loop_registry.replace_compat(None)
 
     @property
-    def SUBSCRIPTIONS(self) -> List[dict]:
+    def SUBSCRIPTIONS(self) -> List[dict[str, Any]]:
         """
         兼容旧代码在持锁后直接访问订阅列表。
         """
@@ -1626,19 +1626,19 @@ class GlobalVar(object):
         """
         return runtime_stop_state.is_system_stopped
 
-    def get_subscriptions(self):
+    def get_subscriptions(self) -> list[dict[str, Any]]:
         """
         获取webpush订阅。
         """
         return self._push_registry.list()
 
-    def push_subscription(self, subscription: dict):
+    def push_subscription(self, subscription: dict[str, Any]) -> None:
         """
         添加或更新webpush订阅。
         """
         self._push_registry.upsert(subscription)
 
-    def remove_subscription(self, subscription: dict) -> bool:
+    def remove_subscription(self, subscription: dict[str, Any]) -> bool:
         """
         根据 endpoint 移除webpush订阅，返回是否实际删除。
         """

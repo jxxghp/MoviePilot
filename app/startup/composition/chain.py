@@ -150,11 +150,11 @@ def configure_wallpaper_services() -> None:
         tmdb_wallpaper=lambda: TmdbChain().get_random_wallpager(),
         tmdb_wallpapers=lambda count: TmdbChain().get_trending_wallpapers(count),
         mediaserver_wallpaper=lambda: MediaServerChain().get_latest_wallpaper(
-            query=MediaServerQueryOptions(fields={MediaServerField.IMAGES}),
+            query=MediaServerQueryOptions(fields=frozenset({MediaServerField.IMAGES})),
         ),
         mediaserver_wallpapers=lambda count: MediaServerChain().get_latest_wallpapers(
             count=count,
-            query=MediaServerQueryOptions(fields={MediaServerField.IMAGES}),
+            query=MediaServerQueryOptions(fields=frozenset({MediaServerField.IMAGES})),
         ),
     )
 

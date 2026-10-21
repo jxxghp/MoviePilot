@@ -25,7 +25,7 @@ router = ResponseAPIRouter()
 
 
 # 沿用当前 Pydantic 动态基类的类型检查兼容处理。
-class AuthExchangeRequest(BaseModel):  # type: ignore[misc]
+class AuthExchangeRequest(BaseModel):
     """
     插件认证票据兑换请求。
     """

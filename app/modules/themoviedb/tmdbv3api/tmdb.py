@@ -118,14 +118,14 @@ def _cache_request(function: _RequestFunction) -> _RequestFunction:
     """
     保留请求的调用类型；cached 仅附加缓存管理入口而不改变返回值。
     """
-    return cast(_RequestFunction, cached(
+    return cached(
         maxsize=get_runtime_setting('CONF').tmdb,
         ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
         skip_if=_is_business_failure_snapshot,
         empty_ttl=get_runtime_setting('EMPTY_RESULT_CACHE_TTL'),
         empty_if=_is_empty_result_snapshot,
-    )(function))
+    )(function)
 
 
 class TMDb(object):

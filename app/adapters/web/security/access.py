@@ -276,7 +276,7 @@ def set_or_refresh_resource_token_cookie(
     )
     is_https = (
         request.url.scheme == "https"
-        or request.headers.get("x-forwarded-proto", "").lower() == "https"
+        or (request.headers.get("x-forwarded-proto") or "").lower() == "https"
     )
     response.set_cookie(
         key=project_name,

@@ -20,10 +20,11 @@ from app.schemas.message import IncomingMessage, Message, MessageResponse
 from app.schemas.types import ModuleType, NotificationChannel
 
 # SDK 缺失或加载失败时保留其他通知渠道的可用性。
+Discord: Any = None
 try:
-    from app.modules.discord.discord import Discord
+    from app.modules.discord.discord import Discord as _Discord
+    Discord = _Discord
 except Exception as err:
-    Discord = None
     logger.error(f"Discord 模块未加载，缺少依赖或初始化错误：{err}")
 
 
@@ -112,11 +113,11 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         """
         return self._stop_service_instances()
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         保留设置初始化钩子，实例配置由通知服务管理。
         """
-        pass
+        return None
 
     @staticmethod
     def _send_admin_denied(
@@ -151,9 +152,9 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         client_config = self.get_config(source)
         if not client_config:
             return None
-        client: Discord = self.get_instance(client_config.name)
+        client: Optional[Discord] = self.get_instance(client_config.name)
         try:
-            msg_json: dict = json.loads(body)
+            msg_json: dict[str, Any] = json.loads(body)
         except Exception as e:
             logger.debug(f"解析 Discord 消息失败：{str(e)}")
             return None
@@ -231,7 +232,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
 
     @staticmethod
     def _extract_images(
-        msg_json: dict,
+        msg_json: dict[str, Any],
     ) -> Optional[List[IncomingMessage.MessageImage]]:
         """
         从Discord消息中提取图片URL。
@@ -262,7 +263,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         return images if images else None
 
     @classmethod
-    def _extract_audio_refs(cls, msg_json: dict) -> Optional[List[str]]:
+    def _extract_audio_refs(cls, msg_json: dict[str, Any]) -> Optional[List[str]]:
         """
         从Discord消息中提取音频URL。
         """
@@ -282,7 +283,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
 
     @classmethod
     def _extract_files(
-        cls, msg_json: dict
+        cls, msg_json: dict[str, Any]
     ) -> Optional[List[IncomingMessage.MessageAttachment]]:
         """
         从 Discord 消息中提取非图片/非音频文件。
@@ -333,10 +334,11 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         file_url = unquote(file_ref.replace("discord://file/", "", 1))
         resp = RequestUtils(timeout=30).get_res(file_url)
         if resp and resp.content:
-            return resp.content
+            content = resp.content
+            return content if isinstance(content, bytes) else None
         return None
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: Any) -> None:
         """
         向匹配的 Discord 配置发送普通通知。
 
@@ -378,7 +380,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                 if not userid:
                     logger.warn("用户没有指定 Discord 用户ID，消息无法发送")
                     return
-            client: Discord = self.get_instance(conf.name)
+            client: Optional[Discord] = self.get_instance(conf.name)
             logger.debug(
                 f"[Discord] get_instance('{conf.name}') 返回: {client is not None}"
             )
@@ -429,7 +431,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: Discord = self.get_instance(conf.name)
+            client: Optional[Discord] = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(
                     title=message.title,
@@ -454,7 +456,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: Discord = self.get_instance(conf.name)
+            client: Optional[Discord] = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(
                     title=message.title,
@@ -487,7 +489,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         for conf in self.get_configs().values():
             if source != conf.name:
                 continue
-            client: Discord = self.get_instance(conf.name)
+            client: Optional[Discord] = self.get_instance(conf.name)
             if client:
                 result = client.delete_msg(message_id=message_id, chat_id=chat_id)
                 if result:
@@ -502,8 +504,8 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         chat_id: Union[str, int],
         text: str,
         title: Optional[str] = None,
-        buttons: Optional[List[List[dict]]] = None,
-        metadata: Optional[dict] = None,
+        buttons: Optional[List[List[dict[str, Any]]]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[bool]:
         """
         编辑消息。
@@ -523,7 +525,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         for conf in self.get_configs().values():
             if source != conf.name:
                 continue
-            client: Discord = self.get_instance(conf.name)
+            client: Optional[Discord] = self.get_instance(conf.name)
             if client:
                 result = client.send_msg(
                     title=title or "",
@@ -546,7 +548,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         message_id: Optional[Union[str, int]] = None,
         chat_id: Optional[Union[str, int]] = None,
         text: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         启动会话正在输入状态。
 
@@ -565,7 +567,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         config = self.get_config(source)
         if not config:
             return None
-        client: Discord = self.get_instance(config.name)
+        client: Optional[Discord] = self.get_instance(config.name)
         if not client:
             return None
         if not client.start_typing(
@@ -589,7 +591,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         userid: Optional[Union[str, int]] = None,
         message_id: Optional[Union[str, int]] = None,
         chat_id: Optional[Union[str, int]] = None,
-        status: Optional[dict] = None,
+        status: Optional[dict[str, Any]] = None,
     ) -> Optional[bool]:
         """
         请求停止会话正在输入状态。
@@ -609,13 +611,13 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         config = self.get_config(source)
         if not config:
             return False
-        client: Discord = self.get_instance(config.name)
+        client: Optional[Discord] = self.get_instance(config.name)
         if not client:
             return False
-        return client.stop_typing(
+        return bool(client.stop_typing(
             userid=str(target_userid) if target_userid else None,
             chat_id=str(target_chat_id) if target_chat_id else None,
-        )
+        ))
 
     def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
@@ -634,7 +636,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                 if not userid:
                     logger.warn("用户没有指定 Discord 用户ID，消息无法发送")
                     return None
-            client: Discord = self.get_instance(conf.name)
+            client: Optional[Discord] = self.get_instance(conf.name)
             if client:
                 if message.file_path:
                     result = client.send_file(

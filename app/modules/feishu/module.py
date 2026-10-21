@@ -12,8 +12,7 @@ from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.feishu.feishu import Feishu
 from app.schemas.message import IncomingMessage, Message, MessageResponse
-from app.schemas.notification import NotificationChannel
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
     NotificationChannel.Feishu,
@@ -77,7 +76,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         """
         return 2
 
-    def _commands_enabled(self, config: Optional[dict]) -> bool:
+    def _commands_enabled(self, config: Optional[dict[str, Any]]) -> bool:
         """
         飞书机器人无斜杠命令概念，开放平台也不提供命令注册/删除 API，。
         跳过命令注册，避免基类默认钩子调用不存在的 client.register_commands。
@@ -92,7 +91,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         """
         return self._stop_service_instances()
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         通知模块通过系统通知配置控制实例化，这里不额外设置环境开关。
         """
@@ -153,12 +152,12 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         client_config = self.get_config(source)
         if not client_config:
             return None
-        client: Feishu = self.get_instance(client_config.name)
+        client: Optional[Feishu] = self.get_instance(client_config.name)
         if not client:
             return None
         return client.parse_message(body)
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: Any) -> None:
         """
         向符合通知规则的实例发送卡片、附件或语音。
 
@@ -169,7 +168,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             if not self.check_message(message, conf.name):
                 continue
             userid, chat_id, receive_id_type = self._resolve_message_target(message)
-            client: Feishu = self.get_instance(conf.name)
+            client: Optional[Feishu] = self.get_instance(conf.name)
             if client:
                 if message.image and message.file_path:
                     # 普通文件无法嵌入卡片，先发送图文卡片，再单独发送附件，避免图片被 file_path 分支吞掉。
@@ -228,7 +227,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             if not self.check_message(message, conf.name):
                 continue
             userid, chat_id, receive_id_type = self._resolve_message_target(message)
-            client: Feishu = self.get_instance(conf.name)
+            client: Optional[Feishu] = self.get_instance(conf.name)
             if client:
                 client.send_medias_message(
                     message=message,
@@ -249,7 +248,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             if not self.check_message(message, conf.name):
                 continue
             userid, chat_id, receive_id_type = self._resolve_message_target(message)
-            client: Feishu = self.get_instance(conf.name)
+            client: Optional[Feishu] = self.get_instance(conf.name)
             if client:
                 client.send_torrents_message(
                     message=message,
@@ -267,8 +266,8 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             chat_id: Union[str, int],
             text: str,
             title: Optional[str] = None,
-            buttons: Optional[List[List[dict]]] = None,
-            metadata: Optional[dict] = None,
+            buttons: Optional[List[List[dict[str, Any]]]] = None,
+            metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[bool]:
         """
         通过指定实例更新普通卡片或流式卡片。
@@ -288,7 +287,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         for conf in self.get_configs().values():
             if source != conf.name:
                 continue
-            client: Feishu = self.get_instance(conf.name)
+            client: Optional[Feishu] = self.get_instance(conf.name)
             if client and client.edit_message(
                     message_id=str(message_id),
                     title=title,
@@ -313,7 +312,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             if not self.check_message(message, conf.name):
                 continue
             userid, chat_id, receive_id_type = self._resolve_message_target(message)
-            client: Feishu = self.get_instance(conf.name)
+            client: Optional[Feishu] = self.get_instance(conf.name)
             if not client:
                 continue
             if message.image and message.file_path:
@@ -529,7 +528,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             message_id: Optional[Union[str, int]] = None,
             chat_id: Optional[Union[str, int]] = None,
             text: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         为有文本的普通消息添加“正在处理”表情。
 
@@ -572,7 +571,7 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
             userid: Optional[Union[str, int]] = None,
             message_id: Optional[Union[str, int]] = None,
             chat_id: Optional[Union[str, int]] = None,
-            status: Optional[dict] = None,
+            status: Optional[dict[str, Any]] = None,
     ) -> Optional[bool]:
         """
         根据起始处理状态删除“正在处理”表情。
@@ -607,7 +606,10 @@ class FeishuModule(_MessageChannelModuleBase[Feishu]):
         """
         if response.channel != self._channel or not isinstance(response.metadata, dict):
             return False
-        stream_meta = response.metadata.get("feishu_streaming") or {}
+        raw_stream_meta = response.metadata.get("feishu_streaming")
+        if not isinstance(raw_stream_meta, dict):
+            return False
+        stream_meta: dict[str, Any] = raw_stream_meta
         card_id = str(stream_meta.get("card_id") or "").strip()
         if not card_id:
             return False

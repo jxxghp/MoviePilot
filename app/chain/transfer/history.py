@@ -111,6 +111,9 @@ class TransferHistoryOwner(_TransferOwnerBase):
         from app.runtime.errors import public_error_message
 
         def args_error() -> None:
+            """
+            向原交互入口提示整理历史参数无效，不发起新的整理操作。
+            """
             self.post_message(
                 Message(
                     channel=channel,
@@ -408,7 +411,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
         files: dict[str, int] = {}
         for notice in notifications:
             result = notice.transferinfo
-            paths = result.file_list_new or ([result.target_item.path] if result.target_item else [])
+            paths = result.file_list_new or ([result.target_item.path] if result.target_item and result.target_item.path else [])
             size, remainder = divmod(result.total_size or 0, len(paths) or 1)
             for index, path in enumerate(paths):
                 files[path] = size + (1 if index < remainder else 0)

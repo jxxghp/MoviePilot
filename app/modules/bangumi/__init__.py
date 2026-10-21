@@ -16,6 +16,7 @@ from app.modules._base.media import MediaAuxiliaryProviderMixin
 from app.modules.bangumi.bangumi import BangumiApi
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.schemas.context import MediaImageSet
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.types import (
     MediaRecognizeType,
@@ -91,9 +92,31 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         "BANGUMI_API_DOMAIN",
     }
 
-    bangumiapi: BangumiApi = None
-    scraper: MediaScraperHelper = None
+    bangumiapi: Optional[BangumiApi] = None
+    scraper: Optional[MediaScraperHelper] = None
     _config: BangumiConfigSnapshot = BangumiConfigSnapshot(proxy=None)
+
+    def _require_api(self) -> BangumiApi:
+        """
+        取得已激活的 Bangumi 客户端，避免把尚未初始化的兼容属性当作有效实例。
+
+        :return: 模块初始化时创建的客户端
+        :raises RuntimeError: 模块尚未初始化
+        """
+        if self.bangumiapi is None:
+            raise RuntimeError("Bangumi 模块尚未初始化")
+        return self.bangumiapi
+
+    def _require_scraper(self) -> MediaScraperHelper:
+        """
+        取得模块初始化时创建的刮削器。
+
+        :return: 已初始化的刮削器
+        :raises RuntimeError: 模块尚未初始化
+        """
+        if self.scraper is None:
+            raise RuntimeError("Bangumi 刮削器尚未初始化")
+        return self.scraper
 
     def init_module(self) -> None:
         """
@@ -120,13 +143,13 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         # 请求缓存键已包含 API 地址，切换代理或域名后自然使用新键；这里不清缓存，
         # 以免 Redis 缓存在每次重载和关闭时都被清空。
         if self.bangumiapi:
-            self.bangumiapi.close()
+            self._require_api().close()
 
     def test(self) -> Tuple[bool, str]:
         """
         测试模块连接性。
         """
-        api_url = self.bangumiapi.base_url if self.bangumiapi else "https://api.bgm.tv/"
+        api_url = self._require_api().base_url if self.bangumiapi else "https://api.bgm.tv/"
         ret = RequestUtils(proxies=self._config.proxy).get_res(api_url)
         if ret and ret.status_code == 200:
             return True, ""
@@ -134,7 +157,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return False, f"无法连接Bangumi，错误码：{ret.status_code}"
         return False, "Bangumi网络连接失败"
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
         Bangumi模块无需独立开关。
         """
@@ -278,7 +301,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         meta: Optional[MetaBase] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Optional[MediaInfo]:
         """
         按明确条目标识或标题候选识别 Bangumi 媒体。
@@ -300,9 +323,12 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             else self._match_by_meta(plan.require_meta())
         )
         if info:
-            actors = self.bangumiapi.credits(info.get("id"))
+            bangumi_id = info.get("id")
+            if not isinstance(bangumi_id, int):
+                return None
+            actors = self._require_api().credits(bangumi_id)
             mediainfo = self._build_recognized_media(info, actors, plan.meta)
-            logger.info(f"{plan.label} Bangumi识别结果：{mediainfo.type.value} "
+            logger.info(f"{plan.label} Bangumi识别结果：{mediainfo.type.value if mediainfo.type else ''} "
                         f"{mediainfo.title_year}")
             return mediainfo
         logger.info(f"{plan.label} 未匹配到Bangumi媒体信息")
@@ -314,7 +340,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         meta: Optional[MetaBase] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Optional[MediaInfo]:
         """
         异步按明确条目标识或标题候选识别 Bangumi 媒体。
@@ -336,9 +362,12 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             else await self._async_match_by_meta(plan.require_meta())
         )
         if info:
-            actors = await self.bangumiapi.async_credits(info.get("id"))
+            bangumi_id = info.get("id")
+            if not isinstance(bangumi_id, int):
+                return None
+            actors = await self._require_api().async_credits(bangumi_id)
             mediainfo = self._build_recognized_media(info, actors, plan.meta)
-            logger.info(f"{plan.label} Bangumi识别结果：{mediainfo.type.value} "
+            logger.info(f"{plan.label} Bangumi识别结果：{mediainfo.type.value if mediainfo.type else ''} "
                         f"{mediainfo.title_year}")
             return mediainfo
         logger.info(f"{plan.label} 未匹配到Bangumi媒体信息")
@@ -346,7 +375,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return None
 
     @staticmethod
-    def _matches_meta(meta: MetaBase, info: dict) -> bool:
+    def _matches_meta(meta: MetaBase, info: dict[str, Any]) -> bool:
         """
         判断Bangumi候选项是否符合标题解析出的类型与年份。
 
@@ -362,29 +391,29 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         release_date = info.get("date") or info.get("air_date") or ""
         return not meta.year or not release_date or release_date[:4] == str(meta.year)
 
-    def _match_by_meta(self, meta: MetaBase) -> Optional[dict]:
+    def _match_by_meta(self, meta: MetaBase) -> Optional[dict[str, Any]]:
         """
         搜索并获取最符合标题解析结果的Bangumi详情。
 
         :param meta: 标题解析元数据
         :return: Bangumi媒体详情
         """
-        for media_id in self._candidate_ids(self.bangumiapi.search(meta.name)):
-            info = self.bangumiapi.detail(media_id)
+        for media_id in self._candidate_ids(self._require_api().search(meta.name)):
+            info = self._require_api().detail(media_id)
             if info and self._matches_meta(meta, info):
                 return info
         return None
 
-    async def _async_match_by_meta(self, meta: MetaBase) -> Optional[dict]:
+    async def _async_match_by_meta(self, meta: MetaBase) -> Optional[dict[str, Any]]:
         """
         异步搜索并获取最符合标题解析结果的Bangumi详情。
 
         :param meta: 标题解析元数据
         :return: Bangumi媒体详情
         """
-        infos = await self.bangumiapi.async_search(meta.name)
+        infos = await self._require_api().async_search(meta.name)
         for media_id in self._candidate_ids(infos):
-            info = await self.bangumiapi.async_detail(media_id)
+            info = await self._require_api().async_detail(media_id)
             if info and self._matches_meta(meta, info):
                 return info
         return None
@@ -405,7 +434,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if not plan.meta:
             return []
         return self._project_search_results(
-            plan.meta, self.bangumiapi.search(plan.meta.name)
+            plan.meta, self._require_api().search(plan.meta.name)
         )
 
     async def async_search_medias(
@@ -423,10 +452,10 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         if not plan.meta:
             return []
-        infos = await self.bangumiapi.async_search(plan.meta.name)
+        infos = await self._require_api().async_search(plan.meta.name)
         return self._project_search_results(plan.meta, infos)
 
-    def bangumi_info(self, bangumiid: int) -> Optional[dict]:
+    def bangumi_info(self, bangumiid: int) -> Optional[dict[str, Any]]:
         """
         获取原始 Bangumi 条目详情。
 
@@ -436,9 +465,9 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if not bangumiid:
             return None
         logger.info(f"开始获取Bangumi信息：{bangumiid} ...")
-        return self.bangumiapi.detail(bangumiid)
+        return self._require_api().detail(bangumiid)
 
-    async def async_bangumi_info(self, bangumiid: int) -> Optional[dict]:
+    async def async_bangumi_info(self, bangumiid: int) -> Optional[dict[str, Any]]:
         """
         异步获取原始 Bangumi 条目详情。
 
@@ -448,14 +477,14 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if not bangumiid:
             return None
         logger.info(f"开始获取Bangumi信息：{bangumiid} ...")
-        return await self.bangumiapi.async_detail(bangumiid)
+        return await self._require_api().async_detail(bangumiid)
 
     def metadata_nfo(
         self,
         mediainfo: MediaInfo,
         season: Optional[int] = None,
         episode: Optional[int] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Optional[str]:
         """
         为选择 Bangumi 刮削来源的媒体生成 NFO 内容。
@@ -469,14 +498,14 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         scrape_source = mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')
         if scrape_source != "bangumi":
             return None
-        return self.scraper.get_metadata_nfo(mediainfo, season=season, episode=episode)
+        return self._require_scraper().get_metadata_nfo(mediainfo, season=season, episode=episode)
 
     def metadata_img(
         self,
         mediainfo: MediaInfo,
         season: Optional[int] = None,
         episode: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         为选择 Bangumi 刮削来源的媒体生成图片清单。
 
@@ -488,7 +517,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         scrape_source = mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')
         if scrape_source != "bangumi":
             return None
-        return self.scraper.get_metadata_img(mediainfo, season=season, episode=episode)
+        return self._require_scraper().get_metadata_img(mediainfo, season=season, episode=episode)
 
     def bangumi_calendar(self) -> Optional[List[MediaInfo]]:
         """
@@ -496,7 +525,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
         :return: 媒体列表；没有放送内容或请求失败时为空列表
         """
-        return self._project_media_list(self.bangumiapi.calendar())
+        return self._project_media_list(self._require_api().calendar())
 
     async def async_bangumi_calendar(self) -> Optional[List[MediaInfo]]:
         """
@@ -504,7 +533,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
         :return: 媒体列表；没有放送内容或请求失败时为空列表
         """
-        infos = await self.bangumiapi.async_calendar()
+        infos = await self._require_api().async_calendar()
         return self._project_media_list(infos)
 
     def bangumi_credits(self, bangumiid: int) -> List[_SchemaMediaPerson]:
@@ -514,7 +543,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param bangumiid: Bangumi 条目标识，不接受其他来源标识
         :return: 统一人物列表；无可用结果时为空列表
         """
-        return self._project_people(self.bangumiapi.credits(bangumiid))
+        return self._project_people(self._require_api().credits(bangumiid))
 
     async def async_bangumi_credits(self, bangumiid: int) -> List[_SchemaMediaPerson]:
         """
@@ -523,7 +552,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param bangumiid: Bangumi 条目标识，不接受其他来源标识
         :return: 统一人物列表；无可用结果时为空列表
         """
-        persons = await self.bangumiapi.async_credits(bangumiid)
+        persons = await self._require_api().async_credits(bangumiid)
         return self._project_people(persons)
 
     def bangumi_recommend(self, bangumiid: int) -> List[MediaInfo]:
@@ -533,7 +562,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param bangumiid: Bangumi 条目数字标识
         :return: 统一媒体列表；无关联作品或请求失败时为空列表
         """
-        return self._project_media_list(self.bangumiapi.subjects(bangumiid))
+        return self._project_media_list(self._require_api().subjects(bangumiid))
 
     async def async_bangumi_recommend(self, bangumiid: int) -> List[MediaInfo]:
         """
@@ -542,7 +571,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param bangumiid: Bangumi 条目数字标识
         :return: 统一媒体列表；无关联作品或请求失败时为空列表
         """
-        subjects = await self.bangumiapi.async_subjects(bangumiid)
+        subjects = await self._require_api().async_subjects(bangumiid)
         return self._project_media_list(subjects)
 
     def bangumi_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
@@ -552,7 +581,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param person_id: Bangumi 人物数字标识
         :return: 统一人物对象；查询失败或无结果时为 None
         """
-        personinfo = self.bangumiapi.person_detail(person_id)
+        personinfo = self._require_api().person_detail(person_id)
         if personinfo:
             return self._build_person_detail(personinfo)
         return None
@@ -564,27 +593,33 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param person_id: Bangumi 人物数字标识
         :return: 统一人物对象；查询失败或无结果时为 None
         """
-        personinfo = await self.bangumiapi.async_person_detail(person_id)
+        personinfo = await self._require_api().async_person_detail(person_id)
         if personinfo:
             return self._build_person_detail(personinfo)
         return None
 
     @classmethod
-    def _build_person_detail(cls, personinfo: dict) -> _SchemaMediaPerson:
+    def _build_person_detail(cls, personinfo: dict[str, Any]) -> _SchemaMediaPerson:
         """
         构造Bangumi人物详情信息。
 
         :param personinfo: Bangumi人物详情接口返回数据
         :return: 媒体人物信息
         """
-        return _SchemaMediaPerson(source='bangumi', **{
-            "id": personinfo.get("id"),
-            "name": personinfo.get("name"),
-            "images": personinfo.get("images"),
-            "biography": personinfo.get("summary"),
-            "birthday": cls._normalize_optional_string(personinfo.get("birth_day")),
-            "gender": personinfo.get("gender")
-        })
+        images = personinfo.get("images")
+        image_set = MediaImageSet(**images) if isinstance(images, dict) else None
+        person_id = personinfo.get("id")
+        person_name = personinfo.get("name")
+        gender = personinfo.get("gender")
+        return _SchemaMediaPerson(
+            source="bangumi",
+            id=person_id if isinstance(person_id, (int, str)) else None,
+            name=str(person_name) if person_name is not None else None,
+            images=image_set,
+            biography=cls._normalize_optional_string(personinfo.get("summary")),
+            birthday=cls._normalize_optional_string(personinfo.get("birth_day")),
+            gender=gender if isinstance(gender, (int, str)) else None,
+        )
 
     @staticmethod
     def _normalize_optional_string(value: object) -> Optional[str]:
@@ -606,7 +641,7 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :return: 统一媒体列表；无作品或请求失败时为空列表
         """
         return self._project_media_list(
-            self.bangumiapi.person_credits(person_id=person_id)
+            self._require_api().person_credits(person_id=person_id)
         )
 
     async def async_bangumi_person_credits(self, person_id: int) -> List[MediaInfo]:
@@ -616,26 +651,26 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param person_id: Bangumi 人物数字标识
         :return: 统一媒体列表；无作品或请求失败时为空列表
         """
-        credits_info = await self.bangumiapi.async_person_credits(person_id=person_id)
+        credits_info = await self._require_api().async_person_credits(person_id=person_id)
         return self._project_media_list(credits_info)
 
-    def bangumi_discover(self, **kwargs) -> Optional[List[MediaInfo]]:
+    def bangumi_discover(self, **kwargs: Any) -> Optional[List[MediaInfo]]:
         """
         按筛选条件发现 Bangumi 番剧。
 
         :param kwargs: 原样传入 API 的筛选和分页参数
         :return: 统一媒体列表；无结果或请求失败时为空列表
         """
-        return self._project_media_list(self.bangumiapi.discover(**kwargs))
+        return self._project_media_list(self._require_api().discover(**kwargs))
 
-    async def async_bangumi_discover(self, **kwargs) -> Optional[List[MediaInfo]]:
+    async def async_bangumi_discover(self, **kwargs: Any) -> Optional[List[MediaInfo]]:
         """
         异步按筛选条件发现 Bangumi 番剧。
 
         :param kwargs: 原样传入 API 的筛选和分页参数
         :return: 统一媒体列表；无结果或请求失败时为空列表
         """
-        infos = await self.bangumiapi.async_discover(**kwargs)
+        infos = await self._require_api().async_discover(**kwargs)
         return self._project_media_list(infos)
 
     def clear_cache(self) -> None:
@@ -643,5 +678,5 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         清除缓存。
         """
         logger.info(f"开始清除{self.get_name()}缓存 ...")
-        self.bangumiapi.clear_cache()
+        self._require_api().clear_cache()
         logger.info(f"{self.get_name()}缓存清除完成")

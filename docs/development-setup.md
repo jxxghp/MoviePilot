@@ -244,13 +244,13 @@ Pylint 由 `v3` PR/push 的 GitHub Actions 执行，`app/` 全量 Pylint 是建�
 
 站点采集器源码与构建工作流位于 [MoviePilot-Site-Collector](https://github.com/jxxghp/MoviePilot-Site-Collector)，使用独立的 `site-adapter-collector-v1.0.x` Release，仅在采集器发布输入变化时递增版本并构建，不跟随后端 Release。下载入口为 [采集器独立 Release](https://github.com/jxxghp/MoviePilot-Site-Collector/releases/latest)，自动版本和手动测试构建规则见 [采集器发布说明](https://github.com/jxxghp/MoviePilot-Site-Collector/blob/main/docs/site-adapter-collector-release.md#维护者发布流程)。
 
-Ruff/Mypy 基线只允许收紧，不接受新增诊断或类型错误增长；受治零错误文件由 `mypy.ini` 的
-`files=` 维护。Mypy 完整 ratchet 固定按 Linux/Python 3.14 分析。Coverage job 在 `v3` PR/push
+Ruff/Mypy 基线只允许收紧，不接受新增诊断或类型错误增长。`mypy.ini` 默认严格检查整个 `app/`，
+仅排除由插件发布链路治理的运行时 `app/plugins/` 副本；新宿主文件自动纳入检查。
+Mypy 完整 ratchet 固定按 Linux/Python 3.14 分析。Coverage job 在 `v3` PR/push
 运行，按 `tests/run.py` 的分片合同执行并合并报告，除 `app/plugins` 外全部 `app` 文件按逐文件
 低水位检查，存量只能提升，新文件必须达到 80%。
-逐文件治理以 `mypy.ini` 的严格清单和
-`tests/fixtures/architecture/mypy-baseline.json` 的逐文件、逐错误码低水位为准；
-尚未清零的文件须先确认实际合同和适用门禁，不以定向扫描结果宣称交付。
+宿主类型错误基线 `tests/fixtures/architecture/mypy-baseline.json` 已清零，不能重新添加诊断预算；
+兼容例外使用下文的精确登记，不以定向扫描结果宣称全量交付。
 每个 Coverage 分片预算为 15 分钟（测试 step 为 10 分钟），报告与 ratchet 为 10 分钟；不得靠
 跳过测试或产物规避超时。Coverage 只接受 GitHub Actions 的 Ubuntu/Python 3.14、locked
 依赖和全量测试工件，本机 macOS 报告仅供诊断，不得写入并提交 canonical baseline。
@@ -271,6 +271,34 @@ uv run --locked --no-sync python scripts/architecture/complexity.py
 `--write` 拒绝接受已有基线上的增长；减少或删除热点后必须固化低水位。
 CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指标。指标口径以
 `scripts/architecture/complexity.py` 与 `scripts/architecture/mypy_ratchet.py` 的实现为准。
+
+### 6.2 类型兼容例外门禁
+
+`scripts/architecture/mypy_policy.py` 核对
+`tests/fixtures/architecture/mypy-policy.json` 中每项兼容原因、所属方法、错误码和语法指纹。
+保留例外涉及异步工具旧接口、动态 Facade 描述符、运行时 MRO/元类、FastAPI Response
+注入默认值和供应方类型限制；
+例外只作用于登记语句，方法体继续严格检查。二进制站点接口的 `sites.pyi` 按文件摘要登记。
+
+门禁拒绝新增或变化的 `type: ignore`、没有错误码的忽略、`no_type_check`、文件内 mypy
+配置和未经复核的本地类型桩；同时锁定完整 mypy 配置，防止缩小检查范围或扩大导入豁免。
+供应方导入仍使用现有 `follow_imports=skip` 边界；已接入的 LangChain/LangGraph、Pydantic、
+FastAPI/Starlette、Slack 等读取真实供应方声明，不允许用本地类型桩遮蔽它们。
+缺失导入豁免只覆盖配置中逐一列出的既有无类型 SDK，新依赖不会自动得到豁免。
+psutil、regex、tqdm 的正式类型声明由锁文件中的开发依赖提供。
+默认检查同时保留既有的异步阻塞治理脚本，并覆盖新的类型例外门禁自身。
+
+```bash
+uv run --locked --no-sync python scripts/architecture/mypy_policy.py
+uv run --locked --no-sync mypy --config-file mypy.ini
+uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
+# 修复例外后仅删除已失效的登记；存在任何增长时拒绝写入
+uv run --locked --no-sync python scripts/architecture/mypy_policy.py --write
+```
+
+新增兼容边界必须说明真实运行合同与无法直接使用供应方声明的原因，补充行为验证，
+人工复核登记和配置差异；不能用写入命令自动接收。CI 执行同一门禁，并测试新文件报错、
+例外转移、类型桩遮蔽和写入拒绝行为。发布前以最终提交的全量检查结果为准。
 
 ### 7. 参考资源
 

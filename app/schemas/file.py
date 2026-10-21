@@ -27,7 +27,7 @@ class FileURI(BaseModel):
         """
         文件 URI，本地存储直接返回路径，其他存储带上存储前缀。
         """
-        return self.path if self.storage == "local" else f"{self.storage}:{self.path}"
+        return (self.path or "/") if self.storage == "local" else f"{self.storage}:{self.path}"
 
     @classmethod
     def from_uri(cls, uri: str) -> "FileURI":

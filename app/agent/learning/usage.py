@@ -2,7 +2,7 @@
 复盘所有模型请求的统一计量，包括独立上下文压缩的辅助请求。
 """
 
-from typing import Any, Callable
+from typing import Any, Callable, cast
 from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -13,7 +13,7 @@ from langchain_core.outputs import LLMResult
 from app.agent.middleware.usage import UsageMiddleware
 
 
-class ReviewUsage(BaseCallbackHandler):  # type: ignore[misc]
+class ReviewUsage(BaseCallbackHandler):
     """
     按 SDK 请求 ID 结算实际输入 token，缺少 usage 时使用开始时的保守估算。
     """
@@ -42,7 +42,7 @@ class ReviewUsage(BaseCallbackHandler):  # type: ignore[misc]
         """
         del kwargs
         estimate = self.pending.pop(run_id, 1)
-        message = next((generation.message for group in response.generations for generation in group
+        message = next((cast(AIMessage, getattr(generation, 'message')) for group in response.generations for generation in group
                         if isinstance(getattr(generation, 'message', None), AIMessage)), None)
         usage = UsageMiddleware._extract_usage(message) if message is not None else {}
         self.consumed += max(1, usage.get('input_tokens') or estimate)

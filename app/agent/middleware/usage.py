@@ -3,7 +3,7 @@
 """
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -40,6 +40,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @staticmethod
     def _coerce_int(value: Any) -> int | None:
+        """
+        尝试解析供应方的用量整数，无法解析时返回 None。
+        """
         if value is None:
             return None
         try:
@@ -84,6 +87,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _lookup_int(cls, container: Any, *keys: str) -> int | None:
+        """
+        按候选键读取字典或对象中的用量值，忽略无法解析的字段。
+        """
         if not container:
             return None
 
@@ -134,6 +140,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _extract_context_window_tokens(cls, model: Any) -> int | None:
+        """
+        从模型能力描述中读取上下文窗口上限，缺失时不猜测固定额度。
+        """
         try:
             profile = getattr(model, "profile", None)
         except Exception:
@@ -184,7 +193,7 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _extract_configured_output_limit_tokens(
-        cls, request: ModelRequest
+        cls, request: ModelRequest[Any]
     ) -> int | None:
         """
         读取最终请求显式配置的单次输出上限。
@@ -223,7 +232,7 @@ class UsageMiddleware(AgentMiddleware):
         return image_count, unknown_count
 
     @classmethod
-    def estimate_request(cls, request: ModelRequest) -> dict[str, Any]:
+    def estimate_request(cls, request: ModelRequest[Any]) -> dict[str, Any]:
         """
         估算最终模型输入组成，仅返回可安全暴露的聚合数字。
         """
@@ -288,6 +297,9 @@ class UsageMiddleware(AgentMiddleware):
 
     @classmethod
     def _extract_usage(cls, ai_message: AIMessage) -> dict[str, Any]:
+        """
+        汇总供应方实际用量及缓存计费字段，保留缺失与已报告值的区别。
+        """
         usage_metadata = getattr(ai_message, "usage_metadata", None)
 
         input_tokens = cls._lookup_int(usage_metadata, "input_tokens")
@@ -587,7 +599,7 @@ class UsageMiddleware(AgentMiddleware):
             ai_message = next(
                 (
                     message
-                    for message in reversed(response.result)
+                    for message in reversed(cast(list[Any], response.result))
                     if isinstance(message, AIMessage)
                 ),
                 None,

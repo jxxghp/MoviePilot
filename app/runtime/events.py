@@ -11,7 +11,7 @@ import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
 from queue import Empty, PriorityQueue
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union, cast
 
 from app.foundation.singleton import Singleton
 from app.runtime.correlation import get_correlation_id
@@ -29,7 +29,7 @@ from app.runtime.loop import main_loop_registry
 from app.runtime.observability import record_metric
 from app.runtime.rate import ExponentialBackoffRateLimiter
 from app.runtime.thread import ThreadHelper
-from app.schemas.event import ChainEventData
+from app.schemas.event import BaseEventData
 from app.schemas.types import ChainEventType, EventType
 
 if TYPE_CHECKING:
@@ -77,7 +77,7 @@ class Event:
     """
 
     def __init__(self, event_type: Union[EventType, ChainEventType, str],
-                 event_data: Optional[Union[Dict, ChainEventData]] = None,
+                 event_data: Optional[Union[Dict[str, Any], BaseEventData]] = None,
                  priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
                  correlation_id: Optional[str] = None):
         """
@@ -103,7 +103,7 @@ class Event:
         # 事件数据
         self.event_data = event_data or {}
         # 事件优先级
-        self.priority = priority
+        self.priority = priority if priority is not None else DEFAULT_EVENT_PRIORITY
         self.correlation_id = correlation_id or get_correlation_id()
 
     def __repr__(self) -> str:
@@ -122,7 +122,7 @@ class Event:
 
         return snapshot_event_data(self.event_type, self.event_data)
 
-    def __lt__(self, other):
+    def __lt__(self, other: "Event") -> bool:
         """
         定义事件对象的比较规则，基于优先级比较
         优先级小的事件会被认为“更小”，优先级高的事件将被认为“更大”
@@ -156,9 +156,9 @@ class EventManager(metaclass=Singleton):
         # 优先级队列
         self.__event_queue: PriorityQueue[Any] = PriorityQueue()
         # 广播事件的订阅者
-        self.__broadcast_subscribers: Dict[EventType, Dict[str, Callable]] = {}
+        self.__broadcast_subscribers: Dict[EventType, Dict[str, Callable[..., Any]]] = {}
         # 链式事件的订阅者
-        self.__chain_subscribers: Dict[ChainEventType, Dict[str, tuple[int, Callable]]] = {}
+        self.__chain_subscribers: Dict[ChainEventType, Dict[str, tuple[int, Callable[..., Any]]]] = {}
         # 禁用的事件处理器集合
         self.__disabled_handlers: Set[str] = set()
         # 禁用的事件处理器类集合
@@ -483,6 +483,9 @@ class EventManager(metaclass=Singleton):
             owner = object()
 
             async def _tracked() -> None:
+                """
+                在所属事件处理器上下文中执行回调，并负责完成信号和上下文恢复。
+                """
                 started.set()
                 context_token = _CURRENT_EVENT_HANDLER_OWNER.set(owner)
                 try:
@@ -518,16 +521,21 @@ class EventManager(metaclass=Singleton):
             def _complete_unstarted_submission(
                     submitted: concurrent.futures.Future[Any],
             ) -> None:
+                """
+                关闭尚未启动就被取消的协程，并同步所属完成信号。
+                """
                 if submitted.cancelled() and not started.is_set():
                     coroutine.close()
                     completion.cancel()
 
             handle.add_done_callback(_complete_unstarted_submission)
-        completion.add_done_callback(
-            lambda _completed, current_owner=owner: (
-                self.__remove_async_handle(current_owner)
-            )
-        )
+        def _remove_completed_handle(_completed: concurrent.futures.Future[Any]) -> None:
+            """
+            事件处理完成后移除 owner 对应的异步句柄。
+            """
+            self.__remove_async_handle(owner)
+
+        completion.add_done_callback(_remove_completed_handle)
         return True
 
     def __remove_async_handle(self, owner: object) -> None:
@@ -583,7 +591,7 @@ class EventManager(metaclass=Singleton):
         """
         return self.__registry.check(etype)
 
-    def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Union[Dict, ChainEventData]] = None,
+    def send_event(self, etype: Union[EventType, ChainEventType], data: Optional[Union[Dict[str, Any], BaseEventData]] = None,
                    priority: Optional[int] = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
         """
         发送事件，根据事件类型决定是广播事件还是链式事件。
@@ -606,7 +614,7 @@ class EventManager(metaclass=Singleton):
     def send_event_strict(
         self,
         etype: EventType,
-        data: Optional[Union[dict[str, object], ChainEventData]] = None,
+        data: Optional[Union[dict[str, object], BaseEventData]] = None,
         priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
     ) -> Event:
         """
@@ -625,7 +633,7 @@ class EventManager(metaclass=Singleton):
     async def async_send_event_strict(
         self,
         etype: EventType,
-        data: Optional[Union[dict[str, object], ChainEventData]] = None,
+        data: Optional[Union[dict[str, object], BaseEventData]] = None,
         priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
     ) -> Event:
         """
@@ -654,7 +662,7 @@ class EventManager(metaclass=Singleton):
         return asyncio.run_coroutine_threadsafe(coroutine, loop).result()
 
     async def async_send_event(self, etype: Union[EventType, ChainEventType],
-                               data: Optional[Union[Dict, ChainEventData]] = None,
+                               data: Optional[Union[Dict[str, Any], BaseEventData]] = None,
                                priority: Optional[int] = DEFAULT_EVENT_PRIORITY) -> Optional[Event]:
         """
         异步发送事件，根据事件类型决定是广播事件还是链式事件。
@@ -674,8 +682,8 @@ class EventManager(metaclass=Singleton):
             logger.error(f"Unknown event type: {etype}")
         return None
 
-    def add_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable,
-                           priority: Optional[int] = DEFAULT_EVENT_PRIORITY):
+    def add_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable[..., Any],
+                           priority: Optional[int] = DEFAULT_EVENT_PRIORITY) -> None:
         """
         注册事件处理器，将处理器添加到对应的事件订阅列表中。
 
@@ -685,7 +693,7 @@ class EventManager(metaclass=Singleton):
         """
         self.__registry.add(event_type, handler, priority or DEFAULT_EVENT_PRIORITY)
 
-    def remove_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable):
+    def remove_event_listener(self, event_type: Union[EventType, ChainEventType], handler: Callable[..., Any]) -> None:
         """
         移除事件处理器，将处理器从对应事件的订阅列表中删除。
 
@@ -694,7 +702,7 @@ class EventManager(metaclass=Singleton):
         """
         self.__registry.remove(event_type, handler)
 
-    def disable_event_handler(self, target: Union[Callable, type]):
+    def disable_event_handler(self, target: Union[Callable[..., Any], type]) -> None:
         """
         禁用指定的事件处理器或事件处理器类。
 
@@ -702,7 +710,7 @@ class EventManager(metaclass=Singleton):
         """
         self.__registry.disable(target)
 
-    def enable_event_handler(self, target: Union[Callable, type]):
+    def enable_event_handler(self, target: Union[Callable[..., Any], type]) -> None:
         """
         启用指定的事件处理器或事件处理器类。
 
@@ -710,7 +718,7 @@ class EventManager(metaclass=Singleton):
         """
         self.__registry.enable(target)
 
-    def visualize_handlers(self) -> List[Dict]:
+    def visualize_handlers(self) -> List[Dict[str, Any]]:
         """
         可视化所有事件处理器，包括是否被禁用的状态。
 
@@ -720,7 +728,7 @@ class EventManager(metaclass=Singleton):
         return self.__registry.visualize()
 
     @classmethod
-    def __get_handler_identifier(cls, target: Union[Callable, type]) -> Optional[str]:
+    def __get_handler_identifier(cls, target: Union[Callable[..., Any], type]) -> Optional[str]:
         """
         获取处理器或处理器类的唯一标识符，包括模块名和类名/方法名。
 
@@ -730,7 +738,7 @@ class EventManager(metaclass=Singleton):
         return EventRegistry.handler_identifier(target)
 
     @classmethod
-    def __get_class_from_callable(cls, handler: Callable) -> Optional[str]:
+    def __get_class_from_callable(cls, handler: Callable[..., Any]) -> Optional[str]:
         """
         获取可调用对象所属类的唯一标识符。
 
@@ -739,7 +747,7 @@ class EventManager(metaclass=Singleton):
         """
         return EventRegistry.handler_class_identifier(handler)
 
-    def __is_handler_enabled(self, handler: Callable) -> bool:
+    def __is_handler_enabled(self, handler: Callable[..., Any]) -> bool:
         """
         检查处理器是否已启用（没有被禁用）。
 
@@ -813,7 +821,7 @@ class EventManager(metaclass=Singleton):
     @classmethod
     def __should_dispatch_to_target_plugin(
             cls,
-            handler: Callable,
+            handler: Callable[..., Any],
             handler_identifier: str,
             target_plugin_id: str,
     ) -> bool:
@@ -826,7 +834,7 @@ class EventManager(metaclass=Singleton):
             target_plugin_id,
         )
 
-    def __safe_invoke_handler(self, handler: Callable, event: Event):
+    def __safe_invoke_handler(self, handler: Callable[..., Any], event: Event) -> None:
         """
         调用处理器，处理链式或广播事件。
 
@@ -835,7 +843,7 @@ class EventManager(metaclass=Singleton):
         """
         self.__dispatcher.safe_invoke_sync(handler, event)
 
-    async def __safe_invoke_handler_async(self, handler: Callable, event: Event):
+    async def __safe_invoke_handler_async(self, handler: Callable[..., Any], event: Event) -> None:
         """
         异步调用处理器，处理链式事件。
 
@@ -844,7 +852,7 @@ class EventManager(metaclass=Singleton):
         """
         await self.__dispatcher.safe_invoke_async(handler, event)
 
-    def __invoke_handler_by_type_sync(self, handler: Callable, event: Event):
+    def __invoke_handler_by_type_sync(self, handler: Callable[..., Any], event: Event) -> None:
         """
         同步方式根据处理器类型调用相应的方法。
 
@@ -853,7 +861,7 @@ class EventManager(metaclass=Singleton):
         """
         self.__dispatcher.invoke_sync(handler, event)
 
-    async def __invoke_handler_by_type_async(self, handler: Callable, event: Event):
+    async def __invoke_handler_by_type_async(self, handler: Callable[..., Any], event: Event) -> None:
         """
         异步方式根据处理器类型调用相应的方法。
 
@@ -863,7 +871,7 @@ class EventManager(metaclass=Singleton):
         await self.__dispatcher.invoke_async(handler, event)
 
     @staticmethod
-    def __parse_handler_names(handler: Callable) -> Tuple[str, str]:
+    def __parse_handler_names(handler: Callable[..., Any]) -> Tuple[str, str]:
         """
         解析处理器的类名和方法名。
 
@@ -873,7 +881,7 @@ class EventManager(metaclass=Singleton):
         return EventBindingResolver.parse_handler_names(handler)
 
     @staticmethod
-    def __get_handler_owner_class(handler: Callable) -> Optional[Type[Any]]:
+    def __get_handler_owner_class(handler: Callable[..., Any]) -> Optional[Type[Any]]:
         """
         从处理器对象本身解析声明它的类，不按命名约定动态导入模块。
         """
@@ -881,8 +889,8 @@ class EventManager(metaclass=Singleton):
 
     def __resolve_handler(
             self,
-            handler: Callable,
-    ) -> Optional[Tuple[Callable, EventHandlerBinding, str, str]]:
+            handler: Callable[..., Any],
+    ) -> Optional[Tuple[Callable[..., Any], EventHandlerBinding, str, str]]:
         """
         将装饰阶段保存的函数解析为当前运行实例上的可调用方法。
         """
@@ -959,7 +967,7 @@ class EventManager(metaclass=Singleton):
             if isinstance(etype, list):
                 event_list = etype
             else:
-                event_list = [etype]
+                event_list = [cast(_EventKind, etype)]
 
             for event in event_list:
                 if isinstance(event, (EventType, ChainEventType)):

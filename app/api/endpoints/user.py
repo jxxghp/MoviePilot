@@ -70,7 +70,7 @@ def _prepare_password(user_info: dict[str, Any]) -> str | None:
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_users(
-    response: Response = None,
+    response: Response = None,  # type: ignore[assignment]
     service: UserService = Depends(get_user_service),
     current_user: Any = Depends(get_current_active_superuser_async),
     page: CompatiblePageParam = None,
@@ -184,7 +184,7 @@ async def upload_avatar(
     service: UserService = Depends(get_user_service),
     file: UploadFile = File(...),
     current_user: Any = Depends(get_current_active_user_async),
-) -> _SchemaResponse[_SchemaFileNameData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     上传用户头像
     """
@@ -209,7 +209,7 @@ async def upload_avatar(
 async def get_config(
     key: str,
     current_user: Any = Depends(get_current_active_user_async),
-) -> _SchemaResponse[_SchemaValueData]:
+) -> _SchemaResponse[dict[str, Any]]:
     """
     查询用户配置
     """

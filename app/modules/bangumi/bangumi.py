@@ -8,7 +8,7 @@ from typing import Any, Optional, cast
 from urllib.parse import urlsplit
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
-from app.runtime.cache import cached
+from app.runtime.cache import CacheControls, cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
@@ -157,8 +157,7 @@ class BangumiApi:
             return None
         return self._project_response(response.status_code, payload, key)
 
-    # 缓存装饰器的运行时签名由宿主统一维护，静态检查无法完整推断。
-    @cached(  # type: ignore[misc]
+    @cached(
         maxsize=get_runtime_setting('CONF').bangumi,
         ttl=get_runtime_setting('CONF').meta,
         shared_key="get",
@@ -193,8 +192,7 @@ class BangumiApi:
             **kwargs,
         )
 
-    # 缓存装饰器的运行时签名由宿主统一维护，静态检查无法完整推断。
-    @cached(  # type: ignore[misc]
+    @cached(
         maxsize=get_runtime_setting('CONF').bangumi,
         ttl=get_runtime_setting('CONF').meta,
         shared_key="get",
@@ -519,7 +517,7 @@ class BangumiApi:
         """
         清除 Bangumi 请求缓存。
         """
-        self._cached_invoke.cache_clear()
+        cast(CacheControls, self._cached_invoke).cache_clear()
 
     def close(self) -> None:
         """

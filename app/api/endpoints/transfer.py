@@ -4,7 +4,7 @@
 
 import re
 from pathlib import Path
-from typing import Annotated, Any, List, Literal, Optional, cast
+from typing import Annotated, Any, List, Literal, Optional
 
 from fastapi import Depends, HTTPException, Query, status
 
@@ -106,7 +106,9 @@ def _public_transfer_result(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _build_failure_preview_item(file_item: FileItem, message: Optional[str]) -> dict:
+def _build_failure_preview_item(
+        file_item: FileItem, message: Optional[str]
+) -> dict[str, Any]:
     """
     构造手动整理预览失败项。
     """
@@ -135,6 +137,15 @@ def _build_failure_preview_item(file_item: FileItem, message: Optional[str]) -> 
         "resource_team": None,
         "customization": None,
     }
+
+
+def _restore_history_fileitem(payload: object) -> Optional[FileItem]:
+    """
+    从整理历史的 JSON 快照恢复文件项，拒绝缺失或非对象载荷。
+    """
+    if not isinstance(payload, dict):
+        return None
+    return FileItem.model_validate(payload)
 
 
 def _format_manual_transfer_failure(
@@ -289,9 +300,7 @@ def _manual_review_task_data(
     """
     把 Application 人工复核投影映射为严格公开响应。
     """
-    return cast(
-        _SchemaTransferManualReviewTaskData,
-        _SchemaTransferManualReviewTaskData.model_validate({
+    return _SchemaTransferManualReviewTaskData.model_validate({
             "task_id": task.task_id,
             "source": {
                 "storage": task.source.storage,
@@ -306,8 +315,7 @@ def _manual_review_task_data(
                 "error": _public_transfer_message(task.step.error),
             },
             "review_revision": task.review_revision,
-        }),
-    )
+        })
 
 
 @router.get(
@@ -413,7 +421,11 @@ def resolve_transfer_manual_review(
         data=_SchemaTransferManualReviewData(
             task_id=resolved.task_id,
             operation_id=resolved.operation_id,
-            decision=resolved.decision.value,
+            decision=(
+                "applied"
+                if resolved.decision is TransferManualReviewDecision.APPLIED
+                else "not_applied"
+            ),
             state=resolved.state.value,
             review_revision=resolved.review_revision,
         ),
@@ -447,12 +459,15 @@ def query_name(
     if not new_path:
         return _SchemaResponse(success=False, message="未识别到新名称")
     if filetype == "dir":
+        media_type = context.media_info.type
+        if media_type is None:
+            return _SchemaResponse(success=False, message="未识别到媒体类型")
         media_path = DirectoryHelper.get_media_root_path(
             rename_format=get_api_runtime_config_snapshot().rename_format(
-                context.media_info.type
+                media_type
             ),
             rename_path=Path(new_path),
-            media_type=context.media_info.type,
+            media_type=media_type,
         )
         if media_path:
             new_name = media_path.name
@@ -514,6 +529,8 @@ async def remove_queue(
     """
     TransferChain().remove_from_queue(fileitem)
     # 取消整理
+    if not fileitem.path:
+        return _SchemaResponse(success=False, message="文件路径为空")
     runtime_stop_state.stop_transfer(fileitem.path)
     return _SchemaResponse(success=True)
 
@@ -531,19 +548,26 @@ def _resolve_manual_transfer_source_fileitems(
             history = history_query.get(logid)
             if not history:
                 return [], f"整理记录不存在，ID：{logid}"
-            if history.status and ("move" in history.mode):
-                fileitems.append(FileItem(**history.dest_fileitem))
+            if history.status and ("move" in (history.mode or "")):
+                fileitem = _restore_history_fileitem(history.dest_fileitem)
             else:
-                fileitems.append(FileItem(**history.src_fileitem))
+                fileitem = _restore_history_fileitem(history.src_fileitem)
+            if fileitem is None:
+                return [], f"整理记录缺少文件项，ID：{logid}"
+            fileitems.append(fileitem)
         return fileitems, None
 
     if transer_item.logid:
         history = history_query.get(transer_item.logid)
         if not history:
             return [], f"整理记录不存在，ID：{transer_item.logid}"
-        if history.status and ("move" in history.mode):
-            return [FileItem(**history.dest_fileitem)], None
-        return [FileItem(**history.src_fileitem)], None
+        if history.status and ("move" in (history.mode or "")):
+            fileitem = _restore_history_fileitem(history.dest_fileitem)
+        else:
+            fileitem = _restore_history_fileitem(history.src_fileitem)
+        if fileitem is None:
+            return [], f"整理记录缺少文件项，ID：{transer_item.logid}"
+        return [fileitem], None
 
     if transer_item.fileitems:
         return [fileitem for fileitem in transer_item.fileitems if fileitem], None
@@ -631,6 +655,8 @@ def match_manual_transfer_target_path(
     matched_directories: List[_SchemaTransferDirectoryConf] = []
     target_storage = transer_item.target_storage or None
     for src_fileitem in _deduplicate_fileitems(src_fileitems):
+        if not src_fileitem.path:
+            return _SchemaResponse(success=False, message="源文件路径为空")
         directory = DirectoryHelper().get_dir(
             media=None,
             storage=src_fileitem.storage or "local",
@@ -799,18 +825,19 @@ def _execute_manual_transfer(
         # 下载器与 Hash 是同一组下载上下文，重新识别时由当前文件路径重新匹配。
         downloader = history.downloader if transer_item.from_history else None
         download_hash = history.download_hash if transer_item.from_history else None
-        if history.status and ("move" in history.mode):
+        if history.status and ("move" in (history.mode or "")):
             # 重新整理成功的转移，则使用成功的 dest 做 in_path
-            src_fileitems = [FileItem(**history.dest_fileitem)]
+            fileitem = _restore_history_fileitem(history.dest_fileitem)
         else:
             # 源路径
-            src_fileitems = [FileItem(**history.src_fileitem)]
+            fileitem = _restore_history_fileitem(history.src_fileitem)
             if (
                 history.dest_fileitem
                 and not transer_item.preview
                 and not transer_item.reorganize
             ):
-                cleanup_dest_fileitem = FileItem(**history.dest_fileitem)
+                cleanup_dest_fileitem = _restore_history_fileitem(history.dest_fileitem)
+        src_fileitems = [fileitem] if fileitem else []
 
         # 从历史数据获取信息
         if transer_item.from_history:
@@ -878,7 +905,7 @@ def _execute_manual_transfer(
 
     # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
     if explicit_selected_files:
-        preview_items: List[dict] = []
+        preview_items: List[dict[str, Any]] = []
         submission_items: list[_SchemaManualTransferSubmissionItem] = []
         error_messages: List[str] = []
         all_success = True
@@ -920,7 +947,8 @@ def _execute_manual_transfer(
                         _public_transfer_result(errormsg).get("items") or []
                     )
                     if errormsg.get("message"):
-                        error_messages.append(errormsg.get("message"))
+                        message = _public_transfer_message(errormsg.get("message"))
+                        error_messages.append(message or "")
                     if not state:
                         all_success = False
                 else:
@@ -940,7 +968,7 @@ def _execute_manual_transfer(
                 submission_items.extend(_manual_submission_items(src_fileitem, state, errormsg, target_path))
 
         if transer_item.preview:
-            merged_preview_items: List[dict] = []
+            merged_preview_items: List[dict[str, Any]] = []
             seen_sources = set()
             for preview_item in preview_items:
                 source = (preview_item.get("source_storage"), preview_item.get("source"))
@@ -968,7 +996,7 @@ def _execute_manual_transfer(
             }
             return _SchemaResponse(
                 success=True,
-                message=merged_message or None,
+                message=merged_message or "",
                 data=preview_data,
             )
 
@@ -1017,7 +1045,7 @@ def _execute_manual_transfer(
     # 预览失败仍返回完整预览列表，实际提交的总状态已在上方独立处理。
     if isinstance(errormsg, dict):
         public_result = _public_transfer_result(errormsg)
-        return _SchemaResponse(success=True, message=public_result.get("message"), data=public_result)
+        return _SchemaResponse(success=True, message=public_result.get("message") or "", data=public_result)
     if state:
         return _SchemaResponse(success=True, data=errormsg or {})
     return _SchemaResponse(success=False, message=_format_manual_transfer_failure(
@@ -1051,7 +1079,7 @@ def recommend_episode_format(
         logger.warn(f"推荐集数定位模板失败：{target_path} - {errmsg}")
         return _SchemaResponse(
             success=False,
-            message=_public_transfer_message(errmsg),
+            message=_public_transfer_message(errmsg) or "",
         )
     logger.info(
         f"推荐集数定位模板成功：{target_path} - 规则 {data.get('rule_name') if data else None}"

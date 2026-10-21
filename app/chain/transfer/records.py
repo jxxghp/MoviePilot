@@ -310,7 +310,7 @@ class FileKeyMixin(_TransferOwnerBase):
         """
         获取文件主干名，用于判断同名附加文件。
         """
-        file_name = fileitem.name or Path(fileitem.path).name
+        file_name = fileitem.name or Path(fileitem.path or "").name
         return Path(file_name).stem.lower()
 
     @classmethod
@@ -333,7 +333,7 @@ class FileKeyMixin(_TransferOwnerBase):
         if self._is_subtitle_file(extra_fileitem):
             return self._get_subtitle_media_stem(extra_fileitem)
         if self._is_music_lyrics_file(extra_fileitem):
-            file_name = extra_fileitem.name or Path(extra_fileitem.path).name
+            file_name = extra_fileitem.name or Path(extra_fileitem.path or "").name
             lowered = file_name.casefold()
             suffix = ".lyricsfile.yaml" if lowered.endswith(".lyricsfile.yaml") else Path(file_name).suffix
             return file_name[:-len(suffix)].casefold() if suffix else lowered
@@ -377,15 +377,18 @@ class FileKeyMixin(_TransferOwnerBase):
         """
         获取目录缓存键。
         """
-        return dir_item.storage, self._normalize_dir_path(dir_item.path)
+        return (
+            dir_item.storage or "local",
+            self._normalize_dir_path(dir_item.path or ""),
+        )
 
     def _get_file_parent_key(self, current_item: FileItem) -> Tuple[str, str]:
         """
         获取文件父目录缓存键。
         """
         return (
-            current_item.storage,
-            self._normalize_dir_path(Path(current_item.path).parent),
+            current_item.storage or "local",
+            self._normalize_dir_path(Path(current_item.path or "").parent),
         )
 
 

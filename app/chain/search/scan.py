@@ -532,10 +532,12 @@ class SearchScan:
             if not torrent:
                 return None
             meta = stored_meta(self.identity[key])
-            meta.type = self.media.type
+            meta.type = self.media.type or MediaType.UNKNOWN
             context = Context(torrent_info=torrent, meta_info=meta, media_info=self.media,
                               resource_source="search", media_info_is_target=True, match_status="exact")
             self.live[key] = context
+        if context.torrent_info is None:
+            return None
         context.torrent_info.search_resource_id = key
         return context
 
@@ -605,6 +607,8 @@ class SearchScan:
             custom_words=self.plan.custom_words or [], cache=self.identity, disambiguation=self.disambiguation)
         for resource_id, context in contexts.items():
             if resource_id in self.candidates:
+                if context.torrent_info is None:
+                    continue
                 context.torrent_info.search_resource_id = resource_id
                 self.live[resource_id] = context
                 self.candidates[resource_id]["torrent"] = torrent_snapshot(context.torrent_info)
@@ -631,11 +635,15 @@ class SearchScan:
         batch: list[Context] = []
         goals: set[str] = set()
         for context in contexts:
+            if context.torrent_info is None:
+                continue
             key = cast(str, context.torrent_info.search_resource_id)
             # 前面的恢复重取原页时，可能已移除同页其他已失效的候选。
             if key not in self.candidates:
                 continue
             context = self.live.get(key, context)
+            if context.torrent_info is None:
+                continue
             if not context.torrent_info.enclosure:
                 if batch:
                     break
@@ -658,11 +666,19 @@ class SearchScan:
         """
         contexts, keys = self._contexts(ready)
         contexts = self._filter(contexts)
-        accepted = {cast(str, context.torrent_info.search_resource_id) for context in contexts}
+        accepted = {
+            cast(str, context.torrent_info.search_resource_id)
+            for context in contexts
+            if context.torrent_info is not None
+        }
         self.attempted.update(keys - accepted)
         batch, goals = self._prepared_batch(contexts, ready)
         settled = submit(batch, goals) if batch else set()
-        self.attempted.update(cast(str, context.torrent_info.search_resource_id) for context in batch)
+        self.attempted.update(
+            cast(str, context.torrent_info.search_resource_id)
+            for context in batch
+            if context.torrent_info is not None
+        )
         self.submitted.update(settled)
         self.collection.settle(settled)
         cached = {target for key, record in self.identity.items() if key in self.candidates and key not in self.attempted

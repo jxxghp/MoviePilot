@@ -5,13 +5,12 @@
 import asyncio
 import inspect
 import sys
-from typing import Callable, cast
+from typing import Any, Callable, cast
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
-    from app.application.site.sites import SitesHelper  # noqa  # pylint: disable=import-error,no-name-in-module
+    from app.application.site.sites import SitesHelper as _SitesHelper  # noqa  # pylint: disable=import-error,no-name-in-module
 except ImportError as e:
-    SitesHelper = None
     error_message = f"错误: {str(e)}\n站点认证及索引相关资源导入失败，请尝试重建容器或手动拉取资源"
     print(error_message, file=sys.stderr)
     sys.exit(1)
@@ -36,7 +35,11 @@ from app.application.messaging.message import (
     stop_message,
 )
 from app.application.messaging.webagent.events import dispatch_web_agent_message_event
-from app.application.module import configure_module_runtime, reset_module_runtime
+from app.application.module import (
+    ModuleRuntime,
+    configure_module_runtime,
+    reset_module_runtime,
+)
 from app.application.outbox import configure_outbox_dispatcher
 from app.application.plugin.runtime import get_existing_plugin_manager
 from app.application.security.url import close_image_proxy_block_log_coalescer
@@ -47,7 +50,8 @@ from app.db.session import (
     close_database,
 )
 from app.runtime.config import settings as legacy_settings
-from app.runtime.events import EventHandlerBinding, EventManager
+from app.runtime.event.binding import EventHandlerBinding
+from app.runtime.events import EventManager
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.module.manager import ModuleManager
 from app.runtime.extensions.service import (
@@ -62,8 +66,8 @@ from app.runtime.settings import (
 from app.runtime.tasks import get_task_registry
 from app.runtime.thread import ThreadHelper
 from app.schemas.category import ClassificationFactValue, ClassificationFieldDefinition
-from app.schemas.message import Message, MessageType
-from app.schemas.types import EventType, SystemConfigKey
+from app.schemas.message import Message
+from app.schemas.types import EventType, MessageType, SystemConfigKey
 from app.startup.composition.agent import (
     compose_agent,
     publish_agent_services,
@@ -138,6 +142,8 @@ from app.startup.initializers.scheduler import (
     reset_scheduler_bindings,
 )
 
+SitesHelper: Any = _SitesHelper
+
 
 def _plugin_classification_fields() -> tuple[ClassificationFieldDefinition, ...]:
     """
@@ -190,10 +196,12 @@ def configure_runtime_data_providers() -> None:
     在启动组合层装配模块和配置目录的运行时读取能力。
     """
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
-    configure_module_runtime(lambda: ModuleManager())
+    configure_module_runtime(lambda: cast(ModuleRuntime, ModuleManager()))
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
-        modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
+        modules=lambda module_type: list(
+            ModuleManager().get_running_type_modules(module_type)
+        ),
     )
 
 
@@ -433,7 +441,7 @@ def configure_host_event_handler_resolver() -> None:
     EventManager().register_handler_instance_resolver("host", resolve)
 
 
-def start_frontend():
+def start_frontend() -> None:
     """
     启动前端服务
     """
@@ -455,7 +463,7 @@ def start_frontend():
     subprocess.Popen("start nginx.exe", cwd=run_nginx_dir, shell=True)
 
 
-def stop_frontend():
+def stop_frontend() -> None:
     """
     停止前端服务
     """
@@ -466,7 +474,7 @@ def stop_frontend():
     subprocess.Popen("taskkill /f /im nginx.exe", shell=True)
 
 
-def clear_temp():
+def clear_temp() -> None:
     """
     清理临时文件和图片缓存
     """
@@ -484,7 +492,7 @@ def clear_temp():
     clear_package_tool_cache()
 
 
-def clear_package_tool_cache():
+def clear_package_tool_cache() -> None:
     """
     清理 pip/uv 包下载缓存，只处理 MoviePilot 管理的工具子目录。
     """
@@ -500,7 +508,7 @@ def clear_package_tool_cache():
             logger.warning("清理包下载缓存失败：%s - %s", cache_path, err)
 
 
-def user_auth():
+def user_auth() -> None:
     """
     用户认证检查
     """
@@ -526,7 +534,7 @@ def user_auth():
         logger.info(f"用户认证失败，{msg}")
 
 
-def check_auth():
+def check_auth() -> None:
     """
     检查认证状态
     """
@@ -566,7 +574,7 @@ async def drain_events() -> bool:
     event_manager = EventManager.get_existing_instance()
     if event_manager is None:
         return True
-    return await event_manager.drain_async(seal=True)
+    return bool(await event_manager.drain_async(seal=True))
 
 
 async def settle_events() -> bool:
@@ -576,7 +584,7 @@ async def settle_events() -> bool:
     event_manager = EventManager.get_existing_instance()
     if event_manager is None:
         return True
-    return await event_manager.drain_async(seal=False)
+    return bool(await event_manager.drain_async(seal=False))
 
 
 async def stop_modules() -> bool:

@@ -913,7 +913,11 @@ def _music_pinyin_states() -> dict[str, str]:
 class MetaMusic(MetaBase):
     """
     音乐文件名及音频标签解析结果，作为 MetaBase 的音乐分支实现。
+
+    :ivar year: 音乐发行年份，未知时为 None
     """
+
+    year: Optional[int] = None
 
     def __init__(
         self,
@@ -1359,13 +1363,13 @@ class MetaMusic(MetaBase):
         threshold = max(2, len(tracks) // 2)
         album = majority_album if majority_album and album_votes[majority_album] >= threshold else None
         artist = majority_artist if majority_artist and artist_votes[majority_artist] >= threshold else None
+        album_artist = artist or directory.get("artist")
         return cls(
             org_string=directory_name,
             music_type=MUSIC_ENTITY_ALBUM,
             title=album or directory.get("album") or directory_name,
             album=album or directory.get("album"),
-            artists=[artist or directory.get("artist")]
-            if artist or directory.get("artist") else [],
+            artists=[album_artist] if album_artist else [],
             album_artist=artist or directory.get("artist"),
             year=directory.get("year"),
             version=directory.get("version"),
@@ -1386,11 +1390,18 @@ class MetaMusic(MetaBase):
         self.title = value or None
 
     @property
-    def original_name(self) -> str:
+    def original_name(self) -> Optional[str]:
         """
         返回未经过通用识别词处理的原始名称，兼容影视识别链的公共访问。
         """
         return self.org_string or self.title or self.album or ""
+
+    @original_name.setter
+    def original_name(self, value: Optional[str]) -> None:
+        """
+        接受公共识别流程回写的原名，空值保留音乐元数据已有的名称回退规则。
+        """
+        self.org_string = value
 
     @property
     def artist(self) -> str:

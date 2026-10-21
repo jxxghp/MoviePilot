@@ -39,6 +39,7 @@ from app.chain.transfer.music import defer_music_recognition, refresh_music_retr
 from app.chain.transfer.records import apply_download_history_classification
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import is_music_media_source
+from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
 from app.schemas.transfer import TransferInfo
@@ -478,7 +479,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
         self._TransferChain__claim_admitted_task(task, task.admission_task_id)
 
     def _TransferChain__handle_transfer(
-            self, task: TransferTask, callback: Optional[Callable] = None
+            self,
+            task: TransferTask,
+            callback: Optional[Callable[[TransferTask, TransferInfo], Tuple[bool, str]]] = None,
     ) -> Optional[Tuple[bool, str]]:
         """
         恢复准入时的 CUE 策略并执行，统一记录 checkpoint 前的失败或异常。
@@ -511,14 +514,19 @@ class TransferExecutionOwner(_TransferOwnerBase):
         return info
 
     def _TransferChain__perform_transfer(
-            self, task: TransferTask, callback: Optional[Callable] = None
+            self,
+            task: TransferTask,
+            callback: Optional[Callable[[TransferTask, TransferInfo], Tuple[bool, str]]] = None,
     ) -> Optional[Tuple[bool, str]]:
         """
         处理整理任务
         """
         try:
             if task.plan_checkpoint is not None:
-                return self._TransferChain__handle_planned_transfer(task, callback)
+                return cast(
+                    Optional[Tuple[bool, str]],
+                    self._TransferChain__handle_planned_transfer(task, callback),
+                )
             refresh_music_retry_context(self, task)
             transferhis = self.transfer_history_repository
             # 显式标注联合：下面既会赋回音乐识别结果（MusicInfo），也会赋回影视识别
@@ -561,7 +569,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
                     else:
                         if history_year_conflict:
                             logger.info(
-                                f"{task.fileitem.name} 文件年份 {task.meta.year} 与下载记录年份 "
+                                f"{task.fileitem.name} 文件年份 {task.meta.year if task.meta else None} 与下载记录年份 "
                                 f"{download_history.year} 不一致，按文件名重新识别"
                             )
                         mediainfo = self._recognize_task_meta(task, restore_history=not history_music_conflict)
@@ -588,14 +596,15 @@ class TransferExecutionOwner(_TransferOwnerBase):
                         "未识别到媒体信息",
                     )
                     if callback:
-                        return cast(Tuple[bool, str], callback(task, transferinfo))
+                        return callback(task, transferinfo)
                     return transferinfo.success, transferinfo.message or ""
 
                 mediainfo_changed = True
 
             # accepted/planned 恢复使用持久快照；在线补充会让首次执行与重放产生漂移。
             if not task.planning_context_restored:
-                mediainfo = MediaChain().supplement_tmdb_info(mediainfo, task.meta)
+                supplemented = MediaChain().supplement_tmdb_info(mediainfo, task.meta)
+                mediainfo = cast(Union[MediaInfo, MusicInfo], supplemented)
             task.mediainfo = mediainfo
             if deferred := defer_music_recognition(self, task):
                 return deferred
@@ -608,7 +617,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
                 transfer_history = transferhis.get_by_media_identity(
                     media_source=mediainfo.media_source.value,
                     media_id=mediainfo.media_id,
-                    mtype=mediainfo.type.value,
+                    mtype=cast(MediaType, mediainfo.type).value,
                 )
                 if transfer_history and mediainfo.title != transfer_history.title:
                     mediainfo.title = transfer_history.title
@@ -621,22 +630,22 @@ class TransferExecutionOwner(_TransferOwnerBase):
                     return False, f"{task.fileitem.name} 已在整理队列中"
 
             if (
-                    task.mediainfo.type == MediaType.TV
-                    and task.mediainfo.tmdb_id
+                    mediainfo.type == MediaType.TV
+                    and mediainfo.tmdb_id
                     and not task.episodes_info
                     and not task.planning_context_restored
             ):
                 # 第零季表示特别篇，不能按空值回退为第一季。
-                season_num = task.mediainfo.season
-                if season_num is None and task.meta.season_seq:
-                    if task.meta.season_seq.isdigit():
-                        season_num = int(task.meta.season_seq)
+                season_num = cast(MediaInfo, mediainfo).season
+                if season_num is None and cast(MetaBase, task.meta).season_seq:
+                    if cast(MetaBase, task.meta).season_seq.isdigit():
+                        season_num = int(cast(MetaBase, task.meta).season_seq)
                 if season_num is None:
                     season_num = 1
                 task.episodes_info = TmdbChain().tmdb_episodes(
-                    tmdbid=task.mediainfo.tmdb_id,
+                    tmdbid=mediainfo.tmdb_id,
                     season=season_num,
-                    episode_group=task.mediainfo.episode_group,
+                    episode_group=mediainfo.episode_group,
                 )
 
             if not task.target_directory:
@@ -652,7 +661,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
                     task.target_directory = DirectoryHelper().get_dir(
                         media=task.mediainfo,
                         storage=task.fileitem.storage,
-                        src_path=Path(task.fileitem.path),
+                        src_path=Path(cast(str, task.fileitem.path)),
                         target_storage=task.target_storage,
                     )
             if not task.target_storage and task.target_directory:
@@ -667,7 +676,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
                     error_message,
                 )
                 if callback:
-                    return cast(Tuple[bool, str], callback(task, transferinfo))
+                    return callback(task, transferinfo)
                 return transferinfo.success, transferinfo.message or ""
 
             self.jobview.running_task(task)

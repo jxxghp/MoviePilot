@@ -180,11 +180,10 @@ class IncomingMessage(BaseModel):
     date: Optional[str] = Field(default=None, description="时间")
     action: Optional[int] = Field(default=0, description="消息方向")
     is_callback: Optional[bool] = Field(default=False, description="是否为回调消息")
-    callback_data: Optional[str] = Field(default=None, description="回调数据")
     message_id: Optional[Union[str, int]] = Field(default=None, description="消息ID（用于回调时定位原消息）")
     chat_id: Optional[str] = Field(default=None, description="聊天ID（用于回调时定位聊天）")
     reply_to_message_id: Optional[Union[str, int]] = Field(default=None, description="回复目标消息ID（用于 ForceReply 等回复场景）")
-    callback_query: Optional[Dict] = Field(default=None, description="完整的回调查询信息（原始数据）")
+    callback_query: Optional[Dict[str, Any]] = Field(default=None, description="完整的回调查询信息（原始数据）")
     images: Optional[List[MessageImage]] = Field(default=None, description="图片列表（图片URL或file_id）")
     audio_refs: Optional[List[str]] = Field(default=None, description="语音/音频引用列表")
     files: Optional[List[MessageAttachment]] = Field(default=None, description="文件附件列表")
@@ -200,7 +199,7 @@ class IncomingMessage(BaseModel):
         """
         return cls.MessageImage.normalize_list(value)
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """
         转换为字典。
         """
@@ -284,8 +283,8 @@ class Message(BaseModel):
     username: Optional[Union[str, int]] = Field(default=None, description="用户名称")
     date: Optional[str] = Field(default=None, description="时间")
     action: Optional[int] = Field(default=1, description="消息方向")
-    targets: Optional[dict] = Field(default=None, description="消息目标用户ID字典，未指定用户ID时使用")
-    buttons: Optional[List[List[dict]]] = Field(
+    targets: Optional[dict[str, Any]] = Field(default=None, description="消息目标用户ID字典，未指定用户ID时使用")
+    buttons: Optional[List[List[dict[str, Any]]]] = Field(
         default=None,
         description="按钮列表，格式：[[{\"text\": \"按钮文本\", \"callback_data\": \"回调数据\", \"url\": \"链接\"}]]",
     )
@@ -353,7 +352,7 @@ class Message(BaseModel):
         """
         return self._notification_route_scope
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """
         转换为字典。
         """

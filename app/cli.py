@@ -1126,10 +1126,10 @@ def _start_backend_service(timeout: int, safe: bool = False) -> Dict[str, Any]:
 
     _ensure_local_api_token()
     _clear_json_file(BACKEND_RUNTIME_FILE)
-    process = _spawn_backend_process(safe=safe)
-    ps_process = psutil.Process(process.pid)
+    spawned_process = _spawn_backend_process(safe=safe)
+    ps_process = psutil.Process(spawned_process.pid)
     runtime = {
-        "pid": process.pid,
+        "pid": spawned_process.pid,
         "create_time": ps_process.create_time(),
         "host": get_runtime_setting("HOST"),
         "port": get_runtime_setting("PORT"),
@@ -1157,10 +1157,10 @@ def _start_frontend_service(timeout: int, backend_port: int) -> Dict[str, Any]:
         )
 
     _clear_json_file(FRONTEND_RUNTIME_FILE)
-    process = _spawn_frontend_process(backend_port=backend_port)
-    ps_process = psutil.Process(process.pid)
+    spawned_process = _spawn_frontend_process(backend_port=backend_port)
+    ps_process = psutil.Process(spawned_process.pid)
     runtime = {
-        "pid": process.pid,
+        "pid": spawned_process.pid,
         "create_time": ps_process.create_time(),
         "host": get_runtime_setting("HOST"),
         "port": get_runtime_setting("NGINX_PORT"),

@@ -20,7 +20,6 @@ from typing import (
     TypeVar,
     Union,
     cast,
-    no_type_check,
 )
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
@@ -89,10 +88,7 @@ def _cached_server_result(
         """
         恢复底层包装器保持不变的原始调用签名。
         """
-        return cast(
-            Callable[_LookupParams, _LookupResult],
-            cached(region=region, maxsize=maxsize, ttl=ttl, skip_empty=skip_empty)(function),
-        )
+        return cached(region=region, maxsize=maxsize, ttl=ttl, skip_empty=skip_empty)(function)
     return decorator
 
 
@@ -136,10 +132,7 @@ def _cached_server_lookup(
         """
         包装单个查询函数，缓存层本身未标注类型，这里显式恢复原签名。
         """
-        return cast(
-            Callable[_LookupParams, Awaitable[Dict[str, Any]]],
-            cached(maxsize=maxsize, ttl=60, empty_ttl=15, local_only=True)(function),
-        )
+        return cached(maxsize=maxsize, ttl=60, empty_ttl=15, local_only=True)(function)
 
     return decorator
 
@@ -892,8 +885,7 @@ class MoviePilotServerHelper:
         return cls._post_json(cls._server_url(cls._SUBSCRIBE_DONE_PATH), payload, timeout=5)
 
     @classmethod
-    @no_type_check
-    async def async_subscribe_done(cls, payload: Dict[str, Any]):
+    async def async_subscribe_done(cls, payload: Dict[str, Any]) -> Optional[AsyncResponse]:
         """
         异步完成订阅统计，并返回可检查 HTTP 状态的响应对象。
         """

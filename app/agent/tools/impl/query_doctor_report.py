@@ -101,7 +101,7 @@ class QueryDoctorReportTool(MoviePilotTool):
         """
         return run_doctor(deep=bool(deep)).to_dict()
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         deep: Optional[bool] = False,
         include_details: Optional[bool] = True,

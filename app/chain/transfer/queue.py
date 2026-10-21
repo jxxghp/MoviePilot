@@ -104,7 +104,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         """
         super().__init__(runtime_context=runtime_context)
         self._refresh_file_extensions()
-        self._queue = queue.Queue()
+        self._queue: queue.Queue[TransferQueue | object] = queue.Queue()
         self._transfer_threads: list[threading.Thread] = []
         # 队列间隔时间（秒）
         self._transfer_interval = 15
@@ -1411,7 +1411,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         """
         while not runtime_stop_state.is_system_stopped and not stop_event.is_set():
             try:
-                item: TransferQueue = self._queue.get(
+                item = self._queue.get(
                     block=True, timeout=self._transfer_interval
                 )
                 if item is self._QUEUE_STOP_SENTINEL:
@@ -1420,6 +1420,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                     if stop_event.is_set() or runtime_stop_state.is_system_stopped:
                         break
                     continue
+                item = cast(TransferQueue, item)
                 if stop_event.is_set() or runtime_stop_state.is_system_stopped:
                     # 关闭信号与 queue.get 竞态时，把尚未处理的任务放回队列；其
                     # TransferPending 登记保持不变，供同进程重启执行线程 或下次启动回放。

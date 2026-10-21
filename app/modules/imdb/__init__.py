@@ -391,7 +391,8 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         for name in self._recognize_names(meta):
             logger.info("正在使用 IMDb 识别：%s ...", name)
             titles = self.imdb_api.search_titles(name)
-            title = self._pick_title(name, titles, requested_type, meta.year)
+            year = str(meta.year) if meta.year is not None else None
+            title = self._pick_title(name, titles, requested_type, year)
             if title:
                 return title
         return None
@@ -409,7 +410,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             logger.info("正在使用 IMDb 识别：%s ...", name)
             titles = await self.imdb_api.async_search_titles(name)
             title = await self._async_pick_title(
-                name, titles, requested_type, meta.year
+                name, titles, requested_type, str(meta.year) if meta.year is not None else None
             )
             if title:
                 return title
@@ -614,7 +615,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             media_info.season = meta.begin_season
         logger.info(
             "IMDb 识别结果：%s %s %s:%s",
-            media_info.type.value,
+            (media_info.type or MediaType.MOVIE).value,
             media_info.title_year,
             media_info.media_source,
             media_info.media_id,
@@ -767,7 +768,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return self._project_search_results(
             self.imdb_api.search_titles(plan.meta.name),
             plan.meta.type,
-            plan.meta.year,
+            str(plan.meta.year) if plan.meta.year is not None else None,
         )
 
     async def async_search_medias(
@@ -789,7 +790,7 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return []
         titles = await self.imdb_api.async_search_titles(plan.meta.name)
         return self._project_search_results(
-            titles, plan.meta.type, plan.meta.year
+            titles, plan.meta.type, str(plan.meta.year) if plan.meta.year is not None else None
         )
 
     def clear_cache(self) -> None:

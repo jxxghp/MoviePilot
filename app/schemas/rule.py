@@ -8,8 +8,7 @@ from pydantic import BaseModel
 from pydantic import Field as _Field
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class CustomRule(BaseModel):  # type: ignore[misc]
+class CustomRule(BaseModel):
     """
     自定义规则项。
     """
@@ -23,8 +22,7 @@ class CustomRule(BaseModel):  # type: ignore[misc]
     publish_time: Optional[str] = _Field(default=None, description="距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class FilterRuleGroup(BaseModel):  # type: ignore[misc]
+class FilterRuleGroup(BaseModel):
     """
     过滤规则组。
     """
@@ -35,8 +33,7 @@ class FilterRuleGroup(BaseModel):  # type: ignore[misc]
     category: Optional[str] = _Field(default=None, description="适用媒体类别 None-全部 对应二级分类")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class CustomFilterRuleCreateRequest(BaseModel):  # type: ignore[misc]
+class CustomFilterRuleCreateRequest(BaseModel):
     """
     新增自定义过滤规则请求。
     """
@@ -50,8 +47,7 @@ class CustomFilterRuleCreateRequest(BaseModel):  # type: ignore[misc]
     publish_time: Optional[str] = _Field(default=None, description="距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class CustomFilterRuleUpdateRequest(BaseModel):  # type: ignore[misc]
+class CustomFilterRuleUpdateRequest(BaseModel):
     """
     更新自定义过滤规则请求。
     """
@@ -65,8 +61,7 @@ class CustomFilterRuleUpdateRequest(BaseModel):  # type: ignore[misc]
     publish_time: Optional[str] = _Field(default=None, description="距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class CustomFilterRuleReorderRequest(BaseModel):  # type: ignore[misc]
+class CustomFilterRuleReorderRequest(BaseModel):
     """
     调整自定义过滤规则顺序请求。
     """
@@ -75,8 +70,7 @@ class CustomFilterRuleReorderRequest(BaseModel):  # type: ignore[misc]
     expected_rule_ids: Optional[list[str]] = _Field(default=None, description="调整前预期的规则标识顺序")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class FilterRuleGroupCreateRequest(BaseModel):  # type: ignore[misc]
+class FilterRuleGroupCreateRequest(BaseModel):
     """
     新增过滤规则组请求。
     """
@@ -87,8 +81,7 @@ class FilterRuleGroupCreateRequest(BaseModel):  # type: ignore[misc]
     category: Optional[str] = _Field(default=None, description="媒体分类")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class FilterRuleGroupUpdateRequest(BaseModel):  # type: ignore[misc]
+class FilterRuleGroupUpdateRequest(BaseModel):
     """
     更新过滤规则组请求。
     """
@@ -99,8 +92,7 @@ class FilterRuleGroupUpdateRequest(BaseModel):  # type: ignore[misc]
     category: Optional[str] = _Field(default=None, description="媒体分类")
 
 
-# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
-class FilterRuleGroupReorderRequest(BaseModel):  # type: ignore[misc]
+class FilterRuleGroupReorderRequest(BaseModel):
     """
     调整过滤规则组顺序请求。
     """

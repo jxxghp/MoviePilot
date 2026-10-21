@@ -8,7 +8,7 @@ import random
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 from urllib.parse import quote
 
 from app.adapters.network.http import RequestUtils
@@ -311,7 +311,7 @@ class Api:
                 return self._version
         return None
 
-    def login(self, username, password) -> Optional[str]:
+    def login(self, username: str, password: str) -> Optional[str]:
         """
         校验访问码后登录飞牛影视，并保存访问令牌。
 
@@ -715,7 +715,7 @@ class Api:
         data: Optional[dict[str, object]] = None,
         base_path: Optional[str] = None,
         suppress_log: bool = False,
-    ):
+    ) -> Any:
         """
         构造签名并发送飞牛 API 请求，解析业务状态与响应数据。
 
@@ -751,7 +751,7 @@ class Api:
 
             code: int
             msg: Optional[str] = None
-            data: Optional[Union[dict, list, str, bool]] = None
+            data: Optional[Union[dict[str, Any], list[Any], str, bool]] = None
 
         class JsonEncoder(json.JSONEncoder):
             """

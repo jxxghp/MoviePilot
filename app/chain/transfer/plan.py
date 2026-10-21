@@ -250,7 +250,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 success=False,
                 message=error,
                 fileitem=task.fileitem,
-                fail_list=[task.fileitem.path],
+                fail_list=[path for path in [task.fileitem.path] if path],
                 transfer_type=task.transfer_type,
                 need_notify=False,
             )
@@ -307,7 +307,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
             success=False,
             message=error,
             fileitem=task.fileitem,
-            fail_list=[task.fileitem.path],
+            fail_list=[path for path in [task.fileitem.path] if path],
             transfer_type=checkpoint.resolved_transfer_type,
             need_notify=checkpoint.need_notify,
         )
@@ -402,17 +402,14 @@ class TransferPlanningOwner(_TransferOwnerBase):
             ) from error
         transfer_payload = payload.get("transferinfo")
         if isinstance(transfer_payload, dict):
-            transferinfo = cast(
-                TransferInfo,
-                TransferInfo.model_validate(transfer_payload),
-            )
+            transferinfo = TransferInfo.model_validate(transfer_payload)
         elif outcome is TransferExecutionOutcome.FAILED:
             plan_checkpoint = task.plan_checkpoint
             transferinfo = TransferInfo(
                 success=False,
                 message=str(payload.get("error") or "整理失败"),
                 fileitem=task.fileitem,
-                fail_list=[task.fileitem.path],
+                fail_list=[path for path in [task.fileitem.path] if path],
                 transfer_type=(
                     plan_checkpoint.resolved_transfer_type
                     if plan_checkpoint is not None
@@ -598,7 +595,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 success=False,
                 message="整理操作多次失败，请稍后重试",
                 fileitem=task.fileitem,
-                fail_list=[task.fileitem.path],
+                fail_list=[path for path in [task.fileitem.path] if path],
                 transfer_type=checkpoint.resolved_transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -646,7 +643,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 success=False,
                 message="整理操作多次失败，请稍后重试",
                 fileitem=task.fileitem,
-                fail_list=[task.fileitem.path],
+                fail_list=[path for path in [task.fileitem.path] if path],
                 transfer_type=checkpoint.resolved_transfer_type,
                 need_notify=checkpoint.need_notify,
             )
@@ -962,7 +959,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 success=False,
                 message="整理失败，请稍后重试",
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[path for path in [fileitem.path] if path],
                 transfer_type=transfer_type,
             )
         if preview:
@@ -977,7 +974,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 success=False,
                 message="整理结果确认失败，后台将自动重试",
                 fileitem=fileitem,
-                fail_list=[fileitem.path],
+                fail_list=[path for path in [fileitem.path] if path],
                 transfer_type=transfer_type,
             )
         return result
