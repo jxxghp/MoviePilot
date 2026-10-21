@@ -139,6 +139,8 @@ class TMDb(object):
         """
         读取运行配置并创建同步与异步请求客户端。
 
+        同步与异步客户端共用 15 秒请求超时，不随调用方会话传入。
+
         未提供会话时创建自有会话。close 沿用历史行为，会关闭当前同步会话，
         包括调用方传入的会话；异步请求客户端不由该方法关闭。
 
@@ -157,6 +159,9 @@ class TMDb(object):
         self._total_pages: TMDbJson = None
 
         self._owns_session = session is None
+        # 超时必须在创建请求客户端之前赋值：_init_session 会读取它，
+        # 放在客户端之后会让 timeout 静默回退到 RequestUtils 的默认值。
+        self._timeout = 15
         self._init_session(session=session)
 
         # TMDB 在部分代理和运营商链路下的 HTTP/2 长连接偶发卡死，识别路径优先保证稳定性。
@@ -164,21 +169,26 @@ class TMDb(object):
             ua=get_runtime_setting('NORMAL_USER_AGENT'),
             proxies=self.proxies,
             http2=False,
+            timeout=self._timeout,
         )
 
         self._remaining = 40
         self._reset: int | None = None
-        self._timeout = 15
 
     def _init_session(self, session: requests.Session | None = None) -> None:
         """
         初始化同步请求会话。
+
+        同步客户端沿用实例声明的请求超时。
+
+        :param session: 调用方提供的会话；为空时创建自有会话
         """
         self._session = session or requests.Session()
         self._req = RequestUtils(
             ua=get_runtime_setting('NORMAL_USER_AGENT'),
             session=self._session,
             proxies=self.proxies,
+            timeout=self._timeout,
         )
 
     def _reset_owned_session(self) -> None:
