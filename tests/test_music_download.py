@@ -139,6 +139,36 @@ def test_album_resource_dedupes_same_track_in_different_formats():
     assert context.confirmed_full_coverage is False
 
 
+def test_album_resource_keeps_suffix_disc_directory_tracks_separate():
+    """
+    碟号后缀在顶层目录名中的多碟专辑，两盘同曲序不能压成同一音轨键。
+    """
+    context = Context(media_info=_album_info(total_tracks=6))
+
+    DownloadChain._record_music_album_track_keys(
+        context,
+        [
+            "陈奕迅 - 十年经典 CD1/01 K歌之王.flac",
+            "陈奕迅 - 十年经典 CD1/02 富士山下.flac",
+            "陈奕迅 - 十年经典 CD1/03 你的背包.flac",
+            "陈奕迅 - 十年经典 CD2/01 你的背包.flac",
+            "陈奕迅 - 十年经典 CD2/02 Shall We Talk.flac",
+            "陈奕迅 - 十年经典 CD2/03 不如不见.flac",
+        ],
+    )
+
+    assert context.music_track_keys == ["[1,1]", "[1,2]", "[1,3]", "[2,1]", "[2,2]", "[2,3]"]
+
+    # 独立碟片子目录的既有布局必须保持同样的键集，修复不能改变已正确的解析。
+    nested = Context(media_info=_album_info(total_tracks=6))
+    DownloadChain._record_music_album_track_keys(
+        nested,
+        [f"十年经典/CD{disc}/{track:02d} 曲目.flac" for disc in (1, 2) for track in range(1, 4)],
+    )
+    assert nested.music_track_keys == context.music_track_keys
+    assert context.confirmed_full_coverage is False
+
+
 def test_download_single_prepares_partial_album_for_client_submission():
     """
     下载入口允许不完整专辑进入下载器，并把本轮音轨事实附着到上下文。

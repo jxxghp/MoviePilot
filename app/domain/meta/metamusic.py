@@ -468,6 +468,11 @@ _MUSIC_DISC_DIR_RE = re.compile(
     r"^\s*(?:cd|disc|disk)\s*(?P<num>\d{1,2})\s*$",
     re.IGNORECASE,
 )
+# 碟号后缀在目录名末尾的碟片目录：陈奕迅 - 十年经典 CD1、专辑名 Disc 2
+_MUSIC_DISC_DIR_SUFFIX_RE = re.compile(
+    r"^(?:.*[\s\-–—_.,、/\\])?(?:cd|disc|disk)\s*(?P<num>\d{1,2})\s*$",
+    re.IGNORECASE,
+)
 # 目录名中的年份：(2004)、[2004]
 _MUSIC_DIR_YEAR_RE = re.compile(r"[(\[]\s*(?P<year>(?:19|20)\d{2})\s*[)\]]")
 _MUSIC_DIR_PREFIX_YEAR_RE = re.compile(
@@ -2174,6 +2179,14 @@ class MetaMusic(MetaBase):
         match = _MUSIC_DISC_DIR_RE.match(str(name or "").strip())
         return int(match.group("num")) if match and int(match.group("num")) > 0 else None
 
+    @classmethod
+    def parse_disc_dir_suffix(cls, name: str) -> Optional[int]:
+        """
+        识别把碟号后缀在目录名末尾的碟片目录并返回碟号，如 `陈奕迅 - 十年经典 CD1`。
+        """
+        match = _MUSIC_DISC_DIR_SUFFIX_RE.match(str(name or "").strip())
+        return int(match.group("num")) if match and int(match.group("num")) > 0 else None
+
     @staticmethod
     def _normalize_album_year(value: str) -> str:
         """
@@ -2292,6 +2305,10 @@ class MetaMusic(MetaBase):
                 self.disc_number = parent_disc
                 self.field_sources["disc_number"] = "directory"
             album_dir = parent.parent
+        elif self.disc_number is None and (suffix_disc := self.parse_disc_dir_suffix(parent.name)) is not None:
+            # 碟号写进专辑目录名末尾时只补碟号，该目录仍是专辑目录，不能上移专辑根。
+            self.disc_number = suffix_disc
+            self.field_sources["disc_number"] = "directory"
         dir_info = self.parse_album_dir(album_dir.name)
         if dir_info:
             # 文件已明确歌手时，纯专辑名目录也可补足检索线索；通用监控根目录仍须排除。

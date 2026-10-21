@@ -605,6 +605,41 @@ def test_parse_disc_dir():
     assert MetaMusic.parse_disc_dir("无损音乐") is None
 
 
+def test_parse_disc_dir_suffix():
+    """
+    碟号后缀在专辑目录名末尾时识别碟号，且不得误读非碟片后缀的目录名。
+    """
+    assert MetaMusic.parse_disc_dir_suffix("陈奕迅 - 十年经典 CD1") == 1
+    assert MetaMusic.parse_disc_dir_suffix("周杰伦 哎哟不错哦 Disc 2") == 2
+    assert MetaMusic.parse_disc_dir_suffix("陈奕迅 DUO 演唱会 2CD") is None
+    assert MetaMusic.parse_disc_dir_suffix("2CD1") is None
+    assert MetaMusic.parse_disc_dir_suffix("某某专辑 CD100") is None
+    assert MetaMusic.parse_disc_dir_suffix("Discipline 1") is None
+    assert MetaMusic.parse_disc_dir_suffix("The Best disco") is None
+
+
+def test_apply_path_context_reads_suffix_disc_without_moving_album_root():
+    """
+    碟号后缀目录只补碟号，专辑线索仍来自该目录本身，多碟同曲序不会互相覆盖。
+    """
+    disc_two = MetaMusic(
+        org_string="01 你的背包.flac",
+        title="01 你的背包",
+    ).apply_path_context(Path("陈奕迅 - 十年经典 CD2/01 你的背包.flac"))
+    album_root = MetaMusic(
+        org_string="01 你的背包.flac",
+        title="01 你的背包",
+    ).apply_path_context(Path("陈奕迅 - 十年经典/CD2/01 你的背包.flac"))
+
+    assert disc_two.disc_number == 2
+    assert disc_two.track_number == 1
+    assert disc_two.field_sources["disc_number"] == "directory"
+    assert disc_two.album == "十年经典 CD2"
+    # 独立碟片子目录仍把专辑根上移一级，两种布局的碟号证据都必须可用。
+    assert album_root.disc_number == 2
+    assert album_root.album == "十年经典"
+
+
 def test_parse_album_dir_extracts_artist_album_year():
     """
     专辑目录名应提取歌手、专辑、年份和音质描述。
