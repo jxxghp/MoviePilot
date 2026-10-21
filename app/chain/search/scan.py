@@ -213,9 +213,12 @@ class SearchScan:
         snapshot: Optional[SearchSessionSnapshot] = None,
         target_scope: Optional[tuple[int, int]] = None,
         page_limit: Optional[int] = None,
+        prefer_complete: bool = False,
     ) -> None:
         """
         创建或恢复一轮搜索，候选与匹配前史由检查点一起持有。
+
+        :param prefer_complete: 提交分集前先准备覆盖全部目标的候选；由订阅当前整包优先策略决定
         """
         if not isinstance(plan.mediainfo, MediaInfo):
             raise ValueError("分页影视搜索不适用于音乐")
@@ -230,6 +233,7 @@ class SearchScan:
                          for missing in seasons.values())))
         self.target_scope = target_scope
         self.page_limit = page_limit
+        self.prefer_complete = prefer_complete
         self.ended = False
         self.restart = False
         self.collection = SearchCollection(targets)
@@ -284,6 +288,7 @@ class SearchScan:
                   if self.plan.rule_groups_signature is not None else self.plan.rule_groups,
                   "filter": self.plan.filter_params,
                   "sites": sorted(self.sources.sites), "full": self.full, "target_scope": self.target_scope,
+                  "prefer_complete": self.prefer_complete,
                   "raw_title": False, "multiple_names": self.owner.runtime_config.search_multiple_name,
                   "identifiers": configuration.get(SystemConfigKey.CustomIdentifiers),
                   "release_groups": configuration.get(SystemConfigKey.CustomReleaseGroups),
@@ -630,10 +635,16 @@ class SearchScan:
 
     def _prepared_batch(self, contexts: list[Context], ready: set[str]) -> tuple[list[Context], set[str]]:
         """
-        保留排序优先级，先提交可用前缀，再刷新下一个临时票据所在原页。
+        整包优先时集中恢复覆盖全部目标的候选，其余场景沿用可用前缀分批。
         """
-        batch: list[Context] = []
-        goals: set[str] = set()
+        ordered_keys = [cast(str, item.torrent_info.search_resource_id)
+                        for item in contexts if item.torrent_info is not None]
+        if self.prefer_complete:
+            # 只调整整包与分集的先后，两类内部仍保留规则排序；不能在更早的
+            # 缺票据分集处切批，导致后面的整包根本没有机会参与下载选择。
+            contexts = sorted(contexts, key=lambda item: item.torrent_info is None or self._coverage(
+                cast(str, item.torrent_info.search_resource_id)) != ready)
+        batch: dict[str, Context] = {}
         for context in contexts:
             if context.torrent_info is None:
                 continue
@@ -644,21 +655,29 @@ class SearchScan:
             context = self.live.get(key, context)
             if context.torrent_info is None:
                 continue
+            coverage = self._coverage(key)
             if not context.torrent_info.enclosure:
-                if batch:
+                # 全部整包候选须一起交给下载层校验；否则前一个不完整整包可能
+                # 在后一个仍待恢复票据时，就被下载层按分集回退并提交。
+                complete_pack = self.prefer_complete and coverage == ready
+                if batch and not complete_pack:
                     break
                 restored = self._recover_candidate(key)
-                if restored is None or not self._filter([restored]):
+                if (restored is None or restored.torrent_info is None
+                        or not restored.torrent_info.enclosure or not self._filter([restored])):
                     # 恢复后的促销、标签等信息可能已变化，须重新通过过滤，不能沿用旧对象的筛选结论。
                     self.attempted.add(key)
                     continue
                 context = restored
-            coverage = self._coverage(key)
+                coverage = self._coverage(key)
             if not coverage or not coverage <= ready:
                 continue
-            batch.append(context)
-            goals.update(coverage)
-        return batch, goals
+            batch[key] = context
+        # 恢复顺序只用于保证整包能参与选择，下载层回退时仍须沿用原有规则排序。
+        prepared = [self.live.get(key, batch[key]) for key in ordered_keys if key in batch and key in self.candidates]
+        goals = {target for item in prepared if item.torrent_info is not None
+                 for target in self._coverage(cast(str, item.torrent_info.search_resource_id))}
+        return prepared, goals
 
     def choose(self, ready: set[str], submit: Callable[[list[Context], set[str]], set[str]]) -> None:
         """

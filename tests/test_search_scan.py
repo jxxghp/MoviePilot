@@ -758,6 +758,67 @@ def test_opaque_ticket_recovery_submits_first_page_before_waiting_and_does_not_r
     assert calls == [0, 1]
 
 
+@pytest.mark.parametrize("part_needs_recovery", [False, True])
+def test_whole_season_recovers_late_complete_pack_before_submitting_parts(owner, monkeypatch, part_needs_recovery):
+    """
+    完整搜索中整季包的临时地址恢复必须先于前页分集提交。
+    """
+    from app.application.search.session import SearchSessionSnapshot, encode_search_state
+    from app.application.site.observation import SiteSearchObservation
+    from app.chain.search.scan import ScanPage
+
+    monkeypatch.setattr(TorrentHelper, "sort_torrents", staticmethod(
+        lambda items: sorted(items, key=lambda item: item.torrent_info.description)))
+    parts = [torrent(1), torrent(2)]
+    if part_needs_recovery:
+        parts[1].enclosure = "https://site.example/download?ticket=part-do-not-store"
+    pack = TorrentInfo(
+        site=1,
+        description="pack",
+        title="Show S01 Complete 2026 1080p",
+        enclosure="https://site.example/download?ticket=do-not-store",
+    )
+    pages(owner, monkeypatch, {0: parts, 1: [pack]})
+    initial = SearchScan(owner=owner, plan=plan([1, 2]), full=True, prefer_complete=True)
+    source = next(key for key in initial.queries if not key.startswith("plugin:"))
+    for page in range(3):
+        assert initial.step(source)
+    assert initial.step("plugin:Show")
+
+    def restore(_method, **params):
+        """
+        从检查点恢复公开下载地址，临时票据交给原页重新获取。
+        """
+        return TorrentInfo(**params["record"])
+
+    monkeypatch.setattr(owner, "run_module", restore)
+    recovered = TorrentInfo(
+        site=1,
+        description="pack",
+        title="Show S01 Complete 2026 1080p",
+        enclosure="https://site.example/download?id=pack",
+    )
+    fetches = []
+
+    def fetch(_sources, key, page, **_params):
+        """
+        只为整季候选重新请求原页并返回可下载地址。
+        """
+        fetches.append((key, page))
+        return ScanPage([recovered], SiteSearchObservation(True, "success", raw_count=1))
+
+    monkeypatch.setattr(SearchSources, "fetch", fetch)
+    snapshot = SearchSessionSnapshot("round", 0, encode_search_state(initial.state()))
+    scan = SearchScan(owner=owner, plan=plan([1, 2]), full=True, snapshot=snapshot, prefer_complete=True)
+    submitted = []
+    scan.choose({"1:1", "1:2"}, lambda items, goals: submitted.append(
+        ({item.torrent_info.description for item in items}, goals)) or goals)
+
+    assert fetches == [(source, 1)]
+    expected = {"1-1", "pack"} if part_needs_recovery else {"1-1", "2-1", "pack"}
+    assert submitted == [(expected, {"1:1", "1:2"})]
+
+
 def test_one_unidentifiable_resource_does_not_block_the_page(owner, monkeypatch):
     """
     一条无法识别的资源不阻断同页其他候选处理。
@@ -1150,7 +1211,7 @@ def test_candidate_whose_page_keeps_failing_is_dropped_after_limited_retries(own
     assert not scan.collection.remaining
 
 
-def _restored_ticket_scan(owner, monkeypatch, first_page, refetched):
+def _restored_ticket_scan(owner, monkeypatch, first_page, refetched, *, prefer_complete=False):
     """
     第 0 页的候选带临时票据（不入检查点），恢复后由 refetched 模拟重取原页的结果。
     """
@@ -1161,7 +1222,7 @@ def _restored_ticket_scan(owner, monkeypatch, first_page, refetched):
     for item in first_page:
         item.enclosure = "https://site.example/download?ticket=do-not-store"
     pages(owner, monkeypatch, {0: first_page})
-    initial = SearchScan(owner=owner, plan=plan([1, 2]), full=True)
+    initial = SearchScan(owner=owner, plan=plan([1, 2]), full=True, prefer_complete=prefer_complete)
     source = next(key for key in initial.queries if not key.startswith("plugin:"))
     initial.step(source)
     initial.step(source)
@@ -1173,7 +1234,61 @@ def _restored_ticket_scan(owner, monkeypatch, first_page, refetched):
         return ScanPage(refetched, SiteSearchObservation(True, "success", raw_count=len(refetched)))
     monkeypatch.setattr(SearchSources, "fetch", fetch)
     snapshot = SearchSessionSnapshot("round", 0, encode_search_state(initial.state()))
-    return SearchScan(owner=owner, plan=plan([1, 2]), full=True, snapshot=snapshot), fetched
+    return SearchScan(owner=owner, plan=plan([1, 2]), full=True, prefer_complete=prefer_complete,
+                      snapshot=snapshot), fetched
+
+
+@pytest.mark.parametrize("outcome", ["cooldown", "error"])
+@pytest.mark.parametrize("recovery_succeeds", [False, True])
+def test_complete_pack_recovery_waits_across_checkpoints_before_partial_fallback(
+    owner, monkeypatch, scan_clock, outcome, recovery_succeeds,
+):
+    """
+    整包恢复等待期间不提交分集；检查点保留重试次数，恢复成功或达到上限后才能推进。
+    """
+    pack = TorrentInfo(site=1, description="pack", title="Show S01 Complete 2026 1080p")
+    scan, _ = _restored_ticket_scan(owner, monkeypatch, [torrent(1), pack], [], prefer_complete=True)
+    part_key = next(key for key, saved in scan.candidates.items() if saved["torrent"]["description"] == "1-1")
+    scan.candidates[part_key]["torrent"]["enclosure"] = "https://site.example/download?id=1"
+    calls = []
+
+    def fetch(_sources, _key, page, **_params):
+        """
+        整包原页前两次受限或失败，第三次可恢复，也可继续失败到本轮放弃。
+        """
+        calls.append(page)
+        if recovery_succeeds and len(calls) == 3:
+            restored = TorrentInfo(site=1, description="pack", title="Show S01 Complete 2026 1080p",
+                                   enclosure="https://site.example/download?id=pack")
+            return ScanPage([torrent(1), restored], SiteSearchObservation(True, "success", raw_count=2))
+        if outcome == "cooldown":
+            retry_at = (scan_clock["now"] + timedelta(hours=1)).isoformat(timespec="seconds")
+            return ScanPage([], SiteSearchObservation(), retry_at, "cooldown")
+        return ScanPage([], SiteSearchObservation(True, "error", error="timeout"))
+
+    monkeypatch.setattr(SearchSources, "fetch", fetch)
+    submitted = []
+
+    def submit(items, goals):
+        """
+        记录恢复等待结束后首次允许交给下载层的候选。
+        """
+        submitted.append(({item.torrent_info.description for item in items}, goals))
+        return goals
+
+    for version in range(2):
+        with pytest.raises(SubscriptionSearchDeferred) as error:
+            scan.run(submit)
+        assert submitted == []
+        snapshot = SearchSessionSnapshot("round", version, encode_search_state(scan.state()))
+        scan = SearchScan(owner=owner, plan=plan([1, 2]), full=True, prefer_complete=True, snapshot=snapshot)
+        assert not scan.restart
+        scan_clock["now"] = datetime.fromisoformat(error.value.retry_at) + timedelta(seconds=1)
+
+    scan.run(submit)
+
+    assert calls == [0, 0, 0]
+    assert submitted == ([({"1-1", "pack"}, {"1:1", "1:2"})] if recovery_succeeds else [({"1-1"}, {"1:1"})])
 
 
 @pytest.mark.parametrize("still_listed", [False, True])

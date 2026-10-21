@@ -22,6 +22,7 @@ from app.application.subscription.priority import (
 )
 from app.chain.download import DownloadChain
 from app.chain.search.facade import SearchChain
+from app.chain.search.result import TorrentHelper
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.metadata import SubscriptionSearchTarget
 from app.chain.subscribe.search import (
@@ -448,6 +449,139 @@ def test_whole_season_downloads_late_complete_pack_before_early_parts(subscripti
     assert context.torrent_info.title == ("Example Show S01E01" if strategy == "single_page" else "Example Show S01 Complete")
     assert context.selected_episodes is None
     assert scope.current["value"].lack_episode == (1 if strategy == "single_page" else 0)
+
+
+@pytest.fixture
+def ticket_search(subscription, monkeypatch):
+    """
+    两站整季候选排序低于分集，首次页面无地址，重取原页后才取得下载地址。
+    """
+    scope = subscription
+    current = replace(scope.initial, total_episode=3, manual_total_episode=3)
+    scope.current["value"] = current
+    scope.media.seasons = {1: [1, 2, 3]}
+    target = SubscriptionSearchTarget(current, build_subscribe_meta(current), scope.media,
+                                      _missing(scope, current), "tmdb:1")
+    search = SearchChain()
+    monkeypatch.setattr(search, "_sync_indexers", lambda _sites: [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+    monkeypatch.setattr(search, "get_search_page_size", lambda **_params: 100)
+    monkeypatch.setattr(search, "search_plugin_torrents", lambda **_params: [])
+    monkeypatch.setattr(scope.chain, "get_sub_sites", lambda _subscribe: [1, 2])
+    monkeypatch.setattr(subscribe_search, "_subscription_search_strategy", lambda _best_version: "single_page")
+    monkeypatch.setattr(TorrentHelper, "sort_torrents", staticmethod(
+        lambda items: sorted(items, key=lambda item: -item.torrent_info.pri_order)))
+    attempts = {1: 0, 2: 0}
+    restored = {1: "ready", 2: "ready"}
+    events = []
+
+    def request(**params):
+        """
+        保留站点与资源身份，允许逐个模拟整包消失或重取后仍缺地址。
+        """
+        site = params["site"]["id"]
+        assert params["page"] == 0
+        attempts[site] += 1
+        recovering = attempts[site] > 1
+        events.append(("recover" if recovering else "search", site))
+        parts = [TorrentInfo(site=1, site_name="A", title=f"Example Show S01E{episode:02d}",
+                             enclosure=f"https://site.example/download?id={episode}", pri_order=100)
+                 for episode in (1, 2)] if site == 1 else []
+        outcome = restored[site] if recovering else "missing"
+        packs = [] if outcome == "gone" else [TorrentInfo(
+            site=site, site_name="A" if site == 1 else "B", title="Example Show S01 Complete",
+            enclosure=f"https://site.example/download?id=pack{site}" if outcome == "ready" else None,
+            pri_order=80 if site == 1 else 60,
+        )]
+        items = parts + packs
+        report_site_search_outcome(attempted=True, outcome="success")
+        report_site_search_page(raw_count=len(items))
+        return items
+
+    def prepare(torrent, **_params):
+        """
+        记录种子解析顺序，让测试控制整包真实文件覆盖范围。
+        """
+        events.append(("torrent", torrent.site))
+        return b"torrent", None, [1, 2, 3]
+
+    def download(context, **_params):
+        """
+        任何下载副作用前，两站整包都必须已恢复或确认不可用。
+        """
+        assert attempts == {1: 2, 2: 2}
+        events.append(("download", context.torrent_info.site))
+        return "hash"
+
+    monkeypatch.setattr(search, "search_site_torrents", request)
+    scope.download.download_torrent.side_effect = prepare
+    scope.download.download_single.side_effect = download
+    return SimpleNamespace(scope=scope, search=search, current=current, target=target,
+                           attempts=attempts, restored=restored, events=events)
+
+
+@pytest.mark.parametrize("first_outcome", ["complete", "incomplete", "failed", "gone", "missing"])
+def test_initial_download_prepares_all_complete_packs_before_any_partial_submission(ticket_search, first_outcome):
+    """
+    低排序整包必须恢复后共同参与选择，前一个不完整或下载失败时先尝试后一个整包。
+    """
+    search = ticket_search
+    scope = search.scope
+    if first_outcome in {"gone", "missing"}:
+        search.restored[1] = first_outcome
+    if first_outcome == "incomplete":
+        prepare = scope.download.download_torrent.side_effect
+
+        def incomplete(torrent, **params):
+            """
+            第一整包标题完整但实际只有一集，必须继续尝试另一站点整包。
+            """
+            content, path, episodes = prepare(torrent, **params)
+            return content, path, [1] if torrent.site == 1 else episodes
+
+        scope.download.download_torrent.side_effect = incomplete
+    if first_outcome == "failed":
+        download = scope.download.download_single.side_effect
+
+        def failed(context, **params):
+            """
+            第一整包下载器提交失败，保留第二整包成功的真实回退路径。
+            """
+            result = download(context, **params)
+            return None if context.torrent_info.site == 1 else result
+
+        scope.download.download_single.side_effect = failed
+
+    _process_paged_subscription(scope.chain, search.current, search.search, search.target,
+                                SystemConfigKey.SubscribeFilterRuleGroups, None)
+
+    contexts = [call.args[0] if call.args else call.kwargs["context"]
+                for call in scope.download.download_single.call_args_list]
+    assert [context.torrent_info.site for context in contexts] == (
+        [1] if first_outcome == "complete" else [1, 2] if first_outcome == "failed" else [2])
+    assert all(context.torrent_info.title == "Example Show S01 Complete" for context in contexts)
+    assert scope.current["value"].lack_episode == 0
+    assert scope.current["value"].best_version == search.current.best_version
+    assert scope.current["value"].current_priority == search.current.current_priority
+    assert search.events[:4] == [("search", 1), ("search", 2), ("recover", 1), ("recover", 2)]
+
+
+def test_initial_download_falls_back_to_original_partial_order_after_all_packs_disappear(ticket_search):
+    """
+    两站整包均不可用后按原规则下载分集，并保留未覆盖的第三集。
+    """
+    search = ticket_search
+    scope = search.scope
+    search.restored.update({1: "gone", 2: "gone"})
+
+    _process_paged_subscription(scope.chain, search.current, search.search, search.target,
+                                SystemConfigKey.SubscribeFilterRuleGroups, None)
+
+    contexts = [call.args[0] if call.args else call.kwargs["context"]
+                for call in scope.download.download_single.call_args_list]
+    assert [context.torrent_info.title for context in contexts] == [
+        "Example Show S01E01", "Example Show S01E02"]
+    assert scope.current["value"].lack_episode == 1
+    scope.download.download_torrent.assert_not_called()
 
 
 @pytest.mark.parametrize("fields,episodes,expected", [
