@@ -498,6 +498,48 @@ def test_safe_overwrite_preserves_transfer_modes(tmp_path, monkeypatch, transfer
     assert target.is_symlink() is (transfer_type == "softlink")
 
 
+def test_overwrite_promotes_new_target_when_old_target_disappears_before_backup(
+        tmp_path, monkeypatch, repository_factory,
+):
+    """
+    持久覆盖裁决后旧目标被洗版清理时，跳过无效备份并继续提升新文件。
+    """
+    source = tmp_path / "download.mkv"
+    target = tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.write_bytes(b"old-version")
+    checkpoint = _checkpoint(source, target, transfer_type="move")
+    repository = repository_factory(checkpoint)
+    real_get_item_strict = LocalStorage.get_item_strict
+    deleted = False
+
+    def remove_target_after_decision(self, path):
+        """
+        模拟覆盖裁决完成后洗版流程删除媒体库旧目标。
+        """
+        nonlocal deleted
+        item = real_get_item_strict(self, path)
+        if path == target and item is not None and not deleted:
+            target.unlink()
+            deleted = True
+        return item
+
+    monkeypatch.setattr(LocalStorage, "get_item_strict", remove_target_after_decision)
+    result = _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    assert result.success
+    assert target.read_bytes() == b"new-version"
+    assert not source.exists()
+    assert not list(tmp_path.glob(".mp-*"))
+    backup_step = next(
+        step for step in repository.get_snapshot(task_id="safe-overwrite").steps
+        if step.kind == "backup_overwrite_target"
+    )
+    assert backup_step.state is TransferStepState.SUCCEEDED
+    assert backup_step.result is not None
+    assert backup_step.result.payload["skipped"] is True
+
+
 @pytest.fixture
 def repository_factory():
     """
