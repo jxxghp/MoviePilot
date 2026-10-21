@@ -1349,11 +1349,11 @@ class TransHandler:
             kind="backup_overwrite_target",
             allow_missing_source=True,
         )
-        new_item = cls.__rename_with_step(
+        new_item = cast(FileItem, cls.__rename_with_step(
             step_runner=step_runner, storage_oper=target_oper,
             storage=target_storage, source=stage, target=target_file,
             kind="promote_overwrite_target", expected_source=new_item,
-        )
+        ))
 
         def confirm_replacement() -> None:
             """
