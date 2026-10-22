@@ -90,6 +90,7 @@ class LoginThrottle:
         """
         now = self._clock()
         with self._lock:
+            self._cleanup(now)
             entry = self._entries.get(key)
             if entry is None:
                 return 0
@@ -102,6 +103,7 @@ class LoginThrottle:
         """
         now = self._clock()
         with self._lock:
+            self._cleanup(now)
             entry = self._entries.setdefault(key, _Entry())
             entry.failures += 1
             entry.updated_at = now
