@@ -980,8 +980,8 @@ async def test_quiesce_seals_runtime_until_new_lifespan_reopens(monkeypatch) -> 
         assert manager.start("DemoPlugin") == {
             "DemoPlugin": PluginRuntimeStatus.LOAD_FAILED
         }
-        assert manager.stop("DemoPlugin") is None
-        assert manager.remove_plugin("DemoPlugin") is None
+        assert manager.stop("DemoPlugin") is False
+        assert manager.remove_plugin("DemoPlugin") is False
         assert (
             manager.reload_plugin("DemoPlugin")
             is PluginRuntimeStatus.LOAD_FAILED

@@ -335,12 +335,14 @@ def _command(
         persistence=persistence,
         installed_plugins_reader=lambda: installed or [],
         loadable_marker=lambda _plugin_id: calls.append("mark_loadable"),
+        host_enabled_reader=lambda _plugin_id: True,
+        host_enabled_restorer=AsyncMock(),
         plugin_ids_provider=lambda: plugin_ids or [],
         packages=packages,
         install_reporter=reporter or default_reporter,
         target_reloader=target_reloader
         or AsyncMock(return_value=PluginRuntimeStatus.ACTIVE),
-        rollback_reloader=rollback_reloader or AsyncMock(),
+        rollback_reloader=rollback_reloader or AsyncMock(return_value=PluginRuntimeStatus.ACTIVE),
         registration_refresher=registration_refresher or AsyncMock(),
         mutation=mutation or (lambda _operation: nullcontext()),
         package_write_guard=package_write_guard
@@ -366,6 +368,7 @@ def _journal_record(
         plugin_id="DemoPlugin",
         phase=phase,
         membership_before=True,
+        host_enabled_before=True,
         membership_target=True if committed else None,
         identity_before_revision=1,
         identity_target_revision=2 if committed else None,
@@ -518,7 +521,7 @@ async def test_native_dependency_change_commits_payload_when_reload_waits_for_re
     )
     package_restore = AsyncMock()
     package_cleanup = AsyncMock()
-    rollback_reloader = AsyncMock()
+    rollback_reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
     registration_refresher = AsyncMock()
     restart_required_recorder = Mock()
     command, persistence, calls = _command(
@@ -831,7 +834,7 @@ async def test_precommit_failure_restores_files_and_runtime(
     每个提交前阶段失败都恢复文件，运行态失败还要恢复旧运行态。
     """
     package_restore = AsyncMock()
-    rollback_reloader = AsyncMock()
+    rollback_reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
     registration_refresher = AsyncMock()
 
     async def failing_receipt(_plugin_id):
@@ -894,7 +897,7 @@ async def test_precommit_failure_keeps_previous_declared_metadata_snapshot():
     """
     previous = _identity(version="1.0.0", revision=3)
     persistence = _PersistenceSpy([], identity=previous)
-    rollback_reloader = AsyncMock()
+    rollback_reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
     target_reloader = AsyncMock(side_effect=RuntimeError("reload failed"))
     command, _, _ = _command(
         persistence=persistence,
@@ -922,7 +925,7 @@ async def test_database_commit_failure_restores_runtime_before_deleting_journal(
     数据库最终提交失败时，文件、运行态和 PREPARED journal 必须一起补偿。
     """
     package_restore = AsyncMock()
-    rollback_reloader = AsyncMock()
+    rollback_reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
     persistence = _PersistenceSpy(
         [],
         commit_error=RuntimeError("commit failed"),
@@ -950,7 +953,7 @@ async def test_cleanup_failure_keeps_committed_journal_for_replay():
     数据库已提交但清理失败时不能回滚载荷，journal 必须保留供启动重放。
     """
     package_finalize = AsyncMock(side_effect=RuntimeError("cleanup unavailable"))
-    rollback_reloader = AsyncMock()
+    rollback_reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
     command, persistence, _ = _command(
         package_finalize_backup=package_finalize,
         rollback_reloader=rollback_reloader,
@@ -1194,7 +1197,7 @@ async def test_cancelled_prepared_commit_rolls_back_after_outcome_check():
     started = asyncio.Event()
     release = asyncio.Event()
     package_restore = AsyncMock()
-    rollback_reloader = AsyncMock()
+    rollback_reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
     persistence = _PersistenceSpy([])
 
     async def commit(
@@ -1318,7 +1321,7 @@ async def test_unknown_commit_result_preserves_current_payload_and_journal():
     数据库最终状态无法读取时不得猜测回滚，必须留待启动恢复。
     """
     package_restore = AsyncMock()
-    rollback_reloader = AsyncMock()
+    rollback_reloader = AsyncMock(return_value=PluginRuntimeStatus.ACTIVE)
     persistence = _PersistenceSpy([], commit_error=RuntimeError("commit failed"))
     persistence.get_installation = AsyncMock(
         side_effect=RuntimeError("database unavailable")

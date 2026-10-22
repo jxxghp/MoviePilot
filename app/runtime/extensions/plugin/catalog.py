@@ -245,6 +245,8 @@ class PluginCatalogFacade:
             spec = importlib.util.find_spec(package_name)
             if spec is None or spec.origin is None:
                 return False
+            if version is None:
+                return True
             local_version = self._plugin_attr(plugin_id, "plugin_version")
             if not local_version and instance:
                 local_version = self._plugin_attr(

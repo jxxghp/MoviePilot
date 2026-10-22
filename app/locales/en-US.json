@@ -592,7 +592,8 @@
     "源文件路径为空": "Source file path is empty",
     "未识别到媒体类型": "Media type could not be identified",
     "站点域名未配置": "Site domain is not configured",
-    "站点配置不完整": "Site configuration is incomplete"
+    "站点配置不完整": "Site configuration is incomplete",
+    "插件后台服务尚未停止，已保留实例和数据供重试": "Plugin background services have not stopped. The instance and data were retained so you can retry."
   },
   "message_patterns": [
     {

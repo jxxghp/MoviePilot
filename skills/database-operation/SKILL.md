@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 12
+version: 13
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -223,7 +223,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Purpose: Stores plugin installation phase, membership target, identity revisions, and backup state.
 - Useful queries: Diagnosing interrupted installations, rollback conditions, and package or backup presence.
 - Write boundary: Owned by the plugin installation state machine; never advance phase or overwrite evidence manually.
-- Columns: `id`, `transaction_id`, `plugin_id`, `phase`, `membership_before`, `membership_target`, `identity_before_revision`, `identity_target_revision`, `package_existed`, `persistent_backup_existed`, `created_at`, `updated_at`, `schema_version`
+- Columns: `id`, `transaction_id`, `plugin_id`, `phase`, `membership_before`, `host_enabled_before`, `membership_target`, `identity_before_revision`, `identity_target_revision`, `package_existed`, `persistent_backup_existed`, `created_at`, `updated_at`, `schema_version`
 
 ### `plugininstance`
 - Purpose: Stores one row per shared-source plugin runtime instance, covering both clones and the host plugin itself (instance_id equals source_plugin_id, so equality identifies the host and inequality a clone), together with that instance's display overrides, its own log-level override and the moment that override expires, and the plugin's own configuration payload. A clone exists exactly while its row exists, so deleting the row uninstalls the clone and discards its configuration.

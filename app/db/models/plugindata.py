@@ -23,7 +23,7 @@ class PluginData(Base):
     value: Mapped[Optional[Any]] = mapped_column(JSON)
 
     __table_args__ = (
-        Index('ix_plugindata_plugin_id_key', 'plugin_id', 'key'),
+        Index('ix_plugindata_plugin_id_key', 'plugin_id', 'key', unique=True),
     )
 
     @classmethod

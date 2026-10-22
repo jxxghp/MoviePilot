@@ -68,6 +68,7 @@ def _record(
         plugin_id="DemoPlugin",
         phase=phase,
         membership_before=True,
+        host_enabled_before=True,
         membership_target=True if committed else None,
         identity_before_revision=1,
         identity_target_revision=2 if committed else None,
@@ -159,6 +160,7 @@ async def test_prepared_replay_restores_before_releasing_journal() -> None:
     service = PluginInstallationRecoveryService(
         persistence=persistence,
         packages=packages,
+        restore_host_enabled=AsyncMock(),
     )
 
     result = await service.replay()
@@ -185,6 +187,7 @@ async def test_prepared_delete_failure_keeps_replayable_journal() -> None:
     service = PluginInstallationRecoveryService(
         persistence=persistence,
         packages=packages,
+        restore_host_enabled=AsyncMock(),
     )
 
     first = await service.replay()
@@ -219,6 +222,7 @@ async def test_prepared_restore_failure_does_not_block_other_plugins() -> None:
     service = PluginInstallationRecoveryService(
         persistence=persistence,
         packages=packages,
+        restore_host_enabled=AsyncMock(),
     )
 
     result = await service.replay()

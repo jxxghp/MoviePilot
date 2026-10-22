@@ -37,6 +37,8 @@ PluginMutationAdmission = Callable[[str], ContextManager[None]]
 PluginPackageWriteGuard = Callable[[str], ContextManager[None]]
 RestartRequiredRecorder = Callable[[str, tuple[str, ...]], None]
 LoadableMarker = Callable[[str], None]
+HostEnabledReader = Callable[[str], bool]
+HostEnabledRestorer = Callable[[str, bool], Awaitable[None]]
 T = TypeVar("T")
 
 
@@ -240,6 +242,8 @@ class _InstallState:
     :param native_dependency_changes: 本次安装替换的已加载原生依赖
     :param committed: 已确认数据库目标提交完成
     :param commit_unknown: 数据库提交结果不确定，禁止按未提交状态盲目回滚
+    :param host_enabled_before: 任何启用副作用之前冻结的本体启用位
+    :param host_enabled_touched: 已尝试修改本体启用位，需补偿后才可删除journal
     """
 
     transaction_id: str
@@ -255,6 +259,8 @@ class _InstallState:
     native_dependency_changes: tuple[NativeDependencyChange, ...] = ()
     committed: bool = False
     commit_unknown: bool = False
+    host_enabled_before: bool | None = None
+    host_enabled_touched: bool = False
 
 
 class PluginInstallCommand:
@@ -268,6 +274,8 @@ class PluginInstallCommand:
         persistence: PluginPersistenceService,
         installed_plugins_reader: InstalledPluginsReader,
         loadable_marker: LoadableMarker,
+        host_enabled_reader: HostEnabledReader,
+        host_enabled_restorer: HostEnabledRestorer,
         plugin_ids_provider: PluginIdsProvider,
         packages: PluginPackageTransactionPort,
         install_reporter: InstallReporter,
@@ -286,6 +294,8 @@ class PluginInstallCommand:
         self.__persistence = persistence
         self.__installed_plugins_reader = installed_plugins_reader
         self.__loadable_marker = loadable_marker
+        self.__host_enabled_reader = host_enabled_reader
+        self.__host_enabled_restorer = host_enabled_restorer
         self.__plugin_ids_provider = plugin_ids_provider
         self.__packages = packages
         self.__install_reporter = install_reporter
@@ -370,6 +380,8 @@ class PluginInstallCommand:
             )
 
         try:
+            state.host_enabled_before = self.__host_enabled_reader(plugin_id)
+
             async def create_checkpoint() -> None:
                 """
                 在取消传播前保存已经创建完成的恢复材料引用。
@@ -393,6 +405,7 @@ class PluginInstallCommand:
             plugin_id=plugin_id,
             phase=PluginInstallationPhase.PREPARED,
             membership_before=membership_before,
+            host_enabled_before=state.host_enabled_before,
             membership_target=None,
             identity_before_revision=admission.expected_revision,
             identity_target_revision=None,
@@ -509,6 +522,7 @@ class PluginInstallCommand:
                 )
             )
             # 装载判据在实例表启用位上，不登记则插件装完当次能跑、重启即消失
+            state.host_enabled_touched = True
             self.__loadable_marker(plugin_id)
 
             state.stage = "persistent_backup_stage"
@@ -900,22 +914,36 @@ class PluginInstallCommand:
 
         runtime_restored = False
         registrations_restored = False
-        if file_restored and state.runtime_touched:
+        if file_restored and state.runtime_touched and state.host_enabled_before is not False:
             try:
-                await self.__rollback_reloader(plugin_id)
+                status = await self.__rollback_reloader(plugin_id)
+                if status is not PluginRuntimeStatus.ACTIVE:
+                    raise RuntimeError(f"原插件重载状态为 {getattr(status, 'value', status)}")
                 runtime_restored = True
             # 返回完整补偿诊断
             except Exception as error:  # noqa: BLE001
                 errors.append(f"插件运行态恢复失败：{error}")
-            if runtime_restored:
-                try:
-                    await self.__registration_refresher(plugin_id)
-                    registrations_restored = True
-                # 补偿失败需保留完整诊断，不覆盖原安装失败结果。
-                except Exception as error:  # noqa: BLE001
-                    errors.append(f"插件注册恢复失败：{error}")
+        host_restored = not state.host_enabled_touched
+        if file_restored and state.host_enabled_touched:
+            try:
+                if state.host_enabled_before is None:
+                    raise RuntimeError("缺少安装前本体启用位快照")
+                await self.__host_enabled_restorer(plugin_id, state.host_enabled_before)
+                host_restored = True
+            except Exception as error:  # noqa: BLE001
+                errors.append(f"插件本体启用位恢复失败：{error}")
+        if file_restored and state.runtime_touched and state.host_enabled_before is False:
+            # 原本停用的插件没有待重载的运行实例；恢复端口已经确认候选停止。
+            runtime_restored = host_restored
+        if runtime_restored and host_restored:
+            try:
+                await self.__registration_refresher(plugin_id)
+                registrations_restored = True
+            # 补偿失败需保留完整诊断，不覆盖原安装失败结果。
+            except Exception as error:  # noqa: BLE001
+                errors.append(f"插件注册恢复失败：{error}")
 
-        rollback_complete = file_restored and (
+        rollback_complete = file_restored and host_restored and (
             not state.runtime_touched
             or (runtime_restored and registrations_restored)
         )
