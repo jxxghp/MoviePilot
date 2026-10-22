@@ -1802,6 +1802,148 @@ def _EndpointHistory(**kwargs: object) -> SubscriptionHistorySnapshot:
     return SubscriptionHistorySnapshot(**values)
 
 
+@pytest.mark.parametrize("media_type", [MediaType.MOVIE, MediaType.TV, MediaType.MUSIC])
+@pytest.mark.parametrize("previous_category", [None, "旧目录"])
+def test_update_subscribe_round_trip_preserves_custom_category(media_type, previous_category):
+    """
+    完整编辑表单带回空分类 ID 时，新填的自定义分类仍须保存并在详情回显。
+    """
+    from app.api.endpoints.subscribe import read_subscribe, update_subscribe
+
+    repository = _SubscriptionRepositoryFake(
+        _EndpointSubscribe(
+            id=7134,
+            username="alice",
+            type=media_type.value,
+            media_category=previous_category,
+        )
+    )
+    current_user = _EndpointUser(name="alice", is_superuser=False)
+    details = asyncio.run(
+        read_subscribe(
+            subscribe_id=7134,
+            query=_subscription_query(repository),
+            current_user=current_user,
+        )
+    )
+    form = details.model_dump(mode="json")
+    assert form["media_category_id"] is None
+    form["media_category"] = "剧集/纪录片"
+
+    with patch("app.runtime.events.eventmanager.async_send_event", new=AsyncMock()) as send_event:
+        response = asyncio.run(
+            update_subscribe(
+                subscribe_in=Subscribe.model_validate(form),
+                mutation=_subscription_mutation(repository),
+                current_user=current_user,
+            )
+        )
+
+    reopened = asyncio.run(
+        read_subscribe(
+            subscribe_id=7134,
+            query=_subscription_query(repository),
+            current_user=current_user,
+        )
+    )
+    assert response.success
+    assert reopened.media_category_id is None
+    assert reopened.media_category == "剧集/纪录片"
+    assert send_event.await_args.args[1]["subscribe_info"]["media_category"] == "剧集/纪录片"
+
+
+@pytest.mark.parametrize(
+    ("patch_payload", "expected_category"),
+    [
+        ({"media_category": ""}, None),
+        ({"media_category": None}, None),
+        ({"media_category_id": None, "media_category": ""}, None),
+        ({"media_category_id": None}, None),
+        ({"media_category_id": ""}, None),
+        ({"keyword": "新关键字"}, "剧集/纪录片"),
+    ],
+)
+def test_update_subscribe_distinguishes_cleared_and_omitted_category(patch_payload, expected_category):
+    """
+    清空自定义分类必须覆盖旧值，未提交分类字段则保留原设置。
+    """
+    from app.api.endpoints.subscribe import update_subscribe
+
+    repository = _SubscriptionRepositoryFake(
+        _EndpointSubscribe(
+            id=7134,
+            username="alice",
+            type=MediaType.TV.value,
+            media_category="剧集/纪录片",
+        )
+    )
+    with patch("app.runtime.events.eventmanager.async_send_event", new=AsyncMock()):
+        response = asyncio.run(
+            update_subscribe(
+                subscribe_in=Subscribe(id=7134, **patch_payload),
+                mutation=_subscription_mutation(repository),
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
+    assert response.success
+    updated = repository.get(7134)
+    assert updated is not None
+    assert updated.media_category_id is None
+    assert updated.media_category == expected_category
+
+
+@pytest.mark.parametrize("exclude_unset", [False, True])
+@pytest.mark.parametrize("category_id", [None, "", " "])
+def test_subscribe_public_write_preserves_custom_category_with_empty_id(exclude_unset, category_id):
+    """
+    新增和更新载荷中的空稳定 ID 不得吞掉文本框提交的自定义分类。
+    """
+    from app.application.classification.reference import normalize_classification_reference_payload
+
+    subscribe_in = Subscribe(
+        type=MediaType.TV.value,
+        media_category_id=category_id,
+        media_category="剧集/纪录片",
+    )
+    normalized = normalize_classification_reference_payload(
+        subscribe_in.to_public_write_payload(exclude_unset=exclude_unset),
+        media_type=MediaType.TV,
+    )
+
+    assert normalized["media_category_id"] is None
+    assert normalized["media_category"] == "剧集/纪录片"
+
+
+@pytest.mark.parametrize("category", ["../逃逸", r"C:\绝对目录"])
+def test_update_subscribe_rejects_unsafe_custom_category_with_empty_id(category):
+    """
+    空分类 ID 兼容文本输入时仍须校验路径，拒绝后保留原分类。
+    """
+    from app.api.endpoints.subscribe import update_subscribe
+
+    repository = _SubscriptionRepositoryFake(
+        _EndpointSubscribe(
+            id=7134,
+            username="alice",
+            type=MediaType.TV.value,
+            media_category="原分类",
+        )
+    )
+    with patch("app.runtime.events.eventmanager.async_send_event", new=AsyncMock()) as send_event:
+        response = asyncio.run(
+            update_subscribe(
+                subscribe_in=Subscribe(id=7134, media_category_id=None, media_category=category),
+                mutation=_subscription_mutation(repository),
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
+    assert not response.success
+    assert repository.get(7134).media_category == "原分类"
+    send_event.assert_not_awaited()
+
+
 def test_subscribe_accepts_empty_strings_for_numeric_fields():
     """
     前端提交音乐订阅时常以空字符串填充数值字段，不应触发 422。

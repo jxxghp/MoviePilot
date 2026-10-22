@@ -189,6 +189,7 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         "audio_quality", "audio_format",
         "custom_words", "keyword", "save_path", "episode_group", "downloader",
         "min_bitrate", "min_bit_depth", "min_sample_rate",
+        "media_category_id", "media_category",
     })
 
     PUBLIC_WRITE_EXCLUDED_FIELDS: ClassVar[frozenset[str]] = frozenset({
@@ -319,11 +320,17 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     def to_public_write_payload(self, *, exclude_unset: bool = False) -> Dict[str, Any]:
         """
         裁剪公共订阅写入字段，可仅保留更新请求显式提交的字段。
+
+        文本分类表单会带回详情中的空稳定 ID；同时提交非空路径时，按旧路径输入处理，
+        避免分类规范化把新输入误判为清空。路径和 ID 都为空时保留显式清空语义。
         """
-        return self.model_dump(
+        payload = self.model_dump(
             exclude=set(self.PUBLIC_WRITE_EXCLUDED_FIELDS),
             exclude_unset=exclude_unset,
         )
+        if payload.get("media_category") and not str(payload.get("media_category_id") or "").strip():
+            payload.pop("media_category_id", None)
+        return payload
 
 
 class SubscribeShare(OptionalMediaIdentityMixin, BaseModel):
