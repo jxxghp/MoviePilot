@@ -691,7 +691,6 @@ def resolve_local_repo(local_repo: str, plugin_id: str, package_version: str) ->
         return Path(local_repo).expanduser().resolve()
     settings = load_moviepilot_settings()
     raw_paths = str(getattr(settings, "PLUGIN_LOCAL_REPO_PATHS", "") or "") if settings else ""
-    layout = resolve_layout(package_version, Path.cwd(), plugin_id)
     matches: list[Path] = []
     for item in raw_paths.split(","):
         if not item.strip():
@@ -700,6 +699,7 @@ def resolve_local_repo(local_repo: str, plugin_id: str, package_version: str) ->
         if not path.is_absolute() and settings:
             path = Path(getattr(settings, "ROOT_PATH")) / path
         path = path.resolve()
+        layout = resolve_layout(package_version, path, plugin_id)
         if plugin_dir(path, layout, plugin_id).exists():
             matches.append(path)
     if len(matches) == 1:
@@ -934,6 +934,8 @@ def build_pull_changes(
     """
     changes = ChangeSet(rejected=rejected)
     for path, remote_state in remote_files.items():
+        if path in rejected:
+            continue
         local_state = local_files.get(path)
         if local_state is None:
             changes.create.append(path)
@@ -1132,6 +1134,24 @@ def create_repo(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _read_local_pull_package(local_repo: Path, layout: Layout) -> dict[str, Any]:
+    """
+    拉取写入前验证本地package整体结构，保留其它插件的元数据。
+
+    :param local_repo: 本地插件仓库目录
+    :param layout: 当前仓库布局及package文件名
+    :return: 完整package对象；文件不存在时返回空对象
+    :raises ValueError: 现有文件不是有效JSON对象，不能安全合并
+    """
+    package_path = local_repo / layout.package_file
+    if not package_path.exists():
+        return {}
+    package_data = json.loads(package_path.read_text(encoding="utf-8"))
+    if not isinstance(package_data, dict):
+        raise ValueError(f"本地 package 文件不是 JSON 对象：{package_path}")
+    return package_data
+
+
 def pull(args: argparse.Namespace) -> dict[str, Any]:
     """
     从 GitHub 拉取插件文件到本地仓库。
@@ -1140,6 +1160,8 @@ def pull(args: argparse.Namespace) -> dict[str, Any]:
     :return: 拉取结果
     """
     context = build_context(args)
+    local_package = _read_local_pull_package(context["local_repo"], context["layout"])
+    local_entry = local_package.get(context["plugin_id"])
     client: GitHubClient = context["client"]
     local_files, rejected = collect_local_files(
         context["local_repo"],
@@ -1157,16 +1179,9 @@ def pull(args: argparse.Namespace) -> dict[str, Any]:
         package_data = json.loads(package_file.content.decode("utf-8"))
         if isinstance(package_data, dict):
             package_entry = package_data.get(context["plugin_id"])
-            local_entry = None
-            try:
-                local_entry = read_package_entry(
-                    context["local_repo"],
-                    context["layout"],
-                    context["plugin_id"],
-                )
-            except (FileNotFoundError, ValueError, json.JSONDecodeError):
-                local_entry = None
             package_change = "same" if package_entry == local_entry else "update"
+            if package_entry is not None and local_entry is not None and package_change == "update" and not args.force:
+                changes.conflicts.append(context["layout"].package_file)
     payload = result_payload(context, changes, package_change=package_change)
     if changes.conflicts and not args.force:
         payload["message"] = "本地存在未发布改动，已拒绝覆盖。确认后可使用 --force。"

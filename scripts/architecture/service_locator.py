@@ -64,6 +64,7 @@ RUNTIME_FACADE_POLICIES = (
             {
                 "app.sdk.plugin.manager",
                 "app.startup.composition.chain",
+                "app.startup.composition.cliagent",
                 "app.startup.initializers.modules",
             }
         ),
@@ -75,6 +76,7 @@ RUNTIME_FACADE_POLICIES = (
             {
                 "app.sdk.plugin.manager",
                 "app.startup.composition.chain",
+                "app.startup.composition.cliagent",
                 "app.startup.initializers.plugins",
             }
         ),

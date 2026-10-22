@@ -84,6 +84,9 @@ def test_full_regeneration_is_current_and_idempotent(
         path.relative_to(tmp_path): path.read_bytes()
         for path in (tmp_path / "skills").rglob("*.md")
     }
+    database_skill = tmp_path / "skills/database-operation/SKILL.md"
+    database_skill.write_text(re.sub(r"(?m)^version: \d+$", "version: 11",
+                                    database_skill.read_text(encoding="utf-8"), count=1), encoding="utf-8")
 
     for _ in range(2):
         assert generator.main() == 0

@@ -507,8 +507,7 @@ fi
 maybe_reexec_control_bundle
 cd /app || exit
 
-if [ "${MOVIEPILOT_BOOTSTRAP_UPDATE_DONE:-0}" != "1" ] \
-    && [ -f "${CONFIG_DIR}/temp/moviepilot-update/install.json" ]; then
+if [ -f "${CONFIG_DIR}/temp/moviepilot-update/install.json" ]; then
     if apply_pending_release_update_at_startup; then
         INFO "→ 未完成的 Release 更新已安装，重新执行入口加载新代码。"
         reexec_entrypoint
