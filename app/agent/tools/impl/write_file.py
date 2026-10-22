@@ -129,15 +129,13 @@ class WriteFileTool(MoviePilotTool):
                         "请重新读取文件并基于最新内容写入。"
                     )
 
-            await self.run_blocking(
+            new_sha256 = await self.run_blocking(
                 "default",
                 atomic_write_text,
                 local_path,
                 content,
                 current_sha256,
-            )
-            new_sha256 = await self.run_blocking(
-                "default", calculate_file_sha256, local_path
+                overwrite=overwrite,
             )
 
             logger.info(f"成功写入文件 {resolved_path}")

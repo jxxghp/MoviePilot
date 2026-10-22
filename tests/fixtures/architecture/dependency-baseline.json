@@ -961,8 +961,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9649,
-  "edge_sha256": "3038db090f87166a7cae3e63e78e30def7d3466252c846bdab3d6996a8f65999",
+  "edge_count": 9650,
+  "edge_sha256": "e1945f55d8d552e31e251e1877947401c9ec0aaa013e78a6dbc6618e8536e446",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -10119,6 +10119,7 @@
     "app.startup.initializers.agent -> app.chain.message",
     "app.startup.initializers.agent -> app.runtime",
     "app.startup.initializers.agent -> app.runtime.events",
+    "app.startup.initializers.agent -> app.runtime.execution",
     "app.startup.initializers.agent -> app.runtime.log",
     "app.startup.initializers.agent -> app.runtime.settings",
     "app.startup.initializers.agent -> app.schemas",

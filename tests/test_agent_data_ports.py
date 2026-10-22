@@ -13,6 +13,7 @@ import pytest
 
 import app.agent.tools.factory as tool_factory_module
 import app.application.agent as agent_services
+from app.agent.manager import AgentManager
 from app.agent.memory import MemoryManager
 from app.agent.orchestrator import MoviePilotAgent
 from app.agent.session import AgentSessionOwner, _MessageTask
@@ -514,11 +515,14 @@ def test_agent_initializer_resolves_data_bound_manager_for_agent_task(monkeypatc
     monkeypatch.setattr(agent_initializer, "agent_manager", None)
     monkeypatch.setattr(agent_initializer, "_agent_data_context", None)
     monkeypatch.setattr(agent_initializer, "_injected_agent_manager", None)
+    canonical = AgentManager(memory=MemoryManager())
+    monkeypatch.setattr(agent_initializer, "get_runtime_agent_manager", lambda: canonical)
 
     agent_initializer.configure_agent_data_context(context)
     manager = agent_initializer._get_agent_manager()
 
     assert manager._data is context
+    assert manager is canonical
 
 
 def test_transactional_agent_task_repository_projects_frozen_snapshots() -> None:

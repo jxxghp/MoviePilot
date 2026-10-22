@@ -307,10 +307,11 @@ def test_secret_confirmation_preempts_plugin_interaction_on_message_channels() -
     TG/飞书确认必须回到已有 Agent 会话，不被其它输入会话消费。
     """
     chain = MessageChain()
-    MessageChain._user_sessions["10001"] = ("session-secret", datetime.now())
 
     try:
         for channel in (NotificationChannel.Telegram, NotificationChannel.Feishu):
+            key = chain._session_user_key("10001", channel, f"{channel.value}-test")
+            MessageChain._user_sessions[key] = ("session-secret", datetime.now())
             manager = Mock()
             manager.matches_secret_confirmation.return_value = True
             with (

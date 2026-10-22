@@ -1533,7 +1533,9 @@ def test_web_agent_stream_binds_session_to_agent_manager():
             body = asyncio.run(scenario())
 
         assert "状态正常" in body
-        assert MessageChain._user_sessions["1"][0] == session_id
+        assert MessageChain._user_sessions[MessageChain._session_user_key(
+            "1", NotificationChannel.WebAgent, "web-agent",
+        )][0] == session_id
         assert isinstance(agent_manager.active_agents[session_id], FakeWebAgent)
     finally:
         MessageChain._user_sessions.clear()

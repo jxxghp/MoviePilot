@@ -436,27 +436,38 @@ class _ProviderDiscovery:
         try:
             response = await client.aio.models.list()
             results = []
-            for model in response.page:
-                supported = set(model.supported_actions or [])
-                if "generateContent" not in supported:
-                    continue
-                model_id = model.name
-                metadata = (
-                    await self._models_dev_model(
-                        "google",
-                        model_id,
-                        use_proxy=use_proxy,
+            tokens: set[str] = set()
+            for _page in range(100):
+                for model in response.page:
+                    supported = set(model.supported_actions or [])
+                    if "generateContent" not in supported:
+                        continue
+                    model_id = model.name
+                    metadata = (
+                        await self._models_dev_model(
+                            "google",
+                            model_id,
+                            use_proxy=use_proxy,
+                        )
+                        or {}
                     )
-                    or {}
-                )
-                results.append(
-                    self._normalize_model_record(
-                        model_id=model_id,
-                        display_name=model.display_name or metadata.get("name") or model_id,
-                        metadata=metadata,
-                        source="provider",
+                    results.append(
+                        self._normalize_model_record(
+                            model_id=model_id,
+                            display_name=model.display_name or metadata.get("name") or model_id,
+                            metadata=metadata,
+                            source="provider",
+                        )
                     )
-                )
+                token = response.config.get("page_token")
+                if not token:
+                    break
+                if token in tokens:
+                    raise LLMProviderError("Google 模型列表分页游标重复")
+                tokens.add(token)
+                await response.next_page()
+            else:
+                raise LLMProviderError("Google 模型列表分页超过上限")
             return sorted(results, key=lambda item: item["name"].lower())
         finally:
             try:

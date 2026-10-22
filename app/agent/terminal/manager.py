@@ -707,15 +707,18 @@ class _TerminalSessionManager:
         同一终端的关闭串行执行，真实收尾前不丢弃进程或输出读取器。
         """
         async with session.termination_lock:
-            if session.status == "running":
+            if session.status == "running" or os.name == "posix":
                 session.kill_requested = True
                 self._send_signal(session, signal.SIGTERM)
             if not await self._wait_for_exit(session):
-                if session.status == "running":
+                if session.status == "running" or os.name == "posix":
                     self._send_signal(session, _KILL_SIGNAL)
                 if not await self._wait_for_exit(session):
                     logger.error(f"终端会话关闭超时: session_id={session.session_id}, pid={session.pid}")
                     return False
+            # 组长先结束也不代表组内后代已退出；关闭该owner时完成整组最终收口。
+            if os.name == "posix":
+                self._send_signal(session, _KILL_SIGNAL)
             if any(not task.done() for task in session.reader_tasks):
                 return False
             session.finish_output()
@@ -851,6 +854,19 @@ class _TerminalSessionManager:
         """
         return sum(1 for session in self._sessions.values() if session.status == "running")
 
+    @staticmethod
+    def _process_group_exists(session: _TerminalSession) -> bool:
+        """
+        保留组长退出但仍有后代的终端归属，避免过期清理先丢弃唯一收口句柄。
+        """
+        if os.name != "posix":
+            return session.status == "running"
+        try:
+            os.killpg(session.pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+
     def _cleanup_finished_sessions_locked(self) -> None:
         """
         清理已经结束且超过保留时间的会话。
@@ -861,6 +877,7 @@ class _TerminalSessionManager:
             for session_id, session in self._sessions.items()
             if session.status != "running"
             and now - session.updated_at > TERMINAL_RETENTION_SECONDS
+            and not self._process_group_exists(session)
         ]
         for session_id in expired_ids:
             session = self._sessions.pop(session_id)

@@ -583,9 +583,12 @@ async def save_web_agent_display_snapshot(
     client_session_id: Optional[str] = None,
     service: Optional[AgentChatService] = None,
     persistence: Optional[AgentChatPersistenceService] = None,
+    append: bool = False,
 ) -> None:
     """
     保存 WebAgent 展示快照前重新检查归属，避免入口之后的会话变更造成越权覆盖。
+
+    :param append: 后台单轮结果为True，按消息ID追加合并；前端完整快照保留替换合同
     """
     if service is None:
         # 直接调用该内部 helper 时没有 FastAPI 依赖注入上下文。
@@ -596,7 +599,8 @@ async def save_web_agent_display_snapshot(
     if persistence is None:
         # 直接调用该内部 helper 时没有 FastAPI 依赖注入上下文。
         persistence = get_configured_agent_chat_persistence()
-    await persistence.async_save_display_messages(
+    save_messages = persistence.async_append_display_messages if append else persistence.async_save_display_messages
+    await save_messages(
         session_id=session_id,
         user_id=(existing_chat.user_id if existing_chat else str(current_user.id)),
         username=(existing_chat.username if existing_chat else current_user.name),
@@ -1569,6 +1573,7 @@ def _build_traditional_web_agent_stream(
                     client_session_id=command.session_id or session_id,
                     service=service,
                     persistence=persistence,
+                    append=True,
                 )
             except Exception as err:
                 logger.error(f"保存WebAgent传统消息快照失败: {str(err)}")

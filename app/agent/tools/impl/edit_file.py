@@ -151,15 +151,12 @@ class EditFileTool(MoviePilotTool):
                 new_text,
                 -1 if replace_all else 1,
             )
-            await self.run_blocking(
+            new_sha256 = await self.run_blocking(
                 "default",
                 atomic_write_text,
                 local_path,
                 new_content,
                 current_sha256,
-            )
-            new_sha256 = await self.run_blocking(
-                "default", calculate_file_sha256, local_path
             )
 
             logger.info(

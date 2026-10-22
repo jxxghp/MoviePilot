@@ -211,9 +211,9 @@ def test_apply_patch_detects_version_conflict_during_write(tmp_path):
     )
     original_write = apply_patch_module.atomic_write_text
 
-    def _conflicting_write(path, content, expected_sha256=None):
+    def _conflicting_write(path, content, expected_sha256=None, *, overwrite=True):
         file_path.write_text("changed elsewhere\n", encoding="utf-8")
-        original_write(path, content, expected_sha256)
+        return original_write(path, content, expected_sha256, overwrite=overwrite)
 
     with patch.object(
         apply_patch_module, "atomic_write_text", _conflicting_write

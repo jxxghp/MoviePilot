@@ -346,6 +346,7 @@ def _build_web_agent_event_generator(
                         client_session_id=command.session_id or session_id,
                         service=service,
                         persistence=persistence,
+                        append=True,
                     )
                 except Exception as err:
                     logger.error(f"保存WebAgent展示历史失败：{err}")
