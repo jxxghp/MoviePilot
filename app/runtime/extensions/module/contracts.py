@@ -341,6 +341,15 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("fileitem", "path", "new_name"),
     ),
+    "link_file": ModuleMethodContract(
+        family="storage",
+        input_contract="StorageLinkRequest",
+        result_contract="bool | None",
+        result_shape=ModuleResultShape.BOOLEAN,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("fileitem", "target_file"),
+        public_to_plugins=False,
+    ),
     "list_files": ModuleMethodContract(
         family="storage",
         input_contract="StorageListRequest",

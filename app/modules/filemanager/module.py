@@ -444,6 +444,21 @@ class FileManagerModule(_ModuleBase):
             return None
         return storage_oper.upload(fileitem, path, new_name)
 
+    def link_file(self, fileitem: FileItem, target_file: Path) -> bool:
+        """
+        在源文件所属存储内创建硬链接。
+
+        :param fileitem: 已存在的源文件项
+        :param target_file: 目标存储中的完整文件路径
+        :return: 存储实现完成链接时返回 True，否则返回 False
+        """
+        if not fileitem.storage or fileitem.storage not in self._support_storages:
+            return False
+        storage_oper = self.__get_storage_oper(fileitem.storage, "link")
+        if not storage_oper:
+            return False
+        return bool(storage_oper.link(fileitem, target_file))
+
     def get_file_item(self, storage: str, path: Path) -> Optional[FileItem]:
         """
         根据路径严格查询文件或目录。

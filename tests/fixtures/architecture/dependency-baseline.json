@@ -961,8 +961,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9640,
-  "edge_sha256": "db43a5eb49af3c4c08dff6b6238b1c1a9ec0a408d1c79315a0ac0e720857722d",
+  "edge_count": 9641,
+  "edge_sha256": "c8b2f2c58802b0729444bbb2b8f373722179116733442c513270661a61d8af88",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5111,6 +5111,7 @@
     "app.chain.scraping -> app.chain.media",
     "app.chain.scraping -> app.chain.storage",
     "app.chain.scraping -> app.domain",
+    "app.chain.scraping -> app.domain.artwork",
     "app.chain.scraping -> app.domain.context",
     "app.chain.scraping -> app.domain.meta",
     "app.chain.scraping -> app.domain.meta.metabase",
@@ -10605,7 +10606,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1127,
+  "module_count": 1128,
   "modules": [
     "app",
     "app.adapters",
@@ -11270,6 +11271,7 @@
     "app.doctor.models",
     "app.doctor.runner",
     "app.domain",
+    "app.domain.artwork",
     "app.domain.classification",
     "app.domain.classification.conditions",
     "app.domain.classification.evaluator",

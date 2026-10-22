@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union, cast
+from urllib.parse import urlsplit
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.context import MediaInfo
@@ -217,6 +218,12 @@ class FanartModule(_ModuleBase):
             if not isinstance(images, list):
                 continue
 
+            if (
+                name.lower() in {"show4kbackground", "movie4kbackground"}
+                and not get_runtime_setting("SCRAP_4K_BACKGROUND", True)
+            ):
+                continue
+
             image_name = self.__name(name)
             if image_name.startswith("season"):
                 image_type = image_name[6:]
@@ -234,14 +241,14 @@ class FanartModule(_ModuleBase):
                             )
                         if image_url := image_obj.get("url"):
                             ret.setdefault(
-                                f"{season_image}{Path(image_url).suffix}", image_url
+                                f"{season_image}{self.__image_suffix(image_url)}", image_url
                             )
             else:
                 if season is not None:
                     continue
                 image_obj = self.__pick_best_image(images)
                 if image_url := image_obj.get("url"):
-                    ret[f"{image_name}{Path(image_url).suffix}"] = image_url
+                    ret[f"{image_name}{self.__image_suffix(image_url)}"] = image_url
 
         return ret or None
 
@@ -293,9 +300,12 @@ class FanartModule(_ModuleBase):
     _FANART_NAME_MAP = {
         "showbackground": "fanart",
         "moviebackground": "fanart",
+        "show4kbackground": "background",
+        "movie4kbackground": "background",
         "hdtvlogo": "logo",
         "hdmovielogo": "logo",
         "movielogo": "logo",
+        "clearlogo": "logo",
         "tvposter": "poster",
         "movieposter": "poster",
         "tvthumb": "thumb",
@@ -318,6 +328,24 @@ class FanartModule(_ModuleBase):
         转换Fanart图片的名字为媒体服务器兼容名称。
         """
         return cls._FANART_NAME_MAP.get(fanart_name.lower(), fanart_name)
+
+    @staticmethod
+    def __image_suffix(image_url: str) -> str:
+        """
+        将 Fanart URL 的后缀归一为小写媒体图片后缀。
+
+        JPEG 的两种常见写法共享 ``.jpg`` 文件名；无法从 URL 判断格式时沿用
+        ``.jpg``，避免把查询参数或未知后缀写入媒体目录。
+
+        :param image_url: Fanart 图片地址
+        :return: 归一后的图片后缀
+        """
+        suffix = Path(urlsplit(image_url).path).suffix.lower()
+        if suffix == ".jpeg":
+            return ".jpg"
+        if suffix in {".jpg", ".png", ".webp"}:
+            return suffix
+        return ".jpg"
 
     @classmethod
     @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")

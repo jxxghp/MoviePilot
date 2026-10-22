@@ -6,7 +6,11 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
+
+from app.domain.context import MediaInfo
 from app.modules.fanart import FanartModule
+from app.runtime.config import settings
 from app.runtime.tasks import TaskRegistry
 
 
@@ -78,8 +82,6 @@ def test_fanart_cache_key_follows_api_key(monkeypatch) -> None:
     """
     同一媒体在 API Key 不变时命中缓存，换 Key 后重新请求而不依赖清空缓存。
     """
-    from app.domain.context import MediaInfo
-    from app.runtime.config import settings
     from app.schemas.types import MediaType
 
     requested_urls: list[str] = []
@@ -90,7 +92,9 @@ def test_fanart_cache_key_follows_api_key(monkeypatch) -> None:
         """
 
         def __init__(self, **_kwargs) -> None:
-            pass
+            """
+            接受与真实客户端相同的配置关键字，不创建网络资源。
+            """
 
         def get_res(self, url: str, **_kwargs) -> _FakeFanartResponse:
             """
@@ -125,3 +129,42 @@ def test_fanart_init_module_keeps_request_cache() -> None:
         module.init_module()
 
     clear_cache.assert_not_called()
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+@pytest.mark.parametrize("name", ["show4kbackground", "movie4kbackground"])
+def test_fanart_4k_background_has_standard_name_and_independent_switch(monkeypatch, enabled, name) -> None:
+    """
+    4K 背景使用可读取的 background 名称，独立开关不影响普通背景及其它艺术图。
+    """
+    monkeypatch.setattr(settings, "SCRAP_4K_BACKGROUND", enabled)
+    module = FanartModule()
+    result = {
+        "showbackground": [{"url": "https://artwork.invalid/ordinary.jpeg?token=value", "lang": "en"}],
+        name: [{"url": "https://artwork.invalid/4k.JPG", "lang": "en"}],
+        "clearlogo": [{"url": "https://artwork.invalid/logo.PNG", "lang": "en"}],
+    }
+
+    images = module._FanartModule__extract_images(MediaInfo(), result)
+
+    assert images["fanart.jpg"] == "https://artwork.invalid/ordinary.jpeg?token=value"
+    assert images["logo.png"] == "https://artwork.invalid/logo.PNG"
+    if enabled:
+        assert images["background.jpg"] == "https://artwork.invalid/4k.JPG"
+    else:
+        assert "background.jpg" not in images
+    assert not any(key.startswith(("show4k", "movie4k", "clearlogo")) for key in images)
+
+
+@pytest.mark.parametrize("season,prefix", [(1, "season01"), (0, "season-specials")])
+def test_fanart_season_image_suffix_is_normalized(season, prefix) -> None:
+    """
+    普通季与特别篇继续保留前缀约定，并剥离 URL 查询参数及 JPEG 后缀差异。
+    """
+    images = FanartModule()._FanartModule__extract_images(
+        MediaInfo(),
+        {"seasonposter": [{"url": "https://artwork.invalid/season.JPEG?key=value", "season": str(season)}]},
+        season=season,
+    )
+
+    assert images == {f"{prefix}-poster.jpg": "https://artwork.invalid/season.JPEG?key=value"}

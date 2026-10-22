@@ -1321,11 +1321,23 @@
       "source_file": "app/runtime/config.py",
       "source_line": 719
     },
+    "SCRAP_4K_BACKGROUND": {
+      "description": "是否获取 Fanart 的 show4kbackground 和 movie4kbackground 图片",
+      "group": "media_metadata",
+      "source_file": "app/runtime/config.py",
+      "source_line": 349
+    },
     "SCRAP_FOLLOW_TMDB": {
       "description": "新增已入库媒体是否跟随TMDB信息变化",
       "group": "transfer",
       "source_file": "app/runtime/config.py",
       "source_line": 586
+    },
+    "SCRAP_IMAGE_ALIAS": {
+      "description": "是否为背景图和缩略图写入兼容别名文件；关闭后每张图片只写入来源名称",
+      "group": "media_metadata",
+      "source_file": "app/runtime/config.py",
+      "source_line": 345
     },
     "SCRAP_SEASON_IMAGE_TO_ROOT": {
       "description": "季图片是否同时写入剧集根目录；关闭后仅写季目录，不清理已有图片",

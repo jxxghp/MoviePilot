@@ -137,7 +137,6 @@
       "app/agent/policy/sanitizer.py:sanitize_for_host": 6,
       "app/api/endpoints/transfer.py:_execute_manual_transfer": 6,
       "app/application/rss.py:RssHelper._parse_impl": 7,
-      "app/chain/scraping.py:ScrapingChain._download_and_save_image": 7,
       "app/chain/scraping.py:ScrapingChain.scrape_metadata_event": 6,
       "app/chain/subscribe/match.py:SubscribeMatchOwner._execute_match": 7,
       "app/chain/subscribe/query.py:SubscribeQueryOwner.subscribe_files_info": 6,

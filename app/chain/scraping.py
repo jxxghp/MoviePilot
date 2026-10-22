@@ -4,6 +4,7 @@
 
 import os
 import re
+import shutil
 import threading
 import time
 from collections.abc import Iterator, Mapping
@@ -13,6 +14,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
 from typing import Any, Iterable, List, Optional, Protocol, Self, Tuple, Union, cast
+from urllib.parse import urlsplit
 
 from app.application.audio import AudioMetadataHelper
 from app.application.configuration import (
@@ -23,6 +25,7 @@ from app.chain.base import ChainBase
 from app.chain.lyrics import LyricsChain
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
+from app.domain.artwork import normalize_artwork
 from app.domain.context import (
     MediaInfo,
     MusicAlbumInfo,
@@ -368,11 +371,15 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         "backdrop": ScrapingMetadata.BACKDROP,
         "fanart": ScrapingMetadata.BACKDROP,
         "background": ScrapingMetadata.BACKDROP,
+        "show4kbackground": ScrapingMetadata.BACKDROP,
+        "movie4kbackground": ScrapingMetadata.BACKDROP,
         "logo": ScrapingMetadata.LOGO,
+        "clearlogo": ScrapingMetadata.LOGO,
         "disc": ScrapingMetadata.DISC,
         "cdart": ScrapingMetadata.DISC,
         "banner": ScrapingMetadata.BANNER,
         "thumb": ScrapingMetadata.THUMB,
+        "episode-thumb": ScrapingMetadata.THUMB,
         "landscape": ScrapingMetadata.LANDSCAPE,
         "clearart": ScrapingMetadata.CLEARART,
     }
@@ -385,6 +392,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     }
 
     MUSIC_LYRICS_EXTENSIONS = (".lyricsfile.yaml", ".lrc", ".txt")
+    IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
     _music_track_prefix_pattern = re.compile(
         r"^\s*(?:(?:cd|disc)\s*\d+\s*[-_. ]+)?(?:\d+\s*[-_. ]+)+",
         flags=re.IGNORECASE,
@@ -490,53 +498,336 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             self._cleanup_temp_file(tmp_file_path)
 
     def _download_and_save_image(
-            self, fileitem: _SchemaFileItem, path: Path, url: str
+            self,
+            fileitem: _SchemaFileItem,
+            path: Path,
+            url: str,
+            reuse_targets: Optional[List[Tuple[_SchemaFileItem, Path]]] = None,
     ) -> None:
         """
-        流式下载图片并保存到文件
+        下载一次图片并写入一个或多个目标文件。
 
-        :param fileitem: 关联的媒体文件项
-        :param path: 图片文件路径
-        :param url: 图片下载URL
+        首个目标上传成功后，后续目标优先尝试同存储硬链接；不支持或链接失败时，
+        从同一份下载临时文件复制后上传，避免重复请求远端地址。
+
+        :param fileitem: 首个图片目标所在的目录项
+        :param path: 首个图片目标路径
+        :param url: 图片下载 URL
+        :param reuse_targets: 复用本次下载的其它目录项和路径
         """
         if not fileitem or not url or not path:
             return
+
+        targets = [(fileitem, path)] + list(reuse_targets or [])
+        downloaded_path: Optional[Path] = None
         try:
             logger.info(f"正在下载图片：{url} ...")
-            http = _scraping_http_snapshot()
-            response = http.stream(
-                url,
-                proxies=self.runtime_config.proxy,
-                ua=self.runtime_config.normal_user_agent,
-            )
-            with response as r:
-                if r and r.status_code == 200:
-                    tmp_file_path = None
-                    try:
-                        # delete_on_close 是 Python 3.12 才支持的参数，使用 delete=False 后手动清理以兼容低版本。
-                        with NamedTemporaryFile(delete=False, suffix=path.suffix) as tmp_file:
-                            tmp_file_path = Path(tmp_file.name)
-                            for chunk in r.iter_content(chunk_size=8192):
-                                if chunk:
-                                    tmp_file.write(chunk)
-                            tmp_file.flush()
+            downloaded = self._download_image_to_temp(url=url, suffix=path.suffix)
+            if not downloaded:
+                return
+            downloaded_path, image_suffix = downloaded
 
-                        # 刮削的图片只需要读写权限
-                        tmp_file_path.chmod(0o666 & ~current_umask)
+            source_item: Optional[_SchemaFileItem] = None
+            saved_targets: set[tuple[Optional[str], str]] = set()
+            for target_item, target_path in targets:
+                if not target_item or not target_path:
+                    continue
+                target_path = target_path.with_suffix(image_suffix)
+                target_key = (target_item.storage, str(target_path))
+                if target_key in saved_targets:
+                    continue
+                saved_targets.add(target_key)
 
-                        item = self.storagechain.upload_file(
-                            fileitem=fileitem, path=tmp_file_path, new_name=path.name
-                        )
-                        if item:
-                            logger.info(f"已保存图片：{item.path}")
-                        else:
-                            logger.warn(f"图片保存失败：{path}")
-                    finally:
-                        self._cleanup_temp_file(tmp_file_path)
+                if self._reuse_image_file(source_item, target_item, target_path):
+                    continue
+
+                item = self._upload_downloaded_image(
+                    fileitem=target_item,
+                    path=target_path,
+                    downloaded_path=downloaded_path,
+                )
+                if item and source_item is None:
+                    source_item = item
+                if item:
+                    logger.info(f"已保存图片：{item.path}")
                 else:
-                    logger.info(f"{url} 图片下载失败")
+                    logger.warn(f"图片保存失败：{target_path}")
         except Exception as err:
             logger.error(f"{url} 图片下载失败：{str(err)}！")
+        finally:
+            self._cleanup_temp_file(downloaded_path)
+
+    def _reuse_image_file(
+            self,
+            source_item: Optional[_SchemaFileItem],
+            target_item: _SchemaFileItem,
+            target_path: Path,
+    ) -> bool:
+        """
+        在同一存储中尝试复用已保存图片；失败交由调用方从本地副本上传。
+
+        :param source_item: 本次下载已写入的图片文件项；尚未保存时为 None
+        :param target_item: 后续图片目标所在的目录项
+        :param target_path: 后续图片完整保存路径
+        :return: 已通过硬链接保存目标图片时返回 True
+        """
+        if not source_item or source_item.storage != target_item.storage:
+            return False
+        try:
+            if self.storagechain.link_file(source_item, target_path):
+                logger.info(f"已通过硬链接保存图片：{target_path}")
+                return True
+        except Exception as err:
+            logger.debug(f"图片硬链接不可用，改用下载副本上传：{target_path} - {err}")
+        return False
+
+    def _download_image_to_temp(self, url: str, suffix: str) -> Optional[Tuple[Path, str]]:
+        """
+        将远程图片流式下载到本地临时文件。
+
+        :param url: 图片下载 URL
+        :param suffix: 临时文件后缀，用于保留图片格式提示
+        :return: 下载完成的临时文件及按实际图片内容确定的后缀；请求失败时返回 None
+        """
+        http = _scraping_http_snapshot()
+        response = http.stream(
+            url,
+            proxies=self.runtime_config.proxy,
+            ua=self.runtime_config.normal_user_agent,
+        )
+        with response as result:
+            if not result or result.status_code != 200:
+                logger.info(f"{url} 图片下载失败")
+                return None
+
+            tmp_file_path: Optional[Path] = None
+            try:
+                # delete_on_close 是 Python 3.12 才支持的参数，使用 delete=False 后手动清理以兼容低版本。
+                with NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                    tmp_file_path = Path(tmp_file.name)
+                    for chunk in result.iter_content(chunk_size=8192):
+                        if chunk:
+                            tmp_file.write(chunk)
+                    tmp_file.flush()
+
+                original_content = tmp_file_path.read_bytes()
+                image_content, image_suffix = normalize_artwork(original_content)
+                if image_content != original_content:
+                    tmp_file_path.write_bytes(image_content)
+                # 刮削的图片只需要读写权限
+                tmp_file_path.chmod(0o666 & ~current_umask)
+                return tmp_file_path, image_suffix
+            except Exception:
+                self._cleanup_temp_file(tmp_file_path)
+                raise
+
+    def _upload_downloaded_image(
+            self,
+            fileitem: _SchemaFileItem,
+            path: Path,
+            downloaded_path: Path,
+    ) -> Optional[_SchemaFileItem]:
+        """
+        从已下载的主临时文件复制一份并上传到目标路径。
+
+        :param fileitem: 目标目录项
+        :param path: 目标图片路径
+        :param downloaded_path: 本次请求产生的主临时文件
+        :return: 上传后的文件项；上传失败时返回 None
+        """
+        upload_path: Optional[Path] = None
+        try:
+            # 每次上传使用独立副本，因为存储适配器成功后会删除本地源文件。
+            with NamedTemporaryFile(delete=False, suffix=path.suffix) as upload_file:
+                upload_path = Path(upload_file.name)
+            shutil.copyfile(downloaded_path, upload_path)
+            upload_path.chmod(0o666 & ~current_umask)
+            return self.storagechain.upload_file(
+                fileitem=fileitem,
+                path=upload_path,
+                new_name=path.name,
+            )
+        except Exception as err:
+            logger.warn(f"图片上传失败：{path} - {err}")
+            return None
+        finally:
+            self._cleanup_temp_file(upload_path)
+
+    @classmethod
+    def _normalize_image_suffix(cls, value: Optional[str]) -> str:
+        """
+        将图片地址或文件名的扩展名归一为受支持的小写后缀。
+
+        :param value: 图片 URL 或来源文件名
+        :return: ``.jpg``、``.png`` 或 ``.webp`` 等归一后的后缀
+        """
+        suffix = Path(urlsplit(value or "").path).suffix.lower()
+        if suffix == ".jpeg":
+            return ".jpg"
+        if suffix in cls.IMAGE_EXTENSIONS:
+            return suffix
+        return ".jpg"
+
+    @classmethod
+    def _normalize_image_filename(cls, filename: Optional[str]) -> Optional[str]:
+        """
+        归一图片文件名大小写与扩展名，避免同类型文件因 URL 写法不同重复落盘。
+
+        :param filename: 刮削源提供的图片文件名
+        :return: 归一后的文件名；输入为空时返回 None
+        """
+        if not filename:
+            return None
+        path = Path(urlsplit(filename).path)
+        stem = path.stem.lower()
+        canonical_names = {
+            "show4kbackground": "background",
+            "movie4kbackground": "background",
+            "clearlogo": "logo",
+        }
+        stem = canonical_names.get(stem, stem)
+        return f"{stem}{cls._normalize_image_suffix(filename)}"
+
+    @classmethod
+    def _get_image_metadata_type(
+            cls,
+            image_name: str,
+            item_type: ScrapingTarget,
+            current_fileitem: Optional[_SchemaFileItem] = None,
+    ) -> Tuple[Optional[ScrapingMetadata], bool]:
+        """
+        按去扩展名后的图片名精确解析元数据类型。
+
+        季图片保留 ``seasonNN-`` 和 ``season-specials-`` 前缀；单集媒体文件同名
+        图片及 ``*-thumb`` 是既有来源约定，仍按缩略图处理。返回值第二项标记
+        Fanart 的 4K 背景来源，供独立开关过滤。
+
+        :param image_name: 刮削源图片文件名
+        :param item_type: 当前刮削目标层级
+        :param current_fileitem: 当前媒体文件，用于识别单集同名图片
+        :return: 元数据类型与是否为 4K 背景的标记
+        """
+        stem = Path(image_name).stem.lower()
+        lookup_stem = stem
+
+        season_match = re.match(r"^season(?:\d+|-specials)-(.+)$", stem)
+        if season_match:
+            lookup_stem = season_match.group(1)
+
+        is_4k_background = lookup_stem in {"show4kbackground", "movie4kbackground"}
+
+        if lookup_stem == "episode-thumb" and item_type != ScrapingTarget.EPISODE:
+            return None, is_4k_background
+        metadata_type = cls.IMAGE_METADATA_MAP.get(lookup_stem)
+        if metadata_type:
+            return metadata_type, is_4k_background
+
+        if item_type == ScrapingTarget.EPISODE:
+            media_stem = Path(current_fileitem.path).stem.lower() if current_fileitem and current_fileitem.path else ""
+            if media_stem and stem in {media_stem, f"{media_stem}-thumb"}:
+                return ScrapingMetadata.THUMB, is_4k_background
+
+        return None, is_4k_background
+
+    @staticmethod
+    def _matches_image_season(
+            image_name: str,
+            item_type: ScrapingTarget,
+            season_number: Optional[int],
+    ) -> bool:
+        """
+        限定季前缀图片只用于对应季目录，整剧根目录刮削不消费季图片。
+
+        :param image_name: 来源图片文件名
+        :param item_type: 当前刮削层级
+        :param season_number: 当前季号；None 表示不按季号过滤
+        :return: 图片符合当前刮削上下文时返回 True
+        """
+        stem = Path(image_name).stem.lower()
+        match = re.match(r"^season(\d+|-specials)-", stem)
+        if not match:
+            return True
+        if item_type == ScrapingTarget.TV:
+            logger.info(f"当前为电视剧根目录刮削，跳过季图片：{image_name}")
+            return False
+        if item_type != ScrapingTarget.SEASON or season_number is None:
+            return True
+        image_season = 0 if match.group(1) == "-specials" else int(match.group(1))
+        if image_season != season_number:
+            logger.info(f"当前刮削季为：{season_number}，跳过非本季图片：{image_name}")
+            return False
+        return True
+
+    @classmethod
+    def _image_type_stems(
+            cls,
+            image_path: Path,
+            metadata_type: ScrapingMetadata,
+    ) -> set[str]:
+        """
+        返回同一图片类型可接受的文件名主体。
+
+        :param image_path: 当前目标图片路径
+        :param metadata_type: 当前图片元数据类型
+        :return: 用于大小写不敏感存在性判断的文件名主体集合
+        """
+        stem = image_path.stem.lower()
+        aliases = {
+            key
+            for key, value in cls.IMAGE_METADATA_MAP.items()
+            if value == metadata_type and not key.startswith("season")
+        }
+        if metadata_type in {ScrapingMetadata.THUMB, ScrapingMetadata.LANDSCAPE}:
+            aliases.update({"thumb", "landscape"})
+        if stem in aliases:
+            return aliases
+        return {stem}
+
+    def _image_exists_for_type(
+            self,
+            fileitem: _SchemaFileItem,
+            image_path: Path,
+            metadata_type: ScrapingMetadata,
+            directory_cache: dict[tuple[str, str], set[str]],
+    ) -> bool:
+        """
+        按图片类型和受支持扩展名判断目标目录是否已有图片。
+
+        精确查询优先，未命中时只列举一次目标目录，并忽略文件名及扩展名大小写。
+
+        :param fileitem: 目标目录项
+        :param image_path: 期望图片路径
+        :param metadata_type: 当前图片元数据类型
+        :param directory_cache: 本次刮削的目录文件名缓存
+        :return: 已存在同类型图片时返回 True
+        """
+        if not fileitem.storage or not fileitem.path:
+            return False
+        existing_item = self.storagechain.get_file_item(storage=fileitem.storage, path=image_path)
+        if existing_item and existing_item.type == "file":
+            return True
+
+        cache_key = (fileitem.storage, str(fileitem.path))
+        names = directory_cache.get(cache_key)
+        if names is None:
+            names = set()
+            children = self.storagechain.list_files(fileitem, recursion=False)
+            if isinstance(children, list):
+                names = {
+                    child.name.lower()
+                    for child in children
+                    if child.type == "file" and child.name
+                }
+            directory_cache[cache_key] = names
+
+        stems = self._image_type_stems(image_path=image_path, metadata_type=metadata_type)
+        return any(
+            Path(name).stem in stems
+            and (
+                ".jpg" if Path(name).suffix.lower() == ".jpeg" else Path(name).suffix.lower()
+            ) in self.IMAGE_EXTENSIONS
+            for name in names
+        )
 
     def _get_target_fileitem_and_path(
             self,
@@ -552,7 +843,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         target_dir_item = current_fileitem
         target_dir_path = Path(cast(str, current_fileitem.path))
-        final_filename = filename_hint
+        normalized_hint = self._normalize_image_filename(filename_hint)
+        final_filename = filename_hint if metadata_type == ScrapingMetadata.NFO else normalized_hint
 
         # 针对 NFO 文件的特殊命名和存储逻辑
         if metadata_type == ScrapingMetadata.NFO:
@@ -605,7 +897,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 ScrapingMetadata.LANDSCAPE: "landscape",
             }
             if season_image_name := season_image_name_map.get(metadata_type):
-                hint_ext = Path(filename_hint).suffix if filename_hint else ".jpg"
+                hint_ext = self._normalize_image_suffix(filename_hint)
                 final_filename = f"{season_image_name}{hint_ext}"
         elif item_type == ScrapingTarget.MOVIE and current_fileitem.type == "file":
             # 电影文件的图片应与视频文件同级保存，避免把图片路径拼到文件名下面。
@@ -622,7 +914,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 metadata_type in [ScrapingMetadata.THUMB]
                 and item_type == ScrapingTarget.EPISODE
         ):
-            hint_ext = Path(filename_hint).suffix if filename_hint else ".jpg"
+            hint_ext = self._normalize_image_suffix(filename_hint)
             final_filename = f"{target_dir_path.stem}{hint_ext}"
             parent_item = parent_fileitem or self.storagechain.get_parent_item(
                 current_fileitem
@@ -696,7 +988,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.warn(f"无法获取季目录 {current_fileitem.path} 的父目录项，跳过根目录季图片")
             return targets
 
-        season_root_path = Path(current_fileitem.path).with_name(filename_hint)
+        season_root_path = Path(current_fileitem.path).with_name(
+            self._normalize_image_filename(filename_hint) or filename_hint
+        )
         root_target = (season_parent_item, season_root_path)
         if root_target not in targets:
             targets.insert(0, root_target)
@@ -712,6 +1006,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         例如 backdrop.jpg 同时保存为 fanart.jpg，thumb.jpg 同时保存为 landscape.jpg。
         """
         expanded = list(targets)
+        if not self.runtime_config.scrap_image_alias:
+            return expanded
         for base_item, image_path in list(targets):
             if not image_path:
                 continue
@@ -1013,73 +1309,80 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.info(f"未获取到 {item_type.value} 的图片信息，跳过图片刮削。")
             return
 
+        pending_targets: dict[str, list[Tuple[_SchemaFileItem, Path]]] = {}
+        directory_cache: dict[tuple[str, str], set[str]] = {}
+        seen_targets: set[tuple[str, str, str]] = set()
+
         for image_name, image_url in image_dict.items():
-            metadata_type = None
-            for keyword, meta_type in self.IMAGE_METADATA_MAP.items():
-                if keyword in image_name.lower():
-                    metadata_type = meta_type
-                    break
-
-            if metadata_type:
-                option = self.scraping_policies.option(item_type, metadata_type)
-
-                if option.is_skip:
-                    logger.info(
-                        f"{item_type.value} {option.metadata.value} 刮削策略 {option.policy.value}"
-                    )
-                    continue
-
-                # 判断是否匹配当前刮削的季号
-                if item_type == ScrapingTarget.TV and image_name.lower().startswith(
-                        "season"
-                ):
-                    logger.info(f"当前为电视剧根目录刮削，跳过季图片：{image_name}")
-                    continue
-                if (
-                        item_type == ScrapingTarget.SEASON
-                        and season_number is not None
-                        and image_name.lower().startswith("season")
-                ):
-                    # 检查是否只下载当前刮削季的图片
-                    image_season_str = (
-                        "00" if "specials" in image_name.lower() else image_name[6:8]
-                    )
-
-                    if image_season_str is not None and image_season_str != str(
-                            season_number
-                    ).rjust(2, "0"):
-                        logger.info(
-                            f"当前刮削季为：{season_number}，跳过非本季图片：{image_name}"
-                        )
-                        continue
-
-                # 按配置生成季图片的根目录和季目录目标，再逐个应用刮削策略。
-                image_targets = self._get_target_fileitems_and_paths(
-                    current_fileitem=current_fileitem,
-                    item_type=item_type,
-                    metadata_type=metadata_type,
-                    filename_hint=image_name,
-                    parent_fileitem=parent_fileitem,
-                )
-
-                # 扩展别名目标（如 backdrop→fanart, thumb→landscape）
-                image_targets = self._expand_with_aliases(image_targets, item_type)
-
-                for base_item, image_path in image_targets:
-                    if not image_path or not base_item.storage:
-                        continue
-
-                    file_exists = self.storagechain.get_file_item(
-                        storage=base_item.storage, path=image_path
-                    )
-
-                    if self._should_scrape(option, bool(file_exists), overwrite):
-                        self._download_and_save_image(
-                            fileitem=base_item, path=image_path, url=image_url
-                        )
-            else:
+            metadata_type, is_4k_background = self._get_image_metadata_type(
+                image_name=image_name,
+                item_type=item_type,
+                current_fileitem=current_fileitem,
+            )
+            if not metadata_type:
                 logger.debug(
                     f"未找到图片类型 {image_name} 对应的 ScrapingMetadata，跳过。"
+                )
+                continue
+            if is_4k_background and not self.runtime_config.scrap_4k_background:
+                logger.info(f"已关闭 4K 背景图刮削，跳过：{image_name}")
+                continue
+
+            option = self.scraping_policies.option(item_type, metadata_type)
+            if option.is_skip:
+                logger.info(
+                    f"{item_type.value} {option.metadata.value} 刮削策略 {option.policy.value}"
+                )
+                continue
+
+            if not self._matches_image_season(image_name, item_type, season_number):
+                continue
+
+            # 按配置生成季图片的根目录和季目录目标，再逐个应用刮削策略。
+            image_targets = self._get_target_fileitems_and_paths(
+                current_fileitem=current_fileitem,
+                item_type=item_type,
+                metadata_type=metadata_type,
+                filename_hint=image_name,
+                parent_fileitem=parent_fileitem,
+            )
+
+            # 扩展别名目标（如 backdrop→fanart, thumb→landscape）。
+            image_targets = self._expand_with_aliases(image_targets, item_type)
+
+            for base_item, image_path in image_targets:
+                if not image_path or not base_item.storage:
+                    continue
+                target_key = (base_item.storage, str(image_path.parent), image_path.stem.lower())
+                if target_key in seen_targets:
+                    continue
+                seen_targets.add(target_key)
+
+                file_exists = self._image_exists_for_type(
+                    fileitem=base_item,
+                    image_path=image_path,
+                    metadata_type=metadata_type,
+                    directory_cache=directory_cache,
+                )
+                if self._should_scrape(option, file_exists, overwrite):
+                    pending_targets.setdefault(str(image_url), []).append(
+                        (base_item, image_path)
+                    )
+
+        for image_url, targets in pending_targets.items():
+            first_item, first_path = targets[0]
+            if len(targets) == 1:
+                self._download_and_save_image(
+                    fileitem=first_item,
+                    path=first_path,
+                    url=image_url,
+                )
+            else:
+                self._download_and_save_image(
+                    fileitem=first_item,
+                    path=first_path,
+                    url=image_url,
+                    reuse_targets=targets[1:],
                 )
 
     def scrape_metadata(

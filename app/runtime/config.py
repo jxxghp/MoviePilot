@@ -342,6 +342,14 @@ class ConfigModel(BaseModel):
         default=True,
         description='季图片是否同时写入剧集根目录；关闭后仅写季目录，不清理已有图片',
     )
+    SCRAP_IMAGE_ALIAS: bool = Field(
+        default=True,
+        description='是否为背景图和缩略图写入兼容别名文件；关闭后每张图片只写入来源名称',
+    )
+    SCRAP_4K_BACKGROUND: bool = Field(
+        default=True,
+        description='是否获取 Fanart 的 show4kbackground 和 movie4kbackground 图片',
+    )
     ANIME_GENREIDS: List[int] = Field(default=[16], description='电视剧动漫的分类genre_ids')
 
     # TMDB配置

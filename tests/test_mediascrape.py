@@ -3,11 +3,13 @@
 """
 
 from dataclasses import replace
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PIL import Image
 
 # 使用导入期替身隔离站点与配置依赖，因此导入位置受控。
 # 测试先准备环境与依赖替身，再导入刮削模块。
@@ -395,7 +397,7 @@ def test_scrape_images_mapping(image_context) -> None:
 
     image_context.media_chain._scrape_images_generic(fileitem, mediainfo, ScrapingTarget.MOVIE)
 
-    # 图片类型映射与别名都应触发下载。
+    # 图片类型映射触发下载，别名目标复用同一个下载调用。
     calls = image_context.media_chain._download_and_save_image.call_args_list
     urls = [call.kwargs["url"] for call in calls]
     paths = [call.kwargs["path"] for call in calls]
@@ -404,7 +406,10 @@ def test_scrape_images_mapping(image_context) -> None:
     assert "http://logo" in urls
     # fanart.jpg 同时生成 backdrop.jpg 别名。
     assert Path("/movies/Avatar/fanart.jpg") in paths
-    assert Path("/movies/Avatar/backdrop.jpg") in paths
+    fanart_call = next(call for call in calls if call.kwargs["url"] == "http://fanart")
+    assert fanart_call.kwargs["reuse_targets"] == [
+        (fileitem, Path("/movies/Avatar/backdrop.jpg"))
+    ]
 
 
 def test_scrape_images_season_filter(image_context) -> None:
@@ -425,11 +430,11 @@ def test_scrape_images_season_filter(image_context) -> None:
     image_context.media_chain._scrape_images_generic(fileitem, mediainfo, ScrapingTarget.SEASON, season_number=1)
 
     calls = image_context.media_chain._download_and_save_image.call_args_list
-    assert len(calls) == 2
-    assert all((call.kwargs["url"] == "http://season01" for call in calls))
-    assert [call.kwargs["path"] for call in calls] == [
-        Path("/tv/Show/season01-poster.jpg"),
-        Path("/tv/Show/Season 1/poster.jpg"),
+    assert len(calls) == 1
+    assert calls[0].kwargs["url"] == "http://season01"
+    assert calls[0].kwargs["path"] == Path("/tv/Show/season01-poster.jpg")
+    assert calls[0].kwargs["reuse_targets"] == [
+        (fileitem, Path("/tv/Show/Season 1/poster.jpg"))
     ]
 
 
@@ -448,7 +453,9 @@ def test_season_image_missing_only_checks_each_target(image_context, write_root,
     existing = {root_path: root_exists, season_path: season_exists}
     chain.metadata_img.return_value = {"season01-poster.jpg": "http://season01"}
     chain.scraping_policies = ScrapingConfig({})
-    chain.storagechain.get_file_item.side_effect = lambda *, storage, path: existing[path]
+    chain.storagechain.get_file_item.side_effect = lambda *, storage, path: (
+        FileItem(path=str(path), name=path.name, storage=storage, type="file") if existing[path] else None
+    )
 
     chain._scrape_images_generic(
         season, MediaInfo(), ScrapingTarget.SEASON, parent_fileitem=parent, season_number=1
@@ -456,9 +463,11 @@ def test_season_image_missing_only_checks_each_target(image_context, write_root,
 
     selected = [root_path, season_path] if write_root else [season_path]
     assert [call.kwargs["path"] for call in chain.storagechain.get_file_item.call_args_list] == selected
-    assert [call.kwargs["path"] for call in chain._download_and_save_image.call_args_list] == [
-        path for path in selected if not existing[path]
-    ]
+    actual_targets = []
+    for call in chain._download_and_save_image.call_args_list:
+        actual_targets.append(call.kwargs["path"])
+        actual_targets.extend(path for _, path in call.kwargs.get("reuse_targets", []))
+    assert actual_targets == [path for path in selected if not existing[path]]
 
 
 @pytest.mark.parametrize("season_number,filename", [(1, "season01-thumb.jpg"), (0, "season-specials-thumb.jpg")])
@@ -472,11 +481,14 @@ def test_season_image_root_disabled_preserves_policy_and_aliases(image_context, 
     season = FileItem(path="/tv/Show/Season 1", name="Season 1", type="dir", storage="local")
     chain.metadata_img.return_value = {filename: "http://thumb"}
     chain.scraping_policies = ScrapingConfig({"season_thumb": policy})
-    chain.storagechain.get_file_item.return_value = True
+    chain.storagechain.get_file_item.return_value = FileItem(path="/tv/Show/Season 1/thumb.jpg", type="file")
 
     chain._scrape_images_generic(season, MediaInfo(), ScrapingTarget.SEASON, season_number=season_number)
 
-    paths = [call.kwargs["path"] for call in chain._download_and_save_image.call_args_list]
+    paths = []
+    for call in chain._download_and_save_image.call_args_list:
+        paths.append(call.kwargs["path"])
+        paths.extend(path for _, path in call.kwargs.get("reuse_targets", []))
     assert paths == ([] if policy == ScrapingPolicy.SKIP else [
         Path("/tv/Show/Season 1/thumb.jpg"),
         Path("/tv/Show/Season 1/landscape.jpg"),
@@ -510,7 +522,14 @@ def test_scrape_movie_file_images_when_initialized_directly(image_context) -> No
     # 海报不生成别名，背景图生成 fanart 别名。
     assert Path("/movies/Avatar/poster.jpg") in paths
     assert Path("/movies/Avatar/backdrop.jpg") in paths
-    assert Path("/movies/Avatar/fanart.jpg") in paths
+    backdrop_call = next(
+        call
+        for call in image_context.media_chain._download_and_save_image.call_args_list
+        if call.kwargs["path"] == Path("/movies/Avatar/backdrop.jpg")
+    )
+    assert backdrop_call.kwargs["reuse_targets"] == [
+        (parent_item, Path("/movies/Avatar/fanart.jpg"))
+    ]
 
 
 def test_scrape_episode_thumb_image_path(image_context) -> None:
@@ -629,6 +648,136 @@ def test_expand_with_aliases_respects_skip_policy(image_context) -> None:
     assert len(expanded) == 1
 
 
+@pytest.mark.parametrize("stem", ["backdrop", "fanart", "thumb", "landscape"])
+def test_image_alias_switch_preserves_only_source_target(image_context, stem) -> None:
+    """
+    关闭别名后保留本体文件，避免跳过背景图或缩略图本身。
+    """
+    chain = image_context.media_chain
+    chain.runtime_config = replace(chain.runtime_config, scrap_image_alias=False)
+    directory = FileItem(path="/movies/Avatar", name="Avatar", type="dir", storage="local")
+    targets = [(directory, Path(f"/movies/Avatar/{stem}.jpg"))]
+
+    assert chain._expand_with_aliases(targets, ScrapingTarget.MOVIE) == targets
+
+
+@pytest.mark.parametrize("image_name,metadata_type", [
+    ("poster.jpg", ScrapingMetadata.POSTER),
+    ("clearlogo.PNG", ScrapingMetadata.LOGO),
+    ("show4kbackground.jpeg", ScrapingMetadata.BACKDROP),
+    ("season01-poster.jpg", ScrapingMetadata.POSTER),
+    ("season-specials-thumb.jpg", ScrapingMetadata.THUMB),
+    ("unregistered-poster.jpg", None),
+    ("background-copy.jpg", None),
+    ("logo.backup.png", None),
+])
+def test_image_type_matching_is_exact(image_context, image_name, metadata_type) -> None:
+    """
+    只识别精确类型及已登记的季前缀，未知名称不能因包含关键字而写入媒体目录。
+    """
+    actual_type, _ = image_context.media_chain._get_image_metadata_type(image_name, ScrapingTarget.MOVIE)
+    assert actual_type is metadata_type
+
+
+@pytest.mark.parametrize("image_name", ["episode-thumb.jpg", "S01E01.jpg", "S01E01-thumb.jpg"])
+def test_episode_thumbnail_special_names_are_preserved(image_context, image_name) -> None:
+    """
+    精确类型匹配保留来源的 episode-thumb 和单集媒体同名缩略图约定。
+    """
+    fileitem = FileItem(path="/tv/Show/S01E01.mkv", name="S01E01.mkv", type="file", storage="local")
+    actual_type, _ = image_context.media_chain._get_image_metadata_type(
+        image_name, ScrapingTarget.EPISODE, fileitem
+    )
+    assert actual_type is ScrapingMetadata.THUMB
+
+
+@pytest.mark.parametrize("existing_name", ["poster.JPG", "poster.jpeg", "POSTER.PNG", "poster.webp"])
+def test_missing_only_recognizes_other_extensions_and_case(image_context, existing_name) -> None:
+    """
+    已有同类型图片时仅缺失策略不因后缀、大小写或远程 URL 变化重复下载。
+    """
+    chain = image_context.media_chain
+    directory = FileItem(path="/movies/Avatar", name="Avatar", type="dir", storage="local")
+    chain.metadata_img.return_value = {"poster.JPEG": "http://poster"}
+    chain.scraping_policies = ScrapingConfig({})
+    chain.storagechain.get_file_item.return_value = None
+    chain.storagechain.list_files.return_value = [
+        FileItem(path=f"/movies/Avatar/{existing_name}", name=existing_name, type="file", storage="local")
+    ]
+
+    chain._scrape_images_generic(directory, MediaInfo(), ScrapingTarget.MOVIE)
+
+    chain._download_and_save_image.assert_not_called()
+    chain.storagechain.list_files.assert_called_once_with(directory, recursion=False)
+
+
+@pytest.mark.parametrize("metadata_name,existing_name", [
+    ("backdrop", "fanart.PNG"),
+    ("thumb", "LANDSCAPE.jpeg"),
+    ("logo", "clearlogo.PNG"),
+    ("background", "backdrop.jpg"),
+    ("backdrop", "show4kbackground.jpeg"),
+])
+def test_missing_only_recognizes_same_type_aliases(image_context, metadata_name, existing_name) -> None:
+    """
+    同一图片类型的其它合法名称也满足补缺条件，避免跨别名反复获取图片。
+    """
+    chain = image_context.media_chain
+    directory = FileItem(path="/movies/Avatar", name="Avatar", type="dir", storage="local")
+    chain.metadata_img.return_value = {f"{metadata_name}.jpg": "http://artwork"}
+    chain.scraping_policies = ScrapingConfig({})
+    chain.storagechain.get_file_item.return_value = None
+    chain.storagechain.list_files.return_value = [
+        FileItem(path=f"/movies/Avatar/{existing_name}", name=existing_name, type="file", storage="local")
+    ]
+
+    chain._scrape_images_generic(directory, MediaInfo(), ScrapingTarget.MOVIE)
+
+    chain._download_and_save_image.assert_not_called()
+
+
+def test_unrelated_file_suffix_does_not_satisfy_missing_image(image_context) -> None:
+    """
+    同名文本和目录不应被错误视作已经刮削的图片。
+    """
+    chain = image_context.media_chain
+    directory = FileItem(path="/movies/Avatar", name="Avatar", type="dir", storage="local")
+    chain.metadata_img.return_value = {"poster.jpeg": "http://poster"}
+    chain.scraping_policies = ScrapingConfig({})
+    chain.storagechain.get_file_item.return_value = FileItem(name="poster.jpg", type="dir", storage="local")
+    chain.storagechain.list_files.return_value = [
+        FileItem(name="poster.txt", type="file", storage="local"),
+        FileItem(name="poster.png", type="dir", storage="local"),
+    ]
+
+    chain._scrape_images_generic(directory, MediaInfo(), ScrapingTarget.MOVIE)
+
+    chain._download_and_save_image.assert_called_once_with(
+        fileitem=directory, path=Path("/movies/Avatar/poster.jpg"), url="http://poster"
+    )
+
+
+def test_same_url_targets_share_one_download_plan(image_context) -> None:
+    """
+    不同来源名称中的相同 URL 也只下载一次，并合并重复别名目标。
+    """
+    chain = image_context.media_chain
+    directory = FileItem(path="/movies/Avatar", name="Avatar", type="dir", storage="local")
+    chain.metadata_img.return_value = {"backdrop.jpeg": "http://shared", "fanart.JPG": "http://shared"}
+    chain.scraping_policies = ScrapingConfig({})
+    chain.storagechain.get_file_item.return_value = None
+    chain.storagechain.list_files.return_value = []
+
+    chain._scrape_images_generic(directory, MediaInfo(), ScrapingTarget.MOVIE)
+
+    chain._download_and_save_image.assert_called_once_with(
+        fileitem=directory,
+        path=Path("/movies/Avatar/backdrop.jpg"),
+        url="http://shared",
+        reuse_targets=[(directory, Path("/movies/Avatar/fanart.jpg"))],
+    )
+
+
 def test_season_backdrop_path(image_context) -> None:
     """
     季背景图保存到季目录。
@@ -644,53 +793,98 @@ def test_season_backdrop_path(image_context) -> None:
     assert target_path == Path("/tv/Show/Season 1/backdrop.jpg")
 
 
+@pytest.mark.parametrize("hardlink", [True, False])
+@pytest.mark.parametrize("image_format,expected_suffix", [("JPEG", ".jpg"), ("PNG", ".png"), ("WEBP", ".png")])
 @patch("app.chain.scraping._scraping_http_snapshot")
-@patch("app.chain.scraping.NamedTemporaryFile")
-@patch("app.chain.scraping.Path.chmod")
-def test_download_and_save_image(mock_chmod, mock_temp_file, mock_request_utils, image_context) -> None:
-    # 恢复真实下载方法，只替换网络和文件系统边界。
+def test_download_and_save_image_reuses_one_download(
+        mock_http, image_context, tmp_path, hardlink, image_format, expected_suffix,
+) -> None:
     """
-    下载图片时分块写入临时文件，再通过存储接口上传。
+    别名仅请求一次远端，支持时共享 inode，不支持时从同一下载副本上传并清理临时文件。
     """
-    image_context.media_chain = ScrapingChain()
-    image_context.media_chain._download_and_save_image = image_context.original_download
-    image_context.media_chain.storagechain = MagicMock()
+    chain = image_context.media_chain
+    chain._download_and_save_image = image_context.original_download
+    fileitem = FileItem(path=str(tmp_path), name=tmp_path.name, type="dir", storage="local")
+    content_buffer = BytesIO()
+    Image.new("RGB", (2, 2), color="blue").save(content_buffer, format=image_format)
+    content = content_buffer.getvalue()
+    stream = mock_http.return_value.stream.return_value.__enter__.return_value
+    stream.status_code = 200
+    stream.iter_content.return_value = [content[:20], b"", content[20:]]
+    uploaded_paths = []
 
-    fileitem = FileItem(path="/movies/Avatar", name="Avatar", type="dir", storage="local")
-    target_path = Path("/movies/Avatar/poster.jpg")
-    url = "http://poster"
+    def upload(*, fileitem, path, new_name):
+        """
+        模拟会消费本地源文件的存储上传，并保留真实目标文件用于内容检查。
+        """
+        uploaded_paths.append(path)
+        destination = Path(fileitem.path) / new_name
+        destination.write_bytes(path.read_bytes())
+        path.unlink()
+        return FileItem(path=str(destination), name=new_name, type="file", storage="local")
 
-    # 模拟临时文件，避免写入真实目标路径。
-    tmp_mock = MagicMock()
-    tmp_mock.name = "/tmp/mockfile"
-    mock_temp_file.return_value.__enter__.return_value = tmp_mock
+    def link(source_item, target_path):
+        """
+        使用临时目录中的真实硬链接，或模拟跨设备失败。
+        """
+        if not hardlink:
+            raise OSError("cross-device link")
+        target_path.hardlink_to(source_item.path)
+        return True
 
-    # 模拟分块响应，不发起真实网络请求。
-    mock_stream = MagicMock()
-    mock_stream.status_code = 200
-    mock_stream.iter_content.return_value = [b"data1", b"data2"]
-
-    mock_instance = mock_request_utils.return_value
-    mock_instance.get_stream.return_value.__enter__.return_value = mock_stream
-    mock_instance.stream.return_value.__enter__.return_value = mock_stream
-
-    image_context.media_chain.storagechain.upload_file.return_value = fileitem
-
-    image_context.media_chain._download_and_save_image(fileitem, target_path, url)
-
-    mock_instance.stream.assert_called_with(
-        url,
-        proxies=image_context.media_chain.runtime_config.proxy,
-        ua=image_context.media_chain.runtime_config.normal_user_agent,
+    chain.storagechain.upload_file.side_effect = upload
+    chain.storagechain.link_file.side_effect = link
+    chain._download_and_save_image(
+        fileitem,
+        tmp_path / "backdrop.jpg",
+        "https://artwork.invalid/image.jpeg",
+        [(fileitem, tmp_path / "fanart.jpg")],
     )
-    mock_temp_file.assert_called_once_with(delete=False, suffix=".jpg")
-    tmp_mock.write.assert_any_call(b"data1")
-    tmp_mock.write.assert_any_call(b"data2")
-    mock_chmod.assert_called()
-    image_context.media_chain.storagechain.upload_file.assert_called_once()
-    call_args = image_context.media_chain.storagechain.upload_file.call_args.kwargs
-    assert call_args["fileitem"] == fileitem
-    assert call_args["new_name"] == "poster.jpg"
+
+    mock_http.return_value.stream.assert_called_once()
+    first = tmp_path / f"backdrop{expected_suffix}"
+    alias = tmp_path / f"fanart{expected_suffix}"
+    assert first.read_bytes() == alias.read_bytes()
+    if image_format != "WEBP":
+        assert first.read_bytes() == content
+    with Image.open(first) as image:
+        assert image.format == ("JPEG" if expected_suffix == ".jpg" else "PNG")
+    assert (first.stat().st_ino == alias.stat().st_ino) is hardlink
+    assert chain.storagechain.upload_file.call_count == (1 if hardlink else 2)
+    assert all(not path.exists() for path in uploaded_paths)
+
+
+@patch("app.chain.scraping._scraping_http_snapshot")
+def test_image_download_failure_cleans_temp_files(mock_http, image_context, tmp_path) -> None:
+    """
+    错误响应内容不会上传，下载临时文件在格式验证失败后仍会清理。
+    """
+    chain = image_context.media_chain
+    chain._download_and_save_image = image_context.original_download
+    cleanup = MagicMock(wraps=chain._cleanup_temp_file)
+    chain._cleanup_temp_file = cleanup
+    stream = mock_http.return_value.stream.return_value.__enter__.return_value
+    stream.status_code = 200
+    stream.iter_content.return_value = [b"not an image"]
+    fileitem = FileItem(path=str(tmp_path), name=tmp_path.name, type="dir", storage="local")
+
+    chain._download_and_save_image(fileitem, tmp_path / "poster.jpg", "https://artwork.invalid/error")
+
+    chain.storagechain.upload_file.assert_not_called()
+    cleaned_paths = [call.args[0] for call in cleanup.call_args_list if call.args[0]]
+    assert cleaned_paths
+    assert all(not path.exists() for path in cleaned_paths)
+
+
+def test_image_reuse_never_links_across_storages(image_context) -> None:
+    """
+    不同存储中的相同路径不能作为硬链接目标，必须由上传边界接收本地副本。
+    """
+    source = FileItem(path="/movies/backdrop.jpg", name="backdrop.jpg", type="file", storage="local")
+    target = FileItem(path="/movies", name="movies", type="dir", storage="smb")
+
+    assert not image_context.media_chain._reuse_image_file(source, target, Path("/movies/fanart.jpg"))
+    image_context.media_chain.storagechain.link_file.assert_not_called()
 
 
 @patch("app.chain.scraping.NamedTemporaryFile")

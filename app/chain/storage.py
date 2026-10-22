@@ -75,6 +75,16 @@ class StorageChain(ChainBase):
         """
         return cast(Optional[_SchemaFileItem], self.run_module("upload_file", fileitem=fileitem, path=path, new_name=new_name))
 
+    def link_file(self, fileitem: _SchemaFileItem, target_file: Path) -> Optional[bool]:
+        """
+        尝试在同一存储中为文件创建硬链接。
+
+        :param fileitem: 已存在的源文件项
+        :param target_file: 目标存储中的完整文件路径
+        :return: 存储实现报告的成功标记；未提供硬链接能力时返回 None
+        """
+        return cast(Optional[bool], self.run_module("link_file", fileitem=fileitem, target_file=target_file))
+
     def delete_file(self, fileitem: _SchemaFileItem) -> Optional[bool]:
         """
         删除文件或目录

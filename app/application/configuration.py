@@ -375,6 +375,8 @@ class ChainRuntimeConfig:
     :param data_cleanup_outbox_dead_days: Outbox 死信记录保留天数，0为不清理
     :param download_subtitle: 下载站点字幕
     :param scrap_season_image_to_root: 季图片是否额外写入剧集根目录；默认开启以兼容已有媒体库
+    :param scrap_image_alias: 是否为背景图和缩略图写入兼容别名文件
+    :param scrap_4k_background: 是否获取 Fanart 提供的 4K 背景图
     :param lyrics_batch_timeout: 单次音乐刮削批次用于在线歌词查询的总预算（秒）
     :param music_metadata_to_simplified: 是否将识别到的音乐标题、艺术家、专辑等标准元数据转换为简体中文
     :param music_lyrics_to_simplified: 是否将写入 LRC/TXT 的歌词正文转为简体中文；保留时间轴、LRC 标签和来源 Lyricsfile
@@ -464,6 +466,8 @@ class ChainRuntimeConfig:
     data_cleanup_outbox_dead_days: Any = 0
     download_subtitle: bool = True
     scrap_season_image_to_root: bool = True
+    scrap_image_alias: bool = True
+    scrap_4k_background: bool = True
     lyrics_batch_timeout: int = 120
     music_metadata_to_simplified: bool = True
     music_lyrics_to_simplified: bool = False
