@@ -51,21 +51,24 @@ def test_filemanager_storage_query_uses_strict_storage_adapter(monkeypatch) -> N
     storage.get_item.assert_not_called()
 
 
-def test_filemanager_image_link_uses_local_storage_adapter(monkeypatch, tmp_path) -> None:
+def test_storage_image_link_uses_local_storage_adapter(monkeypatch, tmp_path) -> None:
     """
-    图片复用接口通过存储适配器建立真实硬链接，避免重新上传同一份图片。
+    图片复用经存储链、模块派发和存储适配器建立真实硬链接，避免重复上传。
     """
     module = object.__new__(FileManagerModule)
     module._support_storages = ["local"]
     storage = object.__new__(LocalStorage)
     lookup = Mock(return_value=storage)
     monkeypatch.setattr(module, "_FileManagerModule__get_storage_oper", lookup)
+    chain = object.__new__(StorageChain)
+    chain._module_dispatcher = Mock()
+    chain._module_dispatcher.dispatch.side_effect = lambda method, **kwargs: getattr(module, method)(**kwargs)
     source = tmp_path / "backdrop.jpg"
     source.write_bytes(b"artwork")
     target = tmp_path / "fanart.jpg"
     fileitem = FileItem(storage="local", path=str(source), name=source.name, type="file")
 
-    assert module.link_file(fileitem, target) is True
+    assert chain.link_file(fileitem, target) is True
 
     lookup.assert_called_once_with("local", "link")
     assert target.read_bytes() == source.read_bytes()
