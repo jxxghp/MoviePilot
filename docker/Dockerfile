@@ -112,6 +112,46 @@ RUN apt-get update \
     /var/tmp/*
 
 
+# 从锁文件提取浏览器系统依赖所需的 Playwright 版本与哈希。
+# 本阶段随 uv.lock 每次变化重跑，但输出只含 Playwright 一行；BuildKit 按内容缓存后续 COPY，
+# 因此只有 Playwright 版本变化才会让浏览器依赖层失效，其他依赖变化不再迫使用户重新下载该层。
+FROM base AS prepare_playwright_requirement
+
+COPY uv.lock /tmp/uv.lock
+RUN python3 -c "import tomllib; \
+packages = [item for item in tomllib.load(open('/tmp/uv.lock', 'rb'))['package'] if item['name'] == 'playwright']; \
+assert len(packages) == 1, 'uv.lock 必须且只能锁定一个 Playwright 版本'; \
+package = packages[0]; \
+hashes = sorted({item['hash'] for item in package.get('wheels', [])}); \
+assert hashes, 'uv.lock 缺少 Playwright wheel 哈希'; \
+open('/playwright-requirement.txt', 'w').write('playwright==' + package['version'] + ' ' + ' '.join('--hash=' + item for item in hashes) + '\\n')" \
+    && cat /playwright-requirement.txt
+
+
+# 浏览器运行依赖：只依赖系统软件包层和锁定的 Playwright 版本，不依赖虚拟环境内容。
+# Playwright 只装进临时目录读取依赖清单并执行 apt 安装，随后删除，不进入最终镜像。
+# 禁止写字节码，避免临时 pip 进程把系统 Python 标准库的 .pyc 留在该层。
+FROM prepare_package AS prepare_browser_deps
+
+COPY --from=prepare_playwright_requirement /playwright-requirement.txt /tmp/playwright-requirement.txt
+RUN export PYTHONDONTWRITEBYTECODE=1 \
+    && python3 -m venv /tmp/playwright-cli \
+    && /tmp/playwright-cli/bin/pip install \
+    --disable-pip-version-check \
+    --no-cache-dir \
+    --no-deps \
+    --require-hashes \
+    --only-binary :all: \
+    -r /tmp/playwright-requirement.txt \
+    && /tmp/playwright-cli/bin/python -m playwright install-deps chromium \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf \
+    /tmp/* \
+    /var/lib/apt/lists/* \
+    /var/tmp/*
+
+
 # 准备 Python 环境的公共输入
 FROM base AS prepare_venv_common
 
@@ -295,7 +335,7 @@ RUN mkdir -p \
     && chmod 500 /bundle/rootfs/usr/local/lib/moviepilot/control/*.sh
 
 # final 阶段安装运行时依赖并配置最终镜像
-FROM prepare_package AS final
+FROM prepare_browser_deps AS final
 
 # jemalloc 默认按 CPU 数×4 建 arena，空闲 arena 的脏页会长期计入 RSS。脏页按 5 秒衰减归还
 # （muzzy 直接归还，避免 MADV_FREE 页继续计入 RSS）；arena 限制为 8 个，带 GIL 的 Python 大块分配竞争很小。
@@ -313,15 +353,6 @@ COPY --from=rclone /usr/local/bin/rclone /usr/bin/rclone
 COPY --from=prepare_venv --chmod=777 ${VENV_PATH} ${VENV_PATH}
 COPY --from=prepare_venv /opt/python /opt/python
 COPY --from=uv /uv /usr/local/bin/uv
-
-# 浏览器运行依赖
-RUN playwright install-deps chromium \
-    && apt-get autoremove -y \
-    && apt-get clean \
-    && rm -rf \
-    /tmp/* \
-    /var/lib/apt/lists/* \
-    /var/tmp/*
 
 # 准备容器控制面和运行目录
 COPY --link --from=prepare_control /bundle/rootfs/ /

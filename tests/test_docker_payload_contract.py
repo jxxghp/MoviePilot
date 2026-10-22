@@ -72,7 +72,7 @@ def test_dockerfile_assigns_each_payload_to_an_independent_stage() -> None:
     ):
         assert f" AS {stage}" in dockerfile
 
-    final_start = dockerfile.index("FROM prepare_package AS final")
+    final_start = dockerfile.index("FROM prepare_browser_deps AS final")
     final = dockerfile[final_start:]
     copies = (
         "COPY --link --from=prepare_frontend /public /public",
