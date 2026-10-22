@@ -168,6 +168,8 @@ def test_release_audits_locked_runtime_dependencies_before_building() -> None:
         assert "pip-audit==" not in audit
         for option in ("--require-hashes", "--no-deps", "--disable-pip", "--strict"):
             assert option in audit
+        # 两个运行时组都要再经 OSV 补查，PyPI 服务单独使用会漏报部分公告。
+        assert audit.count("--vulnerability-service osv") == 2
 
 
 def test_direct_url_audit_requirement_uses_version_from_matching_lock_source(tmp_path: Path) -> None:

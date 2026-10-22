@@ -27,6 +27,10 @@ jobs:
           uvx --from pip-audit pip-audit \
             --require-hashes --disable-pip --strict --progress-spinner off \
             --requirement /tmp/moviepilot-audit-standard.txt
+          # PyPI 服务校验哈希但公告覆盖不全（曾漏报 Mako PYSEC-2026-4243），再用 OSV 补查一遍。
+          uvx --from pip-audit pip-audit \
+            --vulnerability-service osv --require-hashes --disable-pip --strict --progress-spinner off \
+            --requirement /tmp/moviepilot-audit-standard.txt
 
           uv export --quiet --locked --no-default-groups --group runtime-free-threaded \
             --no-emit-project --no-hashes \
@@ -37,6 +41,9 @@ jobs:
             --output /tmp/moviepilot-audit-free-threaded-normalized.txt
           uvx --from pip-audit pip-audit \
             --no-deps --disable-pip --strict --progress-spinner off \
+            --requirement /tmp/moviepilot-audit-free-threaded-normalized.txt
+          uvx --from pip-audit pip-audit \
+            --vulnerability-service osv --no-deps --disable-pip --strict --progress-spinner off \
             --requirement /tmp/moviepilot-audit-free-threaded-normalized.txt
 
       - name: Release version
