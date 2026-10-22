@@ -61,6 +61,51 @@ def _payload(media_type="电影", group=None):
     return {**_identity(media_type, group), "name": "示例", "username": "alice"}
 
 
+def test_empty_owner_keeps_legacy_duplicates_inside_caller_transaction(database):
+    """
+    旧空用户名不占唯一身份，允许重复暂存且全部随调用方回滚。
+    """
+    with database() as session:
+        oper = SubscribeOper(session)
+        payload = {**_payload(), "username": ""}
+        first = oper.stage_add(_identity(), payload, "")
+        second = oper.stage_add(_identity(), payload, "")
+        assert first.created and second.created
+        assert first.subscribe_id != second.subscribe_id
+        assert session.scalar(select(func.count()).select_from(Subscribe)) == 2
+        assert all(row.identity_key is None for row in session.scalars(select(Subscribe)))
+        session.rollback()
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(Subscribe)) == 0
+
+
+def test_async_empty_owner_keeps_legacy_duplicates_inside_caller_transaction(db):
+    """
+    正式AsyncSession沿用空用户名兼容语义，不提前提交两条无唯一身份的记录。
+    """
+    db.watermark(Subscribe)
+
+    async def execute(session):
+        """
+        在独立异步事务中暂存两个旧身份，再由调用方撤销。
+        """
+        oper = SubscribeOper(session)
+        payload = {**_payload(), "username": ""}
+        first = await oper.async_stage_add(_identity(), payload, "")
+        second = await oper.async_stage_add(_identity(), payload, "")
+        assert first.created and second.created
+        assert first.subscribe_id != second.subscribe_id
+        rows = list((await session.scalars(select(Subscribe).where(
+            Subscribe.id.in_([first.subscribe_id, second.subscribe_id]),
+        ))).all())
+        assert len(rows) == 2 and all(row.identity_key is None for row in rows)
+        await session.rollback()
+        assert await session.get(Subscribe, first.subscribe_id) is None
+        assert await session.get(Subscribe, second.subscribe_id) is None
+
+    db.run_async_session(execute)
+
+
 def test_movie_and_tv_with_same_source_number_are_distinct(database):
     """
     同一来源的电影和电视剧编号相同也能分别订阅。

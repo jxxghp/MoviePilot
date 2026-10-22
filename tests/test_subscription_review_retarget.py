@@ -4,8 +4,6 @@
 
 from unittest.mock import AsyncMock, Mock
 
-import pytest
-
 from app.application.subscription.mutation import (
     SubscriptionActor,
     SubscriptionMutationService,
@@ -16,7 +14,6 @@ from app.db.adapters.subscription import SessionSubscriptionRepository
 from app.db.models.outbox import OutboxMessage
 from app.db.models.subscribe import Subscribe
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
-
 
 _QUALITY_FACTS = ("current_audio_format", "current_bitrate", "current_bit_depth", "current_sample_rate")
 
