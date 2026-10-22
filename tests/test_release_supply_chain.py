@@ -119,15 +119,21 @@ def _run_release_script(
     )
 
 
-def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> None:
+def test_base_image_uses_refreshable_tag_and_upgrades_only_in_refresh_layer() -> None:
     """
-    使用官方基础镜像及所需运行依赖，不追加系统包扫描补丁。
+    使用官方基础镜像及所需运行依赖，不追加针对扫描结果的逐包补丁；
+    系统包只在 final 末尾由刷新键控制的系统安全更新层统一升级。
     """
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     assert 'ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"' in dockerfile
     assert "FROM python:${MOVIEPILOT_PYTHON_VERSION}-slim-trixie AS base" in dockerfile
     assert 'uv python install --no-bin "${MOVIEPILOT_PYTHON_VERSION}t"' in dockerfile
     assert "apt-get upgrade" not in dockerfile
+    assert dockerfile.count("upgrade;") == 1
+    assert "dist-upgrade" not in dockerfile
+    refresh_layer = dockerfile.split('ARG MOVIEPILOT_SYSTEM_REFRESH_ID=""', maxsplit=1)[1]
+    assert "upgrade;" in refresh_layer
+    assert "apt-get install" not in refresh_layer
     assert "pip uninstall" not in dockerfile
     assert "break-system-packages" not in dockerfile
     browser_install = dockerfile.split("python -m playwright install-deps chromium", maxsplit=1)[1]
