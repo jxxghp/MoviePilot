@@ -572,11 +572,8 @@ class SystemUtils:
         :param dest: 目标文件路径
         :return: (状态码, 错误信息)，0 表示成功
         """
-        tmp_path = dest.with_suffix(dest.suffix + ".mp")
+        tmp_path = dest.with_name(f".{dest.name}.{uuid.uuid4().hex}.mp")
         try:
-            # 检查临时目标路径是否已存在，如果存在则先清理
-            if tmp_path.exists():
-                tmp_path.unlink()
             # 调用私有辅助方法执行底层克隆
             code, msg = SystemUtils._reflink_copy(src, tmp_path)
             if code != 0:

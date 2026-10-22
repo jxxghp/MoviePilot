@@ -82,7 +82,7 @@ class FileSystemProxy:
         读取路径属性。
 
         :param path: 目标路径
-        :return: {"size", "mtime", "dev", "ino", "is_dir", "is_file"}；dev/ino 标识当前文件身份
+        :return: 大小、秒及纳秒修改时间、纳秒状态时间、设备和 inode、文件类型；dev/ino 标识当前文件身份
         """
         return cast(dict[str, Any], self._call("stat", path=str(path)))
 

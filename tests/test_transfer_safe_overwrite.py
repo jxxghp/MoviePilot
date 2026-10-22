@@ -1022,11 +1022,11 @@ def test_completed_promotion_rechecks_live_files_before_destructive_cleanup(
     assert backup.read_bytes() == expected_backup
 
 
-def test_completed_promotion_allows_cleanup_after_timestamp_changes(
+def test_completed_local_promotion_retains_copies_after_timestamp_changes(
         tmp_path, monkeypatch, repository_factory,
 ):
     """
-    提升结果已落账后，即使源、目标和备份的时间戳均变化，恢复仍按大小和身份完成清理。
+    本地提升落账后时间戳改变意味着内容版本不确定，恢复须保留所有副本。
     """
     source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
@@ -1057,11 +1057,11 @@ def test_completed_promotion_allows_cleanup_after_timestamp_changes(
         before = path.stat()
         os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 4_000_000_000))
 
-    result = _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
-    assert result.success
+    with pytest.raises(execution_module._TransferManualReviewRequired):
+        _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
     assert target.read_bytes() == b"new-version"
-    assert not source.exists()
-    assert not backup.exists()
+    assert source.read_bytes() == b"new-version"
+    assert backup.read_bytes() == b"old-version"
 
 
 @pytest.mark.parametrize("missing_evidence", ["source", "target"])

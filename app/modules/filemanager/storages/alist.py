@@ -564,13 +564,13 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         """
         取得下载地址后流式写入本地文件。
 
-        当前捕获传输异常后仍返回目标路径，不能据此断定文件完整甚至已经创建；
-        取消和失败都可能留下部分文件，调用方需另行核验。
+        文件下载不发送 OpenList API 令牌，使用服务端返回的直链或签名地址。
+        只有流正常结束且已知大小匹配才返回成功；中断、取消或截断均删除未完成文件。
 
-        :param fileitem: 源远端文件；name 直接用于拼接保存路径
+        :param fileitem: 源远端文件，提供文件名称和可选的预期大小
         :param path: 本地保存目录；为空时使用 TEMP_PATH
         :param password: 详情查询使用的可选访问密码
-        :return: 本地目标路径；详情查询失败或取消返回 None
+        :return: 完整本地目标路径；详情查询、传输、大小校验失败或取消返回 None
         """
         if not fileitem.path:
             return None
@@ -613,22 +613,32 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         if local_path is None or not download_url:
             return None
 
-        request_utils = RequestUtils(headers=self.__get_header_with_token())
+        # 下载使用 raw_url 或带 sign 的 /d 地址，API 令牌不属于文件服务及其重定向目标。
+        request_utils = RequestUtils()
         try:
             with request_utils.get_stream(download_url, raise_exception=True) as r:
                 if r is None:
                     return None
                 r.raise_for_status()
+                downloaded_size = 0
                 with open(local_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         if runtime_stop_state.consume_transfer_stop(fileitem.path):
                             logger.info(f"【OpenList】{fileitem.path} 下载已取消！")
-                            return None
+                            raise IOError("OpenList 下载已取消")
                         f.write(chunk)
+                        downloaded_size += len(chunk)
+                expected_size = fileitem.size
+                if expected_size is None:
+                    expected_size = result["data"].get("size")
+                if expected_size is None and r.headers.get("Content-Length"):
+                    expected_size = int(r.headers["Content-Length"])
+                if expected_size is not None and downloaded_size != expected_size:
+                    raise IOError(f"下载大小不一致：预期 {expected_size}，实际 {downloaded_size}")
         except Exception as e:
             logger.error(f"【OpenList】下载文件 {fileitem.path} 失败：{e}")
-            if local_path.exists():
-                return local_path
+            local_path.unlink(missing_ok=True)
+            return None
 
         return local_path
 

@@ -813,7 +813,9 @@ class TransHandler:
         清理前比对冻结文件的大小、类型及可用身份；证据不足时保留文件。
 
         本地链接的查询沿用 stat 语义，硬链接和软链接均比较实际内容的身份。
-        云盘修改时间可能在上传后变化或缺失，不参与校验；旧快照没有 fileid 时使用大小凭据。
+        本地必须核对修改时间，优先纳秒证据；同路径还核对状态时间，防止等长改写后还原 mtime。
+        rename 合法改变状态时间，因此跨路径只比较修改时间。旧本地快照回退到秒级修改时间，
+        缺少时间凭据时转人工复核。云盘修改时间可能在上传后变化或缺失，不参与校验。
 
         :param expected: 冻结的文件身份，必须包含大小
         :param current: 当前严格查询结果；不可见时视为冲突
@@ -833,6 +835,22 @@ class TransHandler:
                 raise StorageQueryError(f"文件 {expected.path} 缺少 fileid 身份凭据，需人工复核")
             if expected.fileid != current.fileid:
                 raise TransferExecutionConflictError(f"文件 {expected.path} 已被替换，禁止清理")
+        if expected.storage == "local":
+            expected_time: Optional[int | float]
+            current_time: Optional[int | float]
+            if expected.modify_time_ns is not None:
+                expected_time, current_time = expected.modify_time_ns, current.modify_time_ns
+            else:
+                expected_time, current_time = expected.modify_time, current.modify_time
+            if expected_time is None or current_time is None:
+                raise StorageQueryError(f"文件 {expected.path} 缺少修改时间身份凭据，需人工复核")
+            if expected_time != current_time:
+                raise TransferExecutionConflictError(f"文件 {expected.path} 的修改时间已变化，禁止清理")
+            if expected.path == current.path and expected.change_time_ns is not None:
+                if current.change_time_ns is None:
+                    raise StorageQueryError(f"文件 {expected.path} 缺少状态时间身份凭据，需人工复核")
+                if expected.change_time_ns != current.change_time_ns:
+                    raise TransferExecutionConflictError(f"文件 {expected.path} 的状态时间已变化，禁止清理")
 
     @staticmethod
     def __restore_move_target_identity(source: FileItem, target: FileItem) -> FileItem:
@@ -1550,34 +1568,47 @@ class TransHandler:
             ),
         )
 
-    @classmethod
     def __resolve_leaf_overwrite_with_step(
-            cls,
+            self,
             *,
             step_runner: Optional[TransferStepRunner],
             planned_item: TransferPlanItem,
             target_oper: StorageBase,
             transfer_type: str,
-    ) -> bool:
+            meta: MetaBase,
+            mediainfo: MediaInfo | MusicInfo,
+            overwrite_mode: Optional[str],
+            need_notify: bool,
+    ) -> tuple[bool, Optional[TransferInfo]]:
         """
-        冻结目录叶子目标的存在性，恢复时沿用同一操作序列。
-
-        此处只判断叶子目标是否存在，不再次执行单文件覆盖策略。
+        按冻结覆盖策略裁决目录叶目标，保持既有叶子步骤的稳定身份。
 
         :param step_runner: 步骤执行器；None 时直接查询
         :param planned_item: 含冻结源快照和目标路径的叶子操作
         :param target_oper: 负责严格查询的目标适配器
         :param transfer_type: 整理方式，参与步骤身份
-        :return: 目标已存在且需要替换时为 True
+        :param meta: 目录媒体元数据
+        :param mediainfo: 已识别媒体信息
+        :param overwrite_mode: 检查点冻结的覆盖策略
+        :param need_notify: 拒绝覆盖时是否请求通知
+        :return: 是否覆盖及可选的拒绝结果
         """
         def execute() -> TransferStepResult:
             """
-            严格查询当前叶目标，失败时禁止对旧文件执行任何操作。
+            目录叶与单文件共用覆盖合同，并冻结拒绝原因。
             """
-            exists = target_oper.get_item_strict(Path(planned_item.target_path)) is not None
-            return TransferStepResult(payload={"over_flag": exists})
+            over_flag, _, failure = self.__resolve_overwrite(
+                fileitem=FileItem.model_validate(planned_item.source_fileitem),
+                meta=meta, mediainfo=mediainfo, target_oper=target_oper,
+                target_storage=planned_item.target_storage, target_file=Path(planned_item.target_path),
+                transfer_type=transfer_type, overwrite_mode=overwrite_mode, need_notify=need_notify,
+            )
+            return TransferStepResult(payload={
+                "over_flag": over_flag, "policy_checked": True,
+                "failure": failure.model_dump(mode="json") if failure else None,
+            })
 
-        decision = cls.__run_persisted_step(
+        decision = self.__run_persisted_step(
             step_runner, phase="decision", kind="resolve_leaf_overwrite",
             payload={"source": planned_item.source_fileitem,
                      "target_storage": planned_item.target_storage,
@@ -1588,7 +1619,19 @@ class TransHandler:
                 evidence=TransferStepResult(payload={"reason": "read-only leaf decision may be repeated"}),
             ),
         )
-        return decision.payload.get("over_flag") is True
+        failure = decision.payload.get("failure")
+        if (decision.payload.get("over_flag") is True and overwrite_mode == "never"
+                and decision.payload.get("policy_checked") is not True):
+            # 旧版本只记录存在性，不能用旧回执授权本次禁止的破坏性覆盖。
+            return False, TransferInfo(
+                success=False, overwrite_skipped=True,
+                message="旧目录覆盖裁决未校验不覆盖策略，保留源文件和目标，需人工复核",
+                fileitem=FileItem.model_validate(planned_item.source_fileitem),
+                transfer_type=transfer_type, need_notify=need_notify,
+            )
+        return decision.payload.get("over_flag") is True, (
+            TransferInfo.model_validate(failure) if isinstance(failure, dict) else None
+        )
 
     def __resolve_overwrite_with_step(
             self,
@@ -1714,6 +1757,53 @@ class TransHandler:
             ),
         )
         return bool(result.payload.get("allowed")), str(result.payload.get("reason") or "")
+
+    def __execute_directory_leaf(
+            self, *, planned_item: TransferPlanItem, checkpoint: TransferPlanCheckpoint,
+            meta: MetaBase, mediainfo: MediaInfo | MusicInfo,
+            source_oper: StorageBase, target_oper: StorageBase,
+            step_runner: Optional[TransferStepRunner],
+    ) -> tuple[Optional[FileItem], Optional[TransferInfo]]:
+        """
+        校验目录叶操作并消费覆盖裁决，拒绝时不执行文件副作用。
+
+        :param planned_item: 冻结的目录叶整理操作
+        :param checkpoint: 目录计划及其覆盖、通知策略
+        :param meta: 目录媒体元数据
+        :param mediainfo: 目录媒体识别结果
+        :param source_oper: 源存储适配器
+        :param target_oper: 目标存储适配器
+        :param step_runner: 持久步骤执行器；为空时同步执行
+        :return: 新目标及可选失败结果；拒绝覆盖保留 overwrite_skipped 语义
+        """
+        transfer_type = checkpoint.resolved_transfer_type
+        if planned_item.action != "transfer" or planned_item.target_storage != checkpoint.target_storage:
+            return None, TransferInfo(
+                success=False, message="整理计划包含不支持的操作或目标存储",
+                fileitem=FileItem.model_validate(checkpoint.planning_input.source_fileitem),
+                transfer_type=transfer_type, need_notify=checkpoint.need_notify,
+            )
+        over_flag, failure = self.__resolve_leaf_overwrite_with_step(
+            step_runner=step_runner, planned_item=planned_item,
+            target_oper=target_oper, transfer_type=transfer_type,
+            meta=meta, mediainfo=mediainfo, overwrite_mode=checkpoint.overwrite_mode,
+            need_notify=checkpoint.need_notify,
+        )
+        if failure:
+            return None, failure
+        execute_transfer = self.__replace_target_with_steps if over_flag else self.__execute_transfer_with_steps
+        new_item, error = execute_transfer(
+            step_runner=step_runner, source_fileitem=planned_item.source_fileitem,
+            target_storage=planned_item.target_storage, source_oper=source_oper, target_oper=target_oper,
+            target_file=Path(planned_item.target_path), transfer_type=transfer_type,
+        )
+        if not new_item:
+            return None, TransferInfo(
+                success=False, message=error,
+                fileitem=FileItem.model_validate(checkpoint.planning_input.source_fileitem),
+                transfer_type=transfer_type, need_notify=checkpoint.need_notify,
+            )
+        return new_item, None
 
     def execute_transfer_plan(
         self,
@@ -1842,47 +1932,16 @@ class TransHandler:
                     need_notify=checkpoint.need_notify,
                 )
             for planned_item in checkpoint.items:
-                if (
-                    planned_item.action != "transfer"
-                    or planned_item.target_storage != target_storage
-                ):
-                    return TransferInfo(
-                        success=False,
-                        message="整理计划包含不支持的操作或目标存储",
-                        fileitem=fileitem,
-                        transfer_type=transfer_type,
-                        need_notify=checkpoint.need_notify,
-                    )
-                source_item = FileItem.model_validate(planned_item.source_fileitem)
-                over_flag = self.__resolve_leaf_overwrite_with_step(
-                    step_runner=step_runner, planned_item=planned_item,
-                    target_oper=target_oper, transfer_type=transfer_type,
+                new_item, failure = self.__execute_directory_leaf(
+                    planned_item=planned_item, checkpoint=checkpoint, meta=meta, mediainfo=mediainfo,
+                    source_oper=source_oper, target_oper=target_oper, step_runner=step_runner,
                 )
-                execute_transfer = (
-                    self.__replace_target_with_steps if over_flag
-                    else self.__execute_transfer_with_steps
-                )
-                new_item, error = execute_transfer(
-                    step_runner=step_runner,
-                    source_fileitem=planned_item.source_fileitem,
-                    target_storage=planned_item.target_storage,
-                    source_oper=source_oper,
-                    target_oper=target_oper,
-                    target_file=Path(planned_item.target_path),
-                    transfer_type=transfer_type,
-                )
-                if not new_item:
-                    return TransferInfo(
-                        success=False,
-                        message=error,
-                        fileitem=fileitem,
-                        transfer_type=transfer_type,
-                        need_notify=checkpoint.need_notify,
-                    )
+                if failure:
+                    return failure
                 self.__update_result(
                     result=result,
-                    file_list=[source_item.path],
-                    file_list_new=[new_item.path],
+                    file_list=[planned_item.source_fileitem.get("path")],
+                    file_list_new=[cast(FileItem, new_item).path],
                 )
             self.__cleanup_with_step(
                 step_runner=step_runner,
