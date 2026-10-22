@@ -393,7 +393,7 @@ async def search(
         music_types = (music_type,) if music_type else (MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM)
         filtered_music_results = await media_chain.async_search_music(
             query=title,
-            limit=count,
+            limit=page * count,
             media_source=source_selection,
             music_types=music_types,
         )
@@ -534,13 +534,13 @@ def _scrape_impl(
         if not Path(fileitem.path).exists():
             return _SchemaResponse(success=False, message="刮削路径不存在")
     # 手动刮削 (暂时使用同步版本，可以后续优化为异步)
-    ScrapingChain().scrape_metadata(
+    success, message = ScrapingChain().scrape_metadata(
         fileitem=fileitem,
         meta=meta_info,
         mediainfo=media_info,
         overwrite=True,
     )
-    return _SchemaResponse(success=True, message=f"{fileitem.path} 刮削完成")
+    return _SchemaResponse(success=success, message=message)
 
 
 @router.post("/scrape/{storage}", summary="刮削媒体信息", response_model=_SchemaResponse[None])

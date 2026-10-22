@@ -368,13 +368,17 @@ class DoubanApi(metaclass=WeakSingleton):
         resp: Optional[_JsonResponse]
     ) -> Optional[dict[str, Any]]:
         """
-        读取响应 JSON；未取得 HTTP 响应时返回 None。
+        仅接受成功 HTTP 和业务响应，避免把错误对象保存为长期详情缓存。
 
-        不在本层校验业务状态；JSON 解码异常交由调用方处理。
+        JSON 解码异常仍交由调用方处理；合法空列表响应保持原合同。
         """
-        if resp is None:
+        if resp is None or resp.status_code != 200:
             return None
         payload: dict[str, Any] = resp.json()
+        if not isinstance(payload, (dict, list)):
+            return None
+        if isinstance(payload, dict) and payload.get("code") not in (None, 0, "0"):
+            return None
         return payload
 
     @_cached_api_request(shared_key="get")

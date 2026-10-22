@@ -14,6 +14,9 @@ from app.domain.classification.vocabulary import (
     GENRE_KEY_ALIASES as _GENRE_KEY_ALIASES,
 )
 from app.domain.classification.vocabulary import (
+    TMDB_COMPOSITE_GENRE_KEYS as _TMDB_COMPOSITE_GENRE_KEYS,
+)
+from app.domain.classification.vocabulary import (
     TMDB_GENRE_KEYS as _TMDB_GENRE_KEYS,
 )
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicArtistInfo, MusicInfo
@@ -153,6 +156,8 @@ def _classification_genre_keys(media: ClassificationMedia) -> list[str] | None:
     for item in _optional_string_list(getattr(media, "classification_genre_keys", None)) or []:
         _append_unique(values, item)
     for item in getattr(media, "genre_ids", None) or []:
+        for genre_key in _TMDB_COMPOSITE_GENRE_KEYS.get(str(item), ()):
+            _append_unique(values, genre_key)
         if key := _TMDB_GENRE_KEYS.get(str(item)):
             _append_unique(values, key)
     for item in _genre_names(getattr(media, "genres", None)) or []:
