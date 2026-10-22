@@ -6,7 +6,8 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_serializer as _field_serializer
+from pydantic import BaseModel, Field
+from pydantic import field_serializer as _field_serializer
 
 from app.schemas.types import StorageSchema
 
