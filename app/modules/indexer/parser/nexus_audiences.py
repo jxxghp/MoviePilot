@@ -371,16 +371,26 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
             if not DomUtils.has_child_elements(html):
                 return
 
-            for user_node in html.xpath('//*[@data-uploader-url or @data-uploader-stats]'):
+            userbars = html.xpath(
+                '//*[contains(concat(" ", normalize-space(@class), " "), " site-userbar ")]'
+            )
+            scope = userbars[0] if userbars else html
+            nodes = scope.xpath('.//*[@data-uploader-url or @data-uploader-stats]')
+            # 兼容只有单个用户卡的旧页面；多用户卡且无用户栏时不能猜测当前账号。
+            if not userbars:
+                nodes = [node for node in nodes if self.userid and
+                         re.search(rf"userdetails\.php\?id={re.escape(str(self.userid))}(?:&|$)",
+                                   node.get("data-uploader-url") or "")] or (nodes if len(nodes) == 1 else [])
+            for user_node in nodes:
                 self.__parse_user_identity(user_node)
                 self.__parse_uploader_stats(user_node.get("data-uploader-stats"))
 
             # data-uploader-stats 不包含分享率，需从 compact metric 的 class 中读取。
-            self.__parse_compact_metric(html, "ratio", "ratio")
-            self.__parse_compact_metric(html, "uploaded", "upload")
-            self.__parse_compact_metric(html, "downloaded", "download")
-            self.__parse_compact_metric(html, "bonus", "bonus")
-            self.__parse_compact_metric(html, "active", "active")
+            self.__parse_compact_metric(scope, "ratio", "ratio")
+            self.__parse_compact_metric(scope, "uploaded", "upload")
+            self.__parse_compact_metric(scope, "downloaded", "download")
+            self.__parse_compact_metric(scope, "bonus", "bonus")
+            self.__parse_compact_metric(scope, "active", "active")
         finally:
             if html is not None:
                 del html

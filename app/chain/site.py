@@ -749,7 +749,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     favicon_url = urljoin(url, fav_link[0])
 
             with _open_site_response(
-                method="GET", url=favicon_url, cookie=cookie, timeout=15, ua=ua
+                method="GET", url=favicon_url,
+                cookie=cookie if url_tools.UrlUtils.same_origin(url, favicon_url) else None, timeout=15, ua=ua
             ) as res:
                 if res:
                     return favicon_url, base64.b64encode(res.content).decode()

@@ -4,6 +4,7 @@
 
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, Mapping, Optional, cast
+from urllib.parse import urljoin, urlsplit
 
 from app.adapters.external.cookiecloud import CookieCloudHelper
 from app.adapters.external.ocr import OcrHelper
@@ -42,6 +43,7 @@ from app.chain.site import (
     configure_site_ports,
     reset_site_ports,
 )
+from app.foundation.url import UrlUtils
 
 
 class _RssHttpAdapter:
@@ -222,16 +224,38 @@ class _SiteHttpAdapter:
         :param json_body: JSON 请求体，None 时保留无请求体行为
         :yields: 在上下文有效期内提供响应或 None
         """
-        request = RequestUtils(
-            headers=dict(headers or {}),
-            cookies=cookie or "",
-            ua=ua or "",
-            proxies=dict(proxies or {}),
-            timeout=timeout,
-        )
-        request_options = {} if json_body is None else {"json": dict(json_body)}
-        with request.response_manager(method=method, url=url, **request_options) as response:
-            yield cast(Optional[SiteResponsePort], response)
+        request_headers = dict(headers or {})
+        seen = set()
+        for _hop in range(9):
+            if url in seen:
+                raise ValueError("站点请求重定向出现环路")
+            seen.add(url)
+            request = RequestUtils(
+                headers=request_headers, cookies=cookie or "", ua=ua or "",
+                proxies=dict(proxies or {}), timeout=timeout,
+            )
+            request_options: dict[str, Any] = {} if json_body is None else {"json": dict(json_body)}
+            if method.upper() == "GET":
+                request_options["allow_redirects"] = False
+            with request.response_manager(method=method, url=url, **request_options) as response:
+                if method.upper() != "GET" or response is None or response.status_code not in (301, 302, 303, 307, 308):
+                    yield cast(Optional[SiteResponsePort], response)
+                    return
+                location = response.headers.get("Location")
+                if not location:
+                    raise ValueError("站点请求重定向缺少目标地址")
+                destination = urljoin(url, location)
+                target = urlsplit(destination)
+                if target.scheme not in ("http", "https") or not target.hostname or target.username or target.password:
+                    raise ValueError("站点请求重定向目标无效")
+                if not UrlUtils.same_origin(url, destination):
+                    cookie = None
+                    request_headers = {
+                        key: value for key, value in request_headers.items()
+                        if key.lower() not in ("cookie", "authorization", "proxy-authorization", "referer")
+                    }
+                url = destination
+        raise ValueError("站点请求重定向次数超过上限")
 
 
 class _SiteBrowserAdapter:

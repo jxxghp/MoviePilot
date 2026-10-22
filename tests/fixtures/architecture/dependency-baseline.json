@@ -641,9 +641,6 @@
         "uses": []
       },
       {
-        "source": "app.modules.plex.plex",
-        "target": "plexapi",
-        "kind": "network_sdk",
         "bindings": [
           "from:plexapi.audio.Album as Album",
           "from:plexapi.audio.Artist as Artist",
@@ -659,6 +656,10 @@
           "from:plexapi.video.Season as Season",
           "from:plexapi.video.Show as Show"
         ],
+        "fingerprint": "6109de36f963b5c6193ed60941a88856cbee9c37303dedf13da3a3be94478543",
+        "kind": "network_sdk",
+        "source": "app.modules.plex.plex",
+        "target": "plexapi",
         "uses": [
           "Plex.__fetch_item|call:exceptions.NotFound",
           "Plex.__fetch_item|call:fetchItem",
@@ -686,8 +687,7 @@
           "Plex.refresh_library_by_items|call:library.update",
           "Plex.refresh_library_by_items|call:query",
           "Plex.refresh_root_library|call:library.update"
-        ],
-        "fingerprint": "6109de36f963b5c6193ed60941a88856cbee9c37303dedf13da3a3be94478543"
+        ]
       },
       {
         "bindings": [
@@ -961,8 +961,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9690,
-  "edge_sha256": "2acb67e3a6c9e7c10938a8dfde7571359a644b174e8ac2505f71fd1202976633",
+  "edge_count": 9706,
+  "edge_sha256": "17f7a368a31cf6d8ade3d18e6a5219249c8b82c436e290ac3173cbf3e5759b13",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2506,6 +2506,8 @@
     "app.api.endpoints.download -> app.domain.meta",
     "app.api.endpoints.download -> app.domain.meta.metabase",
     "app.api.endpoints.download -> app.domain.metainfo",
+    "app.api.endpoints.download -> app.foundation",
+    "app.api.endpoints.download -> app.foundation.url",
     "app.api.endpoints.download -> app.schemas",
     "app.api.endpoints.download -> app.schemas.common",
     "app.api.endpoints.download -> app.schemas.context",
@@ -4170,6 +4172,7 @@
     "app.application.site.mutation -> app.application.subscription.delete",
     "app.application.site.mutation -> app.schemas",
     "app.application.site.mutation -> app.schemas.common",
+    "app.application.site.mutation -> app.schemas.exception",
     "app.application.site.mutation -> app.schemas.types",
     "app.application.site.query -> app.application",
     "app.application.site.query -> app.application.site",
@@ -4339,6 +4342,8 @@
     "app.application.torrent.cache -> app.domain.metainfo",
     "app.application.torrent.cache -> app.foundation",
     "app.application.torrent.cache -> app.foundation.crypto",
+    "app.application.torrent.cache -> app.runtime",
+    "app.application.torrent.cache -> app.runtime.cache",
     "app.application.torrent.cache -> app.schemas",
     "app.application.torrent.cache -> app.schemas.types",
     "app.application.torrent.download -> app.application",
@@ -4355,6 +4360,7 @@
     "app.application.torrent.download -> app.foundation",
     "app.application.torrent.download -> app.foundation.crypto",
     "app.application.torrent.download -> app.foundation.text",
+    "app.application.torrent.download -> app.foundation.url",
     "app.application.torrent.download -> app.runtime",
     "app.application.torrent.download -> app.runtime.cache",
     "app.application.torrent.download -> app.runtime.log",
@@ -4762,6 +4768,8 @@
     "app.chain.download.subtitle -> app.domain",
     "app.chain.download.subtitle -> app.domain.context",
     "app.chain.download.subtitle -> app.domain.metainfo",
+    "app.chain.download.subtitle -> app.foundation",
+    "app.chain.download.subtitle -> app.foundation.url",
     "app.chain.download.subtitle -> app.runtime",
     "app.chain.download.subtitle -> app.runtime.log",
     "app.chain.download.subtitle -> app.schemas",
@@ -5774,6 +5782,7 @@
     "app.chain.torrents -> app.foundation",
     "app.chain.torrents -> app.foundation.url",
     "app.chain.torrents -> app.runtime",
+    "app.chain.torrents -> app.runtime.cache",
     "app.chain.torrents -> app.runtime.log",
     "app.chain.torrents -> app.runtime.stop",
     "app.chain.torrents -> app.schemas",
@@ -6693,6 +6702,8 @@
     "app.db.oper.site -> app.db.models.siteuserdata",
     "app.db.oper.site -> app.db.oper",
     "app.db.oper.site -> app.db.oper.query",
+    "app.db.oper.site -> app.schemas",
+    "app.db.oper.site -> app.schemas.exception",
     "app.db.oper.subscribe -> app.application",
     "app.db.oper.subscribe -> app.application.subscription",
     "app.db.oper.subscribe -> app.application.subscription.contract",
@@ -7869,7 +7880,7 @@
     "app.modules.indexer.spider.tnode -> app.adapters.network",
     "app.modules.indexer.spider.tnode -> app.adapters.network.http",
     "app.modules.indexer.spider.tnode -> app.foundation",
-    "app.modules.indexer.spider.tnode -> app.foundation.singleton",
+    "app.modules.indexer.spider.tnode -> app.foundation.crypto",
     "app.modules.indexer.spider.tnode -> app.foundation.temporal",
     "app.modules.indexer.spider.tnode -> app.runtime",
     "app.modules.indexer.spider.tnode -> app.runtime.cache",
@@ -8133,6 +8144,7 @@
     "app.modules.redis -> app.schemas.types",
     "app.modules.rtorrent -> app.domain",
     "app.modules.rtorrent -> app.domain.metainfo",
+    "app.modules.rtorrent -> app.domain.torrent",
     "app.modules.rtorrent -> app.foundation",
     "app.modules.rtorrent -> app.foundation.size",
     "app.modules.rtorrent -> app.foundation.temporal",
@@ -9938,6 +9950,8 @@
     "app.startup.composition.network -> app.chain.message",
     "app.startup.composition.network -> app.chain.scraping",
     "app.startup.composition.network -> app.chain.system",
+    "app.startup.composition.network -> app.foundation",
+    "app.startup.composition.network -> app.foundation.url",
     "app.startup.composition.network -> app.runtime",
     "app.startup.composition.network -> app.runtime.log",
     "app.startup.composition.outbox -> app.adapters",
@@ -10076,6 +10090,8 @@
     "app.startup.composition.site -> app.application.torrent.download",
     "app.startup.composition.site -> app.chain",
     "app.startup.composition.site -> app.chain.site",
+    "app.startup.composition.site -> app.foundation",
+    "app.startup.composition.site -> app.foundation.url",
     "app.startup.composition.subscription -> app.adapters",
     "app.startup.composition.subscription -> app.adapters.external",
     "app.startup.composition.subscription -> app.adapters.external.server",

@@ -45,6 +45,25 @@ class UrlUtils:
         return normalized_url
 
     @staticmethod
+    def same_origin(source: object, destination: object) -> bool:
+        """
+        比较HTTP来源的协议、主机及有效端口；无效地址不能接收来源凭据。
+
+        :param source: 认证凭据所属的绝对HTTP地址
+        :param destination: 准备请求的绝对HTTP地址
+        :return: 两地址来源完全一致且均有效时为True
+        """
+        source_url, destination_url = UrlUtils.normalize_http_url(source), UrlUtils.normalize_http_url(destination)
+        if source_url is None or destination_url is None:
+            return False
+        first, second = urlparse(source_url), urlparse(destination_url)
+        if first.username or first.password or second.username or second.password:
+            return False
+        return (first.scheme, first.hostname, first.port if first.port is not None else (443 if first.scheme == "https" else 80)) == (
+            second.scheme, second.hostname, second.port if second.port is not None else (443 if second.scheme == "https" else 80)
+        )
+
+    @staticmethod
     def standardize_base_url(host: str) -> str:
         """
         为主机地址补充 HTTP 协议和末尾斜杠。
