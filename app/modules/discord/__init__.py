@@ -518,7 +518,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         :param title: 消息标题
         :param buttons: 新的按钮列表
         :param metadata: 兼容统一接口的元数据，当前不使用
-        :return: 客户端返回非空结果时为 True；未处理或失败时为 False，非 Discord 渠道为 None
+        :return: 客户端明确成功时为 True；未处理或失败时为 False，非 Discord 渠道为 None
         """
         if channel != self._channel:
             return None
@@ -534,8 +534,9 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                     original_message_id=message_id,
                     original_chat_id=str(chat_id),
                 )
-                if result and isinstance(result, tuple) and result[0]:
-                    return True
+                if isinstance(result, tuple):
+                    if result and result[0]:
+                        return True
                 elif result:
                     return True
         return False

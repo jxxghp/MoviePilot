@@ -490,6 +490,10 @@ class MediaInteractionChain(ChainBase):
         """
         处理媒体选择阶段的序号输入。
         """
+        if request.phase != "media":
+            self._post_invalid_input(channel=channel, source=source, userid=userid, username=username,
+                                     title="媒体选择已结束，请使用当前资源列表")
+            return
         page_items, page, _ = self._page_items(
             items=request.items,
             page=request.page,

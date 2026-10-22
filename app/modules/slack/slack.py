@@ -411,15 +411,18 @@ class Slack:
 
             result = None
             target_channel = original_chat_id if original_message_id and original_chat_id else channel
-            for index, batch in enumerate(self._block_batches(blocks)):
+            batches = [(message_text[:1000], batch) for batch in self._block_batches(blocks)] if blocks else [
+                (message_text[offset:offset + 4000], []) for offset in range(0, len(message_text), 4000)
+            ]
+            for index, (plain_text, batch) in enumerate(batches):
                 if index == 0 and original_message_id and original_chat_id:
                     result = self._client.chat_update(
                         channel=original_chat_id, ts=original_message_id,
-                        text=message_text[:1000], blocks=batch or [],
+                        text=plain_text, blocks=batch or [],
                     )
                 else:
                     result = self._client.chat_postMessage(
-                        channel=target_channel, text=message_text[:1000], blocks=batch, mrkdwn=True,
+                        channel=target_channel, text=plain_text, blocks=batch, mrkdwn=True,
                     )
             return True, result
         except Exception as msg_e:
@@ -617,11 +620,9 @@ class Slack:
                 blocks.append({
                     "type": "divider"
                 })
-                index = 1
-
                 # 如果有自定义按钮，先添加所有媒体项，然后添加统一的按钮
                 if buttons:
-                    for media in medias:
+                    for index, media in enumerate(medias, start=1):
                         if media.get_poster_image():
                             if media.vote_star:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
@@ -646,7 +647,6 @@ class Slack:
                                     }
                                 }
                             )
-                            index += 1
 
                     for button_row in buttons:
                         elements = []
@@ -679,7 +679,7 @@ class Slack:
                                 "elements": elements
                             })
                 else:
-                    for media in medias:
+                    for index, media in enumerate(medias, start=1):
                         if media.get_poster_image():
                             if media.vote_star:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
@@ -721,7 +721,6 @@ class Slack:
                                     ]
                                 }
                             )
-                            index += 1
 
             if original_message_id and original_chat_id:
                 result = self._client.chat_update(
