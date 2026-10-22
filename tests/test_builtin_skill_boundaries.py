@@ -131,7 +131,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "feedback-issue": "11",
         "moviepilot-api": "59",
         "moviepilot-update": "7",
-        "organize-files": "5",
+        "organize-files": "6",
         "transfer-failed-retry": "6",
         "generate-identifiers": "4",
         "create-moviepilot-plugin": "7",
