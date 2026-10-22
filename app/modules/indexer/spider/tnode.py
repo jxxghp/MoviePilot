@@ -7,13 +7,13 @@ from typing import Any, List, Optional, Tuple
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.foundation import temporal as time_tools
-from app.foundation.singleton import SingletonClass
+from app.foundation.crypto import HashUtils
 from app.runtime.cache import cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
 
-class TNodeSpider(metaclass=SingletonClass):
+class TNodeSpider:
     """
     TNode 页面令牌与种子搜索 API 适配器。
     """
@@ -47,13 +47,28 @@ class TNodeSpider(metaclass=SingletonClass):
             if indexer.get('proxy'):
                 self._proxy = get_runtime_setting('PROXY')
             self._cookie = indexer.get('cookie')
+            self._token_key = HashUtils.md5(repr((self._domain, self._cookie, indexer.get('ua'))))
             self._ua = indexer.get('ua')
             self._timeout = indexer.get('timeout') or 15
 
-    @cached(region="indexer_spider", maxsize=1, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
     def __get_token(self) -> Optional[str]:
         """
+        以当前站点和凭据隔离的缓存键获取同步CSRF令牌。
+        """
+        return self.__cached_token(self._token_key)
+
+    async def __async_get_token(self) -> Optional[str]:
+        """
+        以当前站点和凭据隔离的缓存键获取异步CSRF令牌。
+        """
+        return await self.__async_cached_token(self._token_key)
+
+    @cached(region="indexer_spider", maxsize=64, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
+    def __cached_token(self, _identity: str) -> Optional[str]:
+        """
         同步请求站点首页并提取 CSRF 令牌。
+
+        :param _identity: 站点和凭据摘要，用于隔离共享令牌缓存
         """
         if not self._domain:
             return None
@@ -63,10 +78,12 @@ class TNodeSpider(metaclass=SingletonClass):
                            timeout=self._timeout).get_res(url=self._domain)
         return self.__parse_token_response(res)
 
-    @cached(region="indexer_spider", maxsize=1, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
-    async def __async_get_token(self) -> Optional[str]:
+    @cached(region="indexer_spider", maxsize=64, ttl=60 * 60 * 24, skip_empty=True, shared_key="get_token")
+    async def __async_cached_token(self, _identity: str) -> Optional[str]:
         """
         异步请求站点首页并提取 CSRF 令牌。
+
+        :param _identity: 站点和凭据摘要，用于隔离共享令牌缓存
         """
         if not self._domain:
             return None

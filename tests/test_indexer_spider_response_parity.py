@@ -72,8 +72,8 @@ _PROCESSOR_CASES = {
     "mtorrent": {
         "processor": "_MTorrentSpider__process_response",
         "parser": "_MTorrentSpider__parse_result",
-        "success": {"data": {"data": [{"marker": "hit"}]}},
-        "empty": {"data": {"data": []}},
+        "success": {"code": "0", "data": {"data": [{"marker": "hit"}]}},
+        "empty": {"code": "0", "data": {"data": []}},
     },
     "hddolby": {
         "processor": "_HddolbySpider__process_response",

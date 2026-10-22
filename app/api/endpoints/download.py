@@ -31,6 +31,7 @@ from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, Torr
 from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfo
+from app.foundation.url import UrlUtils
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import SubtitleInfo as _SchemaSubtitleInfo
@@ -85,7 +86,7 @@ def _prepare_subtitle_download(
         return False, "字幕站点信息不存在"
 
     subtitle.enclosure = clean_url
-    subtitle.site_cookie = site.cookie
+    subtitle.site_cookie = site.cookie if UrlUtils.same_origin(site.url, clean_url) else None
     subtitle.site_ua = site.ua
     subtitle.site_proxy = bool(site.proxy)
     return True, ""

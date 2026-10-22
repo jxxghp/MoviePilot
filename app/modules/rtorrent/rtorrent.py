@@ -7,7 +7,7 @@ import io
 import socket
 import traceback
 import xmlrpc.client
-from collections.abc import Buffer
+from collections.abc import Buffer, Callable
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union, cast
 from urllib.parse import urlparse
@@ -504,16 +504,18 @@ class Rtorrent:
             logger.error(f"停止种子出错：{str(err)}")
             return False
 
-    def delete_torrents(self, delete_file: bool, ids: Union[str, list[str]]) -> bool:
+    def delete_torrents(self, delete_file: bool, ids: Union[str, list[str]],
+                        *, path_mapper: Optional[Callable[[Path], str]] = None) -> bool:
         """
         删除指定种子任务，并按选项删除下载文件。
 
-        rTorrent 返回的内容路径在 MoviePilot 所在文件系统中删除。文件清理失败会记录警告；
-        返回 True 只说明任务删除流程完成，不保证文件全部移除。
+        先将rTorrent内容路径映射到MoviePilot本地文件系统，文件清理成功后才移除任务。
+        清理失败或映射为远程存储时保留任务，以便用户核对和重试。
 
         :param delete_file: 是否同时删除下载文件
         :param ids: 种子哈希或哈希列表
-        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
+        :param path_mapper: 将下载器内容路径映射为宿主本地路径；省略时保留直接客户端调用合同
+        :return: 文件清理及任务删除均完成时返回 True，失败时返回 False
         """
         if not self._proxy:
             return False
@@ -524,23 +526,23 @@ class Rtorrent:
                 ids = [ids]
             for tid in ids:
                 if delete_file:
-                    # 先获取base_path用于删除文件
-                    try:
-                        base_path = self._proxy.d.base_path(tid)
-                        self._proxy.d.erase(tid)
-                        if base_path:
-                            import shutil
-
-                            path = Path(_rpc_text(base_path))
-                            if path.is_dir():
-                                shutil.rmtree(str(path), ignore_errors=True)
-                            elif path.is_file():
-                                path.unlink(missing_ok=True)
-                    except Exception as e:
-                        logger.warning(f"删除种子文件出错：{str(e)}")
-                        self._proxy.d.erase(tid)
-                else:
-                    self._proxy.d.erase(tid)
+                    base_path = self._proxy.d.base_path(tid)
+                    if not base_path:
+                        logger.warning("下载器未返回文件路径，保留任务以便人工处理")
+                        return False
+                    path = Path(_rpc_text(base_path))
+                    mapped = path_mapper(path) if path_mapper else path.as_posix()
+                    # 云存储URI不能交给本地Path删除；下载器任务也保留以便核对。
+                    if ":" in mapped and not (len(mapped) > 2 and mapped[1] == ":"):
+                        logger.warning("下载器文件映射为远程存储，拒绝本地删除")
+                        return False
+                    path = Path(mapped)
+                    if path.is_dir():
+                        import shutil
+                        shutil.rmtree(path)
+                    elif path.exists():
+                        path.unlink()
+                self._proxy.d.erase(tid)
             return True
         except Exception as err:
             logger.error(f"删除种子出错：{str(err)}")
