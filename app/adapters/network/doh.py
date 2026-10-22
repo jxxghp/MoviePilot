@@ -9,8 +9,9 @@ import socket
 import struct
 import urllib
 import urllib.request
-from concurrent.futures import as_completed
+from concurrent.futures import Future, as_completed
 from threading import Lock
+from time import monotonic
 from typing import Any, Callable, Dict, Optional, cast
 
 from app.foundation.singleton import Singleton
@@ -27,8 +28,21 @@ _DOH_EXECUTOR_STOP_TIMEOUT_SECONDS = 10.0
 
 # 定义默认的DoH配置
 _doh_timeout = 5
+# 所有解析器都失败后的冷却秒数；冷却期内该域名直接使用系统 DNS，避免每次请求都等待解析超时并重复告警
+_DOH_FAILURE_COOLDOWN_SECONDS = 300.0
 _doh_cache: Dict[str, str] = {}
+# 域名到解析失败冷却截止时间（monotonic 秒）的映射
+_doh_failure_until: Dict[str, float] = {}
+# 解析状态代次；每次清空缓存时递增，查询结果只能写回发起查询时的代次，避免旧配置结果回填
+_doh_generation = 0
 _doh_lock = Lock()
+# DNS 报文固定头部长度（RFC 1035）
+_DNS_HEADER_LENGTH = 12
+# 资源记录在域名之后的固定字段长度：type:2 + class:2 + ttl:4 + rdlength:2
+_DNS_RECORD_FIXED_LENGTH = 10
+# A 记录类型与互联网类别
+_DNS_TYPE_A = 1
+_DNS_CLASS_IN = 1
 # 保存原始的 socket.getaddrinfo 方法
 _orig_getaddrinfo: Callable[..., Any] = socket.getaddrinfo
 
@@ -66,35 +80,34 @@ def enable_doh(enable: bool) -> bool:
         """
         if host not in _doh_setting("DOH_DOMAINS").split(","):
             return _orig_getaddrinfo(host, *args, **kwargs)
-        # 检查主机是否已解析
+        # 检查主机是否已解析，或仍处于全部解析器失败后的冷却期
         with _doh_lock:
             ip = _doh_cache.get(host, None)
+            cooling_down = _doh_failure_until.get(host, 0.0) > monotonic()
+            generation = _doh_generation
         if ip is not None:
             logger.info(f"已解析 [{host}] 为 [{ip}] (缓存)")
             return _orig_getaddrinfo(ip, *args, **kwargs)
         # 使用DoH解析主机
+        futures: list[Future[Optional[str]]] = []
         with _executor_lock:
-            if not _doh_enabled:
-                return _orig_getaddrinfo(host, *args, **kwargs)
-            executor = _get_executor_locked()
-            # 一次解析的任务必须在同一临界区提交完，避免关闭过程中部分任务落入新线程池
-            futures = [
-                submit_with_context(executor, _doh_query, resolver, host)
-                for resolver in _doh_setting("DOH_RESOLVERS").split(",")
-            ]
+            use_system_dns = not _doh_enabled or cooling_down
+            if not use_system_dns:
+                executor = _get_executor_locked()
+                # 一次解析的任务必须在同一临界区提交完，避免关闭过程中部分任务落入新线程池
+                futures = [
+                    submit_with_context(executor, _doh_query, resolver, host)
+                    for resolver in _doh_setting("DOH_RESOLVERS").split(",")
+                ]
+        # 系统 DNS 可能阻塞，必须在释放执行器锁后调用，避免拖住其他查询和有界关闭
+        if use_system_dns:
+            return _orig_getaddrinfo(host, *args, **kwargs)
         for future in as_completed(futures):
             ip = future.result()
             if ip is not None:
-                logger.info(f"已解析 [{host}] 为 [{ip}]")
-                # 关闭可能在查询等待期间恢复系统 DNS；关闭后的结果不得回填到下一轮配置。
-                with _executor_lock:
-                    cache_allowed = _doh_enabled
-                if cache_allowed:
-                    with _doh_lock:
-                        _doh_cache[host] = ip
-                host = ip
                 break
-        return _orig_getaddrinfo(host, *args, **kwargs)
+        _remember_doh_result(host, ip, generation)
+        return _orig_getaddrinfo(ip or host, *args, **kwargs)
 
     with _executor_lock:
         if enable and _executor is not None and not _executor.accepting:
@@ -109,6 +122,51 @@ def enable_doh(enable: bool) -> bool:
             Any, _patched_getaddrinfo if enable else _orig_getaddrinfo
         )
         return True
+
+
+def _remember_doh_result(host: str, ip: Optional[str], generation: int) -> None:
+    """
+    记录一次 DoH 并行查询的结果。
+
+    成功时缓存解析地址并解除该域名的失败冷却；所有解析器都失败时进入冷却期，
+    冷却期内该域名直接使用系统 DNS，并发查询只告警一次。
+    DoH 已关闭或配置已变更时丢弃结果，避免旧配置的结果回填到下一轮配置。
+
+    :param host: 查询的域名
+    :param ip: 第一个成功解析器返回的 IPv4 地址；全部失败时为 None
+    :param generation: 发起查询时的解析状态代次
+    """
+    if ip is not None:
+        logger.info(f"已解析 [{host}] 为 [{ip}]")
+    with _executor_lock:
+        cache_allowed = _doh_enabled
+    with _doh_lock:
+        if not cache_allowed or generation != _doh_generation:
+            return
+        if ip is not None:
+            _doh_cache[host] = ip
+            _doh_failure_until.pop(host, None)
+            return
+        now = monotonic()
+        if _doh_failure_until.get(host, 0.0) > now:
+            # 并发查询已记录冷却，不再重复告警
+            return
+        _doh_failure_until[host] = now + _DOH_FAILURE_COOLDOWN_SECONDS
+    logger.warning(
+        f"所有 DoH 解析器均未能解析 [{host}]，"
+        f"{_DOH_FAILURE_COOLDOWN_SECONDS:.0f} 秒内改用系统 DNS，请检查 DOH_RESOLVERS 是否可达"
+    )
+
+
+def _reset_doh_state() -> None:
+    """
+    清空解析缓存与失败冷却，并递增代次让仍在进行的旧查询结果失效。
+    """
+    global _doh_generation
+    with _doh_lock:
+        _doh_cache.clear()
+        _doh_failure_until.clear()
+        _doh_generation += 1
 
 
 class DohHelper(ConfigReloadMixin, metaclass=Singleton):
@@ -131,9 +189,8 @@ class DohHelper(ConfigReloadMixin, metaclass=Singleton):
             if not self.shutdown():
                 logger.error("DoH配置关闭后查询线程池未在预算内收敛")
             return
-        with _doh_lock:
-            # DOH配置有变动的情况下，清空缓存
-            _doh_cache.clear()
+        # DOH配置有变动的情况下，清空缓存和失败冷却，让新解析器立即生效
+        _reset_doh_state()
         if not enable_doh(True):
             logger.error("DoH查询线程池尚未收敛，暂不重新启用")
 
@@ -161,8 +218,7 @@ class DohHelper(ConfigReloadMixin, metaclass=Singleton):
             converged = executor is None or executor.shutdown_bounded(timeout=timeout)
             if converged and _executor is executor:
                 _executor = None
-        with _doh_lock:
-            _doh_cache.clear()
+        _reset_doh_state()
         return converged
 
 
@@ -220,16 +276,70 @@ def _doh_query(resolver: str, host: str) -> Optional[str]:
                 return None
             resp_body = response.read()
 
-        # 解析DNS响应消息（RFC 1035）
-        # name（压缩）:2 + type:2 + class:2 + ttl:4 + rdlength:2 = 12字节
-        first_rdata_start = len(header) + len(question) + 12
-        # rdata（A记录）= 4字节
-        first_rdata_end = first_rdata_start + 4
-        # 将rdata转换为IP地址
-        return socket.inet_ntoa(resp_body[first_rdata_start:first_rdata_end])
+        ip = _parse_dns_a_record(resp_body)
+        if ip is None:
+            logger.debug(f"解析器({resolver})未返回 [{host}] 的 A 记录")
+        return ip
     except Exception as e:
-        logger.error(f"解析器({resolver})请求错误: {e}")
+        # 单个解析器失败很常见，由调用方在全部失败时统一告警
+        logger.debug(f"解析器({resolver})请求错误: {e}")
         return None
+
+
+def _skip_dns_name(message: bytes, offset: int) -> Optional[int]:
+    """
+    跳过 DNS 报文中的一个域名字段。
+
+    域名由若干长度前缀标签组成，以零字节或压缩指针结尾；保留的标签类型按无效报文处理。
+
+    :param message: 完整 DNS 报文
+    :param offset: 域名字段的起始位置
+    :return: 域名之后第一个字节的位置；报文截断或标签无效时返回 None
+    """
+    while offset < len(message):
+        length = message[offset]
+        if length & 0xC0 == 0xC0:
+            return offset + 2
+        if length & 0xC0:
+            return None
+        if length == 0:
+            return offset + 1
+        offset += 1 + length
+    return None
+
+
+def _parse_dns_a_record(message: bytes) -> Optional[str]:
+    """
+    从 DNS 应答报文中取第一条 A 记录的 IPv4 地址（RFC 1035）。
+
+    应答区可能先给出 CNAME 等其他类型的记录，必须逐条跳过，
+    不能按固定偏移读取第一条记录，否则会把别名的域名字节误当成 IP。
+
+    :param message: 解析器返回的完整 DNS 报文
+    :return: 第一条 A 记录的点分十进制地址；响应码非成功、没有 A 记录或报文截断时返回 None
+    """
+    if len(message) < _DNS_HEADER_LENGTH or message[3] & 0x0F:
+        return None
+    question_count, answer_count = struct.unpack_from(">HH", message, 4)
+    offset = _DNS_HEADER_LENGTH
+    for _ in range(question_count):
+        name_end = _skip_dns_name(message, offset)
+        if name_end is None:
+            return None
+        # 跳过问题的 type 与 class
+        offset = name_end + 4
+    for _ in range(answer_count):
+        name_end = _skip_dns_name(message, offset)
+        if name_end is None or name_end + _DNS_RECORD_FIXED_LENGTH > len(message):
+            return None
+        record_type, record_class, _, data_length = struct.unpack_from(">HHIH", message, name_end)
+        offset = name_end + _DNS_RECORD_FIXED_LENGTH
+        if offset + data_length > len(message):
+            return None
+        if record_type == _DNS_TYPE_A and record_class == _DNS_CLASS_IN and data_length == 4:
+            return socket.inet_ntoa(message[offset:offset + 4])
+        offset += data_length
+    return None
 
 
 def doh_query_json(resolver: str, host: str) -> Optional[str]:
@@ -248,10 +358,16 @@ def doh_query_json(resolver: str, host: str) -> Optional[str]:
             response_body = response.read().decode("utf-8")
             logger.debug(f"<== body: {response_body}")
             answer = json.loads(response_body).get("Answer")
-            if not isinstance(answer, list) or not answer:
+            if not isinstance(answer, list):
                 return None
-            value = answer[0].get("data") if isinstance(answer[0], dict) else None
-            return value if isinstance(value, str) else None
+            # 应答可能先给出 CNAME 链，只取 A 记录的地址
+            for record in answer:
+                if isinstance(record, dict) and record.get("type") == _DNS_TYPE_A:
+                    value = record.get("data")
+                    if isinstance(value, str):
+                        return value
+            return None
     except Exception as e:
-        logger.error(f"解析器({resolver})请求错误: {e}")
+        # 单个解析器失败很常见，由调用方在全部失败时统一告警
+        logger.debug(f"解析器({resolver})请求错误: {e}")
         return None
