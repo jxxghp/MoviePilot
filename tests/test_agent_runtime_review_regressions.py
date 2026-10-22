@@ -744,7 +744,13 @@ async def test_terminal_close_cleans_descendant_after_leader_exit(tmp_path, rete
                 assert session.session_id in manager._sessions
             assert await manager.close_owner(owner)
             async with asyncio.timeout(2):
-                while psutil.pid_exists(pid) and psutil.Process(pid).status() != psutil.STATUS_ZOMBIE:
+                while True:
+                    try:
+                        status = psutil.Process(pid).status()
+                    except psutil.NoSuchProcess:
+                        break
+                    if status == psutil.STATUS_ZOMBIE:
+                        break
                     await asyncio.sleep(0.02)
             assert not manager._sessions
     finally:
