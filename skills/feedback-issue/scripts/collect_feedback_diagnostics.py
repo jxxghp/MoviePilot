@@ -33,7 +33,8 @@ _MAX_TIME_WINDOW_MINUTES = 24 * 60
 _LOG_TIMESTAMP_RE = re.compile(r"(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})")
 _LOG_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 _LOG_MODULE_RE = re.compile(
-    r"^【[^】]+】\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2},\d+\s+-\s+([^\s][^\-]*?)\s+-\s+"
+    r"^【[^】]+】\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2},\d+\s+"
+    r"(?:\[[^\]\r\n]*\]\s+)?-\s+([^\s][^\-]*?)\s+-\s+"
 )
 _LOG_DYNAMIC_VALUE_RE = re.compile(
     r"(?<![A-Za-z])(?:[0-9a-f]{8,}|\d+(?:\.\d+)?)(?![A-Za-z])",

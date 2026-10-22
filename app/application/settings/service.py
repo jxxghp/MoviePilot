@@ -9,6 +9,8 @@ import threading
 from collections.abc import Awaitable, Callable
 from typing import Any, ContextManager, Optional, cast
 
+from pydantic import TypeAdapter
+
 from app.application.configuration import (
     RuntimeSettingsService,
     SystemConfigService,
@@ -675,8 +677,8 @@ class SystemSettingsService:
             match_value,
         )
         normalized_value = self._normalize_systemconfig_value(next_value)
-        validate_setting_value(spec, normalized_value)
-        return normalized_value
+        validated_value = validate_setting_value(spec, normalized_value)
+        return TypeAdapter(spec.value_annotation).dump_python(validated_value, mode="json", exclude_unset=True)
 
     async def update(
         self,

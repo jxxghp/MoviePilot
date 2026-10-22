@@ -132,9 +132,7 @@ class Navidrome:
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
         """
-        临时使用给定凭据验证 Navidrome 用户。
-
-        验证期间会修改当前实例凭据，并在结束后恢复；此方法未提供并发认证隔离。
+        使用独立客户端验证给定凭据，不改变服务账号或其他并发认证上下文。
 
         :param username: 待验证的用户名
         :param password: 待验证的密码
@@ -142,12 +140,7 @@ class Navidrome:
         """
         if not username or not password or not self._host:
             return None
-        original_username, original_password = self._username, self._password
-        try:
-            self._username, self._password = username, password
-            return username if self._call("ping") else None
-        finally:
-            self._username, self._password = original_username, original_password
+        return Navidrome(host=self._host, username=username, password=password).user
 
     def get_user_count(self) -> int:
         """
@@ -233,19 +226,25 @@ class Navidrome:
         return f"{url}/getCoverArt?{urlencode(self._params(id=cover_id, size=512))}"
 
     def _albums(
-        self, list_type: str = "alphabeticalByName", size: int = 500
+        self, list_type: str = "alphabeticalByName", size: int = 500, *, strict: bool = False
     ) -> List[dict[str, Any]]:
         """
         分页读取专辑，直至短页、空页或接口失败。
 
         :param list_type: Subsonic 专辑排序方式，默认按名称排序
         :param size: 每页请求数量，默认 500
+        :param strict: 同步读取时要求完整结果，失败抛出 ConnectionError
         :return: 已读取的专辑列表；中途失败会返回此前已读取的部分结果
         """
         albums: List[dict[str, Any]] = []
         offset = 0
         while True:
             payload = self._call("getAlbumList2", type=list_type, size=size, offset=offset)
+            if strict:
+                if payload is None or not isinstance(payload.get("albumList2"), dict):
+                    raise ConnectionError("读取 Navidrome 专辑列表失败")
+                if "album" in payload["albumList2"] and not isinstance(payload["albumList2"]["album"], list):
+                    raise ConnectionError("Navidrome 专辑列表响应格式错误")
             page = ((payload or {}).get("albumList2") or {}).get("album") or []
             if not page:
                 break
@@ -311,18 +310,19 @@ class Navidrome:
         :param limit: 返回数量；-1 或 None 表示从起始位置返回到末尾
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :yields: 已转换为统一媒体模型的专辑条目
+        :raises ConnectionError: 任意一页读取失败，不能将部分结果作为完整媒体库
         """
         if query is not None and query.fields is not None:
-            for album in self._iter_albums(start_index, limit):
+            for album in self._iter_albums(start_index, limit, strict=True):
                 yield self._album_to_item(album)
             return
-        albums = self._albums()
+        albums = self._albums(strict=True)
         end = None if limit is None or limit == -1 else start_index + limit
         for album in albums[start_index:end]:
             yield self._album_to_item(album)
 
     def _iter_albums(
-        self, start_index: int, limit: Optional[int], *, list_type: str = "alphabeticalByName"
+        self, start_index: int, limit: Optional[int], *, list_type: str = "alphabeticalByName", strict: bool = False
     ) -> Generator[dict[str, Any], None, None]:
         """
         直接使用 Subsonic 的偏移和数量控制逐页读取，避免先取全量再切片。
@@ -330,6 +330,7 @@ class Navidrome:
         :param start_index: 首个专辑偏移，负数按零处理
         :param limit: 本次最大数量；None 或 -1 持续翻页，其它非正值不发请求
         :param list_type: Subsonic 专辑排序方式
+        :param strict: 同步读取时要求完整结果，失败抛出 ConnectionError
         :yields: 服务器返回的原始专辑
         """
         offset = max(0, start_index)
@@ -337,6 +338,11 @@ class Navidrome:
         while remaining is None or remaining > 0:
             size = 500 if remaining is None else min(500, remaining)
             payload = self._call("getAlbumList2", type=list_type, size=size, offset=offset)
+            if strict:
+                if payload is None or not isinstance(payload.get("albumList2"), dict):
+                    raise ConnectionError("读取 Navidrome 专辑列表失败")
+                if "album" in payload["albumList2"] and not isinstance(payload["albumList2"]["album"], list):
+                    raise ConnectionError("Navidrome 专辑列表响应格式错误")
             albums = ((payload or {}).get("albumList2") or {}).get("album") or []
             yield from albums
             if len(albums) < size:

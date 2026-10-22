@@ -326,20 +326,12 @@ def _merge_baseline(
     baseline: Mapping[str, Any], current: Mapping[str, Any]
 ) -> dict[str, Any]:
     """
-    只提升逐文件低水位，并移除已删除文件。
+    使用同一份当前计数生成逐文件和汇总低水位；调用方已拒绝覆盖率回退。
     """
-    old_files = baseline.get("files", {})
-    current_files = current["files"]
-    merged: dict[str, Mapping[str, int | float]] = {}
-    for path, values in current_files.items():
-        previous = old_files.get(path) if isinstance(old_files, Mapping) else None
-        if previous is not None and not _file_ratio_is_lower(values, previous):
-            merged[path] = previous
-        else:
-            merged[path] = values
-    result = dict(current)
-    result["files"] = dict(sorted(merged.items()))
-    return result
+    regressions = compare_coverage(baseline, current)
+    if regressions:
+        raise ValueError("拒绝写入覆盖率回退：" + "; ".join(regressions))
+    return _snapshot_from_files(current["files"])
 
 
 def main() -> int:

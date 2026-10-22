@@ -330,18 +330,30 @@ def test_tnode_search_caches_tokens_per_current_connection_identity(tmp_path, mo
         只替换HTTP边界，令牌缓存、首页解析和搜索请求组装均由真实实现执行。
         """
         def get_res(url):
+            """
+            按当前连接身份返回独立令牌，并记录实际首页请求。
+            """
             identity = (url, kwargs["cookies"], kwargs["ua"])
             pages.append(identity)
             return _FakeResponse(text=f'<meta name="x-csrf-token" content="{tokens[identity]}">')
 
         def post_res(url, json):
+            """
+            记录搜索提交的令牌和页码，返回合法空结果。
+            """
             submitted.append((url, {key.lower(): value for key, value in kwargs["headers"].items()}, json))
             return _FakeResponse({"data": {"torrents": []}})
 
         async def async_get_res(url):
+            """
+            在异步搜索入口复用同一首页响应合同。
+            """
             return get_res(url)
 
         async def async_post_res(url, json):
+            """
+            在异步搜索入口记录同一请求合同。
+            """
             return post_res(url, json)
 
         from types import SimpleNamespace
@@ -372,19 +384,34 @@ def test_tnode_invalid_homepage_is_retried_before_search(tmp_path, monkeypatch, 
     pages, submitted = [], []
 
     def http_client(*_args, **kwargs):
+        """
+        模拟首页先拒绝后成功的传输边界，保留真实令牌重试逻辑。
+        """
         def get_res(url):
+            """
+            依次返回拒绝和恢复响应，并记录重试次数。
+            """
             pages.append(url)
             return responses.pop(0)
 
         def post_res(url, json):
+            """
+            记录取得有效令牌后才允许发起的搜索。
+            """
             del url, json
             submitted.append(kwargs["headers"])
             return _FakeResponse({"data": {"torrents": []}})
 
         async def async_get_res(url):
+            """
+            在异步入口复用可恢复的首页响应序列。
+            """
             return get_res(url)
 
         async def async_post_res(url, json):
+            """
+            在异步入口记录取得有效令牌后的搜索。
+            """
             return post_res(url, json)
 
         return SimpleNamespace(get_res=async_get_res if asynchronous else get_res,

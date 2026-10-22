@@ -67,6 +67,8 @@ UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
 
 不需要打开 IDE 时，可以直接使用仓库内的启动脚本。脚本会自动定位项目根目录和虚拟环境，并以模块方式启动后端，避免 `ModuleNotFoundError: No module named 'app'`。
 
+后端开发入口优先使用 `uv sync` 创建的 `.venv/bin/python`，没有该解释器时使用旧的 `venv/bin/python`。`./scripts/start-local.sh help` 不要求先安装虚拟环境。
+
 ```bash
 # 默认启动后端开发服务，前台运行，按 Ctrl+C 停止
 ./scripts/start-local.sh

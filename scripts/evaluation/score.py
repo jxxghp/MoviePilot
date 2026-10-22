@@ -484,12 +484,12 @@ def _check_long_context_claims(
             event for event in ledger
             if event.get("operation_id") == "subscription.list" and event.get("outcome") == "succeeded"
         ]
-        pages = {
+        pages = [
             event.get("request", {}).get("query", {}).get("page")
             for event in subscription_events
             if event.get("request", {}).get("query", {}).get("count") == 20
-        }
-        if pages != set(range(1, 7)):
+        ]
+        if pages != list(range(1, 7)):
             violations.append("long_context_pages_not_verified")
         target_rows = [
             observation.get("record", {})

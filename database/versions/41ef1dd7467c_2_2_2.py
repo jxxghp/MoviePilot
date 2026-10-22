@@ -26,7 +26,7 @@ def upgrade() -> None:
 
     select_stmt = text(
         """
-        SELECT id, key, value
+        SELECT id, key
         FROM SystemConfig
         WHERE id NOT IN (
             SELECT MAX(id)
@@ -38,7 +38,7 @@ def upgrade() -> None:
     to_delete = connection.execute(select_stmt).fetchall()
     for row in to_delete:
         logger.warn(
-            f"已删除重复的 SystemConfig 项：key={row.key}, value={row.value}, id={row.id}"
+            f"已删除重复的 SystemConfig 项：key={row.key}, id={row.id}"
         )
         delete_stmt = text("DELETE FROM SystemConfig WHERE id = :id")
         connection.execute(delete_stmt, {"id": row.id})

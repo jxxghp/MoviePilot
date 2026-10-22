@@ -219,6 +219,7 @@ moviepilot install frontend --config-dir /path/to/moviepilot-config
 - 如需覆盖默认行为，仍可显式传入 `--version latest` 或指定具体 tag
 - 会自动安装本地 Node 运行时
 - 会自动安装 `service.js` 所需的运行依赖
+- 新版前端及其依赖全部准备成功后才替换当前版本；依赖安装失败时保留已有页面和依赖
 
 安装资源文件：
 
@@ -313,6 +314,8 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 
 - `--superuser-password` 更适合自动化场景，命令可能会出现在 shell 历史中
 - 交互式 `--wizard` 会在初始化过程中提示输入超级管理员用户名和密码
+- 重复初始化会更新已有账号的权限和显式指定的密码；向导留空保留原密码中的引号与反斜杠
+- 引导脚本的 `--non-interactive` 即使连接终端也跳过向导，`--link-path` 保留显式指定的命令路径
 
 ## 开机自启命令
 
@@ -408,7 +411,9 @@ moviepilot agent --new-session 帮我总结当前系统配置有什么明显问�
 说明：
 
 - `moviepilot agent` 直接在本地环境里发起一次智能体请求
+- 请在独立 CLI 进程中执行；入口会装配正式数据、配置及 Agent/Chain 能力，完成后按依赖顺序关闭资源
 - 默认每次可自动创建新会话，也可以通过 `--session` 指定会话 ID
+- 使用相同用户和 `--session` 可在下一次 CLI 调用恢复持久化历史；模型异常或取消也会执行资源关闭
 - 使用前需要先正确配置 LLM 相关参数，并打开 `AI_AGENT_ENABLE`
 
 ## 服务管理命令
