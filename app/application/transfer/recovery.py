@@ -1,5 +1,5 @@
 """
-失败与损坏整理任务的证据清理和历史解绑用例。
+整理任务的只读 AI 接管校验、失败证据恢复和历史解绑用例。
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Optional
 from app.application.transfer.execution import (
     TransferExecutionConflictError,
     TransferExecutionRepository,
+    TransferExecutionState,
     TransferFailureDiscardResult,
 )
 from app.domain.meta.metamusic import MetaMusic
@@ -18,6 +19,29 @@ from app.schemas.types import MediaType
 
 if TYPE_CHECKING:
     from app.application.transfer.models import TransferPlanCheckpoint, TransferPlanningInput
+
+
+def ai_takeover_rejection(
+        *, history_id: int, task_id: Optional[str], repository: TransferExecutionRepository,
+) -> Optional[str]:
+    """
+    只读核对 AI 接管入口的任务归属，不提前登记普通重试或清理证据。
+
+    :param history_id: 请求接管的历史标识
+    :param task_id: 历史关联任务；旧历史为 None
+    :param repository: 读取最新持久执行状态的端口
+    :return: 不允许接管的原因；允许时为 None
+    """
+    if not task_id:
+        return None
+    snapshot = repository.get_snapshot(task_id=task_id)
+    if snapshot is None or snapshot.terminal_history_id != history_id:
+        return "整理任务与历史状态已变化，请刷新后重试"
+    if snapshot.state is TransferExecutionState.MANUAL_REVIEW:
+        return "这条整理任务需要先完成人工确认，再交给智能助手"
+    if snapshot.state is not TransferExecutionState.FAILED:
+        return "整理任务正在处理或等待重试，请等待当前任务结束"
+    return None
 
 
 def music_replanning_input(checkpoint: TransferPlanCheckpoint) -> Optional[TransferPlanningInput]:

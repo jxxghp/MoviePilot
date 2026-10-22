@@ -15,10 +15,7 @@ from app.application.configuration import ApiRuntimeConfig
 from app.application.transfer.execution import (
     TransferExecutionState,
     TransferFailureDiscardResult,
-    TransferRetryRequestResult,
 )
-from app.runtime.progress import AsyncProgressHelper
-from app.runtime.tasks import TaskRegistry
 from app.schemas.history import BatchTransferHistoryRedoRequest, TransferHistory
 
 
@@ -51,35 +48,6 @@ class _HistoryQuery:
         return records, missing
 
 
-class _RetryCommand:
-    """
-    记录 execution 重试请求并返回逐任务测试结果。
-    """
-
-    calls: list[tuple[object, dict]] = []
-    results: dict[str, TransferRetryRequestResult] = {}
-
-    def __init__(self, repository: object) -> None:
-        """
-        保存调用方取得的 execution 仓储。
-        """
-        self._repository = repository
-
-    def request_retry(self, **kwargs) -> TransferRetryRequestResult:
-        """
-        记录调用并返回任务对应结果。
-        """
-        self.calls.append((self._repository, kwargs))
-        return self.results[kwargs["task_id"]]
-
-
-async def _record_async(target: list[dict], payload: dict) -> None:
-    """
-    记录被 await 的异步边界调用。
-    """
-    target.append(payload)
-
-
 def _runtime(*, ai_enabled: bool = True) -> ApiRuntimeConfig:
     """
     构造历史端点需要的最小稳定配置快照。
@@ -91,457 +59,131 @@ def _runtime(*, ai_enabled: bool = True) -> ApiRuntimeConfig:
     )
 
 
-def _retry_result(
-    *,
-    accepted: bool,
-    state: TransferExecutionState,
-    message: str,
-) -> TransferRetryRequestResult:
-    """
-    构造 execution 重试登记结果。
-    """
-    return TransferRetryRequestResult(
-        accepted=accepted,
-        state=state,
-        retry_generation=3,
-        message=message,
-    )
-
-
-def _install_retry_command(monkeypatch, results: dict[str, TransferRetryRequestResult]) -> object:
-    """
-    构造不会接触真实数据库的 execution 端口并安装命令替身。
-    """
-    repository = object()
-    _RetryCommand.calls = []
-    _RetryCommand.results = results
-    monkeypatch.setattr(history_endpoint, "TransferExecutionCommand", _RetryCommand)
-    return repository
-
-
 def test_transfer_history_task_id_is_internal_projection_only() -> None:
     """
     durable 任务标识可供宿主读取，但不得扩展公开历史响应。
     """
-    history = TransferHistory(id=7, transfer_task_id="task-7")
+    history = TransferHistory(id=7, transfer_task_id="task-7", transfer_settlement_revision=1)
 
     assert history.transfer_task_id == "task-7"
     assert "transfer_task_id" not in history.model_dump()
+    assert "transfer_settlement_revision" not in history.model_dump()
 
 
-def test_durable_retry_progress_is_immediately_completed_for_existing_sse() -> None:
+def _execution_port(*states):
     """
-    durable 重试完成进度应让既有 SSE 客户端首次读取即可收口。
+    提供只读任务快照，并监视任何意外的重试或删除写入。
+
+    :param states: 按历史标识、任务状态组成的测试序列
+    :return: 返回隔离快照的仓储替身
     """
-
-    async def scenario() -> dict:
-        """
-        写入并回读同一个测试进度键。
-        """
-        progress_key = "test_history_durable_retry_completed"
-        await history_endpoint._complete_durable_retry_progress(
-            progress_key=progress_key,
-            text="已提交重新整理，后台将自动处理",
-            history_ids=[8],
-        )
-        detail = await AsyncProgressHelper(progress_key).get()
-        assert detail is not None
-        return detail
-
-    detail = asyncio.run(scenario())
-
-    assert detail["enable"] is False
-    assert detail["value"] == 100
-    assert detail["data"]["history_ids"] == [8]
-    assert detail["data"]["success"] is True
-    assert detail["data"]["completed"] is True
-    assert detail["data"]["message"] == "已提交重新整理，后台将自动处理"
+    snapshots = {
+        f"task-{history_id}": SimpleNamespace(state=state, terminal_history_id=history_id)
+        for history_id, state in states
+    }
+    repository = Mock()
+    repository.get_snapshot.side_effect = lambda *, task_id: snapshots.get(task_id)
+    return repository
 
 
-def test_durable_retry_progress_waits_for_real_success_history(monkeypatch) -> None:
+def test_single_ai_redo_starts_agent_without_retrying_frozen_plan(monkeypatch):
     """
-    提供 durable 依赖后，进度应等终态历史落地再完成并保留逐项状态。
+    持久化失败必须真正交给 AI 分析，不能提前登记原计划重试。
     """
-
-    class _ExecutionRepository:
-        """
-        模拟任务终态提交后 pending 被删除。
-        """
-
-        @staticmethod
-        async def async_get_snapshot(*, task_id: str):
-            """
-            异步返回已删除的 pending 快照。
-            """
-            assert task_id == "task-31"
-            return None
-
-    class _HistoryRepository:
-        """
-        模拟 durable 成功结算写入的历史回执。
-        """
-
-        @staticmethod
-        async def async_get_by_transfer_task_id(*, task_id: str):
-            """
-            异步返回指定任务的成功历史。
-            """
-            assert task_id == "task-31"
-            return SimpleNamespace(status=True)
-
-    async def scenario() -> dict:
-        """
-        启动真实 watcher 并等后台任务完成。
-        """
-        progress_key = "test_history_durable_retry_real_success"
-        registry = TaskRegistry()
-        monkeypatch.setattr(
-            history_endpoint,
-            "get_transfer_history_repository",
-            lambda: _HistoryRepository(),
-        )
-        await history_endpoint._complete_durable_retry_progress(
-            progress_key=progress_key,
-            text="已提交重新整理，后台将自动处理",
-            history_ids=[31],
-            task_ids=["task-31"],
-            execution_repository=_ExecutionRepository(),
-            task_registry=registry,
-        )
-        await asyncio.gather(*(record.task for record in registry.records))
-        detail = await AsyncProgressHelper(progress_key).get()
-        assert detail is not None
-        return detail
-
-    original_sleep = asyncio.sleep
-
-    async def no_wait(_seconds: float) -> None:
-        """
-        让 watcher 立即进入下一次轮询，同时把执行权交回事件循环。
-        """
-        await original_sleep(0)
-
-    monkeypatch.setattr(history_endpoint.asyncio, "sleep", no_wait)
-    detail = asyncio.run(scenario())
-
-    assert detail["enable"] is False
-    assert detail["data"]["success"] is True
-    assert detail["data"]["states"] == [
-        {
-            "task_id": "task-31",
-            "history_id": 31,
-            "state": "completed",
-            "success": True,
-            "error": None,
-        }
-    ]
+    repository = _execution_port((11, TransferExecutionState.FAILED))
+    started = Mock()
+    monkeypatch.setattr(history_endpoint, "_start_ai_redo_task", started)
+    response = asyncio.run(history_endpoint.ai_redo_transfer_history(
+        11, query=_HistoryQuery([TransferHistory(id=11, transfer_task_id="task-11")]),
+        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
+    ))
+    assert response.success
+    assert response.data["progress_key"].startswith("ai_redo_transfer_11_")
+    assert started.call_args.kwargs["history_id"] == 11
+    prompt = started.call_args.kwargs["prompt"]
+    assert "task-11" in prompt and "transfer.history.replan" in prompt
+    repository.request_retry.assert_not_called()
+    repository.request_replan.assert_not_called()
 
 
-def test_durable_retry_progress_exposes_failed_item_state() -> None:
+@pytest.mark.parametrize("batch", [False, True])
+def test_ai_disabled_never_retries_durable_tasks(monkeypatch, batch):
     """
-    durable 再次失败时，进度应以失败终态结束并暴露对应历史项。
+    AI 未启用时单条及批量入口都拒绝，不能静默变成普通重试。
     """
-
-    class _ExecutionRepository:
-        """
-        返回已结算失败的 durable 任务。
-        """
-
-        @staticmethod
-        async def async_get_snapshot(*, task_id: str):
-            """
-            异步返回失败快照和用户可读原因。
-            """
-            assert task_id == "task-32"
-            return SimpleNamespace(
-                state=TransferExecutionState.FAILED,
-                last_error="目标存储不可写",
-            )
-
-    async def scenario() -> dict:
-        """
-        等待真实后台 watcher 结束并读取进度。
-        """
-        progress_key = "test_history_durable_retry_real_failure"
-        registry = TaskRegistry()
-        await history_endpoint._complete_durable_retry_progress(
-            progress_key=progress_key,
-            text="已提交重新整理，后台将自动处理",
-            history_ids=[32],
-            task_ids=["task-32"],
-            execution_repository=_ExecutionRepository(),
-            task_registry=registry,
-        )
-        await asyncio.gather(*(record.task for record in registry.records))
-        detail = await AsyncProgressHelper(progress_key).get()
-        assert detail is not None
-        return detail
-
-    detail = asyncio.run(scenario())
-
-    assert detail["enable"] is False
-    assert detail["data"]["success"] is False
-    assert detail["data"]["error"] == "目标存储不可写"
-    assert detail["data"]["states"][0]["history_id"] == 32
-    assert detail["data"]["states"][0]["state"] == "failed"
+    repository = Mock()
+    started = Mock()
+    monkeypatch.setattr(history_endpoint, "_start_ai_redo_task", started)
+    monkeypatch.setattr(history_endpoint, "_start_batch_ai_redo_task", started)
+    kwargs = dict(query=_HistoryQuery([TransferHistory(id=11, transfer_task_id="task-11")]),
+                  runtime_config=_runtime(ai_enabled=False), task_registry=object(),
+                  execution_repository=repository, _=None)
+    request = (history_endpoint.batch_ai_redo_transfer_history(
+        BatchTransferHistoryRedoRequest(history_ids=[11]), **kwargs
+    ) if batch else history_endpoint.ai_redo_transfer_history(11, **kwargs))
+    response = asyncio.run(request)
+    assert not response.success and "未启用" in response.message
+    assert repository.mock_calls == []
+    started.assert_not_called()
 
 
-def test_single_ai_redo_requests_durable_retry_without_agent(monkeypatch) -> None:
+@pytest.mark.parametrize("state", [TransferExecutionState.MANUAL_REVIEW,
+                                  TransferExecutionState.RUNNING, TransferExecutionState.RETRY_WAIT])
+def test_single_ai_redo_rejects_protected_execution_states(monkeypatch, state):
     """
-    单条 durable AI 重做只登记调度重试，即使 Agent 功能未启用。
+    人工复核与执行中的任务不启动 Agent，也不改变现有恢复状态。
     """
-    repository = _install_retry_command(
-        monkeypatch,
-        {
-            "task-11": _retry_result(
-                accepted=True,
-                state=TransferExecutionState.RETRY_WAIT,
-                message="已提交重新整理，后台将自动处理",
-            )
-        },
-    )
-    monkeypatch.setattr(
-        history_endpoint,
-        "_start_ai_redo_task",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("durable 重试不得启动 Agent")),
-    )
-    completed_progress: list[dict] = []
-    monkeypatch.setattr(
-        history_endpoint,
-        "_complete_durable_retry_progress",
-        lambda **kwargs: _record_async(completed_progress, kwargs),
-    )
-
-    response = asyncio.run(
-        history_endpoint.ai_redo_transfer_history(
-            11,
-            query=_HistoryQuery([TransferHistory(id=11, transfer_task_id="task-11")]),
-            runtime_config=_runtime(ai_enabled=False),
-            task_registry=object(),
-            execution_repository=repository,
-            _=object(),
-        )
-    )
-
-    assert response.success is True
-    assert response.data is not None
-    assert response.data["progress_key"].startswith("transfer_retry_11_")
-    assert response.message == "已提交重新整理，后台将自动处理"
-    assert completed_progress[0]["history_ids"] == [11]
-    assert _RetryCommand.calls == [
-        (
-            repository,
-            {
-                "task_id": "task-11",
-                "reason": "AI REST 请求重试整理历史 #11",
-                "requested_by": "history_ai_redo",
-            },
-        )
-    ]
+    repository = _execution_port((12, state))
+    started = Mock()
+    monkeypatch.setattr(history_endpoint, "_start_ai_redo_task", started)
+    response = asyncio.run(history_endpoint.ai_redo_transfer_history(
+        12, query=_HistoryQuery([TransferHistory(id=12, transfer_task_id="task-12")]),
+        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
+    ))
+    assert not response.success
+    assert "人工确认" in response.message if state is TransferExecutionState.MANUAL_REVIEW else "正在处理" in response.message
+    started.assert_not_called()
+    repository.request_retry.assert_not_called()
 
 
-def test_single_ai_redo_reports_manual_review_rejection(monkeypatch) -> None:
+@pytest.mark.parametrize("mixed", [False, True])
+def test_batch_ai_redo_sends_all_eligible_records_to_agent(monkeypatch, mixed):
     """
-    人工复核状态必须原样拒绝，且不得回退到破坏性 Agent 流程。
+    全持久化或混合批量均交给 AI，保留前端进度协议并按输入去重。
     """
-    repository = _install_retry_command(
-        monkeypatch,
-        {
-            "task-12": _retry_result(
-                accepted=False,
-                state=TransferExecutionState.MANUAL_REVIEW,
-                message="这条整理任务需要先完成人工确认，再重试",
-            )
-        },
-    )
-    monkeypatch.setattr(
-        history_endpoint,
-        "build_manual_redo_prompt",
-        lambda _history: (_ for _ in ()).throw(AssertionError("拒绝后不得生成 Agent 提示词")),
-    )
-
-    response = asyncio.run(
-        history_endpoint.ai_redo_transfer_history(
-            12,
-            query=_HistoryQuery([TransferHistory(id=12, transfer_task_id="task-12")]),
-            runtime_config=_runtime(),
-            task_registry=object(),
-            execution_repository=repository,
-            _=object(),
-        )
-    )
-
-    assert response.success is False
-    assert response.message == "这条整理任务需要先完成人工确认，再重试"
-
-
-def test_batch_ai_redo_returns_completed_progress_for_durable_tasks(monkeypatch) -> None:
-    """
-    全 durable 批量接受后保留前端既有 progress_key 协议。
-    """
-    repository = _install_retry_command(
-        monkeypatch,
-        {
-            "task-18": _retry_result(
-                accepted=True,
-                state=TransferExecutionState.RETRY_WAIT,
-                message="已提交重新整理，后台将自动处理",
-            ),
-            "task-19": _retry_result(
-                accepted=True,
-                state=TransferExecutionState.RETRY_WAIT,
-                message="整理任务已在等待重新处理",
-            ),
-        },
-    )
-    completed_progress: list[dict] = []
-    monkeypatch.setattr(
-        history_endpoint,
-        "_complete_durable_retry_progress",
-        lambda **kwargs: _record_async(completed_progress, kwargs),
-    )
-    monkeypatch.setattr(
-        history_endpoint,
-        "_start_batch_ai_redo_task",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("全 durable 批量不得启动 Agent")),
-    )
-
-    response = asyncio.run(
-        history_endpoint.batch_ai_redo_transfer_history(
-            BatchTransferHistoryRedoRequest(history_ids=[18, 19]),
-            query=_HistoryQuery(
-                [
-                    TransferHistory(id=18, transfer_task_id="task-18"),
-                    TransferHistory(id=19, transfer_task_id="task-19"),
-                ]
-            ),
-            runtime_config=_runtime(ai_enabled=False),
-            task_registry=object(),
-            execution_repository=repository,
-            _=object(),
-        )
-    )
-
-    assert response.success is True
-    assert response.data is not None
-    assert response.data["progress_key"].startswith("transfer_retry_batch_")
+    repository = _execution_port((18, TransferExecutionState.FAILED), (19, TransferExecutionState.FAILED))
+    started = Mock()
+    monkeypatch.setattr(history_endpoint, "_start_batch_ai_redo_task", started)
+    response = asyncio.run(history_endpoint.batch_ai_redo_transfer_history(
+        BatchTransferHistoryRedoRequest(history_ids=[18, 19, 18]),
+        query=_HistoryQuery([TransferHistory(id=18, transfer_task_id="task-18"),
+                             TransferHistory(id=19, transfer_task_id=None if mixed else "task-19")]),
+        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
+    ))
+    assert response.success
     assert response.data["history_ids"] == [18, 19]
-    assert completed_progress[0]["history_ids"] == [18, 19]
+    assert response.data["progress_key"].startswith("ai_redo_transfer_batch_")
+    assert started.call_args.kwargs["history_ids"] == [18, 19]
+    assert "task-18" in started.call_args.kwargs["prompt"]
+    repository.request_retry.assert_not_called()
 
 
-def test_batch_ai_redo_reports_each_rejection_without_starting_legacy_agent(
-    monkeypatch,
-) -> None:
+def test_batch_rejection_has_no_partial_retry_side_effects(monkeypatch):
     """
-    混合批量逐 task 返回拒绝，避免同时产生无人监听的旧 Agent 任务。
+    批量任一任务仍在执行时，整批只读拒绝，不先重试其它任务。
     """
-    repository = _install_retry_command(
-        monkeypatch,
-        {
-            "task-21": _retry_result(
-                accepted=True,
-                state=TransferExecutionState.RETRY_WAIT,
-                message="已提交重新整理，后台将自动处理",
-            ),
-            "task-22": _retry_result(
-                accepted=False,
-                state=TransferExecutionState.RUNNING,
-                message="这条整理任务当前无法重试，请刷新后再试",
-            ),
-        },
-    )
-    started: list[dict] = []
-    prompted: list[list[int]] = []
-    monkeypatch.setattr(
-        history_endpoint,
-        "build_batch_manual_redo_prompt",
-        lambda histories: prompted.append([history.id for history in histories]) or "legacy prompt",
-    )
-    monkeypatch.setattr(
-        history_endpoint,
-        "_start_batch_ai_redo_task",
-        lambda **kwargs: started.append(kwargs),
-    )
-    histories = [
-        TransferHistory(id=21, transfer_task_id="task-21"),
-        TransferHistory(id=22, transfer_task_id="task-22"),
-        TransferHistory(id=23),
-    ]
-
-    response = asyncio.run(
-        history_endpoint.batch_ai_redo_transfer_history(
-            BatchTransferHistoryRedoRequest(history_ids=[21, 22, 23]),
-            query=_HistoryQuery(histories),
-            runtime_config=_runtime(),
-            task_registry=object(),
-            execution_repository=repository,
-            _=object(),
-        )
-    )
-
-    assert response.success is False
-    assert "已提交 1 个整理任务，后台将自动处理" in response.message
-    assert "第 22 条：这条整理任务当前无法重试，请刷新后再试" in response.message
-    assert response.data is None
-    assert "1 条旧历史未提交" in response.message
-    assert prompted == []
-    assert [call[1]["task_id"] for call in _RetryCommand.calls] == [
-        "task-21",
-        "task-22",
-    ]
-    assert started == []
-
-
-def test_batch_ai_redo_sends_only_legacy_records_after_durable_acceptance(
-    monkeypatch,
-) -> None:
-    """
-    混合批量全接受时 durable 只登记重试，旧历史才进入 Agent。
-    """
-    repository = _install_retry_command(
-        monkeypatch,
-        {
-            "task-24": _retry_result(
-                accepted=True,
-                state=TransferExecutionState.RETRY_WAIT,
-                message="已提交重新整理，后台将自动处理",
-            )
-        },
-    )
-    prompted: list[list[int]] = []
-    started: list[dict] = []
-    monkeypatch.setattr(
-        history_endpoint,
-        "build_batch_manual_redo_prompt",
-        lambda histories: prompted.append([history.id for history in histories]) or "legacy prompt",
-    )
-    monkeypatch.setattr(
-        history_endpoint,
-        "_start_batch_ai_redo_task",
-        lambda **kwargs: started.append(kwargs),
-    )
-
-    response = asyncio.run(
-        history_endpoint.batch_ai_redo_transfer_history(
-            BatchTransferHistoryRedoRequest(history_ids=[24, 25]),
-            query=_HistoryQuery(
-                [
-                    TransferHistory(id=24, transfer_task_id="task-24"),
-                    TransferHistory(id=25),
-                ]
-            ),
-            runtime_config=_runtime(),
-            task_registry=object(),
-            execution_repository=repository,
-            _=object(),
-        )
-    )
-
-    assert response.success is True
-    assert response.data is not None
-    assert response.data["history_ids"] == [24, 25]
-    assert prompted == [[25]]
-    assert started[0]["history_ids"] == [25]
+    repository = _execution_port((21, TransferExecutionState.FAILED), (22, TransferExecutionState.RUNNING))
+    started = Mock()
+    monkeypatch.setattr(history_endpoint, "_start_batch_ai_redo_task", started)
+    response = asyncio.run(history_endpoint.batch_ai_redo_transfer_history(
+        BatchTransferHistoryRedoRequest(history_ids=[21, 22, 23]),
+        query=_HistoryQuery([TransferHistory(id=21, transfer_task_id="task-21"),
+                             TransferHistory(id=22, transfer_task_id="task-22"), TransferHistory(id=23)]),
+        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
+    ))
+    assert not response.success and "第 22 条" in response.message
+    started.assert_not_called()
+    repository.request_retry.assert_not_called()
 
 
 @pytest.mark.parametrize("discarded", [True, False])
@@ -617,3 +259,37 @@ def test_resolve_transfer_cleanup_returns_command_result(success):
     assert response.success is success
     assert response.message == "清理确认结果"
     command.resolve_cleanup.assert_called_once_with(9)
+
+
+@pytest.mark.parametrize('batch', [False, True])
+def test_ai_background_progress_reports_analysis_completion(monkeypatch, batch):
+    """
+    单条与批量后台任务均真实调用 Agent，并将分析结束与文件成功区分。
+    """
+    from unittest.mock import AsyncMock
+
+    from app.runtime.tasks import TaskRegistry
+
+    progress = SimpleNamespace(start=AsyncMock(), update=AsyncMock(), end=AsyncMock())
+    manager = SimpleNamespace(run_background_prompt=AsyncMock())
+    monkeypatch.setattr(history_endpoint, 'AsyncProgressHelper', lambda _key: progress)
+    monkeypatch.setattr(history_endpoint, 'get_running_agent_manager', lambda: manager)
+
+    async def scenario():
+        """
+        等待受管任务完成，避免遗留后台协程。
+        """
+        registry = TaskRegistry()
+        kwargs = dict(prompt='analyze and verify S02E03', progress_key='test-ai', task_registry=registry)
+        if batch:
+            history_endpoint._start_batch_ai_redo_task(history_ids=[11, 12], **kwargs)
+        else:
+            history_endpoint._start_ai_redo_task(history_id=11, **kwargs)
+        await asyncio.gather(*(record.task for record in registry.records))
+        assert await registry.shutdown()
+
+    asyncio.run(scenario())
+    manager.run_background_prompt.assert_awaited_once()
+    assert manager.run_background_prompt.call_args.kwargs['message'] == 'analyze and verify S02E03'
+    assert '分析完成' in progress.update.call_args.kwargs['text']
+    progress.end.assert_awaited_once()

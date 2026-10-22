@@ -454,9 +454,9 @@ def test_manual_replan_without_settlement_revision_obeys_current_lease(
             assert session.get(TransferHistory, history.id) is None
 
 
-def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
+def test_disabled_ai_button_does_not_request_scheduler(monkeypatch):
     """
-    AI 按钮命中 durable 历史时也只能登记调度重试。
+    AI 未启用时，持久化历史的按钮不会静默执行普通重试。
     """
     repository = _install_retry_port(monkeypatch)
     history = SimpleNamespace(id=83, transfer_task_id="transfer-task-83")
@@ -493,8 +493,8 @@ def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
     )
 
     assert len(messages) == 1
-    assert messages[0].title == "已提交重新整理，后台将自动处理"
-    assert _RetryCommand.calls[0][1]["requested_by"] == "ai_retry_button"
+    assert "智能助手未启用" in messages[0].title
+    assert _RetryCommand.calls == []
 
 
 def test_durable_manual_review_rejection_does_not_fall_back_to_legacy(monkeypatch):

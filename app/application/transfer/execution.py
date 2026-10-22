@@ -14,6 +14,7 @@ from typing import Any, Callable, Mapping, Optional, Protocol
 from uuid import uuid4
 
 from app.schemas.exception import BusinessRejectedError
+from app.schemas.types import MediaSource, MediaType
 
 # 聚合执行检查点的当前持久格式版本
 TRANSFER_EXECUTION_VERSION = 1
@@ -946,6 +947,27 @@ class TransferExecutionRepository(Protocol):
         :return: 是否接受重试、当前执行状态与重试代数
         """
 
+    def request_replan(
+            self, *, history_id: int, task_id: str, settlement_revision: int,
+            media_source: str, media_id: str,
+            media_type: str, season: Optional[int], episode: Optional[int],
+            requested_by: str,
+    ) -> TransferRetryRequestResult:
+        """
+        为尚未发生文件副作用的识别拒绝更新规划输入，并保留原拒绝证据。
+
+        :param history_id: 当前失败终态关联的历史标识
+        :param task_id: 分析开始时历史关联的持久任务标识
+        :param settlement_revision: 分析开始时的结算版本，用于拒绝陈旧修正
+        :param media_source: 已核实的媒体来源
+        :param media_id: 已核实的来源原生标识
+        :param media_type: 已核实的电影或电视剧类型
+        :param season: 修正后的季号；None 保留原值
+        :param episode: 修正后的单集集号；None 保留原值
+        :param requested_by: 提交修正的身份，用于审计
+        :return: 是否接纳重新规划及持久调度状态
+        """
+
     def discard_corrupt_task(
             self,
             *,
@@ -1264,6 +1286,44 @@ class TransferExecutionCommand:
             task_id=task_id,
             reason=reason,
             requested_by=requested_by,
+        )
+
+    def request_replan(
+            self, *, history_id: int, task_id: str, settlement_revision: int,
+            media_source: str, media_id: str,
+            media_type: str, season: Optional[int] = None, episode: Optional[int] = None,
+            requested_by: str,
+    ) -> TransferRetryRequestResult:
+        """
+        登记已核实的媒体和季集修正，具体安全校验及原子更新由仓储执行。
+
+        :param history_id: 当前失败终态关联的历史标识
+        :param task_id: 分析开始时历史关联的持久任务标识
+        :param settlement_revision: 分析开始时的结算版本，用于拒绝陈旧修正
+        :param media_source: 已核实的媒体来源
+        :param media_id: 已核实的来源原生标识
+        :param media_type: 已核实的电影或电视剧类型
+        :param season: 修正后的季号；None 保留原值
+        :param episode: 修正后的单集集号；None 保留原值
+        :param requested_by: 提交修正的身份，用于审计
+        :return: 是否接纳重新规划及持久调度状态
+        """
+        if (history_id <= 0 or settlement_revision <= 0
+                or not all((task_id, media_source, media_id, media_type, requested_by))):
+            raise ValueError("重新规划缺少历史、媒体身份或请求身份")
+        normalized_type = MediaType.from_agent(media_type)
+        if normalized_type is None or normalized_type not in {MediaType.MOVIE, MediaType.TV}:
+            raise ValueError("识别修正只支持 movie 或 tv")
+        if not media_id.strip() or media_id.strip() == "0":
+            raise ValueError("media_id 必须是非零的来源原生 ID")
+        if (season is not None and season < 0) or (episode is not None and episode < 1):
+            raise ValueError("季集修正超出有效范围")
+        if normalized_type is MediaType.MOVIE and (season is not None or episode is not None):
+            raise ValueError("电影识别修正不能指定季集")
+        return self._repository.request_replan(
+            history_id=history_id, task_id=task_id, settlement_revision=settlement_revision,
+            media_source=MediaSource(media_source).value, media_id=media_id.strip(),
+            media_type=normalized_type.value, season=season, episode=episode, requested_by=requested_by,
         )
 
     def resolve_manual_review(

@@ -26,6 +26,21 @@ other albums with the same display name. Unsupported packages appear as failed i
   a default. Preview and execute with identical IDs and source items; this path
   requires local audio for track alignment. Do not place a Release ID in `media_id`.
 
+## Durable AI recognition correction
+
+With both `AI_AGENT_ENABLE` and `AI_AGENT_RETRY_TRANSFER` enabled, a newly committed
+recognition/planning rejection may immediately start AI analysis; heartbeat jobs
+are not required. Existing failed histories can use the AI button or single/batch
+AI redo. Sources, identity and TV season/episode must be verified and previewed.
+
+Use `transfer.history.replan` only for a failed movie/TV planning rejection with
+no file effects. Submit the original task ID and settlement revision from the
+analysis context; a changed revision requires fresh analysis. It retains the same task, source admission, original evidence,
+settlement receipts, and consumed retry budget. Stop on rejection, manual review,
+active execution, uncertain file effects, storage/configuration faults or exhausted
+budget. Never delete durable task/history/target evidence or start a new direct
+transfer to bypass these checks. A queued correction is not a completed transfer.
+
 ## Operations
 
 ### `transfer.episode_format.recommend`
@@ -67,7 +82,7 @@ Purpose: 删除一条整理历史，并可选择同时删除文件。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `deletedest` (boolean|null; default `False`): 删除整理历史时是否同时删除整理后的目标文件。; `deletesrc` (boolean|null; default `False`): 删除整理历史时是否同时删除记录中的源文件。
-- `body`: `audio_format` (string|null): 实际音频格式; `audio_lossless` (boolean|null): 是否无损音频; `auto_paused` (boolean; default `False`): 是否因反复失败而自动暂停; `bit_depth` (integer|null): 实际位深（bit）; `bitrate` (integer|null): 实际码率（bps）; `category` (string|null): 实际媒体类别兼容路径快照; `classification_policy_revision` (integer|null): 执行时分类策略版本; `classification_rule_id` (string|null): 命中的分类规则标识; `classification_source` (string|null): 最终分类来源; `cleanup_error` (string|null): 下载器清理失败的原因; `cleanup_status` (string|null): 下载器清理独立于媒体入库结果; `date` (string|null): 日期; `dest` (string|null): 目的目录; `dest_fileitem` (JsonData-Input|null): 目标文件项; `dest_storage` (string|null): 目标存储类型; `download_hash` (string|null): 下载器Hash; `episode_group` (string|null): 自定义剧集组; `episodes` (string|null): 集Exx; `errmsg` (string|null): 失败原因; `failure_stage` (string|null): 从失败原因和失败计数派生的用户可操作状态; `files` (JsonData-Input|null): 文件清单; `id*` (integer): 记录标识; `image` (string|null): 海报; `media_category_id` (string|null): 实际媒体类别稳定标识; `media_id` (string|null): 数据源原生ID; `media_source` (MediaSource|null): 媒体数据源; `mode` (string|null): 转移模式; `music_type` (string|null): 音乐实体类型：recording 单曲、album 专辑; `recovery_action` (string|null): 当前失败状态下可执行的恢复操作; `retry_count` (integer|null): 已执行的重试次数; `retry_exhausted` (boolean; default `False`): 是否已耗尽重试次数; `sample_rate` (integer|null): 实际采样率（Hz）; `seasons` (string|null): 季Sxx; `src` (string|null): 源目录; `src_fileitem` (JsonData-Input|null): 源文件项（含文件大小等运行时字段，与 to_dict 直出保持一致）; `src_storage` (string|null): 源存储类型; `status` (boolean; default `True`): 状态 1-成功，0-失败; `title` (string|null): 标题; `total_tracks` (integer|null): 专辑预期总曲目数; `transfer_task_id` (string|null): durable 整理任务标识仅供宿主入口选择重试协议，不属于公开历史响应; `type` (string|null): 类型：电影、电视剧、音乐; `year` (string|null): 年份
+- `body`: `audio_format` (string|null): 实际音频格式; `audio_lossless` (boolean|null): 是否无损音频; `auto_paused` (boolean; default `False`): 是否因反复失败而自动暂停; `bit_depth` (integer|null): 实际位深（bit）; `bitrate` (integer|null): 实际码率（bps）; `category` (string|null): 实际媒体类别兼容路径快照; `classification_policy_revision` (integer|null): 执行时分类策略版本; `classification_rule_id` (string|null): 命中的分类规则标识; `classification_source` (string|null): 最终分类来源; `cleanup_error` (string|null): 下载器清理失败的原因; `cleanup_status` (string|null): 下载器清理独立于媒体入库结果; `date` (string|null): 日期; `dest` (string|null): 目的目录; `dest_fileitem` (JsonData-Input|null): 目标文件项; `dest_storage` (string|null): 目标存储类型; `download_hash` (string|null): 下载器Hash; `episode_group` (string|null): 自定义剧集组; `episodes` (string|null): 集Exx; `errmsg` (string|null): 失败原因; `failure_stage` (string|null): 从失败原因和失败计数派生的用户可操作状态; `files` (JsonData-Input|null): 文件清单; `id*` (integer): 记录标识; `image` (string|null): 海报; `media_category_id` (string|null): 实际媒体类别稳定标识; `media_id` (string|null): 数据源原生ID; `media_source` (MediaSource|null): 媒体数据源; `mode` (string|null): 转移模式; `music_type` (string|null): 音乐实体类型：recording 单曲、album 专辑; `recovery_action` (string|null): 当前失败状态下可执行的恢复操作; `retry_count` (integer|null): 已执行的重试次数; `retry_exhausted` (boolean; default `False`): 是否已耗尽重试次数; `sample_rate` (integer|null): 实际采样率（Hz）; `seasons` (string|null): 季Sxx; `src` (string|null): 源目录; `src_fileitem` (JsonData-Input|null): 源文件项（含文件大小等运行时字段，与 to_dict 直出保持一致）; `src_storage` (string|null): 源存储类型; `status` (boolean; default `True`): 状态 1-成功，0-失败; `title` (string|null): 标题; `total_tracks` (integer|null): 专辑预期总曲目数; `transfer_settlement_revision` (integer|null): 宿主 AI 接管使用的结算版本，不属于公开历史响应; `transfer_task_id` (string|null): durable 整理任务标识仅供宿主入口选择重试协议，不属于公开历史响应; `type` (string|null): 类型：电影、电视剧、音乐; `year` (string|null): 年份
 
 ### `transfer.history.redo`
 `POST /api/v1/history/transfer/{history_id}/ai-redo`; policy effect: `external_side_effect`.
@@ -84,6 +99,14 @@ Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: `history_ids` (array<integer>): 历史记录 ID 列表
+
+### `transfer.history.replan`
+`POST /api/v1/history/transfer/{history_id}/replan`; policy effect: `external_side_effect`.
+Purpose: 为没有文件副作用的识别失败历史提交已核实的电影或电视剧身份和季集修正，保留原任务及失败证据。
+Identity scope: `admin`; required role: `system_admin`.
+- `path_params`: `history_id*` (integer): 历史查询操作返回的持久化整理或订阅历史标识。
+- `query`: none
+- `body`: `episode` (integer|null): 修正后的单集集号；为空时保留原集数范围; `media_id*` (string; minimum length `1`): 经媒体查询核实的来源原生 ID; `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `media_type*` (string(movie,tv)): 经核实的电影或电视剧类型; `season` (integer|null): 修正后的季号，0 为特别篇；为空时保留原值; `settlement_revision*` (integer; minimum `1.0`): 接管上下文中的原始结算版本，拒绝分析期间已变化的任务; `task_id*` (string; minimum length `1`): 接管上下文中的原始持久任务标识，必须与历史绑定一致
 
 ### `transfer.manual_history`
 `POST /api/v1/transfer/manual/history`; policy effect: `safe_read`.

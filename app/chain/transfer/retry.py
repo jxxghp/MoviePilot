@@ -10,11 +10,14 @@ from app.application.history import (
     TransferHistoryRepository,
     TransferHistorySnapshot,
 )
+from app.application.history.retry import max_failed_retries
 from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionRepository,
     TransferExecutionState,
 )
+from app.application.transfer.feedback import TransferFailureStage, classify_transfer_failure
+from app.application.transfer.recovery import ai_takeover_rejection
 from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -213,16 +216,20 @@ class FailedRetryMixin(_TransferOwnerBase):
     def _take_over_transfer_history_by_ai(
             self,
             history_id: int,
-            channel: NotificationChannel,
+            channel: Optional[NotificationChannel],
             source: Optional[str],
-            userid: Union[str, int],
+            userid: Optional[Union[str, int]],
             username: Optional[str],
     ) -> None:
         """
-        由智能助手接管一条失败的整理记录。
-        """
-        from app.runtime.errors import public_error_message
+        校验任务状态后由智能助手分析并修复历史，不提前登记普通重试。
 
+        :param history_id: 需要接管的整理历史标识
+        :param channel: 手动操作的通知渠道；自动接管时沿用系统通知
+        :param source: 渠道实例标识
+        :param userid: 手动操作用户；自动接管时为空
+        :param username: 接收结果通知的本地用户名
+        """
         history = self.transfer_history_repository.get(history_id)
         if not history:
             host = cast(TransferMixinHost, self)
@@ -240,28 +247,6 @@ class FailedRetryMixin(_TransferOwnerBase):
             )
             return
 
-        durable_retry = _request_durable_transfer_retry(
-            history,
-            requested_by="ai_retry_button",
-            repository=self.transfer_execution_repository,
-        )
-        if durable_retry is not None:
-            accepted, message = durable_retry
-            public_message = public_error_message(message, context="transfer")
-            self.post_message(
-                Message(
-                    channel=channel,
-                    source=source,
-                    userid=userid,
-                    username=username,
-                    title=public_message if accepted else "重新整理失败",
-                    text=None if accepted else public_message,
-                    link=self.runtime_config.history_url,
-                    save_history=False,
-                )
-            )
-            return
-
         if not self.runtime_config.ai_agent_enable:
             self.post_message(
                 Message(
@@ -270,6 +255,25 @@ class FailedRetryMixin(_TransferOwnerBase):
                     userid=userid,
                     username=username,
                     title="MoviePilot智能助手未启用，请在系统设置中启用",
+                    save_history=False,
+                )
+            )
+            return
+
+        rejection = ai_takeover_rejection(
+            history_id=history.id, task_id=getattr(history, "transfer_task_id", None),
+            repository=self.transfer_execution_repository,
+        )
+        if rejection:
+            self.post_message(
+                Message(
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    title="智能助手暂时无法接管",
+                    text=rejection,
+                    link=self.runtime_config.history_url,
                     save_history=False,
                 )
             )
@@ -319,9 +323,9 @@ class FailedRetryMixin(_TransferOwnerBase):
                         source=source,
                         userid=userid,
                         username=username,
-                        title="智能助手整理完成",
+                        title="智能助手分析完成",
                         text=final_output.strip()
-                        or f"整理记录 #{history_id} 已由智能助手处理完成。",
+                        or f"整理记录 #{history_id} 分析结束，请查看整理历史确认文件处理结果。",
                         link=self.runtime_config.history_url,
                         save_history=False,
                     )
@@ -364,6 +368,38 @@ class FailedRetryMixin(_TransferOwnerBase):
                 )
             )
             return
+
+    def _maybe_take_over_failed_transfer(
+            self, *, history_id: int, task_id: Optional[str], error: str,
+            failure_stage: Optional[str], retry_count: int, username: Optional[str],
+    ) -> None:
+        """
+        在新失败结算后自动提交可修正的识别拒绝，不处理文件副作用或耗尽预算的任务。
+
+        :param history_id: 刚提交的失败历史标识
+        :param task_id: 对应持久任务标识
+        :param error: 本次失败的原因
+        :param failure_stage: 已知失败阶段；未提供时按原因分类
+        :param retry_count: 当前失败周期已消耗的次数
+        :param username: 接收分析结果的本地用户名
+        """
+        if (not self.runtime_config.ai_agent_enable or not self.runtime_config.ai_agent_retry_transfer
+                or retry_count >= max_failed_retries() or not task_id):
+            return
+        stage = failure_stage or classify_transfer_failure(error).stage
+        if stage not in {TransferFailureStage.RECOGNITION, TransferFailureStage.PLANNING}:
+            return
+        snapshot = self.transfer_execution_repository.get_snapshot(task_id=task_id)
+        if (snapshot is None or snapshot.state is not TransferExecutionState.FAILED
+                or snapshot.terminal_history_id != history_id or len(snapshot.steps) != 1
+                or snapshot.retry_count >= max_failed_retries()):
+            return
+        step = snapshot.steps[0]
+        if step.phase != "planning" or step.kind != "reject" or step.state.value != "succeeded":
+            return
+        self._take_over_transfer_history_by_ai(
+            history_id=history_id, channel=None, source=None, userid=None, username=username,
+        )
 
     def _re_transfer(
             self,

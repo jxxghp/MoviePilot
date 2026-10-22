@@ -56,9 +56,9 @@ def test_batch_manual_redo_job_definition_contains_plain_text_rules():
     assert any("Markdown formatting" in rule for rule in task_rules)
 
 
-def test_manual_redo_tasks_stop_after_durable_retry_result():
+def test_redo_tasks_preserve_durable_evidence_and_use_safe_replan():
     """
-    系统任务必须禁止 durable 历史在登记重试后继续直接整理。
+    系统任务必须通过受保护的识别修正入口恢复持久化失败，不诱导删除或普通重试。
     """
     definition = prompt_manager.load_system_tasks_definition()
 
@@ -70,5 +70,6 @@ def test_manual_redo_tasks_stop_after_durable_retry_result():
     ):
         task = definition.task_types[task_name]
         instructions = [*task.steps, *task.task_rules]
-        assert any("persistent retry scheduler" in item for item in instructions)
-        assert any("do not call `transfer.file`" in item.lower() for item in instructions)
+        assert any("transfer.history.replan" in item for item in instructions)
+        assert any("evidence" in item and ("Never" in item or "never" in item) for item in instructions)
+        assert not any("Durable records are not deleted: the API submits" in item for item in instructions)

@@ -99,6 +99,12 @@ adapters; it does not retain reusable repository implementations.
 旧失败历史只解除旧任务映射，记录与独立结算回执不删除，避免留下无法维护的悬空任务关联。
 任何外部操作步骤或版本/租约冲突都禁止走这条重规划路径。
 
+AI 识别修正由执行仓储在单一短事务中校验失败历史归属、结算版本、租约和剩余预算。
+仅包含一个成功 `planning/reject` 内部步骤的电影/电视剧拒绝可以退回 `accepted`；
+原计划和步骤先归档到新输入的 `options.ai_replan_evidence`，同一任务、历史绑定和独立结算回执保留，
+重试次数及世代递增，源、目标和整理方式不变。任何文件操作、复核状态或不确定证据均拒绝替换。
+失败结算提交后的自动 AI 唤醒只处理新回执，不依赖心跳或已有自动任务；重放回执不重复唤醒。
+
 ### Transaction ownership ratchet
 
 - `tests/fixtures/architecture/transaction-debt-baseline.json` records formal

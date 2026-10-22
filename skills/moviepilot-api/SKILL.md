@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 58
+version: 59
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -48,13 +48,13 @@ allowed-api-operations: >-
   storage.mkdir storage.rename storage.delete transfer.queue transfer.queue.delete transfer.name
   transfer.target_path transfer.manual_history transfer.episode_format.recommend
   transfer.manual_reviews transfer.manual_review transfer.manual_review.resolve
-  transfer.history.redo transfer.history.redo_batch transfer.history.clear workflow.create
-  workflow.get workflow.update workflow.delete workflow.actions workflow.event_types
-  workflow.plugin.actions workflow.start workflow.pause workflow.reset workflow.shares
-  workflow.share workflow.share.delete workflow.fork torrent.cache.get torrent.cache.delete
-  torrent.cache.clear torrent.cache.refresh torrent.cache.reidentify database.backups.list
-  database.backups.create database.backups.verify database.backups.delete filter.test
-  system.network.targets system.network.test system.module.list system.module.catalog
+  transfer.history.redo transfer.history.redo_batch transfer.history.replan transfer.history.clear
+  workflow.create workflow.get workflow.update workflow.delete workflow.actions
+  workflow.event_types workflow.plugin.actions workflow.start workflow.pause workflow.reset
+  workflow.shares workflow.share workflow.share.delete workflow.fork torrent.cache.get
+  torrent.cache.delete torrent.cache.clear torrent.cache.refresh torrent.cache.reidentify
+  database.backups.list database.backups.create database.backups.verify database.backups.delete
+  filter.test system.network.targets system.network.test system.module.list system.module.catalog
   system.module.settings system.module.test plugin.market.sync_wiki plugin.runtime.status
   plugin.history plugin.releases plugin.ratings plugin.rating plugin.rating.submit
   plugin.statistics plugin.reset plugin.clone.restorable plugin.clone config.user.get

@@ -532,6 +532,13 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
         confirmation=_CONFIRM,
         recovery=RecoveryMode.RECONCILE,
     ),
+    _spec(
+        "transfer.history.replan",
+        effect=ActionEffect.EXTERNAL_SIDE_EFFECT,
+        required_role=_ADMIN,
+        confirmation=_CONFIRM,
+        recovery=RecoveryMode.RECONCILE,
+    ),
     _write(
         "transfer.history.clear",
         effect=ActionEffect.DESTRUCTIVE_WRITE,
@@ -844,6 +851,7 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "transfer.manual_review.resolve": ApiOperationRoute("POST", "/api/v1/transfer/tasks/{task_id}/manual-review"),
     "transfer.history.redo": ApiOperationRoute("POST", "/api/v1/history/transfer/{history_id}/ai-redo"),
     "transfer.history.redo_batch": ApiOperationRoute("POST", "/api/v1/history/transfer/ai-redo"),
+    "transfer.history.replan": ApiOperationRoute("POST", "/api/v1/history/transfer/{history_id}/replan"),
     "transfer.history.clear": ApiOperationRoute("DELETE", "/api/v1/history/transfer/all"),
     "workflow.create": ApiOperationRoute("POST", "/api/v1/workflow/"),
     "workflow.get": ApiOperationRoute("GET", "/api/v1/workflow/{workflow_id}"),

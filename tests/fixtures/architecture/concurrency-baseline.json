@@ -217,8 +217,8 @@
   },
   "app/api/endpoints/history.py:asyncio.to_thread": {
     "owners": {
-      "_request_batch_durable_retries": 1,
-      "ai_redo_transfer_history": 1
+      "ai_redo_transfer_history": 1,
+      "batch_ai_redo_transfer_history": 1
     },
     "target": "asyncio.to_thread"
   },

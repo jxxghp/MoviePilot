@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -16,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, load_only
 
+from app.application.history.retry import max_failed_retries
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferExecutionConflictError,
@@ -37,6 +39,8 @@ from app.application.transfer.execution import (
     build_transfer_operation_id,
     build_transfer_overwrite_paths,
 )
+from app.application.transfer.feedback import TransferFailureStage, classify_transfer_failure
+from app.application.transfer.models import JSONValue
 from app.application.transfer.recovery import music_replanning_input
 from app.application.transfer.workflow import (
     TRANSFER_ADMISSION_ACCEPTED,
@@ -46,12 +50,14 @@ from app.application.transfer.workflow import (
     TRANSFER_PLAN_CHECKPOINT_VERSION,
     TransferPlanCheckpoint,
     TransferPlanItem,
+    TransferPlanningInput,
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
 )
 from app.db.models.transferexecutionstep import (
     TransferExecutionStep as TransferExecutionStepModel,
 )
+from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferexecutionstep import TransferExecutionStepOper
 from app.db.oper.transferhistory import TransferHistoryOper
@@ -1495,6 +1501,115 @@ class TransactionalTransferExecutionRepository:
             except Exception:
                 self._rollback(transaction)
                 raise
+
+    def request_replan(
+            self, *, history_id: int, task_id: str, settlement_revision: int,
+            media_source: str, media_id: str,
+            media_type: str, season: Optional[int], episode: Optional[int],
+            requested_by: str,
+    ) -> TransferRetryRequestResult:
+        """
+        原子修正零副作用的识别拒绝；归档原检查点和步骤，继续使用同一任务及重试预算。
+
+        :param history_id: 当前失败回执的历史标识
+        :param task_id: 分析开始时历史关联的持久任务标识
+        :param settlement_revision: 分析开始时的结算版本，用于拒绝陈旧修正
+        :param media_source: 已核实的媒体来源
+        :param media_id: 已核实的来源原生标识
+        :param media_type: 已核实的电影或电视剧类型
+        :param season: 修正后的季号；None 保留原值
+        :param episode: 修正后的单集集号；None 保留原值
+        :param requested_by: 提交修正的身份
+        :return: 调度受理结果；不安全或过期请求抛出状态冲突
+        """
+        now_utc, updated_at = self._times()
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                history = TransferHistoryOper(session).get(history_id)
+                if (history is None or history.transfer_task_id != task_id
+                        or history.transfer_settlement_revision != settlement_revision):
+                    raise TransferExecutionConflictError("分析期间整理历史或结算版本已变化，请重新分析")
+                pending = TransferPendingOper(session).get_by_task_id(task_id=task_id)
+                if pending is None:
+                    raise TransferExecutionConflictError("没有找到对应的失败整理任务，请刷新后重试")
+                if not self._clear_inactive_claim(session, pending=pending, now_utc=now_utc):
+                    raise TransferExecutionConflictError("整理任务正在处理中，暂时无法重新规划")
+                checkpoint, fingerprint = self._plan_identity(pending)
+                steps = TransferExecutionStepOper(session).list_by_task_id(task_id=pending.task_id)
+                self._validate_recognition_replan(pending, history, checkpoint, steps)
+                self._validate_plan_steps(task_id=pending.task_id, checkpoint=checkpoint,
+                                          checkpoint_fingerprint=fingerprint, steps=steps)
+                snapshot = self._project_snapshot(pending, steps)
+                planning = checkpoint.planning_input
+                meta = {**(planning.meta or {}), "type": media_type}
+                if season is not None:
+                    meta.update(begin_season=season, end_season=None, total_season=1)
+                if episode is not None:
+                    meta.update(begin_episode=episode, end_episode=None, total_episode=1)
+                evidence: dict[str, JSONValue] = {
+                    "plan": checkpoint.to_payload(), "execution": asdict(snapshot),
+                    "requested_by": requested_by, "requested_at": updated_at,
+                }
+                planning = replace(
+                    planning, media_source=media_source, media_id=media_id, media_type=media_type,
+                    meta=meta, mediainfo=None, episodes_info=(),
+                    options={**planning.options, "_mediainfo_kind": None, "ai_replan_evidence": evidence},
+                )
+                # 唯一步骤是内部 reject；原内容已随新输入持久归档，外部操作步骤始终禁止替换。
+                TransferExecutionStepOper(session).stage_delete_task(task_id=pending.task_id)
+                pending.state = TRANSFER_ADMISSION_ACCEPTED
+                pending.planning_input = planning.to_payload()
+                pending.input_fingerprint = planning.fingerprint
+                pending.checkpoint_version = pending.checkpoint_payload = pending.planned_at = None
+                pending.execution_version = pending.execution_payload = pending.execution_fingerprint = None
+                pending.execution_state = TransferExecutionState.RETRY_WAIT.value
+                pending.retry_generation += 1
+                pending.retry_count += 1
+                pending.retry_due_at = now_utc
+                pending.retry_requested_by = requested_by
+                pending.retry_reason = "智能助手核实媒体身份及季集后重新规划"
+                pending.updated_at = updated_at
+                transaction.commit()
+                return TransferRetryRequestResult(True, TransferExecutionState.RETRY_WAIT,
+                                                   pending.retry_generation, "已提交识别修正，等待后台重新规划整理")
+            except Exception:
+                transaction.rollback()
+                raise
+
+    @staticmethod
+    def _validate_recognition_replan(
+            pending: TransferPending, history: TransferHistory, checkpoint: TransferPlanCheckpoint,
+            steps: list[TransferExecutionStepModel],
+    ) -> None:
+        """
+        拒绝复核、过期回执、预算耗尽或任何可能含文件副作用的重新规划。
+
+        :param pending: 事务内已取得恢复权的任务
+        :param history: 当前读取的失败历史
+        :param checkpoint: 原始冻结计划
+        :param steps: 原始持久执行步骤
+        """
+        if pending.execution_state != TransferExecutionState.FAILED.value:
+            raise TransferExecutionConflictError("任务需要人工确认或正在处理，不能自动重新规划")
+        if (history.status or pending.terminal_history_id != history.id
+                or pending.settlement_revision != history.transfer_settlement_revision):
+            raise TransferExecutionConflictError("整理历史与任务结算版本已变化，请刷新后重试")
+        if history.auto_paused or max(history.retry_count or 0, pending.retry_count) >= max_failed_retries():
+            raise TransferExecutionConflictError("整理任务自动重试次数已耗尽，请人工处理")
+        stage = history.failure_stage or classify_transfer_failure(checkpoint.rejection_error).stage
+        if stage not in {TransferFailureStage.RECOGNITION, TransferFailureStage.PLANNING}:
+            raise TransferExecutionConflictError("当前失败需要先修复文件或存储配置，不能自动修正识别")
+        planning = TransferPlanningInput.from_payload(pending.planning_input)
+        if (planning.fingerprint != pending.input_fingerprint or pending.input_version != planning.schema_version
+                or not planning.meta):
+            raise TransferExecutionConflictError("原始规划输入不完整或已变化，不能自动重新规划")
+        if (not checkpoint.rejection_error or checkpoint.items or checkpoint.provider_invocation
+                or checkpoint.legacy_transfer_providers or len(steps) != 1):
+            raise TransferExecutionConflictError("已有文件操作计划或证据，不能自动替换，请人工处理")
+        step = steps[0]
+        if step.phase != "planning" or step.kind != "reject" or step.state != TransferStepState.SUCCEEDED.value:
+            raise TransferExecutionConflictError("存在文件操作或不确定执行证据，不能自动重新规划")
 
     def _replan_music_rejection(
             self, session: Session, *, pending: TransferPending, updated_at: str,

@@ -5895,6 +5895,18 @@
           "description": "专辑预期总曲目数",
           "title": "Total Tracks"
         },
+        "transfer_settlement_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "宿主 AI 接管使用的结算版本，不属于公开历史响应",
+          "title": "Transfer Settlement Revision"
+        },
         "transfer_task_id": {
           "anyOf": [
             {
@@ -5936,6 +5948,78 @@
         "id"
       ],
       "title": "TransferHistory",
+      "type": "object"
+    },
+    "TransferHistoryReplanRequest": {
+      "additionalProperties": false,
+      "description": "对零文件副作用的识别拒绝提交已核实的媒体身份及季集修正。",
+      "properties": {
+        "episode": {
+          "anyOf": [
+            {
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "修正后的单集集号；为空时保留原集数范围",
+          "title": "Episode"
+        },
+        "media_id": {
+          "description": "经媒体查询核实的来源原生 ID",
+          "minLength": 1,
+          "title": "Media Id",
+          "type": "string"
+        },
+        "media_source": {
+          "$ref": "#/$defs/MediaSource",
+          "description": "元数据来源标识，保留与 media_id 一同返回的精确值。"
+        },
+        "media_type": {
+          "description": "经核实的电影或电视剧类型",
+          "enum": [
+            "movie",
+            "tv"
+          ],
+          "title": "Media Type",
+          "type": "string"
+        },
+        "season": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "修正后的季号，0 为特别篇；为空时保留原值",
+          "title": "Season"
+        },
+        "settlement_revision": {
+          "description": "接管上下文中的原始结算版本，拒绝分析期间已变化的任务",
+          "minimum": 1.0,
+          "title": "Settlement Revision",
+          "type": "integer"
+        },
+        "task_id": {
+          "description": "接管上下文中的原始持久任务标识，必须与历史绑定一致",
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id",
+        "settlement_revision",
+        "media_source",
+        "media_id",
+        "media_type"
+      ],
+      "title": "TransferHistoryReplanRequest",
       "type": "object"
     },
     "TransferManualReviewRequest": {
@@ -15550,6 +15634,43 @@
     },
     {
       "additionalProperties": false,
+      "description": "为没有文件副作用的识别失败历史提交已核实的电影或电视剧身份和季集修正，保留原任务及失败证据。请求方法：POST；路径：/api/v1/history/transfer/{history_id}/replan。操作效果：external_side_effect；身份范围：admin。所需角色：system_admin。",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/TransferHistoryReplanRequest",
+          "description": "transfer.history.replan 的请求内容。为没有文件副作用的识别失败历史提交已核实的电影或电视剧身份和季集修正，保留原任务及失败证据。严格使用下列类型和字段。"
+        },
+        "operation_id": {
+          "const": "transfer.history.replan",
+          "description": "白名单中的精确操作标识，用于选择对应 oneOf 分支。",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "transfer.history.replan 的资源标识参数。为没有文件副作用的识别失败历史提交已核实的电影或电视剧身份和季集修正，保留原任务及失败证据。仅使用下列已声明字段。",
+          "properties": {
+            "history_id": {
+              "description": "历史查询操作返回的持久化整理或订阅历史标识。",
+              "title": "History Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "history_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "transfer.history.replan",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "检查给定存储项目是否已有成功整理历史。请求方法：POST；路径：/api/v1/transfer/manual/history。操作效果：safe_read；身份范围：admin。所需角色：system_admin。",
       "properties": {
         "body": {
@@ -16728,6 +16849,7 @@
         "transfer.history.delete",
         "transfer.history.redo",
         "transfer.history.redo_batch",
+        "transfer.history.replan",
         "transfer.manual_history",
         "transfer.manual_review",
         "transfer.manual_review.resolve",

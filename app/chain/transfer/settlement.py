@@ -417,6 +417,8 @@ class TransferSettlementOwner(_TransferOwnerBase):
         target_dir_path = self._TransferChain__get_transfer_target_dir_path(transferinfo)
         job_id = self.jobview.get_job_id(task)
         overwrite_declined = False
+        automatic_takeover_history: Optional[TransferSettlementResult] = None
+        failure_count = 0
         if not transferinfo.success:
             overwrite_declined = self._is_overwrite_declined(
                 task, transferinfo, transferhis
@@ -501,6 +503,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 if not isinstance(history, TransferSettlementResult):
                     raise RuntimeError("整理失败 durable 终态没有返回结算结果")
                 task.mark_terminal_settled()
+                automatic_takeover_history = history
 
                 # 失败计数不是终态真相，只能在原子历史与 pending 结算成功后更新。
                 record_transfer_failure(
@@ -599,7 +602,35 @@ class TransferSettlementOwner(_TransferOwnerBase):
         if transferinfo.transfer_type == "move" and self._can_cleanup_transfer(task):
             self._cleanup_successful_transfer(task, transferhis, history)
 
+        self._schedule_automatic_ai_takeover(
+            task=task, transferinfo=transferinfo, history=automatic_takeover_history,
+            retry_count=failure_count,
+        )
+
         return ret_status, ret_message
+
+    def _schedule_automatic_ai_takeover(
+            self, *, task: TransferTask, transferinfo: TransferInfo,
+            history: Optional[TransferSettlementResult], retry_count: int,
+    ) -> None:
+        """
+        只为本次新提交的安全失败回执提交 AI 分析，避免重复结算重复唤醒。
+
+        :param task: 产生失败回执的整理任务
+        :param transferinfo: 本次整理结果与失败阶段
+        :param history: 新结算回执；非 AI 场景为 None
+        :param retry_count: 当前失败周期已消耗的次数
+        """
+        if history is None or history.already_settled:
+            return
+        try:
+            self._maybe_take_over_failed_transfer(
+                history_id=history.history_id, task_id=task.admission_task_id,
+                error=transferinfo.message or "", failure_stage=transferinfo.failure_stage,
+                retry_count=retry_count, username=task.username,
+            )
+        except Exception as error:
+            logger.error("整理失败后的智能助手接管提交失败：%s", error, exc_info=True)
 
     def _can_cleanup_transfer(self, task: TransferTask) -> bool:
         """

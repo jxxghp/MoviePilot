@@ -24,6 +24,8 @@ def build_manual_redo_template_context(history: Any) -> dict[str, int | str]:
     is_music = str(history.type or "") in {"music", "音乐"}
     return {
         "history_id": history.id,
+        "durable_task_id": getattr(history, "transfer_task_id", None) or "legacy",
+        "settlement_revision": getattr(history, "transfer_settlement_revision", None) or "unknown",
         "current_status": "success" if history.status else "failed",
         "recognized_title": history.title or "unknown",
         "media_type": history.type or "unknown",
@@ -55,6 +57,8 @@ def format_manual_redo_record_context(history: Any) -> str:
     return "\n".join(
         [
             f"Record #{context['history_id']}:",
+            f"- Durable task: {context['durable_task_id']}",
+            f"- Settlement revision: {context['settlement_revision']}",
             f"- Current status: {context['current_status']}",
             f"- Current recognized title: {context['recognized_title']}",
             f"- Media type: {context['media_type']}",

@@ -98,6 +98,7 @@ if TYPE_CHECKING:
         _finalize_recognition_result: Callable[..., Any]
         _match_music_album_context: Callable[..., Any]
         _match_music_recording_context: Callable[..., Any]
+        _maybe_take_over_failed_transfer: Callable[..., Any]
         _merge_music_track_context: Callable[..., Any]
         _music_info_from_meta: Callable[..., Any]
         _prepare_music_batch_context: Callable[..., Any]

@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from app.application.messaging.interaction import InteractionContext
+from app.application.transfer.execution import TransferExecutionState
 from app.chain.message import MessageChain
 from app.chain.transfer.facade import TransferChain
 from app.runtime.config import settings
@@ -116,7 +117,8 @@ def test_transfer_retry_callback_retries_history():
     assert post_message.call_args_list[1].args[0].title == "整理记录 #12 已重新整理"
 
 
-def test_transfer_ai_retry_callback_schedules_agent_takeover(replace_main_loop):
+@pytest.mark.parametrize("durable", [False, True])
+def test_transfer_ai_retry_callback_schedules_agent_takeover(replace_main_loop, monkeypatch, durable):
     """
     智能接管回调应向已登记主循环提交受管后台任务。
     """
@@ -124,6 +126,7 @@ def test_transfer_ai_retry_callback_schedules_agent_takeover(replace_main_loop):
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     history = SimpleNamespace(
         id=34,
+        transfer_task_id="task-34" if durable else None,
         status=False,
         title="Test Show",
         type="电视剧",
@@ -146,9 +149,12 @@ def test_transfer_ai_retry_callback_schedules_agent_takeover(replace_main_loop):
         media_id="123",
         errmsg="未识别到媒体信息",
     )
-    chain.transfer_history_repository = SimpleNamespace(
-        get=lambda history_id: history
+    monkeypatch.setattr(chain, "transfer_history_repository", SimpleNamespace(get=lambda history_id: history))
+    repository = Mock()
+    repository.get_snapshot.return_value = SimpleNamespace(
+        state=TransferExecutionState.FAILED, terminal_history_id=34,
     )
+    monkeypatch.setattr(chain, "transfer_execution_repository", repository)
 
     async_messages = []
 
@@ -199,7 +205,8 @@ def test_transfer_ai_retry_callback_schedules_agent_takeover(replace_main_loop):
     )
     assert len(async_messages) == 2
     assert async_messages[0].title == "已将整理记录 #34 交给智能助手处理"
-    assert async_messages[1].title == "智能助手整理完成"
+    assert async_messages[1].title == "智能助手分析完成"
+    repository.request_retry.assert_not_called()
 
 
 def test_transfer_ai_retry_callback_reports_closed_task_registry(replace_main_loop):

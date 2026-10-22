@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic import field_validator as _field_validator
 
 from app.schemas.common import JsonData
-from app.schemas.media import OptionalMediaIdentityMixin
+from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
 from app.schemas.types import MediaSource
 
 
@@ -56,6 +56,9 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
         default=None,
         exclude=True,
         description="durable 整理任务标识仅供宿主入口选择重试协议，不属于公开历史响应",
+    )
+    transfer_settlement_revision: Optional[int] = Field(
+        default=None, exclude=True, description="宿主 AI 接管使用的结算版本，不属于公开历史响应",
     )
     src_storage: Optional[str] = Field(default=None, description="源存储类型")
     dest_storage: Optional[str] = Field(default=None, description="目标存储类型")
@@ -127,6 +130,22 @@ class TransferHistoryDiscardResult(BaseModel):
     """
 
     history_id: int = Field(description="保留的整理历史记录 ID")
+
+
+class TransferHistoryReplanRequest(RequiredMediaIdentityMixin, BaseModel):
+    """
+    为零文件副作用的识别失败提交经核实的媒体身份和季集修正。
+    """
+
+    task_id: str = Field(min_length=1, description="接管上下文中的原始持久任务标识，必须与历史绑定一致")
+    settlement_revision: int = Field(ge=1, description="接管上下文中的原始结算版本，拒绝分析期间已变化的任务")
+    media_source: MediaSource = Field(description="经媒体查询核实的身份来源")
+    media_id: str = Field(min_length=1, description="经媒体查询核实的来源原生 ID")
+    media_type: Literal["movie", "tv"] = Field(description="经核实的电影或电视剧类型")
+    season: Optional[int] = Field(default=None, ge=0, description="修正后的季号，0 为特别篇；为空时保留原值")
+    episode: Optional[int] = Field(default=None, ge=1, description="修正后的单集集号；为空时保留原集数范围")
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class TransferHistoryPage(BaseModel):

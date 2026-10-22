@@ -39,6 +39,10 @@
 
 客户端必须能够配置远程 HTTP MCP URL 和自定义请求头。不同客户端的配置文件格式不同，将上述值填入其对应配置项即可。这里的服务地址是 HTTP 入口，不是本地进程启动命令。
 
+整理失败的 AI 接管应先读取 `transfer.history` 并核实媒体身份；对持久化任务使用
+`transfer.history.replan` 提交 `history_id`、接管时的 `task_id`/`settlement_revision`、`media_source`、`media_id`、`media_type`
+以及可选的 `season`/`episode`。该操作只接受没有文件副作用的识别拒绝，保留原任务、失败证据、结算回执和重试预算；排队受理不代表文件已经整理完成。
+
 认证补充：
 
 - MCP 使用固定 API 密钥，不使用网页登录的 Bearer JWT，也不提供 OAuth 登录流程。
