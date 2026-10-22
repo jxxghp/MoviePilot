@@ -7,8 +7,9 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
 from fnmatch import fnmatchcase
+from functools import partial
 from pathlib import Path
-from typing import Any, Generator, Iterable, Literal, Optional
+from typing import Any, Callable, Generator, Iterable, Literal, Optional
 from unicodedata import combining, normalize
 
 from app.domain.context import Context, MusicAlbumInfo, MusicInfo
@@ -725,6 +726,27 @@ def music_text_key(value: Optional[str]) -> str:
     return str(zhconv_convert("".join(char for char in text if char.isalnum() and not combining(char)), "zh-hans"))
 
 
+def _music_name_key(
+    value: Optional[str], names: set[str], key: Callable[[Optional[str]], str],
+) -> str:
+    """
+    只有括号两侧均为同一实体的可信名称时，才把双语排版归并为其中一个名称。
+
+    :param value: 待核验的完整名称，不剥离未知括号说明
+    :param names: 同一作品或艺术家已确认的名称比较键
+    :param key: 对应名称类型的归一化方法，作品名可保留发行版约束
+    :return: 已确认的名称比较键；缺少任一侧证据时保留完整名称的比较键
+    """
+    text = normalize("NFKC", str(value or "")).strip()
+    original = key(text)
+    if original in names:
+        return original
+    bilingual = re.fullmatch(r"([^()]+?)\s*\(([^()]+)\)", text)
+    if bilingual and all(key(part) in names for part in bilingual.groups()):
+        return key(bilingual.group(1))
+    return original
+
+
 def music_titles(music: MusicInfo, *, album: bool = False) -> list[str]:
     """
     返回同一作品的可信名称，单曲绝不消费兼容 names 中的专辑名。
@@ -755,14 +777,15 @@ def music_artists(music: MusicInfo) -> list[str]:
 
 def music_artist_matches(music: MusicInfo, parsed_artists: Iterable[str]) -> bool:
     """
-    使用同实体署名和别名核验解析艺人，兼容完整艺名被分隔符拆成多个片段。
+    使用同实体署名和别名核验艺人，兼容已确认的双语排版和被分隔的完整艺名。
     """
     artists = music_artists(music)
     parsed = unique_music_texts(parsed_artists)
-    keys = {music_text_key(artist) for artist in parsed}
+    artist_keys = {music_text_key(artist) for artist in artists}
+    keys = {_music_name_key(artist, artist_keys, music_text_key) for artist in parsed}
     if len(parsed) > 1 and any(any(separator in artist for separator in ("/", "&", ",")) for artist in artists):
         keys.add(music_text_key(" / ".join(parsed)))
-    return bool(keys & {music_text_key(artist) for artist in artists})
+    return bool(keys & artist_keys)
 
 
 def music_credit_conflicts(music: MusicInfo, meta: MetaMusic) -> bool:
@@ -894,13 +917,12 @@ def _music_title_key(value: Optional[str], *, preserve_editions: bool = False) -
 
 def music_title_matches(music: MusicInfo, title: Optional[str], *, preserve_editions: bool = False) -> bool:
     """
-    统一全半角后比较完整名称及别名，纯符号名称也保留其身份。
+    比较完整名称及可信双语别名，保留纯符号名称、未知括号和发行版的身份约束。
     """
-    expected = _music_title_key(title, preserve_editions=preserve_editions)
-    return bool(expected and any(
-        expected == _music_title_key(name, preserve_editions=preserve_editions)
-        for name in music_titles(music)
-    ))
+    key = partial(_music_title_key, preserve_editions=preserve_editions)
+    names = {key(name) for name in music_titles(music)}
+    expected = _music_name_key(title, names, key)
+    return bool(expected and expected in names)
 
 
 def music_album_matches(music: MusicInfo, album: Optional[str]) -> bool:
@@ -1026,12 +1048,21 @@ def _contains_artist(text: str, artist: str) -> bool:
 
 
 def _resource_names(primary: MetaMusic, artists: list[str], *, album: bool = False,
-                    album_suffixes: Optional[list[str]] = None) -> list[str]:
+                    album_suffixes: Optional[list[str]] = None,
+                    titles: Optional[list[str]] = None) -> list[str]:
     """
-    复用音乐命名解析器提取作品片段，去掉已确认的首尾艺术家署名。
+    提取作品片段，核验双语名称并去掉已确认的首尾艺术家署名。
+
+    :param primary: 资源自身解析出的作品与专辑证据
+    :param artists: 目标艺术家的正式署名与已确认别名
+    :param album: 是否额外比较资源的所属专辑名
+    :param album_suffixes: 单曲尾段可剥离的已确认所属专辑名
+    :param titles: 同一作品的可信名称，仅用于核验双语排版
+    :return: 可用于完整名称比较的作品片段，不生成未知别名
     """
     names: list[str] = []
     artist_keys = [(item, music_text_key(item)) for item in artists if item]
+    title_keys = {_music_title_key(title) for title in titles or []}
     suffix_keys = {music_text_key(item) for item in album_suffixes or []}
     for value in (primary.title, primary.album if album else None):
         if not value:
@@ -1043,7 +1074,7 @@ def _resource_names(primary: MetaMusic, artists: list[str], *, album: bool = Fal
             variants.append(parts[0])
         for part in variants:
             name = music_base_title(_TITLE_LABEL.sub("", part.strip()))
-            key = _music_title_key(name)
+            key = _music_name_key(name, title_keys, _music_title_key)
             if not key:
                 continue
             names.append(key)
@@ -1140,16 +1171,18 @@ def match_music_resource(
         return MusicMatch("rejected", "performance_mismatch")
     artists = music_artists(music)
     albums = music_titles(music, album=True)
-    names = _resource_names(resource, artists, album=music.music_type == MUSIC_ENTITY_ALBUM,
-                            album_suffixes=albums if music.music_type != MUSIC_ENTITY_ALBUM else None)
     titles = music_titles(music)
+    names = _resource_names(resource, artists, album=music.music_type == MUSIC_ENTITY_ALBUM,
+                            album_suffixes=albums if music.music_type != MUSIC_ENTITY_ALBUM else None,
+                            titles=titles)
     title_matched = any(music_title_matches(music, name) for name in names)
     content = f"{title} {description}"
     artist_matched = music_artist_evidence_matches(music, resource) if resource.artists or any(music_credit_values(resource).values()) \
         else any(_contains_artist(content, artist) for artist in artists)
     if not title_matched:
+        album_names = _resource_names(resource, artists, titles=albums)
         if music.music_type != MUSIC_ENTITY_ALBUM and artist_matched and any(
-            _music_title_key(item) in names
+            _music_title_key(item) in album_names
             for item in music_titles(music, album=True)
         ):
             return MusicMatch("album", "related_album")
@@ -1162,7 +1195,7 @@ def match_music_resource(
         return MusicMatch("candidate", "category_unknown")
     if music.music_type == MUSIC_ENTITY_ALBUM:
         # 所属专辑只说明单曲归属，不能代替资源主标题证明整专范围。
-        primary_names = _resource_names(resource, artists)
+        primary_names = _resource_names(resource, artists, titles=titles)
         if resource.track_number or (resource.album and not any(
             _music_title_key(item) in primary_names for item in titles
         )):
