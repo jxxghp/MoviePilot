@@ -2446,6 +2446,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.warn(f"{filepath.name} 无法识别文件媒体信息！")
             return
 
+        file_mediainfo.scrape_source = mediainfo.scrape_source
+
         self._scrape_nfo_generic(
             current_fileitem=fileitem,
             meta=file_meta,

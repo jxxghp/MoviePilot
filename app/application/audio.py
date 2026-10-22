@@ -153,10 +153,7 @@ def _audio_write_target(path: Path) -> Iterator[Path]:
         shutil.copy2(path, temporary)
         # NAS ACL 挂载可将可读源文件映射为 000；只给独立副本补齐读写权限，源权限保持不变。
         temporary.chmod(stat.st_mode | S_IRUSR | S_IWUSR)
-        initial_copy = _audio_signature(temporary)
         yield temporary
-        if _audio_signature(temporary) == initial_copy:
-            return
         if path.lstat().st_ino != link_inode or _audio_signature(path) != signature:
             raise OSError("标签写入期间目标文件已变化，保留当前目标并取消替换")
         temporary.replace(path)

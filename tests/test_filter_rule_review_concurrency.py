@@ -54,6 +54,9 @@ def test_custom_rule_mutations_reject_stale_snapshots(db, monkeypatch, operation
 
         @asynccontextmanager
         async def synchronized_scope():
+            """
+            让两个修改同时到达持久化边界，验证旧快照只能提交一次。
+            """
             nonlocal arrived
             arrived += 1
             if arrived == 2:

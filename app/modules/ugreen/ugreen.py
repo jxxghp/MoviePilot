@@ -28,6 +28,16 @@ from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 
+def _media_service_items(data: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """
+    校验媒体库服务列表，保留合法空数组并拒绝未知响应结构。
+    """
+    items = data.get("Items")
+    if not isinstance(items, list):
+        raise ConnectionError("绿联媒体库服务列表响应格式错误")
+    return items
+
+
 class Ugreen:
     """
     绿联影视媒体服务器客户端。
@@ -1622,14 +1632,15 @@ class Ugreen:
         """
         广度优先分页遍历海报墙目录，最多访问 20000 个不同路径。
 
-        重复路径只访问一次。单个目录请求失败时结束该目录，继续已有队列，不抛出专门的同步失败异常。
+        重复路径只访问一次。任意目录或分页失败都中止，不能将部分结果视为完整媒体库。
 
         :param root_path: 遍历起始目录
         :param page_size: 每个目录的分页大小，默认 100
         :yields: 服务端 video_arr 中的有效视频字典
+        :raises ConnectionError: 目录读取失败或超过完整遍历的路径数量上限
         """
         if not self._api or not root_path:
-            return
+            raise ConnectionError("绿联内部服务尚未连接或媒体库路径为空")
 
         queue = deque([root_path])
         visited: set[str] = set()
@@ -1650,6 +1661,10 @@ class Ugreen:
                     sort_type=1,
                     order_type=1,
                 )
+                if data is None:
+                    raise ConnectionError("读取绿联海报墙目录失败")
+                if any(field in data and not isinstance(data[field], list) for field in ("video_arr", "folder_arr")):
+                    raise ConnectionError("绿联海报墙目录响应格式错误")
                 if not data:
                     break
 
@@ -1667,6 +1682,8 @@ class Ugreen:
                 if data.get("is_last_page"):
                     break
                 page += 1
+        if queue:
+            raise ConnectionError("绿联媒体库目录数量超过遍历上限")
 
     def __iter_media_service_items(
         self,
@@ -1676,8 +1693,12 @@ class Ugreen:
     ) -> Generator[_SchemaMediaServerItem, None, None]:
         """
         分页遍历媒体库服务用户可见的电影、剧集和音乐专辑。
+
+        :raises ConnectionError: 未认证、分页失败或列表结构错误，调用方须保留旧缓存
         """
-        if not self.is_authenticated() or not self._media_api or not parent or self.__is_library_blocked(str(parent)):
+        if not self.is_authenticated() or not self._media_api or not parent:
+            raise ConnectionError("绿联媒体库服务尚未连接或媒体库标识为空")
+        if self.__is_library_blocked(str(parent)):
             return
 
         remaining = None if limit in (None, -1) else max(0, limit or 0)
@@ -1700,9 +1721,9 @@ class Ugreen:
                 fields=fields,
             )
             if data is None:
-                return
-            page_items = data.get("Items")
-            if not isinstance(page_items, list) or not page_items:
+                raise ConnectionError("读取绿联媒体库服务条目失败")
+            page_items = _media_service_items(data)
+            if not page_items:
                 return
 
             for raw_item in page_items:
@@ -1776,18 +1797,19 @@ class Ugreen:
 
         内部模式按目录遍历并只返回电影、剧集，媒体库模式还支持音乐专辑。
         当前内部模式对 limit=0 仍可能产生首个条目，媒体库模式不产生条目。
-        底层读取失败可能提前结束迭代并保留已经产出的部分结果。
+        底层读取失败抛出异常，调用方不得清理未读取到的旧缓存。
 
         :param parent: 媒体库标识
         :param start_index: 跳过的条目数量，负值或空值按 0 处理
         :param limit: 期望返回的条目上限，None 或 -1 表示不限；调用方应提供正数或不限标记
         :yields: 统一媒体条目
+        :raises ConnectionError: 服务未连接、媒体库路径缺失或任意目录分页失败
         """
         if self.__is_media_service_mode():
             yield from self.__iter_media_service_items(parent, start_index, limit)
             return None
         if not self.is_authenticated() or not self._api:
-            return None
+            raise ConnectionError("绿联内部服务尚未认证")
 
         library_id = str(parent)
         if not self._library_paths:
@@ -1795,7 +1817,7 @@ class Ugreen:
 
         root_path = self._library_paths.get(library_id)
         if not root_path:
-            return None
+            raise ConnectionError("绿联媒体库路径不可用")
 
         skip = max(0, start_index or 0)
         remain = -1 if limit is None or limit == -1 else max(0, limit)

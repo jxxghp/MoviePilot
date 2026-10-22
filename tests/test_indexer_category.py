@@ -37,7 +37,7 @@ def test_search_requests_use_explicit_categories_before_media_type(
     ids = selected_ids[:1] if selection == "single" else selected_ids
     cat = ",".join(str(category) for category in ids) if selection else selection
     expected_ids = ids if selection else default_ids
-    payload = {"success": True, "data": []} if module is not mtorrent else {"data": {"data": []}}
+    payload = {"success": True, "data": []} if module is not mtorrent else {"code": "0", "data": {"data": []}}
     response = SimpleNamespace(status_code=200, json=lambda: payload)
     request = AsyncMock(return_value=response) if asynchronous else Mock(return_value=response)
     transport = module.AsyncRequestUtils if asynchronous else module.RequestUtils

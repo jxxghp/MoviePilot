@@ -135,8 +135,8 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
                 refreshed_tokens = self.__refresh_access_token(refresh_token)
                 if not refreshed_tokens:
                     return None
-                tokens = refreshed_tokens
-                self.set_config({"refresh_time": int(time.time()), **tokens})
+                tokens = {**tokens, **refreshed_tokens}
+                self.set_config({**tokens, "refresh_time": int(time.time())})
             access_token = tokens.get("access_token")
             if access_token:
                 self._request_utils.update_headers(
@@ -454,7 +454,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         """
         分页列出目录直接子项，文件输入则刷新自身详情。
 
-        每页最多读取 100 项，少于 100 项时停止；无响应抛出 FileNotFoundError。
+        每页最多读取 100 项，没有下一页标记时停止；无响应抛出 FileNotFoundError。
         业务错误未统一抛出，可能返回已获取的部分结果。
 
         :param fileitem: 待查询项；非根目录必须带有文件标识和空间标识
@@ -497,7 +497,7 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             current_items = resp.get("items") or []
             for item in current_items:
                 items.append(self.__get_fileitem(item, parent=str(fileitem.path)))
-            if len(current_items) < 100:
+            if not next_marker:
                 break
         return items
 
@@ -977,18 +977,16 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
         """
         请求将文件或目录移入云盘回收站。
 
-        当前实现不检查接口返回的业务错误或空响应，True 不能证明目标已删除。
-
         :param fileitem: 携带空间和文件标识的待删除项
-        :return: 未抛出 HTTP 请求异常时返回 True，否则返回 False
+        :return: 收到无业务错误的 JSON 响应时返回 True；拒绝、无响应或请求异常返回 False
         """
         try:
-            self._request_api(
+            response = self._request_api(
                 "POST",
                 "/adrive/v1.0/openFile/recyclebin/trash",
                 json={"drive_id": fileitem.drive_id, "file_id": fileitem.fileid},
             )
-            return True
+            return isinstance(response, dict) and not response.get("code")
         except HttpRequestError:
             return False
 

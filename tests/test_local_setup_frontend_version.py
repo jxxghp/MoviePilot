@@ -230,11 +230,11 @@ def test_update_reinstalls_repacked_frontend_in_dev_mode(
             archive.writestr("dist/version.txt", "v3.0.11")
             archive.writestr("dist/index.html", f"build-{len(downloads)}")
 
-    def install_runtime_deps(*_args, **_kwargs):
+    def install_runtime_deps(*_args, **kwargs):
         """
         恢复已安装依赖标记，保证第二次确实面对完整的同版本前端。
         """
-        (public / "node_modules" / "express").mkdir(parents=True, exist_ok=True)
+        (kwargs["cwd"] / "node_modules" / "express").mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(module, "download_file", download_repacked_release)
     monkeypatch.setattr(module, "run", install_runtime_deps)

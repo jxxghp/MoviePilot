@@ -454,6 +454,14 @@ class RssHelper:
                     logger.warning(f"RSS文件过大: {len(raw_data) / 1024 / 1024:.1f}MB，跳过解析")
                     return False
 
+                expired_messages = {
+                    "RSS 链接已过期, 您需要获得一个新的!",
+                    "RSS Link has expired, You need to get a new one!",
+                    "RSS Link has expired, You need to get new!",
+                }
+                if ret.text.strip() in expired_messages:
+                    return None
+
                 if raw_data:
                     ret_xml = http_port.decode_xml(
                         ret,
@@ -601,14 +609,6 @@ class RssHelper:
 
             except Exception as e2:
                 logger.error(f"解析RSS失败：{str(e2)} - {traceback.format_exc()}")
-                # RSS过期检查
-                _rss_expired_msg = [
-                    "RSS 链接已过期, 您需要获得一个新的!",
-                    "RSS Link has expired, You need to get a new one!",
-                    "RSS Link has expired, You need to get new!"
-                ]
-                if ret_xml in _rss_expired_msg:
-                    return None
                 return False
             finally:
                 if root is not None:

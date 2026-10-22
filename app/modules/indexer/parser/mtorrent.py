@@ -157,6 +157,10 @@ class MTorrentSiteUserInfo(SiteParserBase):
         self.seeding_size += page_seeding_size
         self.seeding_info.extend(page_seeding_info)
 
+        # 空页或没有有效条目的页面不再推进，汇总可能滞后于实时做种明细。
+        if not page_seeding:
+            return None
+
         # 查询总做种数
         seeder_count = 0
         try:

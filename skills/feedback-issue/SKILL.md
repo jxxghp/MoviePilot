@@ -1,6 +1,6 @@
 ---
 name: feedback-issue
-version: 11
+version: 12
 description: >-
   Use this skill ONLY when the user EXPLICITLY requests filing an
   upstream issue for MoviePilot core, frontend, or an installed plugin,

@@ -2,6 +2,7 @@
 缓存契约、进程内后端与装饰器，具体持久化后端由启动层注入。
 """
 
+import asyncio
 import contextvars
 import inspect
 import logging
@@ -51,6 +52,51 @@ _async_file_factory: Optional[
 ] = None
 _file_ttl_provider: Callable[[], int] = lambda: DEFAULT_CACHE_TTL
 _redis_probe: Optional[Callable[[], bool]] = None
+
+
+# 多文件业务缓存的读改写必须共享同一进程锁，锁名由有限的宿主缓存合同提供。
+_mutation_locks: dict[str, threading.Lock] = {}
+_mutation_locks_guard = threading.Lock()
+
+
+def _cache_mutation_lock(name: str) -> threading.Lock:
+    """
+    获取同步线程与异步任务共用的业务缓存写锁。
+
+    :param name: 宿主定义的有限业务缓存名称
+    :return: 当前进程该名称唯一的锁
+    """
+    with _mutation_locks_guard:
+        return _mutation_locks.setdefault(name, threading.Lock())
+
+
+@contextmanager
+def cache_mutation(name: str) -> Generator[None, None, None]:
+    """
+    在同步调用中串行化一个业务缓存的完整读改写。
+
+    :param name: 宿主定义的有限业务缓存名称
+    :yields: 本次读改写持有锁的作用域
+    """
+    with _cache_mutation_lock(name):
+        yield
+
+
+@asynccontextmanager
+async def async_cache_mutation(name: str) -> AsyncGenerator[None, None]:
+    """
+    非阻塞等待共享写锁，取消后不会有后台线程迟到取得锁。
+
+    :param name: 与同步调用共用的业务缓存名称
+    :yields: 本次异步读改写持有锁的作用域
+    """
+    lock = _cache_mutation_lock(name)
+    while not lock.acquire(blocking=False):
+        await asyncio.sleep(0.01)
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 def configure_cache_factories(

@@ -4,6 +4,7 @@ Transmission 客户端连接与下载任务操作封装。
 
 import time
 from typing import List, Optional, Sequence, Tuple, Union
+from urllib.parse import urlsplit
 
 import transmission_rpc
 from transmission_rpc import Client, File, Torrent
@@ -32,7 +33,8 @@ class Transmission:
               "trackerStats",
               "leftUntilDone", "rateDownload", "rateUpload", "recheckProgress", "rateDownload", "rateUpload",
               "peersGettingFromUs", "peersSendingToUs", "uploadRatio", "uploadedEver", "downloadedEver", "downloadDir",
-              "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers"]
+              "error", "errorString", "doneDate", "queuePosition", "activityDate", "trackers",
+              "downloadLimit", "uploadLimit", "seedRatioLimit", "seedIdleLimit"]
 
     def __init__(self, host: Optional[str] = None, port: Optional[int] = None,
                  username: Optional[str] = None, password: Optional[str] = None,
@@ -51,12 +53,16 @@ class Transmission:
         self._host: Optional[str] = None
         self._port: Optional[int] = None
         self._protocol: object
+        self._path = "/transmission/rpc"
         if host and port:
             self._protocol, self._host, self._port = kwargs.get("protocol", "http"), host, port
         elif host:
             result = UrlUtils.parse_url_params(url=host)
             if result:
-                self._protocol, self._host, self._port, path = result
+                self._protocol, self._host, self._port, _path = result
+                self._path = urlsplit(host if "://" in host else f"http://{host}").path or self._path
+                if self._path == "/":
+                    self._path = "/transmission/rpc"
             else:
                 logger.error("Transmission配置不正确！")
                 return
@@ -102,6 +108,7 @@ class Transmission:
             trt = transmission_rpc.Client(protocol=self._protocol, # noqa
                                           host=self._host,
                                           port=self._port,
+                                          path=self._path,
                                           username=self._username,
                                           password=self._password,
                                           # transmission-rpc 运行时接受 Requests 的连接与读取超时二元组。
@@ -584,14 +591,14 @@ class Transmission:
         https://github.com/trim21/transmission-rpc/blob/8eb82629492a0eeb0bb565f82c872bf9ccdcb313/transmission_rpc/client.py#L654
 
         :param hash_string: 种子哈希
-        :param tracker_list: 要写入的 Tracker 地址列表，原样交给客户端
+        :param tracker_list: 要写入的 Tracker 地址列表，每个地址作为独立层级交给客户端
         :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
         try:
             self.trc.change_torrent(ids=hash_string,
-                                    tracker_list=tracker_list)
+                                    tracker_list=[[url] for url in tracker_list] if tracker_list is not None else None)
             return True
         except Exception as err:
             logger.error(f"修改tracker出错：{str(err)}")

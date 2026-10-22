@@ -66,6 +66,10 @@ def restore_manual_transfer_history_batch(
             _common_history_value(histories, "music_type")
             or transer_item.music_type
         )
+        transer_item.episode_group = (
+            _common_history_value(histories, "episode_group")
+            or transer_item.episode_group
+        )
         downloader = _common_history_value(histories, "downloader")
         download_hash = _common_history_value(histories, "download_hash")
     logger.info("手动整理历史批次还原 %s 个源文件", len(src_fileitems))

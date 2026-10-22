@@ -107,6 +107,7 @@ def success_fields(
         image=mediainfo.get_poster_image(),
         downloader=downloader,
         download_hash=download_hash,
+        episode_group=mediainfo.episode_group,
         status=True,
         retry_count=0,
         auto_paused=False,

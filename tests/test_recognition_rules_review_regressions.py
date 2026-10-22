@@ -207,6 +207,9 @@ async def test_douban_failed_detail_does_not_poison_recovery(monkeypatch, asynch
     request = Mock(side_effect=responses)
     api._request = SimpleNamespace(get_res=request)
     async def get_res(**kwargs):
+        """
+        在异步入口复用失败后恢复的同一响应序列。
+        """
         return request(**kwargs)
     monkeypatch.setattr("app.modules.douban.apiv2.AsyncRequestUtils", lambda **_kwargs: SimpleNamespace(get_res=get_res))
     api.clear_cache()
@@ -227,6 +230,9 @@ async def test_unified_music_search_can_return_second_page(monkeypatch) -> None:
     音乐来源请求足够的候选，统一接口再对完整集合分页。
     """
     async def search(**kwargs):
+        """
+        按真实请求上限返回候选，以核对接口的第二页切片。
+        """
         return [SimpleNamespace(to_dict=lambda i=i: {"title": f"Song {i}", "year": "2024"})
                 for i in range(min(kwargs["limit"], 6))]
     monkeypatch.setattr(media_endpoint, "MediaChain", lambda: SimpleNamespace(async_search_music=search))

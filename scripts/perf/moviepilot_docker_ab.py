@@ -704,7 +704,8 @@ def assert_owned(resource, args: argparse.Namespace, kind: str) -> None:
     """
     删除或复用资源前验证实验标签，避免误伤用户资源。
     """
-    resource_labels = resource.attrs.get("Labels") or {}
+    attributes = resource.attrs.get("Config", {}) if kind == "container" else resource.attrs
+    resource_labels = attributes.get("Labels") or {}
     if resource_labels.get(CAMPAIGN_LABEL) != args.campaign:
         raise HarnessError(f"拒绝操作非本 campaign 的 {kind}：{resource.name}")
 

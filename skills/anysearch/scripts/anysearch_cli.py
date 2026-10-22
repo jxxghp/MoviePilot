@@ -93,6 +93,10 @@ def _call_api(tool_name: str, arguments: dict, api_key: str) -> str:
         sys.exit(1)
     result = data.get("result", {})
     content = result.get("content", [])
+    if result.get("isError"):
+        message = "\n".join(item.get("text", "") for item in content if item.get("type") == "text")
+        print(f"Tool Error: {message or json.dumps(result, ensure_ascii=False)}", file=sys.stderr)
+        sys.exit(1)
     for item in content:
         if item.get("type") == "text":
             return item.get("text", "")
