@@ -169,13 +169,8 @@ class TmdbChain(ChainBase):
         """
         获取随机壁纸，缓存1个小时
         """
-        infos = self.tmdb_trending()
-        if infos:
-            while True:
-                info = random.choice(infos)
-                if info and info.backdrop_path:
-                    return info.backdrop_path
-        return None
+        wallpapers = [info.backdrop_path for info in self.tmdb_trending() or [] if info and info.backdrop_path]
+        return random.choice(wallpapers) if wallpapers else None
 
     def get_trending_wallpapers(self, num: Optional[int] = 10) -> List[str]:
         """

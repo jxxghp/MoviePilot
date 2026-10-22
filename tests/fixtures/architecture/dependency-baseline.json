@@ -961,8 +961,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9649,
-  "edge_sha256": "3038db090f87166a7cae3e63e78e30def7d3466252c846bdab3d6996a8f65999",
+  "edge_count": 9650,
+  "edge_sha256": "9315404c94e438c1117f3e0ab6ba6565917285b227613d741d2921971d9a879e",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2963,6 +2963,7 @@
     "app.api.endpoints.rule -> app.api.response",
     "app.api.endpoints.rule -> app.application",
     "app.api.endpoints.rule -> app.application.filtering",
+    "app.api.endpoints.rule -> app.application.rules",
     "app.api.endpoints.rule -> app.schemas",
     "app.api.endpoints.rule -> app.schemas.common",
     "app.api.endpoints.rule -> app.schemas.response",

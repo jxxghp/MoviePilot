@@ -116,7 +116,7 @@ def test_search_lists_share_query_and_projection(
     year_kwargs: dict[str, str],
 ) -> None:
     """
-    电影和剧集列表双入口应共享参数、标题过滤和类型投影。
+    电影和剧集列表双入口应共享查询参数，保留上游跨语言命中并添加类型。
     """
     api = _api()
     sync_items = [
@@ -132,7 +132,10 @@ def test_search_lists_share_query_and_projection(
     sync_result = getattr(api, sync_name)("目标", "2024")
     async_result = asyncio.run(getattr(api, async_name)("目标", "2024"))
 
-    assert sync_result == async_result == [{"id": 1, title_field: "目标作品", "media_type": mtype}]
+    assert sync_result == async_result == [
+        {"id": 1, title_field: "目标作品", "media_type": mtype},
+        {"id": 2, title_field: "其他作品", "media_type": mtype},
+    ]
     sync_client.assert_called_once_with(**year_kwargs)
     async_client.assert_awaited_once_with(**year_kwargs)
 

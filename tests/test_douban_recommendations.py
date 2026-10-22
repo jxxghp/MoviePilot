@@ -34,7 +34,7 @@ def test_recommendations_preserve_native_lists_and_compatible_mappings(
     }
     payload = payloads[shape]
     original = deepcopy(payload)
-    response = None if payload is None else Mock(json=Mock(return_value=payload))
+    response = None if payload is None else Mock(status_code=200, json=Mock(return_value=payload))
     api = object.__new__(DoubanApi)
     api._request = Mock(get_res=Mock(return_value=response))
     async_request = AsyncMock(return_value=response)

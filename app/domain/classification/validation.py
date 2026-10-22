@@ -516,13 +516,11 @@ class ClassificationPolicyValidator:
                 )
             else:
                 members = cast(list[ClassificationFactScalar], value)
-                if definition.value_type not in {"string", "enum"} or all(
-                    isinstance(item, str) for item in members
-                ):
+                if all(_valid_scalar_type(definition.value_type, item) for item in members):
                     return
                 collector.error(
                     "invalid_condition_value",
-                    f"字段 {condition.field} 的成员值必须是字符串",
+                    f"字段 {condition.field} 的成员值必须符合 {definition.value_type} 类型",
                     [*path, "value"],
                 )
             return
@@ -558,14 +556,7 @@ class ClassificationPolicyValidator:
                     [*path, "value"],
                 )
             return
-        if definition.value_type in {"integer", "year"}:
-            valid = isinstance(value, int) and not isinstance(value, bool)
-        elif definition.value_type == "number":
-            valid = _is_number(value)
-        elif definition.value_type in {"string", "enum"}:
-            valid = isinstance(value, str)
-        else:
-            valid = value is not None
+        valid = _valid_scalar_type(definition.value_type, value)
         if not valid:
             collector.error(
                 "invalid_condition_value",
@@ -865,6 +856,23 @@ def _normalize_path_segment(segment: str) -> str:
     按 Unicode NFC 和大小写折叠构造跨平台路径唯一键。
     """
     return unicodedata.normalize("NFC", segment).casefold()
+
+
+def _valid_scalar_type(value_type: str, value: Any) -> bool:
+    """
+    为标量条件与成员列表复用严格类型规则，布尔值不能冒充数字。
+
+    :param value_type: 字段目录声明的值类型
+    :param value: 待校验的标量值
+    :return: 值符合字段类型时返回 True
+    """
+    if value_type in {"integer", "year"}:
+        return isinstance(value, int) and not isinstance(value, bool)
+    if value_type == "number":
+        return _is_number(value)
+    if value_type in {"string", "enum"}:
+        return isinstance(value, str)
+    return value is not None
 
 
 def _is_number(value: Any) -> bool:

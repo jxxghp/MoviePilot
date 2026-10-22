@@ -232,13 +232,11 @@ class TmdbApi:
     @staticmethod
     def _project_search_results(title: str, items: List[_MediaRecord], mtype: MediaType) -> List[_MediaRecord]:
         """
-        按媒体类型过滤标题并补齐统一类型字段。
+        为来源已完成搜索匹配的候选补齐类型，不按本地化展示标题二次排除。
         """
-        title_field = "title" if mtype == MediaType.MOVIE else "name"
+        del title
         ret_infos = []
         for item in items:
-            if title not in (item.get(title_field) or ""):
-                continue
             item["media_type"] = mtype
             ret_infos.append(item)
         return ret_infos
