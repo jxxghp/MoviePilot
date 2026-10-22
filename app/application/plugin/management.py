@@ -335,13 +335,6 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
             raise ValueError(f"请先卸载该插件的分身：{instance_ids}")
 
         config_oper = get_configured_system_config()
-        install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
-        if plugin_id in install_plugins:
-            install_plugins = [plugin for plugin in install_plugins if plugin != plugin_id]
-            await config_oper.async_set(
-                SystemConfigKey.UserInstalledPlugins,
-                install_plugins,
-            )
 
         remove_plugin_api(plugin_id)
         remove_plugin_job(plugin_id)
@@ -352,7 +345,12 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
 
         # 删除数据必须发生在插件停止之后：插件的停机钩子只要取一次自有库句柄，就会把刚
         # 删除的数据重新建出来。停止同时注销插件类，故其后的删除一律按 force 执行
-        plugin_manager.stop(plugin_id)
+        if plugin_manager.stop(plugin_id) is False:
+            raise RuntimeError("插件后台服务尚未停止，已保留实例和数据供重试")
+        await config_oper.async_update_atomically(
+            SystemConfigKey.UserInstalledPlugins,
+            lambda current: (None, [item for item in (current or []) if item != plugin_id]),
+        )
 
         if virtual_instance:
             plugin_manager.delete_plugin_config(plugin_id, force=True)

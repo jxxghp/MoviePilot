@@ -44,7 +44,9 @@ async def save_plugin_folders(
     """
     保存插件文件夹分组配置。
     """
-    result = await get_plugin_folder_service().save(folders.root)
+    result = await get_plugin_folder_service().save(
+        folders.model_dump(mode="json", by_alias=True)
+    )
     return Response(success=result.success, message=result.message)
 
 

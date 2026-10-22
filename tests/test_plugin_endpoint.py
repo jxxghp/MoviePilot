@@ -1397,10 +1397,10 @@ def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
     result = uninstall_plugin("DemoPluginwork", None)
 
     assert result.success is True
-    config.set.assert_called_once_with(
-        SystemConfigKey.UserInstalledPlugins,
-        ["DemoPlugin"],
-    )
+    config.update_atomically.assert_called_once()
+    key, mutation = config.update_atomically.call_args.args
+    assert key is SystemConfigKey.UserInstalledPlugins
+    assert mutation(["DemoPlugin"]) == (None, ["DemoPlugin"])
     plugin_manager.delete_plugin_config.assert_called_once_with(
         "DemoPluginwork",
         force=True,

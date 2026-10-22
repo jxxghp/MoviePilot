@@ -732,17 +732,18 @@ class SystemConfigService:
             normalized_value=normalized_value,
         )
 
-    async def async_update_atomically(
+    def update_atomically(
         self,
         key: Any,
         mutation: Callable[[Any], tuple[T, Any]],
     ) -> T:
         """
-        在线程化短事务内原子读取旧值、规范化并写入新值。
-        """
-        if self._async_executor is None:
-            raise RuntimeError("系统配置异步数据库执行端口尚未配置")
+        在持久化写锁和短事务内原子变更配置，不向应用回调暴露数据库会话。
 
+        :param key: 系统配置键
+        :param mutation: 根据最新值返回业务结果和新值的纯变更回调
+        :return: 事务提交后返回变更回调的业务结果
+        """
         def apply(_session: Any, current: Any) -> tuple[T, Any]:
             """
             把不暴露数据库会话的应用层 mutation 适配到底层原子仓储。
@@ -750,12 +751,23 @@ class SystemConfigService:
             result, value = mutation(current)
             return result, self.normalize_value(key, value)
 
-        return cast(
-            T,
-            await self._async_executor.run(
-                partial(self._writer.update_atomically, key, apply)
-            ),
-        )
+        return self._writer.update_atomically(key, apply)
+
+    async def async_update_atomically(
+        self,
+        key: Any,
+        mutation: Callable[[Any], tuple[T, Any]],
+    ) -> T:
+        """
+        在线程化短事务内复用同步原子变更，避免事件循环中的阻塞数据库I/O。
+
+        :param key: 系统配置键
+        :param mutation: 根据最新值返回业务结果和新值的纯变更回调
+        :return: 事务提交后返回变更回调的业务结果
+        """
+        if self._async_executor is None:
+            raise RuntimeError("系统配置异步数据库执行端口尚未配置")
+        return cast(T, await self._async_executor.run(partial(self.update_atomically, key, mutation)))
 
     async def async_delete(self, key: Any) -> Any:
         """

@@ -74,6 +74,7 @@ class PluginInstallationRecord:
     :param created_at: 审计事实首次创建时间，必须包含时区
     :param updated_at: 审计事实最近更新时间，必须包含时区
     :param schema_version: 安装日志结构版本，必须为当前支持版本
+    :param host_enabled_before: 安装前本体启用位；旧日志未知时为None，不能推测恢复值
     """
 
     transaction_id: str
@@ -88,6 +89,7 @@ class PluginInstallationRecord:
     created_at: datetime
     updated_at: datetime
     schema_version: int = INSTALLATION_JOURNAL_SCHEMA_VERSION
+    host_enabled_before: bool | None = None
 
     def __post_init__(self) -> None:
         """
@@ -105,6 +107,8 @@ class PluginInstallationRecord:
 
         if not isinstance(self.membership_before, bool):
             raise PluginInstallationRecordError("membership_before 必须是布尔值")
+        if self.host_enabled_before is not None and not isinstance(self.host_enabled_before, bool):
+            raise PluginInstallationRecordError("host_enabled_before 必须是布尔值或null")
         if not isinstance(self.package_existed, bool):
             raise PluginInstallationRecordError("package_existed 必须是布尔值")
         if not isinstance(self.persistent_backup_existed, bool):

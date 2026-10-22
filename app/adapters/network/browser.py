@@ -486,17 +486,25 @@ class BrowserSessionHelper:
         :param owner: 可选宿主作用域；提供时会隔离并校验会话归属
         :return: 回调函数返回值
         """
-        self._prune_sessions()
-        return self._run_in_session_thread(
-            session_key,
-            self._with_session_in_thread,
-            session_key,
-            callback,
-            user_agent=user_agent,
-            cookies=cookies,
-            timeout=timeout,
-            owner=owner,
-        )
+        # 会话线程只能执行自己的浏览器任务；不能在其中同步等待其他会话关闭。
+        with self._sessions_lock:
+            in_session_thread = threading.get_ident() in self._session_thread_ids.values()
+        if not in_session_thread:
+            self._prune_sessions()
+        try:
+            return self._run_in_session_thread(
+                session_key,
+                self._with_session_in_thread,
+                session_key,
+                callback,
+                user_agent=user_agent,
+                cookies=cookies,
+                timeout=timeout,
+                owner=owner,
+            )
+        finally:
+            if not in_session_thread:
+                self._enforce_session_limit(protect_session_key=session_key)
 
     def _with_session_in_thread(
         self,
@@ -1011,7 +1019,6 @@ class BrowserSessionHelper:
                 self._close_session_state(session)
                 return existing_session
             self._sessions[session_key] = session
-        self._enforce_session_limit(protect_session_key=session_key)
         return session
 
     @staticmethod

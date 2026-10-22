@@ -483,15 +483,15 @@ def test_legacy_stop_entry_remains_idempotent():
     assert running == {}
 
 
-def test_legacy_stop_force_finalizes_after_hook_failure():
+def test_legacy_stop_preserves_owner_after_hook_failure():
     """
-    旧 stop 即使 hook 报错也释放实例，并保持历史 None 返回 ABI。
+    旧stop入口在hook报错时返回False并保留实例，成功场景另行保持None返回ABI。
     """
     order: list[str] = []
 
     class DemoPlugin:
         """
-        close 失败但仍应完成兼容卸载的测试插件。
+        close失败后仍需保留所有权供后续重试的测试插件。
         """
 
         plugin_name = "演示插件"
@@ -527,17 +527,18 @@ def test_legacy_stop_force_finalizes_after_hook_failure():
     lifecycle._disable_events.reset_mock()
     lifecycle._clear_modules.reset_mock()
 
-    assert lifecycle.stop("DemoPlugin") is None
+    previous = running["DemoPlugin"]
+    assert lifecycle.stop("DemoPlugin") is False
     assert order == ["close", "stop_service"]
     lifecycle._disable_events.assert_called_once_with(DemoPlugin)
-    lifecycle._clear_modules.assert_called_once_with("DemoPlugin")
-    assert classes == {}
-    assert running == {}
+    lifecycle._clear_modules.assert_not_called()
+    assert classes["DemoPlugin"] is DemoPlugin
+    assert running["DemoPlugin"] is previous
 
 
-def test_legacy_reload_continues_after_old_instance_hook_failure():
+def test_legacy_reload_stops_after_old_instance_hook_failure():
     """
-    旧实例 hook 失败只影响诊断，不得阻止 reload 创建新实例。
+    旧实例hook失败必须阻止reload创建新实例，保留可追踪的资源owner。
     """
     instances: list[object] = []
     stop_service = MagicMock()
@@ -587,12 +588,9 @@ def test_legacy_reload_continues_after_old_instance_hook_failure():
 
     result = lifecycle.reload("DemoPlugin", "plugin-reload")
 
-    assert result is PluginRuntimeStatus.ACTIVE
-    assert statuses["DemoPlugin"] is PluginRuntimeStatus.ACTIVE
-    assert running["DemoPlugin"] is not previous
-    assert len(instances) == 2
+    assert result is PluginRuntimeStatus.LOAD_FAILED
+    assert statuses["DemoPlugin"] is PluginRuntimeStatus.LOAD_FAILED
+    assert running["DemoPlugin"] is previous
+    assert len(instances) == 1
     stop_service.assert_called_once_with()
-    lifecycle._event_sender.assert_called_once_with(
-        "plugin-reload",
-        data={"plugin_id": "DemoPlugin"},
-    )
+    lifecycle._event_sender.assert_not_called()

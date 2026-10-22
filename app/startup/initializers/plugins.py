@@ -636,13 +636,27 @@ def configure_plugin_services() -> None:
             force=force,
         )
 
-    async def reload_plugin_tree(plugin_id: str) -> PluginRuntimeStatus:
+    async def reload_plugin_tree(
+        plugin_id: str, *, restore_enabled: bool | None = None,
+    ) -> PluginRuntimeStatus:
         """
-        在线程池中重建源插件及其全部虚拟实例。
+        通过同一受管生命周期线程入口重建实例树或恢复安装前启用状态。
+
+        :param plugin_id: 物理插件标识
+        :param restore_enabled: 不为None时恢复冻结启用位；否则重载实例树
+        :return: 实例树重载状态；启用位恢复成功时为ACTIVE
         """
+        def apply_lifecycle() -> PluginRuntimeStatus:
+            """
+            在生命周期owner中运行完整同步操作，恢复失败继续向应用端口传播。
+            """
+            if restore_enabled is not None:
+                plugin_manager.restore_plugin_host_enabled(plugin_id, restore_enabled)
+                return PluginRuntimeStatus.ACTIVE
+            return cast(PluginRuntimeStatus, plugin_manager.reload_plugin_tree(plugin_id))
+
         return await run_in_threadpool_to_completion(
-            plugin_manager.reload_plugin_tree,
-            plugin_id,
+            apply_lifecycle,
         )
 
     async def refresh_plugin_registrations(plugin_id: str) -> None:
@@ -655,12 +669,23 @@ def configure_plugin_services() -> None:
                 target_id,
             )
 
+    async def restore_host_enabled(plugin_id: str, enabled: bool) -> None:
+        """
+        在线程化owner中恢复本体启用位，并确认原本停用的候选资源已收敛。
+
+        :param plugin_id: 物理插件标识
+        :param enabled: journal冻结的安装前启用位
+        """
+        await reload_plugin_tree(plugin_id, restore_enabled=enabled)
+
     command = PluginInstallCommand(
         persistence=persistence,
         installed_plugins_reader=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
         loadable_marker=plugin_manager.mark_plugin_loadable,
+        host_enabled_reader=plugin_manager.is_plugin_host_enabled,
+        host_enabled_restorer=restore_host_enabled,
         plugin_ids_provider=plugin_manager.get_plugin_ids,
         packages=cast(PluginPackageTransactionPort, package_manager),
         install_reporter=lambda plugin_id, repo_url: (
@@ -694,6 +719,7 @@ def configure_plugin_services() -> None:
         PluginInstallationRecoveryService(
             persistence=persistence,
             packages=cast(PluginRecoveryPackagePort, package_manager),
+            restore_host_enabled=restore_host_enabled,
         )
     )
     configure_plugin_identity_migration(
