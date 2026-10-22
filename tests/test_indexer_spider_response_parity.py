@@ -309,6 +309,99 @@ def test_tnode_token_projection_is_identical_for_sync_and_async_responses(monkey
     assert processor(None) is None
 
 
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("changed", ["domain", "cookie", "ua"])
+def test_tnode_search_caches_tokens_per_current_connection_identity(tmp_path, monkeypatch, asynchronous, changed):
+    """
+    真实搜索入口在站点、Cookie 或UA变化后使用各自CSRF，重复搜索复用各自缓存。
+    """
+    first_config = {**_COMMON_INDEXER, "cookie": f"session={tmp_path}"}
+    second_config = {**first_config, changed: {
+        "domain": "https://other.tracker.example/",
+        "cookie": f"session=other-{tmp_path}",
+        "ua": "Other-MoviePilot-Test",
+    }[changed]}
+    identities = [(config["domain"], config["cookie"], config["ua"]) for config in (first_config, second_config)]
+    tokens = dict(zip(identities, ("first-token", "second-token")))
+    pages, submitted = [], []
+
+    def http_client(*_args, **kwargs):
+        """
+        只替换HTTP边界，令牌缓存、首页解析和搜索请求组装均由真实实现执行。
+        """
+        def get_res(url):
+            identity = (url, kwargs["cookies"], kwargs["ua"])
+            pages.append(identity)
+            return _FakeResponse(text=f'<meta name="x-csrf-token" content="{tokens[identity]}">')
+
+        def post_res(url, json):
+            submitted.append((url, {key.lower(): value for key, value in kwargs["headers"].items()}, json))
+            return _FakeResponse({"data": {"torrents": []}})
+
+        async def async_get_res(url):
+            return get_res(url)
+
+        async def async_post_res(url, json):
+            return post_res(url, json)
+
+        from types import SimpleNamespace
+
+        return SimpleNamespace(get_res=async_get_res if asynchronous else get_res,
+            post_res=async_post_res if asynchronous else post_res)
+
+    monkeypatch.setattr("app.modules.indexer.spider.tnode.AsyncRequestUtils" if asynchronous else
+        "app.modules.indexer.spider.tnode.RequestUtils", http_client)
+    first, second = TNodeSpider(first_config), TNodeSpider(second_config)
+    for spider in (first, second, first, second):
+        result = asyncio.run(spider.async_search("Movie", page=2)) if asynchronous else spider.search("Movie", page=2)
+        assert result == (False, [])
+
+    assert pages == identities
+    assert [headers["x-csrf-token"] for _url, headers, _params in submitted] == ["first-token", "second-token"] * 2
+    assert [params["page"] for _url, _headers, params in submitted] == [3] * 4
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_tnode_invalid_homepage_is_retried_before_search(tmp_path, monkeypatch, asynchronous):
+    """
+    首页拒绝不能缓存为成功或提交搜索，重试取得有效令牌后才执行搜索。
+    """
+    from types import SimpleNamespace
+
+    responses = [_FakeResponse(status_code=403), _FakeResponse(text='<meta name="x-csrf-token" content="renewed">')]
+    pages, submitted = [], []
+
+    def http_client(*_args, **kwargs):
+        def get_res(url):
+            pages.append(url)
+            return responses.pop(0)
+
+        def post_res(url, json):
+            del url, json
+            submitted.append(kwargs["headers"])
+            return _FakeResponse({"data": {"torrents": []}})
+
+        async def async_get_res(url):
+            return get_res(url)
+
+        async def async_post_res(url, json):
+            return post_res(url, json)
+
+        return SimpleNamespace(get_res=async_get_res if asynchronous else get_res,
+            post_res=async_post_res if asynchronous else post_res)
+
+    monkeypatch.setattr("app.modules.indexer.spider.tnode.AsyncRequestUtils" if asynchronous else
+        "app.modules.indexer.spider.tnode.RequestUtils", http_client)
+    spider = TNodeSpider({**_COMMON_INDEXER, "cookie": f"retry={tmp_path}"})
+    for expected in [(True, []), (False, []), (False, [])]:
+        result = asyncio.run(spider.async_search("Movie")) if asynchronous else spider.search("Movie")
+        assert result == expected
+    assert pages == [_COMMON_INDEXER["domain"]] * 2
+    assert len(submitted) == 2
+    assert all({key.lower(): value for key, value in headers.items()}["x-csrf-token"] == "renewed"
+               for headers in submitted)
+
+
 @pytest.mark.parametrize(
     ("name", "credential", "search_kwargs"),
     [
