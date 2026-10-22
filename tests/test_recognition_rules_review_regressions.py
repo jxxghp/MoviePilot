@@ -121,6 +121,47 @@ def test_classification_resolves_valid_alias_chain() -> None:
     assert result.result.effective.category_id == "review.hit"
 
 
+@pytest.mark.parametrize("field,operator,value,aliases", [
+    ("media.year", "in", [2026], {"2026": "错误字符串替换"}),
+    ("media.adult", "is_true", None, {"True": "错误字符串替换"}),
+])
+def test_classification_aliases_preserve_numeric_and_boolean_facts(field, operator, value, aliases) -> None:
+    """
+    有效别名策略只映射字符串，数字与布尔事实不得被字符串化或改变比较类型。
+    """
+    policy = _classification_policy(field, operator, value, aliases=aliases)
+    assert ClassificationPolicyValidator().validate(policy).valid
+    facts = build_classification_facts(MediaInfo(
+        media_source=MediaSource.TMDB, media_id="1", type=MediaType.MOVIE,
+        title="Review", year="2026", adult=True,
+    ))
+    before = facts.model_dump()
+    result = ClassificationEvaluator().evaluate(policy, facts, trace=True)
+    assert result.result.effective.category_id == "review.hit"
+    assert facts.model_dump() == before
+    actual = result.trace[0].conditions[0].actual
+    assert type(actual) is (int if field == "media.year" else bool)
+
+
+def test_classification_collection_alias_chains_preserve_original_trace() -> None:
+    """
+    集合事实和期望成员均按多级别名命中，同时保留原始事实与解释轨迹。
+    """
+    policy = _classification_policy("media.countries", "contains_any", ["中国"], aliases={
+        "CHN": "PRC", "PRC": "CN", "中国": "中华", "中华": "CN",
+    })
+    assert ClassificationPolicyValidator().validate(policy).valid
+    facts = build_classification_facts(MediaInfo(
+        media_source=MediaSource.TMDB, media_id="1", type=MediaType.MOVIE,
+        title="Review", origin_country=["CHN", "US"],
+    ))
+    result = ClassificationEvaluator().evaluate(policy, facts, trace=True)
+    assert result.result.effective.category_id == "review.hit"
+    assert facts.media.countries == ["CHN", "US"]
+    assert result.trace[0].conditions[0].actual == ["CHN", "US"]
+    assert result.trace[0].conditions[0].expected == ["中国"]
+
+
 @pytest.mark.parametrize("value", [["2024"], [True], [2024.5]])
 def test_classification_rejects_wrong_numeric_member_types(value) -> None:
     """
