@@ -14,7 +14,7 @@ import stat
 import subprocess
 import threading
 import zipfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from typing import Any, cast
@@ -71,6 +71,12 @@ class SystemUpdateManager(metaclass=SingletonClass):
         "https://github.com/jxxghp/MoviePilot/archive/refs/tags/{tag}.zip"
     )
     _VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+(?:[-.](?:alpha|beta|rc)\d*)?$", re.I)
+    # 镜像构建时写入的系统基线（ISO 日期），记录镜像系统软件包刷新到的安全基线。
+    _SYSTEM_BASELINE_FILE = Path("/etc/moviepilot/system-baseline")
+    # 基线机制引入前的下限：没有基线文件的旧镜像按此值比较，因此只有目标版本把
+    # MIN_SYSTEM_BASELINE 提高到该日期之后才会拦截旧镜像。
+    _LEGACY_SYSTEM_BASELINE = "2026-01-01"
+    _SYSTEM_BASELINE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
     # 稳定版允许 -N 后缀，用于不升小版本的临时修复（如 v3.0.10-1）
     _STABLE_VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+(?:-\d+)?$", re.I)
 
@@ -1423,6 +1429,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
             0,
         )
         frontend_version = self._validate_backend_archive(version)
+        # 先于前端下载判断镜像系统基线，避免不满足要求时继续占用带宽或进入可安装状态。
+        self._check_system_baseline()
         frontend_release = self._fetch_frontend_release(frontend_version)
         frontend_asset = next(
             (
@@ -1745,6 +1753,83 @@ class SystemUpdateManager(metaclass=SingletonClass):
             if any(not any(name.endswith(f"/{item}") for name in names) for item in required):
                 raise RuntimeError("后端更新包缺少依赖锁定文件")
             return frontend_match.group(1)
+
+    def _check_system_baseline(self) -> None:
+        """
+        拒绝把要求更高系统基线的版本安装到旧 Docker 镜像。
+
+        仅 Docker 部署执行：系统组件随镜像发布，应用内更新无法替换；本地源码与 exe 部署跳过。
+        目标版本未声明 ``MIN_SYSTEM_BASELINE`` 时视为无要求，声明格式无效时按失败处理。
+
+        :raises RuntimeError: 目标版本声明无效，或当前镜像系统基线低于目标要求
+        """
+        if not is_docker():
+            return
+        required = self._backend_min_system_baseline()
+        if required is None:
+            return
+        current = self._image_system_baseline()
+        compared = current or self._LEGACY_SYSTEM_BASELINE
+        # 基线均已校验为 YYYY-MM-DD，字符串顺序与日期顺序一致。
+        if required > compared:
+            raise RuntimeError(
+                "该版本包含系统组件安全更新，需要先更新 Docker 镜像"
+                f"（要求系统基线 {required}，当前 {current or '未标记'}）"
+            )
+
+    def _backend_min_system_baseline(self) -> str | None:
+        """
+        读取已下载后端归档 version.py 中声明的最低系统基线。
+
+        :return: 规范化的 ISO 日期；旧版本未声明时返回 ``None``
+        :raises RuntimeError: 声明存在但不是有效 ISO 日期
+        """
+        with zipfile.ZipFile(self._backend_archive) as archive:
+            version_name = next(
+                name
+                for name in archive.namelist()
+                if name.count("/") == 1 and name.endswith("/version.py")
+            )
+            version_source = archive.read(version_name).decode("utf-8")
+        match = re.search(r"^MIN_SYSTEM_BASELINE\s*=\s*['\"]([^'\"]*)['\"]", version_source, re.M)
+        if not match:
+            return None
+        required = self._parse_system_baseline(match.group(1))
+        if required is None:
+            raise RuntimeError(f"目标版本声明的系统基线无效：{match.group(1)}")
+        return required
+
+    def _image_system_baseline(self) -> str | None:
+        """
+        读取当前镜像构建时写入的系统基线。
+
+        :return: 规范化的 ISO 日期；旧镜像缺少文件或内容无效时返回 ``None``，按最旧基线处理
+        """
+        try:
+            raw = self._SYSTEM_BASELINE_FILE.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        baseline = self._parse_system_baseline(raw)
+        if baseline is None:
+            logger.warning(f"镜像系统基线文件内容无效，按旧镜像处理：{raw.strip()[:32]}")
+        return baseline
+
+    @classmethod
+    def _parse_system_baseline(cls, value: str) -> str | None:
+        """
+        校验系统基线为真实存在的 YYYY-MM-DD 日期。
+
+        :param value: 原始基线文本
+        :return: 去除空白后的基线；格式或日期无效时返回 ``None``
+        """
+        text = value.strip()
+        if not cls._SYSTEM_BASELINE_PATTERN.fullmatch(text):
+            return None
+        try:
+            date.fromisoformat(text)
+        except ValueError:
+            return None
+        return text
 
     def _validate_frontend_archive(self, version: str) -> None:
         """

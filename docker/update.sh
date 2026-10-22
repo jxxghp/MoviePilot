@@ -35,6 +35,9 @@ PUBLIC_DIR=/public
 UPDATE_PENDING_FILE="${MOVIEPILOT_UPDATE_PENDING_FILE:-/var/lib/moviepilot/update/__update_pending__}"
 UPDATE_PREVIOUS_APP="${APP_DIR}.__update_previous__"
 UPDATE_PREVIOUS_PUBLIC="${PUBLIC_DIR}.__update_previous__"
+# 镜像构建时写入的系统基线；旧镜像缺少该文件时按机制引入前的下限比较。
+SYSTEM_BASELINE_FILE="${MOVIEPILOT_SYSTEM_BASELINE_FILE:-/etc/moviepilot/system-baseline}"
+LEGACY_SYSTEM_BASELINE="2026-01-01"
 
 function apply_package_cache_env() {
     PACKAGE_CACHE_ROOT="${PACKAGE_CACHE_ROOT:-${CONFIG_DIR}/.cache}"
@@ -90,6 +93,37 @@ function download_and_unzip() {
     else
         return 0
     fi
+}
+
+# 输出去除空白后的 YYYY-MM-DD 基线；格式无效时返回失败。
+function normalize_system_baseline() {
+    local value
+    value="$(printf '%s' "$1" | tr -d '[:space:]')"
+    [[ "${value}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+    printf '%s\n' "${value}"
+}
+
+# 目标版本要求的系统基线高于当前镜像时拒绝更新：系统组件只能随镜像更新。
+# 未声明 MIN_SYSTEM_BASELINE 的旧版本视为无要求；声明无效时同样拒绝，保留当前版本。
+function check_system_baseline() {
+    local version_file="$1"
+    local required_raw
+    local required
+    local current
+
+    grep -Eq '^MIN_SYSTEM_BASELINE[[:space:]]*=' "${version_file}" 2>/dev/null || return 0
+    required_raw="$(sed -n "s/^MIN_SYSTEM_BASELINE[[:space:]]*=[[:space:]]*['\"]\([^'\"]*\)['\"].*/\1/p" "${version_file}" | head -n 1)"
+    if ! required="$(normalize_system_baseline "${required_raw}")"; then
+        WARN "更新包声明的系统基线无效（${required_raw}），已跳过本次更新并保留当前版本"
+        return 1
+    fi
+    current="$(normalize_system_baseline "$(cat "${SYSTEM_BASELINE_FILE}" 2>/dev/null)")" || current=""
+    # 基线均为 YYYY-MM-DD，字符串顺序与日期顺序一致。
+    if [[ "${required}" > "${current:-${LEGACY_SYSTEM_BASELINE}}" ]]; then
+        WARN "该版本包含系统组件安全更新，需要先更新 Docker 镜像（要求系统基线 ${required}，当前 ${current:-未标记}），已跳过本次更新并保留当前版本"
+        return 1
+    fi
+    return 0
 }
 
 function sync_project_dependencies() {
@@ -399,6 +433,9 @@ function install_backend_and_download_resources() {
         return 1
     fi
     INFO "后端程序包准备成功"
+    if ! check_system_baseline "${TMP_PATH}/App/version.py"; then
+        return 1
+    fi
     
     # 检查依赖清单，实际同步延后到所有运行载荷准备完成之后。
     INFO "→ 检查依赖变化..."
