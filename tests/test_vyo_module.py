@@ -192,7 +192,11 @@ def test_get_items_stops_when_request_fails():
         return _paged_items(rows)(params, None)
 
     client = _client({"/items": flaky})
-    assert len([*client.get_items("lib-1")]) == 100
+    items = client.get_items("lib-1")
+    first_page = [next(items) for _ in range(100)]
+    assert len(first_page) == 100
+    with pytest.raises(ConnectionError):
+        next(items)
 
 
 # ── 媒体库与统计 ────────────────────────────────────────────────────
