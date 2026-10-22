@@ -173,6 +173,15 @@ composition constructs and injects cross-layer dependencies, initializers expose
 domain-scoped startup/shutdown hooks, and lifecycle orders those hooks and decides
 restart policy. Reusable persistence implementations belong in `app/db/adapters/`,
 not startup. Lower-level runtime modules must not import startup.
+
+`startup/composition/cliagent.py` owns one exclusive CLI request process. It receives
+deployment settings explicitly and reuses the database, configuration, Agent and
+Chain composition owners. It may hold and close module/plugin lifecycle owners;
+this permission applies to that exact module, not its siblings or a subtree. It
+does not start Web, frontend, external site authentication or plugin synchronization.
+Shutdown drains Agent work and persistence before closing dependent database
+owners; an unconverged owner must retain its downstream dependencies and report
+failure.
 `startup/composition/configuration.py` owns configuration snapshot loading, typed
 runtime/settings construction and publication. `startup/composition/database.py`
 owns the process database worker, compatibility transaction runner, query services,

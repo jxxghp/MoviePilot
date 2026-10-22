@@ -118,3 +118,24 @@ assert gateway._provider_runtime_factory is None
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_cli_agent_is_an_exact_runtime_owner_without_subtree_exemption() -> None:
+    """
+    只允许独占 CLI 组合根持有模块和插件 owner，相邻消费者及子模块仍须走门面。
+    """
+    dependencies = {"app.runtime.extensions.module.manager", "app.runtime.extensions.plugin.manager"}
+    graph = {
+        "app.startup.composition.cliagent": dependencies,
+        "app.startup.composition.cliagent.consumer": dependencies,
+        "app.startup.composition.cliagent_tools": dependencies,
+    }
+
+    violations = collect_service_locator_violations(graph)
+
+    assert [(item.source, item.policy) for item in violations] == [
+        ("app.startup.composition.cliagent.consumer", "module"),
+        ("app.startup.composition.cliagent_tools", "module"),
+        ("app.startup.composition.cliagent.consumer", "plugin"),
+        ("app.startup.composition.cliagent_tools", "plugin"),
+    ]

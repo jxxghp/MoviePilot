@@ -127,8 +127,9 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
     expected_versions = {
         "browser-use": "4",
         "command-dispatch": "2",
-        "database-operation": "11",
-        "feedback-issue": "11",
+        "database-operation": "12",
+        "feedback-issue": "12",
+        "anysearch": "3",
         "moviepilot-api": "59",
         "moviepilot-update": "7",
         "organize-files": "5",
@@ -136,7 +137,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "generate-identifiers": "4",
         "create-moviepilot-plugin": "7",
         "create-moviepilot-skill": "3",
-        "publish-moviepilot-plugin": "3",
+        "publish-moviepilot-plugin": "4",
         "downloader-operation": "3",
         "mediaserver-operation": "3",
     }

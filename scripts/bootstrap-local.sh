@@ -128,7 +128,9 @@ detect_os() {
   case "$uname_s" in
     Darwin)
       OS_NAME="macOS"
-      if command -v brew >/dev/null 2>&1; then
+      if [[ -n "$LINK_PATH" ]]; then
+        :
+      elif command -v brew >/dev/null 2>&1; then
         LINK_PATH="$(brew --prefix)/bin/moviepilot"
       else
         LINK_PATH="/usr/local/bin/moviepilot"
@@ -140,14 +142,14 @@ detect_os() {
       else
         OS_NAME="Linux"
       fi
-      LINK_PATH="/usr/local/bin/moviepilot"
+      LINK_PATH="${LINK_PATH:-/usr/local/bin/moviepilot}"
       ;;
     MINGW*|MSYS*|CYGWIN*)
       OS_NAME="Windows"
       ;;
     *)
       OS_NAME="$uname_s"
-      LINK_PATH="/usr/local/bin/moviepilot"
+      LINK_PATH="${LINK_PATH:-/usr/local/bin/moviepilot}"
       ;;
   esac
 
@@ -683,6 +685,8 @@ ensure_link_path
 if [[ "$NON_INTERACTIVE" != "true" && "$HAS_TTY" == "true" ]]; then
   run_interactive_guide
   ensure_link_path
+elif [[ "$NON_INTERACTIVE" == "true" ]]; then
+  RUN_WIZARD="false"
 elif [[ "$RUN_WIZARD" == "true" && "$HAS_TTY" != "true" ]]; then
   echo "==> 未检测到可用终端输入，已跳过初始化向导。安装完成后可手动执行：moviepilot setup --wizard"
   RUN_WIZARD="false"
