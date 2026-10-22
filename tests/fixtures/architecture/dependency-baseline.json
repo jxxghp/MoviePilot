@@ -641,6 +641,9 @@
         "uses": []
       },
       {
+        "source": "app.modules.plex.plex",
+        "target": "plexapi",
+        "kind": "network_sdk",
         "bindings": [
           "from:plexapi.audio.Album as Album",
           "from:plexapi.audio.Artist as Artist",
@@ -656,14 +659,10 @@
           "from:plexapi.video.Season as Season",
           "from:plexapi.video.Show as Show"
         ],
-        "fingerprint": "0fe42fa932618997d4f589a5217a36b45f7ac2947212a371bdfbbc55d9cf1def",
-        "kind": "network_sdk",
-        "source": "app.modules.plex.plex",
-        "target": "plexapi",
         "uses": [
           "Plex.__fetch_item|call:exceptions.NotFound",
           "Plex.__fetch_item|call:fetchItem",
-          "Plex.__get_library_images|call:fetchItems",
+          "Plex.__get_cached_library_images|call:fetchItems",
           "Plex.__init__|call:library.sections",
           "Plex.__init__|call:server.PlexServer",
           "Plex.__search_show|call:library.search",
@@ -687,7 +686,8 @@
           "Plex.refresh_library_by_items|call:library.update",
           "Plex.refresh_library_by_items|call:query",
           "Plex.refresh_root_library|call:library.update"
-        ]
+        ],
+        "fingerprint": "6109de36f963b5c6193ed60941a88856cbee9c37303dedf13da3a3be94478543"
       },
       {
         "bindings": [

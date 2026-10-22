@@ -13,7 +13,7 @@ from requests import Response
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
-from app.modules._base.mediaserver import emby_query_params
+from app.modules._base.mediaserver import emby_episode_numbers, emby_query_params
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import Statistic as _SchemaStatistic
@@ -584,6 +584,7 @@ class Emby:
         查询电视剧身份及各季已经存在的集号。
 
         已有缓存标识失效时按标题及年份重新查找；仅统计服务端实际存在且具有季号、集号的条目。
+        合并文件按 IndexNumber 至 IndexNumberEnd 的闭区间计入全部集数。
 
         :param item_id: Emby 条目标识
         :param title: 缺少条目标识或缓存标识失效时用于回退搜索的剧名
@@ -651,7 +652,7 @@ class Emby:
                         continue
                     if season_index not in season_episodes:
                         season_episodes[season_index] = []
-                    season_episodes[season_index].append(episode_index)
+                    season_episodes[season_index].extend(emby_episode_numbers(res_item))
                 return item_id, season_episodes
         except Exception as e:
             logger.error("连接Shows/Id/Episodes出错：" + str(e))
@@ -663,6 +664,8 @@ class Emby:
     ) -> Dict[int, str]:
         """
         读取指定季的分集条目标识。
+
+        合并文件覆盖的各个集号指向同一个条目标识。
 
         :param item_id: Emby 条目标识
         :param season: 目标季号
@@ -688,7 +691,8 @@ class Emby:
                 episode_id = res_item.get("Id")
                 if episode_index is None or not episode_id:
                     continue
-                episode_ids[int(episode_index)] = str(episode_id)
+                for number in emby_episode_numbers(res_item):
+                    episode_ids[number] = str(episode_id)
             return episode_ids
         except Exception as e:
             logger.error(f"获取 Emby 季集条目 ID 出错：{str(e)}")
