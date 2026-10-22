@@ -476,10 +476,16 @@ def _apply_aliases(value: Any, aliases: Mapping[str, str]) -> Any:
     """
     递归将字段别名投影为策略声明的规范值。
     """
+    if not aliases:
+        return value
     if _is_collection(value):
         return [_apply_aliases(item, aliases) for item in value]
     if isinstance(value, str):
-        return aliases.get(value, value)
+        seen: set[str] = set()
+        while value in aliases and value not in seen:
+            seen.add(value)
+            value = aliases[value]
+        return value
     return value
 
 

@@ -557,16 +557,28 @@ class FilterRuleService:
         """
         rules = get_custom_rules()
         new_rule = normalize_custom_rule(existing_rules=rules, **values)
-        rules.append(new_rule)
-        await save_system_config(
-            SystemConfigKey.CustomFilterRules,
-            [rule.model_dump(exclude_none=True) for rule in rules],
-        )
+        final_rules = [*rules, new_rule]
+        await self._save_custom_rules(rules, final_rules)
         return {
             "message": f"已新增自定义过滤规则 {new_rule.id}",
             "custom_rule": serialize_custom_rule(new_rule),
-            "count": len(rules),
+            "count": len(final_rules),
         }
+
+    async def _save_custom_rules(self, expected: list[CustomRule], final: list[CustomRule]) -> None:
+        """
+        通过现有原子作用域核对规则快照，拒绝并发新增、修改或删除覆盖。
+
+        :param expected: 本次操作读取的旧规则集合
+        :param final: 本次操作希望保存的完整规则集合
+        :raises RuleGroupMutationConflictError: 配置已被另一请求修改，需要重新读取
+        """
+        groups = [group.model_dump(exclude_none=True) for group in get_rule_groups()]
+        definitions = [rule.model_dump(exclude_none=True) for rule in final]
+        async with self._mutation_scope() as mutation:
+            await mutation.apply(groups, expected_rule_groups=groups, custom_rules=definitions,
+                                 expected_custom_rules=[rule.model_dump(exclude_none=True) for rule in expected])
+        await self._publish_config_changed(SystemConfigKey.CustomFilterRules, definitions)
 
     async def reorder_custom(
         self,
@@ -669,10 +681,7 @@ class FilterRuleService:
             await self._publish_config_changed(SystemConfigKey.CustomFilterRules, rule_definitions)
             await self._publish_config_changed(SystemConfigKey.UserFilterRuleGroups, group_definitions)
         else:
-            await save_system_config(
-                SystemConfigKey.CustomFilterRules,
-                rule_definitions,
-            )
+            await self._save_custom_rules(rules, final_rules)
         if updated.id is None:
             raise ValueError("更新后的自定义过滤规则缺少 id")
         refs = collect_custom_rule_group_refs(updated_groups, [updated.id]).get(updated.id, [])
@@ -693,10 +702,7 @@ class FilterRuleService:
         if refs:
             raise ValueError(f"自定义过滤规则 '{rule_id}' 仍被规则组引用: {', '.join(refs)}")
         remaining = [rule for rule in rules if rule.id != rule_id]
-        await save_system_config(
-            SystemConfigKey.CustomFilterRules,
-            [rule.model_dump(exclude_none=True) for rule in remaining],
-        )
+        await self._save_custom_rules(rules, remaining)
         return {
             "message": f"已删除自定义过滤规则 {rule_id}",
             "count": len(remaining),

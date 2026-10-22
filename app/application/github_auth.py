@@ -141,6 +141,8 @@ class GithubAuthService:
         self._client_id = client_id
         self._clock = clock
         self._lock = asyncio.Lock()
+        self._credential_lock = asyncio.Lock()
+        self._refresh_lock = asyncio.Lock()
         self._pending_sessions: dict[str, _PendingDeviceSession] = {}
 
     async def start_device_auth(self) -> GithubDeviceAuthStartResult:
@@ -281,6 +283,8 @@ class GithubAuthService:
                 token,
                 metadata,
             )
+            if not token:
+                return await self.status()
             granted_scopes = set(str(metadata.get("scope") or "").replace(",", " ").split())
             needs_reauthorization = needs_reauthorization or not set(
                 GITHUB_DEVICE_AUTH_SCOPES
@@ -328,26 +332,39 @@ class GithubAuthService:
         normalized = token.strip()
         if not normalized:
             raise GithubAuthError("GitHub Token 不能为空")
-        success, message = self._settings.update("GITHUB_TOKEN", normalized)
-        if success is False:
-            raise GithubAuthError(message or "GitHub Token 保存失败")
-        await self.forget_oauth_metadata()
+        await self._persist_credentials(normalized, None)
         return await self.status()
 
     async def clear_token(self) -> None:
         """
         清除 GitHub Token 和 OAuth 刷新元数据。
         """
-        success, message = self._settings.update("GITHUB_TOKEN", None)
-        if success is False:
-            raise GithubAuthError(message or "GitHub Token 清除失败")
-        await self.forget_oauth_metadata()
+        await self._persist_credentials(None, None)
 
     async def forget_oauth_metadata(self) -> None:
         """
         清除 OAuth 元数据但保留当前部署设置中的 Token 值。
         """
-        await self._system_config.async_delete(self._AUTH_CONFIG_KEY)
+        async with self._credential_lock:
+            await self._system_config.async_delete(self._AUTH_CONFIG_KEY)
+
+    async def _persist_credentials(
+        self, token: str | None, metadata: dict[str, Any] | None,
+    ) -> None:
+        """
+        串行发布凭据和对应元数据，防止迟到刷新覆盖手动清除或更换。
+
+        :param token: 新访问令牌；None 表示清除
+        :param metadata: OAuth 元数据；None 表示手动凭据或清除
+        """
+        async with self._credential_lock:
+            success, message = self._settings.update("GITHUB_TOKEN", token)
+            if success is False:
+                raise GithubAuthError(message or "GitHub Token 保存失败")
+            if metadata is None:
+                await self._system_config.async_delete(self._AUTH_CONFIG_KEY)
+            else:
+                await self._system_config.async_set(self._AUTH_CONFIG_KEY, metadata)
 
     async def _save_oauth_token(
         self,
@@ -359,12 +376,6 @@ class GithubAuthService:
         """
         if not exchange.access_token:
             raise GithubAuthError("GitHub 未返回访问 Token")
-        success, message = self._settings.update(
-            "GITHUB_TOKEN",
-            exchange.access_token,
-        )
-        if success is False:
-            raise GithubAuthError(message or "GitHub Token 保存失败")
         metadata: dict[str, Any] = {
             "login": github_user.login,
             "scope": exchange.scope or "",
@@ -375,7 +386,7 @@ class GithubAuthService:
             metadata["expires_at"] = int(self._clock() + max(exchange.expires_in, 0))
         if exchange.refresh_token_expires_in is not None:
             metadata["refresh_token_expires_at"] = int(self._clock() + max(exchange.refresh_token_expires_in, 0))
-        await self._system_config.async_set(self._AUTH_CONFIG_KEY, metadata)
+        await self._persist_credentials(exchange.access_token, metadata)
 
     async def _refresh_if_needed(
         self,
@@ -383,7 +394,27 @@ class GithubAuthService:
         metadata: dict[str, Any],
     ) -> tuple[str, dict[str, Any], bool]:
         """
-        在过期窗口内刷新 OAuth Token，失败时保留原值供诊断和重试。
+        串行刷新 OAuth 快照，已被清除或替换时返回当前凭据。
+
+        :param token: 调用方读取的访问令牌快照
+        :param metadata: 与令牌对应的 OAuth 元数据快照
+        :return: 当前访问令牌、对应元数据及是否需要重新授权
+        """
+        async with self._refresh_lock:
+            current_token, current_metadata = self._read_access_token(), self._read_auth_metadata()
+            if (current_token, current_metadata) != (token, metadata):
+                return current_token, current_metadata, False
+            return await self._refresh_current_token(token, metadata)
+
+    async def _refresh_current_token(
+        self, token: str, metadata: dict[str, Any],
+    ) -> tuple[str, dict[str, Any], bool]:
+        """
+        刷新单份仍有效的快照，并在写回时核对它未被其他凭据操作替换。
+
+        :param token: 刷新锁内已确认仍为当前值的访问令牌
+        :param metadata: 已确认对应当前令牌的 OAuth 元数据
+        :return: 当前访问令牌、对应元数据及是否需要重新授权
         """
         expires_at = self._as_int(metadata.get("expires_at"))
         if expires_at is None or expires_at > int(self._clock()) + 60:
@@ -397,9 +428,9 @@ class GithubAuthService:
                 refresh_token,
             )
         except (GithubAuthError, GithubAuthTransportError):
-            return token, metadata, True
+            return await self._failed_refresh_snapshot(token, metadata)
         if not exchange.access_token:
-            return token, metadata, True
+            return await self._failed_refresh_snapshot(token, metadata)
         refreshed_metadata = copy.deepcopy(metadata)
         if exchange.refresh_token:
             refreshed_metadata["refresh_token"] = exchange.refresh_token
@@ -409,14 +440,29 @@ class GithubAuthService:
             refreshed_metadata["refresh_token_expires_at"] = int(
                 self._clock() + max(exchange.refresh_token_expires_in, 0)
             )
-        success, _ = self._settings.update("GITHUB_TOKEN", exchange.access_token)
-        if success is False:
-            return token, metadata, True
-        await self._system_config.async_set(
-            self._AUTH_CONFIG_KEY,
-            refreshed_metadata,
-        )
+        async with self._credential_lock:
+            current_token, current_metadata = self._read_access_token(), self._read_auth_metadata()
+            if (current_token, current_metadata) != (token, metadata):
+                return current_token, current_metadata, False
+            success, _ = self._settings.update("GITHUB_TOKEN", exchange.access_token)
+            if success is False:
+                return token, metadata, True
+            await self._system_config.async_set(self._AUTH_CONFIG_KEY, refreshed_metadata)
         return exchange.access_token, refreshed_metadata, False
+
+    async def _failed_refresh_snapshot(
+        self, token: str, metadata: dict[str, Any],
+    ) -> tuple[str, dict[str, Any], bool]:
+        """
+        刷新失败后返回当前凭据，清除或更换已生效时不再向调用者交付旧令牌。
+
+        :param token: 本次远端刷新使用的访问令牌快照
+        :param metadata: 本次远端刷新使用的 OAuth 元数据快照
+        :return: 当前凭据；仅原快照仍有效时标记需要重新授权
+        """
+        async with self._credential_lock:
+            current_token, current_metadata = self._read_access_token(), self._read_auth_metadata()
+            return current_token, current_metadata, (current_token, current_metadata) == (token, metadata)
 
     async def _session_interval(self, session_id: str) -> int:
         """

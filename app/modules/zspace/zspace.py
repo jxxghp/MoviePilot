@@ -45,6 +45,16 @@ def _user_id(value: object) -> Optional[Union[str, int]]:
     raise TypeError("极影视用户标识格式错误")
 
 
+def _library_items(result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """
+    校验完整枚举的列表字段，非法结构不能代表成功空库。
+    """
+    items = result.get("Items")
+    if not isinstance(items, list):
+        raise ConnectionError("极影视媒体库列表响应格式错误")
+    return items
+
+
 class ZSpace:
     """
     通过极影视的 Emby 兼容接口提供媒体检索、登录和播放信息。
@@ -929,15 +939,16 @@ class ZSpace:
         分页遍历媒体库，展开合集并补查缺少身份或路径的条目。
 
         仅产出电影、电视剧和音乐专辑。合集递归展开，因此产出数量可能超过单页限制。
-        未配置或分页请求失败会结束迭代，已产出的结果不会撤回。
+        未配置或任意分页请求失败会抛出异常，调用方不得清理未读到的缓存。
 
         :param parent: 媒体库或合集标识
         :param start_index: 零基起始偏移，空值或负数按 0 处理
         :param limit: None 或 -1 按每页 100 条读完整个库；其他值只请求一页，原值传给服务端
         :yields: 统一媒体条目；底层转换未成功时可能为 None
+        :raises ConnectionError: 服务未连接、分页失败或列表响应结构错误
         """
         if not parent or not self._host or not self._apikey or not self.user:
-            return None
+            raise ConnectionError("极影视服务尚未连接或媒体库标识为空")
         url = f"{self._host}emby/Users/{self.user}/Items"
         fetch_all = limit is None or limit == -1
         page_size = DEFAULT_ITEMS_PAGE_SIZE if limit is None or limit == -1 else limit
@@ -955,14 +966,15 @@ class ZSpace:
             try:
                 res = self.__request_utils().get_res(url, params=params)
                 if not res or res.status_code != 200:
-                    return None
+                    raise ConnectionError("读取极影视媒体库失败")
                 result = res.json() or {}
-                items = result.get("Items") or []
+                items = _library_items(result)
                 for item in items:
                     if not item:
                         continue
-                    if item.get("Type") == "BoxSet" and item.get("Id"):
-                        for sub_item in self.get_items(parent=item.get("Id")):
+                    item_id = item.get("Id")
+                    if item.get("Type") == "BoxSet" and item_id:
+                        for sub_item in self.get_items(parent=item_id):
                             if sub_item:
                                 yield sub_item
                         continue
@@ -977,15 +989,15 @@ class ZSpace:
                         or not item.get("ProductionYear")
                         or not item.get("Path")
                     )
-                    if needs_detail and item.get("Id"):
-                        detail_item = self.get_iteminfo(item.get("Id"))
+                    if needs_detail and item_id:
+                        detail_item = self.get_iteminfo(item_id)
                         if detail_item:
                             yield detail_item
                             continue
                     yield self.__format_item_info(item)
             except Exception as e:
                 logger.error(f"连接Users/Items出错：{e}")
-                return None
+                raise
 
             if not fetch_all:
                 break

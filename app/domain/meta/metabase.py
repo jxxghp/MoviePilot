@@ -475,7 +475,7 @@ class MetaBase(object):
         if self.begin_episode is None:
             self.begin_episode = begin_episode
             self.end_episode = end_episode
-            self.total_episode = end_episode
+            self.total_episode = end_episode - begin_episode + 1
             self.type = MediaType.TV
             self._subtitle_flag = True
 

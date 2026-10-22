@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, cast
+from urllib.parse import urljoin, urlsplit
 
 from app.adapters.network.doh import DohHelper
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
@@ -59,6 +60,7 @@ from app.chain.system import (
     configure_system_ports,
     reset_system_ports,
 )
+from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 
 
@@ -406,12 +408,57 @@ class _DownloadHttpAdapter:
         """
         发送下载链 GET 请求并原样保留响应三态。
         """
-        request = self._request(cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout)
-        kwargs: dict[str, Any] = {"raise_exception": raise_exception}
-        if params is not None:
-            kwargs["params"] = params
-        response = request.get_res(url, **kwargs)
-        return cast(Optional[DownloadResponsePort], response)
+        try:
+            return self._get_redirects(url, cookies=cookies, ua=ua, headers=headers, proxies=proxies,
+                                       timeout=timeout, params=params, raise_exception=raise_exception)
+        except ValueError:
+            if raise_exception:
+                raise
+            return None
+
+    def _get_redirects(
+        self, url: str, *, cookies: Optional[Union[str, dict[str, str]]], ua: Optional[str],
+        headers: Optional[dict[str, str]], proxies: Optional[dict[str, str]], timeout: Optional[int],
+        params: Optional[dict[str, Any]], raise_exception: bool,
+    ) -> Optional[DownloadResponsePort]:
+        """
+        跟随有界GET跳转；跨来源后不恢复Cookie、Authorization或Referer。
+
+        :param url: 当前下载地址
+        :param cookies: 仅供原始来源使用的Cookie
+        :param ua: 请求用户代理
+        :param headers: 原始来源额外请求头
+        :param proxies: 本次请求代理
+        :param timeout: 请求超时
+        :param params: 仅首跳附加的查询参数
+        :param raise_exception: 是否保留底层传输异常
+        :return: 最终响应或无响应
+        :raises ValueError: 跳转非法、重复或超过上限
+        """
+        seen, request_headers = set(), dict(headers or {})
+        for _hop in range(9):
+            if url in seen:
+                raise ValueError("下载重定向出现环路")
+            seen.add(url)
+            request = self._request(cookies=cookies, ua=ua, headers=request_headers, proxies=proxies, timeout=timeout)
+            kwargs: dict[str, Any] = {"raise_exception": raise_exception, "allow_redirects": False}
+            if params is not None:
+                kwargs["params"] = params
+            response = cast(Optional[DownloadResponsePort], request.get_res(url, **kwargs))
+            if response is None or response.status_code not in (301, 302, 303, 307, 308):
+                return response
+            location = response.headers.get("Location") or response.headers.get("location")
+            response.close()
+            destination = urljoin(url, location or "")
+            target = urlsplit(destination)
+            if not location or UrlUtils.normalize_http_url(destination) is None or target.username or target.password:
+                raise ValueError("下载重定向目标无效")
+            if not UrlUtils.same_origin(url, destination):
+                cookies = None
+                request_headers = {key: value for key, value in request_headers.items()
+                                   if key.lower() not in ("cookie", "authorization", "proxy-authorization", "referer")}
+            url, params = destination, None
+        raise ValueError("下载重定向次数超过上限")
 
     def post(
         self,

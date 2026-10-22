@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from typing import Any, Optional, cast
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -233,12 +233,21 @@ class SqlAlchemyUserRepository(UserRepository):
     ) -> Optional[User]:
         """
         先锁管理员集合再锁目标用户，保护并发下最后一个启用管理员。
+
+        SQLite 忽略 FOR UPDATE；先获取数据库写锁，并一直持有到调用方提交或回滚，
+        防止多个事务基于旧管理员计数分别移除最后的两个账号。
         """
+        if session.get_bind().dialect.name == "sqlite":
+            await session.execute(
+                update(User).where(User.is_superuser.is_(True)).values(id=User.id)
+                .execution_options(synchronize_session=False)
+            )
         result = await session.execute(
             select(User)
             .where(User.is_active.is_(True), User.is_superuser.is_(True))
             .order_by(User.id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         administrators = list(result.scalars().all())
         model = next(
@@ -246,7 +255,10 @@ class SqlAlchemyUserRepository(UserRepository):
             None,
         )
         if model is None:
-            locked = await session.execute(select(User).where(User.id == user_id).with_for_update())
+            locked = await session.execute(
+                select(User).where(User.id == user_id).with_for_update()
+                .execution_options(populate_existing=True)
+            )
             model = cast(Optional[User], locked.scalars().first())
             if model is None:
                 return None

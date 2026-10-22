@@ -161,12 +161,14 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
         query: dict[str, Any],
     ) -> Optional[ExistMediaInfo]:
         """
-        按媒体服务器隔离缓存条目，再执行存在性检查。
+        按媒体服务器隔离缓存条目，并合并各服务器已确认存在的剧集。
         """
         server_names = [str(config.name) for config in get_mediaserver_configs() if config.name]
         if not server_names:
             itemid = self.media_server_repository.get_item_id(**query)
             return self.media_exists(mediainfo=mediainfo, itemid=itemid, query=MEDIA_SERVER_EXISTENCE_QUERY)
+        combined: Optional[ExistMediaInfo] = None
+        seasons: dict[int, set[int]] = {}
         for server in server_names:
             itemid = self.media_server_repository.get_item_id(
                 server=server,
@@ -176,8 +178,14 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                 mediainfo=mediainfo, itemid=itemid, server=server, query=MEDIA_SERVER_EXISTENCE_QUERY
             )
             if exists:
-                return exists
-        return None
+                if mediainfo.type != MediaType.TV:
+                    return exists
+                combined = combined or exists
+                for season, episodes in (exists.seasons or {}).items():
+                    seasons.setdefault(season, set()).update(episodes)
+        return combined.model_copy(update={
+            "seasons": {season: sorted(episodes) for season, episodes in seasons.items()},
+        }) if combined else None
 
     @staticmethod
     def _append_no_exists(

@@ -28,7 +28,7 @@ def test_sync_async_keep_response_and_cache_contract(
     """
     api = object.__new__(DoubanApi)
     payload = {"id": "123", "nested": {"items": []}}
-    response = None if missing else Mock(json=Mock(return_value=payload))
+    response = None if missing else Mock(status_code=200, json=Mock(return_value=payload))
     sync_request = Mock(return_value=response)
     async_request = AsyncMock(return_value=response)
     api._request = Mock(**{f"{verb}_res": sync_request})

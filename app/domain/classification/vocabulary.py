@@ -29,6 +29,13 @@ TMDB_GENRE_KEYS = {
     "10770": "tv_movie",
 }
 
+# 复合电视剧类型只在事实归一化时展开；旧分类迁移仍保留原始 Genre ID 的精确语义。
+TMDB_COMPOSITE_GENRE_KEYS = {
+    "10759": ("action", "adventure"),
+    "10765": ("science_fiction", "fantasy"),
+    "10768": ("war",),
+}
+
 GENRE_KEY_ALIASES = {
     "action": "action",
     "动作": "action",

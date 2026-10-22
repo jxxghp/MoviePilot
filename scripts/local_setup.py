@@ -27,6 +27,7 @@ import textwrap
 import urllib.parse
 import uuid
 import zipfile
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -801,8 +802,9 @@ def _serialize_env_value(value: Any) -> str:
 
 def read_env_value(key: str) -> Optional[str]:
     """
-    读取 app.env 中首个匹配键，去除首尾空白与引号。
+    读取 app.env 首个匹配键，反序列化本工具写入的 JSON 字符串并兼容旧单引号。
 
+    :param key: 要读取的配置键
     :return: 配置文本；文件不存在或键缺失时返回 None，不解析变量引用
     """
     for line in _load_env_lines():
@@ -811,7 +813,16 @@ def read_env_value(key: str) -> Optional[str]:
             continue
         env_key, value = line.split("=", 1)
         if env_key.strip() == key:
-            return value.strip().strip('"').strip("'")
+            value = value.strip()
+            if value.startswith('"') and value.endswith('"'):
+                try:
+                    decoded = json.loads(value)
+                    return decoded if isinstance(decoded, str) else value
+                except json.JSONDecodeError:
+                    return value[1:-1]
+            if value.startswith("'") and value.endswith("'"):
+                return value[1:-1]
+            return value
     return None
 
 
@@ -1136,7 +1147,8 @@ def install_frontend(
         if archive
         else f"下载前端发布包：{version_tag}"
     )
-    with TemporaryDirectory() as temp_dir:
+    PUBLIC_DIR.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".frontend-install-", dir=PUBLIC_DIR.parent) as temp_dir:
         temp_path = Path(temp_dir)
         archive_path = temp_path / "dist.zip"
         extract_dir = temp_path / "extract"
@@ -1154,34 +1166,38 @@ def install_frontend(
             or packaged_version.read_text(encoding="utf-8").strip() != version_tag
         ):
             raise RuntimeError("前端更新包版本与目标版本不一致")
-        _remove_path(PUBLIC_DIR)
-        shutil.move(str(dist_dir), str(PUBLIC_DIR))
-
-    _write_local_frontend_service_script(PUBLIC_DIR)
-
-    runtime_package = dict(RUNTIME_PACKAGE)
-    runtime_package["version"] = version_tag
-    (PUBLIC_DIR / "package.json").write_text(
-        json.dumps(runtime_package, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-    npm_bin = get_npm_bin()
-    if not npm_bin.exists():
-        raise RuntimeError("未找到 npm 可执行文件，Node 运行时可能损坏")
-
-    print_step("安装前端运行依赖")
-    run(
-        [
-            str(npm_bin),
-            "install",
-            "--no-fund",
-            "--no-audit",
-            "--omit=dev",
-        ],
-        cwd=PUBLIC_DIR,
-    )
+        _write_local_frontend_service_script(dist_dir)
+        runtime_package = {**RUNTIME_PACKAGE, "version": version_tag}
+        (dist_dir / "package.json").write_text(
+            json.dumps(runtime_package, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+        )
+        npm_bin = get_npm_bin()
+        if not npm_bin.exists():
+            raise RuntimeError("未找到 npm 可执行文件，Node 运行时可能损坏")
+        print_step("安装前端运行依赖")
+        run([str(npm_bin), "install", "--no-fund", "--no-audit", "--omit=dev"], cwd=dist_dir)
+        _publish_frontend_installation(dist_dir)
     return {"version": version_tag, "node": str(node_bin)}
+
+
+def _publish_frontend_installation(staged: Path) -> None:
+    """
+    同文件系统发布完整前端；发布失败恢复旧目录，恢复失败时保留独立备份。
+
+    :param staged: 已完成依赖安装且与目标在同一文件系统的候选前端目录
+    """
+    backup = PUBLIC_DIR.with_name(f".{PUBLIC_DIR.name}.backup-{uuid.uuid4().hex}")
+    had_previous = PUBLIC_DIR.exists() or PUBLIC_DIR.is_symlink()
+    if had_previous:
+        PUBLIC_DIR.rename(backup)
+    try:
+        staged.rename(PUBLIC_DIR)
+    except BaseException:
+        if had_previous:
+            backup.rename(PUBLIC_DIR)
+        raise
+    if had_previous:
+        _remove_path(backup)
 
 
 def local_resource_status() -> bool:
@@ -2852,7 +2868,31 @@ def _merge_notification_switches(existing_items: list[dict]) -> list[dict]:
     return [merged[key] for key in [*preferred_order, *extras]]
 
 
+def _run_with_local_database_transactions(operation: Callable[[], None]) -> None:
+    """
+    为独立安装命令装配真实短事务，并在成功或异常后恢复原事务端口。
+
+    :param operation: 在当前命令事务端口已装配时执行的同步初始化操作
+    """
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from app.db.adapters.transaction import TransactionalWriteRunner
+    from app.db.session import SessionFactory, async_session_scope
+    from app.db.uow import transaction_runner_scope
+
+    runner = TransactionalWriteRunner(sync_session=SessionFactory, async_session=async_session_scope)
+    with transaction_runner_scope(sync=runner.sync, async_=runner.async_):
+        operation()
+
+
 def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
+    """
+    在独立命令事务作用域内应用向导配置。
+    """
+    _run_with_local_database_transactions(lambda: _apply_local_system_config_transactional(config_payload))
+
+
+def _apply_local_system_config_transactional(config_payload: dict[str, Any]) -> None:
     """
     应用向导配置并确保本地媒体库路径存在，由下载器管理下载路径。
     """
@@ -2870,10 +2910,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         )
         from app.application.configuration import SystemConfigService
         from app.application.directory import normalize_directory_system_config_value
-        from app.db.adapters.transaction import TransactionalWriteRunner
         from app.db.oper.systemconfig import SystemConfigOper
-        from app.db.session import SessionFactory, async_session_scope
-        from app.db.uow import configure_transaction_runners
         from app.schemas.category import ClassificationPolicyState
         from app.schemas.types import SystemConfigKey
         from app.startup.initializers.database import prepare_database
@@ -2881,15 +2918,6 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         raise RuntimeError(
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"
         ) from exc
-
-    transaction_runner = TransactionalWriteRunner(
-        sync_session=SessionFactory,
-        async_session=async_session_scope,
-    )
-    configure_transaction_runners(
-        sync=transaction_runner.sync,
-        async_=transaction_runner.async_,
-    )
 
     generated_password = None
 
@@ -3061,7 +3089,7 @@ def _ensure_superuser_account_inner() -> None:
         update_payload["hashed_password"] = get_password_hash(password)
 
     if update_payload:
-        user.update(user_oper._db, update_payload)
+        user_oper.update(user.id, update_payload)
         if password:
             print_step(f"已同步超级管理员账号与密码：{username}")
         else:
@@ -3096,6 +3124,13 @@ def _prepare_superuser_password_for_bootstrap() -> Optional[str]:
 
 
 def _sync_superuser_account_inner() -> None:
+    """
+    在独立命令事务作用域内迁移数据库并同步管理员。
+    """
+    _run_with_local_database_transactions(_sync_superuser_account_transactional)
+
+
+def _sync_superuser_account_transactional() -> None:
     """
     在数据库迁移前准备初始密码，迁移后同步管理员并展示新生成密码。
     """
@@ -4482,36 +4517,20 @@ def run_agent_request(
         sys.path.insert(0, str(ROOT))
 
     try:
-        from app.agent.orchestrator import MoviePilotAgent
         from app.runtime.config import settings
-        from app.startup.initializers.database import prepare_database
+        from app.startup.composition.cliagent import run_cli_agent_request
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"
         ) from exc
 
-    if not settings.AI_AGENT_ENABLE:
-        raise RuntimeError("MoviePilot 智能体未启用，请先在配置中打开 AI_AGENT_ENABLE")
-
-    prepare_database()
-
     session = (session_id or "").strip()
     if new_session or not session:
         session = f"cli-{uuid.uuid4().hex[:12]}"
 
-    async def _run_agent() -> dict[str, str]:
-        """
-        在当前会话执行智能体，抑制主动渠道回复并收集流式输出。
-        """
-        agent = MoviePilotAgent(session_id=session, user_id=user_id or "cli")
-        agent.suppress_user_reply = True
-        await agent.process(message.strip())
-        return {
-            "session_id": session,
-            "result": (agent._streamed_output or "").strip(),
-        }
-
-    return asyncio.run(_run_agent())
+    return asyncio.run(run_cli_agent_request(
+        message=message.strip(), session_id=session, user_id=user_id or "cli", settings=settings,
+    ))
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -23,6 +23,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.foundation.url import UrlUtils
+from app.runtime.cache import cache_mutation
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.media import resolve_media_identity
@@ -606,6 +607,7 @@ class TorrentsChain(ChainBase):
             context.media_recognize_fail_count = 1
         return context
 
+    @cache_mutation("torrent-snapshots")
     def refresh(
             self,
             stype: Optional[str] = None,
