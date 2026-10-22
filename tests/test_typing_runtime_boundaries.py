@@ -23,12 +23,13 @@ from app.schemas.agent import AgentMcpServerConfig
 
 
 @pytest.mark.parametrize(("answer", "expected"), [
-    (None, None), ([], None), ([None], None), ([{"data": 123}], None),
-    ([{"data": "203.0.113.7"}], "203.0.113.7"),
+    (None, None), ([], None), ([None], None), ([{"type": 1, "data": 123}], None),
+    ([{"data": "203.0.113.7"}], None),
+    ([{"type": 1, "data": "203.0.113.7"}], "203.0.113.7"),
 ])
 def test_doh_json_only_accepts_text_address(answer, expected, monkeypatch):
     """
-    DNS JSON 缺少答案或返回错误类型时视为未解析，合法地址原样返回。
+    DNS JSON 缺少答案、没有 A 记录或返回错误类型时视为未解析，合法 A 记录地址原样返回。
     """
     response = MagicMock(status=200)
     response.read.return_value = json.dumps({"Answer": answer}).encode()
