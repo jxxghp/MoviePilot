@@ -633,9 +633,9 @@ class WeChatBot:
 
     def _handle_callback_message(self, payload: Dict[str, Any]) -> None:
         """
-        接收私聊文本或图片，记录互动用户并检查管理员命令权限。
+        接收私聊文本、图片、语音或文件，记录互动用户并检查管理员命令权限。
 
-        群聊及无文字、无图片的消息会忽略；通过检查的原始报文交给统一消息入口。
+        群聊及无支持内容的消息会忽略；通过检查的原始报文交给统一消息入口。
 
         :param payload: 完整机器人消息回调报文
         """
@@ -654,7 +654,10 @@ class WeChatBot:
         if text:
             text = re.sub(r"@\S+", "", text).strip()
 
-        if not text and not images:
+        has_media = body.get("msgtype") == "voice" or (
+            body.get("msgtype") == "file" and bool((body.get("file") or {}).get("download_url"))
+        )
+        if not text and not images and not has_media:
             return
 
         self._remember_target(sender)

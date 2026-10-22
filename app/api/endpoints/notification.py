@@ -18,13 +18,23 @@ from app.schemas.types import SystemConfigKey
 router = ResponseAPIRouter()
 
 
-def _normalize_configs(value: list[NotificationConf]) -> list[dict[str, Any]]:
+def _normalize_configs(value: list[NotificationConf], *, validate_identities: bool = True) -> list[dict[str, Any]]:
     """
     规整通知配置身份和名称，拒绝会导致运行目录覆盖的输入。
+
+    :param value: 待规整的通知配置集合
+    :param validate_identities: 新保存值校验稳定身份；旧值只用于缓存对账，允许读取以修复历史重复
+    :return: 已规整的独立配置字典列表
+    :raises ValueError: 名称为空或重复，或新值稳定身份为空或重复
     """
     normalized: list[dict[str, Any]] = []
     names: set[str] = set()
+    identities: set[str] = set()
     for config in value:
+        identity = config.id.strip()
+        if validate_identities and (not identity or identity in identities):
+            raise ValueError("通知渠道稳定身份ID不能为空或重复")
+        identities.add(identity)
         name = (config.name or "").strip()
         if not name:
             raise ValueError("通知渠道名称不能为空")
@@ -33,6 +43,7 @@ def _normalize_configs(value: list[NotificationConf]) -> list[dict[str, Any]]:
             raise ValueError(f"通知渠道名称重复：{name}")
         names.add(key)
         data = config.model_dump()
+        data["id"] = identity
         data["name"] = name
         normalized.append(data)
     return normalized
@@ -61,7 +72,7 @@ async def save_config(
             if not legacy.get("id"):
                 legacy["id"] = f"legacy-{legacy.get('type') or 'notification'}-{legacy.get('name') or 'unnamed'}"
             previous_models.append(NotificationConf(**legacy))
-        previous_data = _normalize_configs(previous_models)
+        previous_data = _normalize_configs(previous_models, validate_identities=False)
         saved = await get_configured_system_config().async_set(SystemConfigKey.Notifications, current)
         if saved is False:
             return _SchemaResponse(success=False, message="通知配置保存失败")

@@ -86,7 +86,6 @@
       "app/domain/projection/anilist.py:project": 17,
       "app/domain/projection/douban.py:project": 25,
       "app/modules/discord/discord.py:Discord._build_embed": 26,
-      "app/modules/discord/discord.py:Discord._resolve_channel": 20,
       "app/modules/emby/emby.py:Emby.get_tv_episodes": 18,
       "app/modules/emby/emby.py:Emby.get_webhook_message": 18,
       "app/modules/filemanager/storages/alipan.py:AliPan.upload": 16,

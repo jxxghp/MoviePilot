@@ -2334,50 +2334,25 @@ class WechatClawBot:
         mime_type: Optional[str] = None,
     ) -> bytes:
         """
-        尝试 ECB、CBC 及去填充候选，以已知文件头选择可用内容。
-
-        此兼容逻辑只做格式启发式判断，不保证任意文件都能判定解密是否成功。
+        按资源协议使用AES-ECB解密并校验PKCS7填充，不根据文件内容猜测加密方式。
 
         :param content: 下载到的原始字节
         :param aeskey: 可选编码后的 AES 密钥
-        :param mime_type: 优先匹配的文件 MIME 类型
-        :return: 找到有效文件头的候选字节；无密钥、解密失败或无法识别时保留原始内容
+        :param mime_type: 保留调用兼容的文件MIME类型，不参与密码协议判断
+        :return: 完整明文；未声明密钥时原样返回下载内容
+        :raises ValueError: 已声明密钥但密钥、密文或填充无效
         """
+        del mime_type
+        if not aeskey:
+            return content
         aes_bytes = cls._decode_aes_key(aeskey)
         if not aes_bytes or not content:
-            return content
-        candidates = [content]
-        try:
-            candidates.append(AES.new(aes_bytes, AES.MODE_ECB).decrypt(content))
-        except Exception:
-            pass
-        try:
-            candidates.append(AES.new(aes_bytes, AES.MODE_CBC, aes_bytes[:16]).decrypt(content))
-        except Exception:
-            pass
-        normalized_candidates: List[bytes] = []
-        for candidate in candidates:
-            normalized_candidates.append(candidate)
-            unpadded = cls._unpad_bytes(candidate)
-            if unpadded:
-                normalized_candidates.append(unpadded)
-        preferred_prefixes = []
-        mime_value = (mime_type or "").lower()
-        if mime_value.startswith("image/png"):
-            preferred_prefixes.append(b"\x89PNG\r\n\x1a\n")
-        elif mime_value.startswith("image/jpeg"):
-            preferred_prefixes.append(b"\xff\xd8\xff")
-        elif mime_value.startswith("image/gif"):
-            preferred_prefixes.extend([b"GIF87a", b"GIF89a"])
-        elif mime_value.startswith("audio/"):
-            preferred_prefixes.extend([b"#!AMR", b"ID3", b"OggS", b"RIFF"])
-        for candidate in normalized_candidates:
-            if any(candidate.startswith(prefix) for prefix in preferred_prefixes):
-                return candidate
-        for candidate in normalized_candidates:
-            if candidate.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"PK\x03\x04", b"#!AMR", b"ID3", b"OggS", b"RIFF")):
-                return candidate
-        return content
+            raise ValueError("附件密钥或密文无效")
+        plaintext = AES.new(aes_bytes, AES.MODE_ECB).decrypt(content)
+        unpadded = cls._unpad_bytes(plaintext)
+        if unpadded is None:
+            raise ValueError("附件密文填充校验失败")
+        return unpadded
 
     @staticmethod
     def _guess_binary_mime(content: bytes, default: str = "application/octet-stream") -> str:
@@ -2415,6 +2390,10 @@ class WechatClawBot:
         payload = self._decode_ref_payload(ref=ref, kind=kind)
         if not payload:
             return None
+        encryption_type = payload.get("encrypt_type")
+        if encryption_type not in (None, 1, "1") or (encryption_type is not None and not payload.get("aeskey")):
+            logger.warning("附件使用不支持的加密方式或缺少密钥，已拒绝下载内容")
+            return None
         download_url = payload.get("url")
         if not download_url:
             return None
@@ -2425,11 +2404,15 @@ class WechatClawBot:
             return None
         if not resp or not resp.content:
             return None
-        content = self._decrypt_if_needed(
-            content=resp.content,
-            aeskey=payload.get("aeskey"),
-            mime_type=payload.get("mime_type"),
-        )
+        try:
+            content = self._decrypt_if_needed(
+                content=resp.content,
+                aeskey=payload.get("aeskey"),
+                mime_type=payload.get("mime_type"),
+            )
+        except ValueError:
+            logger.warning("附件密文或密钥无效，已拒绝返回未解密内容")
+            return None
         mime_type = payload.get("mime_type") or self._guess_binary_mime(
             content,
             (resp.headers.get("Content-Type") or "application/octet-stream").split(
