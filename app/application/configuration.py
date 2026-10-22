@@ -732,6 +732,27 @@ class SystemConfigService:
             normalized_value=normalized_value,
         )
 
+    def update_atomically(
+        self,
+        key: Any,
+        mutation: Callable[[Any], tuple[T, Any]],
+    ) -> T:
+        """
+        在持久化写锁和短事务内原子变更配置，不向应用回调暴露数据库会话。
+
+        :param key: 系统配置键
+        :param mutation: 根据最新值返回业务结果和新值的纯变更回调
+        :return: 事务提交后返回变更回调的业务结果
+        """
+        def apply(_session: Any, current: Any) -> tuple[T, Any]:
+            """
+            把不暴露数据库会话的应用层 mutation 适配到底层原子仓储。
+            """
+            result, value = mutation(current)
+            return result, self.normalize_value(key, value)
+
+        return self._writer.update_atomically(key, apply)
+
     async def async_update_atomically(
         self,
         key: Any,
@@ -756,27 +777,6 @@ class SystemConfigService:
                 partial(self._writer.update_atomically, key, apply)
             ),
         )
-
-    def update_atomically(
-        self,
-        key: Any,
-        mutation: Callable[[Any], tuple[T, Any]],
-    ) -> T:
-        """
-        在持久化短事务内同步读取、规范化并合并配置，避免并发读改写丢失更新。
-
-        :param key: 已登记配置键或既有工作流分区缓存键
-        :param mutation: 接收旧值并返回业务结果和新配置值
-        :return: 与新值一起提交的业务结果
-        """
-        def apply(_session: Any, current: Any) -> tuple[T, Any]:
-            """
-            隔离数据库会话，保持调用方只接收配置快照。
-            """
-            result, value = mutation(current)
-            return result, self.normalize_value(key, value)
-
-        return self._writer.update_atomically(key, apply)
 
     async def async_delete(self, key: Any) -> Any:
         """
