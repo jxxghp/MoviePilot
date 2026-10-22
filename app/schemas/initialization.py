@@ -28,13 +28,13 @@ class InitializationRequest(BaseModel):
     confirm_password: str = Field(min_length=6, max_length=50, description="再次输入的管理员密码，必须与 password 完全一致")
     api_key: str = Field(min_length=16, max_length=256, description="接口访问密钥，长度为 16 至 256 个字符")
 
-    @field_validator("username", "api_key")
+    @field_validator("username", "api_key", mode="before")
     @classmethod
     def strip_text(cls, value: str) -> str:
         """
         去除用户名和 API Key 的首尾空白，避免产生不可见凭据差异。
         """
-        return value.strip()
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("password", "confirm_password")
     @classmethod
