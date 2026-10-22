@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 import runpy
 import sys
 import textwrap
@@ -16,7 +17,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-MOVIEPILOT_API_SKILL_VERSION = "60"
+MOVIEPILOT_API_SKILL_VERSION = "61"
+DATABASE_OPERATION_SKILL_VERSION = "14"
 
 
 DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
@@ -1019,6 +1021,8 @@ def main() -> int:
 
     database_path = PROJECT_ROOT / "skills/database-operation/SKILL.md"
     database_text = database_path.read_text(encoding="utf-8")
+    database_text = re.sub(r"(?m)^version: \d+$", f"version: {DATABASE_OPERATION_SKILL_VERSION}",
+                           database_text, count=1)
     database_path.write_text(
         _replace_section(
             database_text,

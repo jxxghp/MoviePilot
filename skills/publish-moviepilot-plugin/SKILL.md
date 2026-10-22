@@ -1,6 +1,6 @@
 ---
 name: publish-moviepilot-plugin
-version: 3
+version: 4
 description: >-
   Use this skill when the user asks to publish, upload, sync, pull, push, diff,
   or maintain a MoviePilot local plugin in a GitHub repository. Covers using the
@@ -135,8 +135,13 @@ Options:
 - Do not log or print GitHub token values.
 - For push operations, report created, updated, deleted, skipped, and rejected
   files separately.
-- For pull operations, preserve local-only ignored files and refuse to overwrite
-  differing local files unless `--force` is used.
+- For pull operations, preserve excluded local files even with `--force`.
+  Invalid local package JSON stops the pull before any local file is written,
+  including in `--force` mode.
+  Differing local plugin files or package metadata stop the entire pull unless
+  `--force` is used. Package entries for other plugins remain untouched.
+- With the `auto` layout, inspect each configured local repository separately;
+  the working directory does not determine the layout of other repositories.
 
 ## Examples
 

@@ -403,7 +403,7 @@ class _ImmediateStepRunner:
 @pytest.mark.parametrize("frozen_time,live_time", [(1.0, 1.0), (1.0, 5.0), (None, 5.0), (1.0, None)])
 def test_cross_storage_move_materializes_before_independent_source_delete(tmp_path, frozen_time, live_time):
     """
-    跨存储 move 先复制再独立删除源，源和目标时间戳变化或缺失均不阻止清理。
+    跨存储 move 先复制再独立删除源，云端时间戳变化或缺失不阻止清理，本地源版本保持稳定。
     """
     source_path = tmp_path / "source.mkv"
     source_path.write_bytes(b"movie")
@@ -413,7 +413,7 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
         name=source_path.name,
         type="file",
         size=source_path.stat().st_size,
-        modify_time=frozen_time,
+        modify_time=1.0,
         extension="mkv",
     )
     target_item = FileItem(
@@ -422,12 +422,12 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
         name="source.mkv",
         type="file",
         size=source_item.size,
-        modify_time=source_item.modify_time,
+        modify_time=frozen_time,
         extension="mkv",
     )
     source_oper = Mock()
     source_oper.delete.return_value = True
-    live_source = source_item.model_copy(update={"modify_time": live_time})
+    live_source = source_item.model_copy()
     source_oper.get_item_strict.return_value = live_source
     target_oper = Mock()
     target_oper.get_item_strict.return_value = target_item.model_copy(update={"modify_time": live_time})

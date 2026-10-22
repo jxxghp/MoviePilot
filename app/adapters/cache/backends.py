@@ -51,10 +51,11 @@ class FileBackend(CacheBackend):
 
         :param key: 区域内的相对缓存文件路径
         :param value: 可写入二进制文件的字节数据；本层不序列化对象
+        :param ttl: 新式TTL关键字，文件后端当前不管理过期；字符串第三位置参数沿用旧region合同
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         :param _kwargs: 为缓存接口兼容保留，文件后端不处理这些选项
         """
-        cache_region = region or DEFAULT_CACHE_REGION
+        cache_region = ttl if isinstance(ttl, str) else (region or DEFAULT_CACHE_REGION)
         cache_path = self.base / cache_region / key
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
@@ -186,10 +187,11 @@ class AsyncFileBackend(AsyncCacheBackend):
 
         :param key: 区域内的相对缓存文件路径
         :param value: 可写入二进制文件的字节数据；本层不序列化对象
+        :param ttl: 新式TTL关键字，文件后端当前不管理过期；字符串第三位置参数沿用旧region合同
         :param region: 根目录下的缓存区域名称，使用时须为字符串
         :param _kwargs: 为缓存接口兼容保留，文件后端不处理这些选项
         """
-        cache_region = region or DEFAULT_CACHE_REGION
+        cache_region = ttl if isinstance(ttl, str) else (region or DEFAULT_CACHE_REGION)
         cache_path = AsyncPath(self.base) / cache_region / key
         await cache_path.parent.mkdir(parents=True, exist_ok=True)
         async with aiofiles.tempfile.NamedTemporaryFile(

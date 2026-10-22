@@ -236,7 +236,11 @@ async def _fetch_media_recommendations(
     operation = _media_source_operations(chain, page=page, count=count).get(source)
     if operation is None:
         return False, []
-    return True, await operation()
+    results = await operation()
+    if media_type != "all":
+        results = [item for item in results or []
+                   if isinstance(item, dict) and media_type_to_agent(item.get("type")) == media_type]
+    return True, results
 
 
 def _project_agent_recommendations(results: List[Any], count: int) -> List[dict[str, Any]]:

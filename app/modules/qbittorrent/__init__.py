@@ -463,13 +463,12 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
         :param hashs: 种子哈希或哈希列表
         :param tags: 需要追加的标签列表
         :param downloader: 下载器配置名称，省略时使用默认实例
-        :return: 找到实例并调用标签接口后返回 True，不表示写入已经确认；找不到实例时返回 None
+        :return: 客户端接受标签写入时返回 True，RPC失败时返回 False；找不到实例时返回 None
         """
         server = self.get_instance(downloader)
         if not server:
             return None
-        server.set_torrents_tag(ids=hashs, tags=tags)
-        return True
+        return server.set_torrents_tag(ids=hashs, tags=tags)
 
     def update_torrent(
             self,

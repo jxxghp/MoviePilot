@@ -157,13 +157,11 @@ class FastAPIDynamicRouteRegistry:
                     auth_mode = api.pop("auth", "apikey")
                     dependencies = api.setdefault("dependencies", [])
                     if not allow_anonymous:
-                        if (
-                            auth_mode == "bear"
-                            and Depends(self._verify_token) not in dependencies
-                        ):
-                            dependencies.append(Depends(self._verify_token))
-                        elif Depends(self._verify_apikey) not in dependencies:
-                            dependencies.append(Depends(self._verify_apikey))
+                        authentication = Depends(
+                            self._verify_token if auth_mode == "bear" else self._verify_apikey
+                        )
+                        if authentication not in dependencies:
+                            dependencies.append(authentication)
                     # 插件 API 自行决定响应结构，不使用宿主统一 Response 路由。
                     api.setdefault("route_class_override", APIRoute)
                     self._app.router.add_api_route(**api, tags=["plugin"])
@@ -191,11 +189,11 @@ class FastAPIDynamicRouteRegistry:
         """
         if not plugin_id:
             return False
-        prefix = f"{self._prefix}/{plugin_id}/"
+        root_path = f"{self._prefix}/{plugin_id}"
         routes = [
             route for route in self._app.routes
             if (path := self._route_path(route)) is not None
-            and path.startswith(prefix)
+            and (path == root_path or path.startswith(root_path + "/"))
         ]
         removed = False
         for route in routes:

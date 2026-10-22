@@ -406,7 +406,7 @@ class SubscribeOper(DbOper):
             "music_type": music_type,
             "season": season,
             "episode_group": episode_group,
-                "type": mtype,
+            "type": mtype,
         }
         return bool(self._exists(identity_params, username=None))
 
@@ -694,7 +694,7 @@ class SubscribeOper(DbOper):
                     media_id=media_id,
                     season=season,
                     music_type=music_type,
-                episode_group=episode_group,
+                    episode_group=episode_group,
                 )
             ),
         )

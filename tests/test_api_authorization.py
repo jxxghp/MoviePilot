@@ -8,7 +8,7 @@ import io
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -506,7 +506,7 @@ def test_upload_avatar_rejects_other_user_for_non_superuser():
     普通用户不能通过 user_id 参数修改其他用户头像。
     """
     current_user = SimpleNamespace(id=1, is_superuser=False)
-    upload_file = SimpleNamespace(file=io.BytesIO(b"avatar"), filename="avatar.png")
+    upload_file = UploadFile(file=io.BytesIO(b"avatar"), filename="avatar.png")
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
@@ -529,7 +529,7 @@ def test_upload_avatar_returns_filename_in_data(monkeypatch):
 
     fake_user = SimpleNamespace()
     current_user = SimpleNamespace(id=1, is_superuser=False)
-    upload_file = SimpleNamespace(file=io.BytesIO(b"avatar"), filename="avatar.png")
+    upload_file = UploadFile(file=io.BytesIO(b"avatar"), filename="avatar.png")
 
     class FakeService:
         """
@@ -565,4 +565,4 @@ def test_upload_avatar_returns_filename_in_data(monkeypatch):
     assert response.data == {"filename": "avatar.png"}
     assert response.message == ""
     assert not hasattr(response, "message_i18n")
-    assert fake_user.values == {"avatar": "data:image/ico;base64,b'YXZhdGFy'"}
+    assert fake_user.values == {"avatar": "data:image/ico;base64,YXZhdGFy"}

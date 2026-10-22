@@ -68,13 +68,10 @@ def test_reflink_success_on_current_platform(tmp_path: Path):
     assert dest.read_bytes() == b"Modified cloned content"
 
 
-def test_reflink_cleans_preexisting_temp_file(tmp_path: Path):
+def test_reflink_preserves_unowned_legacy_temp_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """
-    测试当目标临时 .mp 文件预先存在时，reflink 能先清理临时文件并成功完成克隆。
+    私有暂存不清理固定旧名称，避免删除其它任务仍在写入的文件。
     """
-    if not _reflink_available(tmp_path):
-        pytest.skip("当前文件系统不支持引用链接")
-
     src = tmp_path / "source.txt"
     dest = tmp_path / "target.txt"
     temp_file = dest.with_suffix(dest.suffix + ".mp")
@@ -82,11 +79,21 @@ def test_reflink_cleans_preexisting_temp_file(tmp_path: Path):
     src.write_text("source content", encoding="utf-8")
     temp_file.write_text("old stale temp content", encoding="utf-8")
 
+    def clone(source: Path, destination: Path):
+        """
+        在真实文件上回放底层克隆，避免依赖当前文件系统的 CoW 支持。
+        """
+        shutil.copyfile(source, destination)
+        return 0, ""
+
+    monkeypatch.setattr(SystemUtils, "_reflink_copy", clone)
+
     code, msg = SystemUtils.reflink(src, dest)
     assert code == 0
     assert msg == ""
     assert dest.read_text(encoding="utf-8") == "source content"
-    assert not temp_file.exists()
+    assert temp_file.read_text(encoding="utf-8") == "old stale temp content"
+    assert not list(tmp_path.glob(".target.txt.*.mp"))
 
 
 def test_reflink_copy_failure_cleans_temp_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -95,10 +102,14 @@ def test_reflink_copy_failure_cleans_temp_file(tmp_path: Path, monkeypatch: pyte
     """
     src = tmp_path / "source.txt"
     dest = tmp_path / "target.txt"
-    temp_file = dest.with_suffix(dest.suffix + ".mp")
+    temporary_files = []
     src.write_text("source data", encoding="utf-8")
 
     def _mock_reflink_copy(_src: Path, _dest: Path):
+        """
+        记录本次实际暂存路径后回放部分内容写入失败。
+        """
+        temporary_files.append(_dest)
         # 模拟底层复制过程中生成了临时文件但最终报告失败
         _dest.write_text("partial data", encoding="utf-8")
         return -1, "底层克隆失败模拟错误"
@@ -109,7 +120,7 @@ def test_reflink_copy_failure_cleans_temp_file(tmp_path: Path, monkeypatch: pyte
     assert code == -1
     assert "底层克隆失败模拟错误" in msg
     # 验证临时文件已被清理且目标未生成
-    assert not temp_file.exists()
+    assert temporary_files and all(not path.exists() for path in temporary_files)
     assert not dest.exists()
 
 
@@ -119,12 +130,11 @@ def test_reflink_source_file_not_found(tmp_path: Path):
     """
     src = tmp_path / "nonexistent_source.txt"
     dest = tmp_path / "target.txt"
-    temp_file = dest.with_suffix(dest.suffix + ".mp")
 
     code, msg = SystemUtils.reflink(src, dest)
     assert code != 0
     assert msg != ""
-    assert not temp_file.exists()
+    assert not list(tmp_path.glob(".target.txt.*.mp"))
     assert not dest.exists()
 
 
@@ -134,14 +144,21 @@ def test_reflink_unexpected_exception_handling(tmp_path: Path, monkeypatch: pyte
     """
     src = tmp_path / "source.txt"
     dest = tmp_path / "target.txt"
-    temp_file = dest.with_suffix(dest.suffix + ".mp")
+    temporary_files = []
     src.write_text("source data", encoding="utf-8")
 
     def _mock_reflink_copy(_src: Path, _dest: Path):
+        """
+        记录实际克隆暂存路径供异常清理断言使用。
+        """
+        temporary_files.append(_dest)
         _dest.write_text("cloned data", encoding="utf-8")
         return 0, ""
 
     def _mock_move(_src, _dest):
+        """
+        模拟提升克隆文件失败。
+        """
         raise RuntimeError("模拟 shutil.move 移动文件异常")
 
     monkeypatch.setattr(SystemUtils, "_reflink_copy", _mock_reflink_copy)
@@ -150,7 +167,7 @@ def test_reflink_unexpected_exception_handling(tmp_path: Path, monkeypatch: pyte
     code, msg = SystemUtils.reflink(src, dest)
     assert code == -1
     assert "模拟 shutil.move 移动文件异常" in msg
-    assert not temp_file.exists()
+    assert temporary_files and all(not path.exists() for path in temporary_files)
     assert not dest.exists()
 
 

@@ -980,13 +980,6 @@ def uninstall_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_activ
                     message=f"请先卸载该插件的分身：{instance_ids}",
                 )
             config_oper = get_configured_system_config()
-            # 删除已安装信息
-            install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
-            for plugin in install_plugins:
-                if plugin == plugin_id:
-                    install_plugins.remove(plugin)
-                    break
-            config_oper.set(SystemConfigKey.UserInstalledPlugins, install_plugins)
             # 移除插件API
             remove_plugin_api(plugin_id)
             # 移除插件服务
@@ -994,7 +987,12 @@ def uninstall_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_activ
             # 判断是否为分身
             plugin_class = plugin_manager.plugins.get(plugin_id)
             # 删除必须晚于停止：停机钩子会重建刚删的自有库；停止同时注销插件类，故删除一律按 force
-            plugin_manager.stop(plugin_id)
+            if plugin_manager.stop(plugin_id) is False:
+                return _SchemaResponse(success=False, message="插件后台服务尚未停止，已保留实例和数据供重试")
+            config_oper.update_atomically(
+                SystemConfigKey.UserInstalledPlugins,
+                lambda current: (None, [item for item in (current or []) if item != plugin_id]),
+            )
             if virtual_instance:
                 plugin_manager.delete_plugin_config(plugin_id, force=True)
                 plugin_manager.delete_plugin_data(plugin_id, force=True)

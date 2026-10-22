@@ -580,7 +580,7 @@ def test_runtime_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch
     plugin_manager = _uninstall_manager()
     config = MagicMock()
     config.get.return_value = ["DemoPluginwork"]
-    config.async_set = AsyncMock()
+    config.async_update_atomically = AsyncMock()
     monkeypatch.setattr(plugin_management, "get_plugin_manager", lambda: plugin_manager)
     monkeypatch.setattr(
         plugin_management,
@@ -619,8 +619,8 @@ def test_uninstall_virtual_instance_also_stops_before_deleting(monkeypatch):
     result = plugin_endpoint.uninstall_plugin("DemoPluginwork", None)
 
     assert result.success is True
-    config.set.assert_called_once_with(
-        SystemConfigKey.UserInstalledPlugins,
-        ["DemoPlugin"],
-    )
+    config.update_atomically.assert_called_once()
+    key, mutation = config.update_atomically.call_args.args
+    assert key is SystemConfigKey.UserInstalledPlugins
+    assert mutation(["DemoPlugin"]) == (None, ["DemoPlugin"])
     _assert_stop_precedes_deletion(plugin_manager)

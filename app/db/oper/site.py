@@ -6,9 +6,11 @@ from datetime import datetime
 from typing import Any, List, Mapping, Optional, Tuple
 
 from sqlalchemy import delete as sqlalchemy_delete
-from sqlalchemy import false, func, or_, select
+from sqlalchemy import false, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.dml import Update
+from sqlalchemy.sql.elements import TextClause
 
 from app.db.base import DbOper
 from app.db.models.site import Site
@@ -16,6 +18,7 @@ from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
 from app.db.oper.query import literal_contains
+from app.schemas.exception import SiteDomainConflictError
 
 
 async def _async_first(session: AsyncSession, statement: Any) -> Optional[Site]:
@@ -118,6 +121,64 @@ def _latest_userdata_join(statement: Any, subquery: Any) -> Any:
     )
 
 
+def _site_domain_lock(dialect: str) -> TextClause | Update:
+    """
+    在数据库事务中锁住站点域名准入，兼容空表及已有重复历史记录。
+
+    SQLite的零行UPDATE仍获取数据库写锁；PostgreSQL表锁覆盖空表与并发插入。
+    不持有进程锁，不提交事务，锁由调用方UoW提交或回滚时释放。
+
+    :param dialect: 当前会话绑定的SQLAlchemy方言名称
+    :return: 获取事务写入准入的语句
+    """
+    if dialect == "postgresql":
+        return text("LOCK TABLE site IN SHARE ROW EXCLUSIVE MODE")
+    if dialect == "sqlite":
+        return update(Site).where(Site.id == -1).values(id=Site.id)
+    raise RuntimeError("站点域名并发准入不支持当前数据库方言")
+
+
+def _check_site_domain(session: Session, domain: Optional[str], site_id: Optional[int] = None) -> None:
+    """
+    同步取得事务准入后重新检查域名，防止先查后插竞争。
+
+    :param session: 调用方持有的真实数据库会话
+    :param domain: 新配置的规范域名
+    :param site_id: 更新时允许保留该站点自身域名
+    :raises SiteDomainConflictError: 已有另一站点占用域名
+    """
+    if domain is None:
+        return
+    session.execute(_site_domain_lock(session.get_bind().dialect.name))
+    statement = select(Site.id).where(Site.domain == domain)
+    if site_id is not None:
+        statement = statement.where(Site.id != site_id)
+    if session.execute(statement.limit(1)).scalar_one_or_none() is not None:
+        raise SiteDomainConflictError("站点已存在")
+
+
+async def _async_check_site_domain(
+    session: AsyncSession, domain: Optional[str], site_id: Optional[int] = None,
+) -> None:
+    """
+    异步取得数据库事务准入后重新检查域名。
+
+    :param session: 调用方持有的真实数据库会话
+    :param domain: 新配置的规范域名
+    :param site_id: 更新时允许保留该站点自身域名
+    :raises SiteDomainConflictError: 已有另一站点占用域名
+    """
+    if domain is None:
+        return
+    await session.execute(_site_domain_lock(session.get_bind().dialect.name))
+    statement = select(Site.id).where(Site.domain == domain)
+    if site_id is not None:
+        statement = statement.where(Site.id != site_id)
+    result = await session.execute(statement.limit(1))
+    if result.scalar_one_or_none() is not None:
+        raise SiteDomainConflictError("站点已存在")
+
+
 class SiteOper(DbOper):
     """
     站点管理
@@ -127,11 +188,18 @@ class SiteOper(DbOper):
         """
         新增站点
         """
-        site = Site(**kwargs)
-        if not self.get_by_domain(kwargs.get("domain")):
-            self._stage_create(site)
+        def stage(session: Session) -> Tuple[bool, str]:
+            """
+            在同一调用方事务中完成锁定、查重及暂存。
+            """
+            try:
+                _check_site_domain(session, kwargs.get("domain"))
+            except SiteDomainConflictError:
+                return False, "站点已存在"
+            session.add(Site(**kwargs))
             return True, "新增站点成功"
-        return False, "站点已存在"
+
+        return self._execute_sync_write(stage)
 
     def get(self, sid: int) -> Optional[Site]:
         """
@@ -169,6 +237,7 @@ class SiteOper(DbOper):
             raise RuntimeError("站点事务新增需要调用方提供 AsyncSession")
         values = dict(payload)
         values.pop("id", None)
+        await _async_check_site_domain(self._db, values.get("domain"))
         self._db.add(Site(**values))
 
     async def stage_update(
@@ -179,6 +248,8 @@ class SiteOper(DbOper):
         """
         暂存站点字段更新，事务由调用方统一提交。
         """
+        if "domain" in payload:
+            await _async_check_site_domain(self._db, payload["domain"], site_id)
         site = await self.async_get(site_id)
         if not site:
             return False
@@ -331,20 +402,37 @@ class SiteOper(DbOper):
         """
         更新站点
         """
-        site = self.get(sid)
-        if not site:
-            return None
-        self._stage_update(site, payload)
-        return site
+        def stage(session: Session) -> Optional[Site]:
+            """
+            在同一事务中校验域名并更新现有站点。
+            """
+            if "domain" in payload:
+                _check_site_domain(session, payload["domain"], sid)
+            site: Optional[Site] = session.get(Site, sid)
+            if site is not None:
+                for key, value in payload.items():
+                    setattr(site, key, value)
+            return site
+
+        return self._execute_sync_write(stage)
 
     async def async_update(self, sid: int, payload: dict[str, Any]) -> Optional[Site]:
         """
-        异步更新站点。
+        在调用方异步事务内校验域名并更新站点。
         """
-        site = await self.async_get(sid)
-        if site:
-            await self._stage_async_update(site, payload)
-        return site
+        async def stage(session: AsyncSession) -> Optional[Site]:
+            """
+            共享与站点创建相同的数据库准入锁。
+            """
+            if "domain" in payload:
+                await _async_check_site_domain(session, payload["domain"], sid)
+            site: Optional[Site] = await session.get(Site, sid)
+            if site is not None:
+                for key, value in payload.items():
+                    setattr(site, key, value)
+            return site
+
+        return await self._execute_async_write(stage)
 
     def get_by_domain(self, domain: Optional[str]) -> Optional[Site]:
         """

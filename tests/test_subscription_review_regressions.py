@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy import create_engine, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.api.servarr import arr_add_series
@@ -117,6 +118,33 @@ def test_movie_and_tv_with_same_source_number_are_distinct(database):
         session.commit()
     assert movie.subscribe_id != tv.subscribe_id
     assert movie.created and tv.created
+
+
+@pytest.mark.asyncio
+async def test_async_expired_identity_fields_cannot_bypass_unique_target(tmp_path):
+    """
+    异步会话的过期模型更新也不能把缺少加载字段误判成无身份记录。
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'expired-identity.db'}")
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Subscribe.__table__.create)
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            existing = Subscribe(**_payload())
+            changing = Subscribe(**{**_payload(), "media_id": "456"})
+            session.add_all([existing, changing])
+            await session.commit()
+            session.expire(changing, ["username", "type", "media_source", "season", "episode_group", "music_type"])
+            changing.media_id = "123"
+            with pytest.raises(IntegrityError):
+                await session.flush()
+            await session.rollback()
+            assert await session.scalar(select(func.count()).select_from(Subscribe)) == 2
+            assert {record.media_id for record in await session.scalars(select(Subscribe))} == {"123", "456"}
+    finally:
+        await engine.dispose()
 
 
 def test_source_lookup_keeps_episode_group(database):
@@ -262,19 +290,18 @@ def test_conflicting_retarget_rolls_back_old_progress(database):
         assert session.get(Subscribe, second_id).note == [2]
 
 
-def test_expired_orm_identity_still_rejects_conflicting_retarget(database):
+@pytest.mark.parametrize("expired_fields", [None, ["username", "type", "media_source", "season", "episode_group", "music_type"]])
+def test_expired_orm_identity_still_rejects_conflicting_retarget(database, expired_fields):
     """
     ORM 已过期属性不能让直接兼容写入跳过唯一身份约束。
     """
-    from sqlalchemy.exc import IntegrityError
-
     with database() as session:
         first = Subscribe(**_payload("电视剧"))
         second = Subscribe(**{**_payload("电视剧"), "media_id": "456"})
         session.add_all([first, second])
         session.commit()
         first_id = first.id
-        session.expire(first)
+        session.expire(first, expired_fields)
         first.media_id = "456"
         with pytest.raises(IntegrityError):
             session.flush()

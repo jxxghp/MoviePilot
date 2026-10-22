@@ -147,14 +147,20 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
             logger.error(f"异步加载缓存 {filename} 出错：{str(err)}")
             return None
 
-    async def async_save_cache(self, cache: Any, filename: str) -> None:
+    async def async_save_cache(self, cache: Any, filename: str, *, strict: bool = False) -> None:
         """
-        异步保存缓存
+        异步保存缓存，默认保留旧插件的失败日志合同。
+
+        :param cache: 待序列化的业务快照
+        :param filename: 目标缓存键
+        :param strict: 为True时向需要确认落盘的用例传播失败
         """
         try:
             await self.async_filecache.set(filename, pickle.dumps(cache))
         except Exception as err:
             logger.error(f"异步保存缓存 {filename} 出错：{str(err)}")
+            if strict:
+                raise
             return
 
     def save_cache(self, cache: Any, filename: str) -> None:

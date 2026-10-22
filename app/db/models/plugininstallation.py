@@ -20,6 +20,8 @@ class PluginInstallation(Base):
     plugin_id: Mapped[str] = mapped_column(String(128), nullable=False)
     phase: Mapped[str] = mapped_column(String(16), nullable=False)
     membership_before: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # 旧journal无法还原安装前启用位，NULL明确表示恢复证据不足。
+    host_enabled_before: Mapped[Optional[bool]] = mapped_column(Boolean)
     membership_target: Mapped[Optional[bool]] = mapped_column(Boolean)
     identity_before_revision: Mapped[Optional[int]] = mapped_column(Integer)
     identity_target_revision: Mapped[Optional[int]] = mapped_column(Integer)

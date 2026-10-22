@@ -1044,13 +1044,14 @@ class FileManagerModule(_ModuleBase):
             for fileitem in fileitems:
                 file_meta = MetaInfo(fileitem.basename or "")
                 season_index = file_meta.begin_season if file_meta.begin_season is not None else 1
-                episode_index = file_meta.begin_episode
-                if not episode_index:
+                episode_indexes = file_meta.episode_list
+                if not episode_indexes:
                     continue
                 if season_index not in seasons:
                     seasons[season_index] = []
-                if episode_index not in seasons[season_index]:
-                    seasons[season_index].append(episode_index)
+                for episode_index in episode_indexes:
+                    if episode_index not in seasons[season_index]:
+                        seasons[season_index].append(episode_index)
             logger.info(f"{mediainfo.title_year} 在本地文件系统中找到了这些季集：{seasons}")
             return ExistMediaInfo(type=MediaType.TV, seasons=seasons)
         return None

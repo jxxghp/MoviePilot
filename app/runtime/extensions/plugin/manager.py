@@ -376,7 +376,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_tool_catalog.revision
 
-    def stop(self, pid: Optional[str] = None) -> None:
+    def stop(self, pid: Optional[str] = None) -> Optional[bool]:
         """
         停止插件服务。
 
@@ -385,9 +385,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         try:
             with self.mutation("停止插件"):
                 with self._plugin_quiesce_lock:
-                    self._plugin_lifecycle.stop(pid)
+                    if self._plugin_lifecycle.stop(pid) is False:
+                        return False
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
+            return False
+        return None
 
     def mutation(self, operation: str) -> ContextManager[None]:
         """
@@ -697,7 +700,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._monitor_suppressed_until.pop(normalized_id, None)
             return False
 
-    def remove_plugin(self, plugin_id: str) -> None:
+    def remove_plugin(self, plugin_id: str) -> Optional[bool]:
         """
         从内存中移除一个插件。
 
@@ -706,10 +709,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         try:
             with self.mutation("移除插件实例"):
                 with self._plugin_quiesce_lock:
-                    self._plugin_lifecycle.stop(plugin_id)
+                    if self._plugin_lifecycle.stop(plugin_id) is False:
+                        return False
                     self._plugin_registry.remove(plugin_id)
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
+            return False
+        return None
 
     def remove_plugin_package(self, plugin_id: str) -> bool:
         """
@@ -1566,6 +1572,31 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param plugin_id: 插件ID
         """
         self._plugin_instance_store.enable_host(plugin_id)
+
+    def is_plugin_host_enabled(self, plugin_id: str) -> bool:
+        """
+        读取安装事务需要冻结的本体启用位，不把运行实例状态当作持久启用状态。
+
+        :param plugin_id: 物理插件标识
+        :return: 本体行存在且处于启用状态时为True
+        """
+        instance = self._plugin_instance_store.get_host(plugin_id)
+        return bool(instance and instance.is_enabled)
+
+    def restore_plugin_host_enabled(self, plugin_id: str, enabled: bool) -> None:
+        """
+        恢复安装前启用位，原本停用时先确认候选资源停止，不清除用户展示与日志配置。
+
+        :param plugin_id: 物理插件标识
+        :param enabled: 安装前冻结的本体启用位
+        :raises RuntimeError: 候选运行实例尚未停止，不能宣称补偿完成
+        """
+        if enabled:
+            self._plugin_instance_store.enable_host(plugin_id)
+            return
+        if self.stop(plugin_id) is False:
+            raise RuntimeError(f"插件 {plugin_id} 尚未停止，启用位补偿未收敛")
+        self._plugin_instance_store.disable_host(plugin_id)
 
     def disable_plugin_host(self, plugin_id: str) -> bool:
         """

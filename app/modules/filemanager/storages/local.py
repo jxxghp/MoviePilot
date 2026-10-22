@@ -5,6 +5,7 @@
 import os
 import shutil
 import time
+import uuid
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -70,6 +71,8 @@ class LocalStorage(StorageBase):
             extension=path.suffix[1:],
             size=info["size"],
             modify_time=info["mtime"],
+            modify_time_ns=info.get("mtime_ns"),
+            change_time_ns=info.get("ctime_ns"),
             fileid=f"{info['dev']}:{info['ino']}" if info.get("ino") else None,
         )
 
@@ -293,14 +296,14 @@ class LocalStorage(StorageBase):
     @classmethod
     def _partial_path(cls, dest: Path) -> Path:
         """
-        生成同目录、带进程标识的中间写入路径。
+        生成同目录、每次调用独立的中间写入路径。
 
-        同目录便于完成后原子替换；进程标识隔离不同进程，但不保证同进程并发写同一目标互不干扰。
+        同目录便于完成后原子替换；随机标识隔离同进程和跨进程的同目标任务。
 
         :param dest: 最终文件路径
         :return: 隐藏的 .mp-partial 文件路径
         """
-        return dest.parent / f".{dest.name}.{os.getpid()}{cls.PARTIAL_SUFFIX}"
+        return dest.parent / f".{dest.name}.{uuid.uuid4().hex}{cls.PARTIAL_SUFFIX}"
 
     @classmethod
     def _cleanup_stale_partials(cls, directory: Path) -> None:
@@ -348,7 +351,7 @@ class LocalStorage(StorageBase):
                 return False
             src_stat = src.stat()
             os.utime(dest, ns=(src_stat.st_atime_ns, src_stat.st_mtime_ns))
-            sentinel = dest.parent / f".mode-probe-{os.getpid()}"
+            sentinel = dest.parent / f".mode-probe-{uuid.uuid4().hex}"
             try:
                 sentinel.write_bytes(b"")
                 dest_mode = sentinel.stat().st_mode & 0o777

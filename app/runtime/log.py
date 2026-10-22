@@ -751,9 +751,12 @@ class NonBlockingFileHandler:
             file_groups.setdefault(entry.file_path, []).append(entry)
         for file_path, entries in file_groups.items():
             try:
-                handler = self._get_rotating_handler(file_path)
-                for entry in entries:
-                    handler.handle(self._to_record(entry))
+                with self._handlers_lock:
+                    if file_path.parent.name == "subscriptions":
+                        self._maintain_scoped_logs(file_path)
+                    handler = self._get_rotating_handler(file_path)
+                    for entry in entries:
+                        handler.handle(self._to_record(entry))
             except Exception as err:
                 print(f"批量写入失败 {file_path}: {err}")
                 for entry in entries:

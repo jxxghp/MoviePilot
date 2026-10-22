@@ -56,6 +56,8 @@ class _StatResult(TypedDict):
 
     :ivar size: 文件大小，单位为字节
     :ivar mtime: 文件修改时间的 Unix 秒级时间戳
+    :ivar mtime_ns: 文件修改时间的 Unix 纳秒级时间戳
+    :ivar ctime_ns: 文件状态变化时间的 Unix 纳秒级时间戳
     :ivar dev: 文件所属设备号，与 ino 一起用于核对身份
     :ivar ino: 文件系统索引节点号
     :ivar is_dir: 查询时目标是否为目录
@@ -64,6 +66,8 @@ class _StatResult(TypedDict):
 
     size: int
     mtime: float
+    mtime_ns: int
+    ctime_ns: int
     dev: int
     ino: int
     is_dir: bool
@@ -127,6 +131,8 @@ def _stat(payload: _Request, _emit: _Emit) -> _StatResult:
     return {
         "size": info.st_size,
         "mtime": info.st_mtime,
+        "mtime_ns": info.st_mtime_ns,
+        "ctime_ns": info.st_ctime_ns,
         "dev": info.st_dev,
         "ino": info.st_ino,
         "is_dir": os.path.isdir(path),

@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 60
+version: 61
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -325,6 +325,9 @@ token exchange downloads retain their existing credential rules.
   `music_type=recording|album|artist`; an artist is browse-only.
 - Treat `success=false`, HTTP error data, empty results, and validation errors as
   real outcomes. Do not claim success without checking the response.
+- `media.scrape` reports rejected media and failed NFO writes as business failures,
+  including failures within a directory. For concurrent custom-filter changes,
+  re-read the rules and confirm the intended change before retrying a conflict.
 - Respect an explicit `execution_outcome`: `pending` is accepted but unfinished,
   while `unknown` means a write may have happened. Do not repeat an unknown write
   or change defaults merely to evade duplicate protection. In the built-in Agent,

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import threading
 import tokenize
 from dataclasses import dataclass
@@ -46,7 +47,7 @@ RESOURCE_IMPORT_RULES: tuple[ResourceImportRule, ...] = (
 
 
 _scan_cache_lock = threading.RLock()
-_scan_cache: Dict[Path, Tuple[int, int, int, int, int, FrozenSet[str]]] = {}
+_scan_cache: Dict[Path, Tuple[bytes, FrozenSet[str]]] = {}
 
 
 class PluginResourceImportScanError(RuntimeError):
@@ -147,8 +148,7 @@ def _scan_source(plugin_id: str, path: Path) -> FrozenSet[str]:
     """
     try:
         before_stat = path.stat()
-        # 热加载工具可能保留 mtime，等长替换也不会改变 size；ctime 与 inode/device
-        # 一并参与身份判断，避免把已替换源码误认为旧缓存。
+        # 文件系统时间粒度不足以证明内容不变，每次读取内容摘要；只复用相同内容的AST结论。
         cache_key = (
             before_stat.st_mtime_ns,
             before_stat.st_ctime_ns,
@@ -156,13 +156,9 @@ def _scan_source(plugin_id: str, path: Path) -> FrozenSet[str]:
             before_stat.st_dev,
             before_stat.st_ino,
         )
-        with _scan_cache_lock:
-            cached = _scan_cache.get(path)
-        if cached and cached[:5] == cache_key:
-            return cached[5]
         with tokenize.open(path) as source_file:
             source = source_file.read()
-        tree = ast.parse(source, filename=str(path))
+        content_key = hashlib.sha256(source.encode("utf-8")).digest()
         after_stat = path.stat()
     except (OSError, SyntaxError, UnicodeError) as error:
         raise PluginResourceImportScanError(
@@ -180,6 +176,17 @@ def _scan_source(plugin_id: str, path: Path) -> FrozenSet[str]:
             f"扫描插件 {plugin_id} 时源码 {path.name} 发生变化"
         )
 
+    with _scan_cache_lock:
+        cached = _scan_cache.get(path)
+    if cached and cached[0] == content_key:
+        return cached[1]
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except (SyntaxError, UnicodeError) as error:
+        raise PluginResourceImportScanError(
+            f"无法扫描插件 {plugin_id} 源码 {path.name}：{error}"
+        ) from error
+
     capabilities: Set[str] = set()
     for module_name in _imported_modules(tree):
         for rule in RESOURCE_IMPORT_RULES:
@@ -187,7 +194,7 @@ def _scan_source(plugin_id: str, path: Path) -> FrozenSet[str]:
                 capabilities.add(rule.capability_id)
     result = frozenset(capabilities)
     with _scan_cache_lock:
-        _scan_cache[path] = (*cache_key, result)
+        _scan_cache[path] = (content_key, result)
     return result
 
 

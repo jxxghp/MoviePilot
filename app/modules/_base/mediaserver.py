@@ -5,7 +5,7 @@
 定时重连与连接测试。服务器差异（认证 API、存在性检查端点、连接探测方式）
 通过类属性与钩子方法保留在各模块。
 """
-from typing import Any, Iterable, Optional, Tuple, cast
+from typing import Any, Iterable, Mapping, Optional, Tuple, cast
 
 from app.application.mediaserver import MusicMediaServerHelper
 from app.domain.context import MediaInfo, MusicInfo
@@ -17,6 +17,21 @@ from app.schemas.event import AuthInterceptCredentials as _SchemaAuthInterceptCr
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
 from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.types import ChainEventType, MediaType
+
+
+def emby_episode_numbers(item: Mapping[str, Any]) -> range:
+    """
+    展开 Emby 系分集条目的起止集号，缺少结束集号或倒序时按单集处理。
+
+    :param item: 含 IndexNumber 与可空 IndexNumberEnd 的分集响应
+    :return: 包含合并文件所覆盖全部集号的区间，未提供起始集号时为空
+    """
+    number = item.get("IndexNumber")
+    if number is None:
+        return range(0)
+    start = int(number)
+    end = item.get("IndexNumberEnd")
+    return range(start, max(start, int(end) if end is not None else start) + 1)
 
 
 def emby_query_params(query: Optional[MediaServerQueryOptions]) -> dict[str, str]:

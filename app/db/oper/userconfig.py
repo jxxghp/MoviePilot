@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Optional, Union
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -75,9 +76,15 @@ class UserConfigOper(DbOper, metaclass=Singleton):
     ) -> bool:
         """
         在调用方 Session 中暂存写入，返回提交后是否应移除缓存项。
+
+        SQLite 写锁在读取配置前获取，避免并发删除用户后对已消失配置执行过期更新。
+        事务提交和回滚仍由调用方负责，用户不存在时由既有外键约束拒绝新增。
         """
         if isinstance(key, UserConfigKey):
             key = key.value
+        if db.get_bind().dialect.name == "sqlite":
+            db.execute(update(UserConfig).where(UserConfig.username == username, UserConfig.key == key)
+                       .values(id=UserConfig.id).execution_options(synchronize_session=False))
         conf = UserConfig.get_by_key(db=db, username=username, key=key)
         if conf:
             if value:

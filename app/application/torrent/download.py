@@ -26,6 +26,7 @@ from app.domain.meta.metamusic import audio_quality_tier, normalize_audio_format
 from app.domain.metainfo import MetaInfo
 from app.foundation import text as text_tools
 from app.foundation.crypto import HashUtils
+from app.foundation.url import UrlUtils
 from app.runtime.cache import FileCache, TTLCache
 from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
@@ -327,6 +328,59 @@ class TorrentHelper:
             time.sleep(attempt + 1)
         return None
 
+    def _request_torrent_redirects(
+        self,
+        http_port: TorrentHttpPort,
+        *,
+        url: str,
+        cookie: Optional[str],
+        ua: Optional[str],
+        referer: Optional[str],
+        proxies: Optional[dict[str, Any]],
+        retry: bool,
+    ) -> tuple[Optional[TorrentResponsePort], str, Optional[str]]:
+        """
+        有界处理GET跳转，跨来源后永久移除原站点凭据和Referer。
+
+        :param http_port: 已装配HTTP端口
+        :param url: 当前下载地址
+        :param cookie: 仅供原始来源使用的站点Cookie
+        :param ua: 请求用户代理
+        :param referer: 原始来源页地址
+        :param proxies: 本次请求代理
+        :param retry: 是否对普通GET执行既有瞬时失败重试
+        :return: 最终响应、最终地址及允许在该地址使用的Cookie
+        :raises ValueError: 跳转缺少地址、目标非法、重复或超过上限
+        """
+        seen = set()
+        for _hop in range(9):
+            if url in seen:
+                raise ValueError("种子下载重定向出现环路")
+            seen.add(url)
+            response = self._request_torrent_get(
+                http_port, retry and not torrent_rules.is_expiring_download_url(url),
+                url=url, cookie=cookie, ua=ua, referer=referer,
+                proxies=proxies, allow_redirects=False,
+            )
+            if response is None or response.status_code not in (301, 302, 303, 307, 308):
+                return response, url, cookie
+            location = response.headers.get("Location") or response.headers.get("location")
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+            if not location:
+                raise ValueError("种子下载重定向缺少目标地址")
+            destination = urljoin(url, location)
+            if destination.startswith("magnet:"):
+                return None, destination, None
+            target = urlsplit(destination)
+            if target.scheme not in ("http", "https") or not target.hostname or target.username or target.password:
+                raise ValueError("种子下载重定向目标无效")
+            if not UrlUtils.same_origin(url, destination):
+                cookie, referer = None, None
+            url = destination
+        raise ValueError("种子下载重定向次数超过上限")
+
     def _should_retry_torrent_response(self, response: Optional[TorrentResponsePort]) -> bool:
         """
         保留重定向、磁力和首次确认页，明确限流不得消耗瞬时重试预算。
@@ -380,19 +434,15 @@ class TorrentHelper:
         config = get_chain_runtime_config_snapshot()
         http_port = _require_torrent_port()
         retry = cache_invalid and not torrent_rules.is_expiring_download_url(url)
-        req = self._request_torrent_get(
-            http_port, retry, url=url, cookie=cookie, ua=ua, referer=referer,
-            proxies=config.proxy if proxy else None, allow_redirects=False,
-        )
-        while req is not None and req.status_code in [301, 302]:
-            url = req.headers['Location']
-            if url and url.startswith("magnet:"):
-                return None, url, "", [], "获取到磁力链接"
-            req = self._request_torrent_get(
-                http_port, retry and not torrent_rules.is_expiring_download_url(url),
-                url=url, cookie=cookie, ua=ua, referer=referer,
-                proxies=config.proxy if proxy else None, allow_redirects=False,
+        try:
+            req, url, cookie = self._request_torrent_redirects(
+                http_port, url=url, cookie=cookie, ua=ua, referer=referer,
+                proxies=config.proxy if proxy else None, retry=retry,
             )
+        except ValueError as err:
+            return cache_path, None, "", [], str(err)
+        if url.startswith("magnet:"):
+            return None, url, "", [], "获取到磁力链接"
         if rate_limit_error := _torrent_rate_limit_error(req):
             return cache_path, None, "", [], rate_limit_error
         if req is not None and req.status_code == 200:
@@ -416,7 +466,7 @@ class TorrentHelper:
                 action, data = confirmation
                 req = http_port.request(
                     method="POST", url=action, cookie=cookie, ua=ua,
-                    referer=url, proxies=config.proxy if proxy else None, data=data,
+                    referer=url, proxies=config.proxy if proxy else None, data=data, allow_redirects=False,
                 )
                 if rate_limit_error := _torrent_rate_limit_error(req):
                     return cache_path, None, "", [], rate_limit_error
