@@ -279,7 +279,8 @@ class TestEditMsgFallsBackToPlainText:
         assert result is False
         client._api.edit_message_text.assert_called_once()
 
-    def test_429_cooldown_skips_follow_up_edits(self, monkeypatch):
+    @pytest.mark.parametrize("wait_for_interval", [False, True])
+    def test_429_cooldown_skips_follow_up_edits(self, monkeypatch, wait_for_interval):
         """
         同一聊天的冷却期内后续编辑不应再触碰 Bot API。
         """
@@ -293,13 +294,53 @@ class TestEditMsgFallsBackToPlainText:
 
         assert client.edit_msg(chat_id="chat", message_id=5, text="正文", rich_message="# 结果") is False
         now[0] += 10
-        assert client.edit_msg(chat_id="chat", message_id=5, text="更新", rich_message="# 更新") is False
+        with patch("app.modules.telegram.telegram.time.sleep") as sleep_mock:
+            assert client.edit_msg(
+                chat_id="chat", message_id=5, text="更新", rich_message="# 更新",
+                wait_for_interval=wait_for_interval,
+            ) is False
+        sleep_mock.assert_not_called()
         assert client._api.edit_message_text.call_count == 1
         now[0] += 8
         client._api.edit_message_text.side_effect = None
         client._api.edit_message_text.return_value = {"message_id": 5}
         assert client.edit_msg(chat_id="chat", message_id=5, text="更新", rich_message="# 更新") is True
         assert client._api.edit_message_text.call_count == 2
+
+    @pytest.mark.parametrize("interruption", ["429", "edit"])
+    def test_final_edit_rechecks_cooldown_and_interval_after_one_wait(self, monkeypatch, interruption):
+        """
+        等待期间出现聊天冷却或同消息并发编辑时，不追加请求或无限延长等待。
+        """
+        client = _make_client()
+        now = [100.0]
+        waits = []
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+        client._api.edit_message_text.return_value = {"message_id": 5}
+        assert client.edit_msg(chat_id="chat", message_id=5, text="首帧", rich_message="# 首帧") is True
+
+        def interrupt_wait(seconds):
+            """
+            在虚拟等待结束时模拟其他请求带来的状态变化。
+
+            :param seconds: 本次等待秒数
+            """
+            waits.append(seconds)
+            now[0] += seconds
+            if interruption == "429":
+                client._mark_rate_limit(
+                    "chat", TelegramApiError("editMessageText", "Too Many Requests", 429, {"retry_after": 17}),
+                )
+            else:
+                assert client.edit_msg(chat_id="chat", message_id=5, text="并发编辑") is True
+
+        monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", interrupt_wait)
+        assert client.edit_msg(
+            chat_id="chat", message_id=5, text="完整正文", rich_message="# 完整正文",
+            wait_for_interval=True,
+        ) is False
+        assert waits == [TELEGRAM_EDIT_MIN_INTERVAL_SECONDS]
+        assert client._api.edit_message_text.call_count == (1 if interruption == "429" else 2)
 
     def test_successful_edits_are_throttled_and_latest_text_wins(self, monkeypatch):
         """
@@ -317,6 +358,34 @@ class TestEditMsgFallsBackToPlainText:
         now[0] += TELEGRAM_EDIT_MIN_INTERVAL_SECONDS
         assert client.edit_msg(chat_id="chat", message_id=5, text="最新", rich_message="# 最新") is True
         assert client._api.edit_message_text.call_count == 2
+
+    def test_final_edit_waits_for_message_interval(self, monkeypatch):
+        """
+        收尾编辑应等待消息级间隔，确保完整正文覆盖原消息。
+        """
+        client = _make_client()
+        now = [100.0]
+        monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+        def advance(seconds):
+            """
+            用虚拟时钟推进消息级编辑间隔。
+
+            :param seconds: 等待秒数
+            """
+            now[0] += seconds
+
+        monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
+        client._api.edit_message_text.return_value = {"message_id": 5}
+
+        assert client.edit_msg(chat_id="chat", message_id=5, text="首帧", rich_message="# 首帧") is True
+        assert client.edit_msg(
+            chat_id="chat", message_id=5, text="完整正文", rich_message="# 完整正文",
+            wait_for_interval=True,
+        ) is True
+        assert client._api.edit_message_text.call_count == 2
+        assert now[0] == 100.0 + TELEGRAM_EDIT_MIN_INTERVAL_SECONDS
+        assert "完整正文" in client._api.edit_message_text.call_args.kwargs["rich_message"]["html"]
 
 
 class TestFallbackDisablesMarkdownV2:

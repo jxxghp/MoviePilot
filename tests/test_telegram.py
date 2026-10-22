@@ -15,7 +15,7 @@ from app.domain.metainfo import MetaInfo
 from app.modules.telegram.botapi import TelegramApiError, TelegramNetworkError
 from app.modules.telegram.module import TelegramModule
 from app.modules.telegram.telegram import Telegram
-from app.schemas.message import Message, MessageResponse
+from app.schemas.message import Message
 from app.schemas.types import MediaType, NotificationChannel
 
 
@@ -45,11 +45,27 @@ def telegram():
 
 
 @pytest.mark.asyncio
-async def test_agent_fallback_skips_progress_during_telegram_edit_interval(telegram, monkeypatch):
+@pytest.mark.parametrize("partial_answer, trailing_tool", [(False, False), (True, False), (True, True)])
+async def test_agent_final_edit_waits_during_telegram_edit_interval(
+    telegram, monkeypatch, partial_answer, trailing_tool,
+):
     """
-    真实 Telegram 两秒编辑间隔触发回退时，已发送统计不能随最终答案再发一次。
+    真实 Telegram 两秒编辑间隔内收尾时，应等待并把完整答案编辑回原消息。
     """
-    monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: 100.0)
+    now = [100.0]
+    waits = []
+    monkeypatch.setattr("app.modules.telegram.telegram.time.monotonic", lambda: now[0])
+
+    def advance(seconds):
+        """
+        记录并推进 Telegram 编辑等待，保持用例离线且无需真实延时。
+
+        :param seconds: 等待秒数
+        """
+        waits.append(seconds)
+        now[0] += seconds
+
+    monkeypatch.setattr("app.modules.telegram.telegram.time.sleep", advance)
     telegram.bot.send_rich_message.return_value = {
         "message_id": 101, "chat": {"id": "fake_chat_id"},
     }
@@ -57,35 +73,53 @@ async def test_agent_fallback_skips_progress_during_telegram_edit_interval(teleg
     handler._channel = NotificationChannel.Telegram.value
     handler._source = "bot"
     handler._streaming_enabled = True
+    handler._original_message_id = "question"
+    module = TelegramModule()
+    module._channel = NotificationChannel.Telegram
+    monkeypatch.setattr(module, "get_configs", lambda: {"bot": SimpleNamespace(name="bot")})
+    monkeypatch.setattr(module, "get_instance", lambda _name: telegram)
+    monkeypatch.setattr(module, "check_message", lambda *_args: True)
+    monkeypatch.setattr(module, "get_notification_targets", lambda _message: None)
 
     async def dispatch(func, *args, **kwargs):
         """
         保留真实 Telegram 发送及限频逻辑，只隔离宿主模块路由和远端 Bot API。
         """
         if func.__name__ == "send_direct_message":
-            message = args[0]
-            result = telegram.send_msg(title="", text=message.text, rich_message=message.rich_message)
-            return MessageResponse(source="bot", **result)
+            return module.send_direct_message(args[0])
         if func.__name__ == "edit_message":
-            return telegram.edit_msg(
-                chat_id=kwargs["chat_id"], message_id=kwargs["message_id"],
-                text=kwargs["text"],
-                rich_message=kwargs["metadata"]["telegram_rich_message"],
-            )
+            return module.edit_message(**kwargs)
         return True
 
     monkeypatch.setattr("app.agent.callback.run_in_threadpool", dispatch)
     handler.record_tool_call("execute_command", tool_kwargs={"command": "capture"})
     handler.thinking_started()
     await handler._flush_messages()
-    handler.emit("截图已发送。")
+    handler.emit("| 剧名 | 简介 |\n| --- | --- |\n" + "| 示例 | 推荐理由 |\n" * 8)
+    if partial_answer:
+        now[0] += 2.0
+        await handler._flush_messages()
+    handler.emit("\n其中这些剧集评价最稳。\n\n要继续搜索吗？")
+    if trailing_tool:
+        handler.record_tool_call("read_file", tool_kwargs={"file_path": "result.txt"})
+    handler.flush_pending_tool_summary()
+    expected_text = handler._buffer
 
-    all_sent, _ = await handler.stop_streaming()
+    all_sent, final_text = await handler.stop_streaming()
 
-    assert not all_sent
-    assert await handler.take() == "截图已发送。"
+    assert all_sent
+    assert waits == [2.0]
+    assert await handler.take() == ""
     telegram.bot.send_rich_message.assert_called_once()
-    telegram.bot.edit_message_text.assert_not_called()
+    assert telegram.bot.edit_message_text.call_count == (2 if partial_answer else 1)
+    assert telegram.bot.edit_message_text.call_args.kwargs["message_id"] == 101
+    rich_html = telegram.bot.edit_message_text.call_args.kwargs["rich_message"]["html"]
+    assert "<table>" in rich_html
+    assert rich_html.count("<td>推荐理由</td>") == 8
+    assert "要继续搜索吗？" in rich_html
+    assert final_text == expected_text
+    assert "要继续搜索吗？" in final_text
+    assert "思考中" not in final_text
 
 
 @pytest.mark.parametrize("url", [None, "", "   ", 123, False])

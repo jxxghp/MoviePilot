@@ -256,10 +256,13 @@ async def test_streaming_start_waits_for_concurrent_stop_final_flush() -> None:
     flush_started = asyncio.Event()
     release_flush = asyncio.Event()
 
-    async def blocking_flush() -> None:
+    async def blocking_flush(*, final: bool = False) -> None:
         """
         把最终刷新停留在生命周期锁内，验证新启动等待。
+
+        :param final: 是否执行停止阶段的最终刷新
         """
+        assert final
         flush_started.set()
         await release_flush.wait()
 

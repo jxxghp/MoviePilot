@@ -514,8 +514,8 @@ class StreamingHandler:
         # 将未落地的工具统计补入缓冲区，避免流式结束时丢失这段执行信息
         self.flush_pending_tool_summary()
 
-        # 执行最后一次刷新
-        await self._flush_messages()
+        # 执行最后一次刷新；渠道若有消息级编辑间隔，应等待收尾正文落地。
+        await self._flush_messages(final=True)
 
         await self._finalize_current_message()
 
@@ -998,13 +998,15 @@ class StreamingHandler:
                 pass
         self._flush_task = None
 
-    async def _flush_messages(self) -> None:
+    async def _flush_messages(self, final: bool = False) -> None:
         """
         按补充输入边界依次收口旧消息，再把后续内容发送到新的渠道消息。
+
+        :param final: 是否执行等待消息级编辑间隔的收尾刷新
         """
         while self._message_boundaries:
             boundary, original_message_id = self._message_boundaries[0]
-            await self._flush(end_offset=boundary)
+            await self._flush(end_offset=boundary, final=final)
             with self._lock:
                 current_text = self._buffer[self._msg_start_offset : boundary]
                 if current_text and current_text != self._sent_text:
@@ -1017,7 +1019,7 @@ class StreamingHandler:
                 self._sent_text = ""
                 self._sent_thinking_status = ""
                 self._original_message_id = original_message_id
-        await self._flush()
+        await self._flush(final=final)
 
     async def _finalize_current_message(self) -> None:
         """
@@ -1026,12 +1028,19 @@ class StreamingHandler:
         if self._message_response is not None:
             await run_in_threadpool(_StreamChain().finalize_message, self._message_response)
 
-    async def _flush(self, end_offset: Optional[int] = None) -> None:
+    async def _flush(
+        self,
+        end_offset: Optional[int] = None,
+        final: bool = False,
+    ) -> None:
         """
         将当前缓冲区内容刷新到用户消息
         - 如果还没有发送过消息，先发送一条新消息并记录message_id
         - 如果已经发送过消息，编辑该消息为最新的完整内容
         - 如果当前消息内容超过长度限制，冻结当前消息并发送新消息继续输出
+
+        :param end_offset: 当前消息允许读取的缓冲区结束位置
+        :param final: 是否执行等待消息级编辑间隔的最终编辑
         """
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
@@ -1123,6 +1132,7 @@ class StreamingHandler:
                     if rich_message:
                         # 通用编辑接口不增加渠道专属参数，通过元数据交给 Telegram 模块消费。
                         metadata["telegram_rich_message"] = rich_message
+                        metadata["telegram_wait_for_edit_interval"] = final
                     success = await run_in_threadpool(
                         chain.edit_message,
                         channel=channel_enum,

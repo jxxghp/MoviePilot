@@ -312,15 +312,33 @@ class Telegram:
                 )
             return True
 
-    def _reserve_edit(self, chat_id: Union[str, int], message_id: Union[str, int]) -> bool:
+    def _reserve_edit(
+            self,
+            chat_id: Union[str, int],
+            message_id: Union[str, int],
+            wait_for_interval: bool = False,
+    ) -> bool:
         """
         原子预留一次消息编辑，执行聊天冷却和消息级最小间隔检查。
+
+        :param chat_id: 编辑目标会话标识
+        :param message_id: 编辑目标消息标识
+        :param wait_for_interval: 是否等待一次消息级间隔，最长两秒；聊天 429 冷却不会等待
+        :return: 成功预留编辑时返回 True，否则返回 False
         """
         self._ensure_edit_state()
         if self._is_chat_rate_limited(chat_id):
             return False
-        now = time.monotonic()
         key = (str(chat_id), int(message_id))
+        if wait_for_interval:
+            with self._edit_state_lock:
+                remaining = self._edit_next_allowed.get(key, 0.0) - time.monotonic()
+            if remaining > 0:
+                # 调用方在线程池内收尾；不占用事件循环，也不持锁等待或无限追赶并发编辑。
+                time.sleep(min(remaining, TELEGRAM_EDIT_MIN_INTERVAL_SECONDS))
+            if self._is_chat_rate_limited(chat_id):
+                return False
+        now = time.monotonic()
         with self._edit_state_lock:
             if self._edit_next_allowed.get(key, 0.0) > now:
                 return False
@@ -1547,6 +1565,7 @@ class Telegram:
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
             rich_message: Optional[str] = None,
+            wait_for_interval: bool = False,
     ) -> Optional[bool]:
         """
         限频更新原消息，富文本失败时尝试纯文本回退。
@@ -1559,12 +1578,13 @@ class Telegram:
         :param stop_typing: 是否在操作收尾时请求停止输入状态，默认 False
         :param parse_mode: 消息格式，默认 MarkdownV2；支持 HTML 和 plain 纯文本
         :param rich_message: 可选富文本正文；非空时覆盖普通标题和正文
+        :param wait_for_interval: 是否等待消息级编辑间隔后再发送；429 冷却不会等待
         :return: 更新成功或内容未变化返回 True；限流、空内容或失败返回 False；客户端缺失返回 None
         """
         if not self._bot:
             return None
 
-        if not self._reserve_edit(chat_id, message_id):
+        if not self._reserve_edit(chat_id, message_id, wait_for_interval=wait_for_interval):
             return False
 
         parse_mode = self._normalize_parse_mode(parse_mode)

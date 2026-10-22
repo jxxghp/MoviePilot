@@ -627,7 +627,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         :param text: 新的消息内容
         :param title: 消息标题
         :param buttons: 新的按钮列表
-        :param metadata: 其他元信息；telegram_rich_message 用于流式富文本编辑
+        :param metadata: telegram_rich_message 为流式富文本；telegram_wait_for_edit_interval 表示等待编辑间隔收尾
         :param parse_mode: Telegram 消息格式类型，默认 MarkdownV2，可传 HTML
         :return: 编辑是否成功
         """
@@ -646,6 +646,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     buttons=buttons,
                     parse_mode=parse_mode,
                     rich_message=(metadata or {}).get("telegram_rich_message"),
+                    wait_for_interval=bool((metadata or {}).get("telegram_wait_for_edit_interval")),
                 )
                 if result:
                     return True
