@@ -71,6 +71,8 @@ ci: improve docker build cache
 - The primary Docker image bundles the backend (Python app), frontend static files (from `public/`), and resource data.
 - Docker build and release are managed by CI. Do not manually trigger or alter the Docker release flow unless the task explicitly requires it.
 - If a Dockerfile change is needed, update `Dockerfile` and verify the build locally before submitting.
+- The image ends with a small system security update layer. CI rebuilds it at most once per ISO week; changing the ISO date in `docker/system-baseline` rebuilds it immediately and stamps the new date into `/etc/moviepilot/system-baseline`.
+- `MIN_SYSTEM_BASELINE` in `version.py` is the oldest image baseline that may install this release through the in-app or Dev updater. Raise it only for severe system-level vulnerabilities, and set it to the same date as `docker/system-baseline` in that release. Older Docker images then refuse the update and ask the user to pull the new image.
 
 ---
 

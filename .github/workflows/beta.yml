@@ -106,6 +106,27 @@ jobs:
           echo "digest=sha256:$(sha256sum app/agent/llm/resources/models.json | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "Downloaded models.dev catalog ($(wc -c < app/agent/llm/resources/models.json) bytes)"
 
+      - name: Resolve System Refresh Key
+        id: system_refresh
+        run: |
+          # 刷新键决定镜像末尾系统安全更新层何时重建：每 ISO 周最多一次，
+          # docker/system-baseline 变化时立即重建。计算失败只降级为基线值，不阻断发布。
+          baseline=$(tr -d '[:space:]' < docker/system-baseline 2>/dev/null || true)
+          if ! [[ "$baseline" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::warning::docker/system-baseline 缺失或格式无效，系统基线记为 unknown"
+            baseline=unknown
+          fi
+          week=$(date -u +%G-W%V 2>/dev/null || true)
+          if [[ "$week" =~ ^[0-9]{4}-W[0-9]{2}$ ]]; then
+            key="${week}-${baseline}"
+          else
+            echo "::warning::无法计算 ISO 周，系统刷新键仅使用系统基线"
+            key="${baseline}"
+          fi
+          echo "System refresh key: ${key}"
+          echo "baseline=${baseline}" >> "$GITHUB_OUTPUT"
+          echo "key=${key}" >> "$GITHUB_OUTPUT"
+
       - name: Docker Meta
         id: meta
         uses: docker/metadata-action@v6
@@ -162,8 +183,10 @@ jobs:
             MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
             MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
             MOVIEPILOT_PYTHON_VARIANT=standard
+            MOVIEPILOT_SYSTEM_REFRESH_ID=${{ steps.system_refresh.outputs.key }}
           labels: |
             ${{ steps.meta.outputs.labels }}
+            org.moviepilot.system-baseline=${{ steps.system_refresh.outputs.baseline }}
             org.opencontainers.image.revision=${{ env.SOURCE_COMMIT }}
             org.moviepilot.source-revision=${{ env.SOURCE_COMMIT }}
             org.moviepilot.frontend-version=${{ steps.release_version.outputs.frontend_version }}
@@ -195,8 +218,10 @@ jobs:
             MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
             MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
             MOVIEPILOT_PYTHON_VARIANT=free-threaded
+            MOVIEPILOT_SYSTEM_REFRESH_ID=${{ steps.system_refresh.outputs.key }}
           labels: |
             ${{ steps.meta_ft.outputs.labels }}
+            org.moviepilot.system-baseline=${{ steps.system_refresh.outputs.baseline }}
             org.opencontainers.image.revision=${{ env.SOURCE_COMMIT }}
             org.moviepilot.source-revision=${{ env.SOURCE_COMMIT }}
             org.moviepilot.frontend-version=${{ steps.release_version.outputs.frontend_version }}

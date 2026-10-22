@@ -367,6 +367,23 @@ RUN mkdir -p ${HOME} \
     && echo "zh_CN.UTF-8 UTF-8" >> /etc/locale.gen \
     && locale-gen zh_CN.UTF-8
 
+# 系统安全更新层：放在所有大层之后、--link 载荷层之前，刷新时只重建这一小层。
+# CI 传入 "<ISO 年-周>-<系统基线>" 作为刷新键，每周最多重建一次；docker/system-baseline
+# 变化时 COPY 内容变化，同样立即重建。未传键的本地构建按普通缓存规则复用。
+# 基线文件写入镜像，供应用内更新判断当前镜像是否满足目标版本的 MIN_SYSTEM_BASELINE。
+ARG MOVIEPILOT_SYSTEM_REFRESH_ID=""
+COPY docker/system-baseline /etc/moviepilot/system-baseline
+RUN set -eu; \
+    printf 'System refresh key: %s, baseline: %s\n' \
+        "${MOVIEPILOT_SYSTEM_REFRESH_ID:-unset}" "$(cat /etc/moviepilot/system-baseline)"; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends \
+        -o Dpkg::Options::=--force-confdef \
+        -o Dpkg::Options::=--force-confold \
+        upgrade; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /var/tmp/*
+
 # 载荷按独立更新频率写入镜像，后端源码保持在最后一层。
 WORKDIR /app
 
