@@ -130,7 +130,8 @@ def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> 
     assert "apt-get upgrade" not in dockerfile
     assert "pip uninstall" not in dockerfile
     assert "break-system-packages" not in dockerfile
-    browser_install = dockerfile.split("RUN playwright install-deps chromium", maxsplit=1)[1]
+    browser_install = dockerfile.split("python -m playwright install-deps chromium", maxsplit=1)[1]
+    browser_install = browser_install.split("\nFROM ", maxsplit=1)[0]
     assert "apt-get install" not in browser_install
 
 
