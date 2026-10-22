@@ -773,11 +773,9 @@ class RuleParser:
         """
         解析给定的表达式。
 
-        参数:
-        expression -- 要解析的表达式
-
-        返回:
-        解析结果
+        :param expression: 待解析的完整规则表达式
+        :return: 逻辑表达式解析结果
+        :raises ParseException: 包含不合法语法或无法消费的尾部内容
         """
         if _filter_rule_parser is not None:
             try:
@@ -786,7 +784,7 @@ class RuleParser:
                 accelerated = None
             if accelerated is not None:
                 return _RustParseResults(accelerated)
-        return self.expr.parse_string(expression)
+        return self.expr.parse_string(expression, parse_all=True)
 
 
 class _RustParseResults(list[Any]):

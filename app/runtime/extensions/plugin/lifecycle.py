@@ -158,6 +158,17 @@ class PluginLifecycle:
                 current_id = plugin.__name__
                 if plugin_id and current_id.casefold() != plugin_id.casefold():
                     continue
+                runtime_id = self._resolve_runtime_id(current_id)
+                if runtime_id in self._running:
+                    # 未收敛实例仍由运行表持有，不能被重试构造的新实例覆盖。
+                    status = (
+                        PluginRuntimeStatus.LOAD_FAILED
+                        if runtime_id in self._quiesced_hooks
+                        else PluginRuntimeStatus.ACTIVE
+                    )
+                    self._runtime_status_writer(plugin_id or current_id, status)
+                    results[plugin_id or current_id] = status
+                    continue
                 try:
                     if not self._auth_checker(plugin):
                         self._remove_classification(current_id)
@@ -175,6 +186,7 @@ class PluginLifecycle:
                         self._gil_fallback_recorder,
                     ):
                         instance = plugin()
+                        self._running[current_id] = instance
                         instance.init_plugin(self._plugin_config(current_id))
                     self._ensure_database(current_id, instance)
                     enabled = bool(instance.get_state())
@@ -200,9 +212,7 @@ class PluginLifecycle:
                     status = PluginRuntimeStatus.LOAD_FAILED
                     self._runtime_status_writer(plugin_id or current_id, status)
                     results[plugin_id or current_id] = status
-                    # 建库发生在进入运行态之前：失败的插件不会出现在 _running 里，卸载路径
-                    # 因此够不到它，句柄只能在这里释放
-                    self._release_databases((current_id,))
+                    self._cleanup_failed_candidate(current_id)
                     self._logger.error(
                         f"加载插件 {current_id} 出错：{error} - {traceback.format_exc()}"
                     )
@@ -227,6 +237,20 @@ class PluginLifecycle:
                 results[plugin_id] = status
             self._clear_tools()
             return results
+
+    def _cleanup_failed_candidate(self, plugin_id: str) -> None:
+        """
+        收尾已经构造的失败候选；未收敛时保留实例和数据库供后续停止重试。
+
+        :param plugin_id: 初始化失败的插件运行标识
+        """
+        instance = self._running.get(plugin_id)
+        if instance is not None:
+            if not self._quiesce_selected({plugin_id: instance}):
+                return
+            self._running.pop(plugin_id, None)
+            self._quiesced_hooks.pop(plugin_id, None)
+        self._release_databases((plugin_id,))
 
     @staticmethod
     def _declaration(instance: Any, hook_name: str) -> Any:
@@ -306,18 +330,35 @@ class PluginLifecycle:
             )
 
     @observe_plugin_lifecycle("stop")
-    def stop(self, plugin_id: Optional[str] = None) -> None:
+    def stop(self, plugin_id: Optional[str] = None) -> Optional[bool]:
         """
-        按旧单阶段 ABI 先解绑 handler，再停止并强制卸载插件。
+        先解绑handler并停止生产者，未收敛时返回False且保留owner；成功沿用None返回。
+
+        :param plugin_id: 指定插件标识；为空时停止全部实例
+        :return: 停止或卸载失败时为False，成功时保留旧ABI的None
         """
         with self._lifecycle_lock:
             plugins = self._select_running_plugins(plugin_id)
-            self._quiesce_selected(plugins)
-            self._finalize(
+            if not self._quiesce_selected(plugins):
+                self._record_stop_failure(plugins)
+                return False
+            if not self._finalize(
                 plugin_id,
-                require_quiesced=False,
-                disable_events=not self._handlers_quiesced(plugins),
-            )
+                require_quiesced=True,
+                disable_events=False,
+            ):
+                self._record_stop_failure(plugins)
+                return False
+            return None
+
+    def _record_stop_failure(self, plugins: dict[str, Any]) -> None:
+        """
+        将停止失败的实例标记为加载失败，运行注册表继续持有其资源。
+
+        :param plugins: 本次停止入口冻结的实例快照
+        """
+        for current_id in plugins:
+            self._runtime_status_writer(current_id, PluginRuntimeStatus.LOAD_FAILED)
 
     @observe_plugin_lifecycle("quiesce")
     def quiesce(self, plugin_id: Optional[str] = None) -> bool:
@@ -523,13 +564,16 @@ class PluginLifecycle:
         """
         重启指定插件并返回本次加载结果。
         """
-        self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
-        self.stop(plugin_id)
-        results = self.start(plugin_id)
-        status = next(
-            status
-            for result_id, status in results.items()
-            if result_id.casefold() == plugin_id.casefold()
-        )
-        self._event_sender(reload_event, data={"plugin_id": plugin_id})
-        return status
+        with self._lifecycle_lock:
+            self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
+            if self.stop(plugin_id) is False:
+                self._runtime_status_writer(plugin_id, PluginRuntimeStatus.LOAD_FAILED)
+                return PluginRuntimeStatus.LOAD_FAILED
+            results = self.start(plugin_id)
+            status = next(
+                status
+                for result_id, status in results.items()
+                if result_id.casefold() == plugin_id.casefold()
+            )
+            self._event_sender(reload_event, data={"plugin_id": plugin_id})
+            return status

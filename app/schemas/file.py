@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from pydantic import field_serializer as _field_serializer
 
 from app.schemas.types import StorageSchema
 
@@ -62,6 +63,8 @@ class FileItem(FileURI):
     extension: Optional[str] = Field(default=None, description="文件后缀")
     size: Optional[int] = Field(default=None, description="文件大小，单位为字节；目录或来源未提供时可为 None")
     modify_time: Optional[float] = Field(default=None, description="文件修改时间的 Unix 时间戳，单位为秒，未提供时为 None")
+    modify_time_ns: Optional[int] = Field(default=None, description="本地修改时间的 Unix 纳秒值，JSON 使用十进制字符串避免精度丢失；旧快照或远端未提供时为 None")
+    change_time_ns: Optional[int] = Field(default=None, description="本地状态变化时间的 Unix 纳秒值，JSON 使用十进制字符串；用于同路径清理核验，未提供时为 None")
     children: Optional[list["FileItem"]] = Field(default_factory=list, description="子节点")
     fileid: Optional[str] = Field(default=None, description="存储服务分配的文件标识")
     parent_fileid: Optional[str] = Field(default=None, description="父ID")
@@ -69,6 +72,16 @@ class FileItem(FileURI):
     pickcode: Optional[str] = Field(default=None, description="115 文件下载提取码")
     drive_id: Optional[str] = Field(default=None, description="云盘驱动器标识")
     url: Optional[str] = Field(default=None, description="访问地址")
+
+    @_field_serializer("modify_time_ns", "change_time_ns", when_used="json")
+    def serialize_local_timestamp(self, value: Optional[int]) -> Optional[str]:
+        """
+        使用十进制字符串传输纳秒时间，避免浏览器数字精度改变恢复凭据。
+
+        :param value: Python 中的纳秒整数；未提供时为 None
+        :return: 可无损回传的十进制字符串，未提供时保持 None
+        """
+        return str(value) if value is not None else None
 
 
 class StorageUsage(BaseModel):

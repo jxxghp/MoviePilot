@@ -18,6 +18,7 @@ from app.application.plugin import management as plugin_management
 from app.runtime.config import global_vars
 from app.schemas.plugin import (
     PluginInstance,
+    PluginRuntimeStatus,
     PluginSourceChangeRequest,
     PluginSourceIdentity,
     PluginSourceInstallRequest,
@@ -779,6 +780,8 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
     gateway = Mock()
     sync_runner = Mock(return_value=(True, "installed"))
     async_runner = AsyncMock(return_value=(True, "installed"))
+    command_factory = Mock(return_value=Mock())
+    recovery_factory = Mock(return_value=Mock())
 
     monkeypatch.setattr(
         plugins_initializer,
@@ -793,7 +796,7 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
     monkeypatch.setattr(
         plugins_initializer,
         "PluginInstallCommand",
-        lambda **_kwargs: Mock(),
+        command_factory,
     )
     monkeypatch.setattr(
         plugins_initializer,
@@ -803,7 +806,7 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
     monkeypatch.setattr(
         plugins_initializer,
         "PluginInstallationRecoveryService",
-        lambda **_kwargs: Mock(),
+        recovery_factory,
     )
     monkeypatch.setattr(
         plugins_initializer,
@@ -865,6 +868,21 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
     )
 
     plugins_initializer.configure_plugin_services()
+
+    manager = plugins_initializer.get_plugin_manager()
+    manager.reload_plugin_tree.return_value = PluginRuntimeStatus.ACTIVE
+    reloader = command_factory.call_args.kwargs["target_reloader"]
+    restorer = recovery_factory.call_args.kwargs["restore_host_enabled"]
+    assert asyncio.run(reloader("DemoPlugin")) is PluginRuntimeStatus.ACTIVE
+    manager.reload_plugin_tree.assert_called_once_with("DemoPlugin")
+    for enabled in (True, False):
+        asyncio.run(restorer("DemoPlugin", enabled))
+    assert manager.restore_plugin_host_enabled.call_args_list == [
+        call("DemoPlugin", True), call("DemoPlugin", False),
+    ]
+    manager.restore_plugin_host_enabled.side_effect = RuntimeError("候选资源未停止")
+    with pytest.raises(RuntimeError, match="候选资源未停止"):
+        asyncio.run(restorer("DemoPlugin", False))
 
     monkeypatch.setattr(
         plugins_initializer,

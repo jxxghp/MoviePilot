@@ -224,23 +224,109 @@ def _build_engine() -> Engine:
 
 def _normalize_sql(sql: str) -> str:
     """
-    去除 SQL 首尾空白和末尾分号。
+    去除 SQL 首尾空白及注释前唯一的语句终止符，保留字面值内容。
     """
-    return sql.strip().rstrip(";")
+    sql = sql.strip()
+    code = _masked_sql(sql)
+    if code is not None and code.count(";") == 1 and code.rstrip().endswith(";"):
+        position = code.rfind(";")
+        return sql[:position] + sql[position + 1:]
+    return sql
+
+
+def _quoted_end(sql: str, start: int, quote: str, *, escaped: bool = False) -> Optional[int]:
+    """
+    寻找带成对转义引号的词法项末尾；仅 PostgreSQL E 字符串解析反斜杠。
+    """
+    index = start + 1
+    closing = "]" if quote == "[" else quote
+    while index < len(sql):
+        if escaped and sql[index] == "\\":
+            index += 2
+        elif sql[index] == closing:
+            if quote != "[" and sql[index:index + 2] == closing * 2:
+                index += 2
+            else:
+                return index + 1
+        else:
+            index += 1
+    return None
+
+
+def _block_comment_end(sql: str, start: int) -> Optional[int]:
+    """
+    定位块注释末尾，同时支持 PostgreSQL 的嵌套注释。
+    """
+    depth = 1
+    index = start + 2
+    while index < len(sql) and depth:
+        if sql[index:index + 2] == "/*":
+            depth += 1
+            index += 2
+        elif sql[index:index + 2] == "*/":
+            depth -= 1
+            index += 2
+        else:
+            index += 1
+    return index if depth == 0 else None
+
+
+def _sql_literal_end(sql: str, index: int) -> Optional[int]:
+    """
+    返回引号或美元引号项的结束位置；不是词法项时返回当前位置。
+    """
+    char = sql[index]
+    if char in "'\"`[":
+        escaped = char == "'" and index > 0 and sql[index - 1] in "eE" and (
+            index < 2 or not (sql[index - 2].isalnum() or sql[index - 2] == "_")
+        )
+        return _quoted_end(sql, index, char, escaped=escaped)
+    if char == "$":
+        match = re.match(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$", sql[index:])
+        if match:
+            end = sql.find(match.group(), index + len(match.group()))
+            return end + len(match.group()) if end >= 0 else None
+    return index
+
+
+def _masked_sql(sql: str) -> Optional[str]:
+    """
+    用等长空白遮蔽字面值、标识符与注释，未闭合结构按无效 SQL 拒绝。
+    """
+    code = list(sql)
+    index = 0
+    while index < len(sql):
+        if sql[index:index + 2] == "--":
+            end = sql.find("\n", index)
+            end = len(sql) if end < 0 else end
+        elif sql[index:index + 2] == "/*":
+            end = _block_comment_end(sql, index)
+        else:
+            end = _sql_literal_end(sql, index)
+        if end is None:
+            return None
+        if end > index:
+            code[index:end] = " " * (end - index)
+            index = end
+        else:
+            index += 1
+    return "".join(code)
 
 
 def _contains_multiple_statements(sql: str) -> bool:
     """
     判断 SQL 是否包含多语句分隔符。
     """
-    return ";" in sql
+    code = _masked_sql(sql)
+    return code is None or ";" in code.rstrip().removesuffix(";")
 
 
 def _is_write_statement(sql: str) -> bool:
     """
     判断 SQL 是否为写操作或结构变更操作。
     """
-    return bool(WRITE_STATEMENT_RE.match(sql))
+    code = _masked_sql(sql)
+    return code is not None and bool(WRITE_STATEMENT_RE.match(code))
 
 
 def _is_supported_statement(sql: str, allow_write: bool) -> bool:
@@ -249,9 +335,12 @@ def _is_supported_statement(sql: str, allow_write: bool) -> bool:
     """
     if _contains_multiple_statements(sql):
         return False
+    code = _masked_sql(sql)
+    if code is None or not code.strip().strip(";"):
+        return False
     if allow_write:
         return True
-    return bool(SELECT_STATEMENT_RE.match(sql)) and not WRITE_KEYWORD_RE.search(sql)
+    return bool(SELECT_STATEMENT_RE.match(code)) and not WRITE_KEYWORD_RE.search(code)
 
 
 def _append_limit(sql: str, limit: int) -> str:
@@ -260,12 +349,12 @@ def _append_limit(sql: str, limit: int) -> str:
     """
     if limit <= 0:
         return sql
-    lowered = sql.lower()
+    lowered = (_masked_sql(sql) or "").lower()
     if not lowered.lstrip().startswith("select"):
         return sql
     if re.search(r"\blimit\s+\d+\b", lowered):
         return sql
-    return f"{sql} LIMIT {limit}"
+    return f"{sql}\nLIMIT {limit}"
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:

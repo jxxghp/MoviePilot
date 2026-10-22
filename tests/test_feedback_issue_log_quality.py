@@ -80,6 +80,22 @@ def test_filter_lines_compacts_consecutive_repeated_templates(feedback_modules):
     assert matched_keywords == ["等待转存"]
 
 
+def test_filter_lines_excludes_current_correlation_id_noise(feedback_modules):
+    """
+    当前带关联 ID 的 Agent 日志不能挤占有限的真实故障日志预算。
+    """
+    _, collect = feedback_modules
+    now = datetime.now()
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    real = f"【ERROR】{timestamp},001 [fixture-id] - transfer.py - review fixture failure"
+    noise = f"【ERROR】{timestamp},002 [fixture-id] - message.py - review fixture failure"
+    lines, _ = collect.filter_lines(
+        real + "\n" + noise, keywords=["fixture"], max_lines=1,
+        window_start=now - timedelta(minutes=5),
+    )
+    assert lines == [real]
+
+
 def test_doctor_summary_groups_legacy_duplicate_advisories(feedback_modules):
     """
     旧版 Doctor 的重复插件发现也应在反馈摘要中合并展示。

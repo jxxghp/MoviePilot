@@ -40,6 +40,9 @@ def test_qq_gateway_preserves_attachments(monkeypatch, event, text):
         仅把固定事件交回真实网关处理函数，不创建网络连接。
         """
         def receive(**_kwargs):
+            """
+            将固定附件事件交给网关回调并结束隔离的接收循环。
+            """
             callbacks["on_message"](None, json.dumps(message))
             stop.set()
         return SimpleNamespace(run_forever=receive)

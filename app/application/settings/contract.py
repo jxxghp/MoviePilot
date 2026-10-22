@@ -721,11 +721,13 @@ def _runtime_settings_schema() -> dict[str, Any]:
     return Settings.model_json_schema()
 
 
-def validate_setting_value(spec: SettingSpec, value: Any) -> None:
+def validate_setting_value(spec: SettingSpec, value: Any) -> Any:
     """
-    按合同类型验证数据库设置的完整候选值。
+    按合同类型验证数据库设置的完整候选值，并返回规范化后的值。
+
+    :return: 类型转换后的候选值，调用方应将其序列化后持久化
     """
-    TypeAdapter(spec.value_annotation).validate_python(value)
+    return TypeAdapter(spec.value_annotation).validate_python(value)
 
 
 CORE_SETTING_SPECS, SYSTEMCONFIG_SETTING_SPECS = build_setting_specs()

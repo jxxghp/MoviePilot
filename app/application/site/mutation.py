@@ -22,6 +22,7 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.delete import AsyncUnitOfWork
 from app.schemas.common import JsonData
+from app.schemas.exception import SiteDomainConflictError
 from app.schemas.types import SystemConfigKey
 
 SiteMutationResult: TypeAlias = SiteWriteResult
@@ -181,8 +182,12 @@ class SiteMutationCommand:
                 "public": 1 if site_info.get("public") else 0,
             }
         )
-        await self._repository.stage_create(SiteMutation(values))
-        await self._commit()
+        try:
+            await self._repository.stage_create(SiteMutation(values))
+            await self._commit()
+        except SiteDomainConflictError:
+            await self._unit_of_work.rollback()
+            return SiteMutationResult(False, f"{domain} 站点已存在")
         await self._publish_updated({"domain": domain})
         return SiteMutationResult(True)
 
@@ -204,8 +209,12 @@ class SiteMutationCommand:
         values["url"] = normalized_url
         values["domain"] = normalized_domain
         values.pop("id", None)
-        await self._repository.stage_update(site_id, SiteMutation(values))
-        await self._commit()
+        try:
+            await self._repository.stage_update(site_id, SiteMutation(values))
+            await self._commit()
+        except SiteDomainConflictError:
+            await self._unit_of_work.rollback()
+            return SiteMutationResult(False, f"{normalized_domain} 站点已存在")
         await self._publish_updated(
             {
                 "site_id": site_id,

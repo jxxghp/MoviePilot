@@ -221,7 +221,11 @@ class MTorrentSpider:
         统一判定搜索响应状态并投影 M-Team 种子结果。
         """
         if res and res.status_code == 200:
-            data = res.json().get('data', {})
+            payload = res.json()
+            if str(payload.get("code")) != "0" or not isinstance(payload.get("data"), dict):
+                logger.warning(f"{self._name} 搜索失败，站点返回业务错误")
+                return True, []
+            data = payload["data"]
             results = data.get("data") or []
             # 分页事实只供逐页搜索判断末页，空结果仍按末页处理。
             page_number, total_pages = data.get("pageNumber"), data.get("totalPages")

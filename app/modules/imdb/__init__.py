@@ -5,7 +5,7 @@ IMDb 原生媒体数据源 Module。
 import asyncio
 import re
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union, cast
 
 from app.domain.context import MediaInfo
 from app.domain.media import is_media_source_enabled
@@ -583,6 +583,8 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                     "name": str(season_number),
                 },
             )
+            episode_details = cast(list[dict[str, object]], season_info[season_number].setdefault("episodes", []))
+            episode_details.append({"id": episode.id, "episode_number": episode.episode_number})
         media_info.season_info = list(season_info.values())
         if media_type == MediaType.TV:
             media_info.number_of_seasons = len(season_info)

@@ -29,6 +29,7 @@ def test_scrape_uses_explicit_media_source_and_id() -> None:
     chain.recognize_media.return_value = media_info
 
     scraping_chain = Mock()
+    scraping_chain.scrape_metadata.return_value = (True, "刮削完成")
     with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain, \
             patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
@@ -69,6 +70,7 @@ def test_scrape_keeps_automatic_recognition_compatible() -> None:
     chain.recognize_by_path.return_value = Context(meta_info=meta_info, media_info=media_info)
 
     scraping_chain = Mock()
+    scraping_chain.scrape_metadata.return_value = (True, "刮削完成")
     with patch("app.api.endpoints.media.MediaChain", return_value=chain) as mock_chain, \
             patch("app.api.endpoints.media.ScrapingChain", return_value=scraping_chain):
         # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
@@ -150,6 +152,7 @@ def _post_scrape_as(monkeypatch, current_user):
         media_info=MediaInfo(title="测试剧集", type=MediaType.TV),
     )
     scraping_chain = Mock()
+    scraping_chain.return_value.scrape_metadata.return_value = (True, "刮削完成")
     monkeypatch.setattr(media_endpoint, "MediaChain", media_chain)
     monkeypatch.setattr(media_endpoint, "ScrapingChain", scraping_chain)
 

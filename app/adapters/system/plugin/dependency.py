@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, distribution, distributions
 from pathlib import Path
 from typing import Any, Optional, Protocol
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from packaging.markers import default_environment
 from packaging.requirements import Requirement
@@ -258,8 +259,8 @@ class PluginDependencyInstaller:
         """
         return (name or "").lower().replace("-", "_").replace(".", "_")
 
-    @staticmethod
-    def _direct_url_matches(installed_distribution: Any, required_url: str) -> bool:
+    @classmethod
+    def _direct_url_matches(cls, installed_distribution: Any, required_url: str) -> bool:
         """
         校验安装发行版记录的 PEP 610 URL 与清单来源一致。
         """
@@ -267,14 +268,68 @@ class PluginDependencyInstaller:
             payload = installed_distribution.read_text("direct_url.json")
             if not payload:
                 return False
-            direct_url = json.loads(payload).get("url")
+            metadata = json.loads(payload)
+            direct_url = metadata.get("url")
             if not isinstance(direct_url, str):
                 return False
-            return PluginDependencyInstaller._canonical_direct_url(
-                required_url
-            ) == PluginDependencyInstaller._canonical_direct_url(direct_url)
+            required = urlsplit(required_url)
+            if "+" in required.scheme:
+                required = cls._vcs_source_url(required, metadata.get("vcs_info"))
+                if required is None:
+                    return False
+            if cls._canonical_direct_url(required._replace(fragment="").geturl()) != cls._canonical_direct_url(
+                urlsplit(direct_url)._replace(fragment="").geturl()
+            ):
+                return False
+            return cls._direct_url_fragment_matches(required.fragment, metadata)
         except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
             return False
+
+    @staticmethod
+    def _vcs_source_url(required: Any, vcs_info: Any) -> Any:
+        """
+        将VCS清单URL还原为PEP610仓库地址，并检查声明的版本或固定提交。
+
+        :param required: 已解析的清单URL
+        :param vcs_info: 安装元数据中的VCS身份
+        :return: 去除VCS前缀和版本的URL；身份不匹配时为None
+        """
+        vcs, scheme = required.scheme.split("+", 1)
+        if not isinstance(vcs_info, dict) or vcs_info.get("vcs") != vcs:
+            return None
+        path, separator, revision = required.path.rpartition("@")
+        if not separator:
+            return required._replace(scheme=scheme)
+        revision = unquote(revision)
+        commit = vcs_info.get("commit_id")
+        if re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", revision):
+            matched = isinstance(commit, str) and commit.casefold() == revision.casefold()
+        else:
+            matched = revision in {vcs_info.get("requested_revision"), commit}
+        return required._replace(scheme=scheme, path=path) if matched else None
+
+    @staticmethod
+    def _direct_url_fragment_matches(fragment: str, metadata: dict[str, Any]) -> bool:
+        """
+        从PEP610独立字段核对子目录与归档摘要，不把URL片段静默丢弃。
+
+        :param fragment: 清单URL的片段字段
+        :param metadata: 安装来源元数据
+        :return: 全部来源约束都有对应证据时为True
+        """
+        fields = dict(parse_qsl(fragment, keep_blank_values=True))
+        if fields.pop("subdirectory", None) != metadata.get("subdirectory"):
+            return False
+        archive = metadata.get("archive_info") or {}
+        hashes = dict(archive.get("hashes") or {})
+        if archive.get("hash"):
+            algorithm, _, digest = archive["hash"].partition("=")
+            hashes.setdefault(algorithm, digest)
+        return all(
+            isinstance(hashes.get(algorithm), str)
+            and hashes[algorithm].casefold() == digest.casefold()
+            for algorithm, digest in fields.items()
+        )
 
     @staticmethod
     def _canonical_direct_url(value: str) -> tuple[str, str, str, str, str]:

@@ -271,7 +271,7 @@ def test_download_subtitle_cleans_url_and_uses_server_site_request_fields(monkey
             按预期站点标识返回服务端凭据，隔离真实站点配置查询。
             """
             assert site_id == SUBTITLE_SITE_ID
-            return SimpleNamespace(cookie="server-cookie=1", ua="ServerUA", proxy=True)
+            return SimpleNamespace(url="https://example.test/", cookie="server-cookie=1", ua="ServerUA", proxy=True)
 
         def get_sync(self, site_id):
             """

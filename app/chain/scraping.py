@@ -470,6 +470,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param fileitem: 关联的媒体文件项
         :param path: 元数据文件路径
         :param content: 文件内容
+        :raises OSError: 存储拒绝上传或本地临时文件写入失败
         """
         if not fileitem or not content or not path:
             return
@@ -494,6 +495,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 logger.info(f"已保存文件：{item.path}")
             else:
                 logger.warn(f"文件保存失败：{path}")
+                raise OSError(f"文件保存失败：{path}")
         finally:
             self._cleanup_temp_file(tmp_file_path)
 
@@ -1455,29 +1457,17 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
         logger.info(f"开始刮削：{filepath} ...")
 
-        if mediainfo.type == MediaType.MOVIE:
-            self._handle_movie_scraping(
-                fileitem=fileitem,
-                meta=meta,
-                mediainfo=mediainfo,
-                init_folder=init_folder,
-                parent=parent,
-                overwrite=overwrite,
-                recursive=recursive,
-            )
-        elif mediainfo.type == MediaType.TV:
-            self._handle_tv_scraping(
-                fileitem=fileitem,
-                meta=meta,
-                mediainfo=mediainfo,
-                init_folder=init_folder,
-                parent=parent,
-                overwrite=overwrite,
-                recursive=recursive,
-            )
-        else:
+        handlers = {MediaType.MOVIE: self._handle_movie_scraping, MediaType.TV: self._handle_tv_scraping}
+        handler = handlers.get(mediainfo.type) if mediainfo.type is not None else None
+        if handler is None:
             logger.warn(f"{filepath} 媒体类型不支持刮削：{mediainfo.type}")
             return False, "媒体类型不支持刮削"
+        try:
+            handler(fileitem=fileitem, meta=meta, mediainfo=mediainfo, init_folder=init_folder,
+                    parent=parent, overwrite=overwrite, recursive=recursive)
+        except OSError as error:
+            logger.warning(f"{filepath} 刮削失败：{error}")
+            return False, str(error)
 
         logger.info(f"{filepath.name} 刮削完成")
         return True, f"{filepath.name} 刮削完成"
@@ -2357,15 +2347,17 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
         if recursive and not is_bluray_folder:
             for file in files:
-                if file.type == "dir":
+                if file.type == "dir" or not file.path or Path(file.path).suffix.lower() not in self.runtime_config.video_extensions:
                     continue
-                self.scrape_metadata(
+                success, message = self.scrape_metadata(
                     fileitem=file,
                     mediainfo=mediainfo,
                     init_folder=False,
                     parent=fileitem,
                     overwrite=overwrite,
                 )
+                if not success:
+                    raise OSError(message)
 
         if init_folder:
             if is_bluray_folder:
@@ -2454,6 +2446,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             logger.warn(f"{filepath.name} 无法识别文件媒体信息！")
             return
 
+        file_mediainfo.scrape_source = mediainfo.scrape_source
+
         self._scrape_nfo_generic(
             current_fileitem=fileitem,
             meta=file_meta,
@@ -2492,6 +2486,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if recursive:
             files = self.storagechain.list_files(fileitem=fileitem) or []
             for file in files:
+                if file.type == "file" and (not file.path or Path(file.path).suffix.lower() not in self.runtime_config.video_extensions):
+                    continue
                 if (
                         file.type == "dir"
                         and file.name not in self.runtime_config.season_zero_names
@@ -2499,13 +2495,15 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 ):
                     # 电视剧不处理非季子目录
                     continue
-                self.scrape_metadata(
+                success, message = self.scrape_metadata(
                     fileitem=file,
                     mediainfo=mediainfo,
                     parent=fileitem if file.type == "file" else None,
                     init_folder=True if file.type == "dir" else False,
                     overwrite=overwrite,
                 )
+                if not success:
+                    raise OSError(message)
 
         if init_folder:
             self._initialize_tv_directory_metadata(

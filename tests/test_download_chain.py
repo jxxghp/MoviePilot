@@ -841,14 +841,19 @@ def test_save_subtitle_response_accepts_rar_filename_from_header(monkeypatch, tm
     """
     storage_chain = _FakeSubtitleStorageChain()
     temp_path = tmp_path / "temp"
-    extracted_dir = temp_path / "Hypnosis_AKA_Saimin_(1999)_480i_JAPANESE_NTSC_DVD_REMUX_MPEG-2_DD_2.0-MeeSta"
-    extracted_subtitle = extracted_dir / "Hypnosis_AKA_Saimin_(1999).srt"
+    extracted_files = []
 
     def fake_unpack_archive(archive_file, extract_dir, archive_format=None):
+        """
+        按真实端口传入的独占目录构造RAR解压结果。
+        """
         assert archive_format == "rar"
         assert archive_file.suffix == ".rar"
+        assert extract_dir.is_relative_to(temp_path)
         extract_dir.mkdir(parents=True, exist_ok=True)
+        extracted_subtitle = extract_dir / "Hypnosis_AKA_Saimin_(1999).srt"
         extracted_subtitle.write_text("subtitle", encoding="utf-8")
+        extracted_files.append(extracted_subtitle)
 
     monkeypatch.setattr(download_subtitle, "StorageChain", lambda: storage_chain)
     monkeypatch.setattr(
@@ -876,7 +881,8 @@ def test_save_subtitle_response_accepts_rar_filename_from_header(monkeypatch, tm
     assert success
     assert message == "字幕文件保存成功"
     assert saved_files == ["/downloads/Hypnosis_AKA_Saimin_(1999).srt"]
-    assert storage_chain.uploaded_files == [extracted_subtitle]
+    assert storage_chain.uploaded_files == extracted_files
+    assert not list(temp_path.iterdir())
 
 
 def test_save_subtitle_response_rejects_unsupported_filename_from_header(monkeypatch, tmp_path):

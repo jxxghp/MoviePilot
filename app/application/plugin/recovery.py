@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from app.application.plugin.install import (
+    HostEnabledRestorer,
     PluginPackageCheckpoint,
     PluginPackageTransactionPort,
 )
@@ -87,12 +88,14 @@ class PluginInstallationRecoveryService:
         *,
         persistence: PluginPersistenceService,
         packages: PluginRecoveryPackagePort,
+        restore_host_enabled: HostEnabledRestorer | None = None,
     ) -> None:
         """
         保存数据库最终事实和文件恢复端口。
         """
         self.__persistence = persistence
         self.__packages = packages
+        self.__restore_host_enabled = restore_host_enabled
 
     async def replay(self) -> PluginInstallationRecoveryResult:
         """
@@ -153,6 +156,11 @@ class PluginInstallationRecoveryService:
         """
         try:
             await self.__packages.async_restore(checkpoint)
+            if record.host_enabled_before is None:
+                raise PluginInstallationRecoveryError("旧journal缺少安装前本体启用位，需人工复核")
+            if self.__restore_host_enabled is None:
+                raise PluginInstallationRecoveryError("本体启用位恢复端口尚未配置")
+            await self.__restore_host_enabled(record.plugin_id, record.host_enabled_before)
             await self.__persistence.delete_installation(
                 record.transaction_id,
                 expected_phase=PluginInstallationPhase.PREPARED,

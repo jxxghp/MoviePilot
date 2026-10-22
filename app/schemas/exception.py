@@ -56,6 +56,12 @@ class BusinessRejectedError(Exception):
     pass
 
 
+class SiteDomainConflictError(BusinessRejectedError):
+    """
+    站点域名已被另一持久化配置占用，当前事务应回滚并报告业务冲突。
+    """
+
+
 class OperationInterrupted(KeyboardInterrupt):
     """
     用于表示操作被中断。

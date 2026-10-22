@@ -8,7 +8,7 @@ import copy
 from collections.abc import Callable
 from typing import Optional, Union
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -50,10 +50,15 @@ class SessionSystemConfigurationRepository:
         """
         同步锁定配置行并返回独立值副本。
         """
-        record = self._sync_session().execute(
+        session = self._sync_session()
+        if session.get_bind().dialect.name == "sqlite":
+            session.execute(update(SystemConfig).where(SystemConfig.key == key.value)
+                            .values(id=SystemConfig.id).execution_options(synchronize_session=False))
+        record = session.execute(
             select(SystemConfig)
             .where(SystemConfig.key == key.value)
             .with_for_update()
+            .execution_options(populate_existing=True)
         ).scalar_one_or_none()
         return copy.deepcopy(record.value if record is not None else None)
 
@@ -61,10 +66,15 @@ class SessionSystemConfigurationRepository:
         """
         异步锁定配置行并返回独立值副本。
         """
-        result = await self._async_session().execute(
+        session = self._async_session()
+        if session.get_bind().dialect.name == "sqlite":
+            await session.execute(update(SystemConfig).where(SystemConfig.key == key.value)
+                                  .values(id=SystemConfig.id).execution_options(synchronize_session=False))
+        result = await session.execute(
             select(SystemConfig)
             .where(SystemConfig.key == key.value)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         record = result.scalar_one_or_none()
         return copy.deepcopy(record.value if record is not None else None)
