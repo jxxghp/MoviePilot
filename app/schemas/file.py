@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer as _field_serializer
 
 from app.schemas.types import StorageSchema
 
@@ -72,7 +72,7 @@ class FileItem(FileURI):
     drive_id: Optional[str] = Field(default=None, description="云盘驱动器标识")
     url: Optional[str] = Field(default=None, description="访问地址")
 
-    @field_serializer("modify_time_ns", "change_time_ns", when_used="json")
+    @_field_serializer("modify_time_ns", "change_time_ns", when_used="json")
     def serialize_local_timestamp(self, value: Optional[int]) -> Optional[str]:
         """
         使用十进制字符串传输纳秒时间，避免浏览器数字精度改变恢复凭据。
