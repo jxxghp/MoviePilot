@@ -45,6 +45,7 @@ from app.db.adapters.subscription import (
 from app.db.session import SessionFactory, async_session_scope
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.runtime.events import eventmanager
+from app.runtime.tasks import get_task_registry
 from app.schemas.common import JsonData
 from app.schemas.types import EventType, SystemConfigKey
 
@@ -98,7 +99,16 @@ async def async_rule_group_mutation_scope(
     """
     非阻塞等待跨入口锁，并构造共享 AsyncSession 的规则原子服务。
     """
-    await asyncio.to_thread(_reference_mutation_lock.acquire)
+    lock = _reference_mutation_lock
+    acquisition = get_task_registry().create(
+        asyncio.to_thread(lock.acquire), owner="subscription.reference-lock", cancel_on_shutdown=False,
+    )
+    try:
+        await asyncio.shield(acquisition)
+    except asyncio.CancelledError:
+        # shield 保留线程的迟到结果，回调负责释放已经没有请求所有者的锁。
+        acquisition.add_done_callback(lambda result: lock.release() if result.result() else None)
+        raise
     try:
         async with async_session_scope() as session:
             async def publish_async(
@@ -116,7 +126,7 @@ async def async_rule_group_mutation_scope(
                 publish=publish_async,
             )
     finally:
-        _reference_mutation_lock.release()
+        lock.release()
 
 
 @contextmanager

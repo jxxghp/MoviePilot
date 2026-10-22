@@ -4,17 +4,40 @@
 会话及事务由调用方管理，本模块不负责提交或回滚。
 """
 
+import hashlib
+import json
 import time
 from typing import Any, Optional, Self
 from uuid import uuid4
 
-from sqlalchemy import JSON, ColumnElement, Float, Index, Integer, String, or_, select
+from sqlalchemy import JSON, ColumnElement, Float, Index, Integer, String, event, inspect, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
+
+
+def subscription_identity_key(values: dict[str, Any]) -> Optional[str]:
+    """
+    为完整订阅身份生成数据库仲裁键，保留用户名大小写及空值区别。
+
+    空字符串 owner 沿用显式跳过查重的兼容合同；旧单曲的空 music_type 按 recording 处理。
+
+    :param values: 已规范化的持久化字段
+    :return: SHA256 身份摘要；身份不完整或显式跳过 owner 查重时为 None
+    """
+    if not values.get("media_source") or not values.get("media_id") or not values.get("type"):
+        return None
+    if values.get("username") == "":
+        return None
+    identity = [values.get(field) for field in (
+        "username", "type", "media_source", "media_id", "season", "episode_group", "music_type",
+    )]
+    if identity[1] == "音乐" and not identity[-1]:
+        identity[-1] = MUSIC_ENTITY_RECORDING
+    return hashlib.sha256(json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
 class Subscribe(Base):
@@ -25,6 +48,8 @@ class Subscribe(Base):
     id = get_id_column()
     # 不随整数主键复用的业务活动标识，完成时原样带入订阅历史。
     activity_key: Mapped[Optional[str]] = mapped_column(String(32), default=lambda: uuid4().hex)
+    # 完整身份的数据库唯一仲裁键；迁移保留的旧重复记录为空，不删除其业务事实。
+    identity_key: Mapped[Optional[str]] = mapped_column(String(64))
     # 标题
     name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     # 年份
@@ -131,6 +156,7 @@ class Subscribe(Base):
     episode_group: Mapped[Optional[str]] = mapped_column(String)
 
     __table_args__ = (
+        Index("uq_subscribe_identity_key", "identity_key", unique=True),
         media_identity_constraint("subscribe"),
         Index("ix_subscribe_type_date", "type", "date"),
         Index("ix_subscribe_media_identity", "media_source", "media_id"),
@@ -164,6 +190,7 @@ class Subscribe(Base):
         season: Optional[int] = None,
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
+        mtype: Optional[str] = None,
     ) -> Optional[Self]:
         """
         按媒体身份、季号与剧集组查询已有订阅。
@@ -172,6 +199,8 @@ class Subscribe(Base):
         if condition is None:
             return None
         statement = select(cls).where(condition)
+        if mtype is not None:
+            statement = statement.where(cls.type == mtype)
         if season is not None:
             statement = statement.where(cls.season == season)
         subscription: Optional[Self] = db.execute(statement.where(cls.episode_group == episode_group)).scalars().first()
@@ -186,6 +215,7 @@ class Subscribe(Base):
         season: Optional[int] = None,
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
+        mtype: Optional[str] = None,
     ) -> Optional[Self]:
         """
         异步按媒体身份、季号与剧集组查询已有订阅。
@@ -194,6 +224,8 @@ class Subscribe(Base):
         if condition is None:
             return None
         statement = select(cls).where(condition)
+        if mtype is not None:
+            statement = statement.where(cls.type == mtype)
         if season is not None:
             statement = statement.where(cls.season == season)
         result = await db.execute(statement.where(cls.episode_group == episode_group))
@@ -210,6 +242,7 @@ class Subscribe(Base):
         season: Optional[int] = None,
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
+        mtype: Optional[str] = None,
     ) -> Optional[Self]:
         """
         按订阅 owner、媒体身份、季号与剧集组查询订阅行。
@@ -220,6 +253,8 @@ class Subscribe(Base):
         if condition is None:
             return None
         statement = select(cls).where(cls.username == username, condition)
+        if mtype is not None:
+            statement = statement.where(cls.type == mtype)
         if season is not None:
             statement = statement.where(cls.season == season)
         subscription: Optional[Self] = db.execute(statement.where(cls.episode_group == episode_group)).scalars().first()
@@ -235,6 +270,7 @@ class Subscribe(Base):
         season: Optional[int] = None,
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
+        mtype: Optional[str] = None,
     ) -> Optional[Self]:
         """
         异步按订阅 owner、媒体身份、季号与剧集组查询订阅行。
@@ -245,6 +281,8 @@ class Subscribe(Base):
         if condition is None:
             return None
         statement = select(cls).where(cls.username == username, condition)
+        if mtype is not None:
+            statement = statement.where(cls.type == mtype)
         if season is not None:
             statement = statement.where(cls.season == season)
         result = await db.execute(statement.where(cls.episode_group == episode_group))
@@ -371,6 +409,7 @@ class Subscribe(Base):
         media_id: str | None = None,
         season: Optional[int] = None,
         music_type: Optional[str] = None,
+        episode_group: Optional[str] = None,
     ) -> Optional[Self]:
         """
         根据条件查询订阅
@@ -378,7 +417,7 @@ class Subscribe(Base):
         condition = cls._identity_condition(media_source, media_id, music_type)
         if condition is None:
             return None
-        statement = select(cls).where(condition, cls.type == type)
+        statement = select(cls).where(condition, cls.type == type, cls.episode_group == episode_group)
         if season is not None:
             statement = statement.where(cls.season == season)
         subscription: Optional[Self] = db.execute(statement).scalars().first()
@@ -393,6 +432,7 @@ class Subscribe(Base):
         media_id: str | None = None,
         season: Optional[int] = None,
         music_type: Optional[str] = None,
+        episode_group: Optional[str] = None,
     ) -> Optional[Self]:
         """
         根据条件查询订阅
@@ -400,7 +440,7 @@ class Subscribe(Base):
         condition = cls._identity_condition(media_source, media_id, music_type)
         if condition is None:
             return None
-        query = select(cls).filter(condition, cls.type == type)
+        query = select(cls).filter(condition, cls.type == type, cls.episode_group == episode_group)
         if season is not None:
             query = query.filter(cls.season == season)
         result = await db.execute(query)
@@ -462,3 +502,25 @@ class Subscribe(Base):
             )
         )
         return list(result.scalars().all())
+
+
+def _assign_subscription_identity(_mapper: Any, _connection: Any, record: Subscribe) -> None:
+    """
+    为 ORM 新建记录填充身份键，涵盖兼容 SDK 的直接模型写入。
+    """
+    record.identity_key = subscription_identity_key(record.__dict__)
+
+
+def _refresh_subscription_identity(_mapper: Any, _connection: Any, record: Subscribe) -> None:
+    """
+    仅身份字段改变时更新唯一键，保留迁移留下的旧重复记录及其原有进度。
+    """
+    state = inspect(record)
+    if any(state.attrs[field].history.has_changes() for field in (
+        "username", "type", "media_source", "media_id", "season", "episode_group", "music_type",
+    )):
+        record.identity_key = subscription_identity_key(record.__dict__)
+
+
+event.listen(Subscribe, "before_insert", _assign_subscription_identity)
+event.listen(Subscribe, "before_update", _refresh_subscription_identity)

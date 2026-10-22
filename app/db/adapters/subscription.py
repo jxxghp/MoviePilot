@@ -365,6 +365,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
                     identity.season,
                     identity.episode_group,
                     identity.music_type,
+                    identity.type,
                 )
             )
         )
@@ -408,6 +409,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
                         media_id=identity.media_id,
                         season=identity.season,
                         music_type=identity.music_type,
+                        episode_group=identity.episode_group,
                     )
                 )
                 is not None
@@ -428,6 +430,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         season: Optional[int] = None,
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
+        mtype: Optional[str] = None,
     ) -> Optional[SubscriptionSnapshot]:
         """
         异步按媒体身份、季号及可选剧集组读取命中的订阅快照。
@@ -443,6 +446,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
                 season=season,
                 episode_group=episode_group,
                 music_type=music_type,
+                mtype=mtype,
             )
             return _project_subscription(record) if record is not None else None
 
@@ -712,6 +716,7 @@ class SessionSubscriptionRepository:
                 identity.season,
                 identity.episode_group,
                 identity.music_type,
+                identity.type,
             )
         )
 
@@ -744,6 +749,7 @@ class SessionSubscriptionRepository:
             media_id=identity.media_id,
             season=identity.season,
             music_type=identity.music_type,
+            episode_group=identity.episode_group,
         )
         return _project_subscription(record) if record is not None else None
 
@@ -779,6 +785,7 @@ class SessionSubscriptionRepository:
         season: Optional[int] = None,
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
+        mtype: Optional[str] = None,
     ) -> Optional[SubscriptionSnapshot]:
         """
         异步按媒体身份、季号及可选剧集组读取命中的订阅快照。
@@ -789,6 +796,7 @@ class SessionSubscriptionRepository:
             season=season,
             episode_group=episode_group,
             music_type=music_type,
+            mtype=mtype,
         )
         return _project_subscription(record) if record is not None else None
 

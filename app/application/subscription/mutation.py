@@ -52,6 +52,18 @@ def _normalized_subscription_patch(
         payload,
         media_type=subscribe.type,
     )
+    identity_fields = ("type", "media_source", "media_id", "season", "episode_group", "music_type")
+    if any(field in payload and payload[field] != getattr(subscribe, field) for field in identity_fields):
+        # 旧目标的下载和洗版事实不属于新作品、季或剧集组，须与身份修改在同一事务清除。
+        normalized.update({
+            "note": [], "episode_priority": {}, "current_priority": None,
+            "lack_episode": payload.get("total_episode", subscribe.total_episode),
+            "last_update": None, "last_search": None,
+            "current_audio_format": None, "current_bitrate": None,
+            "current_bit_depth": None, "current_sample_rate": None,
+        })
+        if subscribe.music_type == MUSIC_ENTITY_ALBUM:
+            normalized["downloaded_tracks"] = []
     return SubscriptionPatch(cast(dict[str, JsonData], normalized))
 
 

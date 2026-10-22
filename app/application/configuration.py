@@ -757,6 +757,27 @@ class SystemConfigService:
             ),
         )
 
+    def update_atomically(
+        self,
+        key: Any,
+        mutation: Callable[[Any], tuple[T, Any]],
+    ) -> T:
+        """
+        在持久化短事务内同步读取、规范化并合并配置，避免并发读改写丢失更新。
+
+        :param key: 已登记配置键或既有工作流分区缓存键
+        :param mutation: 接收旧值并返回业务结果和新配置值
+        :return: 与新值一起提交的业务结果
+        """
+        def apply(_session: Any, current: Any) -> tuple[T, Any]:
+            """
+            隔离数据库会话，保持调用方只接收配置快照。
+            """
+            result, value = mutation(current)
+            return result, self.normalize_value(key, value)
+
+        return self._writer.update_atomically(key, apply)
+
     async def async_delete(self, key: Any) -> Any:
         """
         异步删除配置，并等待数据库提交或回滚完成。

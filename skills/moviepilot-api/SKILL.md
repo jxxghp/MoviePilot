@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 59
+version: 60
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -333,6 +333,14 @@ token exchange downloads retain their existing credential rules.
 - When a built-in Agent preview contains `result_id` and `next_offset`, use
   `read_tool_result` for the next page instead of repeating the operation. These
   receipt and result tools are internal to the Agent, not external MCP tools.
+
+## Subscription Identity And Workflow Recovery
+
+- Preserve media type, source, media ID, season, episode group, and music entity type when finding or creating a subscription. Movies and TV series with the same numeric ID are distinct targets. Keep the episode group in source-based lookup.
+- Concurrent creation for the same user and identity returns the existing subscription ID. An update to an existing target identity cancels that update; reread both subscriptions before deciding the next step.
+- Changing the work, season, episode group, or music entity resets the previous target's download and upgrade progress. Missing episodes restart from the new total; clearing the episode group also changes the target.
+- Servarr duplicate series additions return the real existing subscription ID. If a cancelled search loses its executor, lease expiry settles the cancellation and permits a new search.
+- Workflow recovery retries failed nodes and nodes skipped because of failed dependencies while retaining successful node results. Editing a paused workflow keeps its timer disabled; Cron uses the host scheduler timezone.
 
 ## Collection Counts And Pagination
 

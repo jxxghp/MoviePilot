@@ -961,8 +961,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9649,
-  "edge_sha256": "3038db090f87166a7cae3e63e78e30def7d3466252c846bdab3d6996a8f65999",
+  "edge_count": 9650,
+  "edge_sha256": "cb81f3ebefa86b53644cacb58cb888320faef1e14f5ff168e9d9f56a4e03a0dd",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -10058,6 +10058,7 @@
     "app.startup.composition.subscription -> app.db.uow",
     "app.startup.composition.subscription -> app.runtime",
     "app.startup.composition.subscription -> app.runtime.events",
+    "app.startup.composition.subscription -> app.runtime.tasks",
     "app.startup.composition.subscription -> app.schemas",
     "app.startup.composition.subscription -> app.schemas.common",
     "app.startup.composition.subscription -> app.schemas.types",

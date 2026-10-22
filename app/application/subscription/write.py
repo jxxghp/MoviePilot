@@ -448,6 +448,7 @@ def _translate(
         media_source=MediaSource(media_source),
         media_id=media_id,
         music_type=music_type,
+        type=mediainfo.type.value if mediainfo.type else None,
         season=raw_season if isinstance(raw_season, int) else None,
         episode_group=mediainfo.episode_group,
     )

@@ -53,6 +53,7 @@ class SubscriptionSearchOper(DbOper):
             raise RuntimeError(f"订阅搜索入队不支持数据库方言：{dialect}")
         insert = pg_insert if dialect == "postgresql" else sqlite_insert
         now = utc_now_text()
+        self._finish_expired_cancellations(now)
         batch = SubscriptionSearchBatch(
             batch_id=uuid4().hex,
             source=source,
@@ -154,6 +155,28 @@ class SubscriptionSearchOper(DbOper):
             active_batch_ids.insert(0, batch.batch_id)
         return batch, created, coalesced, tuple(dict.fromkeys(active_batch_ids))
 
+    def _finish_expired_cancellations(self, now: str) -> None:
+        """
+        原子结算取消且租约已过期的运行任务，释放活动键和分页快照。
+
+        :param now: 当前 UTC 时间文本；未过期租约继续由原执行者持有
+        """
+        if not isinstance(self._db, Session):
+            raise RuntimeError("取消任务结算需要调用方提供同步 Session")
+        rows = self._db.execute(update(SubscriptionSearchTask).where(
+            SubscriptionSearchTask.state == "running",
+            SubscriptionSearchTask.cancel_requested == 1,
+            or_(SubscriptionSearchTask.lease_expires_at.is_(None), SubscriptionSearchTask.lease_expires_at <= now),
+        ).values(
+            state="cancelled", phase="cancelled", active_key=None, lease_owner=None,
+            lease_token=None, lease_expires_at=None, current_site_id=None, updated_at=now, finished_at=now,
+        ).returning(SubscriptionSearchTask.task_id, SubscriptionSearchTask.batch_id)).all()
+        if not rows:
+            return
+        self._db.execute(delete(SearchSession).where(SearchSession.task_id.in_([row[0] for row in rows])))
+        for batch_id in {row[1] for row in rows}:
+            self._refresh_batch(batch_id, now=now, error=None)
+
     def claim_next(self, *, owner: str, lease_seconds: int) -> Optional[SubscriptionSearchTask]:
         """
         CAS 认领任务并清除旧等待提示，过期 running 任务保留站点游标恢复。
@@ -161,6 +184,7 @@ class SubscriptionSearchOper(DbOper):
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索认领需要调用方提供同步 Session")
         now = utc_now_text()
+        self._finish_expired_cancellations(now)
         fairness_before = (
             datetime.now(timezone.utc) - timedelta(minutes=15)
         ).isoformat(timespec="seconds")

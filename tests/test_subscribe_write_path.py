@@ -15,9 +15,9 @@
 亲和会在写入时把 ``2003`` 悄悄转成 ``'2003'``、把 ``True`` 转成 ``1``，
 落库后的值对「写入路径自己有没有转」完全无感（已用变异验证确认：删掉
 ``_normalize_year`` 后按落库值断言的用例全部照过）。所以这两类契约必须在
-建模那一刻、即 ``Subscribe(**kwargs)`` 的入参上断言，见 ``payloads`` 夹具。
-强转跟着订阅表的列走，因此仍留在 ``app/db/oper/subscribe.py``，夹具也就
-仍然钉在那个模块的 ``Subscribe`` 上。
+SQL 语句执行之前的绑定参数上断言，见 ``payloads`` 夹具。
+夹具监听 SQLAlchemy 的 before_execute，覆盖同步、异步实际插入路径，
+同时保留真实写入，避免 SQLite 参数适配替实现完成强转。
 
 同步与异步两条链路是两份逐字复制的实现，任何一条改了另一条没跟上都属于
 真实缺陷，故每个字段契约都在两条链路上各断言一次。
@@ -25,6 +25,8 @@
 import asyncio
 
 import pytest
+from sqlalchemy import Engine, event
+from sqlalchemy.sql.dml import Insert
 
 from app.application.subscription.write import add_subscribe, async_add_subscribe
 from app.db.adapters.subscription import TransactionalSubscriptionRepository
@@ -99,40 +101,28 @@ def _row(db, subscribe_id: int) -> Subscribe:
     return Subscribe.get(db.session, subscribe_id)
 
 
-class _SubscribeSpy:
-    """
-    记录建模入参并转交真实模型，保持写入路径仍然真的落库。
-    """
-
-    def __init__(self, recorded: list):
-        self._recorded = recorded
-
-    def __call__(self, **kwargs):
-        """
-        截获 ``Subscribe(**kwargs)`` 的入参后构造真实模型实例。
-        """
-        self._recorded.append(dict(kwargs))
-        return Subscribe(**kwargs)
-
-    def __getattr__(self, name):
-        """
-        查重用的类方法（exists / async_exists 等）原样透传给真实模型。
-        """
-        return getattr(Subscribe, name)
-
-
 @pytest.fixture
-def payloads(monkeypatch):
+def payloads():
     """
-    捕获写入路径建模时的原始 kwargs，即落库**前**的值与类型。
+    记录真实插入语句在数据库驱动强转之前的绑定值，并保持实际事务提交。
 
-    只用于持久化类型强转这一类契约：SQLite 的类型亲和会在写入时替写入路径
-    把类型「修好」，落库后的值证明不了转换真的发生过；而这两步转换恰恰是为
-    PostgreSQL 而写的，漏了只会在生产库上炸。
+    SQLite 读回的类型无法证明实现已为 PostgreSQL 归一参数，因此检查
+    SQLAlchemy before_execute 提供的语句，而不是替换订阅 ORM 模型。
     """
     recorded: list = []
-    monkeypatch.setattr("app.db.oper.subscribe.Subscribe", _SubscribeSpy(recorded))
-    return recorded
+
+    def capture(_connection, statement, _multiparams, _params, _execution_options):
+        """
+        仅保存订阅插入语句的原始参数，其他表和查询不参与断言。
+        """
+        if isinstance(statement, Insert) and statement.table.name == "subscribe":
+            recorded.append(dict(statement.compile().params))
+
+    event.listen(Engine, "before_execute", capture)
+    try:
+        yield recorded
+    finally:
+        event.remove(Engine, "before_execute", capture)
 
 
 # 每个字段契约都在同步与异步两条链路上跑一遍：两份实现是逐字复制的，

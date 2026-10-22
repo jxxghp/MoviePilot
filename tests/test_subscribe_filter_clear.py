@@ -224,12 +224,15 @@ def test_update_subscribe_persists_cleared_optional_settings(db, media_type: Med
     assert saved.type == media_type.value
     assert saved.media_source == MediaSource.TMDB.value
     assert saved.media_id == "6894"
-    assert (saved.season, saved.total_episode, saved.lack_episode, saved.manual_total_episode) == (1, 12, 7, 0)
+    # 清空剧集组会切换订阅身份，旧组下载进度不能延续到默认组。
+    assert (saved.season, saved.total_episode, saved.lack_episode, saved.manual_total_episode) == (1, 12, 12, 0)
     assert saved.search_interval == 24
     if media_type == MediaType.MUSIC:
         assert (saved.music_type, saved.total_tracks) == ("album", 12)
     assert len(published) == 1
-    assert set(published[0]["fields"]) == set(OPTIONAL_SETTINGS)
+    assert set(OPTIONAL_SETTINGS).issubset(published[0]["fields"])
+    assert "lack_episode" in published[0]["fields"]
+    assert published[0]["subscribe_info"]["lack_episode"] == 12
     intent = db.session.query(OutboxMessage).filter_by(event_key=published[0]["idempotency_key"]).one()
     assert intent.status == "completed"
     assert all(intent.payload["subscribe_info"][field] is None for field in OPTIONAL_SETTINGS)

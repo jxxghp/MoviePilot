@@ -34,6 +34,7 @@ class SubscriptionQueryService:
         "media_source",
         "media_id",
         "music_type",
+        "episode_group",
     }
     _LEGACY_ID_FIELDS: tuple[tuple[str, MediaSource], ...] = (
         ("tmdbid", MediaSource.TMDB),
@@ -248,6 +249,7 @@ class SubscriptionQueryService:
             SubscriptionIdentity(
                 media_source=media_source,
                 media_id=str(media_id),
+                type=mediainfo.type.value if mediainfo.type else None,
                 music_type=getattr(mediainfo, "music_type", None) if mediainfo.type == MediaType.MUSIC else None,
                 season=meta.begin_season if meta else None,
                 episode_group=mediainfo.episode_group,
@@ -308,11 +310,13 @@ class SubscriptionQueryService:
             return None
         raw_season = identity.get("season")
         raw_music_type = identity.get("music_type")
+        raw_episode_group = identity.get("episode_group")
         return self._repository.get_by(
             SubscriptionIdentity(
                 media_source=MediaSource(raw_source),
                 media_id=str(raw_id),
                 type=raw_type,
+                episode_group=raw_episode_group if isinstance(raw_episode_group, str) else None,
                 season=raw_season if isinstance(raw_season, int) else None,
                 music_type=raw_music_type if isinstance(raw_music_type, str) else None,
             )

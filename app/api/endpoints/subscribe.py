@@ -52,7 +52,7 @@ from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_configured_system_config,
 )
-from app.application.subscription.contract import SubscriptionQueryPort
+from app.application.subscription.contract import SubscriptionIdentityConflictError, SubscriptionQueryPort
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
     SubscribeDeletionActor,
@@ -382,6 +382,8 @@ async def update_subscribe(
             actor,
             existing=subscribe,
         )
+    except SubscriptionIdentityConflictError:
+        return _SchemaResponse(success=False, message="目标媒体身份已有订阅，当前修改已取消")
     except ValueError as error:
         logger.error(f"订阅分类设置无效：{error}", exc_info=True)
         return _SchemaResponse(

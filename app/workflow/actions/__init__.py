@@ -219,17 +219,21 @@ class BaseAction(ABC):
         保存缓存
         """
         workflow_key = self._cache_key % workflow_id
-        workflow_cache = self.systemconfigoper.get(workflow_key) or {}
-        action_cache = workflow_cache.get(self._action_id) or []
-        if isinstance(data, list):
-            for item in data:
+
+        def merge(current: Any) -> tuple[None, Any]:
+            """
+            在持久化原子更新范围内保留其他动作及本动作已有的去重记录。
+            """
+            workflow_cache = current or {}
+            action_cache = workflow_cache.get(self._action_id) or []
+            items: list[_CacheItem | str] = [*data] if isinstance(data, list) else [data]
+            for item in items:
                 if item not in action_cache:
                     action_cache.append(item)
-        else:
-            if data not in action_cache:
-                action_cache.append(data)
-        workflow_cache[self._action_id] = action_cache
-        self.systemconfigoper.set(workflow_key, workflow_cache)
+            workflow_cache[self._action_id] = action_cache
+            return None, workflow_cache
+
+        self.systemconfigoper.update_atomically(workflow_key, merge)
 
     @abstractmethod
     def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
