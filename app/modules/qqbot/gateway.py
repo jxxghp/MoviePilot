@@ -220,8 +220,9 @@ def run_gateway(
                 if match:
                     content = f"CALLBACK:{match.group(1)}"
                 msg_id = d.get("id", "")
-                if content:
+                if content or d.get("attachments"):
                     on_message_fn({
+                        **d,
                         "type": "C2C_MESSAGE_CREATE",
                         "content": content,
                         "author": {"user_openid": user_openid},
@@ -237,8 +238,9 @@ def run_gateway(
                 if match:
                     content = f"CALLBACK:{match.group(1)}"
                 msg_id = d.get("id", "")
-                if content:
+                if content or d.get("attachments"):
                     on_message_fn({
+                        **d,
                         "type": "GROUP_AT_MESSAGE_CREATE",
                         "content": content,
                         "author": {"member_openid": member_openid},

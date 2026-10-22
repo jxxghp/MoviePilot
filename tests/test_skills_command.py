@@ -641,7 +641,7 @@ def test_skills_chain_installed_view_builds_remove_buttons() -> None:
     assert "builtin" in text
     assert "custom" in text
     assert buttons
-    assert {"text": "删除 2", "callback_data": f"skills:{request.request_id}:remove:2"} in [
+    assert {"text": "删除 2", "callback_data": f"skills:{request.request_id}:remove:2:{request.selection_id}"} in [
         button for row in buttons for button in row
     ]
 

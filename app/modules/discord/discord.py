@@ -1449,10 +1449,10 @@ class Discord:
         """
         按回复上下文和配置优先级解析发送频道。
 
-        顺序为显式频道、用户最近发言频道、默认广播频道、服务器内可发送文字频道、用户私聊。
-        查到的广播频道会缓存；用户标识本身不保证使用私聊。
+        显式频道用于原会话回复；只指定用户时必须使用私聊，失败不会回落公共频道。
+        未指定接收人时才选择配置或自动发现的广播频道，并缓存成功结果。
 
-        :param userid: 用户标识，用于查找最近发言频道及最终私聊回退
+        :param userid: 定向用户标识，仅发送至该用户私聊
         :param chat_id: 显式频道标识，优先用于原频道回复
         :return: 首个可用频道或私聊对象；均不可用时返回 None
         """
@@ -1473,23 +1473,10 @@ class Discord:
                 return channel
             except Exception as err:
                 logger.warn(f"通过 chat_id 获取 Discord 频道失败：{err}")
+                return None
 
         if userid:
-            mapped_chat_id = self._get_user_chat_id(str(userid))
-            if mapped_chat_id:
-                logger.debug(f"[Discord] 从用户映射获取 chat_id={mapped_chat_id}")
-                channel = self._client.get_channel(int(mapped_chat_id))
-                if channel:
-                    logger.debug(f"[Discord] 通过映射找到频道: {channel}")
-                    return channel
-                try:
-                    channel = await self._client.fetch_channel(int(mapped_chat_id))
-                    logger.debug(
-                        f"[Discord] 通过 fetch_channel 找到映射频道: {channel}"
-                    )
-                    return channel
-                except Exception as err:
-                    logger.warn(f"通过映射的 chat_id 获取 Discord 频道失败：{err}")
+            return await self._get_dm_channel(str(userid))
 
         if self._broadcast_channel:
             logger.debug(f"[Discord] 使用缓存的广播频道: {self._broadcast_channel}")
@@ -1526,15 +1513,6 @@ class Discord:
                     logger.debug(f"[Discord] 在 Guild 中找到可用频道: {channel}")
                     self._broadcast_channel = channel
                     return channel
-
-        if userid:
-            logger.debug(f"[Discord] 回退到私聊: userid={userid}")
-            dm = await self._get_dm_channel(str(userid))
-            if dm:
-                logger.debug(f"[Discord] 获取到私聊频道: {dm}")
-                return dm
-            else:
-                logger.debug(f"[Discord] 无法获取用户 {userid} 的私聊频道")
 
         return None
 

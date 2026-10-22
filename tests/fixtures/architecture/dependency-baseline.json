@@ -481,14 +481,13 @@
         ]
       },
       {
+        "source": "app.modules.discord.discord",
+        "target": "discord",
+        "kind": "network_sdk",
         "bindings": [
           "from:discord.app_commands as app_commands",
           "import:discord as discord"
         ],
-        "fingerprint": "a46a1d6da767a51eb4e1085de5fb936490fc8360c2f3a814635d408468c1b150",
-        "kind": "network_sdk",
-        "source": "app.modules.discord.discord",
-        "target": "discord",
         "uses": [
           "Discord.__init__|call:Client",
           "Discord.__init__|call:Intents.default",
@@ -515,8 +514,6 @@
           "Discord._register_events|call:event",
           "Discord._resolve_channel|call:fetch_channel",
           "Discord._resolve_channel|call:fetch_channel",
-          "Discord._resolve_channel|call:fetch_channel",
-          "Discord._resolve_channel|call:get_channel",
           "Discord._resolve_channel|call:get_channel",
           "Discord._resolve_channel|call:get_channel",
           "Discord._resolve_channel|call:get_guild",
@@ -531,7 +528,8 @@
           "Discord._sync_registered_commands|call:sync",
           "Discord._sync_registered_commands|call:wait_until_ready",
           "Discord.stop|call:close"
-        ]
+        ],
+        "fingerprint": "2761ef9a9e5a805bfb20ea832c5d34edea12db21ca3eb27c3db7ce512a5ee7f5"
       },
       {
         "bindings": [
