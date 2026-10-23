@@ -54,6 +54,8 @@ from app.schemas.transfer import ManualTransferSubmissionItem as _SchemaManualTr
 from app.schemas.transfer import ManualTransferTargetPath as _SchemaManualTransferTargetPath
 from app.schemas.transfer import TransferJob as _SchemaTransferJob
 from app.schemas.transfer import TransferManualReviewData as _SchemaTransferManualReviewData
+from app.schemas.transfer import TransferManualReviewDiscardData as _SchemaTransferManualReviewDiscardData
+from app.schemas.transfer import TransferManualReviewDiscardRequest as _SchemaTransferManualReviewDiscardRequest
 from app.schemas.transfer import TransferManualReviewPageData as _SchemaTransferManualReviewPageData
 from app.schemas.transfer import TransferManualReviewRequest as _SchemaTransferManualReviewRequest
 from app.schemas.transfer import TransferManualReviewTaskData as _SchemaTransferManualReviewTaskData
@@ -428,6 +430,42 @@ def resolve_transfer_manual_review(
             ),
             state=resolved.state.value,
             review_revision=resolved.review_revision,
+        ),
+    )
+
+
+@router.post(
+    "/tasks/{task_id}/manual-review/discard",
+    summary="放弃人工复核整理任务但保留文件",
+    response_model=_SchemaResponse[_SchemaTransferManualReviewDiscardData],
+)
+def discard_transfer_manual_review(
+    task_id: str,
+    review: _SchemaTransferManualReviewDiscardRequest,
+    current_user: object = Depends(get_current_active_manage_user),
+    repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
+) -> Any:
+    """解除无法确认的整理任务；不删除、不移动且不回滚任何文件。"""
+    try:
+        discarded = TransferExecutionCommand(repository).discard_manual_review(
+            task_id=task_id,
+            operation_id=review.operation_id,
+            actor=_manual_review_actor(current_user),
+            reason=review.reason,
+        )
+    except TransferExecutionConflictError as error:
+        logger.warning(f"整理人工复核放弃请求冲突：{error}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="整理任务状态已变化，请刷新后重试",
+        ) from error
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaTransferManualReviewDiscardData(
+            task_id=discarded.task_id,
+            operation_id=discarded.operation_id,
+            discarded=discarded.discarded,
+            message=discarded.message,
         ),
     )
 

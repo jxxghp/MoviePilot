@@ -1639,6 +1639,34 @@ def test_manual_not_applied_decision_is_audited_and_schedules_same_step(
         )
 
 
+def test_manual_review_discard_releases_only_matching_unleased_task(execution_store) -> None:
+    """放弃人工复核只删除 durable 任务与步骤，绝不触碰外部文件。"""
+    _seed_pending(execution_store)
+    repository, command = _repository(execution_store)
+    prepared = command.prepare(task_id="task-1", lease_token="lease-1", intent=_intent())
+    started = command.begin(task_id="task-1", lease_token="lease-1", operation_id=prepared.operation_id)
+    command.manual_review(
+        task_id="task-1", lease_token="lease-1", step=started,
+        error="external result unknown",
+    )
+    review = repository.get_manual_review(task_id="task-1")
+
+    stale = command.discard_manual_review(
+        task_id="task-1", operation_id="stale-operation", actor="admin", reason="stale",
+    )
+    assert not stale.discarded
+    assert repository.get_snapshot(task_id="task-1") is not None
+
+    discarded = command.discard_manual_review(
+        task_id="task-1", operation_id=review.step.operation_id,
+        actor="admin", reason="cannot verify provider result",
+    )
+    assert discarded.discarded
+    assert repository.get_snapshot(task_id="task-1") is None
+    with execution_store() as session:
+        assert session.scalar(select(TransferExecutionStep)) is None
+
+
 def test_manual_applied_requires_result_and_failed_decision_is_rejected(
         execution_store,
 ) -> None:

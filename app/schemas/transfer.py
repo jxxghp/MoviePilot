@@ -239,6 +239,24 @@ class TransferManualReviewRequest(BaseModel):
         return self
 
 
+class TransferManualReviewDiscardRequest(BaseModel):
+    """显式放弃人工复核任务；不会操作源文件或目标文件。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    operation_id: str = Field(min_length=1, description="当前人工复核步骤的稳定操作标识")
+    reason: str = Field(default="", max_length=2000, description="放弃理由，可选")
+
+
+class TransferManualReviewDiscardData(BaseModel):
+    """人工复核任务放弃后的公开结果。"""
+
+    task_id: str = Field(description="任务标识")
+    operation_id: str = Field(description="当前人工复核步骤标识")
+    discarded: bool = Field(description="是否已解除任务占用")
+    message: str = Field(description="处理结果说明")
+
+
 class TransferManualReviewData(BaseModel):
     """
     人工复核提交后的公开状态投影。
