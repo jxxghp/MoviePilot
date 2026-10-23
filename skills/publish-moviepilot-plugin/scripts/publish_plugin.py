@@ -191,7 +191,7 @@ class GitHubError(RuntimeError):
 
 class GitHubClient:
     """
-    基于 GitHub Contents API 的轻量客户端。
+    基于 GitHub Contents / Git Data API 的轻量客户端。
     """
 
     def __init__(
@@ -349,48 +349,157 @@ class GitHubClient:
             return []
         return tree
 
-    def put_file(self, path: str, content: bytes, message: str, sha: Optional[str]) -> Any:
+    def create_blob(self, content: bytes) -> str:
         """
-        创建或更新远端文件。
+        上传一个 Git blob。
 
-        :param path: 仓库内 POSIX 路径
         :param content: 文件内容
-        :param message: 提交消息
-        :param sha: 远端现有文件 SHA，创建时为 None
-        :return: GitHub API 响应
+        :return: blob SHA
         """
-        payload: dict[str, Any] = {
-            "message": message,
-            "content": base64.b64encode(content).decode("ascii"),
-            "branch": self.branch,
-        }
-        if sha:
-            payload["sha"] = sha
-        return self.request(
-            "PUT",
-            f"/repos/{self.repo}/contents/{quote_path(path)}",
+        data = self.request(
+            "POST",
+            f"/repos/{self.repo}/git/blobs",
+            payload={
+                "content": base64.b64encode(content).decode("ascii"),
+                "encoding": "base64",
+            },
+        )
+        sha = data.get("sha") if isinstance(data, dict) else None
+        if not sha:
+            raise GitHubError(0, "创建 Git blob 失败：响应缺少 sha")
+        return str(sha)
+
+    def create_tree(self, entries: list[dict[str, Any]], base_tree: Optional[str] = None) -> str:
+        """
+        基于已有树创建一棵新树。
+
+        :param entries: 树条目；删除文件时 sha 传 None
+        :param base_tree: 基线树 SHA；空仓库传 None
+        :return: 新树 SHA
+        """
+        payload: dict[str, Any] = {"tree": entries}
+        if base_tree:
+            payload["base_tree"] = base_tree
+        data = self.request(
+            "POST",
+            f"/repos/{self.repo}/git/trees",
             payload=payload,
         )
+        sha = data.get("sha") if isinstance(data, dict) else None
+        if not sha:
+            raise GitHubError(0, "创建 Git tree 失败：响应缺少 sha")
+        return str(sha)
 
-    def delete_file(self, path: str, message: str, sha: str) -> Any:
+    def create_commit(self, message: str, tree_sha: str, parents: list[str]) -> str:
         """
-        删除远端文件。
+        创建一个提交对象。
 
-        :param path: 仓库内 POSIX 路径
-        :param message: 提交消息
-        :param sha: 远端文件 SHA
+        :param message: 提交说明
+        :param tree_sha: 提交指向的树
+        :param parents: 父提交；空仓库传空列表
+        :return: 提交 SHA
+        """
+        data = self.request(
+            "POST",
+            f"/repos/{self.repo}/git/commits",
+            payload={"message": message, "tree": tree_sha, "parents": parents},
+        )
+        sha = data.get("sha") if isinstance(data, dict) else None
+        if not sha:
+            raise GitHubError(0, "创建 Git commit 失败：响应缺少 sha")
+        return str(sha)
+
+    def get_branch_commit(self) -> Optional[dict[str, Any]]:
+        """
+        读取目标分支当前提交。
+
+        :return: 分支接口返回的 commit 对象；空仓库或分支不存在时返回 None
+        """
+        try:
+            data = self.request("GET", f"/repos/{self.repo}/branches/{quote(self.branch)}")
+        except GitHubError as error:
+            if error.status in (404, 409):
+                return None
+            raise
+        commit = data.get("commit") if isinstance(data, dict) else None
+        if not isinstance(commit, dict) or not commit.get("sha"):
+            return None
+        return commit
+
+    def update_branch(self, commit_sha: str) -> Any:
+        """
+        把分支引用指向新提交，且禁止强推。
+
+        :param commit_sha: 新提交 SHA
         :return: GitHub API 响应
         """
-        payload = {
-            "message": message,
-            "sha": sha,
-            "branch": self.branch,
-        }
         return self.request(
-            "DELETE",
-            f"/repos/{self.repo}/contents/{quote_path(path)}",
-            payload=payload,
+            "PATCH",
+            f"/repos/{self.repo}/git/refs/heads/{urllib.parse.quote(self.branch, safe='/')}",
+            payload={"sha": commit_sha, "force": False},
         )
+
+    def create_branch_ref(self, commit_sha: str) -> Any:
+        """
+        在空仓库中创建目标分支引用。
+
+        :param commit_sha: 新提交 SHA
+        :return: GitHub API 响应
+        """
+        return self.request(
+            "POST",
+            f"/repos/{self.repo}/git/refs",
+            payload={"ref": f"refs/heads/{self.branch}", "sha": commit_sha},
+        )
+
+    def commit_files(
+        self,
+        files: dict[str, bytes],
+        deletes: list[str],
+        message: str,
+    ) -> Optional[str]:
+        """
+        用 Git Data API 把多个文件的变更合并成一次提交。
+
+        Contents API 每个文件一次 PUT 就是一次提交，会让 CI 只看到最后一次
+        推送的文件差异；这里改为 blob → tree → commit → 移动分支引用，
+        无论改多少文件都只产生一个提交。
+
+        :param files: 仓库路径到文件内容的映射
+        :param deletes: 需要删除的仓库路径
+        :param message: 提交说明
+        :return: 新提交 SHA；没有任何变更时返回 None
+        """
+        if not files and not deletes:
+            return None
+        head = self.get_branch_commit()
+        base_tree = None
+        parents: list[str] = []
+        if head:
+            tree = head.get("commit", {}).get("tree") if isinstance(head.get("commit"), dict) else None
+            base_tree = tree.get("sha") if isinstance(tree, dict) else None
+            parents = [str(head["sha"])]
+        entries: list[dict[str, Any]] = []
+        for path, content in files.items():
+            entries.append(
+                {
+                    "path": path,
+                    "mode": "100644",
+                    "type": "blob",
+                    "sha": self.create_blob(content),
+                }
+            )
+        for path in deletes:
+            entries.append(
+                {"path": path, "mode": "100644", "type": "blob", "sha": None}
+            )
+        tree_sha = self.create_tree(entries, base_tree)
+        commit_sha = self.create_commit(message, tree_sha, parents)
+        if head:
+            self.update_branch(commit_sha)
+        else:
+            self.create_branch_ref(commit_sha)
+        return commit_sha
 
     def repo_exists(self) -> bool:
         """
@@ -1087,27 +1196,25 @@ def push(args: argparse.Namespace) -> dict[str, Any]:
         client.create_repo(private=args.private)
     message = args.message or f"Publish {context['plugin_id']}"
     applied: dict[str, list[str]] = {"create": [], "update": [], "delete": []}
+    files_to_write: dict[str, bytes] = {}
     if package_change in {"create", "update"}:
-        client.put_file(
-            context["layout"].package_file,
-            package_content,
-            message,
-            remote_package.sha if remote_package else None,
-        )
+        files_to_write[context["layout"].package_file] = package_content
         applied[package_change].append(context["layout"].package_file)
     for path in changes.create:
-        client.put_file(path, local_files[path].content, message, None)
+        files_to_write[path] = local_files[path].content
         applied["create"].append(path)
     for path in changes.update:
-        client.put_file(path, local_files[path].content, message, remote_files[path].sha)
+        files_to_write[path] = local_files[path].content
         applied["update"].append(path)
+    delete_paths: list[str] = []
     for path in changes.delete:
-        remote_sha = remote_files[path].sha
-        if remote_sha:
-            client.delete_file(path, message, remote_sha)
+        if remote_files[path].sha:
+            delete_paths.append(path)
             applied["delete"].append(path)
+    commit_sha = client.commit_files(files_to_write, delete_paths, message)
     payload["applied"] = applied
-    payload["message"] = "插件已推送到 GitHub 仓库。"
+    payload["commit_sha"] = commit_sha
+    payload["message"] = "插件已以单个提交推送到 GitHub 仓库。"
     return payload
 
 
