@@ -5,6 +5,7 @@
 """
 
 from typing import Any, Optional, Self
+from uuid import uuid4
 
 from sqlalchemy import JSON, Boolean, Index, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +41,8 @@ class User(Base):
     permissions: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
     # 用户个性化设置 json
     settings: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
+    # 通知使用不可变账号身份；主键复用、改名或删除重建不能继承旧设备。
+    notification_identity: Mapped[str] = mapped_column(String(32), default=lambda: uuid4().hex, nullable=False)
 
     __table_args__ = (Index("ux_user_name", "name", unique=True),)
 

@@ -12,11 +12,13 @@ class ApiPrincipal(Protocol):
     :ivar id: 已认证用户的数据库主键
     :ivar name: 已认证用户的账号名称
     :ivar is_superuser: 当前用户是否拥有系统管理员权限
+    :ivar notification_identity: 系统分配的不可变通知身份，不接受客户端指定
     """
 
     id: int
     name: str
     is_superuser: bool
+    notification_identity: str
 
 
 __all__ = ["ApiPrincipal"]

@@ -125,6 +125,16 @@ MODULE_QUALITY_PROFILES = {
 }
 
 MODULE_QUALITY_PROFILES.update({
+    "apppush": ModuleQualityProfile(
+        module="apppush",
+        level=ModuleQualityLevel.ASSESSED,
+        owner="MoviePilot core",
+        verified_rules=COMMON_ASSESSED_RULES | frozenset({
+            "fake-client-or-fixture", "sensitive-log-redaction", "reload-stop-idempotent",
+            "auth-rate-timeout-offline-semantics", "sync-async-boundary",
+        }),
+        exemption_reason="同步单向 HTTP 中转，无轮询、长连接或入站回调；设备配额和投递并发由私有 Server 约束",
+    ),
     "bangumi": ModuleQualityProfile(
         module="bangumi",
         level=ModuleQualityLevel.ASSESSED,

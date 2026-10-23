@@ -199,6 +199,7 @@
     "storage_type 无效": "Invalid storage_type",
     "媒体服务器请求失败": "Media server request failed",
     "附件保存失败": "Failed to save attachment",
+    "请完成数据库升级后重新登录": "Please complete the database upgrade and sign in again",
     "通知配置保存成功": "Notification configuration saved successfully",
     "通知配置保存失败": "Failed to save notification configuration",
     "通知配置已保存，但缓存同步失败，请重试": "Notification configuration was saved, but cache synchronization failed. Please try again",

@@ -32,6 +32,14 @@
 改名应保留原 `id`；复制为新的渠道实例应使用新的 `id`，避免共享登录凭据。
 通过消息渠道发起普通重启时，完成回执保留发起时的 `source` 配置。
 
+`POST /api/v1/notification/app` 使用当前激活用户的既有 Bearer 登录态管理 AppPush，
+请求包含 `action`（`status/register/unregister/pair/test`）、随机 `installation` 和实例 `origin`。
+`register` 另需 APNs `token/topic/environment`；`source` 可选，用于选择启用的 AppPush 渠道。
+账号通知身份由后台注入，客户端不能指定其他用户。注销同时撤销该安装配对的主屏幕通知网页。
+AppPush 配置只保存 `PUSH_SERVER_URL` 和实例专用 `PUSH_RELAY_KEY`，Apple/VAPID 私钥放在私有 Server。
+消息沿用现有类型开关和管理员/用户路由；无明确用户目标时不广播。部署与免费自签说明见
+[MoviePilot-Server](https://github.com/jxxghp/MoviePilot-Server#私有-app-消息推送)。
+
 Discord 仅指定 `userid` 的定向通知使用私聊；无法私聊时返回失败，不转发公共频道。
 `/skills` 安装和删除按展示时的条目身份操作，刷新或翻页后的旧按钮会失效，应使用最新列表重新选择。
 

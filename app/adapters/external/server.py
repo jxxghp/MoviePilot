@@ -195,6 +195,39 @@ class MoviePilotServerHelper:
     _user_uid: Optional[str] = None
     _github_user: Optional[str] = None
 
+    @staticmethod
+    def relay_push(server: str, key: str, method: str, path: str, data: dict[str, Any]) -> dict[str, Any]:
+        """
+        向显式配置的私有 Server 转发通知，发送密钥只放请求头且不跟随重定向。
+
+        :param server: 管理员配置的 HTTPS 中转地址；本机联调允许回环 HTTP
+        :param key: 该实例专用的中转发送密钥
+        :param method: 内部限定的 GET、POST 或 DELETE 方法
+        :param path: 内部限定的 push 接口路径
+        :param data: 已绑定当前用户的注册或消息数据
+        :return: Server 返回的对象；失败抛出不含凭据或原始响应的 ValueError
+        """
+        target = urlsplit(server)
+        local = target.hostname in {"localhost", "127.0.0.1", "::1"}
+        if (target.scheme != "https" and not (local and target.scheme == "http")) or not target.hostname or target.username or target.password or target.query or target.fragment:
+            raise ValueError("中转地址必须使用 HTTPS，本机回环调试除外")
+        if method not in {"GET", "POST", "DELETE"} or path not in {"devices", "pairings", "messages"}:
+            raise ValueError("不支持的通知接口")
+        if len(key) < 32:
+            raise ValueError("请配置至少 32 位的中转发送密钥")
+        response = RequestUtils(timeout=60, headers={"Authorization": f"Bearer {key}"}).request(
+            method, f"{server.rstrip('/')}/push/{path}", allow_redirects=False, verify=True,
+            params=data if method == "GET" else None,
+            json=data if method != "GET" else None,
+        )
+        if response is None or response.status_code != 200:
+            code = response.status_code if response is not None else 0
+            raise ValueError(f"私有通知服务请求失败（{code}）")
+        try:
+            return _response_mapping(response)
+        except ValueError as error:
+            raise ValueError("私有通知服务响应无效") from error
+
     @classmethod
     def _report_service(cls) -> ServerReportService:
         """

@@ -607,6 +607,8 @@ class NotificationChannel(Enum):
     WebAgent = "WebAgent"
     # 浏览器推送渠道
     WebPush = "WebPush"
+    # MoviePilot-Server 中转的 App 和主屏幕网页通知渠道
+    AppPush = "AppPush"
     # QQ 消息渠道
     QQ = "QQ"
 

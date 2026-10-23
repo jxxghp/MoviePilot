@@ -6,16 +6,34 @@ from typing import Any, Dict
 
 from fastapi import Body, Depends
 
-from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.auth import get_current_active_superuser, get_current_active_user
+from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.configuration import get_configured_system_config
 from app.chain.notification import NotificationChain
 from app.schemas.common import ManageRequest as _SchemaManageRequest
+from app.schemas.push import AppPushRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.system import NotificationConf
 from app.schemas.types import SystemConfigKey
 
 router = ResponseAPIRouter()
+
+
+@router.post("/app", summary="管理当前用户的 App 通知", response_model=_SchemaResponse[Dict[str, Any]])
+def manage_app_notification(
+    request: AppPushRequest,
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+) -> _SchemaResponse[object]:
+    """
+    复用现有用户认证并强制注入账号通知身份，客户端不能操作其他用户设备。
+    """
+    if not current_user.notification_identity:
+        return _SchemaResponse(success=False, message="请完成数据库升级后重新登录")
+    params = request.model_dump(exclude={"action"})
+    result = NotificationChain().manage_channel(channel="AppPush", action=request.action,
+                                               owner=current_user.notification_identity, **params)
+    return _SchemaResponse(success=bool(result.get("success")), message=result.get("message") or "", data=result.get("data"))
 
 
 def _normalize_configs(value: list[NotificationConf], *, validate_identities: bool = True) -> list[dict[str, Any]]:

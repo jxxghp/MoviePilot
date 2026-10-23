@@ -59,6 +59,7 @@ class UserSnapshot:
     :param is_otp: 是否启用基于时间的一次性密码验证
     :param permissions: 用户权限的只读快照
     :param settings: 用户个性化设置的只读快照
+    :param notification_identity: 不可变的通知绑定身份，不从客户端设置中读取
     """
 
     id: int
@@ -70,6 +71,7 @@ class UserSnapshot:
     is_otp: bool
     permissions: Mapping[str, FrozenJson]
     settings: Mapping[str, FrozenJson]
+    notification_identity: str = ""
 
     @classmethod
     def build(
@@ -84,6 +86,7 @@ class UserSnapshot:
         is_otp: Optional[bool],
         permissions: Optional[Mapping[str, Any]],
         settings: Optional[Mapping[str, Any]],
+        notification_identity: str = "",
     ) -> "UserSnapshot":
         """
         复制持久化字段并构造不可变的公开用户快照。
@@ -98,6 +101,7 @@ class UserSnapshot:
             is_otp=bool(is_otp),
             permissions=_freeze_mapping(permissions),
             settings=_freeze_mapping(settings),
+            notification_identity=notification_identity,
         )
 
 

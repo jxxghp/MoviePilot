@@ -332,7 +332,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Purpose: Stores user accounts, password hashes, administrator state, OTP, permissions, and preferences.
 - Useful queries: Authorized diagnostics of account state, permissions, or authentication configuration.
 - Write boundary: Security-sensitive; manage through user, permission, password, and two-factor APIs.
-- Columns: `id`, `name`, `email`, `hashed_password`, `is_active`, `is_superuser`, `avatar`, `is_otp`, `otp_secret`, `permissions`, `settings`
+- Columns: `id`, `name`, `email`, `hashed_password`, `is_active`, `is_superuser`, `avatar`, `is_otp`, `otp_secret`, `permissions`, `settings`, `notification_identity`
 
 ### `userconfig`
 - Purpose: Stores per-user JSON configuration isolated by username and key.

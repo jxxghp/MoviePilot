@@ -583,3 +583,31 @@ async def test_user_delete_and_config_set_cannot_recreate_orphan(tmp_path) -> No
 
     assert rows == []
     assert snapshot is None
+
+
+@pytest.mark.asyncio
+async def test_notification_targets_use_immutable_identity_and_ignore_user_settings(user_repository):
+    """
+    通知目标只取 ORM 身份；改名保留、删除重建更新、停用用户不能注入他人目标。
+    """
+    repository, sync_factory = user_repository
+    user_id = _insert_user(sync_factory, settings={"apppush": "injected-owner"})
+    first = repository.get_notification_settings("alice")["apppush"]
+    assert first != "injected-owner" and len(first) == 32
+    assert (await repository.async_get_notification_settings("alice"))["apppush"] == first
+    with sync_factory() as session:
+        model = session.get(User, user_id)
+        model.name = "renamed"
+        session.commit()
+    assert repository.get_notification_settings("renamed")["apppush"] == first
+    with sync_factory() as session:
+        model = session.get(User, user_id)
+        model.is_active = False
+        session.commit()
+    assert "apppush" not in repository.get_notification_settings("renamed")
+    assert "apppush" not in await repository.async_get_notification_settings("renamed")
+    with sync_factory() as session:
+        session.delete(session.get(User, user_id))
+        session.commit()
+    _insert_user(sync_factory, id=user_id, name="renamed")
+    assert repository.get_notification_settings("renamed")["apppush"] != first

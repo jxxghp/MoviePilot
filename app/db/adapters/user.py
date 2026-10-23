@@ -43,6 +43,7 @@ def _to_snapshot(model: User) -> UserSnapshot:
         is_otp=model.is_otp,
         permissions=model.permissions,
         settings=model.settings,
+        notification_identity=model.notification_identity or "",
     )
 
 
@@ -364,7 +365,13 @@ class TransactionalUserRepository(ChainUserRepository):
         同步读取用户通知设置的只读快照。
         """
         user = self.get_by_name(name)
-        return user.settings if user else None
+        if user is None:
+            return None
+        settings = dict(user.settings)
+        settings.pop("apppush", None)
+        if user.is_active and user.notification_identity:
+            settings["apppush"] = user.notification_identity
+        return settings
 
     async def async_get_notification_settings(
         self,
@@ -374,7 +381,13 @@ class TransactionalUserRepository(ChainUserRepository):
         异步读取用户通知设置的只读快照。
         """
         user = await self.async_get_by_name(name)
-        return user.settings if user else None
+        if user is None:
+            return None
+        settings = dict(user.settings)
+        settings.pop("apppush", None)
+        if user.is_active and user.notification_identity:
+            settings["apppush"] = user.notification_identity
+        return settings
 
     def find_name_by_bindings(
         self,

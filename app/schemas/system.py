@@ -87,7 +87,7 @@ class NotificationConf(BaseModel):
     name: Optional[str] = Field(default=None, description="名称")
     type: Optional[str] = Field(
         default=None,
-        description="类型 telegram/wechat/feishu/vocechat/synologychat/slack/webpush/qqbot",
+        description="类型 telegram/wechat/feishu/vocechat/synologychat/slack/webpush/qqbot/apppush",
     )
     config: Optional[dict[str, Any]] = Field(default_factory=dict, description="配置")
     switchs: Optional[list[str]] = Field(
