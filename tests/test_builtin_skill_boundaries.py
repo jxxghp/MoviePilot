@@ -137,7 +137,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "generate-identifiers": "4",
         "create-moviepilot-plugin": "7",
         "create-moviepilot-skill": "3",
-        "publish-moviepilot-plugin": "4",
+        "publish-moviepilot-plugin": "5",
         "downloader-operation": "3",
         "mediaserver-operation": "3",
     }

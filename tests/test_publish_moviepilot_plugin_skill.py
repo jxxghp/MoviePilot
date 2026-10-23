@@ -261,3 +261,33 @@ def test_create_repo_dry_run_does_not_touch_github() -> None:
     assert payload["success"] is True
     assert payload["dry_run"] is True
     assert payload["private"] is False
+
+
+def test_resolve_layout_supports_v3_repository(tmp_path: Path) -> None:
+    """
+    V3 仓库应被 auto 识别为 package.v3.json 与 plugins.v3。
+    """
+    module = load_publish_plugin_module()
+    (tmp_path / "plugins.v3" / "myplugin").mkdir(parents=True)
+    (tmp_path / "package.v3.json").write_text("{}", encoding="utf-8")
+
+    layout = module.resolve_layout("auto", tmp_path, "MyPlugin")
+
+    assert layout.package_file == "package.v3.json"
+    assert layout.plugin_root == "plugins.v3"
+    assert layout.version == "v3"
+
+
+def test_resolve_layout_prefers_plugin_directory_over_manifest(tmp_path: Path) -> None:
+    """
+    同一仓库同时存在 v3 清单时，仍应按插件实际所在目录判定布局。
+    """
+    module = load_publish_plugin_module()
+    (tmp_path / "plugins.v2" / "myplugin").mkdir(parents=True)
+    (tmp_path / "package.v3.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "package.v2.json").write_text("{}", encoding="utf-8")
+
+    layout = module.resolve_layout("auto", tmp_path, "MyPlugin")
+
+    assert layout.package_file == "package.v2.json"
+    assert layout.plugin_root == "plugins.v2"
