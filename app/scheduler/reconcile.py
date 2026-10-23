@@ -385,6 +385,8 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
             return
         # 移除该工作流的全部服务
         self.remove_workflow_job(workflow)
+        if getattr(workflow, "state", None) == "P":
+            return
         # 添加工作流服务
         with self._lock:
             try:
@@ -400,7 +402,7 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
                 self._jobs[job_id] = job
                 self._scheduler.add_job(
                     self.start,
-                    trigger=CronTrigger.from_crontab(workflow.timer),
+                    trigger=CronTrigger.from_crontab(workflow.timer, timezone=self._scheduler.timezone),
                     id=job_id,
                     name=workflow.name,
                     kwargs={"job_id": job_id, "workflow_id": workflow.id},

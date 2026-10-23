@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional, Protocol
 
-from app.schemas.types import MediaSource
+from app.schemas.types import MediaSource, MediaType
 
 if TYPE_CHECKING:
     from app.application.subscription.delete import AsyncUnitOfWork
@@ -83,6 +83,7 @@ class ServarrAsyncSubscriptionRepository(Protocol):
         season: Optional[int] = None,
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
+        mtype: Optional[str] = None,
     ) -> Optional[Any]:
         """
         按媒体身份读取命中的订阅。
@@ -92,6 +93,7 @@ class ServarrAsyncSubscriptionRepository(Protocol):
         :param season: 电视剧季号，None 表示不附加季号过滤
         :param episode_group: 剧集组标识，None 只匹配未设置剧集组的记录
         :param music_type: 音乐实体类型过滤；None 不限定类型，recording 兼容未标记类型的旧单曲记录
+        :param mtype: 媒体类型，防止电影和电视剧的同编号冲突
         :return: 满足媒体身份及附加条件的订阅记录，不存在时为 None
         """
         ...
@@ -197,12 +199,26 @@ class ServarrSubscriptionService:
         """
         判断指定媒体身份和季是否已有订阅。
         """
+        return await self.get_existing(media_source=media_source, media_id=media_id, season=season) is not None
+
+    async def get_existing(
+        self, *, media_source: MediaSource, media_id: str, season: Optional[int] = None,
+    ) -> Optional[ServarrSubscription]:
+        """
+        返回命中身份的实际订阅，供重复添加响应保留正确主键。
+
+        :param media_source: 订阅数据来源
+        :param media_id: 来源原生标识
+        :param season: 电视剧季号；None 时不筛选季
+        :return: 已有订阅的稳定投影，未命中为 None
+        """
         record = await self._async_repository.async_exists(
             media_source=media_source,
             media_id=media_id,
             season=season,
+            mtype=MediaType.TV.value if season is not None else MediaType.MOVIE.value,
         )
-        return record is not None
+        return self._project(record) if record is not None else None
 
     async def delete(self, subscribe_id: int) -> bool:
         """

@@ -841,20 +841,22 @@ async def arr_add_series(
         seasons = [(season, True) for season in (fallback_seasons or [1])]
     # 检查订阅是否存在
     left_seasons = []
+    existing_id = None
     for season, monitored in seasons:
         if not monitored:
             continue
-        subscribe = await subscriptions.exists(
+        subscribe = await subscriptions.get_existing(
             media_source=MediaSource.TMDB,
             media_id=str(tv.tmdbId),
             season=season,
         )
         if subscribe:
+            existing_id = subscribe.id
             continue
         left_seasons.append(season)
     # 全部已存在订阅
     if not left_seasons:
-        return _SchemaServarrIdResponse(id=1)
+        return _SchemaServarrIdResponse(id=existing_id or 0)
 
     # TMDB 身份完整时允许空标题交由识别链补全；年份统一为订阅写入合同的字符串。
     subscribe_title = tv.title or ""

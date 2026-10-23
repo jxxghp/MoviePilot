@@ -3,8 +3,11 @@
 """
 
 import ast
+import base64
+import binascii
 import copy
 import inspect
+import pickletools
 import threading
 from collections import defaultdict, deque
 from concurrent.futures import Future
@@ -12,6 +15,8 @@ from contextvars import Context, copy_context
 from dataclasses import is_dataclass
 from datetime import date, datetime
 from functools import partial
+from io import BytesIO, StringIO
+from pickle import HIGHEST_PROTOCOL
 from time import monotonic, sleep
 from typing import Any, Callable, List, Optional, Tuple
 
@@ -393,7 +398,7 @@ class WorkflowExecutor:
             state = metadata.get("state") if isinstance(metadata, dict) else None
             if state == "completed":
                 state = "success"
-            if state in ("running", "queued"):
+            if state in ("running", "queued", "failed", "skipped"):
                 state = "pending"
             if not state and action_id in legacy_actions:
                 state = "success"
@@ -414,7 +419,7 @@ class WorkflowExecutor:
             if self.workflow.current_action:
                 logger.info(f"工作流已执行动作：{self.workflow.current_action}")
             try:
-                if isinstance(self.workflow.context, dict) and self.workflow.context.get("content"):
+                if self.is_legacy_context(self.workflow.context):
                     logger.warning(f"工作流 {self.workflow.name} 的上下文为已废弃的旧版格式，将从空上下文开始执行")
                 elif isinstance(self.workflow.context, dict):
                     context = ActionContext.model_validate(self.workflow.context)
@@ -424,6 +429,32 @@ class WorkflowExecutor:
         if outputs and not getattr(context, "node_outputs", None):
             context.node_outputs = outputs
         return context
+
+    @staticmethod
+    def is_legacy_context(context: Any) -> bool:
+        """
+        只识别单字段的旧 Base64 Pickle 包装，绝不反序列化载荷。
+
+        当前文本 content 即使是唯一字段也属于合法结构，不能据其非空丢弃上下文。
+
+        :param context: 持久化的工作流上下文字典
+        :return: 仅旧包装内含支持协议的完整指令流、栈合法且无尾部数据时为 True
+        """
+        if not isinstance(context, dict) or set(context) != {"content"}:
+            return False
+        content = context.get("content")
+        if not isinstance(content, str):
+            return False
+        try:
+            payload = base64.b64decode(content, validate=True)
+            if len(payload) < 2 or payload[0] != 0x80 or not 2 <= payload[1] <= HIGHEST_PROTOCOL:
+                return False
+            stream = BytesIO(payload)
+            # 静态解析校验指令、memo 与栈，不导入载荷引用，也不执行其 callable。
+            pickletools.dis(stream, out=StringIO())
+            return stream.tell() == len(payload)
+        except (ValueError, binascii.Error):
+            return False
 
     def ensure_context_partitions(self) -> None:
         """
@@ -461,6 +492,8 @@ class WorkflowExecutor:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         metadata = self.node_metadata.setdefault(action_id, {})
         metadata["state"] = state
+        if state == "success":
+            self.errors.pop(action_id, None)
         metadata["attempt"] = self.node_attempts.get(action_id, metadata.get("attempt") or 0)
         if state == "running":
             metadata["started_at"] = now
@@ -1030,7 +1063,7 @@ class WorkflowExecutor:
         value = item
         for part in identity.split("."):
             value = self.read_value(value, int(part) if part.isdigit() else part)
-        return self.make_hashable_identity(item)
+        return self.make_hashable_identity(value)
 
     @staticmethod
     def make_hashable_identity(value: Any) -> Any:

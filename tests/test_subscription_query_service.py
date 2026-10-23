@@ -66,6 +66,7 @@ def test_subscription_query_service_builds_complete_exists_identity() -> None:
         SubscriptionIdentity(
             media_source=MediaSource.TMDB,
             media_id="123",
+            type=MediaType.TV.value,
             season=2,
             episode_group="group-1",
         )

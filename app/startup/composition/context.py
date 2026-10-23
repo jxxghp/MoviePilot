@@ -123,6 +123,7 @@ class RequestSubscriptionRepository(SessionSubscriptionPort, Protocol):
         season: int | None = None,
         episode_group: str | None = None,
         music_type: str | None = None,
+        mtype: str | None = None,
     ) -> SubscriptionSnapshot | None:
         """
         按媒体身份、季和剧集组异步读取命中的订阅快照。
@@ -132,6 +133,7 @@ class RequestSubscriptionRepository(SessionSubscriptionPort, Protocol):
         :param season: 限定的季号；None 表示不按季过滤
         :param episode_group: 限定的剧集组；None 表示不按组过滤
         :param music_type: 音乐媒体的细分类型；非音乐时为 None
+        :param mtype: 媒体类型；None 表示不按类型过滤
         :return: 命中的订阅快照；不存在时为 None
         """
         ...

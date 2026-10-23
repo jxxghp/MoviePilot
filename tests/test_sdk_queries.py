@@ -303,14 +303,6 @@ def test_sdk_applies_combined_filters_in_each_query_domain(db, query_sdk):
             episode_group="eg-a",
         ),
         _subscribe(
-            "状态不符",
-            media_id="combo-sub",
-            state="R",
-            username="alice",
-            season=2,
-            episode_group="eg-a",
-        ),
-        _subscribe(
             "用户不符",
             media_id="combo-sub",
             state="N",
@@ -344,6 +336,12 @@ def test_sdk_applies_combined_filters_in_each_query_domain(db, query_sdk):
             episode_group="eg-a",
         ),
     )
+    # 迁移保留的旧重复行没有身份键，仍须正确应用状态筛选。
+    db.session.execute(SubscribeModel.__table__.insert().values(
+        name="状态不符", type=MediaType.TV.value, state="R", media_source=TMDB,
+        media_id="combo-sub", username="alice", season=2, episode_group="eg-a", identity_key=None,
+    ))
+    db.session.commit()
     subscribe_page = sdk.list_subscriptions(
         SubscriptionFilter(
             media_source=TMDB,

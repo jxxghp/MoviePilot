@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 13
+version: 14
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -265,7 +265,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Purpose: Stores active movie, TV, or music subscriptions, filters, progress, and download targets.
 - Useful queries: Inspecting state, missing episodes/tracks, quality rules, site scope, and match progress.
 - Write boundary: Create, update, search, or delete through the subscription API to preserve state-machine consistency.
-- Columns: `id`, `activity_key`, `name`, `year`, `type`, `search_interval`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `downloaded_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `lack_episode`, `note`, `state`, `last_search`, `last_update`, `date`, `username`, `sites`, `downloader`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `manual_total_episode`, `custom_words`, `media_category_id`, `media_category`, `filter_groups`, `episode_group`
+- Columns: `id`, `activity_key`, `identity_key`, `name`, `year`, `type`, `search_interval`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `downloaded_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `lack_episode`, `note`, `state`, `last_search`, `last_update`, `date`, `username`, `sites`, `downloader`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `manual_total_episode`, `custom_words`, `media_category_id`, `media_category`, `filter_groups`, `episode_group`
 
 ### `subscribeactivity`
 - Purpose: Structured subscription business events and resumable search-round progress, recorded after the feature upgrade.

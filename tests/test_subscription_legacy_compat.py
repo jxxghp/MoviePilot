@@ -124,6 +124,7 @@ def test_legacy_subscription_facade_unwraps_typed_write_contract(monkeypatch) ->
             "season": 1,
             "episode_group": None,
             "music_type": None,
+            "type": None,
         },
         "payload": {"name": "兼容订阅"},
         "username": "legacy-user",
