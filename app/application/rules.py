@@ -22,6 +22,7 @@ from pyparsing import (
     opAssoc,
 )
 
+from app.application.classification.reference import classification_category_resolver_snapshot
 from app.application.configuration import (
     SystemConfigStagingPort,
     get_configured_system_config,
@@ -524,13 +525,20 @@ class RuleHelper:
         group_names: Optional[list[str]] = None,
     ) -> List[FilterRuleGroup]:
         """
-        按媒体类型、分类和候选名称筛选适用规则组。
+        按媒体类型、生效分类和候选名称筛选适用规则组。
+
+        规则组的分类名称通过活动分类策略关联媒体，兼容已有目录路径条件。
+
+        :param media: 已识别并应用最终分类的媒体；未提供时仅匹配无类型限制的规则组
+        :param group_names: 限定规则组名称；为空时检查全部配置规则组
+        :return: 保持配置顺序的适用规则组，分类不跨主媒体类型匹配
         """
         rule_groups = self.get_rule_groups()
         if group_names:
             rule_groups = [
                 group for group in rule_groups if group.name in group_names
             ]
+        category_resolver = classification_category_resolver_snapshot()
         return [
             group
             for group in rule_groups
@@ -539,7 +547,7 @@ class RuleHelper:
                 media
                 and media.type
                 and group.media_type == media.type.value
-                and (not group.category or group.category == media.category)
+                and (not group.category or category_resolver.matches_media_category(media, group.category))
             )
         ]
 
