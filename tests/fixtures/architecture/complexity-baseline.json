@@ -53,7 +53,7 @@
       "app/chain/scraping.py:ScrapingChain.scrape_music_metadata": 17,
       "app/chain/subscribe/completion.py:SubscribeCompletionOwner._SubscribeChain__get_subscribe_no_exits": 16,
       "app/chain/subscribe/completion.py:SubscribeCompletionOwner._SubscribeChain__record_subscribe_download_facts": 19,
-      "app/chain/subscribe/match.py:SubscribeMatchOwner._execute_match": 47,
+      "app/chain/subscribe/match.py:SubscribeMatchOwner._execute_match": 46,
       "app/chain/subscribe/query.py:SubscribeQueryOwner.follow": 19,
       "app/chain/subscribe/query.py:SubscribeQueryOwner.subscribe_files_info": 24,
       "app/chain/subscribe/refresh.py:SubscribeRefreshOwner.backfill_existing_episodes": 16,

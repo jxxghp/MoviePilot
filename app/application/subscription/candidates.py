@@ -76,6 +76,9 @@ class CandidateIndex:
     ) -> CandidateGroups:
         """
         保守路由可能命中的候选，并在外部事实查询前应用站点范围。
+
+        无显式 ID 的候选识别类型可由后续严格复核纠正，不能据此提前排除；
+        标题解析出的类型和季范围仍须符合订阅要求。
         """
         if subscribe.custom_words:
             positions = set(range(len(self._ordered)))
@@ -102,7 +105,9 @@ class CandidateIndex:
             if site_ids and getattr(torrent_info, "site", None) not in site_ids:
                 continue
             if not subscribe.custom_words and (
-                not self.media_type_matches(context, subscribe)
+                not self.media_type_matches(
+                    context, subscribe, include_recognized=position not in self._reconcilable
+                )
                 or not self.season_matches(context, subscribe)
             ):
                 continue
@@ -165,9 +170,17 @@ class CandidateIndex:
         )
 
     @classmethod
-    def media_type_matches(cls, context: Context, subscribe: SubscriptionSnapshot) -> bool:
+    def media_type_matches(
+        cls,
+        context: Context,
+        subscribe: SubscriptionSnapshot,
+        *,
+        include_recognized: bool = True,
+    ) -> bool:
         """
         类型已知且冲突时拒绝，缺失类型保持保守候选。
+
+        :param include_recognized: 是否同时检查识别结果的类型；仅在路由可复核推断时忽略
         """
         subscribe_type = cls.normalize_media_type(subscribe.type)
         media_info = getattr(context, "media_info", None)
@@ -175,7 +188,7 @@ class CandidateIndex:
         context_types = {
             cls.normalize_media_type(value)
             for value in (
-                getattr(media_info, "type", None),
+                getattr(media_info, "type", None) if include_recognized else None,
                 getattr(meta_info, "type", None),
             )
         }
