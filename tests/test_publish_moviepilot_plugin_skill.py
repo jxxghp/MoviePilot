@@ -7,7 +7,7 @@ import json
 import sys
 from argparse import Namespace
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 def load_publish_plugin_module() -> Any:
