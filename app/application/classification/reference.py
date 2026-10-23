@@ -488,6 +488,35 @@ class ClassificationCategoryResolver:
                 paths.append(path)
         return tuple(paths)
 
+    def matches_media_category(self, media: object, category: str) -> bool:
+        """
+        按分类名称匹配媒体生效分类，并兼容旧规则保存的目录路径。
+
+        分类接口返回显示名称，媒体的 category 则保存目录路径，两者可能不同。
+        活动策略中存在同名分类时优先比较稳定 ID；旧媒体没有 ID 时按路径关联，
+        不使用自动推荐或描述性分类覆盖已经生效的人工选择。
+
+        :param media: 已识别媒体，读取其生效分类快照及主媒体类型
+        :param category: 过滤规则保存的分类显示名称或兼容目录路径
+        :return: 分类名称或旧路径对应媒体生效分类时返回 True；同名分类已停用时不匹配
+        """
+        snapshot = effective_classification_snapshot(media)
+        policy = self._active_policy()
+        media_type = classification_media_type(getattr(media, "type", None))
+        named_categories = [
+            item for item in policy.categories
+            if item.media_type == media_type and item.name == category
+        ] if policy is not None else []
+        if named_categories:
+            return any(
+                item.enabled and (
+                    item.id == snapshot.category_id if snapshot.category_id
+                    else tuple(item.path) == snapshot.category_path
+                )
+                for item in named_categories
+            )
+        return category == snapshot.path
+
     def _active_policy(self) -> ClassificationPolicy | None:
         """
         兼容协议对象和轻量无参函数两种策略提供器。
