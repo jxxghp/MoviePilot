@@ -260,6 +260,7 @@ curl -sS "$MP_MCP_URL/tools/moviepilot_api/schema" \
 - 不传 `url`、`method`、请求头或认证凭据；固定 operation 由服务端映射到业务接口。
 - 不将 `media_id` 等业务字段平铺到顶层，也不为无请求体的操作补 `body: {}`。
 - `body` 使用原生 JSON 对象或数组；只有合同允许时才传 `null`。当前字符串请求体仅用于 `system.upgrade.dev` 的固定值 `"dev"`。
+- 若模型把整个 `body` 编码成 JSON 字符串，各工具入口会在校验和发送前还原一层对象、数组或 `null`；嵌套字符串保持原值，非法请求体仍按 operation 合同拒绝。客户端应直接传原生 JSON 值。
 - 媒体标识必须与返回它的 `media_source` 配对。不同操作的类型字段与枚举可能不同，不要把 `movie`、`电影` 或 `type`、`mtype`、`type_name` 相互套用。
 - 下载、整理、订阅等操作优先复用前序查询返回的媒体上下文、种子上下文、存储项目和精确 ID，不根据标题猜测资源身份或文件路径。
 

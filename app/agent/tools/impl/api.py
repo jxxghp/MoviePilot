@@ -413,6 +413,9 @@ class MoviePilotApiTool(MoviePilotTool):
         """
         执行一个白名单 MoviePilot API 操作。
 
+        HTTP/MCP/CLI 的直接调用不经过输入模型，因此也要还原顶层 JSON
+        字符串请求体，并把还原后的值用于校验和实际请求。
+
         :param operation_id: 稳定 API 操作标识
         :param path_params: 路径参数
         :param query: 查询参数
@@ -430,6 +433,7 @@ class MoviePilotApiTool(MoviePilotTool):
                 ensure_ascii=False,
             )
         try:
+            body = coerce_string_body(body)
             arguments: dict[str, Any] = {"operation_id": operation_id, **kwargs}
             if path_params is not None:
                 arguments["path_params"] = path_params
