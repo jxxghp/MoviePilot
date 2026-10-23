@@ -4,6 +4,7 @@
 
 import re
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, List, Optional, Protocol, Tuple, Union
@@ -140,6 +141,9 @@ class PendingSkillInteraction:
     :param market_query: 市场筛选词，空字符串表示不按关键词筛选
     :param awaiting_input: 等待的输入用途：market-search、source-add 或 None
     :param created_at: 会话创建的本地时间，用于计算过期时间
+    :param selection_id: 最近一次列表展示的唯一标识，旧展示按钮不复用新列表序号
+    :param selection_view: 最近一次展示的列表类别，installed或market；尚未展示时为空
+    :param selection_items: 展示时条目的独立快照，操作仅按该快照定位身份
     """
 
     request_id: str
@@ -153,6 +157,9 @@ class PendingSkillInteraction:
     market_query: str = ""
     awaiting_input: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.now)
+    selection_id: str = ""
+    selection_view: str = ""
+    selection_items: List[Any] = field(default_factory=list)
 
 
 class SkillInteractionManager(
@@ -250,7 +257,8 @@ class SkillInteractionHandler:
         """
         解析 /skills 按钮回调。
 
-        回调格式：skills:{request_id}:{action}[:index]
+        导航格式：skills:{request_id}:{action}[:index]。
+        安装/删除格式：skills:{request_id}:{action}:{index}:{selection_id}，展示标识另行校验。
         """
         if not callback_data.startswith("skills:"):
             return None
@@ -316,6 +324,11 @@ class SkillInteractionHandler:
                     title="技能交互已失效，请重新发送 /skills",
                 )
             )
+            return True
+
+        if self._selection_callback_is_stale(request, action, callback_data):
+            self._messenger.post_message(Message(channel=channel, source=source, userid=userid,
+                username=username, title="技能列表已变化，请使用最新列表重新选择"))
             return True
 
         request.channel = channel
@@ -385,27 +398,9 @@ class SkillInteractionHandler:
                 request.market_page = max(0, request.market_page - 1)
         elif action == "install" and index:
             request.awaiting_input = None
-            success, message = self._install_market_skill(request, index)
-            if success:
-                self._messenger.post_message(
-                    Message(
-                        channel=channel,
-                        source=source,
-                        userid=userid,
-                        username=username,
-                        title=message,
-                    )
-                )
-            else:
-                self._messenger.post_message(
-                    Message(
-                        channel=channel,
-                        source=source,
-                        userid=userid,
-                        username=username,
-                        title=message,
-                    )
-                )
+            _, message = self._install_market_skill(request, index)
+            self._messenger.post_message(Message(channel=channel, source=source, userid=userid,
+                                                username=username, title=message))
         elif action == "remove" and index:
             request.awaiting_input = None
             success, message = self._remove_local_skill(request, index)
@@ -756,21 +751,31 @@ class SkillInteractionHandler:
         )
         return True
 
+    @staticmethod
+    def _selection_callback_is_stale(request: PendingSkillInteraction, action: str, callback_data: str) -> bool:
+        """
+        核对安装/删除按钮的展示标识及当前视图，旧列表不能沿用新序号。
+
+        :param request: 当前技能交互会话
+        :param action: 解析后的按钮动作
+        :param callback_data: 包含展示标识的完整按钮数据
+        :return: 属于安装/删除且展示已失效时为True，其它导航动作不受影响
+        """
+        expected_view = {"install": "market", "remove": "installed"}.get(action)
+        return expected_view is not None and (
+            callback_data.split(":")[4:] != [request.selection_id]
+            or request.selection_view != expected_view or request.view != expected_view
+        )
+
     def _install_market_skill(
             self,
             request: PendingSkillInteraction,
             page_index: int,
     ) -> Tuple[bool, str]:
         """
-        按当前市场页的可见序号安装技能，避免跨页序号歧义。
+        按展示快照的可见序号安装技能，不重新按实时目录计算序号。
         """
-        market_skills = self._get_market_skills(request=request)
-        items, page, _ = self._page_items(
-            items=market_skills,
-            page=request.market_page,
-            page_size=self._page_size(request.channel),
-        )
-        request.market_page = page
+        items = request.selection_items if request.selection_view == "market" else []
         if page_index < 1 or page_index > len(items):
             return False, "安装序号无效"
         return self.skillhelper.install_market_skill(items[page_index - 1])
@@ -781,18 +786,14 @@ class SkillInteractionHandler:
             page_index: int,
     ) -> Tuple[bool, str]:
         """
-        按当前已安装页的可见序号删除技能，并拦截内置技能。
+        按展示快照删除对应技能，目标变化或内置技能不会被删除。
         """
-        local_skills = self.skillhelper.list_local_skills()
-        items, page, _ = self._page_items(
-            items=local_skills,
-            page=request.local_page,
-            page_size=self._page_size(request.channel),
-        )
-        request.local_page = page
+        items = request.selection_items if request.selection_view == "installed" else []
         if page_index < 1 or page_index > len(items):
             return False, "删除序号无效"
         target = items[page_index - 1]
+        if target not in self.skillhelper.list_local_skills():
+            return False, "技能列表已变化，请刷新后重新选择"
         if not target.removable:
             return False, f"技能 {target.id} 是内置技能，不能删除"
         return self.skillhelper.remove_local_skill(target.id)
@@ -919,6 +920,9 @@ class SkillInteractionHandler:
             page_size=self._page_size(request.channel),
         )
         request.local_page = page
+        request.selection_id = uuid.uuid4().hex[:12]
+        request.selection_view = "installed"
+        request.selection_items = deepcopy(items)
 
         text_lines = [f"第 {page + 1}/{total_pages} 页，共 {len(local_skills)} 个技能"]
         if not items:
@@ -952,7 +956,7 @@ class SkillInteractionHandler:
                     [
                         {
                             "text": f"删除 {index}",
-                            "callback_data": f"skills:{request.request_id}:remove:{index}",
+                            "callback_data": f"skills:{request.request_id}:remove:{index}:{request.selection_id}",
                         }
                     ]
                 )
@@ -983,6 +987,9 @@ class SkillInteractionHandler:
             page_size=self._page_size(request.channel),
         )
         request.market_page = page
+        request.selection_id = uuid.uuid4().hex[:12]
+        request.selection_view = "market"
+        request.selection_items = deepcopy(items)
 
         text_lines = [f"第 {page + 1}/{total_pages} 页，共 {len(market_skills)} 个可安装技能"]
         if request.market_query:
@@ -1052,7 +1059,7 @@ class SkillInteractionHandler:
                     [
                         {
                             "text": f"安装 {index}",
-                            "callback_data": f"skills:{request.request_id}:install:{index}",
+                            "callback_data": f"skills:{request.request_id}:install:{index}:{request.selection_id}",
                         }
                     ]
                 )

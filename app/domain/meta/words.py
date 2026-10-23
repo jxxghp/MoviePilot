@@ -254,35 +254,16 @@ class WordsMatcher(metaclass=Singleton):
             offset_word_info_re = _compile_custom_word_regex(
                 r'(?<=%s.*?)[0-9一二三四五六七八九十]+(?=.*?%s)' % (front, back)
             )
-            episode_nums_str = offset_word_info_re.findall(title)
-            if not episode_nums_str:
-                return title, "", False
-            episode_nums_offset_str = []
-            offset_order_flag = False
-            for episode_num_str in episode_nums_str:
+            def replace_episode(match: re.Match[str]) -> str:
+                """
+                仅按原始匹配文本计算偏移，已生成数字不再参加后续匹配。
+                """
+                episode_num_str = match.group()
                 episode_num_int = int(cn2an.cn2an(episode_num_str, "smart"))
                 episode_num_offset_int = calculate_episode_offset(offset, episode_num_int)
-                if episode_num_int > episode_num_offset_int:
-                    offset_order_flag = True
-                elif episode_num_int < episode_num_offset_int:
-                    offset_order_flag = False
-                episode_num_offset_str = _format_episode_offset(
-                    episode_num_str, episode_num_offset_int
-                )
-                episode_nums_offset_str.append(episode_num_offset_str)
-            episode_nums_dict = dict(zip(episode_nums_str, episode_nums_offset_str))
-            # 集数向前偏移，集数按升序处理
-            if offset_order_flag:
-                episode_nums_list = sorted(episode_nums_dict.items(), key=lambda x: x[1])
-            # 集数向后偏移，集数按降序处理
-            else:
-                episode_nums_list = sorted(episode_nums_dict.items(), key=lambda x: x[1], reverse=True)
-            for episode_num in episode_nums_list:
-                episode_offset_re = _compile_custom_word_regex(
-                    r'(?<=%s.*?)%s(?=.*?%s)' % (front, episode_num[0], back)
-                )
-                title = episode_offset_re.sub(r'%s' % episode_num[1], title)
-            return title, "", True
+                return _format_episode_offset(episode_num_str, episode_num_offset_int)
+            result, count = offset_word_info_re.subn(replace_episode, title)
+            return result, "", count > 0
         except Exception as err:
             logger.warning(f"自定义识别词集数偏移失败：{str(err)} - 标题：{title}，前定位词：{front}，后定位词：{back}，偏移量：{offset}")
             return title, str(err), False

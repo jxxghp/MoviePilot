@@ -3,7 +3,8 @@ SQLAlchemy 请求级事务适配器与无会话 Oper 事务执行端口。
 """
 
 from collections.abc import Awaitable, Callable
-from typing import Protocol, TypeVar
+from contextlib import contextmanager
+from typing import Iterator, Protocol, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -68,6 +69,26 @@ def reset_transaction_runners() -> None:
     global _sync_transaction_runner, _async_transaction_runner
     _sync_transaction_runner = None
     _async_transaction_runner = None
+
+
+@contextmanager
+def transaction_runner_scope(
+    *, sync: SyncTransactionRunner, async_: AsyncTransactionRunner,
+) -> Iterator[None]:
+    """
+    为独立初始化命令登记事务执行器，并在退出时恢复进入前的端口。
+
+    :param sync: 当前命令使用的独占同步事务执行器
+    :param async_: 当前命令使用的独占异步事务执行器
+    :return: 退出后恢复原登记状态的同步上下文
+    """
+    global _sync_transaction_runner, _async_transaction_runner
+    previous = (_sync_transaction_runner, _async_transaction_runner)
+    configure_transaction_runners(sync=sync, async_=async_)
+    try:
+        yield
+    finally:
+        _sync_transaction_runner, _async_transaction_runner = previous
 
 
 def run_sync_transaction(operation: Callable[[Session], T]) -> T:

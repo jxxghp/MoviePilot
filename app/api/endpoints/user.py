@@ -96,12 +96,12 @@ async def create_user(
     新增用户
     """
     user_info = user_in.model_dump()
-    if user_info.get("password"):
+    password = user_info.pop("password", None)
+    if password:
         try:
-            user_info["hashed_password"] = get_password_hash(user_info["password"])
+            user_info["hashed_password"] = get_password_hash(password)
         except PasswordTooLongError as error:
             return _SchemaResponse(success=False, message=str(error))
-        user_info.pop("password")
     try:
         user = await service.create(user_info)
     except UserNameConflictError:
@@ -192,7 +192,7 @@ async def upload_avatar(
         raise HTTPException(status_code=403, detail="用户权限不足")
 
     # 将文件转换为Base64
-    file_base64 = str(base64.b64encode(file.file.read()))
+    file_base64 = base64.b64encode(await file.read()).decode("ascii")
     # 更新到用户表
     user = await service.get_by_id(user_id)
     if not user:

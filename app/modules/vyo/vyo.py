@@ -211,15 +211,16 @@ class Vyo:
         使用固定页大小遍历媒体库中的电影和电视剧。
 
         按 100 条分页将偏移换算为页号，并在本地丢弃页内偏移。
-        配置不完整或读取失败时结束迭代；无法转换的条目仍占用数量配额。
+        配置不完整或读取失败时抛出异常；无法转换的条目仍占用数量配额。
 
         :param parent: 媒体库标识
         :param start_index: 起始条目偏移，空值或负数按 0 处理
         :param limit: 最多检查的原始条目数；None 或 -1 不限，其他非正值不产生条目
         :yields: 转换成功的统一媒体条目
+        :raises ConnectionError: 配置不完整、分页失败或列表响应结构错误
         """
         if not parent or not self.is_configured():
-            return
+            raise ConnectionError("Vyo 服务配置不完整或媒体库标识为空")
         # 页大小固定，页码才能稳定映射到偏移量；条数上限在产出侧裁剪
         skip = max(0, start_index or 0)
         remaining = None if limit is None or limit == -1 else max(0, limit)
@@ -233,8 +234,10 @@ class Vyo:
                 page_size=self.PAGE_LIMIT,
             )
             if result is None:
-                return
-            rows = result.get("items") or []
+                raise ConnectionError("读取 Vyo 媒体库失败")
+            rows = result.get("items")
+            if not isinstance(rows, list):
+                raise ConnectionError("Vyo 媒体库列表响应格式错误")
             for row in rows[drop:]:
                 if remaining is not None and remaining <= 0:
                     return

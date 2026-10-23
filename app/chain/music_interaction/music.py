@@ -147,11 +147,11 @@ def resolve_media_action(text: str) -> Tuple[Optional[str], str]:
     if music_action:
         return music_action, music_content
     if text.startswith("订阅"):
-        return "Subscribe", re.sub(r"订阅[:：\s]*", "", text)
+        return "Subscribe", re.sub(r"^订阅[:：\s]*", "", text, count=1)
     if text.startswith("洗版"):
-        return "ReSubscribe", re.sub(r"洗版[:：\s]*", "", text)
+        return "ReSubscribe", re.sub(r"^洗版[:：\s]*", "", text, count=1)
     if text.startswith("搜索") or text.startswith("下载"):
-        return "ReSearch", re.sub(r"(搜索|下载)[:：\s]*", "", text)
+        return "ReSearch", re.sub(r"^(搜索|下载)[:：\s]*", "", text, count=1)
     if url_tools.is_link(text):
         return None, text
     if not title_rules.is_media_title_like(text):

@@ -790,7 +790,7 @@ class EventManager(metaclass=Singleton):
             self.__event_queue.put((event.priority, event))
         record_metric(
             "event.queue.depth",
-            self.__event_queue.qsize(),
+            1,
             delivery="broadcast",
         )
 
@@ -914,7 +914,7 @@ class EventManager(metaclass=Singleton):
                         break
                     record_metric(
                         "event.queue.depth",
-                        self.__event_queue.qsize(),
+                        -1,
                         delivery="broadcast",
                     )
                     rate_limiter.reset()

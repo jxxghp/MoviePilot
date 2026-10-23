@@ -562,8 +562,10 @@ class Api:
             post["exclude_grouped_video"] = 1
 
         if (res := self.request("/item/list", data=post)) and res.success:
-            if not res.data:
+            if res.data is None:
                 return []
+            if not isinstance(res.data, dict) or not isinstance(res.data.get("list", []), list):
+                return None
             return [self.__build_item(info) for info in res.data.get("list", [])]
         return None
 

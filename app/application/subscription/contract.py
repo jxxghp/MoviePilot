@@ -17,6 +17,13 @@ from app.schemas.common import JsonData
 from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
 
+
+class SubscriptionIdentityConflictError(ValueError):
+    """
+    目标完整身份已属于另一订阅，当前修改必须回滚且不得继承其进度。
+    """
+
+
 _SUBSCRIPTION_FIELDS = frozenset(
     {
         "name",
@@ -444,6 +451,7 @@ class SubscriptionIdentity:
         return {
             "media_source": str(self.media_source),
             "media_id": self.media_id,
+            "type": self.type,
             "season": self.season,
             "episode_group": self.episode_group,
             "music_type": self.music_type,

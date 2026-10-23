@@ -177,6 +177,7 @@
     "media_source 和 media_id 必须同时提供": "media_source and media_id must be provided together",
     "新增订阅时必须同时提供有效的 media_source 和 media_id": "A valid media_source and media_id must be provided together when creating a subscription",
     "更新媒体身份时必须同时提供有效的 media_source 和 media_id": "A valid media_source and media_id must be provided together when updating media identity",
+    "目标媒体身份已有订阅，当前修改已取消": "A subscription already exists for the target media identity; this change was cancelled",
     "分类策略已被其他会话更新，请刷新后重试": "The classification policy was updated by another session. Refresh and try again",
     "分类策略已被其他会话更新，请重新加载或合并后再发布": "The classification policy was updated by another session. Reload or merge before publishing again",
     "分类策略校验失败": "Classification policy validation failed",
@@ -592,7 +593,8 @@
     "源文件路径为空": "Source file path is empty",
     "未识别到媒体类型": "Media type could not be identified",
     "站点域名未配置": "Site domain is not configured",
-    "站点配置不完整": "Site configuration is incomplete"
+    "站点配置不完整": "Site configuration is incomplete",
+    "插件后台服务尚未停止，已保留实例和数据供重试": "Plugin background services have not stopped. The instance and data were retained so you can retry."
   },
   "message_patterns": [
     {

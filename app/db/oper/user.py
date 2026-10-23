@@ -13,6 +13,7 @@ from typing import Any, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.user import User
@@ -52,6 +53,25 @@ class UserOper(DbOper):
         return self._execute_sync_query(
             lambda session: User.get_by_id(session, user_id)
         )
+
+    def update(self, user_id: int, payload: dict[str, Any]) -> Optional[User]:
+        """
+        在调用方或独占短事务内重新查询并更新用户，不使用游离对象的旧会话。
+
+        :param user_id: 要更新的用户主键
+        :param payload: 本次要修改的用户字段
+        :return: 更新后的用户；已删除时返回 None
+        """
+        def stage(session: Session) -> Optional[User]:
+            """
+            在同一有效会话内查询并暂存更新。
+            """
+            user = User.get_by_id(session, user_id)
+            if user is not None:
+                user.update(session, payload)
+            return user
+
+        return self._execute_sync_write(stage)
 
     async def async_list(self) -> List[User]:
         """

@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 60
+version: 62
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -325,6 +325,9 @@ token exchange downloads retain their existing credential rules.
   `music_type=recording|album|artist`; an artist is browse-only.
 - Treat `success=false`, HTTP error data, empty results, and validation errors as
   real outcomes. Do not claim success without checking the response.
+- `media.scrape` reports rejected media and failed NFO writes as business failures,
+  including failures within a directory. For concurrent custom-filter changes,
+  re-read the rules and confirm the intended change before retrying a conflict.
 - Respect an explicit `execution_outcome`: `pending` is accepted but unfinished,
   while `unknown` means a write may have happened. Do not repeat an unknown write
   or change defaults merely to evade duplicate protection. In the built-in Agent,
@@ -341,6 +344,14 @@ token exchange downloads retain their existing credential rules.
 - Background WebAgent completion appends the current turn to display history. Frontend complete snapshots keep their existing replacement contract.
 - File creation with `overwrite=false` rejects a concurrent creator. Versioned edits reject a peer's intervening write; reread the file and use its current SHA before retrying.
 - Market skill installation preserves an explicitly selected GitHub branch. If that branch is unavailable, treat installation as failed instead of silently switching branches.
+
+## Subscription Identity And Workflow Recovery
+
+- Preserve media type, source, media ID, season, episode group, and music entity type when finding or creating a subscription. Movies and TV series with the same numeric ID are distinct targets. Keep the episode group in source-based lookup.
+- Concurrent creation for the same user and identity returns the existing subscription ID. An update to an existing target identity cancels that update; reread both subscriptions before deciding the next step.
+- Changing the work, season, episode group, or music entity resets the previous target's download and upgrade progress. Missing episodes restart from the new total; clearing the episode group also changes the target.
+- Servarr duplicate series additions return the real existing subscription ID. If a cancelled search loses its executor, lease expiry settles the cancellation and permits a new search.
+- Workflow recovery retries failed nodes and nodes skipped because of failed dependencies while retaining successful node results. Editing a paused workflow keeps its timer disabled; Cron uses the host scheduler timezone.
 
 ## Collection Counts And Pagination
 

@@ -955,7 +955,7 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         try:
             current_job = self._scheduler.get_job(f"monitor_{storage}")
             if current_job and current_job.trigger.interval.total_seconds() / 60 != new_interval:
-                self._scheduler.modify_job(
+                self._scheduler.reschedule_job(
                     f"monitor_{storage}",
                     trigger='interval',
                     minutes=new_interval

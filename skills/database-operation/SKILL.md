@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 11
+version: 14
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -117,6 +117,9 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - `write` executes data updates and schema-changing statements directly.
 - `query --write` remains available as a compatibility alias for write statements.
 - Multiple SQL statements in one invocation are rejected.
+- Keywords and semicolons inside SQL literals, quoted identifiers, and comments
+  do not change a query into a write or a multi-statement request. Unclosed
+  lexical structures remain invalid.
 - Plain `SELECT` queries get a default `LIMIT 100` if no limit is present.
 - Query results are returned exactly as stored. The agent may use sensitive values internally when needed, but must not echo secrets in the final user-facing response unless the user explicitly asks to inspect that value.
 
@@ -220,7 +223,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Purpose: Stores plugin installation phase, membership target, identity revisions, and backup state.
 - Useful queries: Diagnosing interrupted installations, rollback conditions, and package or backup presence.
 - Write boundary: Owned by the plugin installation state machine; never advance phase or overwrite evidence manually.
-- Columns: `id`, `transaction_id`, `plugin_id`, `phase`, `membership_before`, `membership_target`, `identity_before_revision`, `identity_target_revision`, `package_existed`, `persistent_backup_existed`, `created_at`, `updated_at`, `schema_version`
+- Columns: `id`, `transaction_id`, `plugin_id`, `phase`, `membership_before`, `host_enabled_before`, `membership_target`, `identity_before_revision`, `identity_target_revision`, `package_existed`, `persistent_backup_existed`, `created_at`, `updated_at`, `schema_version`
 
 ### `plugininstance`
 - Purpose: Stores one row per shared-source plugin runtime instance, covering both clones and the host plugin itself (instance_id equals source_plugin_id, so equality identifies the host and inequality a clone), together with that instance's display overrides, its own log-level override and the moment that override expires, and the plugin's own configuration payload. A clone exists exactly while its row exists, so deleting the row uninstalls the clone and discards its configuration.
@@ -262,7 +265,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Purpose: Stores active movie, TV, or music subscriptions, filters, progress, and download targets.
 - Useful queries: Inspecting state, missing episodes/tracks, quality rules, site scope, and match progress.
 - Write boundary: Create, update, search, or delete through the subscription API to preserve state-machine consistency.
-- Columns: `id`, `activity_key`, `name`, `year`, `type`, `search_interval`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `downloaded_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `lack_episode`, `note`, `state`, `last_search`, `last_update`, `date`, `username`, `sites`, `downloader`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `manual_total_episode`, `custom_words`, `media_category_id`, `media_category`, `filter_groups`, `episode_group`
+- Columns: `id`, `activity_key`, `identity_key`, `name`, `year`, `type`, `search_interval`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `downloaded_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `lack_episode`, `note`, `state`, `last_search`, `last_update`, `date`, `username`, `sites`, `downloader`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `manual_total_episode`, `custom_words`, `media_category_id`, `media_category`, `filter_groups`, `episode_group`
 
 ### `subscribeactivity`
 - Purpose: Structured subscription business events and resumable search-round progress, recorded after the feature upgrade.

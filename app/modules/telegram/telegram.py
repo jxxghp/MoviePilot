@@ -7,6 +7,7 @@ import html as html_utils
 import re
 import threading
 import time
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, cast
 
@@ -58,6 +59,99 @@ TELEGRAM_PARSE_MODE_ALIASES = {
     "plain": TELEGRAM_PARSE_MODE_PLAIN,
     "text": TELEGRAM_PARSE_MODE_PLAIN,
 }
+
+
+class _HtmlMessageSplitter(HTMLParser):
+    """
+    按可见文本UTF-16长度拆分Telegram HTML，分块处关闭并重开仍生效的标签。
+
+    :ivar chunks: 各块可独立解析的HTML正文
+    :ivar _parts: 当前块的原始标记与文本片段
+    :ivar _stack: 仍生效的标签名与原始起始标记，保留链接等属性
+    :ivar _size: 当前块解析实体后的UTF-16长度
+    :ivar _limit: 每块允许的最大可见长度
+    """
+
+    def __init__(self, limit: int) -> None:
+        """
+        保留实体原文，使分块不会切开实体或丢失换行。
+
+        :param limit: 每块可见文本UTF-16长度上限，必须为正数
+        """
+        super().__init__(convert_charrefs=False)
+        self.chunks: list[str] = []
+        self._parts: list[str] = []
+        self._stack: list[tuple[str, str]] = []
+        self._size = 0
+        self._limit = max(1, limit)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+        """
+        保存完整起始标签及属性，供后续分块重新打开。
+        """
+        raw = self.get_starttag_text() or f"<{tag}>"
+        self._parts.append(raw)
+        self._stack.append((tag, raw))
+
+    def handle_endtag(self, tag: str) -> None:
+        """
+        结束当前标签，输入须遵守Telegram原有合法HTML合同。
+        """
+        self._parts.append(f"</{tag}>")
+        if self._stack and self._stack[-1][0] == tag:
+            self._stack.pop()
+
+    def handle_data(self, data: str) -> None:
+        """
+        仅在Unicode字符之间拆分正文，非BMP字符占两个UTF-16单元。
+        """
+        for character in data:
+            self._append_content(character, 2 if ord(character) > 0xFFFF else 1)
+
+    def handle_entityref(self, name: str) -> None:
+        """
+        作为不可拆分的整体追加命名实体。
+        """
+        self._append_entity(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        """
+        作为不可拆分的整体追加数字实体。
+        """
+        self._append_entity(f"&#{name};")
+
+    def _append_entity(self, raw: str) -> None:
+        """
+        按解码后的可见长度核对实体边界，发送时保留其原始编码。
+        """
+        self._append_content(raw, len(html_utils.unescape(raw).encode("utf-16-le")) // 2)
+
+    def _append_content(self, raw: str, size: int) -> None:
+        """
+        在当前内容超限前结算并重新打开标签，不重复可见正文。
+        """
+        if self._size and self._size + size > self._limit:
+            self._flush()
+        self._parts.append(raw)
+        self._size += size
+
+    def _flush(self) -> None:
+        """
+        结算可独立解析的HTML块，并恢复下一块所需的标签上下文。
+        """
+        closing = "".join(f"</{tag}>" for tag, _raw in reversed(self._stack))
+        self.chunks.append("".join(self._parts) + closing)
+        self._parts = [raw for _tag, raw in self._stack]
+        self._size = 0
+
+    def finish(self) -> List[str]:
+        """
+        返回包含最后一块的完整结果，不制造只有重复标签的空块。
+        """
+        self.close()
+        if self._size:
+            self._flush()
+        return self.chunks
 
 
 class RetryException(Exception):
@@ -2110,20 +2204,25 @@ class Telegram:
             **kwargs: Any,
     ) -> Optional[JsonDict]:
         """
-        按字符上限拆分普通或 HTML 正文并发送各分块。
+        按可见长度拆分普通或HTML正文并发送各分块，HTML保持实体和标签完整。
 
         键盘仅附在第一块。非限流异常由装饰器重试整个方法，已成功的分块可能再次发送；
         限流时记录会话冷却并停止立即重试。
 
         :param image: 可选图片字节，仅用于第一块
-        :param caption: 完整正文，HTML 标签不在此方法重新配平
+        :param caption: 完整正文，HTML分块关闭并重新打开跨块标签
         :param caption_limit: 每块字符上限；图片说明通常为 1024，纯文本为 4096
         :param disable_web_page_preview: 是否关闭文本分块的链接预览
         :param kwargs: 目标会话、解析格式、话题、回复和键盘参数
         :return: 最后一条发送的 Bot API 消息
         """
         reply_markup = kwargs.pop("reply_markup", None)
-        chunks = self._split_plain_text(caption, caption_limit)
+        if kwargs.get("parse_mode") == TELEGRAM_PARSE_MODE_HTML:
+            splitter = _HtmlMessageSplitter(caption_limit)
+            splitter.feed(caption)
+            chunks = splitter.finish()
+        else:
+            chunks = self._split_plain_text(caption, caption_limit)
         ret = None
         try:
             for index, chunk in enumerate(chunks):

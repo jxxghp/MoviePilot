@@ -14,6 +14,7 @@ from app.api.dependencies.auth import (
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.filtering import FilterRuleService
+from app.application.rules import RuleGroupMutationConflictError
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.rule import (
@@ -149,7 +150,7 @@ async def add_custom_rule(
     """
     try:
         data = await _service(runtime).add_custom(**payload.model_dump())
-    except ValueError as error:
+    except (ValueError, RuleGroupMutationConflictError) as error:
         return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
@@ -172,7 +173,7 @@ async def reorder_custom_rules(
             payload.rule_ids,
             expected_rule_ids=payload.expected_rule_ids,
         )
-    except ValueError as error:
+    except (ValueError, RuleGroupMutationConflictError) as error:
         return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
@@ -196,7 +197,7 @@ async def update_custom_rule(
             current_rule_id=rule_id,
             **payload.model_dump(),
         )
-    except ValueError as error:
+    except (ValueError, RuleGroupMutationConflictError) as error:
         return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
@@ -216,7 +217,7 @@ async def delete_custom_rule(
     """
     try:
         data = await _service(runtime).delete_custom(rule_id)
-    except ValueError as error:
+    except (ValueError, RuleGroupMutationConflictError) as error:
         return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
@@ -236,7 +237,7 @@ async def add_rule_group(
     """
     try:
         data = await _service(runtime).add_group(**payload.model_dump())
-    except ValueError as error:
+    except (ValueError, RuleGroupMutationConflictError) as error:
         return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
@@ -259,7 +260,7 @@ async def reorder_rule_groups(
             payload.group_names,
             expected_group_names=payload.expected_group_names,
         )
-    except ValueError as error:
+    except (ValueError, RuleGroupMutationConflictError) as error:
         return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
@@ -283,7 +284,7 @@ async def update_rule_group(
             current_name=name,
             **payload.model_dump(),
         )
-    except ValueError as error:
+    except (ValueError, RuleGroupMutationConflictError) as error:
         return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True, message=data.get("message") or "", data=data)
 
@@ -303,6 +304,6 @@ async def delete_rule_group(
     """
     try:
         data = await _service(runtime).delete_group(name)
-    except ValueError as error:
+    except (ValueError, RuleGroupMutationConflictError) as error:
         return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True, message=data.get("message") or "", data=data)

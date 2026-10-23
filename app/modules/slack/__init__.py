@@ -223,7 +223,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     return None
             elif msg_json.get("command"):
                 userid = msg_json.get("user_id")
-                text = msg_json.get("command")
+                text = " ".join(part for part in [msg_json.get("command"), msg_json.get("text")] if part).strip()
                 username = msg_json.get("user_name")
                 chat_id = msg_json.get("channel_id")
                 if self._should_reject_admin_command(client_config.config, userid):

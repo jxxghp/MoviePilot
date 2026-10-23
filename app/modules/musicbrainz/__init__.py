@@ -2166,7 +2166,7 @@ class MusicBrainzModule(_ModuleBase):
         r"MP3|AAC|M4A|OGG|VORBIS|OPUS|WMA|WEB-?DL|WEBRip|WEB)\b|"
         r"\b\d{1,3}\s*-?\s*bits?\b|\b\d{2,4}(?:\.\d)?\s*k(?:hz|bps?)\b|"
         # 流媒体发行实体标记（- Single / - EP），不是曲名的一部分
-        r"\b(?:single|ep|album)\b",
+        r"\s+[-–—]\s*(?:single|ep|album)\s*$",
         re.IGNORECASE,
     )
 

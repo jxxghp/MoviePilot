@@ -301,17 +301,15 @@ def build_plugin_release_install_plan(
     if release_version:
         if not is_release:
             return None, f"{plugin_id} 未声明 Release 安装，无法安装指定版本"
-        if not any(
-            item.get("version") == release_version for item in release_items
-        ):
+        selected_release = next((item for item in release_items if item.get("version") == release_version), None)
+        if selected_release is None:
             return None, f"{plugin_id} 未找到可安装的 Release 版本：{release_version}"
-        if release_version == plugin_version:
-            compatible, message = check_plugin_system_version(
-                metadata,
-                current_version=current_version,
-            )
-            if not compatible:
-                return None, message
+        compatible, message = check_plugin_system_version(
+            metadata if release_version == plugin_version else selected_release,
+            current_version=current_version,
+        )
+        if not compatible:
+            return None, message
         return PluginReleaseInstallPlan(
             release_tag=f"{plugin_id}_v{release_version}",
             fallback_to_filelist=False,

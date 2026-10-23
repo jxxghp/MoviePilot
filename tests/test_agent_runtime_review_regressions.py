@@ -242,6 +242,9 @@ async def test_mcp_discovery_consumes_next_cursor(monkeypatch, repeated_cursor):
         yield SimpleNamespace(request=request, notify=AsyncMock())
 
     async def open_session(server):
+        """
+        返回隔离的远端会话，保持正式发现入口的异步打开协议。
+        """
         return session(server)
 
     monkeypatch.setattr("app.agent.mcp._open_mcp_session", open_session)
@@ -346,6 +349,9 @@ def test_explicit_market_branch_failure_does_not_install_default(monkeypatch):
     requests = []
 
     def request(**kwargs):
+        """
+        记录明确分支的下载请求并模拟该分支不存在。
+        """
         requests.append(kwargs["url"])
         return SimpleNamespace(status_code=404)
 
@@ -500,6 +506,9 @@ async def test_message_ingress_separates_channels_and_sources(monkeypatch):
     received, submitted = [], []
 
     async def process(**kwargs):
+        """
+        记录消息入口交给真实会话路由的身份与内容。
+        """
         received.append(kwargs)
 
     ingress = SimpleNamespace(_ai_prefix="/ai", _user_sessions={}, _session_timeout_minutes=1440,
@@ -568,6 +577,9 @@ async def test_message_namespace_separates_real_agent_memory(monkeypatch):
         agent._last_agent_cache_hit = False
 
         async def invoke(payload, config):
+            """
+            为正式记忆与会话流程提供确定的模型回复，并保留已传入的上下文。
+            """
             del config
             calls.append(json.dumps([message.content for message in payload["messages"]], ensure_ascii=False))
             state["messages"] = [*payload["messages"], AIMessage(content="review reply")]
@@ -577,6 +589,9 @@ async def test_message_namespace_separates_real_agent_memory(monkeypatch):
     original_submit = asyncio.run_coroutine_threadsafe
 
     def submit(coroutine, loop):
+        """
+        保留跨线程提交回执，供测试等待真实消息流程完成。
+        """
         future = original_submit(coroutine, loop)
         submitted.append(future)
         return future
@@ -636,6 +651,9 @@ async def test_webagent_background_turns_preserve_display_history(tmp_path, monk
             return AgentChatOper(session).get(session_id, user_id)
 
     async def run(operation):
+        """
+        在隔离数据库测试中直接执行持久化服务提交的同步操作。
+        """
         return operation()
 
     def transaction(operation):
@@ -648,6 +666,9 @@ async def test_webagent_background_turns_preserve_display_history(tmp_path, monk
             return result
 
     async def process(**kwargs):
+        """
+        通过正式输出回调提供本轮回复，触发展示历史的追加保存。
+        """
         kwargs["output_callback"]("reply to " + kwargs["message"])
 
     service = AgentChatService(SimpleNamespace(async_get=get))
@@ -655,6 +676,9 @@ async def test_webagent_background_turns_preserve_display_history(tmp_path, monk
     tasks = []
 
     def create_task(coroutine):
+        """
+        记录后台任务句柄，确保两轮历史写入都完成后再检查数据库。
+        """
         task = asyncio.create_task(coroutine)
         tasks.append(task)
         return task

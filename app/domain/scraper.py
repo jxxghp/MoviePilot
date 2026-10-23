@@ -48,13 +48,25 @@ class MediaScraperHelper:
     @staticmethod
     def _media_identity(
         mediainfo: MediaInfo,
+        season: Optional[int] = None,
+        episode: Optional[int] = None,
     ) -> tuple[Optional[MediaSource], Optional[str]]:
         """
         获取媒体信息中的来源与来源原生 ID。
 
         :param mediainfo: 统一媒体信息
-        :return: 数据源名称与原生 ID
+        :param season: 单集所属季号；主媒体或季元数据时为空
+        :param episode: 单集集号；为空时使用主媒体身份
+        :return: 数据源名称与原生 ID；IMDb 单集缺少独立身份时 ID 为 None，不使用剧集主 ID
         """
+        if mediainfo.media_source == MediaSource.IMDb and season is not None and episode is not None:
+            for detail in mediainfo.season_info:
+                if detail.get("season_number") != season:
+                    continue
+                for item in detail.get("episodes") or []:
+                    if item.get("episode_number") == episode:
+                        return MediaSource.IMDb, item.get("id")
+            return MediaSource.IMDb, None
         return mediainfo.media_source, mediainfo.media_id
 
     @staticmethod
@@ -74,6 +86,8 @@ class MediaScraperHelper:
         mediainfo: MediaInfo,
         doc: minidom.Document,
         root: minidom.Element,
+        season: Optional[int] = None,
+        episode: Optional[int] = None,
     ) -> None:
         """
         向 NFO 根节点写入各媒体类型共享的标准字段。
@@ -81,6 +95,8 @@ class MediaScraperHelper:
         :param mediainfo: 统一媒体信息
         :param doc: XML 文档
         :param root: NFO 根节点
+        :param season: 单集季号，用于选择来源原生身份
+        :param episode: 单集集号，不使用剧集主身份代替单集
         """
         DomUtils.add_node(doc, root, "title", mediainfo.title or "")
         DomUtils.add_node(doc, root, "originaltitle", mediainfo.original_title or "")
@@ -93,7 +109,7 @@ class MediaScraperHelper:
         outline = DomUtils.add_node(doc, root, "outline")
         outline.appendChild(doc.createCDATASection(mediainfo.overview or ""))
 
-        source, media_id = cls._media_identity(mediainfo)
+        source, media_id = cls._media_identity(mediainfo, season=season, episode=episode)
         if source and media_id:
             unique_id = DomUtils.add_node(doc, root, "uniqueid", media_id)
             unique_id.setAttribute("type", str(source))
@@ -158,7 +174,7 @@ class MediaScraperHelper:
             cls._append_common_nodes(mediainfo, doc, root)
         elif season is not None and episode is not None:
             root = DomUtils.add_node(doc, doc, "episodedetails")
-            cls._append_common_nodes(mediainfo, doc, root)
+            cls._append_common_nodes(mediainfo, doc, root, season=season, episode=episode)
             DomUtils.add_node(doc, root, "season", str(season))
             DomUtils.add_node(doc, root, "episode", str(episode))
             DomUtils.add_node(

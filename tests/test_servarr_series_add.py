@@ -93,6 +93,7 @@ def _patch_chains(mediainfo=None, exists=None, add_result=(123, "")):
     subscribe_chain.async_add_batch = AsyncMock(return_value=add_result)
     subscriptions = MagicMock()
     subscriptions.exists = AsyncMock(return_value=bool(exists))
+    subscriptions.get_existing = AsyncMock(return_value=exists)
     batch_writer = MagicMock()
     return patch(
         "app.api.servarr.MediaChain",
@@ -190,7 +191,7 @@ def test_add_series_already_subscribed_returns_existing():
     with media_patch, chain_patch:
         result = _run_add(tv, subscriptions, batch_writer)
 
-    assert result.id == 1
+    assert result.id == 9
     subscribe_chain.async_add_batch.assert_not_awaited()
 
 
@@ -198,7 +199,7 @@ def test_add_series_existing_subscription_uses_async_repository(db):
     """
     真实请求仓储查到已有季订阅时，兼容端点应幂等返回而不抛异常。
     """
-    db.add(
+    existing = db.add(
         Subscribe(
             name="已存在的 Servarr 订阅",
             type=MediaType.TV.value,
@@ -228,7 +229,7 @@ def test_add_series_existing_subscription_uses_async_repository(db):
 
     result = db.run_async_session(execute)
 
-    assert result.id == 1
+    assert result.id == existing.id
 
 
 def test_add_series_identity_resolution_failure_returns_500():

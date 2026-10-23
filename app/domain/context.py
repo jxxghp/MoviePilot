@@ -1939,7 +1939,7 @@ class MediaInfo:
     :param genre_ids: 风格ID
     :param names: 所有别名和译名
     :param seasons: 各季的剧集清单信息
-    :param season_info: 各季详情
+    :param season_info: 各季详情；IMDb 的 episodes 保存单集 id 与 episode_number，用于独立 NFO 身份
     :param season_years: 各季的年份
     :param category: 兼容字段，过渡期始终与 library_category 同步
     :param library_category: 自动分类或人工覆盖后的媒体库相对目录分类

@@ -2,6 +2,7 @@
 Plex 客户端，负责媒体库同步、媒体身份查询、播放链接及 Webhook 转换。
 """
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -211,8 +212,21 @@ class Plex:
         [Callable[..., Optional[List[str]]]], Callable[..., Optional[List[str]]]
     ] = cached(maxsize=32, ttl=86400)
 
-    @_image_cache
     def __get_library_images(self, library_key: str, mtype: int) -> Optional[List[str]]:
+        """
+        按服务地址与令牌摘要隔离媒体库封面缓存。
+
+        :param library_key: Plex 媒体库标识
+        :param mtype: Plex 搜索类型值
+        :return: 当前服务器凭据对应的媒体库封面
+        """
+        identity = hashlib.sha256(f"{self._host}\0{self._token}".encode()).hexdigest()
+        return self.__get_cached_library_images(library_key, mtype, identity)
+
+    @_image_cache
+    def __get_cached_library_images(
+        self, library_key: str, mtype: int, server_identity: str,
+    ) -> Optional[List[str]]:
         """
         分页读取最近新增媒体，选取最多 4 张不同的库封面。
 
@@ -220,6 +234,7 @@ class Plex:
 
         :param library_key: Plex 媒体库标识
         :param mtype: Plex 搜索类型值：1 为电影，2 为剧集，8 为音乐
+        :param server_identity: 服务地址与令牌摘要，只用于隔离缓存，不保存原始凭据
         :return: 带服务令牌的本地图片 URL 列表；SDK 未连接时返回 None
         """
         if not self._plex:
@@ -1153,7 +1168,8 @@ class Plex:
                     message.get('Metadata', {}).get('title'),
                     "(" + str(message.get('Metadata', {}).get('year')) + ")")
                 eventItem.item_id = message.get('Metadata', {}).get('key')
-                if len(message.get('Metadata', {}).get('summary')) > 100:
+                if (message.get('Metadata', {}).get('summary')
+                        and len(message.get('Metadata', {}).get('summary')) > 100):
                     eventItem.overview = str(message.get('Metadata', {}).get('summary'))[:100] + "..."
                 else:
                     eventItem.overview = message.get('Metadata', {}).get('summary')

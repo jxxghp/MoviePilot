@@ -632,6 +632,7 @@ def test_subscribe_chain_exists_forwards_episode_group():
         SubscriptionIdentity(
             media_source=MediaSource.TMDB,
             media_id=media.media_id,
+            type=MediaType.TV.value,
             music_type=None,
             season=1,
             episode_group="eg-1",

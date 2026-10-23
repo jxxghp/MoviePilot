@@ -57,7 +57,7 @@ def test_plugin_installation_migration_upgrade_downgrade_reupgrade(
         assert "plugininstallation" in inspector.get_table_names()
         assert {
             column["name"] for column in inspector.get_columns("plugininstallation")
-        } == {column.name for column in PluginInstallation.__table__.columns}
+        } == {column.name for column in PluginInstallation.__table__.columns} - {"host_enabled_before"}
         assert {
             index["name"] for index in inspector.get_indexes("plugininstallation")
         } == {

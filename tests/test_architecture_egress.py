@@ -120,8 +120,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.cli", "urllib.request"): "71b3e5be2a7d85fdc7a207d15c0e690d7ab96b335b882a3eaec03a1cb4ec1d1b",
     ("app.doctor.checks", "socket.create_connection"): "dfb34d4710353029dcc06e0e0ce3b299bae1a7e71a5743de1d253ac26380f9b6",
     ("app.doctor.checks", "urllib.request"): "d8dd2279263ef58c3b4c59c70451533a4fc27d2ccd76960ca3aff29cd73f3354",
-    # 事件装饰器改为等价的显式注册；未增加事件或网络调用。
-    ("app.modules.discord.discord", "discord"): "a46a1d6da767a51eb4e1085de5fb936490fc8360c2f3a814635d408468c1b150",
+    # 删除用户历史频道回落的get_channel/fetch_channel各一次；未新增网络能力或其它SDK调用。
+    ("app.modules.discord.discord", "discord"): "2761ef9a9e5a805bfb20ea832c5d34edea12db21ca3eb27c3db7ce512a5ee7f5",
     ("app.modules.emby.emby", "requests"): "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
     ("app.adapters.network.feishu", "websocket"): "95aca65eed288e0c7654ab49aad6c535d9313d5e38c44b1cb1768dcdfc772453",
     ("app.modules.filemanager.storages.smb", "smbclient"): "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47",
@@ -130,7 +130,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
     # 补充现有 SDK 返回类型导入；未增加客户端或请求路径。
     # 新增 LibrarySection 类型绑定以描述音乐查询；SDK 外连操作集合保持一致。
-    ("app.modules.plex.plex", "plexapi"): "0fe42fa932618997d4f589a5217a36b45f7ac2947212a371bdfbbc55d9cf1def",
+    ("app.modules.plex.plex", "plexapi"): "6109de36f963b5c6193ed60941a88856cbee9c37303dedf13da3a3be94478543",
     ("app.modules.plex.plex", "requests"): "e49c0856fd6c99a3409850898aac7e6e3fa611d4e91546634c178fbfd244e8da",
     ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"): "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
     ("app.modules.qqbot.gateway", "websocket"): "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",

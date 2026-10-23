@@ -368,7 +368,7 @@ def rename(
             runtime_config.media_extensions + runtime_config.subtitle_extensions + runtime_config.audio_extensions
         )
         # 递归修改目录内文件（智能识别命名）
-        sub_files: List[_SchemaFileItem] = StorageChain().list_files(fileitem) or []
+        sub_files: List[_SchemaFileItem] = StorageChain().list_files(fileitem, recursion=True) or []
         if sub_files:
             # 开始进度
             progress = ProgressHelper(ProgressKey.BatchRename)
@@ -384,7 +384,7 @@ def rename(
                     continue
                 if f".{sub_file.extension.lower()}" not in media_exts:
                     continue
-                sub_path = Path(f"{fileitem.path}{sub_file.name}")
+                sub_path = Path(sub_file.path or "")
                 context = MediaChain().recognize_by_path(
                     sub_path,
                     obtain_images=False,

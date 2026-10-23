@@ -4,8 +4,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Protocol
 
@@ -29,6 +29,7 @@ from app.application.plugin.source import (
     list_effective_online_candidates,
     select_plugin_candidate,
 )
+from app.domain.plugin import PLUGIN_SYSTEM_VERSION_FIELD
 
 InventoryProvider = Callable[[bool], Awaitable[CandidateInventory]]
 IdentityReader = Callable[[str], Awaitable[PluginIdentity | None]]
@@ -151,7 +152,7 @@ class PluginInstallGateway:
                     now=self.__clock(),
                 )
                 compatible, message = self.__candidate_compatibility(
-                    admission.candidate
+                    self._compatibility_candidate(admission.candidate, release_version)
                 )
                 if not compatible:
                     raise PluginSourceAdmissionError(
@@ -173,6 +174,22 @@ class PluginInstallGateway:
                 message=str(error),
                 failure_stage="source_admission",
             )
+
+    @staticmethod
+    def _compatibility_candidate(candidate: Candidate, release_version: str | None) -> Candidate:
+        """
+        历史远端Release的宿主范围交给实际版本选择，保留市场的来源和运行时要求。
+
+        :param candidate: 已通过来源与代际准入的冻结候选
+        :param release_version: 请求安装的Release版本
+        :return: 仅兼容校验使用的候选视图，不修改事务使用的原候选
+        """
+        if (not release_version or release_version == candidate.plugin_version
+                or isinstance(candidate, PluginLocalCandidate) or not isinstance(candidate.dto, Mapping)):
+            return candidate
+        metadata = dict(candidate.dto)
+        metadata.pop(PLUGIN_SYSTEM_VERSION_FIELD, None)
+        return replace(candidate, dto=metadata)
 
     async def inspect_source(
         self,

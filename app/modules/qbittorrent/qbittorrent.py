@@ -451,21 +451,22 @@ class Qbittorrent:
             logger.error(f"移除种子Tag出错：{str(err)}")
             return False
 
-    def set_torrents_tag(self, ids: Union[str, list[str]], tags: list[str]) -> None:
+    def set_torrents_tag(self, ids: Union[str, list[str]], tags: list[str]) -> bool:
         """
         向指定种子追加标签，保留原有标签。
 
-        未连接时直接返回，请求失败只记录日志；本方法不返回写入确认。
-
         :param ids: 种子哈希或哈希列表
         :param tags: 待追加的标签列表
+        :return: RPC成功完成时为True，未连接或失败时为False
         """
         if not self.qbc:
-            return
+            return False
         try:
             self.qbc.torrents_add_tags(tags=tags, torrent_hashes=ids)
+            return True
         except Exception as err:
             logger.error(f"设置种子Tag出错：{str(err)}")
+            return False
 
     def is_force_resume(self) -> Optional[bool]:
         """

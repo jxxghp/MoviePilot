@@ -940,7 +940,7 @@ class WorkflowMutationCommand:
         if (
                 not updated.trigger_type
                 or updated.trigger_type == WORKFLOW_TRIGGER_TIMER
-        ) and updated.timer:
+        ) and updated.timer and getattr(updated, "state", None) != "P":
             self._add_timer(updated)
         self._refresh_event(updated)
         return WorkflowMutationResult(True, "更新成功")

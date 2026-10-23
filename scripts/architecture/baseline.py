@@ -142,10 +142,13 @@ def iter_runtime_import_nodes(tree: ast.AST):
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Import, ast.ImportFrom)):
             continue
-        parent = parents.get(node)
+        child = node
+        parent = parents.get(child)
         while parent is not None:
-            if isinstance(parent, ast.If) and _is_type_checking_test(parent.test):
+            if (isinstance(parent, ast.If) and _is_type_checking_test(parent.test)
+                    and child in parent.body):
                 break
+            child = parent
             parent = parents.get(parent)
         else:
             yield node

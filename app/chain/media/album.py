@@ -313,11 +313,11 @@ class MediaAlbumOwner(_MediaOwnerBase):
             try:
                 stat = path.stat()
             except OSError:
-                signature.append((str(path.relative_to(directory)).casefold(), -1, -1))
+                signature.append((str(path.relative_to(directory)), -1, -1))
             else:
                 signature.append(
                     (
-                        str(path.relative_to(directory)).casefold(),
+                        str(path.relative_to(directory)),
                         stat.st_size,
                         stat.st_mtime_ns,
                     )

@@ -314,7 +314,7 @@ class TrimeMedia:
         使用独立临时 API 验证用户名和密码。
 
         验证结束后会登出并关闭临时会话；返回令牌仅用于认证结果，不保证之后仍可访问服务。
-        当前辅助认证探测不传递实例的访问码，开启访问码的服务可能无法通过此入口。
+        新会话沿用实例访问码，先校验访问权限，再验证待登录用户。
 
         :param username: 待验证的用户名
         :param password: 待验证的原始密码
@@ -324,7 +324,7 @@ class TrimeMedia:
             return None
         if not self.is_configured():
             return None
-        if result := self.__create_api(self._host):
+        if result := self.__create_api(self._host, self._access_code):
             try:
                 return result.api.login(username, password)
             finally:
@@ -684,29 +684,29 @@ class TrimeMedia:
         """
         查询一页媒体库内容，并递归展开目录中的电影和电视剧。
 
-        未认证时不产生条目；底层查询失败按空列表结束当前层，不向上传播专门的同步失败异常。
+        未认证或底层查询失败时中止迭代，避免将失败误认为成功的空媒体库。
 
         :param parent: 媒体库或父目录 guid
         :param start_index: 当前实现将该值加 1 作为页码；并非条目偏移，默认 0 请求第一页
         :param limit: 传给服务端的每页数量；None 或 -1 传为 -1，递归子目录使用默认不限数量
         :yields: 统一电影或电视剧条目
+        :raises ConnectionError: 未认证或任意一层目录读取失败
         """
         if not self.is_authenticated():
-            return None
+            raise ConnectionError("飞牛影视服务尚未认证")
         assert self._api is not None
         if (page_size := limit) is None:
             page_size = -1
         if start_index is None:
             raise TypeError("unsupported operand type(s) for +: 'NoneType' and 'int'")
-        items = (
-            self._api.item_list(
-                guid=parent,
-                page=start_index + 1,
-                page_size=page_size,
-                types=[fnapi.Type.MOVIE, fnapi.Type.TV, fnapi.Type.DIRECTORY],
-            )
-            or []
+        items = self._api.item_list(
+            guid=parent,
+            page=start_index + 1,
+            page_size=page_size,
+            types=[fnapi.Type.MOVIE, fnapi.Type.TV, fnapi.Type.DIRECTORY],
         )
+        if items is None:
+            raise ConnectionError("读取飞牛影视媒体库失败")
         for item in items:
             if item.type == fnapi.Type.DIRECTORY:
                 yield from self.get_items(parent=item.guid)

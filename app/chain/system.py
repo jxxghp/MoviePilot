@@ -306,7 +306,8 @@ class SystemChain(_SystemUpdateChain):
                 save_history=False))
             self.save_cache({
                 "channel": channel.value,
-                "userid": userid
+                "userid": userid,
+                "source": source,
             }, self._restart_file)
         self.backup_plugins()
         SystemHelper.restart()
@@ -614,6 +615,7 @@ class SystemChain(_SystemUpdateChain):
             title = self.__get_version_message()
             self.post_message(Message(
                 channel=channel,
+                source=restart_channel.get("source"),
                 title=f"系统已重启完成！\n{title}",
                 userid=userid,
                 save_history=False))

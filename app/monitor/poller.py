@@ -233,6 +233,13 @@ class RemotePoller:
         :param mon_path: 监控路径
         :return: 是否成功
         """
+        with self._get_lock(storage):
+            return self._force_full_scan(storage, mon_path)
+
+    def _force_full_scan(self, storage: str, mon_path: Path) -> bool:
+        """
+        在存储快照锁内扫描单根，防止与同存储轮询读改写互相覆盖。
+        """
         try:
             logger.info(f"开始强制全量扫描: {storage}:{mon_path}")
 
@@ -281,8 +288,15 @@ class RemotePoller:
                 logger.error(f"读取快照基线失败，已跳过落盘以避免覆盖其他监控路径: {storage}:{mon_path}")
                 return False
             old_snapshot = old_snapshot_data.get('snapshot', {}) if old_snapshot_data else {}
-            current_snapshot = {**old_snapshot, **new_snapshot}
-            if not self._store.save(storage, current_snapshot, len(current_snapshot)):
+            replaced_paths = self._snapshot_for_path(old_snapshot, mon_path)
+            current_snapshot = {
+                path: value for path, value in old_snapshot.items()
+                if path not in replaced_paths
+            }
+            current_snapshot.update(new_snapshot)
+            # 单根扫描不能推进存储级游标，否则会越过其他根尚未读取的修改。
+            cursor = old_snapshot_data.get("timestamp", 0) if old_snapshot_data else 0
+            if not self._store.save(storage, current_snapshot, len(current_snapshot), snapshot_time=cursor):
                 logger.error(f"保存快照基线失败，全量扫描未完成: {storage}:{mon_path}")
                 return False
 
