@@ -65,8 +65,8 @@ through GitHub while protecting local secrets and unrelated plugins.
      and state that the repository will be public by default.
    - Do not create a private repository unless the user explicitly asks for it.
 3. Select the package version layout.
-   - Prefer `v3` when `package.v3.json` or `plugins.v3/<plugin_id_lower>/`
-     exists (current MoviePilot V3 hosts).
+   - Prefer `v3` when the plugin lives under `plugins.v3/<plugin_id_lower>/`
+     or the repository ships `package.v3.json` (current MoviePilot V3 hosts).
    - Prefer `v2` when `package.v2.json` or `plugins.v2/<plugin_id_lower>/`
      exists.
    - Use legacy only when the local plugin is under `plugins/`.
@@ -114,9 +114,11 @@ python skills/publish-moviepilot-plugin/scripts/publish_plugin.py create-repo \
 
 Options:
 
-- `--package-version v3|v2|legacy|auto`: layout selector. `auto` detects
-  `package.v3.json`/`plugins.v3` first, then v2, then legacy. Pass `v3`
-  explicitly for current MoviePilot V3 plugin repositories.
+- `--package-version v3|v2|legacy|auto`: layout selector. `auto` resolves the
+  layout from where the plugin directory actually lives
+  (`plugins.v3` → `plugins.v2` → `plugins`), then falls back to the manifest
+  files, so repositories that still keep both manifests stay correct. Pass
+  `v3` explicitly for current MoviePilot V3 plugin repositories.
 - `create-repo`: create the target GitHub repository. Default visibility is
   public; use `--private` only when the user explicitly asked for private.
 - `preview`: compare local filtered files with remote files and print JSON.

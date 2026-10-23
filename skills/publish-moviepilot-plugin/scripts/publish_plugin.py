@@ -729,11 +729,19 @@ def resolve_layout(package_version: str, local_repo: Path, plugin_id: str) -> La
     v3_dir = local_repo / "plugins.v3" / plugin_id.lower()
     v2_dir = local_repo / "plugins.v2" / plugin_id.lower()
     legacy_dir = local_repo / "plugins" / plugin_id.lower()
-    if (local_repo / "package.v3.json").exists() or v3_dir.exists():
+    # 先看插件实际落在哪个目录：同一仓库可能同时保留 v2 与 v3 清单，
+    # 只看清单文件会把只存在于 plugins.v2 的插件误判成 v3 布局。
+    if v3_dir.exists():
         return Layout(package_file="package.v3.json", plugin_root="plugins.v3")
-    if (local_repo / "package.v2.json").exists() or v2_dir.exists():
+    if v2_dir.exists():
         return Layout(package_file="package.v2.json", plugin_root="plugins.v2")
-    if (local_repo / "package.json").exists() or legacy_dir.exists():
+    if legacy_dir.exists():
+        return Layout(package_file="package.json", plugin_root="plugins")
+    if (local_repo / "package.v3.json").exists():
+        return Layout(package_file="package.v3.json", plugin_root="plugins.v3")
+    if (local_repo / "package.v2.json").exists():
+        return Layout(package_file="package.v2.json", plugin_root="plugins.v2")
+    if (local_repo / "package.json").exists():
         return Layout(package_file="package.json", plugin_root="plugins")
     return Layout(package_file="package.v2.json", plugin_root="plugins.v2")
 
