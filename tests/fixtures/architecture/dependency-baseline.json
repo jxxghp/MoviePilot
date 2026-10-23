@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9711,
-  "edge_sha256": "ab6b9c2a3353c8520468b3f7752ed1ed1c2c208a093afb50a7a5e6895d6f8ea0",
+  "edge_count": 9713,
+  "edge_sha256": "80a64865791510e96da79d2c47098559cae77c5401e1e6a3c0950c18044c38b5",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -6824,6 +6824,8 @@
     "app.doctor.checks -> app.adapters.system.host",
     "app.doctor.checks -> app.doctor",
     "app.doctor.checks -> app.doctor.models",
+    "app.doctor.checks -> app.foundation",
+    "app.doctor.checks -> app.foundation.url",
     "app.doctor.checks -> app.runtime",
     "app.doctor.checks -> app.runtime.settings",
     "app.doctor.checks -> app.runtime.topology",
