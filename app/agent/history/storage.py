@@ -249,11 +249,18 @@ class SqliteRecallRepository:
         """
         最近会话先走活动时间索引限量取候选，不扫描全库会话链。
         """
-        rows = connection.execute("SELECT * FROM sessions WHERE source NOT IN ('kanban','subagent','tool') ORDER BY last_active DESC LIMIT ?",
-                                  (query.limit + 15,))
+        where = ["source NOT IN ('kanban','subagent','tool')", "id<>?"]
+        parameters: list[Any] = [query.current_session_id]
+        for operator, bound in ((">=", query.after), ("<", query.before)):
+            if bound is not None:
+                where.append(f"started_at {operator} ?")
+                parameters.append(bound)
+        excluded = {lineage(connection, identity) for identity in query.exclude_session_ids}
+        order = "started_at ASC,id ASC" if query.sort == "oldest" else "last_active DESC,id DESC"
+        rows = connection.execute(f"SELECT * FROM sessions WHERE {' AND '.join(where)} ORDER BY {order}", parameters)
         results: list[dict[str, Any]] = []
         for row in rows:
-            if row['id'] == query.current_session_id:
+            if row['id'] == query.current_session_id or lineage(connection, row['id']) in excluded:
                 continue
             first, _ = bookends(connection, row['id'], 1, 0)
             results.append(dict(session_id=row['id'], title=row['title'], source=row['source'],

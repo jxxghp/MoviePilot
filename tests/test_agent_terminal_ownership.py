@@ -5,6 +5,7 @@
 import asyncio
 import os
 import shlex
+import signal
 import subprocess
 import sys
 from collections.abc import AsyncIterator
@@ -283,6 +284,73 @@ async def test_close_nonconvergence_preserves_record_for_retry(manager: _Termina
     assert session.status == "running"
     assert await manager.close_owner(owner)
     assert session.process.returncode is not None and handle not in manager._sessions
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="此场景依赖 POSIX 进程组信号")
+@pytest.mark.parametrize("persistent", [False, True])
+async def test_close_owner_retries_group_exit_permission_race(
+    manager: _TerminalSessionManager, monkeypatch: pytest.MonkeyPatch, persistent: bool,
+) -> None:
+    """
+    真实进程结束后的临时拒绝允许重试，持续拒绝则保留 owner 直到下一次成功收尾。
+    """
+    owner = _scope()
+    handle = (await _start(manager, owner))["session_id"]
+    await _finish(manager, owner, handle)
+    session = manager._sessions[handle]
+    attempts = []
+    original = os.killpg
+
+    def denied_while_exiting(pid: int, sig: int) -> None:
+        """
+        仅在本例的最终 KILL 上模拟内核退出窗口，不影响真实进程和其他信号。
+        """
+        if pid == session.pid and sig == signal.SIGKILL and (persistent or not attempts):
+            attempts.append(sig)
+            raise PermissionError("process group is exiting")
+        original(pid, sig)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "killpg", denied_while_exiting)
+        patch.setattr(terminal, "TERMINAL_KILL_GRACE_SECONDS", 0.01)
+        assert await manager.close_owner(owner) is not persistent
+        assert attempts
+        if persistent:
+            assert manager._sessions[handle] is session and session.owner is owner
+    assert await manager.close_owner(owner)
+    assert handle not in manager._sessions
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="此场景依赖 POSIX 进程组探测")
+async def test_retention_preserves_group_when_existence_probe_is_denied(
+    manager: _TerminalSessionManager, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    过期清理无法确认进程组消失时保留唯一归属记录，供关闭流程继续回收。
+    """
+    owner = _scope()
+    handle = (await _start(manager, owner))["session_id"]
+    await _finish(manager, owner, handle)
+    session = manager._sessions[handle]
+    session.updated_at = 0
+    original = os.killpg
+
+    def denied_probe(pid: int, sig: int) -> None:
+        """
+        仅拒绝本例进程组的存在性探测。
+        """
+        if pid == session.pid and sig == 0:
+            raise PermissionError("process group is exiting")
+        original(pid, sig)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "killpg", denied_probe)
+        manager._cleanup_finished_sessions_locked()
+        assert manager._sessions[handle] is session
+    assert await manager.close_owner(owner)
+    assert handle not in manager._sessions
 
 
 @pytest.mark.asyncio

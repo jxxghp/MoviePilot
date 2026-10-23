@@ -75,7 +75,9 @@ def test_remote_session_status_sends_usage_summary() -> None:
     远程会话状态回复包含用量、估算偏差和运行状态。
     """
     chain = MessageChain()
-    chain._user_sessions["10001"] = ("session-1", datetime.now())
+    chain._user_sessions[chain._session_user_key("10001", NotificationChannel.Telegram, "telegram-test")] = (
+        "session-1", datetime.now(),
+    )
     status = {
         "session_id": "session-1",
         "model": "gpt-4o-mini",

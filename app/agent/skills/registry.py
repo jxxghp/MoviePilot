@@ -669,7 +669,7 @@ class SkillHelper(metaclass=WeakSingleton):
         if not skill.repo_url or not skill.skill_path:
             return False, "技能来源信息不完整，无法安装"
 
-        repo = self._parse_market_repo(skill.repo_url)
+        repo = self._parse_market_repo(skill.path) if "/tree/" in skill.path else self._parse_market_repo(skill.repo_url)
         if not repo:
             return False, "技能市场地址无效"
 
@@ -1094,8 +1094,7 @@ class SkillHelper(metaclass=WeakSingleton):
         """
         下载市场仓库压缩包，并在缺省分支之间做回退尝试。
         """
-        branches = [repo.get("branch")] if repo.get("branch") else []
-        branches.extend([branch for branch in _DEFAULT_BRANCHES if branch not in branches])
+        branches = [repo["branch"]] if repo.get("branch") else list(_DEFAULT_BRANCHES)
         for branch in branches:
             archive_url = (
                 f"https://codeload.github.com/{repo['owner']}/{repo['repo']}/zip/refs/heads/{branch}"

@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 62
+version: 63
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -339,6 +339,14 @@ token exchange downloads retain their existing credential rules.
 - When a built-in Agent preview contains `result_id` and `next_offset`, use
   `read_tool_result` for the next page instead of repeating the operation. These
   receipt and result tools are internal to the Agent, not external MCP tools.
+
+## Agent Task And Conversation State
+
+- For `agent_task` updates, `enabled=null` preserves the current enabled state. Renaming a paused task does not resume its schedule.
+- Traditional message sessions are scoped by channel, configured source, and user ID. A stop, clear, status query, or confirmation targets the current source's session.
+- Background WebAgent completion appends the current turn to display history. Frontend complete snapshots keep their existing replacement contract.
+- File creation with `overwrite=false` rejects a concurrent creator. Versioned edits reject a peer's intervening write; reread the file and use its current SHA before retrying.
+- Market skill installation preserves an explicitly selected GitHub branch. If that branch is unavailable, treat installation as failed instead of silently switching branches.
 
 ## Subscription Identity And Workflow Recovery
 

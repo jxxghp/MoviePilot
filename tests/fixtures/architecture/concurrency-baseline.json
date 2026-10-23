@@ -667,6 +667,12 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/startup/initializers/agent.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "AgentInitializer._bind_runtime_data": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
   "app/startup/initializers/modules.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
       "stop_modules.run_step": 1

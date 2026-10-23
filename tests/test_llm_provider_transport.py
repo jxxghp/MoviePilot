@@ -99,7 +99,8 @@ def test_google_model_client_uses_adapter_args_and_closes_both_clients(
                         display_name="Gemini Test",
                         supported_actions=["generateContent"],
                     )
-                ]
+                ],
+                config={},
             )
 
     class FakeAsyncClient:

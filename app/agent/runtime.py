@@ -334,6 +334,8 @@ class AgentRuntimeManager:
         self.bundled_defaults_dir = bundled_defaults_dir or (Path(__file__).parent / "defaults")
         self._cache_lock = threading.Lock()
         self._cached_signature: Optional[tuple[tuple[str, int, int], ...]] = None
+        # 磁盘观测签名与已加载配置版本分开，检查新文件不能提前使旧配置命中。
+        self._observed_signature: Optional[tuple[tuple[str, int, int], ...]] = None
         self._cached_config: Optional[AgentRuntimeConfig] = None
         self._cached_signature_checked_at = 0.0
         self._signature_check_interval = 1.0
@@ -388,6 +390,7 @@ class AgentRuntimeManager:
         """
         with self._cache_lock:
             self._cached_signature = None
+            self._observed_signature = None
             self._cached_config = None
             self._cached_signature_checked_at = 0.0
             self._layout_ready = False
@@ -418,14 +421,14 @@ class AgentRuntimeManager:
         now = time.monotonic()
         with self._cache_lock:
             if (
-                self._cached_signature is not None
+                self._observed_signature is not None
                 and now - self._cached_signature_checked_at < self._signature_check_interval
             ):
-                return self._cached_signature
+                return self._observed_signature
 
         signature = self._build_signature()
         with self._cache_lock:
-            self._cached_signature = signature
+            self._observed_signature = signature
             self._cached_signature_checked_at = now
         return signature
 

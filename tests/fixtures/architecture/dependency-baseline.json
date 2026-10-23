@@ -481,13 +481,14 @@
         ]
       },
       {
-        "source": "app.modules.discord.discord",
-        "target": "discord",
-        "kind": "network_sdk",
         "bindings": [
           "from:discord.app_commands as app_commands",
           "import:discord as discord"
         ],
+        "fingerprint": "2761ef9a9e5a805bfb20ea832c5d34edea12db21ca3eb27c3db7ce512a5ee7f5",
+        "kind": "network_sdk",
+        "source": "app.modules.discord.discord",
+        "target": "discord",
         "uses": [
           "Discord.__init__|call:Client",
           "Discord.__init__|call:Intents.default",
@@ -528,8 +529,7 @@
           "Discord._sync_registered_commands|call:sync",
           "Discord._sync_registered_commands|call:wait_until_ready",
           "Discord.stop|call:close"
-        ],
-        "fingerprint": "2761ef9a9e5a805bfb20ea832c5d34edea12db21ca3eb27c3db7ce512a5ee7f5"
+        ]
       },
       {
         "bindings": [
@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9710,
-  "edge_sha256": "488e191954d9ab1e56db00a899877988a36d9e5c94e1ddd6ee40257a3b7b434c",
+  "edge_count": 9711,
+  "edge_sha256": "ab6b9c2a3353c8520468b3f7752ed1ed1c2c208a093afb50a7a5e6895d6f8ea0",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -10178,6 +10178,7 @@
     "app.startup.initializers.agent -> app.chain.message",
     "app.startup.initializers.agent -> app.runtime",
     "app.startup.initializers.agent -> app.runtime.events",
+    "app.startup.initializers.agent -> app.runtime.execution",
     "app.startup.initializers.agent -> app.runtime.log",
     "app.startup.initializers.agent -> app.runtime.settings",
     "app.startup.initializers.agent -> app.schemas",

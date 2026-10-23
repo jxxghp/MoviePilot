@@ -224,7 +224,7 @@ class ViewImageTool(MoviePilotTool):
             if has_file_path:
                 resolved_path, access_error = await self._check_local_file_access(
                     clean_file_path,
-                    operation="读取图片",
+                    operation="读取",
                 )
                 if access_error:
                     return self._failure("local_path_access_denied", access_error, source_type)

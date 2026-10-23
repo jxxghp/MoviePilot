@@ -669,8 +669,23 @@ class AgentMcpManager:
         session_manager = await _open_mcp_session(normalized_server)
         async with session_manager as session:
             await self.initialize_session(session)
-            result = await session.request("tools/list")
-        tools_payload = result.get("tools", []) if isinstance(result, dict) else []
+            tools_payload = []
+            cursors: set[str] = set()
+            params = None
+            for _page in range(100):
+                result = await session.request("tools/list", params) if params else await session.request("tools/list")
+                if not isinstance(result, dict) or not isinstance(result.get("tools", []), list):
+                    raise ValueError("MCP 工具列表响应格式无效")
+                tools_payload.extend(result.get("tools", []))
+                cursor = result.get("nextCursor")
+                if cursor is None or cursor == "":
+                    break
+                if not isinstance(cursor, str) or cursor in cursors:
+                    raise ValueError("MCP 工具列表分页游标无效或重复")
+                cursors.add(cursor)
+                params = {"cursor": cursor}
+            else:
+                raise ValueError("MCP 工具列表分页超过上限")
         tool_specs: list[AgentMcpToolSpec] = []
         for item in tools_payload:
             if not isinstance(item, dict) or not item.get("name"):

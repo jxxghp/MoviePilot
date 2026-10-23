@@ -4,6 +4,7 @@
 
 import asyncio
 import base64
+import json
 import mimetypes
 import re
 import threading
@@ -146,7 +147,7 @@ class MessageChain(ChainBase):
 
     _ai_prefix = "/ai"
     _no_ai_prefix = "/noai"
-    # 用户会话信息 {userid: (session_id, last_time)}
+    # 用户会话信息按渠道、接入源与用户组合键隔离，旧直接调用保留原始键。
     _user_sessions: Dict[Union[str, int], tuple[str, datetime]] = {}
     # 会话超时时间（分钟）
     _session_timeout_minutes: int = 24 * 60
@@ -186,10 +187,24 @@ class MessageChain(ChainBase):
         """
         用类级兼容映射构建可测试的用户会话服务。
         """
+        def expired(session_id: str, user_key: Union[str, int]) -> None:
+            """
+            映射键只隔离入口，会话回收仍使用真正的渠道用户身份。
+            """
+            user_id = user_key
+            if isinstance(user_key, str) and user_key.startswith("message:"):
+                try:
+                    identity = json.loads(user_key.removeprefix("message:"))
+                    if isinstance(identity, list) and len(identity) == 3 and isinstance(identity[2], str):
+                        user_id = identity[2]
+                except ValueError:
+                    pass
+            self._schedule_agent_session_clear(session_id, user_id)
+
         return MessageSessionService(
             sessions=self._user_sessions,
             timeout_minutes=self._session_timeout_minutes,
-            expired_handler=self._schedule_agent_session_clear,
+            expired_handler=expired,
         )
 
     def _plugin_input_interaction_handler(self) -> PluginInputInteractionHandler:
@@ -466,7 +481,7 @@ class MessageChain(ChainBase):
         if images or audio_refs or files or has_audio_input:
             return False
 
-        session_info = self._user_sessions.get(userid)
+        session_info = self._user_sessions.get(self._session_user_key(userid, channel, source))
         if not session_info:
             return False
         session_id, _ = session_info
@@ -965,7 +980,7 @@ class MessageChain(ChainBase):
             prompt=request.prompt,
             selected_label=option.label,
         )
-        self._bind_session_id(context.user_id, request.session_id)
+        self._bind_session_id(self._session_user_key(context.user_id, context.channel, context.source), request.session_id)
         return self._handle_ai_message(
             text=selected_text,
             channel=context.channel,
@@ -1005,6 +1020,18 @@ class MessageChain(ChainBase):
             text=feedback_text,
         )
 
+    @staticmethod
+    def _session_user_key(userid: Union[str, int], channel: NotificationChannel, source: Optional[str]) -> str:
+        """
+        以无歧义序列化生成渠道和接入源隔离的会话键，不回退读取旧裸用户绑定。
+
+        :param userid: 渠道内原始用户标识
+        :param channel: 接收消息的渠道
+        :param source: 该渠道的配置实例，未提供时使用空标识
+        :return: 内部会话映射键，不作为发送消息的用户ID
+        """
+        return "message:" + json.dumps([channel.value, source or "", str(userid)], ensure_ascii=False, separators=(",", ":"))
+
     def _get_or_create_session_id(self, userid: Union[str, int]) -> str:
         """
         获取或创建会话ID
@@ -1033,7 +1060,7 @@ class MessageChain(ChainBase):
         :param userid: 用户 ID
         :param session_id: 智能体会话 ID
         """
-        self._bind_session_id(userid, session_id)
+        self._bind_session_id(self._session_user_key(userid, NotificationChannel.WebAgent, "web-agent"), session_id)
 
     def _record_user_message(
             self,
@@ -1084,7 +1111,7 @@ class MessageChain(ChainBase):
         """
         清除用户会话（远程命令接口）
         """
-        session_id = self._message_session_service().clear(userid)
+        session_id = self._message_session_service().clear(self._session_user_key(userid, channel, source))
         if session_id:
             logger.info(f"已清除用户 {userid} 的会话: {session_id}")
 
@@ -1124,7 +1151,7 @@ class MessageChain(ChainBase):
         停止后用户仍可继续对话。
         """
         # 查找用户的会话ID（不弹出，保留会话）
-        session_info = self._message_session_service().get(userid)
+        session_info = self._message_session_service().get(self._session_user_key(userid, channel, source))
         if session_info:
             session_id, _ = session_info
             manager = get_running_agent_manager()
@@ -1303,7 +1330,7 @@ class MessageChain(ChainBase):
         """
         查询当前用户的智能体会话状态。
         """
-        session_info = self._message_session_service().get(userid)
+        session_info = self._message_session_service().get(self._session_user_key(userid, channel, source))
         if not session_info:
             self.post_message(
                 Message(
@@ -1408,8 +1435,9 @@ class MessageChain(ChainBase):
                 )
                 return False
 
-            session_id = session_id or self._get_or_create_session_id(userid)
-            self._bind_session_id(userid, session_id)
+            session_key = self._session_user_key(userid, channel, source)
+            session_id = session_id or self._get_or_create_session_id(session_key)
+            self._bind_session_id(session_key, session_id)
 
             # 将可直接输入给 LLM 的附件统一转换为 data URL
             original_images = images

@@ -976,7 +976,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         if cancel_requested is not None:
             cancel_requested.discard(task)
         record = self._tasks.get(task_id)
-        if record:
+        if record and record.task is task:
             record.finished_at = datetime.now()
         if task.cancelled():
             return
@@ -1005,12 +1005,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 name=task_id,
             )
             record.task = task
-            task.add_done_callback(
-                lambda finished_task: self._mark_task_finished(
-                    task_id,
-                    finished_task,
-                )
-            )
+            task.add_done_callback(self._task_finished_callback(task_id))
             self._tasks[task_id] = record
             records.append(record)
             logger.info(
@@ -1109,10 +1104,14 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         """
         有界取消旧任务后复用 task_id 启动更新后的子代理任务。
         """
+        if not self._accepting_tasks or self._tasks.get(record.task_id) is not record:
+            return False, "子代理任务控制器正在关闭或任务已被回收，更新被拒绝。"
         if not record.task.done():
             pending = await self._cancel_records([record])
             if pending:
                 return False, "旧子代理任务未能在取消窗口内收敛，更新被拒绝。"
+        if not self._accepting_tasks or self._tasks.get(record.task_id) is not record:
+            return False, "子代理任务控制器正在关闭或任务已被回收，更新被拒绝。"
         record.description = description.strip()
         record.terminal_sessions = terminal_sessions or []
         record.started_at = None

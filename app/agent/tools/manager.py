@@ -322,6 +322,8 @@ class MoviePilotToolsManager:
         """
         根据字段类型规范化单个值
         """
+        if value is None:
+            return None
         if field_type == "integer" and isinstance(value, str):
             try:
                 return int(value)

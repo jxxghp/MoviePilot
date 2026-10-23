@@ -348,11 +348,9 @@ class ApplyPatchTool(MoviePilotTool):
                         f"错误：文件 {resolved_path} 在应用补丁期间被创建，拒绝覆盖。"
                         "请确认文件状态后重新应用补丁。"
                     )
-                await self.run_blocking(
-                    "default", atomic_write_text, local_path, new_content, sha256
-                )
                 new_sha256 = await self.run_blocking(
-                    "default", calculate_file_sha256, local_path
+                    "default", atomic_write_text, local_path, new_content, sha256,
+                    overwrite=file_patch.operation != "add",
                 )
                 verb = "新增" if file_patch.operation == "add" else "更新"
                 results.append(f"{verb} {resolved_path}（sha256={new_sha256}）")

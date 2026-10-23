@@ -707,20 +707,38 @@ class _TerminalSessionManager:
         同一终端的关闭串行执行，真实收尾前不丢弃进程或输出读取器。
         """
         async with session.termination_lock:
-            if session.status == "running":
+            if session.status == "running" or os.name == "posix":
                 session.kill_requested = True
                 self._send_signal(session, signal.SIGTERM)
             if not await self._wait_for_exit(session):
-                if session.status == "running":
+                if session.status == "running" or os.name == "posix":
                     self._send_signal(session, _KILL_SIGNAL)
                 if not await self._wait_for_exit(session):
                     logger.error(f"终端会话关闭超时: session_id={session.session_id}, pid={session.pid}")
                     return False
+            # 组长先结束也不代表组内后代已退出；关闭该owner时完成整组最终收口。
+            if os.name == "posix" and not await self._kill_remaining_process_group(session):
+                return False
             if any(not task.done() for task in session.reader_tasks):
                 return False
             session.finish_output()
             session.close_pty()
             return True
+
+    async def _kill_remaining_process_group(self, session: _TerminalSession) -> bool:
+        """
+        有界重试组长退出后的进程组收口，兼容 macOS 后代退出期间的临时权限错误。
+        """
+        deadline = asyncio.get_running_loop().time() + TERMINAL_KILL_GRACE_SECONDS
+        while True:
+            try:
+                self._send_signal(session, _KILL_SIGNAL)
+                return True
+            except PermissionError:
+                if asyncio.get_running_loop().time() >= deadline:
+                    logger.error(f"终端进程组关闭被拒绝: session_id={session.session_id}, pid={session.pid}")
+                    return False
+                await asyncio.sleep(TERMINAL_PTY_POLL_INTERVAL)
 
     @staticmethod
     async def _wait_for_exit(session: _TerminalSession) -> bool:
@@ -830,7 +848,7 @@ class _TerminalSessionManager:
     @staticmethod
     def _send_signal(session: _TerminalSession, sig: int) -> None:
         """
-        优先向进程组发信号，失败时回退到单进程。
+        按平台向所属进程组或进程发信号，已消失的目标视为收尾完成。
         """
         try:
             if os.name == "posix":
@@ -851,6 +869,21 @@ class _TerminalSessionManager:
         """
         return sum(1 for session in self._sessions.values() if session.status == "running")
 
+    @staticmethod
+    def _process_group_exists(session: _TerminalSession) -> bool:
+        """
+        保留组长退出但仍有后代的终端归属，避免过期清理先丢弃唯一收口句柄。
+        """
+        if os.name != "posix":
+            return session.status == "running"
+        try:
+            os.killpg(session.pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+
     def _cleanup_finished_sessions_locked(self) -> None:
         """
         清理已经结束且超过保留时间的会话。
@@ -861,6 +894,7 @@ class _TerminalSessionManager:
             for session_id, session in self._sessions.items()
             if session.status != "running"
             and now - session.updated_at > TERMINAL_RETENTION_SECONDS
+            and not self._process_group_exists(session)
         ]
         for session_id in expired_ids:
             session = self._sessions.pop(session_id)
