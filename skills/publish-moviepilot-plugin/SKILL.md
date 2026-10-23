@@ -1,6 +1,6 @@
 ---
 name: publish-moviepilot-plugin
-version: 5
+version: 6
 description: >-
   Use this skill when the user asks to publish, upload, sync, pull, push, diff,
   or maintain a MoviePilot local plugin in a GitHub repository. Covers using the
@@ -133,6 +133,10 @@ Options:
 - `--exclude PATTERN`: add an extra ignore pattern.
 - `--dry-run`: print planned changes without writing.
 - `--proxy URL`: use an explicit HTTP/HTTPS proxy for GitHub API requests.
+
+`push` 通过 Git Data API（blob → tree → commit → 移动分支引用）提交：无论一次改动
+多少文件都只产生**一个 commit**，CI 只会触发一次、diff 完整，`package` 版本与源码
+版本不会出现中间态；返回 JSON 中带 `commit_sha`。空仓库会自动创建根提交并建立分支。
 
 ## GitHub Release 与 README
 
