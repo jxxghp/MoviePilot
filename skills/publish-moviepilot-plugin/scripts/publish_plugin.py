@@ -50,6 +50,7 @@ PACKAGE_BY_VERSION = {
     "legacy": ("package.json", "plugins"),
     "v1": ("package.json", "plugins"),
     "v2": ("package.v2.json", "plugins.v2"),
+    "v3": ("package.v3.json", "plugins.v3"),
 }
 TOKEN_ENV_NAMES = ("MOVIEPILOT_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN")
 DEFAULT_EXCLUDES = (
@@ -167,6 +168,8 @@ class Layout:
         """
         返回布局版本标识。
         """
+        if self.plugin_root == "plugins.v3":
+            return "v3"
         if self.plugin_root == "plugins.v2":
             return "v2"
         return "legacy"
@@ -714,7 +717,7 @@ def resolve_layout(package_version: str, local_repo: Path, plugin_id: str) -> La
     """
     根据参数和本地文件推断插件仓库布局。
 
-    :param package_version: v2、legacy 或 auto
+    :param package_version: v3、v2、legacy 或 auto
     :param local_repo: 本地仓库目录
     :param plugin_id: 插件 ID
     :return: 布局描述
@@ -723,8 +726,11 @@ def resolve_layout(package_version: str, local_repo: Path, plugin_id: str) -> La
     if normalized in PACKAGE_BY_VERSION:
         package_file, plugin_root = PACKAGE_BY_VERSION[normalized]
         return Layout(package_file=package_file, plugin_root=plugin_root)
+    v3_dir = local_repo / "plugins.v3" / plugin_id.lower()
     v2_dir = local_repo / "plugins.v2" / plugin_id.lower()
     legacy_dir = local_repo / "plugins" / plugin_id.lower()
+    if (local_repo / "package.v3.json").exists() or v3_dir.exists():
+        return Layout(package_file="package.v3.json", plugin_root="plugins.v3")
     if (local_repo / "package.v2.json").exists() or v2_dir.exists():
         return Layout(package_file="package.v2.json", plugin_root="plugins.v2")
     if (local_repo / "package.json").exists() or legacy_dir.exists():
@@ -1328,7 +1334,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", required=True, help="GitHub 仓库，格式 owner/repo")
     parser.add_argument("--plugin-id", default="", help="插件类名 ID")
     parser.add_argument("--local-repo", default="", help="本地插件仓库目录")
-    parser.add_argument("--package-version", default="auto", help="auto、v2 或 legacy")
+    parser.add_argument("--package-version", default="auto", help="auto、v3、v2 或 legacy")
     parser.add_argument("--branch", default=DEFAULT_BRANCH, help="目标分支")
     parser.add_argument("--token", default="", help="GitHub token，默认读取配置或环境变量")
     parser.add_argument("--message", default="", help="提交消息")
