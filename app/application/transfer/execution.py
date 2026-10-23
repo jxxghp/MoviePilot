@@ -656,6 +656,19 @@ class TransferManualReviewResult:
 
 
 @dataclass(frozen=True, slots=True)
+class TransferManualReviewDiscardResult:
+    """描述人工明确放弃一个不确定整理任务的结果。
+
+    该操作只解除 durable task 及其步骤证据；绝不执行、回滚或删除任何媒体文件。
+    """
+
+    task_id: str
+    operation_id: str
+    discarded: bool
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
 class TransferManualReviewSource:
     """
     提供人工复核任务的最小源文件身份。
@@ -1036,6 +1049,16 @@ class TransferExecutionRepository(Protocol):
         :return: 已持久审计的判定、复核版本及后续步骤状态
         """
 
+    def discard_manual_review(
+            self,
+            *,
+            task_id: str,
+            operation_id: str,
+            actor: str,
+            reason: str,
+    ) -> TransferManualReviewDiscardResult:
+        """放弃无租约人工复核任务，且不得触碰源文件或目标文件。"""
+
     def mark_manual_review(
             self,
             *,
@@ -1356,6 +1379,24 @@ class TransferExecutionCommand:
             result=result,
         )
 
+    def discard_manual_review(
+            self,
+            *,
+            task_id: str,
+            operation_id: str,
+            actor: str,
+            reason: str,
+    ) -> TransferManualReviewDiscardResult:
+        """显式解除卡住的人工复核任务；文件状态仍由用户自行处理。"""
+        if not all((task_id, operation_id, actor)):
+            raise ValueError("放弃人工复核缺少任务、步骤或操作者")
+        return self._repository.discard_manual_review(
+            task_id=task_id,
+            operation_id=operation_id,
+            actor=actor,
+            reason=reason,
+        )
+
     def manual_review(
             self,
             *,
@@ -1467,6 +1508,7 @@ __all__ = [
     "TransferExecutionState",
     "TransferExecutionStep",
     "TransferManualReviewDecision",
+    "TransferManualReviewDiscardResult",
     "TransferManualReviewPage",
     "TransferManualReviewQuery",
     "TransferManualReviewResult",

@@ -545,6 +545,8 @@ SCHEMA_EXPORTS = {
     'TransferJob': ('app.schemas.transfer', 'TransferJob'),
     'TransferJobTask': ('app.schemas.transfer', 'TransferJobTask'),
     'TransferManualReviewData': ('app.schemas.transfer', 'TransferManualReviewData'),
+    'TransferManualReviewDiscardData': ('app.schemas.transfer', 'TransferManualReviewDiscardData'),
+    'TransferManualReviewDiscardRequest': ('app.schemas.transfer', 'TransferManualReviewDiscardRequest'),
     'TransferManualReviewPageData': ('app.schemas.transfer', 'TransferManualReviewPageData'),
     'TransferManualReviewRequest': ('app.schemas.transfer', 'TransferManualReviewRequest'),
     'TransferManualReviewSourceData': ('app.schemas.transfer', 'TransferManualReviewSourceData'),

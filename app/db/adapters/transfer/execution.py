@@ -27,6 +27,7 @@ from app.application.transfer.execution import (
     TransferExecutionStep,
     TransferFailureDiscardResult,
     TransferManualReviewDecision,
+    TransferManualReviewDiscardResult,
     TransferManualReviewPage,
     TransferManualReviewResult,
     TransferManualReviewSource,
@@ -1948,6 +1949,42 @@ class TransactionalTransferExecutionRepository:
                 )
                 transaction.commit()
                 return resolved
+            except Exception:
+                self._rollback(transaction)
+                raise
+
+    def discard_manual_review(
+            self,
+            *,
+            task_id: str,
+            operation_id: str,
+            actor: str,
+            reason: str,
+    ) -> TransferManualReviewDiscardResult:
+        """原子解除人工复核占用；不会执行任何文件系统或 provider 操作。"""
+        now_utc, _updated_at = self._times()
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                pending_oper = TransferPendingOper(session)
+                pending = pending_oper.get_by_task_id(task_id=task_id)
+                if pending is None:
+                    return TransferManualReviewDiscardResult(task_id, operation_id, True, "整理任务已被清理")
+                if TransferExecutionState(pending.execution_state) is not TransferExecutionState.MANUAL_REVIEW:
+                    return TransferManualReviewDiscardResult(task_id, operation_id, False, "整理任务状态已变化，请刷新后重试")
+                if not self._clear_inactive_claim(session, pending=pending, now_utc=now_utc):
+                    return TransferManualReviewDiscardResult(task_id, operation_id, False, "整理任务正在处理中，暂时无法放弃")
+                step = TransferExecutionStepOper(session).get_by_operation_id(operation_id=operation_id)
+                if (
+                        step is None
+                        or step.task_id != task_id
+                        or TransferStepState(step.state) is not TransferStepState.MANUAL_REVIEW
+                ):
+                    return TransferManualReviewDiscardResult(task_id, operation_id, False, "复核步骤已变化，请刷新后重试")
+                TransferExecutionStepOper(session).stage_delete_task(task_id=task_id)
+                session.delete(pending)
+                transaction.commit()
+                return TransferManualReviewDiscardResult(task_id, operation_id, True, "已放弃整理任务；未修改任何文件")
             except Exception:
                 self._rollback(transaction)
                 raise

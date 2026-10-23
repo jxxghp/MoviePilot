@@ -20,7 +20,10 @@ from app.application.transfer.execution import (
     TransferManualReviewResult,
     TransferStepResult,
 )
-from app.schemas.transfer import TransferManualReviewRequest
+from app.schemas.transfer import (
+    TransferManualReviewDiscardRequest,
+    TransferManualReviewRequest,
+)
 
 
 class _ManualReviewCommand:
@@ -42,6 +45,14 @@ class _ManualReviewCommand:
         """
         记录参数，并按测试配置返回或抛出结果。
         """
+        self.calls.append((self._repository, kwargs))
+        if self.error:
+            raise self.error
+        assert self.result is not None
+        return self.result
+
+    def discard_manual_review(self, **kwargs) -> object:
+        """记录不会触碰文件的放弃请求。"""
         self.calls.append((self._repository, kwargs))
         if self.error:
             raise self.error
@@ -231,3 +242,37 @@ def test_manual_review_conflict_returns_http_409(monkeypatch) -> None:
     assert error.value.status_code == 409
     assert error.value.detail == "整理任务状态已变化，请刷新后重试"
     assert _ManualReviewCommand.calls[0][1]["actor"] == "11"
+
+
+def test_discard_manual_review_only_releases_the_durable_task(monkeypatch) -> None:
+    """放弃端点必须携带当前 operation，且不接受任何文件操作参数。"""
+    repository = _install_command(monkeypatch)
+    _ManualReviewCommand.result = SimpleNamespace(
+        task_id="task-3",
+        operation_id="op-3",
+        discarded=True,
+        message="已放弃整理任务；未修改任何文件",
+    )
+
+    response = transfer_endpoint.discard_transfer_manual_review(
+        task_id="task-3",
+        review=TransferManualReviewDiscardRequest(operation_id="op-3", reason="外部状态无法确认"),
+        current_user=SimpleNamespace(name="reviewer", username=None, id=9),
+        repository=repository,
+    )
+
+    assert _ManualReviewCommand.calls == [
+        (repository, {
+            "task_id": "task-3",
+            "operation_id": "op-3",
+            "actor": "reviewer",
+            "reason": "外部状态无法确认",
+        }),
+    ]
+    assert response.data is not None
+    assert response.data.model_dump() == {
+        "task_id": "task-3",
+        "operation_id": "op-3",
+        "discarded": True,
+        "message": "已放弃整理任务；未修改任何文件",
+    }
