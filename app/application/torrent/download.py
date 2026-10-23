@@ -30,7 +30,7 @@ from app.foundation.url import UrlUtils
 from app.runtime.cache import FileCache, TTLCache
 from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
-from app.schemas.types import MediaType, SystemConfigKey
+from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 _SIZE_UNIT = 1024 * 1024
 
@@ -912,10 +912,18 @@ class TorrentHelper:
     ) -> Tuple[bool, str]:
         """
         判断媒体 ID 冲突时是否存在足以覆盖候选识别的同作品证据。
+
+        TMDB 的电影与电视剧数字 ID 不可跨类型比较；类型冲突时仍需资源精确年份、
+        其他共同标识或一致的作品元数据，不能仅凭相同 TMDB ID 覆盖候选。
+
+        :return: 是否有同作品证据，以及用于诊断的证据或拒绝原因
         """
         target_identity = resolve_media_identity(media=target_mediainfo)
         candidate_identity = resolve_media_identity(media=candidate_mediainfo)
-        if all(target_identity) and target_identity == candidate_identity:
+        same_type = target_mediainfo.type == candidate_mediainfo.type
+        if all(target_identity) and target_identity == candidate_identity and (
+                same_type or target_identity[0] != MediaSource.TMDB
+        ):
             return True, f"媒体身份 {target_identity[0]}:{target_identity[1]}"
 
         torrent_year = str(getattr(torrent_meta, "year", None) or "")[:4]
@@ -931,6 +939,8 @@ class TorrentHelper:
             return True, f"资源年份 {torrent_year}"
 
         for field in ("tmdb_id", "imdb_id", "tvdb_id", "douban_id", "bangumi_id"):
+            if field == "tmdb_id" and not same_type:
+                continue
             target_id = getattr(target_mediainfo, field, None)
             candidate_id = getattr(candidate_mediainfo, field, None)
             if target_id and candidate_id and str(target_id) == str(candidate_id):

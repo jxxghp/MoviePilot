@@ -192,15 +192,19 @@ def _reconcile_candidate_media(
     context: Context,
 ) -> Optional[MediaInfo]:
     """
-    在推断媒体 ID 冲突时，以订阅目标对候选标题做严格复核。
+    在推断媒体 ID 或类型冲突时，以订阅目标对候选标题做严格复核。
 
-    标题携带明确媒体身份或目标缺少同来源 ID 时保持严格拒绝；只有普通
-    标题推断产生冲突且标题、别名、类型和年份复核通过时才回填订阅目标。
+    标题携带明确媒体身份或目标缺少可比较身份时保持严格拒绝；只有普通
+    标题推断产生冲突且标题、别名、类型和同作品证据复核通过时才回填订阅目标。
+    电影和电视剧可能共用数字 ID，因此身份相同时仍须复核类型冲突。
     """
     candidate_source, candidate_id = resolve_media_identity(media=candidate_mediainfo)
     target_source, target_id = resolve_media_identity(media=target_mediainfo)
+    type_conflict = candidate_mediainfo.type != target_mediainfo.type
     conflicts = []
-    if candidate_source and candidate_id and (candidate_source != target_source or candidate_id != target_id):
+    if candidate_source and candidate_id and (
+        candidate_source != target_source or candidate_id != target_id or type_conflict
+    ):
         conflicts.append(
             (
                 str(candidate_source),
@@ -215,6 +219,11 @@ def _reconcile_candidate_media(
         f"{source} {candidate_id} != {target_id if target_id is not None else '缺失'}"
         for source, candidate_id, target_id in conflicts
     )
+    if type_conflict:
+        conflict_text = (
+            f"媒体类型 {(candidate_mediainfo.type or MediaType.UNKNOWN).value} != "
+            f"{(target_mediainfo.type or MediaType.UNKNOWN).value}；{conflict_text}"
+        )
     if any(target_id is None for _, _, target_id in conflicts):
         logger.debug(
             f"{torrent_info.site_name} - {torrent_info.title} 候选媒体ID与订阅目标不可比较：{conflict_text}"
@@ -615,6 +624,8 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
     ) -> _MatchOutcome:
         """
         在单条订阅准入期间完成匹配、下载和完成判定。
+
+        候选推断的媒体类型与身份一并严格复核，复核通过后再应用目标季集范围。
         """
         if execution_context.should_stop():
             return "skipped"
@@ -735,8 +746,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     _context.media_info_is_target = True
 
                 if torrent_mediainfo and resolve_media_identity(media=torrent_mediainfo)[1]:
-                    if torrent_mediainfo.type != mediainfo.type:
-                        continue
                     torrent_mediainfo = self._SubscribeChain__reconcile_candidate_media(
                         target_mediainfo=mediainfo,
                         candidate_mediainfo=cast(MediaInfo, torrent_mediainfo),
