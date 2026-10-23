@@ -1,5 +1,5 @@
 """
-验证本地诊断报告格式、数据库损坏与备份可用性判定。
+验证本地诊断报告格式、数据库损坏与备份可用性判定、日志凭据遮盖。
 """
 
 from __future__ import annotations
@@ -401,3 +401,30 @@ def test_doctor_ignores_errors_outside_log_window(tmp_path, monkeypatch):
     assert runner.report.find("logs.moviepilot.recent_errors") is None
     assert runner.report.find("logs.recent") is not None
     assert runner.report.status.value == "healthy"
+
+
+def test_doctor_masks_url_credentials_in_recent_log_findings(tmp_path, monkeypatch):
+    """
+    诊断报告引用的日志行应遮盖 URL 查询凭据与连接串口令，保留主机和参数名。
+    """
+    monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
+    app_log = settings.LOG_PATH / "moviepilot.log"
+    app_log.parent.mkdir(parents=True, exist_ok=True)
+    app_log.write_text(
+        f"【ERROR】{_current_log_timestamp()} - rss.py - 获取RSS失败：请求返回空值，"
+        "URL: https://example.com/torrentrss.php?id=1&passkey=SUPERSECRET&isdownload=0\n"
+        f"【ERROR】{_current_log_timestamp()} - database.py - 连接数据库失败 "
+        "postgres://moviepilot:DBPASSWORD@127.0.0.1:5432/moviepilot\n",
+        encoding="utf-8",
+    )
+
+    runner = DoctorRunner()
+    checks._check_logs(runner)
+
+    finding = runner.report.find("logs.moviepilot.recent_errors")
+    assert finding is not None
+    assert "SUPERSECRET" not in finding.detail
+    assert "DBPASSWORD" not in finding.detail
+    assert "passkey=<REDACTED>" in finding.detail
+    assert "id=1" in finding.detail
+    assert "postgres://moviepilot:<REDACTED>@127.0.0.1:5432/moviepilot" in finding.detail

@@ -26,6 +26,7 @@ from app.adapters.system.backup.database import verify_database_backup
 from app.adapters.system.backup.files import BackupFiles
 from app.adapters.system.host import SystemUtils
 from app.doctor.models import DoctorFinding, DoctorFindingStatus, DoctorReport, DoctorSeverity
+from app.foundation.url import URL_QUERY_CREDENTIAL_PATTERN, URL_USERINFO_CREDENTIAL_PATTERN
 from app.runtime.settings import get_runtime_setting, update_runtime_setting
 from app.runtime.topology import process_topology_issue
 
@@ -69,6 +70,9 @@ SENSITIVE_PATTERNS = (
     re.compile(r"(?i)(api[_-]?token|token|password|secret|cookie)(\s*[:=]\s*)[^\s&]+"),
     re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+    # 站点 RSS 与接口地址的凭据常以 passkey、sign 等查询参数或连接串口令出现，参数名本身需要保留供定位。
+    URL_QUERY_CREDENTIAL_PATTERN,
+    URL_USERINFO_CREDENTIAL_PATTERN,
 )
 
 

@@ -11,7 +11,7 @@ import dateutil.parser
 from lxml import etree
 
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.foundation.url import UrlUtils
+from app.foundation.url import UrlUtils, mask_url_credentials
 from app.runtime.log import logger
 
 
@@ -435,15 +435,15 @@ class RssHelper:
                 headers=headers,
             )
             if not ret:
-                logger.error(f"获取RSS失败：请求返回空值，URL: {url}")
+                logger.error(f"获取RSS失败：请求返回空值，URL: {mask_url_credentials(url)}")
                 return False
         except Exception as err:
-            logger.error(f"获取RSS失败：{str(err)} - {traceback.format_exc()}")
+            logger.error(mask_url_credentials(f"获取RSS失败：{str(err)} - {traceback.format_exc()}"))
             return False
 
         if ret:
             if ret.status_code != 200:
-                logger.error(f"RSS请求失败，状态码: {ret.status_code}, URL: {url}")
+                logger.error(f"RSS请求失败，状态码: {ret.status_code}, URL: {mask_url_credentials(url)}")
                 return False
             ret_xml = None
             root = None
