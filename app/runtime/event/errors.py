@@ -19,7 +19,7 @@ _MAX_REPORTED_ERRORS = 4096
 
 class EventErrorPolicy:
     """
-    隔离处理器异常，并阻止 SystemError 处理失败再次广播。
+    隔离处理器异常，并让 SystemError 处理失败只记录日志。
     """
 
     def __init__(
@@ -68,9 +68,16 @@ class EventErrorPolicy:
 
         Outbox 仍按严格回执重试和结算；去重只作用于本进程的系统提示及错误广播，
         不吞掉原处理器异常，也不把未完成的持久事件误标为完成。
+        SystemError 处理器自身失败时只记录日志，避免错误通知再次触发故障依赖。
         """
         trace = traceback.format_exc()
         logger.error("%s 事件处理出错：%s - %s", module_name, str(error), trace)
+        if event.event_type == EventType.SystemError:
+            logger.error(
+                f"SystemError 处理器再次失败，仅记录日志并停止错误通知及递归广播："
+                f"{class_name}.{method_name}"
+            )
+            return
         if self._is_repeated_error(
                 event, f"{module_name}.{class_name}.{method_name}", error
         ):
@@ -84,13 +91,6 @@ class EventErrorPolicy:
                 )
             except Exception as notify_error:
                 logger.error("发送事件错误通知失败：%s", str(notify_error))
-        if event.event_type == EventType.SystemError:
-            logger.error(
-                "SystemError 处理器再次失败，停止错误事件递归广播：%s.%s",
-                class_name,
-                method_name,
-            )
-            return
         self._emit_system_error(
             {
                 "type": "event",

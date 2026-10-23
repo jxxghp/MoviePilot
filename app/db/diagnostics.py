@@ -2,8 +2,9 @@
 数据库错误诊断。
 
 把驱动层的错误分类字段（sqlite3 / psycopg2 / asyncpg 各不相同）提取成统一结构，
-并挂到引擎的异常事件上，使排障不依赖于阅读原始驱动异常。
+并挂到引擎的异常事件上；SQLite I/O 故障还会使坏连接失效，避免连接池持续复用。
 """
+import sqlite3
 from typing import Any, Optional
 
 from sqlalchemy import event
@@ -11,6 +12,9 @@ from sqlalchemy.engine import Engine as SQLAlchemyEngine
 from sqlalchemy.engine import ExceptionContext
 
 from app.runtime.log import logger
+
+# SQLite 扩展错误码的低 8 位是主错误码，覆盖短读、读失败和写失败等 I/O 子类。
+_SQLITE_PRIMARY_ERROR_MASK = 0xFF
 
 
 def _database_error_metadata(error: BaseException) -> Optional[dict[str, Any]]:
@@ -41,13 +45,23 @@ def _database_error_metadata(error: BaseException) -> Optional[dict[str, Any]]:
 
 def _log_database_error(exception_context: ExceptionContext) -> None:
     """
-    记录非敏感驱动错误码，并保持 SQLAlchemy 原有异常传播。
+    记录非敏感驱动错误码，并让 SQLAlchemy 淘汰发生 SQLite I/O 故障的连接。
+
+    原事务仍向调用方抛错，不在驱动层重放写操作；后续独立事务重新连接。
+    锁争用、约束冲突和 PostgreSQL 错误保持方言原有的断连判定。
     """
     metadata = _database_error_metadata(exception_context.original_exception)
     if not metadata:
         return
 
     dialect = exception_context.dialect
+    error_code = metadata.get("error_code")
+    if (
+        dialect.name == "sqlite"
+        and isinstance(error_code, int)
+        and error_code & _SQLITE_PRIMARY_ERROR_MASK == sqlite3.SQLITE_IOERR
+    ):
+        exception_context.is_disconnect = True
     fields = {
         "database": dialect.name,
         "driver": dialect.driver,
@@ -60,6 +74,6 @@ def _log_database_error(exception_context: ExceptionContext) -> None:
 
 def _register_database_error_logging(engine: SQLAlchemyEngine) -> None:
     """
-    为主程序 Engine 注册统一的底层驱动错误诊断。
+    为宿主与插件 Engine 注册统一的驱动错误诊断和 SQLite 坏连接失效策略。
     """
     event.listen(engine, "handle_error", _log_database_error)

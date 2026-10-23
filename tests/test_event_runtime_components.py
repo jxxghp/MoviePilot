@@ -298,7 +298,7 @@ def test_plugin_resolver_does_not_materialize_manager(monkeypatch) -> None:
 
 def test_system_error_failure_does_not_rebroadcast() -> None:
     """
-    SystemError 处理器自身失败时只能通知和日志降级，不能再次发送事件。
+    SystemError 处理器自身失败时只能日志降级，不能再次调用通知或发送事件。
     """
     notifier = Mock()
     emit = Mock()
@@ -315,7 +315,7 @@ def test_system_error_failure_does_not_rebroadcast() -> None:
         error=RuntimeError("broken"),
     )
 
-    notifier.assert_called_once()
+    notifier.assert_not_called()
     emit.assert_not_called()
 
 
