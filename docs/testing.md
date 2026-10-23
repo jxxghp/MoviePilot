@@ -62,6 +62,12 @@ focused 测试验证，不要求启动产品全套测试。
 提交失败与取消后的重试，以及关闭超时保留资源。`tests/test_telegram.py` 覆盖海报失败后的文本
 兜底、会话/话题/按钮保留、429 不追加请求，以及发送失败不能被 outbox 当作成功确认。
 
+`tests/test_db_error_diagnostics.py` 在临时 SQLite 的同步及异步连接池中注入
+`SQLITE_IOERR_SHORT_READ`：失败事务保留原始异常、不自动重放写入，后续独立事务
+使用新连接恢复；锁争用和约束错误不触发额外的连接失效。
+`tests/test_event_runtime_components.py` 验证 `SystemError` 处理器失败时只记日志，
+不再调用通知回调或派生错误广播。此回归不模拟真实磁盘故障，也不保证持续 I/O 故障时数据库可用。
+
 ## 隔离模型（`tests/conftest.py`）
 
 收集任何测试模块、`import app.*` **之前**，conftest 完成两件事：
