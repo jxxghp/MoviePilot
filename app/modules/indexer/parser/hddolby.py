@@ -48,13 +48,17 @@ class HDDolbySiteUserInfo(SiteParserBase):
 
     def _parse_site_page(self, html_text: SitePage) -> None:
         """
-        获取站点页面地址。
+        使用资源声明的 API 基础地址配置用户资料和做种接口。
+
+        未配置 api_url 时保留旧站的 api 子域，前端地址继续用于读取站点消息。
+
+        :param html_text: API 模式不使用首页内容
         """
-        # 更换api地址
-        self._base_url = f"https://api.{site_rules.extract_domain(self._base_url)}"
+        api_url = self._api_url or f"https://api.{site_rules.extract_domain(self._base_url)}/api/v1"
+        self._base_url = f"{api_url.rstrip('/')}/"
         self._user_traffic_page = None
         self._user_detail_page = None
-        self._user_basic_page = "api/v1/user/data"
+        self._user_basic_page = "user/data"
         self._user_basic_params = {}
         self._user_basic_headers = {
             "Content-Type": "application/json",
@@ -63,7 +67,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
         self._sys_mail_unread_page = None
         self._user_mail_unread_page = None
         self._mail_unread_params = {}
-        self._torrent_seeding_page = "api/v1/user/peers"
+        self._torrent_seeding_page = "user/peers"
         self._torrent_seeding_params = {}
         self._torrent_seeding_headers = {
             "Content-Type": "application/json",

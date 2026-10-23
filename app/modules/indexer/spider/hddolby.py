@@ -73,9 +73,12 @@ class HddolbySpider:
         """
         return cls._size
 
-    def __init__(self, indexer: dict[str, Any]):
+    def __init__(self, indexer: dict[str, Any]) -> None:
         """
         使用站点配置初始化 HDDolby API 请求上下文。
+
+        :param indexer: 合并认证信息的索引配置；api_url 可覆盖包含版本路径的 API 基础地址，
+            未配置时沿用旧站的 api 子域
         """
         self.systemconfig = get_configured_system_config()
         if indexer:
@@ -89,7 +92,10 @@ class HddolbySpider:
             self._ua = indexer.get('ua')
             self._apikey = indexer.get('apikey')
             self._timeout = indexer.get('timeout') or 15
-            self._searchurl = f"https://api.{self._domain_host}/api/v1/torrent/search"
+            api_url = str(
+                indexer.get('api_url') or f"https://api.{self._domain_host}/api/v1"
+            ).rstrip('/')
+            self._searchurl = f"{api_url}/torrent/search"
             self._pageurl = f"{self._domain}details.php?id=%s&hit=1"
 
     def __get_params(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,

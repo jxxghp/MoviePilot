@@ -6,6 +6,9 @@
 # MediaType 使用历史惰性导出入口，Pylint 无法静态解析。
 # pylint: disable=no-name-in-module
 
+import asyncio
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 
 from app.modules.indexer.spider import hddolby as hddolby_module
@@ -71,3 +74,53 @@ def test_parse_result_marks_music_torrents(hddolby_spider):
         MediaType.MOVIE.value,
         MediaType.TV.value,
     ]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize(
+    ("domain", "api_url", "expected_url"),
+    [
+        ("https://www.hddolby.com/", None, "https://api.hddolby.com/api/v1/torrent/search"),
+        ("https://www.hddolby.com/", "", "https://api.hddolby.com/api/v1/torrent/search"),
+        ("https://www.uhddolby.com/", "https://www.uhddolby.com/api/v1",
+         "https://www.uhddolby.com/api/v1/torrent/search"),
+        ("https://www.uhddolby.com/", "https://www.uhddolby.com/api/v1/",
+         "https://www.uhddolby.com/api/v1/torrent/search"),
+        ("https://www.uhddolby.com/", "https://custom-api.test:8443/dolby/v1/",
+         "https://custom-api.test:8443/dolby/v1/torrent/search"),
+    ],
+)
+def test_search_honors_resource_api_url(
+    monkeypatch, asynchronous, domain, api_url, expected_url,
+):
+    """
+    同步和异步搜索使用资源 API 地址及 API Key，详情和下载链接仍属于站点前端。
+    """
+    monkeypatch.setattr(hddolby_module, "get_configured_system_config", lambda: None)
+    indexer = {**_build_indexer(), "domain": domain, "api_url": api_url}
+    spider = HddolbySpider(indexer)
+    response = Mock(status_code=200)
+    response.json.return_value = {
+        "status": 0,
+        "data": [{"id": 42, "name": "Example.Movie", "category": 401, "downhash": "test-hash"}],
+    }
+    request = Mock()
+    transport = Mock(return_value=response)
+    if asynchronous:
+        transport = AsyncMock(return_value=response)
+    request.return_value.post_res = transport
+    monkeypatch.setattr(hddolby_module, "AsyncRequestUtils" if asynchronous else "RequestUtils", request)
+
+    if asynchronous:
+        error, torrents = asyncio.run(spider.async_search("Movie", MediaType.MOVIE, page=2))
+    else:
+        error, torrents = spider.search("Movie", MediaType.MOVIE, page=2)
+
+    assert error is False
+    transport.assert_called_once_with(url=expected_url, json={
+        "keyword": "Movie", "page_number": 2, "page_size": 100,
+        "categories": HddolbySpider._movie_category, "visible": 1,
+    })
+    assert request.call_args.kwargs["headers"]["x-api-key"] == "dolby-secret"
+    assert torrents[0]["page_url"] == f"{domain}details.php?id=42&hit=1"
+    assert torrents[0]["enclosure"] == f"{domain}download.php?id=42&downhash=test-hash"

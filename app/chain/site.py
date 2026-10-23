@@ -659,12 +659,16 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     def __hddolby_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
-        通过 HDDolby 用户 API 验证 API Key，与资料解析使用相同 API 主机。
+        通过 HDDolby 用户 API 验证 API Key，与搜索和资料解析使用相同资源 API 基础地址。
+
+        未配置 api_url 时沿用旧站的 api 子域，兼容存量资源和自定义索引。
 
         :param site: HDDolby 协议站点配置
         :return: 是否可用及认证或连接失败原因
         """
-        url = f"https://api.{site_rules.extract_domain(site.url)}/api/v1/user/data"
+        domain = site.domain or site_rules.extract_domain(site.url)
+        indexer = SitesHelper().get_indexer(domain) or {}
+        api_url = str(indexer.get("api_url") or f"https://api.{domain}/api/v1").rstrip("/")
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*",
@@ -672,7 +676,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         }
         with _open_site_response(
             method="GET",
-            url=url,
+            url=f"{api_url}/user/data",
             headers=headers,
             proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
             timeout=site.timeout or 15,

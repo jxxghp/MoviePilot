@@ -212,11 +212,12 @@ def test_api_protocols_use_their_own_authentication(
         ("MTorrent", "api_domain", "https://custom-api.test:8443/api/member/profile"),
         ("MTorrent", "api_host", "https://custom-api.test:8443/api/member/profile"),
         ("SunnyPT", "api_url", "https://custom-api.test:8443/api/profile"),
+        ("HDDolby", "api_url", "https://custom-api.test:8443/api/user/data"),
     ],
 )
 def test_api_probe_honors_resource_endpoint(monkeypatch, protocol, host_key, expected_url):
     """
-    MTorrent 和 SunnyPT 探测与搜索使用同一资源 API 地址配置。
+    API 协议探测与搜索使用同一资源 API 地址配置。
     """
     chain = SiteChain()
     site = SiteSnapshot(id=1, name="独立 API", domain="custom.test", url="https://www.custom.test/", apikey="key")
@@ -225,13 +226,47 @@ def test_api_probe_honors_resource_endpoint(monkeypatch, protocol, host_key, exp
     indexer = Mock(return_value={"schema": protocol, host_key: "https://custom-api.test:8443/api"})
     monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=indexer)))
     context = MagicMock()
-    context.__enter__.return_value = Mock(status_code=200, json=Mock(return_value={"code": "0", "data": {"id": "1"}}))
+    context.__enter__.return_value = Mock(
+        status_code=200, json=Mock(return_value={"code": "0", "status": 0, "data": {"id": "1"}}),
+    )
     open_response = Mock(return_value=context)
     monkeypatch.setattr("app.chain.site._open_site_response", open_response)
 
     assert chain.test(site.url) == (True, "连接成功")
 
     assert open_response.call_args.kwargs["url"] == expected_url
+
+
+@pytest.mark.parametrize("domain", ["hddolby.com", "uhddolby.com"])
+@pytest.mark.parametrize("api_url", ["https://www.uhddolby.com/api/v1", "https://www.uhddolby.com/api/v1/"])
+def test_hddolby_probe_uses_migrated_resource_for_both_domains(monkeypatch, domain, api_url):
+    """
+    旧域专用路由和新域协议路由均按资源配置探测主站 API，并保留认证与连接参数。
+    """
+    chain = SiteChain()
+    site = SiteSnapshot(
+        id=1, name="高清杜比", domain=domain, url=f"https://www.{domain}/",
+        apikey="test-key", proxy=1, timeout=25,
+    )
+    chain.site_repository = Mock()
+    chain.site_repository.get_by_domain.return_value = site
+    indexer = Mock(return_value={"schema": "HDDolby", "api_url": api_url})
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=indexer)))
+    context = MagicMock()
+    context.__enter__.return_value = Mock(status_code=200, json=Mock(return_value={"status": 0}))
+    open_response = Mock(return_value=context)
+    monkeypatch.setattr("app.chain.site._open_site_response", open_response)
+
+    assert chain.test(site.url) == (True, "连接成功")
+
+    indexer.assert_called_with(domain)
+    request = open_response.call_args.kwargs
+    assert request["method"] == "GET"
+    assert request["url"] == "https://www.uhddolby.com/api/v1/user/data"
+    assert request["headers"]["x-api-key"] == "test-key"
+    assert request["proxies"] == (chain.runtime_config.proxy or {})
+    assert request["timeout"] == 25
+    context.__exit__.assert_called_once_with(None, None, None)
 
 
 @pytest.mark.parametrize("apikey", [None, "test-auth-key"])
