@@ -583,14 +583,15 @@ class ManualHistoryMixin(_TransferOwnerBase):
                 return False, "目标文件历史数据无效，请删除该整理记录后从文件管理重新整理"
             dest_fileitem = FileItem.model_validate(history.dest_fileitem)
             storage_chain = StorageChain()
-            if (
-                    storage_chain.exists(dest_fileitem)
-                    and not storage_chain.delete_media_file(dest_fileitem)
-            ):
-                return False, (
-                    f"旧目标文件 {dest_fileitem.path} 删除失败，请检查媒体库权限，"
-                    "或手动删除该文件后重试"
-                )
+            if storage_chain.exists(dest_fileitem):
+                deleted = storage_chain.delete_media_file(dest_fileitem)
+                # 远端存储可能在删除请求返回前由并发任务或生命周期策略移除文件。
+                # 只要读回确认目标已不存在，就按幂等删除继续，不能留下永远无法重整的历史。
+                if not deleted and storage_chain.exists(dest_fileitem):
+                    return False, (
+                        f"旧目标文件 {dest_fileitem.path} 删除失败，请检查媒体库权限，"
+                        "或手动删除该文件后重试"
+                    )
         transfer_history_oper.delete(history.id)
         # 删除记录是用户显式要求重来，失败计数一并清零，否则重整仍会受上一轮次数限制
         clear_transfer_failures(history.src, history.src_storage)

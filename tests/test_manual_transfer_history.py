@@ -1011,6 +1011,30 @@ def test_manual_reorganize_removes_success_history_and_old_target(monkeypatch):
     assert planned == [fileitem.path]
 
 
+def test_manual_reorganize_accepts_old_target_disappearing_during_delete(monkeypatch):
+    """远端删除返回失败但读回已不存在时，不应把重整永远卡在旧历史上。"""
+    chain = make_transfer_chain()
+    old_dest = make_fileitem("/library/Wrong Show/Wrong.Show.S02E01.mkv")
+    history = SimpleNamespace(
+        id=19, status=True, mode="copy", dest_fileitem=old_dest.model_dump(),
+        transfer_task_id=None, download_hash=None, downloader=None, src=None, src_storage=None,
+    )
+    deleted: list[tuple[str, object]] = []
+    states = iter((True, False))
+    monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
+        exists=lambda _item: next(states),
+        delete_media_file=lambda _item: False,
+    ))
+    state, message = chain._delete_manual_transfer_history(
+        history,
+        SimpleNamespace(delete=lambda history_id: deleted.append(("history", history_id))),
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [("history", 19)]
+
+
 def test_explicit_durable_reorganize_discards_old_task_and_replans(monkeypatch):
     """
     显式重新整理 durable 失败历史时不得登记原计划重试，应清理后重新规划。
