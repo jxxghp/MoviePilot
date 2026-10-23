@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 61
+version: 62
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -154,6 +154,9 @@ downloader mappings when switching path modes.
    identifiers and use the documented pagination fields. Pass object and array
    bodies as native JSON values, and pass null only when the selected operation
    allows it. The only string body is the literal `"dev"` for `system.upgrade.dev`.
+   If a model JSON-encodes the whole body, every gateway entrypoint restores one
+   layer of object, array, or null before validation and dispatch. Nested string
+   values stay unchanged, and the selected operation's contract still applies.
    Never flatten operation fields next to `operation_id`: put each in its declared
    `path_params`, `query`, or `body` container. Do not copy pagination or filters
    from another operation. An `invalid_input` response names the failing field
