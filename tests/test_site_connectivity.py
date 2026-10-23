@@ -238,10 +238,10 @@ def test_api_probe_honors_resource_endpoint(monkeypatch, protocol, host_key, exp
 
 
 @pytest.mark.parametrize("domain", ["hddolby.com", "uhddolby.com"])
-@pytest.mark.parametrize("api_url", ["https://www.uhddolby.com/api/v1", "https://www.uhddolby.com/api/v1/"])
+@pytest.mark.parametrize("api_url", ["https://api.hddolby.com/api/v1", "https://api.hddolby.com/api/v1/"])
 def test_hddolby_probe_uses_migrated_resource_for_both_domains(monkeypatch, domain, api_url):
     """
-    旧域专用路由和新域协议路由均按资源配置探测主站 API，并保留认证与连接参数。
+    旧域专用路由和新域协议路由均按资源访问旧域 API，并保留认证与连接参数。
     """
     chain = SiteChain()
     site = SiteSnapshot(
@@ -262,10 +262,51 @@ def test_hddolby_probe_uses_migrated_resource_for_both_domains(monkeypatch, doma
     indexer.assert_called_with(domain)
     request = open_response.call_args.kwargs
     assert request["method"] == "GET"
-    assert request["url"] == "https://www.uhddolby.com/api/v1/user/data"
+    assert request["url"] == "https://api.hddolby.com/api/v1/user/data"
     assert request["headers"]["x-api-key"] == "test-key"
     assert request["proxies"] == (chain.runtime_config.proxy or {})
     assert request["timeout"] == 25
+    context.__exit__.assert_called_once_with(None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("api_url", "host"),
+    [
+        (None, "api.uhddolby.com"),
+        ("https://api.hddolby.com/api/v1", "api.hddolby.com"),
+        ("https://user:secret@custom-api.test:8443/api?token=secret", "custom-api.test"),
+    ],
+)
+@pytest.mark.parametrize("status_code", [None, 405])
+def test_hddolby_api_failure_identifies_host_without_page_fallback(monkeypatch, api_url, host, status_code):
+    """
+    接口失败提示真实 API 主机且不泄露凭据，网页可用也不能掩盖 API 搜索不可用。
+    """
+    chain = SiteChain()
+    site = SiteSnapshot(
+        id=1, name="高清杜比", domain="uhddolby.com", url="https://www.uhddolby.com/", apikey="test-key",
+    )
+    chain.site_repository = Mock()
+    chain.site_repository.get_by_domain.return_value = site
+    indexer = Mock(return_value={"schema": "HDDolby", "api_url": api_url})
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=indexer)))
+    context = MagicMock()
+    context.__enter__.return_value = None if status_code is None else Mock(status_code=405, reason="Not Allowed")
+    monkeypatch.setattr("app.chain.site._open_site_response", Mock(return_value=context))
+    generic_test = Mock(return_value=(True, "连接成功"))
+    monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
+
+    state, message = chain.test(site.url)
+
+    assert state is False
+    if status_code is None:
+        assert message == f"HDDolby API 主机 {host} 无法连接，请检查 API 地址及网络代理"
+    else:
+        assert message == f"HDDolby API 主机 {host} 返回 HTTP 405 Not Allowed"
+    assert "secret" not in message
+    assert "无法打开网站" not in message
+    generic_test.assert_not_called()
+    chain.site_repository.fail.assert_called_once_with("uhddolby.com")
     context.__exit__.assert_called_once_with(None, None, None)
 
 

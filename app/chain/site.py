@@ -662,6 +662,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         通过 HDDolby 用户 API 验证 API Key，与搜索和资料解析使用相同资源 API 基础地址。
 
         未配置 api_url 时沿用旧站的 api 子域，兼容存量资源和自定义索引。
+        API 失败提示仅描述接口主机，不据此断言网页不可访问，也不以网页成功掩盖 API 故障。
 
         :param site: HDDolby 协议站点配置
         :return: 是否可用及认证或连接失败原因
@@ -669,6 +670,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         domain = site.domain or site_rules.extract_domain(site.url)
         indexer = SitesHelper().get_indexer(domain) or {}
         api_url = str(indexer.get("api_url") or f"https://api.{domain}/api/v1").rstrip("/")
+        api_host = urlparse(api_url).hostname
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*",
@@ -682,13 +684,13 @@ class SiteChain(InteractionChainMixin, ChainBase):
             timeout=site.timeout or 15,
         ) as res:
             if res is None:
-                return False, "无法打开网站！"
+                return False, f"HDDolby API 主机 {api_host} 无法连接，请检查 API 地址及网络代理"
             if res.status_code == 200:
                 user_info = res.json()
                 if user_info and user_info.get("status") == 0:
                     return True, "连接成功"
                 return False, "APIKEY已过期"
-            return False, f"错误：{res.status_code} {res.reason}"
+            return False, f"HDDolby API 主机 {api_host} 返回 HTTP {res.status_code} {res.reason}"
 
     def __rousi_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """

@@ -27,13 +27,13 @@ USER_DATA_JSON = """
 """
 
 
-def _build_parser(site_cookie: str = "", **kwargs) -> HDDolbySiteUserInfo:
+def _build_parser(site_cookie: str = "", url: str = "https://www.hddolby.com/", **kwargs) -> HDDolbySiteUserInfo:
     """
-    构造隔离 HTTP 会话、允许覆盖 API 地址的杜比用户数据解析器。
+    构造隔离 HTTP 会话、允许分别指定网页域名和 API 地址的杜比用户数据解析器。
     """
     return HDDolbySiteUserInfo(
         site_name="高清杜比",
-        url="https://www.hddolby.com/",
+        url=url,
         site_cookie=site_cookie,
         apikey="test-api-key",
         token=None,
@@ -49,6 +49,8 @@ def _build_parser(site_cookie: str = "", **kwargs) -> HDDolbySiteUserInfo:
         ("", "https://api.hddolby.com/api/v1/"),
         ("https://www.uhddolby.com/api/v1", "https://www.uhddolby.com/api/v1/"),
         ("https://www.uhddolby.com/api/v1/", "https://www.uhddolby.com/api/v1/"),
+        ("https://api.hddolby.com/api/v1", "https://api.hddolby.com/api/v1/"),
+        ("https://api.hddolby.com/api/v1/", "https://api.hddolby.com/api/v1/"),
         ("https://custom-api.test:8443/dolby/v1/", "https://custom-api.test:8443/dolby/v1/"),
     ],
 )
@@ -75,6 +77,25 @@ def test_userdata_uses_resource_api_url_for_profile_and_seeding(monkeypatch, api
     assert parser.seeding == 1
     assert parser.seeding_size == 2048
     parser._request_utils.close.assert_called_once_with()
+
+
+def test_migrated_page_domain_keeps_old_api_for_userdata(monkeypatch):
+    """
+    网页迁移后仍从旧域 API 读取资料和做种统计，不修改网页地址或代理选择。
+    """
+    proxy = {"https": "socks5h://proxy.test:1080"}
+    parser = _build_parser(url="https://www.uhddolby.com/", api_url="https://api.hddolby.com/api/v1", proxy=proxy)
+    get_page = Mock(side_effect=[USER_DATA_JSON, '{"status": 0, "data": []}'])
+    monkeypatch.setattr(parser, "_get_page_content", get_page)
+
+    parser.parse()
+
+    assert [call.kwargs["url"] for call in get_page.call_args_list] == [
+        "https://api.hddolby.com/api/v1/user/data", "https://api.hddolby.com/api/v1/user/peers",
+    ]
+    assert parser.userid == "41088"
+    assert parser._site_url == "https://www.uhddolby.com/"
+    assert parser._proxy == proxy
 
 
 def test_hddolby_parse_user_base_info_reads_unread_count():

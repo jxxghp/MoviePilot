@@ -3,6 +3,7 @@
 """
 
 from typing import Any, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
@@ -202,6 +203,8 @@ class HddolbySpider:
     def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
         """
         统一判定搜索响应状态、业务错误并投影 HDDolby 结果。
+
+        连接错误只记录实际 API 主机，避免把接口故障误报为网页不可达或输出 URL 中的凭据。
         """
         if res and res.status_code == 200:
             result = res.json()
@@ -212,7 +215,8 @@ class HddolbySpider:
         if res is not None:
             logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
             return True, []
-        logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
+        api_host = urlparse(self._searchurl or "").hostname
+        logger.warn(f"{self._name} 搜索失败，HDDolby API 主机 {api_host} 无法连接，请检查 API 地址及网络代理")
         return True, []
 
     def search(self, keyword: str, mtype: Optional[MediaType] = None, page: Optional[int] = 0,

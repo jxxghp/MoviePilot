@@ -82,6 +82,12 @@ focused 测试验证，不要求启动产品全套测试。
 
 ## 外部依赖：一律 mock，零真实网络
 
+高清杜比换域回归由 `tests/test_hddolby_spider.py`、`tests/test_hddolby_parser.py` 和
+`tests/test_site_connectivity.py` 验证：网页使用 `www.uhddolby.com` 时，搜索、用户资料和
+做种统计仍可按资源的 `api_url` 访问 `api.hddolby.com`，并保留站点代理和认证配置。
+API 连接失败或返回 HTTP 错误时，连通性提示指出实际接口主机；网页解析成功不能代替
+API 验证。错误提示和搜索告警不得输出地址中的账号、密码或查询令牌。测试不使用真实站点凭据。
+
 社区勋章使用 `tests/test_community_medal_background.py` 验证启动主动预热、无人访问时的六小时
 更新、失败后的自动重试及 TaskRegistry 关闭。外部下载或远端开关被屏障阻塞时，查询必须在
 屏障释放前返回当前快照；冷启动通过 `refreshing` 表示后台尚未完成，不能把刷新锁或网络等待

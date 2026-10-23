@@ -86,6 +86,10 @@ def test_parse_result_marks_music_torrents(hddolby_spider):
          "https://www.uhddolby.com/api/v1/torrent/search"),
         ("https://www.uhddolby.com/", "https://www.uhddolby.com/api/v1/",
          "https://www.uhddolby.com/api/v1/torrent/search"),
+        ("https://www.uhddolby.com/", "https://api.hddolby.com/api/v1",
+         "https://api.hddolby.com/api/v1/torrent/search"),
+        ("https://www.uhddolby.com/", "https://api.hddolby.com/api/v1/",
+         "https://api.hddolby.com/api/v1/torrent/search"),
         ("https://www.uhddolby.com/", "https://custom-api.test:8443/dolby/v1/",
          "https://custom-api.test:8443/dolby/v1/torrent/search"),
     ],
@@ -124,3 +128,28 @@ def test_search_honors_resource_api_url(
     assert request.call_args.kwargs["headers"]["x-api-key"] == "dolby-secret"
     assert torrents[0]["page_url"] == f"{domain}details.php?id=42&hit=1"
     assert torrents[0]["enclosure"] == f"{domain}download.php?id=42&downhash=test-hash"
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_search_connection_failure_logs_api_host_without_credentials(monkeypatch, asynchronous):
+    """
+    同步和异步搜索的连接告警指出 API 主机，避免误报网页故障并隐藏地址中的凭据。
+    """
+    monkeypatch.setattr(hddolby_module, "get_configured_system_config", lambda: None)
+    spider = HddolbySpider({
+        **_build_indexer(),
+        "domain": "https://www.uhddolby.com/",
+        "api_url": "https://user:secret@api.hddolby.com/api/v1?token=secret",
+    })
+    request = Mock()
+    request.return_value.post_res = AsyncMock(return_value=None) if asynchronous else Mock(return_value=None)
+    monkeypatch.setattr(hddolby_module, "AsyncRequestUtils" if asynchronous else "RequestUtils", request)
+    warning = Mock()
+    monkeypatch.setattr(hddolby_module.logger, "warn", warning)
+
+    result = asyncio.run(spider.async_search("Movie")) if asynchronous else spider.search("Movie")
+
+    assert result == (True, [])
+    warning.assert_called_once_with(
+        "高清杜比 搜索失败，HDDolby API 主机 api.hddolby.com 无法连接，请检查 API 地址及网络代理",
+    )
