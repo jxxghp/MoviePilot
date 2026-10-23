@@ -539,12 +539,15 @@ class FileManagerModule(_ModuleBase):
         """
         解析整理策略并生成零写副作用的冻结计划。
 
+        目录配置优先于显式目标路径；未匹配配置时保留自定义路径能力并告警，
+        未提供显式路径时业务拒绝，不自动使用存储根目录。
+
         :param fileitem: 文件信息
         :param meta: 预识别的元数据
         :param mediainfo: 识别的媒体信息
         :param target_directory: 目标目录配置
         :param target_storage: 目标存储
-        :param target_path: 目标路径
+        :param target_path: 调用方显式指定的目标根路径；未匹配目录配置时使用
         :param transfer_type: 转移模式
         :param scrape: 是否刮削元数据
         :param library_type_folder: 是否按媒体类型创建目录
@@ -582,6 +585,7 @@ class FileManagerModule(_ModuleBase):
                                                need_type_folder=library_type_folder,
                                                need_category_folder=library_category_folder)
         elif target_path:
+            explicit_target_path = target_path
             need_scrape = scrape or False
             need_rename = True
             need_notify = False
@@ -589,6 +593,13 @@ class FileManagerModule(_ModuleBase):
             target_path = handler.get_dest_path(mediainfo=mediainfo, target_path=target_path,
                                                 need_type_folder=library_type_folder,
                                                 need_category_folder=library_category_folder)
+            logger.warning(
+                "未匹配到媒体库目录配置，使用调用方显式指定的目标路径："
+                f"【{target_storage or fileitem.storage or 'local'}】{explicit_target_path}，"
+                f"计算后的目标路径：{target_path}，源路径："
+                f"【{fileitem.storage or 'local'}】{fileitem.path}；"
+                "如需使用存储目录配置的媒体库路径，请将目标路径设为自动匹配"
+            )
         else:
             # 目录匹配失败按业务拒绝结算，避免进入异常重试和堆栈日志路径。
             logger.error(
