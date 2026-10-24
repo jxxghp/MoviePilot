@@ -17,8 +17,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-MOVIEPILOT_API_SKILL_VERSION = "63"
-DATABASE_OPERATION_SKILL_VERSION = "14"
+MOVIEPILOT_API_SKILL_VERSION = "64"
+DATABASE_OPERATION_SKILL_VERSION = "15"
 
 
 DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
@@ -204,6 +204,14 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "Stores per-user JSON configuration isolated by username and key.",
         "Inspecting UI preferences, message clear cursors, or other personalized state.",
         "Modify through the owning user or messaging API to preserve key semantics.",
+    ),
+    "widgetregistration": (
+        "Stores expiring, read-only widget grants per user and installation; only a digest of the dedicated "
+        "Bearer is stored, never the raw secret or the main login token.",
+        "Authorized diagnostics of one user's installation ownership, expiry, or revoked widget access; "
+        "never disclose credential digests or inventory other users' installations.",
+        "Security-sensitive; register, rotate, or revoke only through the authenticated widget API. "
+        "Never insert grants, change ownership or expiry, or copy a digest into a login credential.",
     ),
     "workflow": (
         "Stores workflow definitions, triggers, action graphs, execution context, and runtime state.",

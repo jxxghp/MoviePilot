@@ -55,6 +55,7 @@ def _inputs() -> runtime_composition.RuntimeInputs:
         standalone_user=Mock(name="standalone_user"),
         system_config=Mock(name="standalone_system_config"),
         passkey=Mock(name="standalone_passkey"),
+        widget_scope=Mock(name="widget_scope"),
     )
     return runtime_composition.RuntimeInputs(
         configuration=configuration,
@@ -84,6 +85,7 @@ def test_runtime_composition_reuses_dependencies_and_projects_api_identity() -> 
     assert runtime.agent_chat.persistence is inputs.agent.persistence
     assert runtime.authentication.user_repository is inputs.authentication.user_repository
     assert runtime.authentication.passkey_repository is inputs.authentication.passkey_repository
+    assert runtime.authentication.widget_scope is inputs.authentication.widget_scope
     assert runtime.classification is inputs.classification
     assert runtime.classification_execution is inputs.classification_execution
     assert runtime.configuration is inputs.configuration.runtime

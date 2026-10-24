@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 63
+version: 64
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -226,9 +226,10 @@ frontmatter allowlist, and the matching gateway contract together.
 
 ## API Surface Scope
 
-系统小组件 `/api/v1/widget/*` 不属于本技能或 Agent 工具目录。它使用单独的有限期只读
-Bearer，不能把该密钥作为普通 API/MCP 登录凭据，也不能替用户启用、轮换或导出小组件授权。
-协议与用户范围见 `docs/widgets.md`；系统扩展不得持有主登录令牌。
+System widget endpoints under `/api/v1/widget/*` are outside this skill and the Agent tool catalog.
+They use a separate, expiring, read-only Bearer; never use it as an ordinary API/MCP login credential,
+or enable, rotate, or export widget grants on a user's behalf. See `docs/widgets.md` for the protocol
+and user scope. System extensions must not hold the main login token.
 
 For installed plugins with a bound source, `plugin.market` only lists an update
 when that repository has a newer version. A higher version in another repository

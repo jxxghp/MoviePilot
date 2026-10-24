@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 14
+version: 15
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -339,6 +339,12 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Useful queries: Inspecting UI preferences, message clear cursors, or other personalized state.
 - Write boundary: Modify through the owning user or messaging API to preserve key semantics.
 - Columns: `id`, `username`, `key`, `value`
+
+### `widgetregistration`
+- Purpose: Stores expiring, read-only widget grants per user and installation; only a digest of the dedicated Bearer is stored, never the raw secret or the main login token.
+- Useful queries: Authorized diagnostics of one user's installation ownership, expiry, or revoked widget access; never disclose credential digests or inventory other users' installations.
+- Write boundary: Security-sensitive; register, rotate, or revoke only through the authenticated widget API. Never insert grants, change ownership or expiry, or copy a digest into a login credential.
+- Columns: `id`, `registration_id`, `installation_id`, `user_id`, `owner`, `secret_digest`, `expires_at`
 
 ### `workflow`
 - Purpose: Stores workflow definitions, triggers, action graphs, execution context, and runtime state.
