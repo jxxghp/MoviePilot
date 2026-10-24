@@ -35,6 +35,8 @@ _SECRET_SETTING_NAMES = frozenset(
     {
         # CookieCloud 的用户 key 没有类型后缀，但与密码共同构成端到端加密凭据。
         "cookiecloud_key",
+        # 自动推送接入是内部凭据状态，默认查询应整体脱敏，不能只根据嵌套字段名判断。
+        "app_push_credentials",
     }
 )
 _SECRET_SETTING_ENDINGS = ("_encrypt_key",)

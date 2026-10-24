@@ -299,6 +299,9 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
         match_field="name",
         sensitive=True,
     ),
+    SystemConfigKey.AppPushCredentials: _internal_contract(
+        "notifications", Optional[dict[str, JsonData]], sensitive=True
+    ),
     SystemConfigKey.NotificationSwitchs: _contract(
         "notification_switches",
         Optional[list[NotificationSwitchConf]],

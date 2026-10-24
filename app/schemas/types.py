@@ -426,6 +426,8 @@ class SystemConfigKey(Enum):
     MediaServers = "MediaServers"
     # 消息通知配置
     Notifications = "Notifications"
+    # App 中心推送自动接入凭据，业务内部维护且不进入通知渠道配置
+    AppPushCredentials = "AppPushCredentials"
     # 通知场景开关设置
     NotificationSwitchs = "NotificationSwitchs"
     # 目录配置

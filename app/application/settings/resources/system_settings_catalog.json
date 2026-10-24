@@ -1605,6 +1605,12 @@
     }
   },
   "systemconfig": {
+    "AppPushCredentials": {
+      "description": "App 中心推送自动接入的内部凭据状态；按服务地址隔离，不通过通知渠道配置下发",
+      "enum_name": "AppPushCredentials",
+      "source_file": "app/schemas/types.py",
+      "source_line": 430
+    },
     "AIAgentConfig": {
       "description": "AI智能体配置",
       "enum_name": "AIAgentConfig",

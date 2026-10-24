@@ -36,7 +36,9 @@
 请求包含 `action`（`status/register/unregister/pair/test`）、随机 `installation` 和实例 `origin`。
 `register` 另需 APNs `token/topic/environment`；`source` 可选，用于选择启用的 AppPush 渠道。
 账号通知身份由后台注入，客户端不能指定其他用户。注销同时撤销该安装配对的主屏幕通知网页。
-AppPush 配置只保存 `PUSH_SERVER_URL` 和实例专用 `PUSH_RELAY_KEY`，Apple/VAPID 私钥放在私有 Server。
+AppPush 地址 `PUSH_SERVER_URL` 留空时使用 `MP_SERVER_HOST`；首次操作自动生成并先行持久保存256位实例凭据，再向中心幂等登记现有 `user_uid`。UID 只关联来源，不能据此获取、重置或认领已有凭据。内部 `AppPushCredentials` 按中心地址隔离，不进入通知渠道配置；中心只保存凭据摘要。已有 `PUSH_RELAY_KEY` 手工配置继续兼容。
+`POST /api/v1/notification/app/instance` 仅容器超级管理员可调用，正文为 `{"action":"rotate","source":"已保存的渠道名称"}`。轮换保留设备，候选凭据先落库，响应丢失可在重启后接续；返回值不包含密钥。普通用户的 `/notification/app` 不接受该动作。
+Apple/VAPID 私钥只放在中心 Server，不放入 App 或用户容器。
 消息沿用现有类型开关和管理员/用户路由；无明确用户目标时不广播。部署与免费自签说明见
 [MoviePilot-Server](https://github.com/jxxghp/MoviePilot-Server#私有-app-消息推送)。
 

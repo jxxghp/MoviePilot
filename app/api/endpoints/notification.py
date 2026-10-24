@@ -12,12 +12,23 @@ from app.api.response import ResponseAPIRouter
 from app.application.configuration import get_configured_system_config
 from app.chain.notification import NotificationChain
 from app.schemas.common import ManageRequest as _SchemaManageRequest
-from app.schemas.push import AppPushRequest
+from app.schemas.push import AppPushInstanceRequest, AppPushRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.system import NotificationConf
 from app.schemas.types import SystemConfigKey
 
 router = ResponseAPIRouter()
+
+
+@router.post("/app/instance", summary="轮换 App 通知实例凭据", response_model=_SchemaResponse[Dict[str, Any]])
+def manage_app_instance(request: AppPushInstanceRequest,
+                        current_user: ApiPrincipal = Depends(get_current_active_superuser)) -> _SchemaResponse[object]:
+    """
+    仅容器管理员能轮换整个实例的发送凭据，响应只包含结果，不下发密钥。
+    """
+    result = NotificationChain().manage_channel(channel="AppPush", action="rotate_instance", source=request.source,
+                                               owner=current_user.notification_identity, administrative=True)
+    return _SchemaResponse(success=bool(result.get("success")), message=result.get("message") or "", data=result.get("data"))
 
 
 @router.post("/app", summary="管理当前用户的 App 通知", response_model=_SchemaResponse[Dict[str, Any]])

@@ -8,6 +8,16 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class AppPushInstanceRequest(BaseModel):
+    """
+    仅容器管理员可轮换实例凭据，普通用户的设备管理请求不能触发该动作。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["rotate"] = Field(description="轮换当前已配置中心的自动接入凭据")
+    source: str = Field(min_length=1, max_length=255, description="已保存并启用的 AppPush 渠道名称")
+
+
 class AppPushRequest(BaseModel):
     """
     通知操作绑定当前登录身份；来源由启用的通知渠道配置选择。
