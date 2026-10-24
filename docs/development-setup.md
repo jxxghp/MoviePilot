@@ -63,6 +63,12 @@ UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
 主程序不再维护 `requirements.in`、`requirements-dev.in` 或 `requirements.txt`，也不生成
 平台专属的 requirements 锁文件。Docker、CLI 和 CI 都以提交的 `uv.lock` 为安装输入。
 
+标准运行时的 Brotli 使用 1.2.1。free-threaded 运行时使用上游源码提交
+`0ed4268a4401abcb4472096340477cf4af7d1a2b`，该提交同时保留无 GIL 声明并包含
+[CVE-2026-111497 的官方修复](https://github.com/google/brotli/commit/0ed4268a4401abcb4472096340477cf4af7d1a2b)。
+源码分支的包版本仍为 1.2.0，不能仅凭版本字符串判断补丁是否存在；1.2.1 发布分支
+尚未声明无 GIL 支持，不能直接替换 free-threaded 的源码依赖。
+
 ### 2.1 本地启动脚本
 
 不需要打开 IDE 时，可以直接使用仓库内的启动脚本。脚本会自动定位项目根目录和虚拟环境，并以模块方式启动后端，避免 `ModuleNotFoundError: No module named 'app'`。
