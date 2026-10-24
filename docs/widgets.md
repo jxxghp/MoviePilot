@@ -5,6 +5,11 @@ MoviePilot App 的系统小组件直接读取用户连接的 MoviePilot 实例�
 
 ## 启用与移除
 
+前台 App 先使用既有主登录读取 `GET /api/v1/widget/context`。标准响应的 `data` 只包含
+`version=1`、不可变 `owner` 和当前 `availableContents`，不会创建、轮换或列出任何登记。
+没有可用内容时返回空集合。App 用不可变身份核对组件资料与当前网页账号，不能仅比较可复用的
+数字用户 ID 或显示名；组件专用凭据不能调用该接口。此响应禁止缓存，不能用旧上下文替代当前校验。
+
 前台 App 在用户明确启用后，使用既有登录调用
 `POST /api/v1/widget/registrations`，请求体只包含随机 UUID `installationId`。
 标准响应的 `data` 包含 `version=1`、`registrationId`、`installationId`、不可变 `owner`、

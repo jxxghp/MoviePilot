@@ -14,7 +14,7 @@ from typing import Protocol, TypeAlias
 from uuid import UUID, uuid4
 
 from app.application.security.user import UserSnapshot
-from app.schemas.widget import WidgetContent, WidgetRegistrationResponse
+from app.schemas.widget import WidgetContent, WidgetContext, WidgetRegistrationResponse
 
 # 前台主 App 通过已有登录更新；扩展不能无限自续。
 WIDGET_CREDENTIAL_LIFETIME = 30 * 24 * 60 * 60
@@ -178,6 +178,19 @@ class WidgetAuthService:
         if user is None or not user.is_active or not _OWNER.fullmatch(owner) or user.notification_identity != owner:
             raise WidgetAccessError(401, "小组件授权已失效，请在 App 中重新启用")
         return user
+
+    def context(self, user_id: int, owner: str) -> WidgetContext:
+        """
+        重新读取主登录账号的不可变身份和权限，不创建或轮换小组件授权。
+
+        :param user_id: 既有主认证给出的用户主键
+        :param owner: 既有主认证给出的不可变身份，不接受请求参数指定
+        :return: 当前身份和可用内容，无可用权限时返回空集合
+        :raises WidgetAccessError: 账号禁用、删除或身份已变化
+        """
+        with self._scope() as transaction:
+            user = self._require_user(transaction.get_user(user_id), owner)
+            return WidgetContext(owner=user.notification_identity, availableContents=available_widget_contents(user))
 
     def register(self, user_id: int, owner: str, installation_id: UUID) -> WidgetRegistrationResponse:
         """

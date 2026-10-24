@@ -28,8 +28,9 @@
 
 ### App 小组件只读接口
 
-小组件使用独立的有限期只读 Bearer，通过 `/api/v1/widget/registrations` 登记和
-`/api/v1/widget/snapshot` 刷新。该凭据不适用于普通 REST/MCP，也不加入 Agent 工具目录；
+主 App 使用既有登录通过 `/api/v1/widget/context` 核对账号、`/api/v1/widget/registrations` 登记。
+扩展使用独立的有限期只读 Bearer 通过 `/api/v1/widget/snapshot` 刷新。
+该凭据不适用于普通 REST/MCP，小组件接口也不加入 Agent 工具目录；
 详见[授权、权限与快照协议](widgets.md)。主登录凭据不得交给系统扩展。
 
 ### 通知配置与交互身份
