@@ -80,6 +80,90 @@ def test_apppush_reuses_message_switches_and_never_broadcasts(monkeypatch):
     assert len(calls) == 1
 
 
+def test_device_management_endpoint_reaches_private_relay_without_exposing_key(monkeypatch):
+    """
+    真实端点经渠道和 HTTP 适配器管理本账号设备，私有密钥只进入中转请求头。
+    """
+    owner = "a" * 32
+    key = "server-private-key-" * 3
+    conf = NotificationConf(name="private", type="apppush", enabled=True, config={
+        "PUSH_SERVER_URL": "https://relay.test/", "PUSH_RELAY_KEY": key,
+    })
+    module = AppPushModule.__new__(AppPushModule)
+    monkeypatch.setattr(module, "get_configs", lambda: {"private": conf})
+    requests = []
+    reply = {"status": 200}
+
+    class Transport:
+        """
+        在最后的 HTTP 边界模拟 Server，不替换渠道的请求构造与响应处理。
+        """
+
+        def __init__(self, **options):
+            """
+            保存客户端请求头，验证发送凭据只在鉴权头中传递。
+            """
+            self.headers = options["headers"]
+            assert self.headers == {"Authorization": "Bearer " + key}
+
+        def request(self, method, url, **options):
+            """
+            记录真实出站消息并返回相应设备操作结果或带敏感正文的拒绝响应。
+            """
+            data = options.get("params") if method == "GET" else options.get("json")
+            requests.append((method, url, data, options))
+            assert data["owner"] == owner
+            assert key not in url and key not in str(data)
+            assert options["allow_redirects"] is False
+            payload = ({"devices": []} if method == "GET" else
+                       {"code": "once-only-binding-code", "expires_in": 600} if url.endswith("/pairings") else
+                       {"total": 1, "accepted": 1, "failed": []} if url.endswith("/messages") else
+                       {"removed": True} if method == "DELETE" else {"id": "device-1", "transport": "apns"})
+            return SimpleNamespace(status_code=reply["status"], json=lambda: payload, text=key)
+
+    class Chain:
+        """
+        将已鉴权端点直接交给真实 AppPush 模块，复用既有链的分发参数。
+        """
+
+        def manage_channel(self, **params):
+            """
+            保留端点注入的用户身份，不在测试链中补写或替换请求。
+            """
+            return module.channel_manage(**params)
+
+    monkeypatch.setattr("app.adapters.external.server.RequestUtils", Transport)
+    monkeypatch.setattr(notification, "NotificationChain", Chain)
+    app = FastAPI()
+    app.include_router(notification.router, prefix="/notification")
+    app.dependency_overrides[get_current_active_user] = lambda: SimpleNamespace(notification_identity=owner)
+    body = {"installation": "installation-001", "origin": "https://mp.test/base"}
+    with TestClient(app) as client:
+        status = client.post("/notification/app", json={**body, "action": "status"}).json()
+        assert status["data"] == {"devices": [], "owner": owner, "relay_url": "https://relay.test/push/app/"}
+        paired = client.post("/notification/app", json={**body, "action": "pair"}).json()
+        assert paired["data"]["expires_in"] == 600
+        assert paired["data"]["relay_url"] == status["data"]["relay_url"]
+        missing = client.post("/notification/app", json={**body, "action": "register"}).json()
+        assert missing["success"] is False and len(requests) == 2
+        registered = client.post("/notification/app", json={**body, "action": "register", "token": "c" * 64,
+                                                          "topic": "com.example.moviepilot", "environment": "sandbox"}).json()
+        assert registered["data"]["id"] == "device-1"
+        tested = client.post("/notification/app", json={**body, "action": "test"}).json()
+        assert tested["data"]["accepted"] == 1
+        removed = client.post("/notification/app", json={**body, "action": "unregister"}).json()
+        assert removed["data"]["removed"] is True
+        assert requests[-1][:3] == ("DELETE", "https://relay.test/push/devices", {"owner": owner, "installation": body["installation"]})
+        assert all(key not in str(result) for result in (status, paired, missing, registered, tested, removed))
+        assert client.post("/notification/app", json={**body, "action": "pair", "source": "unknown"}).json()["success"] is False
+        reply["status"] = 503
+        rejected = client.post("/notification/app", json={**body, "action": "status"}).json()
+        assert rejected["success"] is False and key not in str(rejected)
+    assert module.channel_manage("Telegram", "status", owner=owner) is None
+    assert module.channel_manage("AppPush", "status", owner="")["success"] is False
+    assert module.channel_manage("AppPush", "unsupported", owner=owner)["success"] is False
+
+
 def test_server_request_keeps_key_in_header_and_rejects_redirects(monkeypatch):
     """
     中转只允许固定接口和 HTTPS，不跟随重定向，不把错误正文或密钥暴露给客户端。
