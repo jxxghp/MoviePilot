@@ -23,6 +23,7 @@ Models are SQLAlchemy declarative classes. Each model maps to one database table
 | `PluginInstance` | Per-instance plugin descriptor and configuration, one row per instance |
 | `PassKey` | Passkey authentication records |
 | `Workflow` | Workflow definitions |
+| `WidgetRegistration` | 每账号每安装的小组件只读凭据摘要与到期时间，不保存原文 |
 
 ---
 

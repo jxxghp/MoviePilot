@@ -24,6 +24,7 @@ from app.application.messaging.chat import (
 )
 from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.rules import AsyncRuleGroupMutationService, SyncRuleGroupMutationService
+from app.application.security.widget import WidgetScopeFactory
 from app.application.site.contract import SiteRepository
 from app.application.site.mutation import SyncSiteReferenceMutationService
 from app.application.subscription.activity import SubscriptionActivityRepository
@@ -351,6 +352,7 @@ class AuthenticationRuntime:
     :param standalone_user: 构造独立用户仓储的工厂
     :param system_config: 构造独立系统配置访问端口的工厂
     :param passkey: 构造独立通行密钥访问端口的工厂
+    :param widget_scope: 创建小组件授权的独占短事务；为空时不提供该能力
     """
 
     user_repository: RepositoryFactory
@@ -358,6 +360,7 @@ class AuthenticationRuntime:
     standalone_user: StandaloneRepositoryFactory
     system_config: StandaloneRepositoryFactory
     passkey: StandaloneRepositoryFactory
+    widget_scope: WidgetScopeFactory | None = None
 
 
 @dataclass(frozen=True, slots=True)

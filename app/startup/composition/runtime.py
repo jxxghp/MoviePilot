@@ -225,6 +225,7 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
         standalone_user=inputs.authentication.standalone_user,
         system_config=inputs.authentication.system_config,
         passkey=inputs.authentication.passkey,
+        widget_scope=inputs.authentication.widget_scope,
     )
     async_rule_scope = partial(
         async_rule_group_mutation_scope,

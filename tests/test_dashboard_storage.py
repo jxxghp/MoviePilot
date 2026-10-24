@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from app import schemas
 from app.api.endpoints import dashboard as dashboard_endpoint
+from app.chain import dashboard as dashboard_chain
 from app.schemas.types import StorageAction
 
 
@@ -23,7 +24,7 @@ def _patch_dirs(dirs: List[schemas.TransferDirectoryConf]):
     """
     替换仪表板读取的目录配置。
     """
-    return patch.object(dashboard_endpoint.DirectoryHelper, "get_dirs", return_value=dirs)
+    return patch.object(dashboard_chain.DirectoryHelper, "get_dirs", return_value=dirs)
 
 
 def test_storage_counts_local_download_dir_without_library_storage():
@@ -39,7 +40,7 @@ def test_storage_counts_local_download_dir_without_library_storage():
     ]
 
     with _patch_dirs(dirs), patch.object(
-        dashboard_endpoint.StorageChain,
+        dashboard_chain.StorageChain,
         "manage_storage",
         return_value=_usage_result(1000.0, 400.0),
     ) as mocked_usage:
@@ -72,7 +73,7 @@ def test_storage_queries_each_storage_once():
     ]
 
     with _patch_dirs(dirs), patch.object(
-        dashboard_endpoint.StorageChain,
+        dashboard_chain.StorageChain,
         "manage_storage",
         return_value=_usage_result(1000.0, 400.0),
     ) as mocked_usage:
@@ -107,7 +108,7 @@ def test_storage_sums_distinct_storages():
     }
 
     with _patch_dirs(dirs), patch.object(
-        dashboard_endpoint.StorageChain,
+        dashboard_chain.StorageChain,
         "manage_storage",
         side_effect=lambda storage, action: usages[storage],
     ) as mocked_usage:
@@ -128,7 +129,7 @@ def test_storage_skips_dirs_without_storage_fields():
     ]
 
     with _patch_dirs(dirs), patch.object(
-        dashboard_endpoint.StorageChain, "manage_storage"
+        dashboard_chain.StorageChain, "manage_storage"
     ) as mocked_usage:
         ret = dashboard_endpoint._build_storage()
 
@@ -142,7 +143,7 @@ def test_storage_returns_zero_without_dirs():
     未配置任何目录时返回 0。
     """
     with _patch_dirs([]), patch.object(
-        dashboard_endpoint.StorageChain, "manage_storage"
+        dashboard_chain.StorageChain, "manage_storage"
     ) as mocked_usage:
         ret = dashboard_endpoint._build_storage()
 
@@ -164,7 +165,7 @@ def test_storage_ignores_failed_usage_result():
     ]
 
     with _patch_dirs(dirs), patch.object(
-        dashboard_endpoint.StorageChain,
+        dashboard_chain.StorageChain,
         "manage_storage",
         return_value={"success": False, "message": "该存储类型未启用或不支持此管理动作"},
     ):

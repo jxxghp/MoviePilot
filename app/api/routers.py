@@ -47,6 +47,7 @@ from app.api.endpoints import (
     transfer,
     user,
     webhook,
+    widget,
     workflow,
 )
 
@@ -88,6 +89,7 @@ API_V1_ROUTER_SPECS: tuple[RouterSpec, ...] = (
     RouterSpec(github.router, "/github", ("github",)),
     RouterSpec(github.initialization_router, "/login/github-auth", ("login",)),
     RouterSpec(notification.router, "/notification", ("notification",)),
+    RouterSpec(widget.router, "/widget", ("widget",)),
     RouterSpec(llm.router, "/llm", ("llm",)),
     RouterSpec(plugin.router, "/plugin", ("plugin",)),
     RouterSpec(pluginclone.router, "/plugin", ("plugin",)),
