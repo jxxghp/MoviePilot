@@ -20,9 +20,31 @@ from app.application.security.widget import WidgetAccessError, WidgetAuthService
 from app.application.widget import WidgetSnapshotService
 from app.runtime.execution import run_in_threadpool
 from app.schemas.response import Response as ApiResponse
-from app.schemas.widget import WidgetRegistrationRequest, WidgetRegistrationResponse, WidgetSnapshot
+from app.schemas.widget import WidgetContext, WidgetRegistrationRequest, WidgetRegistrationResponse, WidgetSnapshot
 
 router = ResponseAPIRouter()
+
+
+@router.get("/context", summary="读取当前登录的小组件账户上下文", response_model=ApiResponse[WidgetContext])
+def widget_context(
+    response: Response,
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+    service: WidgetAuthService = Depends(get_widget_auth_service),
+) -> ApiResponse[WidgetContext]:
+    """
+    通过既有主登录核对不可变身份与当前权限，不登记安装或返回凭据清单。
+
+    :param response: 禁止缓存当前账号的上下文
+    :param current_user: 原认证确定的激活账号
+    :param service: 当前宿主的只读授权上下文服务
+    :return: 当前身份及可用内容，不含主登录或小组件密钥
+    """
+    response.headers.update(WIDGET_CACHE_HEADERS)
+    try:
+        result = service.context(current_user.id, current_user.notification_identity)
+    except WidgetAccessError as error:
+        widget_http_error(error)
+    return ApiResponse(success=True, data=result)
 
 
 @router.post(

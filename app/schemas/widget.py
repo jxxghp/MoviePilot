@@ -13,6 +13,16 @@ WidgetContent = Literal[
 WidgetIcon = Literal["movie", "television", "episodes", "music", "download", "upload", "storage", "items", "clock"]
 
 
+class WidgetContext(BaseModel):
+    """
+    当前主登录的小组件身份与权限；读取不会创建、轮换或返回任何凭据。
+    """
+
+    version: Literal[1] = Field(default=1, description="小组件账户上下文协议版本")
+    owner: str = Field(pattern=r"^[0-9a-f]{32}$", description="当前激活用户的不可变身份，用于核对已启用资料")
+    availableContents: list[WidgetContent] = Field(max_length=6, description="按最新权限可选择的内容，无权限时为空")
+
+
 class WidgetRegistrationRequest(BaseModel):
     """
     当前登录用户明确启用某个本机安装；不接受 owner、权限或来源地址。

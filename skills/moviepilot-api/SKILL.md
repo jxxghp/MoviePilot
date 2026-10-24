@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 64
+version: 65
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -227,9 +227,11 @@ frontmatter allowlist, and the matching gateway contract together.
 ## API Surface Scope
 
 System widget endpoints under `/api/v1/widget/*` are outside this skill and the Agent tool catalog.
-They use a separate, expiring, read-only Bearer; never use it as an ordinary API/MCP login credential,
-or enable, rotate, or export widget grants on a user's behalf. See `docs/widgets.md` for the protocol
-and user scope. System extensions must not hold the main login token.
+Context, registration, and owner revocation use the existing main login. Snapshot reads and self
+revocation use a separate, expiring, read-only Bearer; never use it as an ordinary API/MCP login
+credential, or enable, rotate, or export widget grants on a user's behalf. Reading context must not
+issue or rotate credentials. See `docs/widgets.md` for the protocol and user scope. System extensions
+must not hold the main login token.
 
 For installed plugins with a bound source, `plugin.market` only lists an update
 when that repository has a newer version. A higher version in another repository

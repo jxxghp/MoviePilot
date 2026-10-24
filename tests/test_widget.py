@@ -23,7 +23,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.adapters.web.security.access import verify_token
 from app.api.dependencies import widget as dependencies
-from app.api.dependencies.auth import get_current_active_user
+from app.api.dependencies.auth import get_current_active_user, get_current_user
 from app.api.dependencies.widget import get_widget_auth_service, get_widget_snapshot_service
 from app.api.endpoints import widget as endpoint
 from app.application.dashboard import DashboardQueryService
@@ -155,6 +155,49 @@ def _expect_error(status, operation, *args):
     with pytest.raises(WidgetAccessError) as caught:
         operation(*args)
     assert caught.value.status == status
+
+
+def test_widget_context_reads_current_permissions_without_issuing_or_rotating(widget_case):
+    """
+    未启用也可核对当前账号；上下文不登记安装、轮换密钥或延长已有授权。
+    """
+    case = widget_case
+    result = case.auth.context(101, case.owners[0])
+    assert result.model_dump() == {
+        "version": 1,
+        "owner": case.owners[0],
+        "availableContents": ["downloads", "imports", "movieSubscriptions", "tvSubscriptions", "musicSubscriptions"],
+    }
+    with case.factory() as session:
+        assert session.scalar(sa.select(sa.func.count()).select_from(WidgetRegistration)) == 0
+    issued = _register(case)
+    _update_user(case, permissions={"subscribe": True, "features": {"subscribe.movie": False, "subscribe.music": False}})
+    case.clock[0] += 120
+    assert case.auth.context(101, issued.owner).availableContents == ["tvSubscriptions"]
+    current = case.auth.authenticate(issued.secret)
+    assert current.registration.registration_id == str(issued.registrationId)
+    assert current.registration.expires_at == issued.expiresAt
+    with case.factory() as session:
+        assert session.scalar(sa.select(sa.func.count()).select_from(WidgetRegistration)) == 1
+    _update_user(case, permissions={})
+    assert case.auth.context(101, issued.owner).availableContents == []
+
+
+@pytest.mark.parametrize("change", ["inactive", "deleted", "identity"])
+def test_widget_context_rejects_stale_main_account_identity(widget_case, change):
+    """
+    主登录校验后的并发禁用、删除和身份重建不能被上下文读取掩盖。
+    """
+    case = widget_case
+    if change == "deleted":
+        with case.factory() as session:
+            session.execute(sa.delete(User).where(User.id == 101))
+            session.commit()
+    elif change == "identity":
+        _update_user(case, notification_identity=uuid4().hex)
+    else:
+        _update_user(case, is_active=False)
+    _expect_error(401, case.auth.context, 101, case.owners[0])
 
 
 def test_widget_issue_rotation_owner_and_self_revoke(widget_case):
@@ -480,6 +523,43 @@ def _client(case):
         return {"success": True}
 
     return TestClient(app)
+
+
+def test_widget_http_context_requires_main_login_and_never_exports_credentials(widget_case):
+    """
+    真实路由拒绝组件凭据，只返回当前账号最小上下文，错误及成功均不泄露密钥。
+    """
+    case = widget_case
+    issued = _register(case)
+    with _client(case) as client:
+        def main_user(_token=Depends(verify_token)):
+            """
+            隔离宿主数据库装配，但保留真实主令牌验证及原激活账号检查。
+            """
+            return SimpleNamespace(id=101, notification_identity=case.owners[0], is_active=True)
+
+        client.app.dependency_overrides[get_current_user] = main_user
+        for headers in ({}, {"Authorization": f"Bearer {issued.secret}"}):
+            response = client.get("/api/v1/widget/context", headers=headers)
+            assert response.status_code == 401
+            assert issued.secret not in response.text
+        client.app.dependency_overrides[get_current_active_user] = lambda: SimpleNamespace(
+            id=101, notification_identity=case.owners[0]
+        )
+        response = client.get(f"/api/v1/widget/context?owner={case.owners[1]}")
+        assert response.status_code == 200
+        assert response.headers["Cache-Control"] == "no-store, private"
+        assert response.headers["Vary"] == "Authorization"
+        assert response.json()["data"] == case.auth.context(101, issued.owner).model_dump()
+        assert set(response.json()["data"]) == {"version", "owner", "availableContents"}
+        assert issued.secret not in response.text
+        assert str(issued.registrationId) not in response.text
+        assert case.auth.authenticate(issued.secret).registration.expires_at == issued.expiresAt
+        _update_user(case, notification_identity=uuid4().hex)
+        response = client.get("/api/v1/widget/context")
+        assert response.status_code == 401
+        assert response.headers["Cache-Control"] == "no-store, private"
+        assert "owner" not in response.json()
 
 
 def test_widget_http_header_only_no_cache_and_no_general_api_access(widget_case):
