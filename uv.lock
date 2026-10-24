@@ -1846,7 +1846,7 @@ requires-dist = [
     { name = "langgraph", specifier = "~=1.2.11" },
     { name = "langgraph-checkpoint", specifier = "~=4.2.0" },
     { name = "lark-oapi", specifier = "~=1.6.8" },
-    { name = "moviepilot-rust", specifier = "~=0.3.11" },
+    { name = "moviepilot-rust", specifier = "~=0.3.12" },
     { name = "mutagen", specifier = "~=1.47.0" },
     { name = "openai", specifier = "~=2.41.1" },
     { name = "orjson", specifier = "==3.12.0" },
@@ -1936,23 +1936,20 @@ runtime-standard = [
 
 [[package]]
 name = "moviepilot-rust"
-version = "0.3.11"
+version = "0.3.12"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f0/7d/d390519a4f2247104cdaecede0ab6014c626927333b8fbb3139f276a08a4/moviepilot_rust-0.3.11-cp314-abi3-macosx_10_12_x86_64.whl", hash = "sha256:6b4b761291c0183e3959537b9fdc6ad0863fbca0539a426263c5d1caaac7a17e", size = 5607151, upload-time = "2026-10-22T23:31:03.453Z" },
-    { url = "https://files.pythonhosted.org/packages/5d/5c/f1a6545191ef75e6aa88a09daba7ac0de15f2beb3253ac802ba039a93d13/moviepilot_rust-0.3.11-cp314-abi3-macosx_11_0_arm64.whl", hash = "sha256:8c5a0baa917c99962d3de2e3570de159b6f75728dc6077ff405bfd47764b1059", size = 5515228, upload-time = "2026-10-22T23:31:05.2Z" },
-    { url = "https://files.pythonhosted.org/packages/23/94/f43a90ab5c968512fbc5d1391d291fbf48619093c7ad6a80774d4e1ac0e5/moviepilot_rust-0.3.11-cp314-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b554bf02a891bf2d892c8fd36a7681fdb233fecf2a1e43a9bf85433185ae7a86", size = 5613488, upload-time = "2026-10-22T23:31:07.078Z" },
-    { url = "https://files.pythonhosted.org/packages/bc/95/b8097ae72b25576bf271d3d76c9f0ebe4c598a81b2e405e11d43757522ed/moviepilot_rust-0.3.11-cp314-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3fa4361c9f1fd84a89cf5bd12ced80e5de566bb9138f17865aa013a02251d519", size = 5802107, upload-time = "2026-10-22T23:31:08.988Z" },
-    { url = "https://files.pythonhosted.org/packages/59/9d/e29383881e7c6c616ce38e72a38d1f7034a24f8eeb43447ff9c88517a777/moviepilot_rust-0.3.11-cp314-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:2301d30d5136d0f349f8992d8710eb357b7dba115fe9ec04cab33b43f548fff7", size = 5821029, upload-time = "2026-10-22T23:31:10.979Z" },
-    { url = "https://files.pythonhosted.org/packages/9c/4a/71d9611f003fbda4c2256f93b45096bf7d3e877b2b189c91b5897ff6d655/moviepilot_rust-0.3.11-cp314-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:f24a56eeaff31276bed05dfd523a87033ce5ffd373fa5db6d56ae34566b8b866", size = 6042439, upload-time = "2026-10-22T23:31:12.624Z" },
-    { url = "https://files.pythonhosted.org/packages/50/80/11dfd0a25510ec9ddc7c87b0ed5f2a59f07d6c37db756671157c36c27b2c/moviepilot_rust-0.3.11-cp314-abi3-win_amd64.whl", hash = "sha256:e9295de8fa265e8365fcb94408103790e8695fbca38ccc79604272e4519cbc69", size = 5609967, upload-time = "2026-10-22T23:31:14.551Z" },
-    { url = "https://files.pythonhosted.org/packages/dd/68/e1efa5e6b7bbf9c12187853b41fb9664badae825e98dcc02b6773fefcc4c/moviepilot_rust-0.3.11-cp314-cp314t-macosx_10_12_x86_64.whl", hash = "sha256:f43287f9237c5b89f432f536a1861ea9423bdb663221429316a1ed297e9c8fb7", size = 5592541, upload-time = "2026-10-22T23:31:16.215Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/2c/da11181559d8b3dad833883ebffa33e86101245da91ea55f02c5af1b8a73/moviepilot_rust-0.3.11-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:b273f5bac8f908e5d8fbe1f915644f9502b746d17fcc3e020e55f4a769c51045", size = 5509304, upload-time = "2026-10-22T23:31:17.872Z" },
-    { url = "https://files.pythonhosted.org/packages/72/4c/8784ad032a29ad408e87244a446a3a19cc65a038db9acd0b70afc39ec9dd/moviepilot_rust-0.3.11-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0897b66928e1cf289edf2a13ed113322f227719f1cbb685f7af12f87d8b8d021", size = 5613069, upload-time = "2026-10-22T23:31:19.577Z" },
-    { url = "https://files.pythonhosted.org/packages/10/32/256225b6e4c6628c8cae3aae5b260d7b1b6f23cfa4c656061c51c2eb05ef/moviepilot_rust-0.3.11-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:384c829bf066db852b06a58cb679d93a13416570ba341fa8a30bbdffd125a4ae", size = 5801239, upload-time = "2026-10-22T23:31:21.283Z" },
-    { url = "https://files.pythonhosted.org/packages/9e/28/f03eff812f828ee36ece0accbbe5c89e88fcb8407301f01bb390909da13c/moviepilot_rust-0.3.11-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:9c5b91b63c3c046efa3e8c7b731dd25f7b06b74dba3f51fdbd3ddd32dd21bb6b", size = 5820078, upload-time = "2026-10-22T23:31:23.089Z" },
-    { url = "https://files.pythonhosted.org/packages/3a/eb/aee980e75dcac706c0e310598f387dc227fe168b4849082efd57ee1cbc07/moviepilot_rust-0.3.11-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:238f7ef7df457548d0fd528e97904a4e8aa68cbd80e7f0757f7b5986f338cdbd", size = 6042446, upload-time = "2026-10-22T23:31:24.821Z" },
-    { url = "https://files.pythonhosted.org/packages/7f/7f/7407f5a73010de33f08dea4c296c5f6a3c25d72db5a6076a99fe9b7e343e/moviepilot_rust-0.3.11-cp314-cp314t-win_amd64.whl", hash = "sha256:e4775092384365e3f80d317eff5b437ce1a1a601a7b3c8ffcdf8afb9f74c760c", size = 5609861, upload-time = "2026-10-22T23:31:26.759Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/7c/2005d139b1951ccfea04576846005f20d1bd27c24d02364018d739e2239d/moviepilot_rust-0.3.12-cp314-abi3-macosx_10_12_x86_64.whl", hash = "sha256:9259e546aae5502dc5b4643ef7f3dafbabb84106b8c539991b9b3a70fbd6e3ea", size = 5607089, upload-time = "2026-10-24T12:15:17.312Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/2d/a2ed912146eb79cbaed5e539ea7d62f31ae82107b3d4254b24f1389135d4/moviepilot_rust-0.3.12-cp314-abi3-macosx_11_0_arm64.whl", hash = "sha256:ff3c8d014d8de47262604bad46758c45fe9ef9a722500a0694088e502c1ffeb1", size = 5515273, upload-time = "2026-10-24T12:15:19.423Z" },
+    { url = "https://files.pythonhosted.org/packages/01/f2/39aaa333c8599a339632b4ded513b1c2f155d40c71bee04459436eda8e03/moviepilot_rust-0.3.12-cp314-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1d7ccb4a8f32fb1c6065f8a7db20830685ad207b691c07ebb710edeb255cc38f", size = 5613380, upload-time = "2026-10-24T12:15:21.3Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/20/bddb877f1dd44786515b70680ad9b8d16f40805720409621244d54b26619/moviepilot_rust-0.3.12-cp314-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0fb57555f89968806c6931346a30034b9958b9963c64e467acd007bf650e34a5", size = 5802147, upload-time = "2026-10-24T12:15:22.917Z" },
+    { url = "https://files.pythonhosted.org/packages/69/9b/0a896d68738d2c35ed438b90c8ca6f0d2ef0c6130c4037aa0156c226da50/moviepilot_rust-0.3.12-cp314-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:a7674771a6464138f2b93925492985f6e09c31485d6dc6c58f94da74675b0340", size = 5821017, upload-time = "2026-10-24T12:15:24.881Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/90/e5150ed1fd83cf60362e5035dff30f7aef8706d94e1a60d1b30b1bc401fa/moviepilot_rust-0.3.12-cp314-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:2259cef80c66f1fcbf5a90e398f782a985066978862006606684ee72591fb8f0", size = 6042347, upload-time = "2026-10-24T12:15:26.936Z" },
+    { url = "https://files.pythonhosted.org/packages/40/66/1af24c113e4d1d8679a2c5a0df581f9fd95117d574f82dbd07416abac315/moviepilot_rust-0.3.12-cp314-abi3-win_amd64.whl", hash = "sha256:87d1a74881c25c91373379eb09590f09161e4d5935b6aa36cceab50394f41152", size = 5609890, upload-time = "2026-10-24T12:15:28.775Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/4c/e0f826fd1b7f3a25659a357282adcf165515eb8cbcffa167262f93117fc4/moviepilot_rust-0.3.12-cp314-cp314t-macosx_10_12_x86_64.whl", hash = "sha256:d574cce37efc2f2cc2f5fc77f7e4263dc66853d498d557d7e4542f4d4a640b97", size = 5592561, upload-time = "2026-10-24T12:15:30.893Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/82/ff183e64a9cfc78a8eb45ea6146057b3a23c954287f180e9d40a8dc9bffa/moviepilot_rust-0.3.12-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:fee57d765107e62e64b6dfcb616f56f2dfce1eec889226629d453705a31d8a6c", size = 5509114, upload-time = "2026-10-24T12:15:32.718Z" },
+    { url = "https://files.pythonhosted.org/packages/67/0f/6830a2c7f85faba4a580f800e7bad4ae8b949dd60e4894a1dbc3a89d02fa/moviepilot_rust-0.3.12-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1d8e095858480027fcd37e8383de8a86ee46f93cee1ac4609eb3fb0a9003ce23", size = 5613119, upload-time = "2026-10-24T12:15:34.538Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/db/c41ea279b37f05e23fcba1f269d3a26acdbd77ea9df77d729c0567429218/moviepilot_rust-0.3.12-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:50df659acb4f47445c4e0e96d297edfafef2eb5250daff28ba1dfd6661454775", size = 5801030, upload-time = "2026-10-24T12:15:36.342Z" },
 ]
 
 [[package]]
