@@ -192,6 +192,7 @@ meta_cases = [{
         "fps": None
     }
 }, {
+    # 资源标签走影视解析；WEBRip 是片源，单独的声道数不作为音频编码。
     "title": "Thor Love and Thunder (2022) [1080p] [WEBRip] [5.1]",
     "subtitle": "",
     "target": {
@@ -202,10 +203,10 @@ meta_cases = [{
         "part": "",
         "season": "",
         "episode": "",
-        "restype": "",
+        "restype": "WEBRip",
         "pix": "1080p",
         "video_codec": "",
-        "audio_codec": "5.1",
+        "audio_codec": "",
         "fps": None
     }
 }, {

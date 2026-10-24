@@ -30,14 +30,15 @@ from app.domain.meta.words import WordsMatcher, get_custom_words
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import MediaSource, MediaType
 
-_ANIME_BRACKET_RE = re.compile(r'【[+0-9XVPI-]+】\s*【', re.IGNORECASE)
+# 分辨率标签中的 p/i 不是集数或罗马数字证据，不能仅凭后续方括号进入动漫解析。
+_ANIME_BRACKET_RE = re.compile(r'【(?!\d+[PI]】)[+0-9XVPI-]+】\s*【', re.IGNORECASE)
 _ANIME_DASH_EPISODE_RE = re.compile(r'\s+-\s+[\dv]{1,4}\s+', re.IGNORECASE)
 _VIDEO_SEASON_EPISODE_RE = re.compile(
     r"S\d{2}\s*-\s*S\d{2}|S\d{2}|\s+S\d{1,2}|"
     r"EP?\d{2,4}\s*-\s*EP?\d{2,4}|EP?\d{2,4}|\s+EP?\d{1,4}",
     re.IGNORECASE,
 )
-_ANIME_SQUARE_BRACKET_RE = re.compile(r'\[[+0-9XVPI-]+]\s*\[', re.IGNORECASE)
+_ANIME_SQUARE_BRACKET_RE = re.compile(r'\[(?!\d+[PI]])[+0-9XVPI-]+]\s*\[', re.IGNORECASE)
 
 _BRACED_METAINFO_RE = re.compile(r'(?<={\[)[\W\w]+(?=]})')
 _BRACED_TMDBID_RE = re.compile(r'(?<=tmdbid=)\d+')
@@ -615,10 +616,10 @@ def MetaInfoPath(path: Path, custom_words: Optional[List[str]] = None, force_vid
 
 def is_anime(name: str) -> bool:
     """
-    判断是否为动漫。
+    根据集数命名选择动漫解析器，资源分辨率标签本身不构成集数证据。
 
-    :param name: 名称
-    :return: 是否动漫
+    :param name: 已完成识别词和显式媒体标签预处理的标题
+    :return: 标题是否包含需要动漫解析器处理的季集格式，不代表元数据源的题材分类
     """
     if not name:
         return False
