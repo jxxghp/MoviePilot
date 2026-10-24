@@ -5,6 +5,7 @@ ListenBrainz 全站榜单与新发行专辑查询及统一音乐模型转换。
 from typing import Any, Optional, Tuple, Union
 
 from app.adapters.network.http import RequestUtils
+from app.application.music_cover import localize_music_cover
 from app.domain.context import MusicInfo
 from app.modules import _ModuleBase
 from app.runtime.cache import cached
@@ -332,24 +333,35 @@ class ListenBrainzModule(_ModuleBase):
     @classmethod
     def _release_cover(cls, release_mbid: Any) -> Optional[str]:
         """
-        根据发行版本 ID 构造 Cover Art Archive 封面地址。
+        根据发行版本 ID 构造可展示的封面地址。
+
+        Cover Art Archive 会 307 跳转到 ``archive.org``，浏览器直连该节点常常失败，
+        因此优先由后端取图并落到本站静态目录，失败时退回原始地址。
         """
         if not release_mbid:
             return None
-        # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
-        base = (get_runtime_setting('MUSIC_COVER_PROXY') or "https://coverartarchive.org").rstrip("/")
-        return f"{base}/release/{release_mbid}/front-500"
+        return cls._localized_cover(f"/release/{release_mbid}/front-500")
 
     @classmethod
     def _release_group_cover(cls, release_group_id: Any) -> Optional[str]:
         """
-        根据 Release Group ID 构造 Cover Art Archive 封面地址。
+        根据 Release Group ID 构造可展示的封面地址。
         """
         if not release_group_id:
             return None
-        # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
+        return cls._localized_cover(f"/release-group/{release_group_id}/front-500")
+
+    @staticmethod
+    def _localized_cover(path: str) -> str:
+        """
+        把 Cover Art Archive 路径转换为本站可访问封面。
+
+        :param path: Cover Art Archive 的 release 或 release-group 子路径
+        :return: 本站封面地址；本地化失败时退回原始地址，由前端按加载失败处理
+        """
         base = (get_runtime_setting('MUSIC_COVER_PROXY') or "https://coverartarchive.org").rstrip("/")
-        return f"{base}/release-group/{release_group_id}/front-500"
+        source_url = f"{base}{path}"
+        return localize_music_cover(source_url) or source_url
 
     @staticmethod
     def _primary_artist_ids(artist_mbids: Any) -> list[str]:

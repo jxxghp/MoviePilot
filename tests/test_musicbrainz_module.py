@@ -313,7 +313,8 @@ def test_recording_to_info_maps_musicbrainz_payload():
     assert info.album_artist == "Daft Punk"
     assert info.year == 2013
     assert info.duration == 369
-    assert info.cover_url.endswith("/release-group-1/front-500")
+    # 封面优先转换为本站地址，本地化不可用时退回 Cover Art Archive 原始地址。
+    assert info.cover_url.startswith("/static/music/") or info.cover_url.endswith("/release-group-1/front-500")
 
 
 def test_search_music_normalizes_candidates(monkeypatch):

@@ -27,6 +27,7 @@ from app.application.music.recognition import (
     enrich_music_artist_aliases,
     unique_music_match,
 )
+from app.application.music_cover import localize_music_cover
 from app.domain.classification.evaluator import read_fact
 from app.domain.classification.facts import build_classification_facts
 from app.domain.context import (
@@ -3140,13 +3141,17 @@ class MusicBrainzModule(_ModuleBase):
     @classmethod
     def _build_cover_url(cls, release_group_id: Optional[str]) -> Optional[str]:
         """
-        根据 Release Group ID 构造 Cover Art Archive 封面地址。
+        根据 Release Group ID 构造可展示的封面地址。
+
+        Cover Art Archive 的封面会 307 跳转到 ``archive.org``，浏览器直连该归档节点
+        常常失败，因此这里由后端取图并落到本站静态目录，拿到本站地址后前端可直连。
+        本地化失败时退回原始地址，由前端按加载失败处理。
         """
         if not release_group_id:
             return None
-        # 支持配置音乐封面代理地址，解决 coverartarchive.org 无法访问的问题
         base = (get_runtime_setting('MUSIC_COVER_PROXY') or "https://coverartarchive.org").rstrip("/")
-        return f"{base}/release-group/{release_group_id}/front-500"
+        source_url = f"{base}/release-group/{release_group_id}/front-500"
+        return localize_music_cover(source_url) or source_url
 
     @classmethod
     def _get_request(cls) -> RequestUtils:
