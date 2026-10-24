@@ -249,6 +249,12 @@
     },
     "target": "app.runtime.execution.run_in_threadpool_to_completion"
   },
+  "app/api/endpoints/widget.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "widget_snapshot": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
+  },
   "app/application/agenttask.py:asyncio.create_task": {
     "owners": {
       "AgentTaskExecutionService._finalize": 1,
@@ -330,6 +336,13 @@
       "PluginCandidateInventoryReader.async_load": 1
     },
     "target": "asyncio.to_thread"
+  },
+  "app/application/widget.py:app.runtime.execution.run_in_threadpool": {
+    "owners": {
+      "WidgetSnapshotService._download_section": 1,
+      "WidgetSnapshotService._overview": 2
+    },
+    "target": "app.runtime.execution.run_in_threadpool"
   },
   "app/chain/_recognition.py:app.runtime.execution.run_in_threadpool": {
     "owners": {

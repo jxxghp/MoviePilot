@@ -69,6 +69,7 @@ _MODEL_EXPORTS = {
     "User": ("app.db.models.user", "User"),
     "UserConfig": ("app.db.models.userconfig", "UserConfig"),
     "Workflow": ("app.db.models.workflow", "Workflow"),
+    "WidgetRegistration": ("app.db.models.widget", "WidgetRegistration"),
 }
 
 

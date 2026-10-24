@@ -26,6 +26,12 @@
 升级前历史没有来源标记，界面显示“未记录”，不会按当前订阅设置追溯推断。
 普通订阅的首次提交与洗版订阅补缺在活动中都标记为首次订阅。
 
+### App 小组件只读接口
+
+小组件使用独立的有限期只读 Bearer，通过 `/api/v1/widget/registrations` 登记和
+`/api/v1/widget/snapshot` 刷新。该凭据不适用于普通 REST/MCP，也不加入 Agent 工具目录；
+详见[授权、权限与快照协议](widgets.md)。主登录凭据不得交给系统扩展。
+
 ### 通知配置与交互身份
 
 `GET /api/v1/message/notification` 的可空 `poster` 字段提供独立媒体海报。

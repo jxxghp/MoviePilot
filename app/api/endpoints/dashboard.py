@@ -22,7 +22,6 @@ from app.application.dashboard import DashboardQueryService
 from app.application.directory import DirectoryHelper
 from app.application.scheduling import get_scheduler
 from app.chain.dashboard import DashboardChain
-from app.chain.storage import StorageChain
 from app.runtime.execution import run_in_threadpool
 from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
 from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
@@ -33,7 +32,6 @@ from app.schemas.dashboard import ScheduleProgress as _SchemaScheduleProgress
 from app.schemas.dashboard import Statistic as _SchemaStatistic
 from app.schemas.dashboard import Storage as _SchemaStorage
 from app.schemas.response import Response as _SchemaResponse
-from app.schemas.types import StorageAction
 
 router = ResponseAPIRouter()
 
@@ -42,24 +40,7 @@ def _build_storage() -> _SchemaStorage:
     """
     构建本地存储空间信息。
     """
-    total, available = 0, 0
-    dirs = DirectoryHelper().get_dirs()
-    if not dirs:
-        return _SchemaStorage(total_storage=total, used_storage=total - available)
-    # 下载目录按 storage、媒体库目录按 library_storage 汇总存储集合，
-    # 用 set 去重存储名，避免同一存储被重复统计；
-    # 各存储的 usage 内部已按磁盘（st_dev / Btrfs FSID）去重，相同磁盘的不同目录不会重复累加。
-    storages = set(
-        [d.storage for d in dirs if d.download_path and d.storage]
-        + [d.library_storage for d in dirs if d.library_path and d.library_storage]
-    )
-    for _storage in storages:
-        _result = StorageChain().manage_storage(storage=_storage, action=StorageAction.USAGE.value)
-        _usage = _result.get("data") if _result.get("success") else None
-        if _usage:
-            total += _usage.get("total") or 0
-            available += _usage.get("available") or 0
-    return _SchemaStorage(total_storage=total, used_storage=total - available)
+    return DashboardChain().storage()
 
 
 def _build_downloader(

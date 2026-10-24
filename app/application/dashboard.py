@@ -55,11 +55,18 @@ class DashboardQueryService:
         self._repository = repository
         self._media_statistics = media_statistics
 
-    def statistic(self, name: Optional[str] = None) -> Statistic:
+    def statistic(self, name: Optional[str] = None, *, require_source: bool = False) -> Statistic:
         """
         返回媒体服务总量和本月新增量。
+
+        :param name: 指定媒体服务；为空时汇总全部已配置服务
+        :param require_source: 缺少成功来源时拒绝把失败作为成功的零，网页默认保持旧行为
+        :return: 当前来源计数与本月新增统计
+        :raises ValueError: 严格读取没有成功来源
         """
         media_statistics = self._media_statistics(name)
+        if require_source and not media_statistics:
+            raise ValueError("媒体统计来源暂不可用")
         if media_statistics:
             movie_count = tv_count = music_count = user_count = episode_count = 0
             has_episode_count = False

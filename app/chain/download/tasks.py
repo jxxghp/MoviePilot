@@ -65,11 +65,16 @@ class DownloadTaskOwner(_DownloadOwnerBase):
             save_history=False,
         ))
 
-    def downloading(self, name: Optional[str] = None) -> List[DownloaderTorrent]:
+    def downloading(self, name: Optional[str] = None, *, require_source: bool = False) -> List[DownloaderTorrent]:
         """
-        查询正在下载的任务
+        查询下载中任务并补全历史归属，小组件可要求来源报告明确结果。
+
+        :param name: 指定下载器；为空时沿用原选择规则
+        :param require_source: 拒绝来源返回 None，普通页面仍保留原空列表兼容行为
+        :return: 当前下载任务与原历史用户归属信息
+        :raises ValueError: 严格读取未取得有效来源结果
         """
-        return self._download_task_service().downloading(name)
+        return self._download_task_service(require_source=require_source).downloading(name)
 
     def set_downloading(self, hash_str: str, oper: str, name: Optional[str] = None) -> bool:
         """
@@ -87,15 +92,21 @@ class DownloadTaskOwner(_DownloadOwnerBase):
         """
         return self._download_task_service().remove_downloading(hash_str, name)
 
-    def _download_task_service(self) -> DownloadTaskService:
+    def _download_task_service(self, *, require_source: bool = False) -> DownloadTaskService:
         """
         构造绑定当前下载器能力与历史仓储的任务服务。
+
+        :param require_source: 开启时不将未知来源状态归一为成功空结果
+        :return: 使用当前链端口的任务查询服务
         """
         def list_torrents(**kwargs: Any) -> List[DownloaderTorrent]:
             """
             把下载器允许的空结果归一为应用服务要求的列表。
             """
-            return self.list_torrents(**kwargs) or []
+            result = self.list_torrents(**kwargs)
+            if require_source and result is None:
+                raise ValueError("下载来源暂不可用")
+            return result or []
 
         return DownloadTaskService(
             list_torrents=list_torrents,

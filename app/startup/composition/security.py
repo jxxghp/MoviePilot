@@ -3,6 +3,7 @@
 """
 
 from dataclasses import dataclass
+from functools import partial
 from typing import cast
 
 from app.adapters.web.security.access import (
@@ -29,9 +30,12 @@ from app.application.security.passkey import (
     reset_passkey_service,
 )
 from app.application.security.user import configure_user_lookups, reset_user_lookups
+from app.application.security.widget import WidgetScopeFactory
 from app.db.adapters.user import SqlAlchemyUserRepository
+from app.db.adapters.widget import widget_scope
 from app.db.oper.passkey import PassKeyOper
 from app.db.oper.systemconfig import SystemConfigOper
+from app.db.session import SessionFactory
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting, update_runtime_setting
@@ -52,6 +56,7 @@ class SecurityComposition:
     :param standalone_user: 为请求外独立操作构造用户仓储的工厂
     :param system_config: 构造独立配置存储访问端口的工厂
     :param passkey: 构造独立通行密钥存储访问端口的工厂
+    :param widget_scope: 创建小组件专用授权的独占短事务；为空时不开放
     """
 
     user_repository: RepositoryFactory
@@ -59,6 +64,7 @@ class SecurityComposition:
     standalone_user: StandaloneRepositoryFactory
     system_config: StandaloneRepositoryFactory
     passkey: StandaloneRepositoryFactory
+    widget_scope: WidgetScopeFactory | None = None
 
 
 def _backfill_superuser_setting(users: AuthUserRepository) -> None:
@@ -112,6 +118,7 @@ def configure_security_services() -> SecurityComposition:
         standalone_user=build_transactional_user_repository,
         system_config=SystemConfigOper,
         passkey=PassKeyOper,
+        widget_scope=partial(widget_scope, SessionFactory),
     )
 
 
