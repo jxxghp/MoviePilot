@@ -941,6 +941,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     f"错误信息：{error_msg}"
                 ),
                 image=prepared.media.get_message_image(),
+                poster=prepared.media.get_poster_image() or None,
                 userid=userid,
             )
         )

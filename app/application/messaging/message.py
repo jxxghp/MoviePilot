@@ -817,8 +817,11 @@ class MessageTemplateHelper:
     @staticmethod
     def render(message: Message, *args: Any, **kwargs: Any) -> Optional[Message]:
         """
-        渲染消息模板
+        从媒体上下文补充独立海报并渲染模板，保留渠道原有图片和显式海报。
         """
+        mediainfo = kwargs.get("mediainfo")
+        if isinstance(message, Message) and not message.poster and isinstance(mediainfo, (MediaInfo, MusicInfo)):
+            message.poster = mediainfo.get_poster_image() or None
         if not MessageTemplateHelper.is_instance_valid(message):
             if MessageTemplateHelper.meets_update_conditions(message, *args, **kwargs):
                 logger.info("将使用模板渲染消息内容")

@@ -193,7 +193,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Purpose: Stores inbound and outbound messages, channels, content, attachments, users, and timestamps.
 - Useful queries: Paging notification history, distinguishing direction, or tracing duplicates by source.
 - Write boundary: Written by messaging and notification services; clean it through the message API or retention job.
-- Columns: `id`, `channel`, `source`, `mtype`, `title`, `text`, `image`, `link`, `userid`, `reg_time`, `action`, `note`
+- Columns: `id`, `channel`, `source`, `mtype`, `title`, `text`, `image`, `poster`, `link`, `userid`, `reg_time`, `action`, `note`
 
 ### `outboxmessage`
 - Purpose: Stores externally visible side-effect intents committed atomically with business transactions.
