@@ -87,7 +87,8 @@ def test_identity_upgrade_chain_preserves_plugin_installation_snapshot(monkeypat
     config = Config()
     config.set_main_option("script_location", "database")
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["da73b6f20418"]
+    assert script.get_heads() == ["e4a8c7b29016"]
+    assert script.get_revision("e4a8c7b29016").down_revision == "da73b6f20418"
     assert script.get_revision("da73b6f20418").down_revision == "c9e2f6a04173"
     assert script.get_revision("c9e2f6a04173").down_revision == "b8d2f5a01962"
     predecessor = importlib.import_module("database.versions.b8d2f5a01962_plugin_data_identity")

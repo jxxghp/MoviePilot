@@ -316,6 +316,7 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
             title=(f"{context.mediainfo.title_year} {context.metainfo.season} 添加订阅失败！"),
             text=err_msg,
             image=context.mediainfo.get_message_image(),
+            poster=context.mediainfo.get_poster_image() or None,
             userid=context.userid,
         )
 

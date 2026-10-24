@@ -30,6 +30,8 @@ class Message(Base):
     text: Mapped[Optional[str]] = mapped_column(String)
     # 图片
     image: Mapped[Optional[str]] = mapped_column(String)
+    # 独立媒体海报，历史记录不从背景图猜测
+    poster: Mapped[Optional[str]] = mapped_column(String)
     # 链接
     link: Mapped[Optional[str]] = mapped_column(String)
     # 用户ID
