@@ -5,7 +5,7 @@ ListenBrainz 全站榜单与新发行专辑查询及统一音乐模型转换。
 from typing import Any, Optional, Tuple, Union
 
 from app.adapters.network.http import RequestUtils
-from app.application.music_cover import localize_music_cover
+from app.application.music_cover import localize_music_cover_with_fallback as localize_music_cover
 from app.domain.context import MusicInfo
 from app.modules import _ModuleBase
 from app.runtime.cache import cached

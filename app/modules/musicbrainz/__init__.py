@@ -27,7 +27,7 @@ from app.application.music.recognition import (
     enrich_music_artist_aliases,
     unique_music_match,
 )
-from app.application.music_cover import localize_music_cover
+from app.application.music_cover import localize_music_cover_with_fallback as localize_music_cover
 from app.domain.classification.evaluator import read_fact
 from app.domain.classification.facts import build_classification_facts
 from app.domain.context import (

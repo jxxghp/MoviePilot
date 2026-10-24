@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlsplit
 
+from app.adapters.network.http import RequestUtils
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 # 本地化封面在静态根目录下的子路径，nginx 的 root 指向该根目录
 _MUSIC_COVER_SUBDIR = Path("static") / "music"
@@ -145,3 +147,78 @@ def localize_music_cover(url: Optional[str], *, allow_network: bool = True) -> O
         return _store(root, filename, fetched)
     finally:
         lock.release()
+
+
+def _release_id(url: str) -> Optional[str]:
+    """
+    从 Cover Art Archive 的 release 封面地址中取出 release 标识。
+
+    :param url: 原始封面地址
+    :return: release 标识；不是 release 封面地址时为 None
+    """
+    if "/release/" not in url:
+        return None
+    _, _, rest = url.partition("/release/")
+    release_id = rest.split("/", 1)[0].strip()
+    return release_id or None
+
+
+def _lookup_release_group(release_id: str) -> Optional[str]:
+    """
+    查询 MusicBrainz，获取指定 release 所属的发行组标识。
+
+    :param release_id: MusicBrainz release 标识
+    :return: 发行组标识；查询失败时为 None
+    """
+    response = None
+    try:
+        response = RequestUtils(
+            headers={
+                "User-Agent": f"{get_runtime_setting('USER_AGENT')} (https://github.com/jxxghp/MoviePilot)",
+                "Accept": "application/json",
+            },
+            proxies=get_runtime_setting('PROXY'),
+            timeout=20,
+        ).get_res(
+            f"https://musicbrainz.org/ws/2/release/{release_id}",
+            params={"inc": "release-groups", "fmt": "json"},
+        )
+        if response is None or response.status_code != 200:
+            return None
+        payload = response.json()
+    except Exception as err:  # noqa: BLE001 - 兜底查询失败不影响主流程
+        logger.debug(f"音乐封面发行组查询失败：{release_id} - {err}")
+        return None
+    finally:
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
+    group = (payload or {}).get("release-group") or {}
+    group_id = str(group.get("id") or "").strip()
+    return group_id or None
+
+
+def localize_music_cover_with_fallback(url: Optional[str]) -> Optional[str]:
+    """
+    依次尝试原地址与其发行组地址，返回第一个成功本地化的封面。
+
+    部分专辑的某个 release 在归档节点缺失（返回 500），但同一发行组的其它 release
+    仍有封面；改走 release-group 地址即可绕开单个损坏的归档文件。
+
+    :param url: 外部封面地址
+    :return: 本站封面路径；全部失败时为 None
+    """
+    localized = localize_music_cover(url)
+    if localized:
+        return localized
+    source = str(url or "")
+    release_id = _release_id(source)
+    if not release_id:
+        return None
+    release_group_id = _lookup_release_group(release_id)
+    if not release_group_id:
+        return None
+    prefix = source.partition("/release/")[0]
+    return localize_music_cover(f"{prefix}/release-group/{release_group_id}/front-500")

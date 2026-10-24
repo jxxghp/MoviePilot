@@ -123,3 +123,35 @@ def test_musicbrainz_cover_falls_back_to_source_when_localize_fails(monkeypatch)
     monkeypatch.setattr("app.modules.musicbrainz.localize_music_cover", lambda url: None)
     assert MusicBrainzModule._build_cover_url("group-1") == _GROUP_URL
     assert MusicBrainzModule._build_cover_url(None) is None
+
+
+def test_fallback_uses_release_group_when_release_art_missing(tmp_path, monkeypatch):
+    """
+    单个 release 在归档节点缺失（500）时，应改用其发行组封面。
+    """
+    root = _static_root(tmp_path)
+    monkeypatch.setattr(music_cover, "_static_root", lambda: root)
+    monkeypatch.setattr(music_cover, "_lookup_release_group", lambda release_id: "group-1")
+    group_url = "https://coverartarchive.org/release-group/group-1/front-500"
+
+    def fake_fetch(url, use_cache=True):
+        return _IMAGE_BYTES if url == group_url else None
+
+    with patch("app.application.image.ImageHelper") as helper:
+        helper.return_value.fetch_image.side_effect = fake_fetch
+        result = music_cover.localize_music_cover_with_fallback(_RELEASE_URL)
+
+    assert result is not None
+    assert result.startswith("/static/music/cover_")
+
+
+def test_fallback_returns_none_when_release_group_unknown(tmp_path, monkeypatch):
+    """
+    无法解析发行组时不额外请求，直接返回 None 由调用方回退原地址。
+    """
+    root = _static_root(tmp_path)
+    monkeypatch.setattr(music_cover, "_static_root", lambda: root)
+    monkeypatch.setattr(music_cover, "_lookup_release_group", lambda release_id: None)
+    with patch("app.application.image.ImageHelper") as helper:
+        helper.return_value.fetch_image.return_value = None
+        assert music_cover.localize_music_cover_with_fallback(_RELEASE_URL) is None
