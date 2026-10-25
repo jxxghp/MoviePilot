@@ -8,7 +8,18 @@ from pathlib import Path
 from app.adapters.system.host import SystemUtils
 from app.application.directory import DirectoryHelper
 from app.chain.dashboard import DashboardChain
-from app.schemas.dashboard import DownloaderInfo
+from app.schemas.dashboard import DashboardMemoryInfo, DownloaderInfo
+
+
+def sample_system() -> tuple[float, DashboardMemoryInfo, list[int]]:
+    """
+    复用仪表盘系统来源，在同一受管工作线程内采样一秒 CPU 与网络区间。
+
+    :return: CPU 百分比、现有进程/系统内存事实及上行/下行字节每秒
+    """
+    SystemUtils.cpu_usage()
+    network = SystemUtils.network_usage()
+    return SystemUtils.cpu_usage(), SystemUtils.memory_usage(), network
 
 
 def _download_free_space(*, btrfs_fsid_dedup: bool, require_source: bool) -> float | None:

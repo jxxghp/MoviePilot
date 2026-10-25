@@ -144,15 +144,29 @@ def available_widget_contents(user: UserSnapshot) -> list[WidgetContent]:
     permissions: tuple[tuple[WidgetContent, str, str], ...] = (
         ("downloads", "manage", "manage.downloading"),
         ("imports", "manage", "manage.history"),
-        ("movieSubscriptions", "subscribe", "subscribe.movie"),
-        ("tvSubscriptions", "subscribe", "subscribe.tv"),
-        ("musicSubscriptions", "subscribe", "subscribe.music"),
     )
     for content, category, feature in permissions:
         if user.is_superuser or (user.permissions.get(category) is True and features.get(feature) is not False):
             # 元组来自固定服务端枚举，避免让客户端指定权限名称。
             contents.append(content)
+    if widget_subscription_features(user):
+        contents.append("subscriptions")
     return contents
+
+
+def widget_subscription_features(user: UserSnapshot) -> tuple[str, ...]:
+    """
+    合并订阅组件仍逐类复核权限，禁止把被禁用类型算入总数或摘要。
+
+    :param user: 当前激活用户的不可变授权快照
+    :return: 当前可用的固定订阅功能标识
+    """
+    features = user.permissions.get("features")
+    features = features if isinstance(features, Mapping) else {}
+    return tuple(
+        feature for feature in ("subscribe.movie", "subscribe.tv", "subscribe.music")
+        if user.is_superuser or (user.permissions.get("subscribe") is True and features.get(feature) is not False)
+    )
 
 
 class WidgetAuthService:

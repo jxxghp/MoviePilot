@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.adapters.web.security.access import verify_token
+from app.api.dependencies import dashboard as dashboard_dependencies
 from app.api.dependencies import widget as dependencies
 from app.api.dependencies.auth import get_current_active_user, get_current_user
 from app.api.dependencies.widget import get_widget_auth_service, get_widget_snapshot_service
@@ -49,7 +50,7 @@ from app.db.models.subscribe import Subscribe
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.user import User
 from app.db.models.widget import WidgetRegistration
-from app.schemas.dashboard import DownloaderInfo, Statistic, Storage
+from app.schemas.dashboard import DashboardMemoryInfo, DownloaderInfo
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType
 
@@ -108,14 +109,12 @@ def widget_case(tmp_path):
     history_repository = TransactionalTransferHistoryRepository(sync_session=factory, async_session=async_factory)
     data = DataQueryService(subscriptions=adapter, histories=adapter, async_executor=_ThreadExecutor())
     history = HistoryQueryService(download_repository=Mock(), transfer_repository=history_repository)
-    dashboard = DashboardQueryService(repository=Mock(), media_statistics=Mock(return_value=[Statistic(movie_count=7)]))
-    dashboard.statistic = Mock(return_value=Statistic(movie_count=7, tv_count=3, episode_count=None, music_count=2))
+    system = Mock(return_value=(24.5, DashboardMemoryInfo(total=1000, available=400), [2048, 4096]))
     downloads = Mock(return_value=[])
     downloader = Mock(return_value=DownloaderInfo(download_speed=2048, upload_speed=1024, free_space=4096))
-    storage = Mock(return_value=Storage(total_storage=1000, used_storage=600))
     snapshots = WidgetSnapshotService(
-        data=data, history=history, dashboard=dashboard, downloads=downloads,
-        downloader=downloader, storage=storage, clock=lambda: clock[0]
+        data=data, history=history, system=system, downloads=downloads,
+        downloader=downloader, clock=lambda: clock[0]
     )
     case = SimpleNamespace(
         auth=auth,
@@ -123,10 +122,9 @@ def widget_case(tmp_path):
         clock=clock,
         owners=owners,
         snapshots=snapshots,
-        dashboard=dashboard,
+        system=system,
         downloads=downloads,
         downloader=downloader,
-        storage=storage,
         data=data,
         history=history,
     )
@@ -170,14 +168,14 @@ def test_widget_context_reads_current_permissions_without_issuing_or_rotating(wi
     assert result.model_dump() == {
         "version": 1,
         "owner": case.owners[0],
-        "availableContents": ["downloads", "imports", "movieSubscriptions", "tvSubscriptions", "musicSubscriptions"],
+        "availableContents": ["downloads", "imports", "subscriptions"],
     }
     with case.factory() as session:
         assert session.scalar(sa.select(sa.func.count()).select_from(WidgetRegistration)) == 0
     issued = _register(case)
     _update_user(case, permissions={"subscribe": True, "features": {"subscribe.movie": False, "subscribe.music": False}})
     case.clock[0] += 120
-    assert case.auth.context(101, issued.owner).availableContents == ["tvSubscriptions"]
+    assert case.auth.context(101, issued.owner).availableContents == ["subscriptions"]
     current = case.auth.authenticate(issued.secret)
     assert current.registration.registration_id == str(issued.registrationId)
     assert current.registration.expires_at == issued.expiresAt
@@ -277,7 +275,7 @@ def test_widget_latest_features_rename_and_forged_secrets(widget_case):
     )
     current = case.auth.authenticate(issued.secret)
     assert current.user.name == "renamed"
-    assert available_widget_contents(current.user) == ["musicSubscriptions"]
+    assert available_widget_contents(current.user) == ["subscriptions"]
     _expect_error(403, case.auth.revalidate, grant)
     for invalid in ("", "jwt.token.parts", issued.secret[:-2] + "xx", f"mpw_{'-' * 36}.{'a' * 43}"):
         _expect_error(401, case.auth.authenticate, invalid)
@@ -373,11 +371,14 @@ def test_widget_snapshot_uses_real_owner_type_counts_and_success_history(widget_
     result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
     sections = {section.content: section for section in result.sections}
     assert "overview" not in sections
-    assert sections["movieSubscriptions"].metrics[0].value == "9"
-    assert sections["tvSubscriptions"].metrics[0].value == "9"
-    assert len(sections["movieSubscriptions"].items) == 6
-    assert sections["movieSubscriptions"].items[0].title == "alice-电影-8"
-    assert sections["musicSubscriptions"].state == "empty"
+    assert {metric.id: metric.value for metric in sections["subscriptions"].metrics} == {
+        "count": "18", "typeMOVIE": "9", "typeTV": "9", "typeMUSIC": "0",
+        "stateN": "18", "stateR": "0", "stateS": "0", "stateP": "0",
+    }
+    assert len(sections["subscriptions"].items) == 6
+    assert sections["subscriptions"].items[0].title.startswith("alice-")
+    assert sections["subscriptions"].items[0].title.endswith("-8")
+    assert sections["subscriptions"].state == "ready"
     assert sections["imports"].metrics[0].value == "9"
     assert len(sections["imports"].items) == 6
     assert sections["downloads"].metrics[0].value == "2"
@@ -400,9 +401,9 @@ def test_widget_partial_failures_and_utf8_budget(widget_case):
     ]
     result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(issued.secret)))
     sections = {section.content: section for section in result.sections}
-    assert sections["movieSubscriptions"].state == "unavailable"
-    assert sections["movieSubscriptions"].updatedAt is None
-    assert not sections["movieSubscriptions"].items and not sections["movieSubscriptions"].metrics
+    assert sections["subscriptions"].state == "unavailable"
+    assert sections["subscriptions"].updatedAt is None
+    assert not sections["subscriptions"].items and not sections["subscriptions"].metrics
     assert sections["imports"].state == "empty" and sections["imports"].updatedAt == case.clock[0]
     item = sections["downloads"].items[0]
     assert len(item.title.encode()) <= 240 and len(item.subtitle.encode()) <= 512
@@ -424,22 +425,24 @@ def test_widget_admin_overview_and_all_download_owners(widget_case, source_failu
     issued = _register(case)
     case.downloads.return_value = [DownloaderTorrent(title="bob 下载", userid="bob")]
     if source_failure:
-        case.storage.return_value = Storage(total_storage=100, used_storage=200)
+        case.system.return_value = (24.5, DashboardMemoryInfo(total=100, available=200), [1, 2])
     result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(issued.secret)))
     overview = result.sections[0]
-    assert len(result.sections) == 6
+    assert len(result.sections) == 4
     if source_failure:
         assert overview.state == "unavailable" and overview.updatedAt is None
     else:
-        assert overview.metrics[0].value == "7"
-        assert overview.metrics[2].value == "—"
+        assert overview.metrics[0].value == "24.5%"
+        assert overview.metrics[1].value == "60.0%"
+        assert overview.metrics[2].value == "4.00 KB/s"
         assert len(overview.metrics) == 6
     assert result.sections[1].items[0].title == "bob 下载"
     assert [(metric.id, metric.value) for metric in result.sections[1].metrics] == [
-        ("downloadSpeed", "2.00 KB/s"), ("uploadSpeed", "1.00 KB/s"), ("freeSpace", "4.00 KB"), ("count", "1")
+        ("downloadSpeed", "2.00 KB/s"), ("uploadSpeed", "1.00 KB/s"), ("freeSpace", "4.00 KB"), ("count", "1"),
+        ("statedownloading", "1"), ("statepaused", "0")
     ]
     case.downloader.assert_called_once_with()
-    case.dashboard.statistic.assert_called_once_with(require_source=True)
+    case.system.assert_called_once_with()
 
 
 @pytest.mark.parametrize("free_space, expected", [(0, "0 B"), (None, "—"), (-1, "—"), (float("nan"), "—")])
@@ -462,7 +465,7 @@ def test_widget_download_metrics_without_tasks_and_unknown_disk(widget_case, fre
     result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
     section = result.sections[1]
     assert section.state == "ready" and section.updatedAt == case.clock[0] and not section.items
-    assert [metric.value for metric in section.metrics] == ["0 B/s", "1.00 MB/s", expected, "0"]
+    assert [metric.value for metric in section.metrics] == ["0 B/s", "1.00 MB/s", expected, "0", "0", "0"]
 
 
 @pytest.mark.parametrize("field", ["download_speed", "upload_speed"])
@@ -492,7 +495,7 @@ def test_widget_global_speed_source_failure_does_not_leak_to_ordinary_user(widge
     ]
     grant = case.auth.authenticate(_register(case).secret)
     result = asyncio.run(case.snapshots.snapshot(grant))
-    assert [metric.id for metric in result.sections[0].metrics] == ["count"]
+    assert [metric.id for metric in result.sections[0].metrics] == ["count", "statedownloading", "statepaused"]
     assert [item.title for item in result.sections[0].items] == ["本人"]
     case.downloader.assert_not_called()
     _update_user(case, is_superuser=True)
@@ -533,13 +536,11 @@ def test_widget_dependency_assembly_and_absent_capability(widget_case, monkeypat
     monkeypatch.setattr(dependencies, "get_configured_data_query_service", lambda: case.data)
     download_chain = Mock()
     download_chain.downloading.return_value = []
-    dashboard_chain = Mock()
-    dashboard_chain.storage.return_value = Storage(total_storage=1, used_storage=0)
     monkeypatch.setattr(dependencies, "DownloadChain", lambda: download_chain)
-    monkeypatch.setattr(dependencies, "DashboardChain", lambda: dashboard_chain)
+    monkeypatch.setattr(dependencies, "sample_system", case.system)
     sampler = Mock(return_value=DownloaderInfo())
     monkeypatch.setattr(dependencies, "sample_downloader", sampler)
-    snapshots = dependencies.get_widget_snapshot_service(case.dashboard, case.history, ApiRuntimeConfig(60, True, False))
+    snapshots = dependencies.get_widget_snapshot_service(case.history, ApiRuntimeConfig(60, True, False))
     result = asyncio.run(snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
     assert result.sections[0].state == "empty"
     download_chain.downloading.assert_called_once_with(require_source=True)
@@ -747,3 +748,81 @@ def test_widget_migration_is_replay_safe_and_preserves_users(monkeypatch, alread
         assert not sa.inspect(connection).has_table("widgetregistration")
         assert connection.execute(sa.select(User.name)).scalar_one() == "existing"
     engine.dispose()
+
+
+def test_widget_combined_subscription_counts_all_rows_and_excludes_disabled_types(widget_case):
+    """
+    合并组件的类别和状态数量覆盖全库作用域，权限关闭的类型与他人记录不能影响统计。
+    """
+    case = widget_case
+    with case.factory() as session:
+        for index in range(12):
+            session.add(Subscribe(name=f"剧集-{index}", type=MediaType.TV.value, username="alice",
+                                  state=("N", "R", "S", "P")[index % 4], season=2, total_episode=20,
+                                  lack_episode=7, quality="WEB-DL", resolution="1080p"))
+        session.add(Subscribe(name="无权限的电影", type=MediaType.MOVIE.value, username="alice"))
+        session.add(Subscribe(name="另一用户", type=MediaType.TV.value, username="bob"))
+        session.commit()
+    _update_user(case, permissions={"subscribe": True, "features": {"subscribe.movie": False}})
+    result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
+    assert [section.content for section in result.sections] == ["subscriptions"]
+    section = result.sections[0]
+    assert {metric.id: metric.value for metric in section.metrics} == {
+        "count": "12", "typeTV": "12", "typeMUSIC": "0",
+        "stateN": "3", "stateR": "3", "stateS": "3", "stateP": "3",
+    }
+    assert len(section.items) == 6
+    assert section.items[0].progress == 0.65
+    assert "S02" in section.items[0].subtitle and "13/20 集" in section.items[0].subtitle
+    assert "WEB-DL" in section.items[0].subtitle
+    assert "无权限" not in result.model_dump_json() and "另一用户" not in result.model_dump_json()
+
+
+def test_widget_import_type_totals_are_not_the_six_recent_rows(widget_case):
+    """
+    入库类型统计使用完整成功历史，失败记录不计入；大卡片仍只投影最近六项。
+    """
+    case = widget_case
+    with case.factory() as session:
+        for kind, count in ((MediaType.MOVIE, 8), (MediaType.TV, 7), (MediaType.MUSIC, 3)):
+            for index in range(count):
+                session.add(TransferHistory(title=f"{kind.value}-{index}", type=kind.value, status=True))
+            session.add(TransferHistory(title="失败", type=kind.value, status=False))
+        session.commit()
+    result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
+    section = next(section for section in result.sections if section.content == "imports")
+    assert {metric.id: metric.value for metric in section.metrics} == {
+        "count": "18", "typeMOVIE": "8", "typeTV": "7", "typeMUSIC": "3",
+    }
+    assert len(section.items) == 6
+
+
+@pytest.mark.parametrize("cpu,total,available,network", [
+    (float("nan"), 100, 10, [1, 2]), (-1, 100, 10, [1, 2]),
+    (10, 0, 0, [1, 2]), (10, 100, 101, [1, 2]), (10, 100, 10, [-1, 2]), (10, 100, 10, [1]),
+])
+def test_widget_invalid_system_samples_do_not_fabricate_values(widget_case, cpu, total, available, network):
+    """
+    系统无效采样必须独立失败，不能用媒体数量或伪造零值代替。
+    """
+    case = widget_case
+    _update_user(case, is_superuser=True)
+    case.system.return_value = (cpu, DashboardMemoryInfo(total=total, available=available), network)
+    result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
+    overview = result.sections[0]
+    assert overview.state == "unavailable" and not overview.metrics and overview.updatedAt is None
+    assert result.sections[1].state == "ready"
+
+
+def test_widget_system_sampler_reuses_existing_sources_in_order(monkeypatch):
+    """
+    CPU 两次读取围绕同一网络采样区间，系统内存沿用仪表盘来源而非进程内存比例。
+    """
+    source = Mock()
+    source.cpu_usage.side_effect = [0.0, 42.0]
+    source.network_usage.return_value = [1024, 2048]
+    source.memory_usage.return_value = DashboardMemoryInfo(total=100, available=30, used=5, usage=5)
+    monkeypatch.setattr(dashboard_dependencies, "SystemUtils", source)
+    cpu, memory, network = dashboard_dependencies.sample_system()
+    assert cpu == 42 and network == [1024, 2048] and memory.available == 30
+    assert [call[0] for call in source.mock_calls] == ["cpu_usage", "network_usage", "cpu_usage", "memory_usage"]

@@ -340,7 +340,7 @@
   "app/application/widget.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
       "WidgetSnapshotService._download_section": 1,
-      "WidgetSnapshotService._overview": 2
+      "WidgetSnapshotService._overview": 1
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },

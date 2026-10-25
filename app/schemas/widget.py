@@ -8,9 +8,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 WidgetContent = Literal[
-    "overview", "downloads", "imports", "movieSubscriptions", "tvSubscriptions", "musicSubscriptions"
+    "overview", "downloads", "imports", "subscriptions", "movieSubscriptions", "tvSubscriptions", "musicSubscriptions"
 ]
-WidgetIcon = Literal["movie", "television", "episodes", "music", "download", "upload", "storage", "items", "clock"]
+WidgetIcon = Literal[
+    "movie", "television", "episodes", "music", "download", "upload", "storage", "items", "clock", "cpu", "memory"
+]
 
 
 class WidgetContext(BaseModel):
@@ -85,7 +87,7 @@ class WidgetSection(BaseModel):
         default=None, gt=0, allow_inf_nan=False, description="成功读取的 UTC Unix 秒；失败时为空"
     )
     title: str = Field(min_length=1, max_length=240, description="内容标题，最多 240 UTF-8 字节")
-    metrics: list[WidgetMetric] = Field(default_factory=list, max_length=6, description="最多六个真实作用域的统计指标")
+    metrics: list[WidgetMetric] = Field(default_factory=list, max_length=8, description="最多八个真实作用域的统计指标")
     items: list[WidgetItem] = Field(default_factory=list, max_length=6, description="最多六项摘要；列表长度不冒充总数")
     message: str | None = Field(default=None, max_length=240, description="可展示的固定说明，不输出内部异常或凭据")
 
