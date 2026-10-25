@@ -836,6 +836,15 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             download_hash=download_hash,
             fallback=prepared.download_dir,
         )
+        # 任务落在非监视目录时，整理流程永远看不到它，须迁移到预期目录
+        download_dir = self._relocate_misplaced_download(
+            title=prepared.torrent.title,
+            downloader=actual_downloader,
+            download_hash=download_hash,
+            actual_dir=download_dir,
+            expected_dir=prepared.download_dir,
+            already_exists=already_exists,
+        )
         self._settle_download_success(
             context=context,
             media=prepared.media,
@@ -901,6 +910,54 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 f"{fallback.as_posix()} 不一致，按实际目录记录下载历史"
             )
         return actual_dir
+
+    def _relocate_misplaced_download(
+        self,
+        *,
+        title: Optional[str],
+        downloader: Optional[str],
+        download_hash: str,
+        actual_dir: Path,
+        expected_dir: Path,
+        already_exists: bool,
+    ) -> Path:
+        """
+        把落到非监视目录的下载任务迁移回预期下载目录。
+
+        刷流等外部流程可能先以其他保存路径抢占同一 Hash 的任务，下载器会沿用
+        那个目录。整理链只扫描存储配置里的 download_path，落在其外的任务既不
+        会整理也不会报错，表现为整集静默丢失。此处仅在任务复用且实际目录不匹配
+        预期目录时迁移一次，迁移失败保留实际目录，避免影响下载结算。
+
+        :return: 迁移成功后的预期目录，否则为原实际目录
+        """
+        if not already_exists or not download_hash or not expected_dir.is_absolute():
+            return actual_dir
+        if not actual_dir.is_absolute() or actual_dir == expected_dir:
+            return actual_dir
+        try:
+            results = self.update_torrent(
+                hash_string=download_hash,
+                downloader=downloader,
+                save_path=expected_dir.as_posix(),
+            )
+        except Exception as err:
+            logger.warn(
+                f"{title or download_hash} 迁移下载目录到 {expected_dir.as_posix()} 失败，"
+                f"保留实际目录 {actual_dir.as_posix()}：{err}"
+            )
+            return actual_dir
+        if not results or not results.get("save_path"):
+            logger.warn(
+                f"{title or download_hash} 无法迁移下载目录到 {expected_dir.as_posix()}，"
+                f"保留实际目录 {actual_dir.as_posix()}"
+            )
+            return actual_dir
+        logger.info(
+            f"{title or download_hash} 已从 {actual_dir.as_posix()} 迁移到 "
+            f"{expected_dir.as_posix()}，恢复整理监视"
+        )
+        return expected_dir
 
     def _record_rejected_download(
         self,

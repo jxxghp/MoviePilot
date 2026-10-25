@@ -1997,7 +1997,7 @@ def _settle_accepted_download(chain, download_dir: Path, already_exists: bool = 
 
 def test_settle_accepted_download_uses_downloader_actual_save_dir():
     """
-    下载器中已存在同 Hash 任务时，下载历史须落到下载器实际保存目录。
+    下载器中已存在同 Hash 任务时，须把任务迁移到预期目录而不是落在任意目录。
     """
     chain = DownloadChain.__new__(DownloadChain)
     chain.list_torrents = MagicMock(return_value=[DownloaderTorrent(
@@ -2006,11 +2006,17 @@ def test_settle_accepted_download_uses_downloader_actual_save_dir():
         save_path="/volume4/flow",
         content_path="/volume4/flow/The.Ordinary.Jackpot.S01E01.1080p.mkv",
     )])
+    chain.update_torrent = MagicMock(return_value={"save_path": True})
     chain._settle_download_success = MagicMock()
 
-    _settle_accepted_download(chain, Path("/volume5/PT/downloads/TV/日韩剧"))
+    _settle_accepted_download(chain, Path("/volume5/PT/downloads/TV/日韩剧"), already_exists=True)
 
-    assert chain._settle_download_success.call_args.kwargs["download_dir"] == Path("/volume4/flow")
+    assert chain._settle_download_success.call_args.kwargs["download_dir"] == Path("/volume5/PT/downloads/TV/日韩剧")
+    chain.update_torrent.assert_called_once_with(
+        hash_string="hash123",
+        downloader="qb",
+        save_path="/volume5/PT/downloads/TV/日韩剧",
+    )
     chain.list_torrents.assert_called_once_with(hashs=["hash123"], downloader="qb")
 
 
@@ -2067,9 +2073,9 @@ def test_settle_accepted_download_marks_reuse_when_task_exists():
     assert chain._settle_download_success.call_args.kwargs["already_exists"] is True
 
 
-def test_settle_accepted_download_records_actual_path_for_existing_torrent():
+def test_settle_accepted_download_records_expected_path_for_relocated_torrent():
     """
-    复现刷流先下载场景：下载历史与文件明细须记录下载器实际路径。
+    复现刷流先下载场景：任务迁移回预期目录后，下载历史与文件明细须记录预期路径。
     """
     chain = DownloadChain.__new__(DownloadChain)
     chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",))
@@ -2084,10 +2090,69 @@ def test_settle_accepted_download_records_actual_path_for_existing_torrent():
         save_path="/volume4/flow",
         content_path="/volume4/flow/The.Ordinary.Jackpot.S01E01.1080p.mkv",
     )])
+    chain.update_torrent = MagicMock(return_value={"save_path": True})
 
-    _settle_accepted_download(chain, Path("/volume5/PT/downloads/TV/日韩剧"))
+    _settle_accepted_download(chain, Path("/volume5/PT/downloads/TV/日韩剧"), already_exists=True)
 
     history, files = chain.download_history_repository.add.call_args.args
-    assert history.path == "/volume4/flow/The.Ordinary.Jackpot.S01E01.1080p.mkv"
-    assert files[0].fullpath == "/volume4/flow/The.Ordinary.Jackpot.S01E01.1080p.mkv"
-    assert files[0].savepath == "/volume4/flow"
+    assert history.path == "/volume5/PT/downloads/TV/日韩剧/The.Ordinary.Jackpot.S01E01.1080p.mkv"
+    assert files[0].fullpath == "/volume5/PT/downloads/TV/日韩剧/The.Ordinary.Jackpot.S01E01.1080p.mkv"
+    assert files[0].savepath == "/volume5/PT/downloads/TV/日韩剧"
+
+
+def test_settle_accepted_download_keeps_actual_dir_when_relocation_fails():
+    """
+    迁移失败时保留下载器实际目录，不能阻断下载结算。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.list_torrents = MagicMock(return_value=[DownloaderTorrent(
+        hash="hash123",
+        downloader="qb",
+        save_path="/volume4/flow",
+        content_path="/volume4/flow/The.Ordinary.Jackpot.S01E01.1080p.mkv",
+    )])
+    chain.update_torrent = MagicMock(side_effect=RuntimeError("downloader unavailable"))
+    chain._settle_download_success = MagicMock()
+
+    _settle_accepted_download(chain, Path("/volume5/PT/downloads/TV/日韩剧"), already_exists=True)
+
+    assert chain._settle_download_success.call_args.kwargs["download_dir"] == Path("/volume4/flow")
+
+
+def test_settle_accepted_download_keeps_actual_dir_when_relocation_rejected():
+    """
+    下载器拒绝迁移时保留实际目录，不产生虚假的成功路径。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.list_torrents = MagicMock(return_value=[DownloaderTorrent(
+        hash="hash123",
+        downloader="qb",
+        save_path="/volume4/flow",
+        content_path="/volume4/flow/The.Ordinary.Jackpot.S01E01.1080p.mkv",
+    )])
+    chain.update_torrent = MagicMock(return_value={"save_path": False})
+    chain._settle_download_success = MagicMock()
+
+    _settle_accepted_download(chain, Path("/volume5/PT/downloads/TV/日韩剧"), already_exists=True)
+
+    assert chain._settle_download_success.call_args.kwargs["download_dir"] == Path("/volume4/flow")
+
+
+def test_settle_accepted_download_skips_relocation_for_fresh_download():
+    """
+    非复用任务不触发迁移，避免改动下载器已经正确的保存目录。
+    """
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.list_torrents = MagicMock(return_value=[DownloaderTorrent(
+        hash="hash123",
+        downloader="qb",
+        save_path="/volume4/flow",
+        content_path="/volume4/flow/The.Ordinary.Jackpot.S01E01.1080p.mkv",
+    )])
+    chain.update_torrent = MagicMock(return_value={"save_path": True})
+    chain._settle_download_success = MagicMock()
+
+    _settle_accepted_download(chain, Path("/volume5/PT/downloads/TV/日韩剧"), already_exists=False)
+
+    chain.update_torrent.assert_not_called()
+    assert chain._settle_download_success.call_args.kwargs["download_dir"] == Path("/volume4/flow")
