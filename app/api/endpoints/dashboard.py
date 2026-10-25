@@ -2,7 +2,6 @@
 汇总仪表盘所需的服务统计、系统状态与活动数据。
 """
 
-from pathlib import Path
 from typing import Annotated, Any, List, Optional
 
 from fastapi import Depends
@@ -11,6 +10,7 @@ from app.adapters.system.host import SystemUtils
 from app.adapters.web.security.access import verify_apitoken
 from app.api.context import get_api_runtime_config, resolve_api_runtime_config
 from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.dashboard import sample_downloader
 from app.api.dependencies.history import get_dashboard_query_service
 from app.api.response import (
     CompatibleCountParam,
@@ -19,7 +19,6 @@ from app.api.response import (
 )
 from app.application.configuration import ApiRuntimeConfig
 from app.application.dashboard import DashboardQueryService
-from app.application.directory import DirectoryHelper
 from app.application.scheduling import get_scheduler
 from app.chain.dashboard import DashboardChain
 from app.runtime.execution import run_in_threadpool
@@ -49,25 +48,13 @@ def _build_downloader(
     btrfs_fsid_dedup: bool = False,
 ) -> _SchemaDownloaderInfo:
     """
-    构建下载器统计信息。
+    使用共用采样口径构建下载器统计，保持普通页面的宽容来源语义。
+
+    :param name: 下载器名称，None 表示全部
+    :param btrfs_fsid_dedup: 当前请求的 Btrfs 文件系统去重配置
+    :return: 原仪表盘的全局字节统计与本地目录可用容量
     """
-    # 下载目录空间
-    download_dirs = DirectoryHelper().get_local_download_dirs()
-    _, free_space = SystemUtils.space_usage(
-        [Path(d.download_path) for d in download_dirs if d.download_path],
-        btrfs_fsid_dedup=btrfs_fsid_dedup,
-    )
-    # 下载器信息
-    downloader_info = _SchemaDownloaderInfo()
-    transfer_infos = DashboardChain().downloader_info(name)
-    if transfer_infos:
-        for transfer_info in transfer_infos:
-            downloader_info.download_speed = (downloader_info.download_speed or 0) + (transfer_info.download_speed or 0)
-            downloader_info.upload_speed = (downloader_info.upload_speed or 0) + (transfer_info.upload_speed or 0)
-            downloader_info.download_size = (downloader_info.download_size or 0) + (transfer_info.download_size or 0)
-            downloader_info.upload_size = (downloader_info.upload_size or 0) + (transfer_info.upload_size or 0)
-        downloader_info.free_space = free_space
-    return downloader_info
+    return sample_downloader(name, btrfs_fsid_dedup=btrfs_fsid_dedup)
 
 
 @router.get("/statistic", summary="媒体数量统计", response_model=_SchemaStatistic)

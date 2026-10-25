@@ -7,7 +7,7 @@ import hashlib
 import importlib
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from threading import Barrier
+from threading import Barrier, get_ident
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
@@ -26,6 +26,7 @@ from app.api.dependencies import widget as dependencies
 from app.api.dependencies.auth import get_current_active_user, get_current_user
 from app.api.dependencies.widget import get_widget_auth_service, get_widget_snapshot_service
 from app.api.endpoints import widget as endpoint
+from app.application.configuration import ApiRuntimeConfig
 from app.application.dashboard import DashboardQueryService
 from app.application.history import HistoryQueryService
 from app.application.query import DataQueryService
@@ -48,7 +49,7 @@ from app.db.models.subscribe import Subscribe
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.user import User
 from app.db.models.widget import WidgetRegistration
-from app.schemas.dashboard import Statistic, Storage
+from app.schemas.dashboard import DownloaderInfo, Statistic, Storage
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType
 
@@ -110,9 +111,11 @@ def widget_case(tmp_path):
     dashboard = DashboardQueryService(repository=Mock(), media_statistics=Mock(return_value=[Statistic(movie_count=7)]))
     dashboard.statistic = Mock(return_value=Statistic(movie_count=7, tv_count=3, episode_count=None, music_count=2))
     downloads = Mock(return_value=[])
+    downloader = Mock(return_value=DownloaderInfo(download_speed=2048, upload_speed=1024, free_space=4096))
     storage = Mock(return_value=Storage(total_storage=1000, used_storage=600))
     snapshots = WidgetSnapshotService(
-        data=data, history=history, dashboard=dashboard, downloads=downloads, storage=storage, clock=lambda: clock[0]
+        data=data, history=history, dashboard=dashboard, downloads=downloads,
+        downloader=downloader, storage=storage, clock=lambda: clock[0]
     )
     case = SimpleNamespace(
         auth=auth,
@@ -122,6 +125,7 @@ def widget_case(tmp_path):
         snapshots=snapshots,
         dashboard=dashboard,
         downloads=downloads,
+        downloader=downloader,
         storage=storage,
         data=data,
         history=history,
@@ -378,6 +382,7 @@ def test_widget_snapshot_uses_real_owner_type_counts_and_success_history(widget_
     assert len(sections["imports"].items) == 6
     assert sections["downloads"].metrics[0].value == "2"
     assert sections["downloads"].items[0].progress == 0.25
+    case.downloader.assert_not_called()
     encoded = result.model_dump_json(exclude_none=True)
     assert all(secret not in encoded for secret in ("bob", "secret-hash", "/secret", "/private/path", "失败记录"))
     assert result.expiresAt - result.generatedAt == 86400
@@ -430,7 +435,71 @@ def test_widget_admin_overview_and_all_download_owners(widget_case, source_failu
         assert overview.metrics[2].value == "—"
         assert len(overview.metrics) == 6
     assert result.sections[1].items[0].title == "bob 下载"
+    assert [(metric.id, metric.value) for metric in result.sections[1].metrics] == [
+        ("downloadSpeed", "2.00 KB/s"), ("uploadSpeed", "1.00 KB/s"), ("freeSpace", "4.00 KB"), ("count", "1")
+    ]
+    case.downloader.assert_called_once_with()
     case.dashboard.statistic.assert_called_once_with(require_source=True)
+
+
+@pytest.mark.parametrize("free_space, expected", [(0, "0 B"), (None, "—"), (-1, "—"), (float("nan"), "—")])
+def test_widget_download_metrics_without_tasks_and_unknown_disk(widget_case, free_space, expected):
+    """
+    无下载仍展示真实零下载和做种上传，容量未知不误显示磁盘满。
+    """
+    case = widget_case
+    _update_user(case, is_superuser=True)
+    main_thread = get_ident()
+
+    def sample():
+        """
+        断言磁盘和下载器采样离开事件循环线程，再返回原始字节。
+        """
+        assert get_ident() != main_thread
+        return DownloaderInfo(download_speed=0, upload_speed=1048576, free_space=free_space)
+
+    case.downloader.side_effect = sample
+    result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
+    section = result.sections[1]
+    assert section.state == "ready" and section.updatedAt == case.clock[0] and not section.items
+    assert [metric.value for metric in section.metrics] == ["0 B/s", "1.00 MB/s", expected, "0"]
+
+
+@pytest.mark.parametrize("field", ["download_speed", "upload_speed"])
+@pytest.mark.parametrize("value", [None, -1, float("nan"), float("inf")])
+def test_widget_invalid_global_speed_is_independent_unavailable(widget_case, field, value):
+    """
+    非法全局速率只使下载节不可用，不产生新鲜零值或影响其它成功来源。
+    """
+    case = widget_case
+    _update_user(case, is_superuser=True)
+    case.downloader.return_value = DownloaderInfo(**{field: value})
+    result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
+    section = result.sections[1]
+    assert section.state == "unavailable" and section.updatedAt is None
+    assert not section.metrics and not section.items
+    assert result.sections[0].state == "ready" and result.sections[2].state == "empty"
+
+
+def test_widget_global_speed_source_failure_does_not_leak_to_ordinary_user(widget_case):
+    """
+    普通用户只看到本人任务，管理员全局采样失败不影响这个权限边界。
+    """
+    case = widget_case
+    case.downloader.side_effect = RuntimeError("private-download-host")
+    case.downloads.return_value = [
+        DownloaderTorrent(title="本人", userid="alice"), DownloaderTorrent(title="其他用户", userid="bob")
+    ]
+    grant = case.auth.authenticate(_register(case).secret)
+    result = asyncio.run(case.snapshots.snapshot(grant))
+    assert [metric.id for metric in result.sections[0].metrics] == ["count"]
+    assert [item.title for item in result.sections[0].items] == ["本人"]
+    case.downloader.assert_not_called()
+    _update_user(case, is_superuser=True)
+    result = asyncio.run(case.snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
+    assert result.sections[1].state == "unavailable"
+    assert result.sections[0].state == "ready"
+    assert "private-download-host" not in result.model_dump_json()
 
 
 def test_widget_snapshot_expiry_and_invalid_source_progress(widget_case):
@@ -468,10 +537,16 @@ def test_widget_dependency_assembly_and_absent_capability(widget_case, monkeypat
     dashboard_chain.storage.return_value = Storage(total_storage=1, used_storage=0)
     monkeypatch.setattr(dependencies, "DownloadChain", lambda: download_chain)
     monkeypatch.setattr(dependencies, "DashboardChain", lambda: dashboard_chain)
-    snapshots = dependencies.get_widget_snapshot_service(case.dashboard, case.history)
+    sampler = Mock(return_value=DownloaderInfo())
+    monkeypatch.setattr(dependencies, "sample_downloader", sampler)
+    snapshots = dependencies.get_widget_snapshot_service(case.dashboard, case.history, ApiRuntimeConfig(60, True, False))
     result = asyncio.run(snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
     assert result.sections[0].state == "empty"
     download_chain.downloading.assert_called_once_with(require_source=True)
+    sampler.assert_not_called()
+    _update_user(case, is_superuser=True)
+    asyncio.run(snapshots.snapshot(case.auth.authenticate(_register(case).secret)))
+    sampler.assert_called_once_with(btrfs_fsid_dedup=True, require_source=True)
 
 
 def test_widget_strict_sources_preserve_regular_page_fallbacks(monkeypatch):
