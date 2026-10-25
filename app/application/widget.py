@@ -15,7 +15,7 @@ from app.application.security.widget import WidgetGrant, available_widget_conten
 from app.foundation.size import format_size
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
-from app.schemas.dashboard import Storage
+from app.schemas.dashboard import DownloaderInfo, Storage
 from app.schemas.query import QueryPageRequest, SubscriptionFilter
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType
@@ -84,6 +84,7 @@ class WidgetSnapshotService:
         history: HistoryQueryService,
         dashboard: DashboardQueryService,
         downloads: Callable[[], list[DownloaderTorrent] | None],
+        downloader: Callable[[], DownloaderInfo],
         storage: Callable[[], Storage],
         clock: Callable[[], float] = time.time,
     ) -> None:
@@ -94,6 +95,7 @@ class WidgetSnapshotService:
         :param history: 既有整理历史查询，保留成功筛选和数据库分页
         :param dashboard: 既有管理员媒体统计查询
         :param downloads: 原有下载链的采样回调，仅在工作线程内执行
+        :param downloader: 共用下载器字节统计；只由管理员在工作线程内读取
         :param storage: 既有存储汇总的严格读取回调
         :param clock: 可信 UTC Unix 秒来源
         """
@@ -101,6 +103,7 @@ class WidgetSnapshotService:
         self._history = history
         self._dashboard = dashboard
         self._downloads = downloads
+        self._downloader = downloader
         self._storage = storage
         self._clock = clock
 
@@ -208,11 +211,13 @@ class WidgetSnapshotService:
 
     async def _download_section(self, user: UserSnapshot) -> WidgetSection:
         """
-        按原网页精确 owner 规则过滤采样，只投影前六项，不输出 hash 或文件路径。
+        按原网页精确 owner 过滤任务，仅管理员读取全局速率与本地目录空间。
+
+        :param user: 本次重新鉴权的用户与既有权限快照
+        :return: 最多六项任务及同作用域的真实计数，管理员附加三项全局指标
+        :raises ValueError: 任务或统计来源暂不可用，或原始进度超出自然范围
         """
-        rows = await run_in_threadpool(self._downloads)
-        if rows is None:
-            raise ValueError("下载来源暂不可用")
+        rows, info = await run_in_threadpool(self._download_sources, user.is_superuser)
         visible = (
             rows if user.is_superuser else [row for row in rows if row.userid == user.name or row.username == user.name]
         )
@@ -229,7 +234,48 @@ class WidgetSnapshotService:
                     progress=progress / 100 if progress is not None else None,
                 )
             )
-        return self._ready("downloads", len(visible), items, icon="download")
+        section = self._ready("downloads", len(visible), items, icon="download")
+        if info is not None:
+            section.metrics = self._download_metrics(info) + section.metrics
+            # 无下载任务仍可正在做种上传，有效速率不能被空列表状态隐藏。
+            section.state = "ready"
+        return section
+
+    def _download_sources(self, administrator: bool) -> tuple[list[DownloaderTorrent], DownloaderInfo | None]:
+        """
+        在同一个受管工作线程采样任务与统计，普通用户不触发全局读取。
+
+        :param administrator: 当前重新鉴权用户是否为超级管理员
+        :return: 真实任务列表与仅管理员可读的原始下载器统计
+        :raises ValueError: 原下载任务来源尚不可用
+        """
+        rows = self._downloads()
+        if rows is None:
+            raise ValueError("下载来源暂不可用")
+        return rows, self._downloader() if administrator else None
+
+    def _download_metrics(self, info: DownloaderInfo) -> list[WidgetMetric]:
+        """
+        投影管理员全局速率与剩余空间，未知容量和真实磁盘满明确区分。
+
+        :param info: 既有下载器的原始字节采样，不从任务展示文字重算
+        :return: 固定标识的上传、下载和空间指标
+        :raises ValueError: 速度缺失、负数或非有限；不能伪造为成功的零值
+        """
+        download, upload, available = info.download_speed, info.upload_speed, info.free_space
+        if download is None or upload is None or not all(
+            math.isfinite(value) and value >= 0 for value in (download, upload)
+        ):
+            raise ValueError("下载器速度来源暂不可用")
+        free_space = (
+            format_size(int(available))
+            if available is not None and math.isfinite(available) and available >= 0 else "—"
+        )
+        return [
+            _metric("downloadSpeed", "下载速度", f"{format_size(int(download))}/s", "download"),
+            _metric("uploadSpeed", "上传速度", f"{format_size(int(upload))}/s", "upload"),
+            _metric("freeSpace", "剩余空间", free_space, "storage"),
+        ]
 
     async def _overview(self) -> WidgetSection:
         """

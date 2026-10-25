@@ -1032,10 +1032,11 @@ def test_dashboard_downloader_forwards_btrfs_fsid_setting():
     """
     下载器仪表盘应转交 Btrfs 文件系统去重开关。
     """
+    from app.api.dependencies import dashboard as dashboard_dependencies
     from app.api.endpoints import dashboard as dashboard_module
 
     download_dir = MagicMock(download_path="/downloads")
-    with patch.object(dashboard_module.DirectoryHelper, "get_local_download_dirs",
+    with patch.object(dashboard_dependencies.DirectoryHelper, "get_local_download_dirs",
                       return_value=[download_dir]), \
             patch.object(SystemUtils, "space_usage", return_value=(4.0, 2.0)) as usage_mock, \
             patch.object(dashboard_module.DashboardChain, "downloader_info", return_value=[]):

@@ -8,8 +8,10 @@ from typing import NoReturn
 from fastapi import Depends, HTTPException, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.api.context import get_host_runtime
+from app.api.context import get_api_runtime_config, get_host_runtime
+from app.api.dependencies.dashboard import sample_downloader
 from app.api.dependencies.history import get_dashboard_query_service, get_history_query_service
+from app.application.configuration import ApiRuntimeConfig
 from app.application.dashboard import DashboardQueryService
 from app.application.history import HistoryQueryService
 from app.application.query import get_configured_data_query_service
@@ -74,12 +76,14 @@ def get_widget_grant(
 def get_widget_snapshot_service(
     dashboard: DashboardQueryService = Depends(get_dashboard_query_service),
     history: HistoryQueryService = Depends(get_history_query_service),
+    runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
 ) -> WidgetSnapshotService:
     """
     只连接现有的查询与业务链，普通页面不会调用小组件专用接口。
 
     :param dashboard: 原仪表板管理员查询服务
     :param history: 原历史列表查询服务
+    :param runtime_config: 本次请求的空间去重配置，不从组件凭据或参数读取
     :return: 使用原有 owner、计数和成功筛选的快照投影服务
     """
     return WidgetSnapshotService(
@@ -87,5 +91,6 @@ def get_widget_snapshot_service(
         history=history,
         dashboard=dashboard,
         downloads=partial(DownloadChain().downloading, require_source=True),
+        downloader=partial(sample_downloader, btrfs_fsid_dedup=runtime_config.btrfs_fsid_dedup, require_source=True),
         storage=partial(DashboardChain().storage, require_source=True),
     )
