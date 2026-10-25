@@ -552,6 +552,8 @@ class Qbittorrent:
         """
         添加种子任务，兼容旧版文本响应和新版任务标识响应。
 
+        is_skip_checking 同时适配旧版 skip_checking 和 qBittorrent 5.3 起的 seedMode 字段。
+
         :param content: 种子 URL、磁力链接或种子文件字节内容
         :param is_paused: 是否以暂停状态添加，便于在启动前选择文件
         :param download_dir: 下载器保存目录，省略时采用下载器默认目录
@@ -591,6 +593,9 @@ class Qbittorrent:
             else:
                 is_auto = False
                 category = None
+        # 同时发送新旧字段，由服务端读取支持的名称，避免逐个转种任务查询版本。
+        if kwargs.get("is_skip_checking") is not None:
+            kwargs.setdefault("seedMode", kwargs["is_skip_checking"])
         try:
             cookie_to_use = cookie
             if urls and cookie and not torrent_rules.is_magnet_link(urls):
