@@ -7,16 +7,16 @@ import time
 import unicodedata
 from collections.abc import Callable
 
-from app.application.dashboard import DashboardQueryService
 from app.application.history import HistoryQueryService
 from app.application.query import DataQueryService
 from app.application.security.user import UserSnapshot
-from app.application.security.widget import WidgetGrant, available_widget_contents
+from app.application.security.widget import WidgetGrant, available_widget_contents, widget_subscription_features
 from app.foundation.size import format_size
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
-from app.schemas.dashboard import DownloaderInfo, Storage
-from app.schemas.query import QueryPageRequest, SubscriptionFilter
+from app.schemas.dashboard import DashboardMemoryInfo, DownloaderInfo
+from app.schemas.query import QueryPageRequest, SubscriptionFilter, SubscriptionSnapshot, TransferHistoryFilter
+from app.schemas.subscribe import Subscribe
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType
 from app.schemas.widget import (
@@ -35,6 +35,7 @@ _TITLES: dict[WidgetContent, str] = {
     "overview": "实例概览",
     "downloads": "下载状态",
     "imports": "近期入库",
+    "subscriptions": "订阅",
     "movieSubscriptions": "电影订阅",
     "tvSubscriptions": "剧集订阅",
     "musicSubscriptions": "音乐订阅",
@@ -43,6 +44,9 @@ _MEDIA_TYPES: dict[WidgetContent, MediaType] = {
     "movieSubscriptions": MediaType.MOVIE,
     "tvSubscriptions": MediaType.TV,
     "musicSubscriptions": MediaType.MUSIC,
+}
+_FEATURE_TYPES = {
+    "subscribe.movie": MediaType.MOVIE, "subscribe.tv": MediaType.TV, "subscribe.music": MediaType.MUSIC,
 }
 
 
@@ -82,10 +86,9 @@ class WidgetSnapshotService:
         *,
         data: DataQueryService,
         history: HistoryQueryService,
-        dashboard: DashboardQueryService,
+        system: Callable[[], tuple[float, DashboardMemoryInfo, list[int]]],
         downloads: Callable[[], list[DownloaderTorrent] | None],
         downloader: Callable[[], DownloaderInfo],
-        storage: Callable[[], Storage],
         clock: Callable[[], float] = time.time,
     ) -> None:
         """
@@ -93,18 +96,16 @@ class WidgetSnapshotService:
 
         :param data: 既有有界订阅查询，包含同作用域的真实总数
         :param history: 既有整理历史查询，保留成功筛选和数据库分页
-        :param dashboard: 既有管理员媒体统计查询
+        :param system: 既有管理员 CPU、内存和网络系统采样回调
         :param downloads: 原有下载链的采样回调，仅在工作线程内执行
         :param downloader: 共用下载器字节统计；只由管理员在工作线程内读取
-        :param storage: 既有存储汇总的严格读取回调
         :param clock: 可信 UTC Unix 秒来源
         """
         self._data = data
         self._history = history
-        self._dashboard = dashboard
+        self._system = system
         self._downloads = downloads
         self._downloader = downloader
-        self._storage = storage
         self._clock = clock
 
     async def snapshot(self, grant: WidgetGrant) -> WidgetSnapshot:
@@ -178,21 +179,54 @@ class WidgetSnapshotService:
         """
         复用有界订阅查询的 owner、媒体类型、排序和精确 count，不扫描全量订阅。
         """
+        media_types = (
+            tuple(_FEATURE_TYPES[feature] for feature in widget_subscription_features(user))
+            if content == "subscriptions" else (_MEDIA_TYPES[content],)
+        )
+        filters = SubscriptionFilter(usernames=() if user.is_superuser else (user.name,), media_types=media_types)
         page = await self._data.async_list_subscriptions(
-            filters=SubscriptionFilter(
-                usernames=() if user.is_superuser else (user.name,), media_types=(_MEDIA_TYPES[content],)
-            ),
+            filters=filters,
             page=QueryPageRequest(count=WIDGET_ITEM_LIMIT),
         )
-        items = [
-            WidgetItem(
-                id=f"subscription-{row.id}",
-                title=_text(row.name, 240, "未命名订阅"),
-                subtitle=_text(" · ".join(filter(None, [row.year, row.type, row.state])), 512),
+        section = self._ready(content, page.total, [self._subscription_item(row) for row in page.items])
+        for kind in media_types:
+            counted = await self._data.async_list_subscriptions(
+                filters=filters.model_copy(update={"media_types": (kind,)}), page=QueryPageRequest(count=1)
             )
-            for row in page.items
-        ]
-        return self._ready(content, page.total, items)
+            section.metrics.append(_metric(f"type{kind.name}", kind.value, f"{counted.total:,}", "items"))
+        for state, title in (("N", "未开始"), ("R", "订阅中"), ("S", "已暂停"), ("P", "待定")):
+            counted = await self._data.async_list_subscriptions(
+                filters=filters.model_copy(update={"states": (state,)}),
+                page=QueryPageRequest(count=1),
+            )
+            section.metrics.append(_metric(f"state{state}", title, f"{counted.total:,}", "items"))
+        return section
+
+    @staticmethod
+    def _subscription_item(row: SubscriptionSnapshot) -> WidgetItem:
+        """
+        沿用公开订阅响应的集数派生规则，保留季号、目标规格和可确认的进度。
+
+        :param row: 已按当前账号和媒体类型过滤的有限快照
+        :return: 不包含路径、规则或资源地址的媒体摘要
+        """
+        view = Subscribe.model_validate(row.model_dump(exclude_none=True))
+        details = [row.type, row.year]
+        if row.type == MediaType.TV.value and row.season is not None:
+            details.append(f"S{row.season:02d}")
+        progress = None
+        if row.type == MediaType.TV.value and row.total_episode and view.completed_episode is not None:
+            completed = min(max(view.completed_episode, 0), row.total_episode)
+            details.append(f"{completed}/{row.total_episode} 集")
+            progress = completed / row.total_episode
+        elif row.type == MediaType.MUSIC.value and row.total_tracks:
+            details.append(f"{row.total_tracks} 首曲目")
+        details.extend([row.quality, row.resolution, row.audio_quality, row.audio_format])
+        details.append({"N": "未开始", "R": "订阅中", "S": "已暂停", "P": "待定"}.get(row.state or "", "状态未知"))
+        return WidgetItem(
+            id=f"subscription-{row.id}", title=_text(row.name, 240, "未命名订阅"),
+            subtitle=_text(" · ".join(filter(None, details)), 512), progress=progress,
+        )
 
     async def _imports(self) -> WidgetSection:
         """
@@ -203,11 +237,20 @@ class WidgetSnapshotService:
             WidgetItem(
                 id=f"import-{row.id}",
                 title=_text(row.title, 240, "未命名媒体"),
-                subtitle=_text(" · ".join(filter(None, [row.year, row.type, row.seasons, row.episodes])), 512),
+                subtitle=_text(" · ".join(filter(None, [row.year, row.type, row.seasons, row.episodes, row.date])), 512),
             )
             for row in page.list
         ]
-        return self._ready("imports", page.total, items)
+        section = self._ready("imports", page.total, items)
+        types: tuple[tuple[MediaType, WidgetIcon], ...] = (
+            (MediaType.MOVIE, "movie"), (MediaType.TV, "television"), (MediaType.MUSIC, "music")
+        )
+        for media_type, icon in types:
+            counted = await self._data.async_list_transfer_history(
+                filters=TransferHistoryFilter(media_types=(media_type,), status=True), page=QueryPageRequest(count=1)
+            )
+            section.metrics.append(_metric(f"type{media_type.name}", media_type.value, f"{counted.total:,}", icon))
+        return section
 
     async def _download_section(self, user: UserSnapshot) -> WidgetSection:
         """
@@ -230,7 +273,7 @@ class WidgetSnapshotService:
                 WidgetItem(
                     id=f"download-{index}",
                     title=_text(row.title or row.name, 240, "未命名下载"),
-                    subtitle=_text(" · ".join(filter(None, [row.dlspeed, row.left_time])), 512),
+                    subtitle=_text(" · ".join(filter(None, [row.season_episode, row.dlspeed, row.left_time])), 512),
                     progress=progress / 100 if progress is not None else None,
                 )
             )
@@ -239,6 +282,8 @@ class WidgetSnapshotService:
             section.metrics = self._download_metrics(info) + section.metrics
             # 无下载任务仍可正在做种上传，有效速率不能被空列表状态隐藏。
             section.state = "ready"
+        for state, title in (("downloading", "下载中"), ("paused", "已暂停")):
+            section.metrics.append(_metric(f"state{state}", title, str(sum(row.state == state for row in visible)), "items"))
         return section
 
     def _download_sources(self, administrator: bool) -> tuple[list[DownloaderTorrent], DownloaderInfo | None]:
@@ -279,35 +324,27 @@ class WidgetSnapshotService:
 
     async def _overview(self) -> WidgetSection:
         """
-        汇总原仪表板媒体与存储；严格来源失败不能投影为成功的零容量。
+        仅投影原管理员系统监控，不再把媒体数量放入系统概览。
         """
-        statistic = await run_in_threadpool(self._dashboard.statistic, require_source=True)
-        storage = await run_in_threadpool(self._storage)
-        total, used = storage.total_storage, storage.used_storage
+        cpu, memory, network = await run_in_threadpool(self._system)
         if (
-            total is None
-            or used is None
-            or not math.isfinite(total)
-            or not math.isfinite(used)
-            or not 0 <= used <= total
+            not math.isfinite(cpu) or not 0 <= cpu <= 100
+            or memory.total <= 0 or not 0 <= memory.available <= memory.total
+            or len(network) != 2 or any(not math.isfinite(value) or value < 0 for value in network)
         ):
-            raise ValueError("存储统计超出来源范围")
+            raise ValueError("系统采样超出来源范围")
+        used = memory.total - memory.available
         return WidgetSection(
             content="overview",
             state="ready",
             updatedAt=self._clock(),
             title=_TITLES["overview"],
             metrics=[
-                _metric("movies", "电影", str(statistic.movie_count), "movie"),
-                _metric("tv", "电视剧", str(statistic.tv_count), "television"),
-                _metric(
-                    "episodes",
-                    "单集",
-                    str(statistic.episode_count) if statistic.episode_count is not None else "—",
-                    "episodes",
-                ),
-                _metric("music", "音乐", str(statistic.music_count), "music"),
-                _metric("used", "已用空间", format_size(int(used)), "storage"),
-                _metric("total", "总空间", format_size(int(total)), "storage"),
+                _metric("cpu", "CPU 占用", f"{cpu:.1f}%", "cpu"),
+                _metric("memory", "内存占用", f"{used / memory.total * 100:.1f}%", "memory"),
+                _metric("networkDownload", "网络接收", f"{format_size(network[1])}/s", "download"),
+                _metric("networkUpload", "网络发送", f"{format_size(network[0])}/s", "upload"),
+                _metric("memoryUsed", "已用内存", format_size(used), "memory"),
+                _metric("memoryTotal", "总内存", format_size(memory.total), "memory"),
             ],
         )
