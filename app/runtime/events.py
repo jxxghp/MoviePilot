@@ -441,8 +441,11 @@ class EventManager(metaclass=Singleton):
                     completed: concurrent.futures.Future[Any],
             ) -> None:
                 """
-                把真实线程句柄的结果转移到已登记的结算句柄。
+                真实线程结束后先清理 owner，再向结算句柄发布结果，避免关闭等待者先被唤醒。
+
+                :param completed: 已经完成或取消的原始线程任务句柄
                 """
+                self.__remove_sync_handle(owner)
                 if completed.cancelled():
                     completion.cancel()
                 else:
@@ -451,7 +454,6 @@ class EventManager(metaclass=Singleton):
                         completion.set_exception(error)
                     else:
                         completion.set_result(completed.result())
-                self.__remove_sync_handle(owner)
 
             handle.add_done_callback(_complete_sync_handle)
         return True
@@ -484,19 +486,22 @@ class EventManager(metaclass=Singleton):
 
             async def _tracked() -> None:
                 """
-                在所属事件处理器上下文中执行回调，并负责完成信号和上下文恢复。
+                在所属上下文中执行处理器，真实结束后先清理 owner，再发布完成信号。
                 """
                 started.set()
                 context_token = _CURRENT_EVENT_HANDLER_OWNER.set(owner)
                 try:
                     result = await coroutine
                 except asyncio.CancelledError:
+                    self.__remove_async_handle(owner)
                     if not completion.done():
                         completion.cancel()
                 except Exception as err:
+                    self.__remove_async_handle(owner)
                     if not completion.done():
                         completion.set_exception(err)
                 else:
+                    self.__remove_async_handle(owner)
                     if not completion.done():
                         completion.set_result(result)
                 finally:
@@ -522,20 +527,16 @@ class EventManager(metaclass=Singleton):
                     submitted: concurrent.futures.Future[Any],
             ) -> None:
                 """
-                关闭尚未启动就被取消的协程，并同步所属完成信号。
+                关闭尚未启动就被取消的协程，先移除 owner，再发布取消完成信号。
+
+                :param submitted: 跨线程提交到所属事件循环的代理句柄
                 """
                 if submitted.cancelled() and not started.is_set():
                     coroutine.close()
+                    self.__remove_async_handle(owner)
                     completion.cancel()
 
             handle.add_done_callback(_complete_unstarted_submission)
-        def _remove_completed_handle(_completed: concurrent.futures.Future[Any]) -> None:
-            """
-            事件处理完成后移除 owner 对应的异步句柄。
-            """
-            self.__remove_async_handle(owner)
-
-        completion.add_done_callback(_remove_completed_handle)
         return True
 
     def __remove_async_handle(self, owner: object) -> None:
