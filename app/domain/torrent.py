@@ -7,10 +7,15 @@ import binascii
 import hashlib
 import re
 from typing import TYPE_CHECKING, Optional, Union
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import SplitResult, parse_qs, urlsplit
 
 if TYPE_CHECKING:
     from app.domain.context import TorrentInfo
+
+# TTG 详情页为 /t/{id}/，下载链接为 /dl/{id}/{auth}；auth 由每次搜索生成，几分钟后或多次请求后失效
+_TTG_HOST = "totheglory.im"
+_TTG_DETAIL_PATH = re.compile(r"/t/(\d+)/?")
+_TTG_DOWNLOAD_PATH = re.compile(r"/dl/(\d+)/[^/]+/?")
 
 
 def is_magnet_link(content: Union[str, bytes]) -> bool:
@@ -141,24 +146,52 @@ def resource_identity(torrent: "TorrentInfo") -> Optional[tuple[str, str]]:
             if values and len(values) == 1:
                 prefix = "hash" if name == "hash" else "id"
                 return site or parsed.netloc, f"{prefix}={values[0]}"
-        # 馒头详情页把稳定种子 ID 放在路径中，换票请求参数不参与资源身份。
-        match = re.fullmatch(r"/detail/(\d+)/?", parsed.path)
-        if match:
-            return site or parsed.netloc, f"id={match[1]}"
+        resource_id = _path_resource_id(parsed)
+        if resource_id:
+            return site or parsed.netloc, f"id={resource_id}"
     return None
+
+
+def _is_ttg_url(parsed: SplitResult) -> bool:
+    """
+    判断地址是否属于 TTG 站点（含子域名）。
+    """
+    host = parsed.hostname or ""
+    return host == _TTG_HOST or host.endswith(f".{_TTG_HOST}")
+
+
+def _path_resource_id(parsed: SplitResult) -> Optional[str]:
+    """
+    从已知站点的详情页或下载链接路径中提取稳定种子 ID。
+
+    馒头详情页为 /detail/{id}，换票请求参数不参与资源身份；
+    TTG 详情页为 /t/{id}/，下载链接为 /dl/{id}/{auth}，末段 auth 是临时签名，不参与资源身份。
+
+    :param parsed: 已拆分的 http(s) 地址
+    :return: 站内种子 ID；不是已知路径形态时返回 None
+    """
+    match = re.fullmatch(r"/detail/(\d+)/?", parsed.path)
+    if match is None and _is_ttg_url(parsed):
+        match = _TTG_DETAIL_PATH.fullmatch(parsed.path) or _TTG_DOWNLOAD_PATH.fullmatch(parsed.path)
+    return match[1] if match else None
 
 
 def is_expiring_download_url(url: Optional[str]) -> bool:
     """
-    识别已知的时间戳加签名下载链接；不推断签名的具体有效期。
+    识别已知的短时签名下载链接；不推断签名的具体有效期。
+
+    支持查询参数中的时间戳加签名（t、sign），以及 TTG 放在下载路径末段的 auth 签名。
     """
     if not url or not url.startswith(("http://", "https://")):
         return False
     try:
-        params = parse_qs(urlsplit(url).query)
+        parsed = urlsplit(url)
+        params = parse_qs(parsed.query)
     except ValueError:
         return False
-    return bool(params.get("t") and params.get("sign"))
+    if params.get("t") and params.get("sign"):
+        return True
+    return _is_ttg_url(parsed) and _TTG_DOWNLOAD_PATH.fullmatch(parsed.path) is not None
 
 
 def rate_limit_cooldown(message: Optional[str]) -> Optional[int]:

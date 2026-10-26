@@ -499,3 +499,74 @@ def test_only_known_timestamp_signature_pattern_is_expiring(url, expected):
     签名模式判断不把空参数、普通链接或换票协议误认为时效链接。
     """
     assert torrent_rules.is_expiring_download_url(url) is expected
+
+
+TTG_PAGE_URL = "https://totheglory.im/t/395931/"
+TTG_OLD_URL = "https://totheglory.im/dl/395931/3576"
+TTG_NEW_URL = "https://totheglory.im/dl/395931/8067"
+# TTG RSS 条目的下载链接是 rssdd.php?par=，par 为 base64 编码的 "vvv{id}..."，不使用 /dl/ 路径签名
+TTG_RSS_URL = "https://totheglory.im/rssdd.php?par=dnZ2Mzk1OTMx&ssl=yes"
+
+
+@pytest.mark.parametrize("page_url,enclosure,expected", [
+    (TTG_PAGE_URL, TTG_OLD_URL, ("1", "id=395931")),
+    (None, TTG_OLD_URL, ("1", "id=395931")),
+    ("https://totheglory.im/t/395931", None, ("1", "id=395931")),
+    ("https://www.totheglory.im/t/395931/", None, ("1", "id=395931")),
+    (TTG_PAGE_URL, TTG_RSS_URL, ("1", "id=395931")),
+    (None, TTG_RSS_URL, None),
+    ("https://tracker.example/t/395931/", "https://tracker.example/dl/395931/3576", None),
+    ("https://totheglory.im/browse.php?c=M", "https://totheglory.im/dl/395931/", None),
+    ("https://nottheglory.im/t/395931/", None, None),
+])
+def test_ttg_path_identity_ignores_signed_auth(page_url, enclosure, expected):
+    """
+    TTG 详情页和下载路径中的种子 ID 是稳定身份，下载路径末段的 auth 不参与身份；其他站点不套用该路径规则。
+    """
+    torrent = _torrent(page_url=page_url, enclosure=enclosure)
+    assert torrent_rules.resource_identity(torrent) == expected
+    if expected is not None:
+        renewed = replace(torrent, enclosure=TTG_NEW_URL)
+        assert torrent_rules.resource_identity(renewed) == expected
+
+
+@pytest.mark.parametrize("url,expected", [
+    (TTG_OLD_URL, True),
+    ("https://totheglory.im/dl/395931/3576/", True),
+    ("https://www.totheglory.im/dl/395931/3576", True),
+    ("https://totheglory.im/dl/395931/", False),
+    ("https://totheglory.im/dl/395931/3576/extra", False),
+    ("https://totheglory.im/t/395931/", False),
+    (TTG_RSS_URL, False),
+    ("https://tracker.example/dl/395931/3576", False),
+    ("https://nottheglory.im/dl/395931/3576", False),
+])
+def test_ttg_path_signature_is_expiring(url, expected):
+    """
+    只有 TTG 的 /dl/{id}/{auth} 下载路径按短时签名处理，其他站点相同形态的路径保持普通链接。
+    """
+    assert torrent_rules.is_expiring_download_url(url) is expected
+
+
+def test_ttg_expired_path_signature_refreshes_same_resource(download_chain):
+    """
+    TTG 路径签名下载返回 403 后，重新搜索同一种子 ID 的新 auth 并重试一次。
+    """
+    chain, helper = download_chain
+    torrent = _torrent(page_url=TTG_PAGE_URL, enclosure=TTG_OLD_URL)
+    refreshed = replace(torrent, enclosure=TTG_NEW_URL, site_cookie="session=new")
+    other = replace(torrent, page_url="https://totheglory.im/t/395932/",
+                    enclosure="https://totheglory.im/dl/395932/9429")
+    chain.search_site_torrents.return_value = [other, refreshed]
+    helper.download_torrent.side_effect = [(*FAILED[:4], "下载种子出错，状态码：403"), DOWNLOADED]
+
+    assert chain.download_torrent(torrent) == DOWNLOADED[1:4]
+
+    chain.search_site_torrents.assert_called_once_with(site=SITE, keyword=torrent.title)
+    assert [call.kwargs["url"] for call in helper.download_torrent.call_args_list] == [
+        TTG_OLD_URL, TTG_NEW_URL,
+    ]
+    assert all(call.kwargs["cache_invalid"] is False for call in helper.download_torrent.call_args_list)
+    assert torrent.enclosure == TTG_NEW_URL
+    assert torrent.site_cookie == "session=new"
+    chain.post_message.assert_not_called()
