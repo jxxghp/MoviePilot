@@ -204,6 +204,51 @@ def test_mp_db_configuration_gate_ignores_literals_and_unrelated_tables(
     assert module._is_supported_statement(sql, False)
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT value FROM 'systemconfig'",
+        "SELECT value FROM main.'systemconfig'",
+        "SELECT value FROM ('systemconfig')",
+        "SELECT secrets.value FROM subscribe, 'systemconfig' AS secrets",
+        "WITH leak AS (SELECT value FROM 'systemconfig') SELECT * FROM leak",
+        "SELECT value FROM config_view",
+        "SELECT COUNT(*) FROM config_view",
+        "DROP TABLE 'systemconfig'",
+        "ALTER TABLE 'systemconfig' RENAME TO config_copy",
+        "UPDATE 'systemconfig' SET value = 'changed'",
+        "DELETE FROM 'systemconfig'",
+        "INSERT INTO 'systemconfig' VALUES (2, 'OTHER_KEY', 'changed')",
+    ],
+)
+def test_mp_db_sqlite_gate_checks_actual_configuration_access(tmp_path, monkeypatch, capsys, sql):
+    """
+    实际 SQLite 授权边界阻断单引号表名、连接、子查询、视图及写入绕过。
+    """
+    module = _load_script(MP_DB_SCRIPT, "mp_db_script_sqlite_secret_exec")
+    engine = create_engine("sqlite:///" + str(tmp_path / "secret.db"))
+    monkeypatch.setattr(module, "_build_engine", lambda: engine)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE systemconfig (id INTEGER, key TEXT, value TEXT)"))
+            connection.execute(text("INSERT INTO systemconfig VALUES (1, 'TMDB_API_KEY', 'plain-secret')"))
+            connection.execute(text("CREATE TABLE subscribe (id INTEGER)"))
+            connection.execute(text("INSERT INTO subscribe VALUES (1)"))
+            connection.execute(text("CREATE VIEW config_view AS SELECT value FROM systemconfig"))
+        assert module.run_query(sql, allow_write=not sql.startswith(("SELECT", "WITH"))) == 1
+        blocked = capsys.readouterr()
+        assert "--show-secrets" in blocked.err
+        assert "plain-secret" not in blocked.out
+        with engine.begin() as connection:
+            assert connection.execute(text("SELECT value FROM systemconfig")).scalars().all() == ["plain-secret"]
+        assert module.run_query("SELECT value FROM 'systemconfig'", show_secrets=True) == 0
+        assert json.loads(capsys.readouterr().out)["rows"] == [{"value": "plain-secret"}]
+        assert module.run_query("SELECT 'systemconfig' AS name FROM subscribe") == 0
+        assert json.loads(capsys.readouterr().out)["rows"] == [{"name": "systemconfig"}]
+    finally:
+        engine.dispose()
+
+
 def test_mp_db_configuration_table_access_reports_and_requires_explicit_flag(
     tmp_path,
     monkeypatch,

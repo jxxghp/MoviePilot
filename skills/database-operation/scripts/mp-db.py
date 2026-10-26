@@ -7,13 +7,16 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 SCRIPT_PATH = Path(__file__).resolve()
@@ -447,6 +450,58 @@ def show_schema(table_name: str) -> int:
     return 0
 
 
+@contextmanager
+def _protect_sqlite_configuration(connection: Connection, *, show_secrets: bool) -> Iterator[None]:
+    """
+    在脚本独占的 SQLite 连接上按真实表访问阻断凭据读写，退出时解除授权回调。
+
+    SQLite 允许单引号表名及经视图读取；文本预检不能可靠识别这些关系。
+    PostgreSQL 的标识符仍由预检处理，不向其它数据库安装 SQLite 回调。
+
+    :param connection: 当前脚本事务独占的连接，不带其它调用方的授权回调
+    :param show_secrets: 明确授权时保持原有数据库访问能力
+    :raises ValueError: 未授权语句实际读写 systemconfig
+    """
+    if show_secrets or getattr(getattr(connection, "dialect", None), "name", None) != "sqlite":
+        yield
+        return
+    driver = connection.connection.driver_connection
+    blocked: set[str] = set()
+
+    def authorize(action: int, first: str | None, second: str | None, _database: str, _source: str) -> int:
+        """
+        按 SQLite 编译器回报的实际表名判断，覆盖查询、视图展开及数据或结构写入。
+
+        :param action: SQLite 编译器提供的访问操作编号
+        :param first: 多数访问操作的表名；ALTER TABLE 时为数据库名
+        :param second: 列名等附加信息；ALTER TABLE 时为表名
+        :param _database: SQLite 提供的数据库别名，本回调不按数据库名豁免
+        :param _source: 触发访问的视图或触发器名称，本回调仍检查底层表
+        :return: 未授权的凭据表访问返回 SQLITE_DENY，其余返回 SQLITE_OK
+        """
+        table = second if action == sqlite3.SQLITE_ALTER_TABLE else first
+        protected_actions = {
+            sqlite3.SQLITE_READ, sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE,
+            sqlite3.SQLITE_DELETE, sqlite3.SQLITE_DROP_TABLE, sqlite3.SQLITE_ALTER_TABLE,
+        }
+        if action in protected_actions and table and table.lower() in _SECRET_TABLE_NAMES:
+            blocked.add(table.lower())
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    driver.set_authorizer(authorize)
+    try:
+        yield
+    except SQLAlchemyError as error:
+        if blocked:
+            raise ValueError(
+                f"statements referencing {', '.join(sorted(blocked))} require --show-secrets"
+            ) from error
+        raise
+    finally:
+        driver.set_authorizer(None)
+
+
 def run_query(sql: str, *, limit: int = 100, allow_write: bool = False, show_secrets: bool = False) -> int:
     """
     执行 SQL 语句并输出 JSON 结果。
@@ -476,13 +531,14 @@ def run_query(sql: str, *, limit: int = 100, allow_write: bool = False, show_sec
     engine = _build_engine()
     try:
         with engine.begin() as connection:
-            result = connection.execute(text(statement_sql))
-            if result.returns_rows:
-                rows = [_row_to_dict(row) for row in result.fetchall()]
-                _print_json({"rows": rows, "row_count": len(rows)})
-            else:
-                _print_json({"row_count": result.rowcount})
-    except SQLAlchemyError as err:
+            with _protect_sqlite_configuration(connection, show_secrets=show_secrets):
+                result = connection.execute(text(statement_sql))
+                if result.returns_rows:
+                    rows = [_row_to_dict(row) for row in result.fetchall()]
+                    _print_json({"rows": rows, "row_count": len(rows)})
+                else:
+                    _print_json({"row_count": result.rowcount})
+    except (SQLAlchemyError, ValueError) as err:
         print(f"Error: {err}", file=sys.stderr)
         return 1
     return 0

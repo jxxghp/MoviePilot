@@ -105,6 +105,11 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 
 `query --write` is also supported for compatibility, but prefer the `write` subcommand for `INSERT`, `UPDATE`, `DELETE`, and schema changes.
 
+SQLite also checks the actual table accesses while executing each statement,
+including single-quoted table names and reads through views. The temporary
+authorizer is removed when that statement finishes. PostgreSQL retains the
+identifier check described below.
+
 Statements that reference `systemconfig` are rejected until you add
 `--show-secrets`, in read and write mode alike:
 
