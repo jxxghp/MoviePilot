@@ -168,6 +168,11 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 `tests/test_search_scan.py` 与 `tests/test_subscribe_paged_search.py` 在离线边界验证恢复、过滤和
 实际下载提交的先后顺序，同时保留普通补集按可用前缀提交的行为。
 
+同一轮分页搜索在站点冷却或时间片结束后恢复时，沿用已处理候选记录，避免无可用集数的
+候选反复重取原页并占用翻页预算。`tests/test_search_scan.py` 使用临时 SQLite、真实站点预算
+和虚拟时钟覆盖秒级冷却下的连续恢复，验证剩余来源继续翻页、末页候选处理后正常收尾，
+且未收录缺集仍保留。新一轮搜索或缺集范围扩大时重新评估候选；旧检查点缺少该记录时兼容恢复。
+
 全集洗版（`best_version=1`、`best_version_full=1`）的主动搜索始终使用洗版规则组，
 包括尚无下载记录或仍有缺集的订阅；未通过洗版规则的整包不会回落到普通订阅规则组。
 订阅显式指定的规则组仍优先。分集洗版中从未下载的剧集继续使用普通订阅规则。

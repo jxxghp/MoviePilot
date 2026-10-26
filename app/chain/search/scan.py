@@ -240,8 +240,8 @@ class SearchScan:
         self.identity: dict[str, Any] = {}
         self.candidates: dict[str, Any] = {}
         self.live: dict[str, Context] = {}
-        # 本轮已处理（过滤淘汰、已提交或下载失败）的候选，只在内存中，重启后重新判断；
-        # 跨轮次的失败由原有下载失败冷却负责。
+        # 本轮已处理（过滤淘汰、已提交或下载失败）的候选随检查点恢复，
+        # 避免重复重取原页抢占翻页预算；新的搜索轮次仍重新判断。
         self.attempted: set[str] = set()
         self.disambiguation: DisambiguationCache = {}
         self.retry: dict[str, str] = {}
@@ -310,7 +310,7 @@ class SearchScan:
 
     def _restore(self, data: dict[str, Any]) -> None:
         """
-        校验搜索合同并恢复候选、匹配前史和连续页进度，已提交目标仍受媒体身份约束。
+        校验搜索合同并恢复候选、处理记录和连续页进度，已提交目标仍受媒体身份约束。
         """
         # 搜索条件变化或进度太久未更新时重新搜索。
         contract_matches = data.get("contract") == self._contract
@@ -320,6 +320,7 @@ class SearchScan:
                         or time.time() - data.get("saved_at", 0) > RESTART_AFTER_SECONDS)
         self.collection = restore_collection(data["collection"])
         self.identity, self.candidates = data["identity"], data["candidates"]
+        self.attempted = set(data.get("attempted", []))
         self.sources.queries = data["queries"]
         self.sources.keyword_index = data["keyword_index"]
         self.retry = data.get("retry", {})
@@ -346,11 +347,12 @@ class SearchScan:
 
     def _restore_target_scope(self) -> None:
         """
-        新增必要目标复用已识别元数据，补查头部后继续历史；已提交目标仍不重复。
+        新增必要目标复用已识别元数据并重新评估候选，补查头部后继续历史；已提交目标仍不重复。
         """
         fresh = search_targets(self.plan) - self.collection.targets
         if not fresh:
             return
+        self.attempted.clear()
         self.collection.targets.update(fresh)
         for record in self.identity.values():
             if record["source"] and record["targets"] is not None:
@@ -361,7 +363,7 @@ class SearchScan:
 
     def state(self) -> dict[str, Any]:
         """
-        页候选、关闭状态及下一页作为同一检查点保存。
+        页候选、处理记录、关闭状态及下一页作为同一检查点保存。
 
         只持久化仍覆盖剩余缺集的候选及其识别结果；不相关资源的识别缓存只留在本进程，
         恢复后再次遇到时重新识别，避免检查点随翻页无限增长。
@@ -372,6 +374,7 @@ class SearchScan:
         return {"format": _CHECKPOINT_FORMAT, "contract": self._contract, "media_identity": self._media_identity,
                 "collection": collection_snapshot(self.collection),
                 "identity": {key: self.identity[key] for key in candidates}, "candidates": candidates,
+                "attempted": sorted(self.attempted.intersection(candidates)),
                 "queries": self.queries,
                 "keywords": self.sources.keywords, "keyword_index": self.sources.keyword_index,
                 "retry": self.retry, "retry_reasons": self.retry_reasons,
@@ -681,7 +684,7 @@ class SearchScan:
 
     def choose(self, ready: set[str], submit: Callable[[list[Context], set[str]], set[str]]) -> None:
         """
-        合集覆盖目标全就绪才提交；剩余缓存先于共享游标兜底。
+        合集覆盖目标全就绪才提交；同轮已处理候选跨队列恢复不重试，剩余缓存先于共享游标兜底。
         """
         contexts, keys = self._contexts(ready)
         contexts = self._filter(contexts)
