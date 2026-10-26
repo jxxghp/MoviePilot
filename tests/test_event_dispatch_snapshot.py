@@ -6,6 +6,7 @@ import asyncio
 import concurrent.futures
 import threading
 from queue import PriorityQueue
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -638,6 +639,207 @@ async def test_drain_returns_false_when_stop_interleaves(
         if isolated_eventmanager._EventManager__lifecycle_state != "stopped":
             await isolated_eventmanager.stop_async()
         executor.shutdown(wait=True)
+
+
+@pytest.mark.parametrize("outcome", ["success", "error", "cancelled"])
+def test_sync_completion_removes_owner_before_notifying_waiters(
+        isolated_eventmanager,
+        monkeypatch,
+        outcome,
+) -> None:
+    """
+    同步处理器的完成信号只能在登记清理后发布，关闭等待者不得观察到已完成的残留 owner。
+
+    用真实线程池和闸门固定结算顺序，完成回调同步观察登记表，不依赖线程负载或睡眠时长。
+
+    :param isolated_eventmanager: 订阅和生命周期均隔离的事件总线
+    :param monkeypatch: 用例结束时恢复执行器和生命周期属性的夹具
+    :param outcome: 真实线程任务正常返回、抛错或尚未运行就取消
+    """
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    release_worker = threading.Event()
+    worker_started = threading.Event()
+
+    def block_worker() -> None:
+        """
+        占用唯一执行线程，使待验证任务在观察者登记前保持排队状态。
+        """
+        worker_started.set()
+        release_worker.wait(timeout=5)
+
+    executor.submit(block_worker)
+    monkeypatch.setattr(isolated_eventmanager, "_EventManager__executor", executor)
+    monkeypatch.setattr(isolated_eventmanager, "_EventManager__lifecycle_state", "running")
+    submitted = []
+    original_submit = executor.submit
+
+    def record_submit(callback, *args, **kwargs):
+        """
+        保留真实线程池提交，仅记录原始任务句柄供取消分支使用。
+
+        :param callback: 事件总线包装后的真实同步处理器
+        :param args: 线程池原样转发的位置参数
+        :param kwargs: 线程池原样转发的关键字参数
+        :return: 线程池创建的任务句柄
+        """
+        handle = original_submit(callback, *args, **kwargs)
+        submitted.append(handle)
+        return handle
+
+    monkeypatch.setattr(executor, "submit", record_submit)
+    observed = []
+    notified = threading.Event()
+
+    def handler() -> None:
+        """
+        在错误分支抛出普通业务异常，其他分支无副作用。
+        """
+        if outcome == "error":
+            raise RuntimeError("handler failed")
+
+    def observe_completion(_completed) -> None:
+        """
+        在结算通知的同一调用栈观察 owner 表，避免异步断言被后续清理掩盖。
+        """
+        observed.append(dict(isolated_eventmanager._EventManager__sync_handles))
+        notified.set()
+
+    try:
+        assert worker_started.wait(timeout=1)
+        assert isolated_eventmanager._EventManager__register_sync_handle(handler, ())
+        completion = next(iter(isolated_eventmanager._EventManager__sync_handles.values()))
+        completion.add_done_callback(observe_completion)
+        if outcome == "cancelled":
+            assert submitted[0].cancel()
+        else:
+            release_worker.set()
+        assert notified.wait(timeout=1)
+        assert observed == [{}]
+        assert completion.cancelled() is (outcome == "cancelled")
+        if outcome == "error":
+            assert isinstance(completion.exception(), RuntimeError)
+    finally:
+        release_worker.set()
+        executor.shutdown(wait=True)
+        isolated_eventmanager.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["success", "error", "cancelled"])
+async def test_async_stop_waits_for_owner_cleanup_before_completion_callback_is_registered(
+        isolated_eventmanager,
+        monkeypatch,
+        outcome,
+) -> None:
+    """
+    跨线程提交在释放登记锁后暂停时，异步停止也不能留下已经结束的处理器登记。
+
+    暂停点位于原有登记锁释放与完成清理回调登记之间，处理器仍在真实事件循环中执行。
+
+    :param isolated_eventmanager: 订阅和生命周期均隔离的事件总线
+    :param monkeypatch: 用例结束时恢复生命周期锁和状态的夹具
+    :param outcome: 真实异步处理器正常返回、抛错或取消
+    """
+    global_vars.set_loop(asyncio.get_running_loop())
+    monkeypatch.setattr(isolated_eventmanager, "_EventManager__lifecycle_state", "running")
+    original_lock = isolated_eventmanager._EventManager__lifecycle_lock
+    registration_paused = threading.Event()
+    release_registration = threading.Event()
+    handler_release = asyncio.Event()
+    handler_finished = asyncio.Event()
+    registration_results = []
+
+    async def handler() -> None:
+        """
+        等待登记线程到达指定间隙后再完成真实处理器。
+        """
+        await handler_release.wait()
+        handler_finished.set()
+        if outcome == "error":
+            raise RuntimeError("handler failed")
+        if outcome == "cancelled":
+            raise asyncio.CancelledError()
+
+    def register() -> None:
+        """
+        在线程中走真实异步处理器提交入口，避免在主事件循环上阻塞闸门。
+        """
+        registration_results.append(isolated_eventmanager._EventManager__register_async_handle(handler()))
+
+    registration_thread = threading.Thread(target=register, daemon=True)
+
+    def pause_after_registration(*exception_info):
+        """
+        释放真实锁后仅暂停提交线程，让关闭操作观察回调登记之前的合法线程交错。
+
+        :param exception_info: with语句原样交给真实锁的异常信息
+        :return: 真实锁的退出结果，不改变异常传播
+        """
+        result = original_lock.__exit__(*exception_info)
+        if threading.current_thread() is registration_thread and not registration_paused.is_set():
+            registration_paused.set()
+            release_registration.wait(timeout=5)
+        return result
+
+    proxy_lock = MagicMock()
+    proxy_lock.__enter__.side_effect = original_lock.__enter__
+    proxy_lock.__exit__.side_effect = pause_after_registration
+    monkeypatch.setattr(isolated_eventmanager, "_EventManager__lifecycle_lock", proxy_lock)
+    registration_thread.start()
+    try:
+        assert await asyncio.to_thread(registration_paused.wait, 1)
+        handler_release.set()
+        await asyncio.wait_for(handler_finished.wait(), timeout=1)
+        await asyncio.wait_for(isolated_eventmanager.stop_async(), timeout=1)
+        assert isolated_eventmanager._EventManager__async_handles == {}
+    finally:
+        handler_release.set()
+        release_registration.set()
+        await asyncio.to_thread(registration_thread.join, 1)
+        assert not registration_thread.is_alive()
+        if isolated_eventmanager._EventManager__lifecycle_state != "stopped":
+            await isolated_eventmanager.stop_async()
+    assert registration_results == [True]
+
+
+@pytest.mark.asyncio
+async def test_unstarted_async_submission_removes_owner_before_cancel_notification(
+        isolated_eventmanager,
+        monkeypatch,
+) -> None:
+    """
+    尚未启动的异步提交被取消时，也须先清除登记再通知关闭等待者。
+
+    :param isolated_eventmanager: 订阅和生命周期均隔离的事件总线
+    :param monkeypatch: 用例结束时恢复生命周期状态的夹具
+    """
+    global_vars.set_loop(asyncio.get_running_loop())
+    monkeypatch.setattr(isolated_eventmanager, "_EventManager__lifecycle_state", "running")
+    observed = []
+    called = False
+
+    async def handler() -> None:
+        """
+        记录不应发生的处理器启动。
+        """
+        nonlocal called
+        called = True
+
+    assert isolated_eventmanager._EventManager__register_async_handle(handler())
+    registered = next(iter(isolated_eventmanager._EventManager__async_handles.values()))
+    registered.completion.add_done_callback(
+        lambda _completed: observed.append(dict(isolated_eventmanager._EventManager__async_handles))
+    )
+    try:
+        assert registered.handle.cancel()
+        assert observed == [{}]
+        assert registered.completion.cancelled()
+    finally:
+        await isolated_eventmanager.stop_async()
+        # 提交代理的取消回调仍需让事件循环收口其尚未启动的内部包装任务。
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+    assert not called
 
 
 @pytest.mark.asyncio
