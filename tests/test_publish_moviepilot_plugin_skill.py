@@ -110,9 +110,15 @@ def test_push_creates_public_repo_when_explicitly_requested(tmp_path: Path) -> N
 
         def repo_exists(self) -> bool:
             """
-            返回仓库不存在。
+            创建前仓库不存在，创建后可读取新分支状态。
             """
-            return False
+            return self.created_private is not None
+
+        def get_branch_commit(self) -> None:
+            """
+            模拟建仓后目标分支尚未初始化。
+            """
+            return None
 
         def create_repo(self, private: bool = False) -> dict[str, Any]:
             """
@@ -126,10 +132,12 @@ def test_push_creates_public_repo_when_explicitly_requested(tmp_path: Path) -> N
             files: dict[str, bytes],
             deletes: list[str],
             message: str,
+            base_commit: dict[str, Any] | None,
         ) -> str:
             """
             记录一次批量提交的文件集合。
             """
+            assert base_commit is None
             self.commit_count += 1
             self.committed_files = sorted(files)
             self.committed_deletes = list(deletes)
@@ -325,6 +333,7 @@ def test_commit_files_creates_single_commit_for_all_changes() -> None:
         {"package.v3.json": b"{}", "plugins.v3/demo/__init__.py": b""},
         ["plugins.v3/demo/old.py"],
         "Publish Demo",
+        client.get_branch_commit(),
     )
 
     assert commit_sha == "new-commit"
@@ -368,7 +377,7 @@ def test_commit_files_creates_branch_in_empty_repo() -> None:
         raise AssertionError(f"未预期的请求: {method} {path}")
 
     client.request = fake_request  # type: ignore[method-assign]
-    commit_sha = client.commit_files({"package.v3.json": b"{}"}, [], "Init")
+    commit_sha = client.commit_files({"package.v3.json": b"{}"}, [], "Init", client.get_branch_commit())
 
     assert commit_sha == "root-commit"
     commit_calls = [payload for method, path, payload in calls if path.endswith("/git/commits")]

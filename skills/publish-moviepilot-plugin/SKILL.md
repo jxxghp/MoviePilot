@@ -169,6 +169,10 @@ zip/tar.gz + sha256 资产）：
 - For Vue federation plugins, publish built runtime assets under `dist/assets/`
   when they are present; do not exclude them as generated files.
 - Do not overwrite or remove package entries for other plugins.
+- Pin the remote commit before reading the package or plugin files. Build the
+  single publish commit from that same tree and parent. If the target branch
+  advances meanwhile, stop on the non-fast-forward conflict, then preview again
+  against a fresh snapshot; never force-push or reuse stale merged content.
 - Do not log or print GitHub token values.
 - For push operations, report created, updated, deleted, skipped, and rejected
   files separately.

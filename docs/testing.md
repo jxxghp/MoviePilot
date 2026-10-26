@@ -317,6 +317,12 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 - **没有直接 `assert` 不等于空测试**：`pytest.raises`、辅助断言、迁移 round-trip、导入兼容和“不抛异常”都是有效契约；只有名称或注释声称存在的覆盖则需要进一步核实。
 - **删除后验证**：运行受影响文件，核对保留用例及生产代码行/分支覆盖；跨领域清理再运行 `python tests/run.py`。不降低覆盖率基线、不新增 skip、不削弱架构或兼容门禁。
 
+## 插件发布快照与并发回归
+
+`tests/test_plugin_publish_snapshot.py` 固定读取快照，并在 package 返回后确定性推进远端引用，
+断言非强推冲突保留并发作者更新；自动初始化新仓后必须重新固定、读取和合并，不能把新主分支
+当空仓库。测试只替换 GitHub I/O，保留真实文件读取、清单合并与 Git Data 请求构造。
+
 ## 排查测试问题
 
 - **收集报错（collection error）**：多为 import 期副作用或顶层桩污染。优先改成真实 import（conftest 已隔离临时库，真实 `settings`/helper 可加载）+ 方法内 patch，而不是靠事后还原（收集期污染发生在 import 那一刻，事后还原太晚）。

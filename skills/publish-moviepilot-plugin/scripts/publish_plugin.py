@@ -279,18 +279,19 @@ class GitHubClient:
         except json.JSONDecodeError:
             return raw.decode("utf-8", errors="replace")
 
-    def get_file(self, path: str) -> Optional[FileState]:
+    def get_file(self, path: str, ref: Optional[str] = None) -> Optional[FileState]:
         """
         读取远端单个文件，文件不存在时返回 None。
 
         :param path: 仓库内 POSIX 路径
+        :param ref: 固定读取的提交；未指定时读取目标分支
         :return: 文件状态或 None
         """
         encoded_path = quote_path(path)
         try:
             data = self.request(
                 "GET",
-                f"/repos/{self.repo}/contents/{encoded_path}?ref={quote(self.branch)}",
+                f"/repos/{self.repo}/contents/{encoded_path}?ref={quote(ref or self.branch)}",
             )
         except GitHubError as err:
             if err.status == 404:
@@ -302,17 +303,18 @@ class GitHubClient:
         content = base64.b64decode(raw_content.encode("utf-8"), validate=False)
         return FileState(path=path, content=content, sha=data.get("sha"))
 
-    def list_files(self, prefix: str) -> dict[str, FileState]:
+    def list_files(self, prefix: str, ref: Optional[str] = None) -> dict[str, FileState]:
         """
         递归列出远端路径下的全部文件。
 
         :param prefix: 仓库内目录路径
+        :param ref: 固定读取的提交；递归列表和文件内容共用此引用
         :return: 以仓库路径为键的远端文件状态
         """
         normalized_prefix = normalize_remote_path(prefix)
         if not normalized_prefix:
             return {}
-        tree = self.get_tree()
+        tree = self.get_tree(ref=ref)
         files: dict[str, FileState] = {}
         prefix_with_slash = f"{normalized_prefix}/"
         for item in tree:
@@ -322,22 +324,25 @@ class GitHubClient:
             if path == normalized_prefix or path.startswith(prefix_with_slash):
                 files[path] = FileState(path=path, content=b"", sha=item.get("sha"))
         for path in list(files):
-            file_state = self.get_file(path)
+            file_state = self.get_file(path, ref=ref)
             if file_state is not None:
                 files[path] = file_state
         return files
 
-    def get_tree(self) -> list[dict[str, Any]]:
+    def get_tree(self, ref: Optional[str] = None) -> list[dict[str, Any]]:
         """
         读取目标分支的递归 Git tree。
 
+        :param ref: 固定读取的提交；未指定时查询目标分支
         :return: Git tree 条目列表
         """
-        branch_data = self.request(
-            "GET",
-            f"/repos/{self.repo}/branches/{quote(self.branch)}",
-        )
-        commit_sha = branch_data.get("commit", {}).get("sha")
+        commit_sha = ref
+        if not commit_sha:
+            branch_data = self.request(
+                "GET",
+                f"/repos/{self.repo}/branches/{quote(self.branch)}",
+            )
+            commit_sha = branch_data.get("commit", {}).get("sha")
         if not commit_sha:
             raise GitHubError(0, f"无法读取分支 {self.branch} 的提交 SHA")
         tree_data = self.request(
@@ -457,6 +462,7 @@ class GitHubClient:
         files: dict[str, bytes],
         deletes: list[str],
         message: str,
+        base_commit: Optional[dict[str, Any]],
     ) -> Optional[str]:
         """
         用 Git Data API 把多个文件的变更合并成一次提交。
@@ -468,11 +474,12 @@ class GitHubClient:
         :param files: 仓库路径到文件内容的映射
         :param deletes: 需要删除的仓库路径
         :param message: 提交说明
+        :param base_commit: 文件读取前固定的基线提交；None 表示基线为空仓库
         :return: 新提交 SHA；没有任何变更时返回 None
         """
         if not files and not deletes:
             return None
-        head = self.get_branch_commit()
+        head = base_commit
         base_tree = None
         parents: list[str] = []
         if head:
@@ -1113,6 +1120,7 @@ def load_remote_files_for_push(
     :return: 远端插件文件、远端 package 文件、仓库是否已存在
     """
     client: GitHubClient = context["client"]
+    context["base_commit"] = None
     repo_exists = client.repo_exists()
     if not repo_exists and not args.create_repo_if_missing:
         raise GitHubError(
@@ -1121,9 +1129,15 @@ def load_remote_files_for_push(
         )
     if not repo_exists:
         return {}, None, False
+    # 清单、插件内容、删除候选与提交父树必须属于同一个不可变快照。
+    head = client.get_branch_commit()
+    context["base_commit"] = head
+    if head is None:
+        return {}, None, True
+    ref = str(head["sha"])
     return (
-        client.list_files(context["remote_prefix"]),
-        client.get_file(context["layout"].package_file),
+        client.list_files(context["remote_prefix"], ref=ref),
+        client.get_file(context["layout"].package_file, ref=ref),
         True,
     )
 
@@ -1174,6 +1188,10 @@ def push(args: argparse.Namespace) -> dict[str, Any]:
     )
     entry = read_package_entry(context["local_repo"], context["layout"], context["plugin_id"])
     remote_files, remote_package, repo_existed = load_remote_files_for_push(context, args)
+    if not repo_existed and not args.dry_run:
+        client.create_repo(private=args.private)
+        # auto_init 会创建默认分支；创建后重新固定快照，并重新读取、比较及合并全部内容。
+        remote_files, remote_package, _ = load_remote_files_for_push(context, args)
     package_content = merge_package_content(
         remote_package.content if remote_package else None,
         context["plugin_id"],
@@ -1192,8 +1210,6 @@ def push(args: argparse.Namespace) -> dict[str, Any]:
         payload["dry_run"] = True
         return payload
 
-    if not repo_existed:
-        client.create_repo(private=args.private)
     message = args.message or f"Publish {context['plugin_id']}"
     applied: dict[str, list[str]] = {"create": [], "update": [], "delete": []}
     files_to_write: dict[str, bytes] = {}
@@ -1211,7 +1227,7 @@ def push(args: argparse.Namespace) -> dict[str, Any]:
         if remote_files[path].sha:
             delete_paths.append(path)
             applied["delete"].append(path)
-    commit_sha = client.commit_files(files_to_write, delete_paths, message)
+    commit_sha = client.commit_files(files_to_write, delete_paths, message, context["base_commit"])
     payload["applied"] = applied
     payload["commit_sha"] = commit_sha
     payload["message"] = "插件已以单个提交推送到 GitHub 仓库。"
