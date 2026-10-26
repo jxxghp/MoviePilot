@@ -86,6 +86,19 @@ def test_local_limit_without_valid_timestamp_keeps_rule_duration(message, expect
     assert provider._site_rate_limit_backoff(site, message) == expected
 
 
+@pytest.mark.parametrize("site, reason", [
+    ({"limit_seconds": 0, "limit_interval": 3600, "limit_count": 25}, "访问间隔不得小于 20 秒"),
+    ({"limit_seconds": "invalid", "limit_interval": 3600, "limit_count": 25}, "访问间隔不得小于 20 秒"),
+    ({"limit_seconds": 20, "limit_interval": "invalid", "limit_count": 25}, "3600 秒内访问次数不得超过 25 次"),
+    ({"limit_seconds": 20, "limit_interval": 3600, "limit_count": 0}, "3600 秒内访问次数不得超过 25 次"),
+])
+def test_inactive_or_invalid_reported_rule_does_not_invent_cooldown(site, reason):
+    """
+    资源包说明与当前配置不一致时，已停用或不可读的规则不产生额外冷却，沿用调用方的默认间隔。
+    """
+    assert provider._site_rate_limit_backoff(site, f"触发流控规则，{reason}") == 0
+
+
 @pytest.mark.asyncio
 async def test_async_wait_only_sleeps_for_throttled_site(monkeypatch):
     """
