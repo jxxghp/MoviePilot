@@ -624,8 +624,8 @@
       "codes": [
         "assignment"
       ],
-      "fingerprint": "b36833696f77492798f44e25bc64c613b3a5b6e232a3df2d2337475afa2c30fa",
-      "statement": "@router.get('/list', summary='查询所有订阅（API_TOKEN）', response_model=List[_SchemaSubscribe], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def list_subscribes(response: Response=None, query: SubscriptionQueryService=Depends(get_subscription_query_service), status_service: SubscriptionExecutionStatusService=Depends(get_subscription_execution_status_service), _: Optional[Annotated[str, Depends(verify_apitoken)]]=None, page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
+      "fingerprint": "9013a36a2221a1c539535d5cfb8a7ee7cde3fe3f6e0a15fb2e20f0a58a2db052",
+      "statement": "@router.get('/list', summary='查询所有订阅（API_TOKEN）', response_model=List[_SchemaSubscribe], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def list_subscribes(_: Annotated[str, Depends(verify_apitoken)], response: Response=None, query: SubscriptionQueryService=Depends(get_subscription_query_service), status_service: SubscriptionExecutionStatusService=Depends(get_subscription_execution_status_service), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
       "reason": "fastapi-response-default"
     },
     {

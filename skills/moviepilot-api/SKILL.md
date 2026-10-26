@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 65
+version: 66
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -102,6 +102,11 @@ including for channel administrators. Creation belongs to that user; ordinary
 users may update or delete only their own subscriptions. An unbound or inactive
 channel user must bind an active account before retrying, not switch to an
 administrator identity.
+
+`subscription.list` uses the current user identity and subscription ownership filtering.
+The separate global subscription integration endpoint requires a valid API_TOKEN
+and administrator identity. It is outside this skill's allowed operations and must
+never be used to bypass user scope.
 
 For QQ, either `qq_userid` or `qq_openid` may match the current channel ID; for
 Feishu, either `feishu_userid` or `feishu_openid` may match. A single matching

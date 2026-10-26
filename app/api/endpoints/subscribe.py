@@ -230,15 +230,20 @@ async def read_subscribes(
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_subscribes(
+    _: Annotated[str, Depends(verify_apitoken)],
     response: Response = None,  # type: ignore[assignment]
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
-    _: Optional[Annotated[str, Depends(verify_apitoken)]] = None,
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> Any:
     """
-    查询所有订阅 API_TOKEN认证（?token=xxx）
+    通过 API_TOKEN 及当前管理员身份校验后查询全部用户的订阅。
+
+    认证依赖必须放在最外层 Annotated 中，避免被可空联合类型隐藏。
+
+    :param _: 由 ?token= 或 X-API-KEY 传入并已通过校验的凭据
+    :return: 按可选分页返回的订阅列表
     """
     page, count = resolve_compatible_pagination(page, count)
     if response is not None:
