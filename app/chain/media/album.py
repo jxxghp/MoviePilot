@@ -2,6 +2,7 @@
 专辑目录扫描、曲目对齐与缓存编排 owner。
 """
 
+import hashlib
 import json
 import os
 from copy import deepcopy
@@ -35,6 +36,26 @@ from app.domain.music import (
 from app.foundation.text import convert as zhconv_convert
 from app.runtime.execution import run_in_threadpool
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MusicEntityType
+
+
+def _album_file_signature(path: Path, directory: Path) -> tuple[str, int, int, str]:
+    """
+    生成文件身份签名，CUE 额外比较有界原始内容，避免等长且 mtime 不变时复用旧曲目。
+
+    :param path: 音频或 CUE 文件路径
+    :param directory: 当前专辑根目录
+    :return: 相对路径、大小、修改时间与 CUE 内容摘要；读取失败时标记未知
+    """
+    relative = str(path.relative_to(directory))
+    try:
+        stat = path.stat()
+        digest = ""
+        if path.suffix.casefold() == ".cue":
+            with path.open("rb") as stream:
+                digest = hashlib.sha256(stream.read(1024 * 1024 + 1)).hexdigest()
+        return relative, stat.st_size, stat.st_mtime_ns, digest
+    except OSError:
+        return relative, -1, -1, ""
 
 
 def _source_directory_result(
@@ -299,9 +320,8 @@ class MediaAlbumOwner(_MediaOwnerBase):
         files: list[Path],
     ) -> AlbumSignature:
         """
-        把音频及同目录 CUE 的路径、大小和修改时间纳入缓存签名。
+        把音频元数据与同目录 CUE 的有界内容摘要纳入缓存签名。
         """
-        signature: list[tuple[str, int, int]] = []
         paths = set(files)
         for parent in {path.parent for path in files}:
             try:
@@ -309,20 +329,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
                                     if not path.name.startswith(".") and path.suffix.casefold() == ".cue" and path.is_file())[:32])
             except OSError:
                 continue
-        for path in sorted(paths):
-            try:
-                stat = path.stat()
-            except OSError:
-                signature.append((str(path.relative_to(directory)), -1, -1))
-            else:
-                signature.append(
-                    (
-                        str(path.relative_to(directory)),
-                        stat.st_size,
-                        stat.st_mtime_ns,
-                    )
-                )
-        return tuple(signature)
+        return tuple(_album_file_signature(path, directory) for path in sorted(paths))
 
     def _directory_audio_scan(self, directory: Path, file_paths: Optional[list[Path]] = None) -> tuple[list[Path], AlbumSignature]:
         """

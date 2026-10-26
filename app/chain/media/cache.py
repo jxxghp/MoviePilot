@@ -13,7 +13,7 @@ from typing import Awaitable, Callable, TypeAlias
 from app.domain.context import MusicInfo
 from app.domain.music import MusicDirectoryMatch
 
-AlbumSignature: TypeAlias = tuple[tuple[str, int, int], ...]
+AlbumSignature: TypeAlias = tuple[tuple[str, int, int, str], ...]
 AlbumMapping: TypeAlias = dict[str, MusicInfo]
 _CacheValue: TypeAlias = tuple[AlbumSignature, AlbumMapping, float]
 _FlightKey: TypeAlias = tuple[str, AlbumSignature, int]

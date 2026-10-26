@@ -229,6 +229,12 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 以及完整包和拆包保留每日限流原因并采用 24 小时冷却。缓存不保存缺集判断，
 当前识别词和允许集数仍在每批重新应用。
 
+## CUE 内容签名回归
+
+`tests/test_album_cue_cache_signature.py` 在同步及异步目录识别中等长改写真实 CUE 文件，
+恢复原 mtime，断言重新请求专辑匹配且使用新曲目。夹具使用不登记单例的专用真实 owner
+和私有目录缓存，不替换已有 MediaChain 实例或类缓存。
+
 ## 自隔离：用了什么，就还原什么
 
 `tests/test_workflow_safety.py` 使用真实工作流 manager、执行器和节点线程模拟同 ID 重跑、
