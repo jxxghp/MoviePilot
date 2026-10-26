@@ -50,10 +50,16 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
 
     def _assign_job_generation(self, job_id: str, job: dict[str, Any]) -> None:
         """
-        把注册 generation 写入可变运行时状态。
+        把注册 generation 写入可变运行时状态，并补齐协程任务的执行预算。
+
+        声明为 0 的任务保留不限时：托管协程消费者无法靠取消真正停止，给它总时长上限
+        只会把正常长轮次记成失败，真实收尾仍然要等消费者自己结束。
         """
         self._registry.assign_generation(job_id, job)
-        if inspect.iscoroutinefunction(job.get("func")) and job.get("timeout_seconds") is None:
+        declared = job.get("timeout_seconds")
+        if declared == 0:
+            job["timeout_seconds"] = None
+        elif inspect.iscoroutinefunction(job.get("func")) and declared is None:
             timeout = int(get_runtime_setting("SCHEDULER_JOB_TIMEOUT", 3600))
             job["timeout_seconds"] = timeout if timeout > 0 else None
 
@@ -129,14 +135,26 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
         return job
 
     @staticmethod
-    def _handle_job_error(job_id: str, job: dict[str, Any], error: Exception) -> None:
+    def _handle_job_error(
+        job_id: str,
+        job: dict[str, Any],
+        error: Exception,
+        detail: Optional[str] = None,
+    ) -> None:
         """
         记录定时任务执行异常并发送系统错误事件。
+
+        :param job_id: 调度任务标识
+        :param job: 任务运行时状态
+        :param error: 捕获到的异常，用于取异常类型与堆栈
+        :param detail: 面向日志、通知和事件的错误文本；省略时取异常文本，
+            用于补足 asyncio 超时这类 str() 为空的标准异常
         """
-        logger.error(f"定时任务 {job.get('name')} 执行失败：{str(error)} - {traceback.format_exc()}")
+        message = detail or str(error)
+        logger.error(f"定时任务 {job.get('name')} 执行失败：{message} - {traceback.format_exc()}")
         _message_helper_factory().put(
             title=f"{job.get('name')} 执行失败",
-            message=str(error),
+            message=message,
             role="system",
             level="error",
         )
@@ -146,7 +164,7 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
                 "type": "scheduler",
                 "scheduler_id": job_id,
                 "scheduler_name": job.get("name"),
-                "error": str(error),
+                "error": message,
                 "traceback": traceback.format_exc(),
             },
         )
@@ -196,7 +214,7 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
         except asyncio.TimeoutError as err:
             success = False
             error = f"任务执行超时（{job.get('timeout_seconds')} 秒）"
-            self._handle_job_error(job_id=job_id, job=job, error=err)
+            self._handle_job_error(job_id=job_id, job=job, error=err, detail=error)
         except asyncio.CancelledError:
             success = False
             error = "任务已取消"

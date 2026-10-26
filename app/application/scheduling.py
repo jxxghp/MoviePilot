@@ -54,7 +54,8 @@ class JobSpec:
     :param func: 调度触发时调用的业务函数
     :param owner: 任务生命周期所属的业务组件标识
     :param overlap: 前一次仍在执行时的重入策略，默认跳过新触发
-    :param timeout_seconds: 声明的执行超时秒数，None 表示不声明超时
+    :param timeout_seconds: 执行超时预算：正数为总时长上限，0 表示显式不限时，
+        None 表示未声明并由全局默认补齐
     :param manual: 是否允许通过管理界面手动触发
     :param recovery: 进程重启后的恢复策略，默认等待下一次计划触发
     :param kwargs: 每次调用业务函数时使用的关键字参数

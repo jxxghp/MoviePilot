@@ -69,6 +69,8 @@ def _subscription_search_job_specs(
             "恢复订阅搜索队列",
             services.resume_subscribe_search,
             "subscription",
+            # 单轮耗时由队列自身限额决定，取消又杀不掉同步消费者，因此不叠加总时长预算。
+            timeout_seconds=0,
             recovery=JobRecoveryPolicy.DURABLE_QUEUE,
         ),
     )
