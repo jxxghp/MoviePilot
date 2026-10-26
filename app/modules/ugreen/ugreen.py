@@ -1633,6 +1633,7 @@ class Ugreen:
         广度优先分页遍历海报墙目录，最多访问 20000 个不同路径。
 
         重复路径只访问一次。任意目录或分页失败都中止，不能将部分结果视为完整媒体库。
+        无视频或子目录时，接口列表字段可为 null，按空列表继续遍历。
 
         :param root_path: 遍历起始目录
         :param page_size: 每个目录的分页大小，默认 100
@@ -1663,7 +1664,8 @@ class Ugreen:
                 )
                 if data is None:
                     raise ConnectionError("读取绿联海报墙目录失败")
-                if any(field in data and not isinstance(data[field], list) for field in ("video_arr", "folder_arr")):
+                if any(data.get(field) is not None and not isinstance(data[field], list)
+                       for field in ("video_arr", "folder_arr")):
                     raise ConnectionError("绿联海报墙目录响应格式错误")
                 if not data:
                     break

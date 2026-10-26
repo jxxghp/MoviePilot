@@ -400,6 +400,66 @@ def test_partial_library_failure_preserves_older_sqlite_rows(kind, failure, monk
     assert len(calls) == 2
 
 
+def test_ugreen_nullable_lists_preserve_directory_and_page_traversal(monkeypatch, sync_repository):
+    """
+    仅含子目录的根目录和无子目录的视频分页返回 null 时，仍须同步全部条目。
+    """
+    pages = iter([
+        {"video_arr": None, "folder_arr": [{"path": "/media/subfolder"}], "is_last_page": True},
+        {"video_arr": [{"ug_video_info_id": "first", "type": 1, "name": "第一页电影"}],
+         "folder_arr": None, "is_last_page": False},
+        {"video_arr": [{"ug_video_info_id": "second", "type": 1, "name": "第二页电影"}],
+         "folder_arr": None, "is_last_page": True},
+    ])
+
+    def respond(*_args, **_kwargs):
+        """
+        在真实协议解析之前按顺序回放三次成功的目录响应。
+        """
+        return _response({"code": 200, "data": next(pages)})
+
+    client, calls = _sync_client("ugreen-internal", monkeypatch, respond)
+    chain = MediaServerChain.__new__(MediaServerChain)
+    chain.items = lambda **kwargs: client.get_items(kwargs["library_id"])
+    repository, factory = sync_repository
+    assert chain._sync_server_libraries(
+        "test", [MediaServerLibrary(id="library", name="媒体库")], {"library": None}, repository,
+        "2026-10-27 00:00:00", None, 1, 1, None, 0,
+    ) == (2, 2)
+    with factory() as session:
+        assert {row.item_id for row in session.query(CachedItem).all()} == {"first", "second"}
+    assert [(kwargs["params"]["path"], kwargs["params"]["page"]) for _, kwargs in calls] == [
+        ("/media", 1), ("/media/subfolder", 1), ("/media/subfolder", 2),
+    ]
+
+
+@pytest.mark.parametrize("video_arr", [None, []])
+@pytest.mark.parametrize("folder_arr", [None, []])
+def test_ugreen_nullable_empty_lists_finish_enumeration(video_arr, folder_arr, monkeypatch):
+    """
+    空目录的两个列表均可独立使用 null 或空数组表示，末页应正常结束。
+    """
+    client, calls = _sync_client("ugreen-internal", monkeypatch, _response({
+        "code": 200,
+        "data": {"video_arr": video_arr, "folder_arr": folder_arr, "is_last_page": True},
+    }))
+    assert list(client.get_items("library")) == []
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("field", ["video_arr", "folder_arr"])
+@pytest.mark.parametrize("invalid", [{}, "", 0, False])
+def test_ugreen_non_list_values_still_fail_enumeration(field, invalid, monkeypatch):
+    """
+    允许 null 不得放行字典、字符串、数字或布尔值，避免将异常响应当作空库。
+    """
+    data = {"video_arr": None, "folder_arr": None, "is_last_page": True, field: invalid}
+    client, calls = _sync_client("ugreen-internal", monkeypatch, _response({"code": 200, "data": data}))
+    with pytest.raises(ConnectionError, match="绿联海报墙目录响应格式错误"):
+        list(client.get_items("library"))
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize("projected", [False, True])
 def test_navidrome_partial_page_failure_is_not_successful_enumeration(projected, monkeypatch):
     """
