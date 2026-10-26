@@ -619,10 +619,16 @@ def test_site_window_wait_keeps_cursor(owner, monkeypatch):
     assert scan.collection.sources[key].error == "站点窗口限流"
 
 
-def test_site_rate_limit_window_defers_retry_until_window_refresh(owner, monkeypatch):
+@pytest.mark.parametrize("reason, seconds", [
+    ("访问间隔不得小于 20 秒", 21),
+    ("3600 秒内访问次数不得超过 25 次", 3601),
+    ("未知限制", 3601),
+])
+def test_site_rate_limit_window_defers_retry_until_window_refresh(owner, monkeypatch, reason, seconds):
     """
-    站点触发计数窗口限流时按窗口长度退避，不能继续用秒级冷却反复重试。
+    分页搜索按实际限流原因等待，短间隔不扩大为计数窗口，也不提前结束来源。
     """
+    monkeypatch.setattr(scan_module, "_wait_for_site_request", lambda _site: None)
     monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [
         {"id": 1, "name": "test", "parser": "mTorrent",
          "limit_interval": 3600, "limit_count": 25, "limit_seconds": 20}
@@ -630,7 +636,7 @@ def test_site_rate_limit_window_defers_retry_until_window_refresh(owner, monkeyp
     def request(**_params):
         report_site_search_outcome(
             attempted=False, outcome="deferred",
-            error="触发流控规则，3600 秒内访问次数不得超过 25 次",
+            error=f"触发流控规则，{reason}",
         )
         return []
     monkeypatch.setattr(owner, "search_site_torrents", request)
@@ -640,10 +646,12 @@ def test_site_rate_limit_window_defers_retry_until_window_refresh(owner, monkeyp
 
     assert not scan.step(key)
 
-    assert datetime.fromisoformat(scan.retry[key]) >= before + timedelta(seconds=3600)
+    delay = (datetime.fromisoformat(scan.retry[key]) - before).total_seconds()
+    assert seconds - 1 < delay <= seconds
     assert scan.retry_reasons[key] == "cooldown"
     assert not scan.collection.sources[key].failed
     assert not scan.collection.sources[key].exhausted
+    assert scan.collection.sources[key].budget_deferrals == (1 if seconds >= 600 else 0)
 
 
 def test_scan_persists_local_rate_limit_window_on_site_budget(owner, monkeypatch):
