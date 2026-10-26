@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9822,
-  "edge_sha256": "03e904678af5150034e8f55a64b383c4ce22f6157f21bf2d98e34bb1b6dd3d2d",
+  "edge_count": 9824,
+  "edge_sha256": "3f1ac081c43f4139ba631664cea9f91bc3aaccee7b9186b0f57a9334c218b88b",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1167,6 +1167,7 @@
     "app.adapters.system.resource -> app.adapters.system",
     "app.adapters.system.resource -> app.adapters.system.host",
     "app.adapters.system.resource -> app.foundation",
+    "app.adapters.system.resource -> app.foundation.url",
     "app.adapters.system.resource -> app.foundation.version",
     "app.adapters.system.resource -> app.runtime",
     "app.adapters.system.resource -> app.runtime.log",
@@ -1184,6 +1185,7 @@
     "app.adapters.system.update -> app.foundation",
     "app.adapters.system.update -> app.foundation.environment",
     "app.adapters.system.update -> app.foundation.singleton",
+    "app.adapters.system.update -> app.foundation.url",
     "app.adapters.system.update -> app.foundation.version",
     "app.adapters.system.update -> app.runtime",
     "app.adapters.system.update -> app.runtime.dependencies",
