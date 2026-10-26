@@ -490,9 +490,9 @@ def test_cross_site_barrier_keeps_late_opportunistic_candidate(owner, monkeypatc
     assert batches[0][2] == {"1:1"}
 
 
-def test_rejected_candidate_is_not_retried_in_the_same_run_but_rejudged_after_resume(owner, monkeypatch):
+def test_rejected_candidate_is_rejudged_only_in_a_new_round(owner, monkeypatch):
     """
-    同轮已拒绝候选不重复尝试，恢复搜索后允许重新判断。
+    同轮已拒绝候选跨检查点不重复尝试，新的搜索轮次仍按最新促销信息重新判断。
     """
     from app.application.search.session import SearchSessionSnapshot, encode_search_state
 
@@ -510,13 +510,94 @@ def test_rejected_candidate_is_not_retried_in_the_same_run_but_rejudged_after_re
     # 本轮内已处理过的同一资源不再重复提交。
     assert attempts == [1]
     assert scan.collection.remaining == {"1:1"}
-    # 已处理标记不入检查点：恢复后按最新信息（已免费）重新判断。
+    # 恢复同一轮不能再次提交已拒绝资源，否则短冷却会让任务不断重取旧页。
     resumed = SearchScan(owner=owner, plan=plan([1]),
                          snapshot=SearchSessionSnapshot("task", 1, encode_search_state(scan.state())))
     resumed.ended = False
     resumed.choose({"1:1"}, submit)
+    assert attempts == [1]
+    assert resumed.collection.remaining == {"1:1"}
+    pages(owner, monkeypatch, {0: [free]})
+    fresh = SearchScan(owner=owner, plan=plan([1]))
+    fresh.run(submit)
     assert attempts == [1, 0]
-    assert not resumed.collection.remaining
+    assert not fresh.collection.remaining
+
+
+@pytest.mark.parametrize("source_active", [False, True])
+def test_rejected_ticket_candidates_finish_across_short_budget_waits(
+    owner, monkeypatch, scan_clock, tmp_path, source_active,
+):
+    """
+    同轮候选跨检查点不重复抢占预算，已结束来源能够收尾，兜底来源能够继续翻页。
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.adapters import subscriptionsearch
+    from app.db.base import Base
+    from app.db.oper import subscriptionsearch as search_oper
+
+    data = {0: [torrent(1, 1)], 1: [torrent(1, 2)]}
+    for items in data.values():
+        items[0].enclosure = "https://site.example/download?ticket=do-not-store"
+    calls = pages(owner, monkeypatch, data)
+    initial = SearchScan(owner=owner, plan=plan([1, 2]))
+    source_key = "1:Show"
+    assert initial.step(source_key)
+    assert initial.step(source_key)
+    assert initial.step("plugin:Show")
+    cursor = initial.collection.sources[source_key]
+    cursor.closed.add("1:1")
+    cursor.exhausted = not source_active
+    assert initial.collection.unreleased() == {"1:2"}
+    calls.clear()
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'scan-budget.db'}")
+    Base.metadata.create_all(engine)
+    repository = subscriptionsearch.TransactionalSubscriptionSearchRepository(sessionmaker(bind=engine))
+    monkeypatch.setattr(subscriptionsearch, "datetime", scan_module.datetime)
+    monkeypatch.setattr(search_oper, "datetime", scan_module.datetime)
+    budget = SubscriptionSiteBudget(
+        repository=repository, owner="scan", cancelled=lambda: False,
+        stop_state=runtime_stop_state, clock=lambda: scan_clock["now"],
+    )
+    monkeypatch.setattr(owner, "_subscription_site_budget", budget, raising=False)
+    monkeypatch.setattr(owner, "run_module", lambda _method, **params: TorrentInfo(**params["record"]))
+    submitted = []
+
+    def reject(items, _goals):
+        """
+        模拟种子文件实际没有需要的集，保留缺集并记录每个已处理候选。
+        """
+        submitted.extend(item.torrent_info.description for item in items)
+        return set()
+
+    state = initial.state()
+    try:
+        for version in range(6):
+            scan = SearchScan(owner=owner, plan=plan([1, 2]),
+                              snapshot=SearchSessionSnapshot("round", version, encode_search_state(state)))
+            try:
+                scan.run(reject)
+            except SubscriptionSearchDeferred as error:
+                assert error.wait_reason == "cooldown"
+                delay = (datetime.fromisoformat(error.retry_at) - scan_clock["now"]).total_seconds()
+                assert 0 < delay <= AUTOMATIC_REQUEST_INTERVAL + 1
+                scan_clock["now"] = datetime.fromisoformat(error.retry_at) + timedelta(seconds=1)
+            else:
+                if scan.ended:
+                    break
+                scan_clock["now"] = datetime.fromisoformat(min(scan.retry.values())) + timedelta(seconds=1)
+            state = scan.state()
+            assert "do-not-store" not in encode_search_state(state)
+        assert scan.ended
+        assert submitted == ["1-1", "1-2"]
+        assert calls == ([0, 1, 2] if source_active else [0, 1])
+        assert scan.collection.remaining == {"1:1", "1:2"}
+        assert scan.collection.sources[source_key].budget_deferrals == 0
+    finally:
+        engine.dispose()
 
 
 def test_site_window_wait_keeps_cursor(owner, monkeypatch):
@@ -844,9 +925,11 @@ def test_restored_scope_recomputes_targets_for_resources_without_season(owner, m
     scan.step(next(key for key in scan.queries if not key.startswith("plugin:")))
     key = next(iter(scan.candidates))
     assert scan.identity[key]["targets"] == ["1:1"]
+    scan.attempted.add(key)
     snapshot = SearchSessionSnapshot("scope", 1, encode_search_state(scan.state()))
     restored = SearchScan(owner=owner, plan=plan([1, 2]), snapshot=snapshot)
     assert restored.identity[key]["targets"] == ["1:1", "1:2"]
+    assert not restored.attempted
 
 
 def test_checkpoint_keeps_only_candidates_covering_remaining_episodes(owner, monkeypatch):
@@ -858,9 +941,11 @@ def test_checkpoint_keeps_only_candidates_covering_remaining_episodes(owner, mon
     scan = SearchScan(owner=owner, plan=plan([20]))
     scan.step(next(key for key in scan.queries if not key.startswith("plugin:")))
     assert len(scan.identity) == 30
+    scan.attempted.update(scan.identity)
     state = scan.state()
     assert len(state["candidates"]) == 1
     assert set(state["identity"]) == set(state["candidates"])
+    assert set(state["attempted"]) == set(state["candidates"])
     assert state["identity"][next(iter(state["candidates"]))]["targets"] == ["1:20"]
 
 
@@ -1568,14 +1653,16 @@ def test_budget_wait_count_restores_and_success_resets(owner, monkeypatch, wait_
     assert SearchScan(owner=owner, plan=plan([1])).collection.sources["1:Show"].budget_deferrals == 0
 
 
-def test_legacy_checkpoint_defaults_budget_wait_count_to_zero(owner):
+def test_legacy_checkpoint_defaults_budget_wait_count_and_processed_candidates(owner):
     """
-    没有预算计数的旧检查点仍可恢复，不会重启或提前结算来源。
+    缺少预算计数和候选处理记录的旧检查点仍可恢复，不会重启或提前结算来源。
     """
     state = SearchScan(owner=owner, plan=plan([1])).state()
+    state.pop("attempted")
     for source in state["collection"]["sources"].values():
         source.pop("budget_deferrals")
     snapshot = SearchSessionSnapshot("round", 0, encode_search_state(state))
     scan = SearchScan(owner=owner, plan=plan([1]), snapshot=snapshot)
     assert not scan.restart
+    assert not scan.attempted
     assert all(source.budget_deferrals == 0 and not source.failed for source in scan.collection.sources.values())
