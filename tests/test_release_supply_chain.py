@@ -199,6 +199,26 @@ source = { url = "https://example.com/brotli.tar.gz" }
     assert "@ https://example.com/brotli.tar.gz" not in normalized
 
 
+def test_patched_free_threaded_brotli_uses_security_version_for_audit(tmp_path: Path) -> None:
+    """
+    无 GIL Brotli 源码保留 1.2.0 元数据时，审计应按已包含修复的 1.2.1 匹配公告。
+    """
+    source = (
+        "https://github.com/google/brotli/archive/"
+        "0ed4268a4401abcb4472096340477cf4af7d1a2b.tar.gz"
+    )
+    lock_file = tmp_path / "uv.lock"
+    lock_file.write_text(
+        f'version = 1\n\n[[package]]\nname = "brotli"\nversion = "1.2.0"\n'
+        f'source = {{ url = "{source}" }}\n',
+        encoding="utf-8",
+    )
+
+    normalized = normalize_requirements(f"brotli @ {source}\n", lock_file)
+
+    assert normalized == "brotli==1.2.1\n"
+
+
 def test_direct_url_audit_requirement_rejects_unlocked_source(tmp_path: Path) -> None:
     """
     不能把未匹配锁文件来源的 URL 依赖伪装为已审计版本。

@@ -14,6 +14,15 @@ DIRECT_REFERENCE = re.compile(
     r"(?P<url>\S+)(?P<suffix>.*)$"
 )
 
+# free-threaded Brotli 保留 1.2.0 包元数据以使用无 GIL 源码，但源码提交已包含
+# 1.2.1 的安全修复；仅在漏洞数据库匹配时使用修复版本，不改变实际安装来源。
+AUDIT_VERSION_OVERRIDES = {
+    (
+        "brotli",
+        "https://github.com/google/brotli/archive/0ed4268a4401abcb4472096340477cf4af7d1a2b.tar.gz",
+    ): "1.2.1",
+}
+
 
 def _canonicalize_name(name: str) -> str:
     """
@@ -30,6 +39,7 @@ def _locked_url_versions(lock_file: Path) -> dict[tuple[str, str], str]:
         document = tomllib.load(file)
 
     versions: dict[tuple[str, str], str] = {}
+    locked_versions: dict[tuple[str, str], str] = {}
     for package in document.get("package", []):
         source = package.get("source") or {}
         url = source.get("url")
@@ -38,8 +48,12 @@ def _locked_url_versions(lock_file: Path) -> dict[tuple[str, str], str]:
         if not all(isinstance(value, str) and value for value in (url, name, version)):
             continue
         key = (_canonicalize_name(name), url)
-        previous = versions.setdefault(key, version)
-        if previous != version:
+        locked_previous = locked_versions.setdefault(key, version)
+        if locked_previous != version:
+            raise ValueError(f"锁文件包含冲突的 URL 依赖版本：{name} @ {url}")
+        audit_version = AUDIT_VERSION_OVERRIDES.get(key, version)
+        previous = versions.setdefault(key, audit_version)
+        if previous != audit_version:
             raise ValueError(f"锁文件包含冲突的 URL 依赖版本：{name} @ {url}")
     return versions
 

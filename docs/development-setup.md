@@ -68,6 +68,7 @@ UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
 [CVE-2026-111497 的官方修复](https://github.com/google/brotli/commit/0ed4268a4401abcb4472096340477cf4af7d1a2b)。
 源码分支的包版本仍为 1.2.0，不能仅凭版本字符串判断补丁是否存在；1.2.1 发布分支
 尚未声明无 GIL 支持，不能直接替换 free-threaded 的源码依赖。
+发布审计脚本会将这个已核实修复提交按 1.2.1 版本匹配漏洞公告，安装仍使用锁文件中的源码地址。
 
 ### 2.1 本地启动脚本
 
