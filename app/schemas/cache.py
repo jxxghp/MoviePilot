@@ -43,6 +43,8 @@ class TorrentCacheData(BaseModel):
     count: int = Field(default=0, description="条目数量")
     sites: int = Field(default=0, description="包含缓存条目的站点数量")
     data: list[TorrentCacheItem] = Field(default_factory=list, description="缓存种子明细列表")
+    total: int = Field(default=0, description="筛选条件匹配的缓存数量，用于窗口续载")
+    site_names: list[str] = Field(default_factory=list, description="全部缓存中可筛选的站点名称")
 
 
 class TorrentReidentifyData(BaseModel):

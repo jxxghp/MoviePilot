@@ -2,10 +2,11 @@
 提供订阅查询、创建、修改和控制接口。
 """
 
+from datetime import date
 from typing import Annotated, Any, List, Optional
 
 import cn2an
-from fastapi import Depends, Header, HTTPException, Request, Response
+from fastapi import Depends, Header, HTTPException, Query, Request, Response
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.web.security.access import (
@@ -66,12 +67,14 @@ from app.application.subscription.mutation import (
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.status import SubscriptionExecutionStatusService
+from app.chain.subscribe.calendar import SubscribeCalendarChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
+from app.schemas.calendar import SubscribeCalendarPage as _SchemaSubscribeCalendarPage
 from app.schemas.common import IdData as _SchemaIdData
 from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.media import normalize_media_source, resolve_media_identity
@@ -221,6 +224,35 @@ async def read_subscribes(
         response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public(username))
     subscribes = await query.list_public(username, page=page, count=count)
     return await _attach_execution_status(subscribes, status_service)
+
+
+@router.get("/calendar", summary="查询日期窗口内的订阅日历", response_model=_SchemaSubscribeCalendarPage)
+async def subscribe_calendar(
+    request: Request,
+    start: Annotated[date, Query(description="开始日期（包含），格式 YYYY-MM-DD")],
+    end: Annotated[date, Query(description="结束日期（不包含），窗口最多 93 天")],
+    page: Annotated[int, Query(ge=1, description="从 1 开始的页码")] = 1,
+    count: Annotated[int, Query(ge=1, le=200, description="每页最多返回的日历条目数")] = 50,
+    query: SubscriptionQueryService = Depends(get_subscription_query_service),
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
+) -> _SchemaSubscribeCalendarPage:
+    """
+    只返回指定播出日期内的精简日历事件，避免客户端逐订阅查询所有季集详情。
+
+    :param start: 日期窗口开始，包含当天
+    :param request: 用于探测翻月或离开页面后断开的旧请求
+    :param end: 日期窗口结束，不包含当天，跨度不超过 93 天
+    :param page: 从 1 开始的页码
+    :param count: 每页条目上限，最多 200 条
+    :param query: 注入的订阅查询服务
+    :param current_user: 当前登录用户，普通用户仅可查询自己的订阅
+    :return: 按真实播出日期排序的精简日历条目与窗口总数
+    """
+    if not 0 < (end - start).days <= 93:
+        raise HTTPException(status_code=422, detail="日历日期窗口必须大于 0 且不超过 93 天")
+    username = None if current_user.is_superuser else current_user.name
+    subscribes = await query.list_public(username)
+    return await SubscribeCalendarChain().window(subscribes, start, end, page, count, request.is_disconnected)
 
 
 @router.get(

@@ -25,7 +25,7 @@ Identity scope: `admin`; required role: `system_admin`.
 Purpose: 查看种子上下文缓存及已识别的媒体身份。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
-- `query`: none
+- `query`: `brief` (boolean; default `False`): 描述最多返回 200 字符，缓存 hash 仍基于完整原文; `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。; `site` (string|null): 精确匹配的站点名称; `title` (string|null): 不区分大小写的标题包含条件
 - `body`: none
 
 ### `torrent.cache.refresh`

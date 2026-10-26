@@ -4,7 +4,7 @@
 
 from typing import Annotated, Any, List, Literal, Optional, cast
 
-from fastapi import Depends, HTTPException, Response
+from fastapi import Depends, HTTPException, Query, Response
 
 from app.adapters.web.security.access import verify_token
 from app.api.context import get_background_task_registry, resolve_background_task_registry
@@ -560,15 +560,26 @@ async def read_userdata_latest(
 )
 async def read_userdata(
     site_id: int,
-    response: Response = None,  # type: ignore[assignment]
+    response: Response,
     workdate: Optional[str] = None,
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
+    latest_seeding_only: Annotated[bool, Query(description="仅窗口内最新记录返回做种明细，历史统计不变")] = False,
 ) -> Any:
     """
-    查询站点用户数据
+    查询站点用户数据，可仅保留窗口内最新记录的做种明细。
+
+    :param site_id: 站点标识
+    :param response: 由 FastAPI 注入的响应，用于写入集合总数
+    :param workdate: 可选采集日期
+    :param query: 注入的站点查询服务
+    :param _: 已验证的管理用户
+    :param page: 可选页码
+    :param count: 可选每页数量
+    :param latest_seeding_only: 为真时历史记录不重复返回做种明细；默认保留旧合同
+    :return: 按请求窗口返回的数据，不修改持久化记录
     """
     site = await query.get(site_id)
     if not site:
@@ -582,10 +593,9 @@ async def read_userdata(
             detail=f"站点 {site_id} 未配置域名",
         )
     page, count = resolve_compatible_pagination(page, count)
-    if response is not None:
-        response.headers[COLLECTION_TOTAL_HEADER] = str(
-            await query.count_userdata(site.domain, workdate)
-        )
+    response.headers[COLLECTION_TOTAL_HEADER] = str(
+        await query.count_userdata(site.domain, workdate)
+    )
     user_datas = await query.userdata(
         site.domain,
         workdate,
@@ -594,6 +604,12 @@ async def read_userdata(
     )
     if not user_datas:
         return _SchemaResponse(success=False, data=[])
+    if latest_seeding_only:
+        latest = max(user_datas, key=lambda item: (item.updated_day or "", item.updated_time or ""))
+        user_datas = [
+            item if item is latest else item.model_copy(update={"seeding_info": []})
+            for item in user_datas
+        ]
     return _SchemaResponse(success=True, data=user_datas)
 
 

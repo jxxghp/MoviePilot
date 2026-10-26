@@ -2,15 +2,20 @@
 提供种子详情、状态查询和资源处理接口。
 """
 
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
-from fastapi import Depends
+from fastapi import Depends, Query
 
 from app.api.dependencies.auth import (
     get_current_active_superuser,
     get_current_active_superuser_async,
 )
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.torrent.cache import TorrentCacheRecognitionService
 from app.chain.media import MediaChain
@@ -35,9 +40,21 @@ router = ResponseAPIRouter()
 )
 async def torrents_cache(
     _: object = Depends(get_current_active_superuser_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
+    title: Annotated[Optional[str], Query(description="不区分大小写的标题包含条件")] = None,
+    site: Annotated[Optional[str], Query(description="精确匹配的站点名称")] = None,
+    brief: Annotated[bool, Query(description="描述最多返回 200 字符，缓存 hash 仍基于完整原文")] = False,
 ) -> _SchemaResponse[dict[str, Any]]:
     """
-    获取当前种子缓存数据
+    获取种子缓存统计，并在显式窗口内构造明细与摘要键。
+
+    :param page: 从 1 开始的可选页码；与 count 均省略时保留全量合同
+    :param count: 每页条数
+    :param title: 不区分大小写的标题包含条件
+    :param site: 精确匹配的站点名称
+    :param brief: 为真时描述最多返回 200 字符，摘要键仍基于完整原文
+    :return: 全部缓存统计、筛选后数量、可选站点名称与当前窗口明细
     """
     torrents_chain = TorrentsChain()
 
@@ -49,55 +66,72 @@ async def torrents_cache(
 
     # 统计信息
     torrent_count = sum(len(torrents) for torrents in cache_info.values())
+    page, count = resolve_compatible_pagination(page, count)
+    entries = [
+        (domain, context)
+        for domain, contexts in cache_info.items()
+        for context in contexts
+        if context.torrent_info is not None
+    ]
+    site_names = sorted(
+        {
+            context.torrent_info.site_name
+            for _, context in entries
+            if context.torrent_info and context.torrent_info.site_name
+        }
+    )
+    matched = [
+        (domain, context)
+        for domain, context in entries
+        if context.torrent_info
+        and (not title or title.casefold() in (context.torrent_info.title or "").casefold())
+        and (not site or context.torrent_info.site_name == site)
+    ]
+    total = len(matched)
+    if page is not None and count is not None:
+        matched = matched[(page - 1) * count : page * count]
 
     # 转换为前端需要的格式
     torrent_data = []
-    for domain, contexts in cache_info.items():
-        for context in contexts:
-            torrent_info = context.torrent_info
-            if torrent_info is None:
-                continue
-            torrent_hash = HashUtils.md5(
-                f"{torrent_info.title}{torrent_info.description}"
-            )
-            media_source, media_id = resolve_media_identity(media=context.media_info)
-            torrent_data.append(
-                {
-                    "hash": torrent_hash,
-                    "domain": domain,
-                    "title": torrent_info.title,
-                    "description": torrent_info.description,
-                    "size": torrent_info.size,
-                    "pubdate": torrent_info.pubdate,
-                    "site_name": torrent_info.site_name,
-                    "media_name": context.media_info.title
-                    if context.media_info
-                    else "",
-                    "media_year": context.media_info.year if context.media_info else "",
-                    "media_type": context.media_info.type if context.media_info else "",
-                    "media_source": media_source,
-                    "media_id": media_id,
-                    "music_type": getattr(context.media_info, "music_type", None),
-                    "season_episode": context.meta_info.season_episode
-                    if context.meta_info
-                    else "",
-                    "resource_term": context.meta_info.resource_term
-                    if context.meta_info
-                    else "",
-                    "enclosure": torrent_info.enclosure,
-                    "page_url": torrent_info.page_url,
-                    "poster_path": context.media_info.get_poster_image()
-                    if context.media_info
-                    else "",
-                    "backdrop_path": context.media_info.get_backdrop_image()
-                    if context.media_info
-                    else "",
-                }
-            )
+    for domain, context in matched:
+        torrent_info = context.torrent_info
+        if torrent_info is None:
+            continue
+        torrent_hash = HashUtils.md5(f"{torrent_info.title}{torrent_info.description}")
+        media_source, media_id = resolve_media_identity(media=context.media_info)
+        torrent_data.append(
+            {
+                "hash": torrent_hash,
+                "domain": domain,
+                "title": torrent_info.title,
+                "description": (torrent_info.description or "")[:200] if brief else torrent_info.description,
+                "size": torrent_info.size,
+                "pubdate": torrent_info.pubdate,
+                "site_name": torrent_info.site_name,
+                "media_name": context.media_info.title if context.media_info else "",
+                "media_year": context.media_info.year if context.media_info else "",
+                "media_type": context.media_info.type if context.media_info else "",
+                "media_source": media_source,
+                "media_id": media_id,
+                "music_type": getattr(context.media_info, "music_type", None),
+                "season_episode": context.meta_info.season_episode if context.meta_info else "",
+                "resource_term": context.meta_info.resource_term if context.meta_info else "",
+                "enclosure": torrent_info.enclosure,
+                "page_url": torrent_info.page_url,
+                "poster_path": context.media_info.get_poster_image() if context.media_info else "",
+                "backdrop_path": context.media_info.get_backdrop_image() if context.media_info else "",
+            }
+        )
 
     return _SchemaResponse(
         success=True,
-        data={"count": torrent_count, "sites": len(cache_info), "data": torrent_data},
+        data={
+            "count": torrent_count,
+            "sites": len(cache_info),
+            "data": torrent_data,
+            "total": total,
+            "site_names": site_names,
+        },
     )
 
 

@@ -600,16 +600,6 @@
     },
     {
       "path": "app/api/endpoints/site.py",
-      "owner": "read_userdata",
-      "codes": [
-        "assignment"
-      ],
-      "fingerprint": "e6e9db2ebeb1bfb88f648ee5a1a6f386574ecf1a0fee8e3a20f520809e463e3b",
-      "statement": "@router.get('/userdata/{site_id}', summary='查询某站点用户数据', response_model=_SchemaResponse[list[_SchemaSiteUserData]], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})\nasync def read_userdata(site_id: int, response: Response=None, workdate: Optional[str]=None, query: SiteQueryService=Depends(get_site_query_service), _: ApiPrincipal=Depends(get_current_active_manage_user_async), page: CompatiblePageParam=None, count: CompatibleCountParam=None) -> Any:",
-      "reason": "fastapi-response-default"
-    },
-    {
-      "path": "app/api/endpoints/site.py",
       "owner": "read_userdata_latest",
       "codes": [
         "assignment"
