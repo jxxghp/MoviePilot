@@ -237,7 +237,7 @@ class SystemUpdateItemStatus(BaseModel):
     total_bytes: int = Field(default=0, description="更新包总字节数")
     progress: int = Field(default=0, description="当前完成百分比")
     error: Optional[str] = Field(default=None, description="错误摘要")
-    can_update: bool = Field(default=False, description="当前是否有可安装的更新")
+    can_update: bool = Field(default=False, description="是否允许下载或重试更新；失败阶段以 state 和 error 为准")
     can_install: bool = Field(default=False, description="当前版本是否可以安装")
 
 
@@ -280,7 +280,7 @@ class SystemUpdateStatus(BaseModel):
     total_bytes: int = Field(default=0, description="更新包总字节数")
     progress: int = Field(default=0, description="当前完成百分比")
     error: Optional[str] = Field(default=None, description="错误摘要")
-    can_update: bool = Field(default=False, description="当前是否有可安装的更新")
+    can_update: bool = Field(default=False, description="是否允许下载或重试更新；失败阶段以 state 和 error 为准")
     can_install: bool = Field(default=False, description="当前版本是否可以安装")
     updates: list[SystemUpdateItemStatus] = Field(default_factory=list, description="可用的更新项列表")
 

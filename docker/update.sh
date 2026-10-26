@@ -69,6 +69,20 @@ function set_package_proxy_env() {
     fi
 }
 
+# 按调用时配置拼接 GitHub 下载地址；兼容无尾斜杠、路径前缀和首尾空白。
+function github_download_url() {
+    local proxy
+    proxy="$(printf '%s' "${GITHUB_PROXY:-}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if [[ -z "${proxy}" ]]; then
+        printf '%s\n' "$1"
+        return
+    fi
+    if [[ "${proxy}" != http://* && "${proxy}" != https://* ]]; then
+        proxy="http://${proxy}"
+    fi
+    printf '%s\n' "${proxy%/}/$1"
+}
+
 # 下载归档到临时目录；失败最多尝试三次，成功后归一化后端根目录名称。
 function download_and_unzip() {
     local retries=0
@@ -326,13 +340,15 @@ function existing_resource_dir() {
     printf '%s\n' "${resource_source_dir}"
 }
 
+# 资源只写暂存目录；连接抖动有限重试，耗尽后才回退到当前已安装资源。
 function download_staged_resource() {
     local url="$1"
     local destination="$2"
     local fallback="$3"
     local label="$4"
 
-    if curl ${CURL_OPTIONS} --fail "${url}" -o "${destination}" \
+    if curl ${CURL_OPTIONS} --fail --connect-timeout 10 --max-time 180 \
+        --retry 2 --retry-delay 1 --retry-all-errors "${url}" -o "${destination}" \
         && [ -s "${destination}" ]; then
         return 0
     fi
@@ -345,6 +361,7 @@ function download_staged_resource() {
     return 1
 }
 
+# 暂存插件与站点资源，规范化镜像前缀后下载匹配当前 Python ABI 的资源。
 function stage_runtime_payload() {
     local stage_app="${TMP_PATH}/App"
     local stage_plugin_dir="${stage_app}/app/plugins"
@@ -402,12 +419,12 @@ function stage_runtime_payload() {
     fi
     sites_file="sites.${python_version}-${arch_suffix}.so"
     download_staged_resource \
-        "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin" \
+        "$(github_download_url "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/user.sites.v3.bin")" \
         "${stage_resource_dir}/user.sites.v3.bin" \
         "${resource_source_dir}/user.sites.v3.bin" \
         "user.sites.v3.bin" || return 1
     download_staged_resource \
-        "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/${sites_file}" \
+        "$(github_download_url "https://raw.githubusercontent.com/jxxghp/MoviePilot-Resources/main/resources.v3/${sites_file}")" \
         "${stage_resource_dir}/${sites_file}" \
         "${resource_source_dir}/${sites_file}" \
         "${sites_file}" || return 1
@@ -426,9 +443,9 @@ function swap_staged_payload() {
     fi
 }
 
-# 下载程序资源，$1: 后端版本路径
+# 通过规范化镜像地址准备前后端归档；$1 为后端版本路径，全部准备成功后才切换。
 function install_backend_and_download_resources() {
-    if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
+    if ! download_and_unzip "$(github_download_url "https://github.com/jxxghp/MoviePilot/archive/refs/${1}")" "App"; then
         WARN "后端程序下载失败，继续使用旧的程序来启动..."
         return 1
     fi
@@ -472,7 +489,7 @@ function install_backend_and_download_resources() {
         fi
         INFO "前端版本号：${frontend_version}"
     fi
-    if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
+    if ! download_and_unzip "$(github_download_url "https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip")" "dist"; then
         WARN "前端程序下载失败，继续使用旧的程序来启动..."
         return 1
     fi
@@ -596,12 +613,13 @@ function test_connectivity_package() {
     esac
 }
 
-# 按传入模式检测镜像或全局代理；直连模式仅配置参数，不额外探测。
+# 按传入模式检测镜像或全局代理，镜像探测与实际下载共用地址规则。
+# 直连模式仅配置参数，不额外探测。
 function test_connectivity_github() {
     case "$1" in
     0)
         if [[ -n "${GITHUB_PROXY}" ]]; then
-            if curl -sL --connect-timeout 5 --max-time 10 "${GITHUB_PROXY}https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md" > /dev/null 2>&1; then
+            if curl -sL --connect-timeout 5 --max-time 10 "$(github_download_url "https://raw.githubusercontent.com/jxxghp/MoviePilot/main/README.md")" > /dev/null 2>&1; then
                 GITHUB_LOG="镜像代理模式"
                 return 0
             fi

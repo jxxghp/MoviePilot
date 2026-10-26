@@ -1,5 +1,5 @@
 """
-提供同步和异步 HTTP 请求、Cookie 解析与共享连接池生命周期管理。
+提供同步和异步 HTTP 请求、异常分类、Cookie 解析与共享连接池生命周期管理。
 """
 
 import asyncio
@@ -33,6 +33,11 @@ urllib3.disable_warnings(InsecureRequestWarning)
 # 业务模块只依赖网络适配器暴露的异常边界，不直接导入具体 transport。
 HttpRequestError = requests.exceptions.RequestException
 AsyncHttpRequestError = httpx2.RequestError
+# 资源等幂等下载调用方通过同一异常边界区分可重试故障，不持有原始 transport。
+HttpConnectionError = requests.exceptions.ConnectionError
+HttpTimeoutError = requests.exceptions.Timeout
+HttpResponseError = requests.exceptions.HTTPError
+HttpStreamError = requests.exceptions.ChunkedEncodingError
 
 _default_user_agent: Optional[str] = None
 

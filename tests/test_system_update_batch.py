@@ -243,6 +243,91 @@ def test_retry_batch_download_reuses_successful_application(monkeypatch, manager
     assert resources.call_count == 2
 
 
+@pytest.mark.parametrize("target", ["resources", "all"])
+def test_resource_download_reuses_checked_manifest(monkeypatch, manager, target):
+    """
+    一次单类或合并下载只读取一次清单，防止检查成功后重复请求遭遇出口抖动。
+    """
+    info = {"package_version": "2", "auth_version": "2", "indexer_version": "2", "files": []}
+    request = Mock(side_effect=[info, RuntimeError("重复清单请求")])
+    monkeypatch.setattr(update_module.ResourceHelper, "get_update_info", request)
+    monkeypatch.setattr(update_module.ResourceHelper, "get_download_files", lambda _self, _info: [])
+    monkeypatch.setattr(update_module.ResourceHelper, "download_files", lambda _self, *_args: [])
+    monkeypatch.setattr(manager, "_check_application", lambda **_kwargs: None)
+    monkeypatch.setattr(update_module, "ThreadHelper", lambda: SimpleNamespace(submit=lambda function, selected: function(selected)))
+
+    status = manager.start_download(target)
+
+    resource = next(item for item in status.updates if item.type == "resources")
+    assert resource.state == "ready"
+    assert resource.version == "2"
+    request.assert_called_once()
+
+
+def test_resource_download_failure_retains_retry_with_explicit_phase(monkeypatch, manager):
+    """
+    下载失败必须明确阶段，同时保留重试能力并禁止安装。
+    """
+    manager._write_item("resources", state="available", version="2", indexer_version="2", can_update=True)
+    monkeypatch.setattr(manager, "_check_resources", lambda: None)
+    monkeypatch.setattr(manager, "_download_resources", Mock(side_effect=RuntimeError("HTTP 503")))
+    monkeypatch.setattr(update_module, "ThreadHelper", lambda: SimpleNamespace(submit=lambda function, target: function(target)))
+
+    status = manager.start_download("resources")
+
+    resource = next(item for item in status.updates if item.type == "resources")
+    assert resource.state == "failed"
+    assert "下载" in resource.error and "HTTP 503" in resource.error
+    assert resource.can_update is True
+    assert resource.can_install is False
+
+
+def test_resource_download_refreshes_manifest_between_actions(monkeypatch, manager):
+    """
+    独立检查后远端发布新资源时，下载动作刷新一次清单，避免旧版本号配上新文件。
+    """
+    request = Mock(side_effect=[
+        {"package_version": "2", "indexer_version": "2", "files": []},
+        {"package_version": "3", "indexer_version": "3", "files": []},
+        RuntimeError("同一次下载不得再次读取清单"),
+    ])
+    monkeypatch.setattr(update_module.ResourceHelper, "get_update_info", request)
+    monkeypatch.setattr(update_module.ResourceHelper, "get_download_files", lambda _self, _info: [])
+    monkeypatch.setattr(update_module.ResourceHelper, "download_files", lambda _self, *_args: [])
+    monkeypatch.setattr(update_module, "ThreadHelper", lambda: SimpleNamespace(submit=lambda function, target: function(target)))
+    manager.check("resources")
+
+    status = manager.start_download("resources")
+
+    resource = next(item for item in status.updates if item.type == "resources")
+    assert (resource.state, resource.version) == ("ready", "3")
+    assert request.call_count == 2
+
+
+@pytest.mark.parametrize("info", [None, {"package_version": "3", "indexer_version": "3"}])
+def test_rejected_resource_check_preserves_downloading_snapshot(monkeypatch, manager, info):
+    """
+    过期检查不能替换已经开始下载的资源清单，避免状态和下载目标分离。
+    """
+    previous = (("1", "1"), {"package_version": "2", "indexer_version": "2"})
+    manager._resource_update_info = previous
+
+    def check_response(**_kwargs):
+        """
+        在检查响应到达前模拟另一个调用者启动下载。
+        """
+        manager._download_active = True
+        manager._write_item("resources", state="downloading", version="2", indexer_version="2")
+        return info
+
+    monkeypatch.setattr(update_module, "ResourceHelper", lambda: SimpleNamespace(get_update_info=check_response))
+
+    manager.check("resources")
+
+    assert manager._resource_update_info is previous
+    assert manager.get_status().updates[1].state == "downloading"
+
+
 def test_combined_install_writes_one_manifest_and_marks_both_installing(monkeypatch, manager):
     """
     两个包全部校验后只写一份安装意图，重启失败可一起撤销回到 ready。

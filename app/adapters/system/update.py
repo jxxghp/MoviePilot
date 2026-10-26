@@ -23,6 +23,7 @@ from app.adapters.network.http import RequestUtils
 from app.adapters.system.resource import ResourceHelper, get_resource_versions
 from app.foundation.environment import is_docker, is_exe
 from app.foundation.singleton import SingletonClass
+from app.foundation.url import UrlUtils
 from app.foundation.version import compare_version
 from app.runtime.dependencies.profile import runtime_sync_arguments
 from app.runtime.log import logger
@@ -82,11 +83,12 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     def __init__(self) -> None:
         """
-        初始化状态写入锁与当前进程的下载任务标记。
+        初始化状态写入锁、下载任务标记及当前进程已检查的资源清单快照。
         """
         self._lock = threading.RLock()
         self._download_active = False
         self._active_target: SystemUpdateType | None = None
+        self._resource_update_info: tuple[tuple[str, str], dict[str, Any]] | None = None
 
     @property
     def _root(self) -> Path:
@@ -271,9 +273,11 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     def _write_check_result(
         self, target: SystemUpdateType, *, ready_version: str | None = None, **changes: Any
-    ) -> None:
+    ) -> bool:
         """
         仅允许手动检查替换请求开始时的旧待安装目标，保护交错下载及安装。
+
+        :return: 检查结果是否写入；调用方仅可为已接受的目标保留下载快照
         """
         with self._lock:
             item = self._get_item(self.get_status().model_dump(), target)
@@ -285,9 +289,10 @@ class SystemUpdateManager(metaclass=SingletonClass):
                     or changes.get("state") != "available"
                     or compare_version(str(changes.get("version") or ""), ">", ready_version) is not True
                 ):
-                    return
+                    return False
                 self._discard_prepared_target(target)
             self._write_item(target, **changes)
+            return True
 
     def _persist_state(self, state: dict[str, Any]) -> dict[str, Any]:
         """
@@ -505,7 +510,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
         self, target: SystemUpdateType | None = None, *, refresh_ready: bool = False
     ) -> SystemUpdateStatus:
         """
-        手动检查可刷新旧待安装目标；定时检查和请求失败保留已下载制品。
+        手动检查可刷新旧待安装目标；检查失败保留已下载制品并标明失败阶段。
         """
         targets = (target,) if target else _TARGETS
         for update_target in targets:
@@ -523,11 +528,12 @@ class SystemUpdateManager(metaclass=SingletonClass):
             # 定时检查不得打扰当前任务
             except Exception as error:  # noqa: BLE001
                 logger.warning(f"检查 {update_target} 更新失败：{error}")
+                message = f"检查站点资源更新失败：{error}" if update_target == _RESOURCES else str(error)
                 self._write_check_result(
                     update_target,
                     state="idle",
                     checked_at=self._now(),
-                    error=str(error),
+                    error=message,
                     can_update=False,
                     can_install=False,
                 )
@@ -592,50 +598,38 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     def _check_resources(self, *, ready_version: str | None = None) -> None:
         """
-        查询当前平台认证资源和索引资源的最新版本。
+        查询最新资源版本并保留清单快照，供随后下载复用同一个目标。
         """
         current_auth, current_indexer = get_resource_versions()
         info = ResourceHelper().get_update_info(
             auth_version=current_auth,
             indexer_version=current_indexer,
         )
-        if info is None:
-            self._write_check_result(
+        resource = info or {}
+        # 状态与清单快照在同一锁内发布，拒绝过期检查时也不得覆盖在途下载的快照。
+        with self._lock:
+            accepted = self._write_check_result(
                 _RESOURCES,
-                state="idle",
-                version=None,
-                auth_version=None,
-                indexer_version=None,
+                ready_version=ready_version,
+                state="available" if info is not None else "idle",
+                version=resource.get("package_version") or None,
+                auth_version=resource.get("auth_version"),
+                indexer_version=resource.get("indexer_version"),
                 current_auth_version=current_auth,
                 current_indexer_version=current_indexer,
                 checked_at=self._now(),
                 downloaded_bytes=0,
                 total_bytes=0,
                 error=None,
-                can_update=False,
+                can_update=info is not None,
                 can_install=False,
             )
-            return
-        self._write_check_result(
-            _RESOURCES,
-            ready_version=ready_version,
-            state="available",
-            version=info.get("package_version") or None,
-            auth_version=info.get("auth_version"),
-            indexer_version=info.get("indexer_version"),
-            current_auth_version=current_auth,
-            current_indexer_version=current_indexer,
-            checked_at=self._now(),
-            downloaded_bytes=0,
-            total_bytes=0,
-            error=None,
-            can_update=True,
-            can_install=False,
-        )
+            if accepted:
+                self._resource_update_info = ((current_auth, current_indexer), info) if info is not None else None
 
     def start_download(self, target: SystemUpdateTarget = _APPLICATION) -> SystemUpdateStatus:
         """
-        用一个后台任务顺序准备所选更新，合并更新保留已下载且仍为最新的包。
+        资源下载前刷新一次清单并供后台复用；合并更新保留已下载且仍为最新的包。
         """
         if target not in (*_TARGETS, "all"):
             raise ValueError(f"未知升级类型：{target}")
@@ -650,7 +644,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 targets = tuple(item.type for item in state.updates if item.state == "available")
             else:
                 item = self._get_item(state.model_dump(), target)
-                if item["state"] not in {"available", "ready"}:
+                if target == _RESOURCES or item["state"] not in {"available", "ready"}:
                     state = self.check(target)
                 targets = tuple(item.type for item in state.updates if item.type == target and item.state == "available")
             if not targets:
@@ -1381,7 +1375,11 @@ class SystemUpdateManager(metaclass=SingletonClass):
         # 后台线程必须沉淀为可查询失败
         except Exception as error:  # noqa: BLE001
             logger.error(f"下载 {target} 更新包失败：{error}")
-            self._write_item(target, state="failed", error=str(error), can_update=True, can_install=False)
+            message = f"下载站点资源更新包失败：{error}" if target == _RESOURCES else str(error)
+            self._write_item(
+                target, state="failed", error=message,
+                can_update=True, can_install=False,
+            )
 
     def _simulate_application_download(self) -> None:
         """
@@ -1488,14 +1486,25 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     def _download_resources(self) -> None:
         """
-        下载当前平台认证与索引资源到外部暂存目录。
+        复用与当前状态匹配的检查快照下载资源；无匹配快照时才重读清单。
         """
         current_auth, current_indexer = get_resource_versions()
         helper = ResourceHelper()
-        info = helper.get_update_info(
-            auth_version=current_auth,
-            indexer_version=current_indexer,
-        )
+        cached = getattr(self, "_resource_update_info", None)
+        target = self._get_item(self._read_state(), _RESOURCES)
+        if cached and cached[0] == (current_auth, current_indexer) and all(
+            cached[1].get(info_key) == target.get(state_key)
+            for info_key, state_key in (
+                ("package_version", "version"), ("auth_version", "auth_version"),
+                ("indexer_version", "indexer_version"),
+            )
+        ):
+            info = cached[1]
+        else:
+            info = helper.get_update_info(
+                auth_version=current_auth,
+                indexer_version=current_indexer,
+            )
         if info is None:
             raise RuntimeError("站点资源已是最新版本")
         files = helper.get_download_files(info)
@@ -1907,10 +1916,10 @@ class SystemUpdateManager(metaclass=SingletonClass):
     @staticmethod
     def _proxied(url: str) -> str:
         """
-        为 GitHub 下载地址添加配置的代理前缀。
+        规范化 GitHub 代理前缀，避免缺少尾斜杠时拼出无效主机名。
         """
         proxy = str(get_runtime_setting("GITHUB_PROXY") or "").strip()
-        return f"{proxy}{url}" if proxy else url
+        return f"{UrlUtils.standardize_base_url(proxy)}{url}" if proxy else url
 
 
 system_update_manager = SystemUpdateManager()
