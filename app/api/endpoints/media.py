@@ -6,12 +6,19 @@ from pathlib import Path
 from typing import Annotated, Any, List, Optional, Union, cast
 from uuid import UUID
 
-from fastapi import Depends, Query
+from fastapi import Body, Depends, Query
 from pydantic import BeforeValidator
 
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.context import get_classification_runtime
-from app.api.dependencies.auth import get_current_active_manage_user, get_current_active_user
+from app.api.dependencies.auth import (
+    get_current_active_manage_user,
+    get_current_active_user,
+    get_current_active_user_async,
+)
+from app.api.dependencies.history import get_mediaserver_query_service
+from app.api.dependencies.subscription import get_subscription_query_service
+from app.api.principal import ApiPrincipal
 from app.api.response import (
     CompatibleCountParam,
     CompatiblePageParam,
@@ -19,7 +26,9 @@ from app.api.response import (
 )
 from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import get_api_runtime_config_snapshot
+from app.application.mediaserver import MediaServerQueryService
 from app.application.module import get_module_manager
+from app.application.subscription.query import SubscriptionQueryService
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.tmdb import TmdbChain
@@ -39,12 +48,82 @@ from app.schemas.context import MediaSearchResults as _SchemaMediaSearchResults
 from app.schemas.context import MediaSeason as _SchemaMediaSeason
 from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
 from app.schemas.file import FileItem as _SchemaFileItem
-from app.schemas.media import normalize_media_source, resolve_media_identity
+from app.schemas.media import MediaStatusQuery, MediaStatusResult, normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicEntityType
 
 router = ResponseAPIRouter()
+
+
+@router.post("/status", summary="批量查询本地入库与订阅状态", response_model=list[MediaStatusResult])
+async def media_status(
+    items: Annotated[list[MediaStatusQuery], Body(min_length=1, max_length=50, description="按展示顺序提交的媒体，最多 50 项")],
+    library: MediaServerQueryService = Depends(get_mediaserver_query_service),
+    subscriptions: SubscriptionQueryService = Depends(get_subscription_query_service),
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
+) -> list[MediaStatusResult]:
+    """
+    在单次请求内查询卡片状态，顺序复用请求级数据库会话，不访问外部媒体服务器。
+
+    :param items: 当前可见卡片的身份与匹配元数据，最多 50 项
+    :param library: 本地媒体库查询服务
+    :param subscriptions: 订阅查询服务
+    :param current_user: 当前用户，普通用户只能看到自己的订阅
+    :return: 与输入同序的入库标识、订阅状态及同来源各季模式，不返回完整订阅
+    """
+    return [await _query_media_status(item, library, subscriptions, current_user) for item in items]
+
+
+async def _query_media_status(
+    item: MediaStatusQuery,
+    library: MediaServerQueryService,
+    subscriptions: SubscriptionQueryService,
+    current_user: ApiPrincipal,
+) -> MediaStatusResult:
+    """
+    保持既有标题、年份、季号回退与 owner 限制，并投影单张卡片需要的轻量字段。
+
+    :param item: 单个媒体的稳定身份与回退元数据
+    :param library: 只访问本地数据库的媒体库查询服务
+    :param subscriptions: 订阅查询服务
+    :param current_user: 决定订阅 owner 范围的当前主体
+    :return: 单个媒体的轻量状态，不返回他人订阅或完整记录
+    """
+    metadata = MetaInfo(item.title) if item.title else None
+    title = metadata.name if metadata else None
+    season = item.season if item.season is not None else metadata.begin_season if metadata else None
+    item_id = None
+    if item.mtype != MediaType.MUSIC:
+        item_id = await library.find_item_id(
+            title=title, year=item.year, mtype=item.mtype.value if item.mtype else None,
+            media_source=item.media_source, media_id=item.media_id, season=season,
+        )
+    candidates = []
+    if item.media_source and item.media_id:
+        candidates = await subscriptions.list_by_media_identity(item.media_source, item.media_id, item.music_type)
+    accessible = [
+        record for record in candidates
+        if current_user.is_superuser or (bool(record.username) and record.username == current_user.name)
+    ]
+    matched = [record for record in accessible if season is None or record.season == season]
+    if not matched and title and item.mtype in (MediaType.MOVIE, MediaType.TV):
+        fallback = await subscriptions.list_by_video_metadata(
+            title=title, year=item.year, media_type=item.mtype, season=season,
+        )
+        matched = [
+            record for record in fallback
+            if current_user.is_superuser or (bool(record.username) and record.username == current_user.name)
+        ]
+    return MediaStatusResult(
+        item_id=item_id,
+        subscribed=bool(matched),
+        seasons={
+            record.season: "normal" if not record.best_version else "best_version_full" if record.best_version_full else "best_version"
+            for record in accessible
+            if record.type == MediaType.TV.value and record.season is not None
+        },
+    )
 
 
 _BUILTIN_MEDIA_SOURCES = (
