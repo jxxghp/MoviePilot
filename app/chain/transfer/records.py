@@ -564,6 +564,11 @@ class ManualHistoryMixin(_TransferOwnerBase):
 
         用户已明确重新整理，缺失结算版本或停在重试、人工复核态的旧记录也必须
         能放弃；普通重试仍由持久调度器沿原计划继续，有效租约拒绝任何清理。
+        目标状态查询失败时保留历史与失败计数，不把未知状态当作目标已消失。
+
+        :param history: 用户明确要求重新整理的历史快照
+        :param transfer_history_oper: 删除历史所用的仓储端口
+        :return: 是否完成旧历史清理及可向用户展示的失败原因
         """
         task_id = getattr(history, "transfer_task_id", None)
         if task_id:
@@ -582,16 +587,26 @@ class ManualHistoryMixin(_TransferOwnerBase):
             if not isinstance(history.dest_fileitem, dict):
                 return False, "目标文件历史数据无效，请删除该整理记录后从文件管理重新整理"
             dest_fileitem = FileItem.model_validate(history.dest_fileitem)
+            if not dest_fileitem.storage or not dest_fileitem.path:
+                return False, "目标文件历史数据缺少存储或路径，请检查该整理记录"
             storage_chain = StorageChain()
-            if storage_chain.exists(dest_fileitem):
-                deleted = storage_chain.delete_media_file(dest_fileitem)
-                # 远端存储可能在删除请求返回前由并发任务或生命周期策略移除文件。
-                # 只要读回确认目标已不存在，就按幂等删除继续，不能留下永远无法重整的历史。
-                if not deleted and storage_chain.exists(dest_fileitem):
-                    return False, (
-                        f"旧目标文件 {dest_fileitem.path} 删除失败，请检查媒体库权限，"
-                        "或手动删除该文件后重试"
-                    )
+            try:
+                target = storage_chain.get_file_item_strict(
+                    storage=dest_fileitem.storage, path=Path(dest_fileitem.path),
+                )
+                if target:
+                    deleted = storage_chain.delete_media_file(dest_fileitem)
+                    # 删除失败时，只有严格查询确认目标消失，才接受并发移除后的幂等成功。
+                    if not deleted and storage_chain.get_file_item_strict(
+                            storage=dest_fileitem.storage, path=Path(dest_fileitem.path),
+                    ):
+                        return False, (
+                            f"旧目标文件 {dest_fileitem.path} 删除失败，请检查媒体库权限，"
+                            "或手动删除该文件后重试"
+                        )
+            except Exception:  # pylint: disable=broad-except
+                return False, f"无法确认旧目标文件 {dest_fileitem.path} 的状态，请检查存储后重试"
+
         transfer_history_oper.delete(history.id)
         # 删除记录是用户显式要求重来，失败计数一并清零，否则重整仍会受上一轮次数限制
         clear_transfer_failures(history.src, history.src_storage)

@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional, Sequence, cast
 from app.application.directory import DirectoryHelper
 from app.chain.base import ChainBase
 from app.runtime.log import logger
+from app.schemas.exception import StorageQueryError
 from app.schemas.file import FileItem as _SchemaFileItem
+from app.schemas.file import FileItemQueryResult
 
 
 class StorageChain(ChainBase):
@@ -123,16 +125,23 @@ class StorageChain(ChainBase):
             path: Path,
     ) -> Optional[_SchemaFileItem]:
         """
-        严格查询文件项：确认不存在返回空，能力提供方 或 I/O 失败直接抛出。
+        严格查询文件项，只有实际查询回执中的空值才表示目标不存在。
+
+        :param storage: 目标存储标识
+        :param path: 存储内的文件或目录路径
+        :return: 确认存在的文件项或确认不存在时的 None
+        :raises StorageQueryError: 没有可确认状态的提供方或回执不合法时抛出
         """
-        return cast(
-            Optional[_SchemaFileItem],
-            self.run_module_strict(
-                "get_file_item",
-                storage=storage,
-                path=path,
-            ),
-        )
+        result = self.run_module_strict("get_file_item_strict", storage=storage, path=path)
+        if isinstance(result, FileItemQueryResult):
+            return result.item
+        if result is not None:
+            raise StorageQueryError(f"存储 {storage} 的严格查询未返回有效回执")
+        # 旧插件仍能证明非空命中；其空返回值无法区分“不支持”和“不存在”。
+        legacy_item = self.run_module_strict("get_file_item", storage=storage, path=path)
+        if isinstance(legacy_item, _SchemaFileItem):
+            return legacy_item
+        raise StorageQueryError(f"存储 {storage} 没有能够确认目标状态的查询提供方")
 
     def get_parent_item(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """

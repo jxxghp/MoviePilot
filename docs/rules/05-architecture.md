@@ -804,6 +804,14 @@ SMB 同存储整理由 `app.modules.filemanager.storages.smb` 持有协议调用
 本地文件 ID 使用设备号和 inode，验证不额外读取整文件计算哈希。
 外部 legacy transfer provider 继续遵循原有兼容合同。
 
+严格文件查询使用模块能力 `get_file_item_strict(storage, path)`。提供方不支持目标存储时返回
+`None`，调度继续寻找下一提供方；真正完成查询时返回 `FileItemQueryResult(item=...)`，
+其中 `item=None` 才能作为目标不存在的证据。存储不可用或查询失败必须抛出。
+`StorageChain.get_file_item_strict` 仅接受明确回执；旧插件的普通能力非空命中继续兼容，
+但空结果没有存储归属证明，不能用于删除历史等破坏性决策。旧插件如需声明“已确认不存在”，
+应实现新能力并返回回执；普通 `get_file_item` 的 nullable 查询合同不变。
+显式重新整理在清理旧目标前及删除失败后均使用严格查询，未知态保留历史和失败计数。
+
 SMB 目录快照不依赖祖先目录 mtime 推断后代变化，而在既有递归深度上限内逐层列举。
 存储通过 `snapshot_strict_query` 声明已实现 `get_item_strict` / `list_strict`；
 严格快照的任一查询失败必须返回 `None`，由远程轮询器保留旧基线并重试。

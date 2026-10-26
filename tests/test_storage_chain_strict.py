@@ -11,7 +11,7 @@ from app.chain.storage import StorageChain
 from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.storages.local import LocalStorage
 from app.schemas.exception import StorageQueryError
-from app.schemas.file import FileItem
+from app.schemas.file import FileItem, FileItemQueryResult
 
 
 def test_storage_chain_strict_query_distinguishes_absent_and_failure() -> None:
@@ -20,7 +20,7 @@ def test_storage_chain_strict_query_distinguishes_absent_and_failure() -> None:
     """
     chain = object.__new__(StorageChain)
     chain._module_dispatcher = Mock()
-    chain._module_dispatcher.dispatch_strict.return_value = None
+    chain._module_dispatcher.dispatch_strict.return_value = FileItemQueryResult(item=None)
 
     assert chain.get_file_item_strict("plugin", Path("/missing.mkv")) is None
 

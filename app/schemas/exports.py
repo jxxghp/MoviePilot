@@ -181,6 +181,7 @@ SCHEMA_EXPORTS = {
     'Field': ('app.schemas.mcp', 'Field'),
     'FileContextSnapshot': ('app.schemas.event', 'FileContextSnapshot'),
     'FileItem': ('app.schemas.workflow', 'FileItem'),
+    'FileItemQueryResult': ('app.schemas.file', 'FileItemQueryResult'),
     'FileNameData': ('app.schemas.common', 'FileNameData'),
     'FileURI': ('app.schemas.file', 'FileURI'),
     'FilterRuleGroup': ('app.schemas.system', 'FilterRuleGroup'),

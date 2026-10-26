@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9837,
-  "edge_sha256": "d51ff72057e0c293893d968ca72a5f76f33c0c89d4d05a31c87110ba3b2cfc56",
+  "edge_count": 9839,
+  "edge_sha256": "72918db401db3ef24d1360aa2f29169d114fa13bebf8e255e807cf38bc5a5082",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5496,6 +5496,7 @@
     "app.chain.storage -> app.runtime",
     "app.chain.storage -> app.runtime.log",
     "app.chain.storage -> app.schemas",
+    "app.chain.storage -> app.schemas.exception",
     "app.chain.storage -> app.schemas.file",
     "app.chain.subscribe.calendar -> app.chain",
     "app.chain.subscribe.calendar -> app.chain.media",
@@ -7509,6 +7510,7 @@
     "app.modules.filemanager.module -> app.runtime.log",
     "app.modules.filemanager.module -> app.runtime.settings",
     "app.modules.filemanager.module -> app.schemas",
+    "app.modules.filemanager.module -> app.schemas.exception",
     "app.modules.filemanager.module -> app.schemas.file",
     "app.modules.filemanager.module -> app.schemas.mediaserver",
     "app.modules.filemanager.module -> app.schemas.system",
