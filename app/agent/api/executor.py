@@ -151,7 +151,8 @@ class MoviePilotApiExecutor:
             "Accept": "application/json",
         }
         if self._context.session_id:
-            headers["X-MoviePilot-Agent-Session"] = self._context.session_id
+            # 会话标识由渠道内的原始用户标识拼装，微信等渠道可能含中文；与渠道、来源一致做 URL 编码后再发送。
+            headers["X-MoviePilot-Agent-Session"] = quote(str(self._context.session_id), safe="")
         if self._context.channel:
             # 渠道值来自通知渠道枚举，也可能来自插件扩展；统一 URL 编码可兼容两者。
             headers["X-MoviePilot-Agent-Channel"] = quote(self._context.channel, safe="")

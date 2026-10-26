@@ -4,10 +4,13 @@
 
 import asyncio
 import json
+import uuid
 from types import SimpleNamespace
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import unquote
 
+import httpx
 import pytest
 
 from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
@@ -296,3 +299,49 @@ def test_executor_serializes_channel_and_source_headers_as_ascii() -> None:
     assert headers["X-MoviePilot-Agent-Channel"].isascii()
     assert headers["X-MoviePilot-Agent-Source"] == "%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1"
     assert headers["X-MoviePilot-Agent-Source"].isascii()
+
+
+def _build_context_headers(session_id: str) -> dict[str, str]:
+    """
+    用指定会话标识构造一次 Agent API 请求头。
+
+    :param session_id: 待写入会话头的 Agent 会话标识
+    :return: 执行器生成的完整请求头
+    """
+    executor = MoviePilotApiExecutor(
+        context=ApiExecutionContext(
+            user_id="1",
+            username="admin",
+            is_admin=True,
+            session_id=session_id,
+        )
+    )
+
+    with patch("app.agent.api.executor.create_access_token", return_value="token"):
+        return executor._build_headers()
+
+
+def test_executor_serializes_non_ascii_session_header_as_ascii() -> None:
+    """
+    微信等渠道的中文会话标识必须编码为 ASCII 头值，并可还原回原标识。
+    """
+    session_id = 'user_message:["wechat","wc1","张三的微信"]_1793057820'
+
+    headers = _build_context_headers(session_id)
+
+    session_header = headers["X-MoviePilot-Agent-Session"]
+    assert session_header.isascii()
+    assert unquote(session_header) == session_id
+    # httpx 在发送前按 ASCII 编码头值，非 ASCII 会话标识会直接抛 UnicodeEncodeError。
+    httpx.Headers(headers)
+
+
+def test_executor_keeps_ascii_session_header_verbatim() -> None:
+    """
+    默认随机生成的会话标识不含需转义字符，编码后必须保持原值以兼容既有读取方。
+    """
+    session_id = uuid.uuid4().hex
+
+    headers = _build_context_headers(session_id)
+
+    assert headers["X-MoviePilot-Agent-Session"] == session_id
