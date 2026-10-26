@@ -84,6 +84,16 @@ class FileItem(FileURI):
         return str(value) if value is not None else None
 
 
+class FileItemQueryResult(BaseModel):
+    """
+    声明提供方已实际查询目标存储，空文件项表示已确认不存在。
+
+    与模块方法返回 None（此提供方不支持目标存储）区分，避免未知态被用于删除决策。
+    """
+
+    item: Optional[FileItem] = Field(..., description="实际查询结果；None 仅表示已确认文件或目录不存在")
+
+
 class StorageUsage(BaseModel):
     """
     存储空间使用情况。

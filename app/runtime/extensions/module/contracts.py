@@ -373,6 +373,14 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("storage", "path"),
     ),
+    "get_file_item_strict": ModuleMethodContract(
+        family="storage",
+        input_contract="StorageItemRequest",
+        result_contract="FileItemQueryResult | None",
+        result_shape=ModuleResultShape.MODEL,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("storage", "path"),
+    ),
     "get_folder": ModuleMethodContract(
         family="storage",
         input_contract="StorageFolderRequest",

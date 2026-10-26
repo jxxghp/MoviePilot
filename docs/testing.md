@@ -147,6 +147,12 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 115 快照不再按目录时间剪枝；扫描间隔、深度和接口限流不变，但每轮可能增加目录列表请求。
 这些用例不代表 115 已接入严格查询或验证了查询失败时的快照原子性。
 
+### 存储严格查询回执回归
+
+`tests/test_storage_cleanup_receipts.py` 通过真实 StorageChain、模块调度器和 FileManager，
+验证未知存储、未初始化模块、缺失模块和适配器不可用均保留整理历史。自定义存储提供方
+放在插件优先路径或宿主前后顺序时，都须能传递明确的文件项/不存在回执；普通查询仍可返回空值。
+
 ## 种子下载重试回归
 
 下载选集回归使用真实 qBittorrent/Transmission Module 与离线下载器端口，验证自定义识别词

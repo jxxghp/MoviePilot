@@ -19,6 +19,7 @@ from app.db.base import Base
 from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
+from app.schemas.file import FileItem
 from app.schemas.types import MediaSource, MediaType, NotificationChannel
 
 
@@ -264,7 +265,7 @@ def test_durable_manual_cleanup_discards_task_and_removes_old_state(monkeypatch)
     monkeypatch.setattr(
         "app.chain.transfer.records.StorageChain",
         lambda: SimpleNamespace(
-            exists=lambda _fileitem: True,
+            get_file_item_strict=lambda **kwargs: FileItem(storage=kwargs["storage"], path=str(kwargs["path"])),
             delete_media_file=lambda fileitem: deleted.append(
                 ("target", fileitem.path)
             ) or True,
@@ -425,7 +426,7 @@ def test_manual_replan_without_settlement_revision_obeys_current_lease(
         effects.append(("history", history_id))
 
     monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
-        exists=lambda _fileitem: True, delete_media_file=remove_target,
+        get_file_item_strict=lambda **kwargs: FileItem(storage=kwargs["storage"], path=str(kwargs["path"])), delete_media_file=remove_target,
     ))
     monkeypatch.setattr("app.chain.transfer.records.clear_transfer_failures", lambda *args: effects.append(args))
     chain = object.__new__(TransferChain)

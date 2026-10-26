@@ -22,7 +22,8 @@ from app.modules.filemanager.storages import StorageBase
 from app.modules.filemanager.transhandler import TransHandler
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.schemas.file import FileItem, StorageUsage
+from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem, FileItemQueryResult, StorageUsage
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
@@ -476,6 +477,22 @@ class FileManagerModule(_ModuleBase):
             logger.error(f"不支持 {storage} 的文件获取")
             return None
         return storage_oper.get_item_strict(path)
+
+    def get_file_item_strict(self, storage: str, path: Path) -> Optional[FileItemQueryResult]:
+        """
+        为支持的存储返回明确查询回执，不支持时让调度器继续寻找其他提供方。
+
+        :param storage: 目标存储标识
+        :param path: 存储内的文件或目录路径
+        :return: 已完成查询的回执；不支持该存储时返回 None
+        :raises StorageQueryError: 已注册存储的适配器无法取得时抛出
+        """
+        if storage not in self._support_storages:
+            return None
+        storage_oper = self.__get_storage_oper(storage)
+        if storage_oper is None:
+            raise StorageQueryError(f"存储 {storage} 的文件查询适配器不可用")
+        return FileItemQueryResult(item=storage_oper.get_item_strict(path))
 
     def get_parent_item(self, fileitem: FileItem) -> Optional[FileItem]:
         """

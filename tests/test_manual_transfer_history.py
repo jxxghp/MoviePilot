@@ -166,7 +166,7 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
         ),
     )
     monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
-        exists=lambda current_fileitem: True,
+        get_file_item_strict=lambda **_kwargs: fileitem,
         delete_media_file=lambda current_fileitem: deleted.append(
             ("target", current_fileitem.path)
         )
@@ -1020,9 +1020,9 @@ def test_manual_reorganize_accepts_old_target_disappearing_during_delete(monkeyp
         transfer_task_id=None, download_hash=None, downloader=None, src=None, src_storage=None,
     )
     deleted: list[tuple[str, object]] = []
-    states = iter((True, False))
+    states = iter((old_dest, None))
     monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
-        exists=lambda _item: next(states),
+        get_file_item_strict=lambda **_kwargs: next(states),
         delete_media_file=lambda _item: False,
     ))
     state, message = chain._delete_manual_transfer_history(
