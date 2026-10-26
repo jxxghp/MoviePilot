@@ -96,6 +96,15 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         self._limit_lock = Lock()
         self._rate_stats = RateStats(source="115")
 
+    @property
+    def snapshot_check_folder_modtime(self) -> bool:
+        """
+        115 子项变化不保证更新祖先目录时间，快照必须继续遍历子目录。
+
+        :return: 始终为 False，不依据目录修改时间跳过子树
+        """
+        return False
+
     def _init_session(self) -> None:
         """
         设置 115 开放接口使用的客户端标识及表单请求头。

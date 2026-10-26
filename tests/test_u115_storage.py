@@ -1,17 +1,21 @@
 """
-验证115 存储客户端的目录和文件操作映射。
+验证 115 存储客户端的文件操作映射与递归监控快照。
 """
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from typing import Any, Optional
+from unittest.mock import Mock, patch
 
 import pytest
 
 from app.application.transfer.execution import TransferExecutionConflictError
+from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.storages.u115 import U115Pan
 from app.modules.filemanager.transhandler import TransHandler
+from app.monitor.poller import RemotePoller
+from app.monitor.snapshot import SnapshotStore
 from app.schemas.file import FileItem
 
 
@@ -293,3 +297,173 @@ def test_delete_requires_explicit_api_success(response, expected):
     storage = _build_storage()
     storage._request_api = lambda *_args, **_kwargs: response
     assert storage.delete(FileItem(storage="u115", path="/source.mkv", fileid="200")) is expected
+
+
+def _snapshot_node(
+    path: Path, fileid: str, *, directory: bool = False,
+    modify_time: int = 50, size: int = 0,
+) -> dict[str, Any]:
+    """
+    构造 115 路径详情接口使用的离线文件元数据。
+    """
+    return {
+        "file_id": fileid,
+        "file_category": "0" if directory else "1",
+        "file_name": path.name,
+        "pick_code": "pickcode",
+        "size_byte": size,
+        "utime": modify_time,
+    }
+
+
+@pytest.fixture
+def snapshot_storage(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    """
+    在 115 API 边界模拟五层目录，保留真实文件项转换、分页、快照与模块分发。
+
+    所有目录时间固定为 50，不随深层文件变化推进，不读取配置或建立网络会话。
+    """
+    root = Path("/incoming")
+    directories = [root, root / "TV", root / "TV/Chinese", root / "TV/Chinese/Show",
+                   root / "TV/Chinese/Show/Season 1"]
+    tree = {
+        path.as_posix(): _snapshot_node(path, str(index + 1), directory=True)
+        for index, path in enumerate(directories)
+    }
+    parent = directories[-1]
+    old_path = (parent / "old.mkv").as_posix()
+    tree[old_path] = _snapshot_node(Path(old_path), "100", modify_time=100, size=10)
+
+    def request_api(
+        method: str, endpoint: str, field: Optional[str] = None, **kwargs: Any,
+    ) -> Any:
+        """
+        按真实接口的路径、目录标识和分页参数返回元数据，不替换快照遍历。
+        """
+        if endpoint == "/open/folder/get_info":
+            assert method == "POST" and field is None
+            return {"state": True, "data": tree.get(kwargs["data"]["path"])}
+        assert endpoint == "/open/ufile/files" and method == "GET" and field == "data"
+        params = kwargs["params"]
+        directory = next(path for path, node in tree.items() if node["file_id"] == str(params["cid"]))
+        items = [
+            {"fid": node["file_id"], "fn": node["file_name"], "fc": node["file_category"],
+             "fs": node["size_byte"], "upt": node["utime"], "pc": node["pick_code"],
+             "ico": Path(path).suffix[1:]}
+            for path, node in tree.items() if Path(path).parent.as_posix() == directory
+        ]
+        return items[params["offset"]:params["offset"] + params["limit"]]
+
+    storage = object.__new__(U115Pan)
+    api = Mock(side_effect=request_api)
+    monkeypatch.setattr(storage, "_request_api", api)
+    module = object.__new__(FileManagerModule)
+    module._support_storages = ["u115"]
+    monkeypatch.setattr(module, "_FileManagerModule__get_storage_oper", Mock(return_value=storage))
+    return SimpleNamespace(storage=storage, module=module, api=api, tree=tree,
+                           root=root, parent=parent, old_path=old_path)
+
+
+@pytest.mark.parametrize(("change", "empty_baseline"), [
+    ("added", False), ("added", True), ("moved_old", False), ("moved_old", True),
+    ("modified", False), ("deleted", False),
+])
+def test_snapshot_detects_descendant_changes_without_parent_mtime(
+    snapshot_storage: SimpleNamespace, change: str, empty_baseline: bool,
+) -> None:
+    """
+    祖先目录时间不变时仍发现新增、保留旧时间的移入、修改和删除，兼容空基线。
+    """
+    state = snapshot_storage
+    if empty_baseline:
+        del state.tree[state.old_path]
+    baseline = state.storage.snapshot(state.root)
+    assert baseline is not None
+    assert len(baseline) == (0 if empty_baseline else 1)
+    new_path = state.parent / "new.mkv"
+    if change in {"added", "moved_old"}:
+        state.tree[new_path.as_posix()] = _snapshot_node(
+            new_path, "101", modify_time=200 if change == "added" else 1, size=20,
+        )
+    elif change == "modified":
+        state.tree[state.old_path].update(size_byte=20, utime=200)
+    else:
+        del state.tree[state.old_path]
+
+    snapshot = state.module.snapshot_storage(
+        "u115", state.root, last_snapshot_time=100, previous_snapshot=baseline,
+    )
+    assert snapshot is not None
+    expected = {"added": [], "modified": []}
+    if change in {"added", "moved_old"}:
+        expected["added"] = [new_path.as_posix()]
+        assert snapshot[new_path.as_posix()]["fileid"] == "101"
+    elif change == "modified":
+        expected["modified"] = [state.old_path]
+        assert snapshot[state.old_path]["size"] == 20
+    else:
+        assert state.old_path not in snapshot
+    assert SnapshotStore.compare(baseline, snapshot) == expected
+    if not empty_baseline:
+        assert baseline[state.old_path]["size"] == 10
+
+
+@pytest.mark.parametrize(("max_depth", "file_count"), [(2, 0), (4, 0), (5, 1)])
+def test_snapshot_keeps_depth_limit(
+    snapshot_storage: SimpleNamespace, max_depth: int, file_count: int,
+) -> None:
+    """
+    不按目录时间剪枝后仍遵守递归深度预算，不访问预算外的目录。
+    """
+    state = snapshot_storage
+    snapshot = state.storage.snapshot(state.root, last_snapshot_time=100, max_depth=max_depth)
+    assert snapshot is not None and len(snapshot) == file_count
+    assert sum(call.args[1] == "/open/ufile/files" for call in state.api.call_args_list) == max_depth
+
+
+def test_snapshot_keeps_u115_directory_pagination(snapshot_storage: SimpleNamespace) -> None:
+    """
+    深层目录超过单页上限时继续分页，不因祖先目录时间旧而漏掉后续页面。
+    """
+    state = snapshot_storage
+    del state.tree[state.old_path]
+    for index in range(1001):
+        path = state.parent / f"episode-{index}.mkv"
+        state.tree[path.as_posix()] = _snapshot_node(path, str(1000 + index), size=10)
+
+    snapshot = state.storage.snapshot(state.root, last_snapshot_time=100, previous_snapshot={})
+    assert snapshot is not None and len(snapshot) == 1001
+    pages = [call.kwargs["params"] for call in state.api.call_args_list
+             if call.args[1] == "/open/ufile/files" and call.kwargs["params"]["cid"] == 5]
+    assert [(page["offset"], page["limit"]) for page in pages] == [(0, 1000), (1000, 1000)]
+
+
+def test_poll_dispatches_old_mtime_file_from_empty_baseline_once(
+    snapshot_storage: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    空基线下发现保留旧时间的深层移入文件，并且后续轮询不重复派发整理。
+    """
+    state = snapshot_storage
+    del state.tree[state.old_path]
+    records: dict[str, bytes] = {}
+    cache = Mock()
+    cache.get.side_effect = lambda key, **_kwargs: records.get(key)
+    cache.set.side_effect = lambda key, value, **_kwargs: records.__setitem__(key, value)
+    store = SnapshotStore(cache=cache)
+    assert store.save("u115", {}, file_count=0, last_snapshot_time=100)
+    dispatcher = Mock()
+    dispatcher.is_transfer_candidate_path.return_value = True
+    dispatcher.handle_file.return_value = True
+    chain = SimpleNamespace(snapshot_storage=state.module.snapshot_storage)
+    monkeypatch.setattr("app.monitor.poller.StorageChain", lambda: chain)
+    poller = RemotePoller(store=store, dispatcher=dispatcher)
+    path = state.parent / "new.mkv"
+    state.tree[path.as_posix()] = _snapshot_node(path, "101", modify_time=1, size=20)
+
+    assert poller.poll("u115", [state.root]) == 1
+    dispatcher.handle_file.assert_called_once()
+    assert dispatcher.handle_file.call_args.kwargs["event_path"] == path
+    assert dispatcher.handle_file.call_args.kwargs["fileid"] == "101"
+    assert poller.poll("u115", [state.root]) == 1
+    dispatcher.handle_file.assert_called_once()
