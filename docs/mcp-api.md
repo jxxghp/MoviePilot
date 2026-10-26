@@ -355,10 +355,12 @@ Emby、Jellyfin、Plex、Navidrome 的目录、条目、搜索、季集和活动
 | --- | --- |
 | `tables` | 空对象，返回实际表清单 |
 | `schema` | `table_name`，必须使用表清单中的精确名称 |
-| `query` | `sql` 与 `file` 二选一；`limit` 默认 100，范围 1–200；默认只读，`write` 默认 `false` |
-| `write` | `sql` 与 `file` 二选一；执行单条写入或结构变更语句，必须已有对应用户授权 |
+| `query` | `sql` 与 `file` 二选一；`limit` 默认 100，范围 1–200；默认只读，`write` 默认 `false`；`show_secrets` 默认 `false` |
+| `write` | `sql` 与 `file` 二选一；执行单条写入或结构变更语句，必须已有对应用户授权；引用 `systemconfig` 时同样需要 `show_secrets=true` |
 
 `file` 指 MoviePilot 运行环境中的 SQL 文件，不是客户端本地文件；外部接入通常直接传 `sql`。工具自行读取 MoviePilot 数据库配置，不接受任意连接串或数据库密码。
+
+`systemconfig` 集中存放实例级 API Key、Cookie 与口令，语句只要引用该表（含引号标识符、模式限定名和 CTE 写法）就被拒绝，除非显式传 `show_secrets=true`。该门禁按表生效，因此计数或只取键名也需要开启；宿主会把这类读取判定为敏感读取并要求确认，回执中不保留结果内容。读取普通设置仍应使用 `config.system.*`。
 
 读取行时使用必要字段和有限窗口；写入前核对目标与条件，完成后只读核验。普通设置修改使用 `config.system.*`，避免绕过配置校验、事件通知和专用业务流程。更多约束见[数据库操作参考](../skills/database-operation/SKILL.md)。
 

@@ -8,6 +8,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import pytest
+from sqlalchemy import create_engine, text
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MP_DB_SCRIPT = PROJECT_ROOT / "skills" / "database-operation" / "scripts" / "mp-db.py"
 
@@ -117,11 +120,19 @@ def test_mp_db_write_command_allows_write_statement(monkeypatch) -> None:
     module = _load_script(MP_DB_SCRIPT, "mp_db_script_write")
     calls = []
 
-    def fake_run_query(sql: str, *, limit: int = 100, allow_write: bool = False) -> int:
+    def fake_run_query(
+        sql: str,
+        *,
+        limit: int = 100,
+        allow_write: bool = False,
+        show_secrets: bool = False,
+    ) -> int:
         """
         记录 write 子命令传入的执行参数。
         """
-        calls.append({"sql": sql, "limit": limit, "allow_write": allow_write})
+        calls.append(
+            {"sql": sql, "limit": limit, "allow_write": allow_write, "show_secrets": show_secrets}
+        )
         return 0
 
     monkeypatch.setattr(module, "run_query", fake_run_query)
@@ -141,5 +152,123 @@ def test_mp_db_write_command_allows_write_statement(monkeypatch) -> None:
             "sql": "UPDATE subscribe SET state = 'S' WHERE id = 123",
             "limit": 0,
             "allow_write": True,
+            "show_secrets": False,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT * FROM systemconfig",
+        'SELECT * FROM "systemconfig"',
+        "SELECT * FROM public.systemconfig",
+        "SELECT * FROM `systemconfig`",
+        "SELECT * FROM [systemconfig]",
+        "WITH leak AS (SELECT value FROM systemconfig) SELECT * FROM leak",
+        "SELECT (SELECT value FROM systemconfig LIMIT 1) AS any_value",
+    ],
+)
+def test_mp_db_blocks_configuration_tables_without_show_secrets(monkeypatch, sql) -> None:
+    """
+    引用凭据配置表的语句默认拒绝，引号、模式限定、子查询与写入模式都不能绕过。
+    """
+    module = _load_script(MP_DB_SCRIPT, "mp_db_script_secret_blocks")
+
+    assert not module._is_supported_statement(sql, False)
+    assert module._is_supported_statement(sql, False, show_secrets=True)
+    assert not module._is_supported_statement(sql, True)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 'systemconfig' AS name FROM subscribe",
+        "-- systemconfig\nSELECT 1",
+        "SELECT 1 /* systemconfig */",
+        "SELECT name FROM subscribe WHERE name = 'systemconfig'",
+        "SELECT * FROM userconfig",
+        "SELECT plugin_id, key FROM plugindata",
+    ],
+)
+def test_mp_db_configuration_gate_ignores_literals_and_unrelated_tables(
+    monkeypatch,
+    sql,
+) -> None:
+    """
+    字面值与注释中的表名不触发凭据门禁；门禁只覆盖集中存放实例凭据的 systemconfig，
+    其它表的普通读取保持原样。
+    """
+    module = _load_script(MP_DB_SCRIPT, "mp_db_script_secret_allows")
+
+    assert module._is_supported_statement(sql, False)
+
+
+def test_mp_db_configuration_table_access_reports_and_requires_explicit_flag(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """
+    凭据配置表的读取与写入在未显式开启时被拒绝并给出可执行提示，开启后按原值返回。
+    """
+    module = _load_script(MP_DB_SCRIPT, "mp_db_script_secret_exec")
+    engine = create_engine("sqlite:///" + str(tmp_path / "secret.db"))
+    module.run_query.__globals__["_build_engine"] = lambda: engine
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE systemconfig (id INTEGER, key TEXT, value JSON)"))
+            connection.execute(
+                text("INSERT INTO systemconfig VALUES (1, 'TMDB_API_KEY', 'plain-secret')")
+            )
+        assert module.run_query("SELECT value FROM systemconfig") == 1
+        assert "require --show-secrets" in capsys.readouterr().err
+        assert module.run_query("UPDATE systemconfig SET value = 'x' WHERE id = 1", allow_write=True) == 1
+        assert "require --show-secrets" in capsys.readouterr().err
+        assert module.run_query("SELECT value FROM systemconfig", show_secrets=True) == 0
+        assert json.loads(capsys.readouterr().out)["rows"] == [{"value": "plain-secret"}]
+        assert (
+            module.run_query(
+                "UPDATE systemconfig SET value = 'fixed' WHERE id = 1",
+                allow_write=True,
+                show_secrets=True,
+            )
+            == 0
+        )
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("command", "argv", "expected"),
+    [
+        ("query", ["query", "SELECT 1", "--show-secrets"], True),
+        ("query", ["query", "SELECT 1"], False),
+        ("write", ["write", "UPDATE systemconfig SET value = 'x' WHERE id = 1", "--show-secrets"], True),
+    ],
+)
+def test_mp_db_show_secrets_option_reaches_execution(monkeypatch, command, argv, expected) -> None:
+    """
+    两个子命令的 --show-secrets 选项都必须映射到执行参数，缺省保持关闭。
+    """
+    module = _load_script(MP_DB_SCRIPT, "mp_db_script_secret_option")
+    calls = []
+
+    def fake_run_query(
+        sql: str,
+        *,
+        limit: int = 100,
+        allow_write: bool = False,
+        show_secrets: bool = False,
+    ) -> int:
+        """
+        记录子命令解析出的凭据表开关。
+        """
+        calls.append(show_secrets)
+        return 0
+
+    monkeypatch.setattr(module, "run_query", fake_run_query)
+    monkeypatch.setattr(module.sys, "argv", ["mp-db.py", *argv])
+
+    assert module.main() == 0
+    assert calls == [expected]

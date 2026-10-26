@@ -539,21 +539,18 @@ class MediaServerOperationTool(_ServiceOperationTool):
         )
 
 
-def _run_database_script(arguments: Dict[str, Any], *, root_path: Path) -> dict[str, Any]:
+def _validate_database_arguments(
+    action: str,
+    action_arguments: Dict[str, Any],
+    contract_data: Dict[str, Any],
+) -> None:
     """
-    不经 shell 调用数据库 Skill 脚本，并返回结构化结果。
-    """
-    script_path = root_path / "skills/database-operation/scripts/mp-db.py"
-    action = str(arguments.get("action") or "")
-    action_arguments = arguments.get("arguments") or {}
-    if not isinstance(action_arguments, dict):
-        raise ValueError("数据库 action arguments 必须是对象")
+    按动作合同校验数据库嵌套参数，在连接数据库前拒绝未知、缺失或类型错误的字段。
 
-    contracts = _load_action_contracts(str(script_path))
-    contract = contracts.get(action)
-    if contract is None:
-        raise ValueError(f"未知数据库 action: {action}")
-    contract_data = contract.to_dict(action)
+    :param action: 当前数据库动作名称
+    :param action_arguments: 当前动作的结构化参数
+    :param contract_data: 当前动作的公开契约字典
+    """
     declared_arguments = {item["name"]: item for item in contract_data["arguments"]}
     unknown_arguments = sorted(set(action_arguments) - set(declared_arguments))
     if unknown_arguments:
@@ -576,6 +573,9 @@ def _run_database_script(arguments: Dict[str, Any], *, root_path: Path) -> dict[
                 or not action_arguments[field_name].strip()
             ):
                 raise ValueError(f"数据库参数 {field_name} 必须是非空 string")
+        reveal_flag = action_arguments.get("show_secrets", False)
+        if not isinstance(reveal_flag, bool):
+            raise ValueError("数据库参数 show_secrets 必须是 boolean")
     if action == "schema" and (
         not isinstance(action_arguments.get("table_name"), str)
         or not action_arguments["table_name"].strip()
@@ -589,6 +589,20 @@ def _run_database_script(arguments: Dict[str, Any], *, root_path: Path) -> dict[
         if not isinstance(write_flag, bool):
             raise ValueError("数据库参数 write 必须是 boolean")
 
+
+def _build_database_command(
+    action: str,
+    action_arguments: Dict[str, Any],
+    script_path: Path,
+) -> list[str]:
+    """
+    组装数据库 Skill 脚本的 argv，不经过 shell。
+
+    :param action: 当前数据库动作名称
+    :param action_arguments: 已通过合同校验的结构化参数
+    :param script_path: 固定 Skill 脚本的绝对路径
+    :return: 传给 subprocess 的参数列表
+    """
     command = [sys.executable, str(script_path), action]
     if action == "schema":
         command.append(str(action_arguments.get("table_name") or ""))
@@ -603,6 +617,27 @@ def _run_database_script(arguments: Dict[str, Any], *, root_path: Path) -> dict[
             command.extend(["--limit", str(action_arguments.get("limit", 100))])
             if action_arguments.get("write") is True:
                 command.append("--write")
+        if action_arguments.get("show_secrets") is True:
+            command.append("--show-secrets")
+    return command
+
+
+def _run_database_script(arguments: Dict[str, Any], *, root_path: Path) -> dict[str, Any]:
+    """
+    不经 shell 调用数据库 Skill 脚本，并返回结构化结果。
+    """
+    script_path = root_path / "skills/database-operation/scripts/mp-db.py"
+    action = str(arguments.get("action") or "")
+    action_arguments = arguments.get("arguments") or {}
+    if not isinstance(action_arguments, dict):
+        raise ValueError("数据库 action arguments 必须是对象")
+
+    contracts = _load_action_contracts(str(script_path))
+    contract = contracts.get(action)
+    if contract is None:
+        raise ValueError(f"未知数据库 action: {action}")
+    _validate_database_arguments(action, action_arguments, contract.to_dict(action))
+    command = _build_database_command(action, action_arguments, script_path)
 
     completed = subprocess.run(
         command,

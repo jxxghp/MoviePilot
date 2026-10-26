@@ -35,6 +35,19 @@ def requests_system_setting_secrets(arguments: Mapping[str, Any]) -> bool:
     return False
 
 
+def requests_database_secret_rows(arguments: Mapping[str, Any]) -> bool:
+    """
+    判断数据库工具参数是否请求读取集中存放凭据的配置表行。
+    """
+    if str(arguments.get("action") or "") != "query":
+        return False
+    action_arguments = arguments.get("arguments")
+    return (
+        isinstance(action_arguments, Mapping)
+        and action_arguments.get("show_secrets") is True
+    )
+
+
 # 该清单只校验固定工具 inventory；未命中的固定或动态工具同样默认 LEGACY_SHADOW。
 BUILTIN_LEGACY_SHADOW_INVENTORY = frozenset(
     {
@@ -182,6 +195,18 @@ class ToolPolicyRegistry:
                 recovery=operation.recovery,
                 result_sensitivity=operation.result_sensitivity,
                 migration_state=MigrationState.ENFORCED,
+            )
+        if tool_name == "database_operation" and requests_database_secret_rows(arguments):
+            return ActionPolicy(
+                effect=ActionEffect.SENSITIVE_READ,
+                required_role=PrincipalRole.SYSTEM_ADMIN,
+                confirmation=ConfirmationMode.REQUIRED,
+                recovery=RecoveryMode.MANUAL_ONLY,
+                result_sensitivity=ResultSensitivity.SECRET,
+                migration_state=MigrationState.ENFORCED,
+                machine_allowed=True,
+                background_allowed=False,
+                subagent_allowed=False,
             )
         if tool_name in self._safe_read_tool_names:
             return ActionPolicy(

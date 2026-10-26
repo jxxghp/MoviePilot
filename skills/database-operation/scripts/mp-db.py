@@ -45,6 +45,11 @@ WRITE_KEYWORD_RE = re.compile(
     re.IGNORECASE,
 )
 SELECT_STATEMENT_RE = re.compile(r"^\s*(select|with|explain)\b", re.IGNORECASE)
+# 双引号、反引号与方括号在 SQLite/PostgreSQL 中都是标识符引用，可用于表名识别
+_IDENTIFIER_QUOTES = frozenset({'"', "`", "["})
+_STATEMENT_WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# 唯一按 SystemConfigKey 聚合全部实例级凭据的表，托管 API 默认脱敏、直查 SQL 不脱敏
+_SECRET_TABLE_NAMES = frozenset({"systemconfig"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +143,7 @@ ACTIONS: dict[str, ActionSpec] = {
         ),
     ),
     "query": ActionSpec(
-        "执行一条有结果数量限制的 SQL 查询，可显式启用写入模式。",
+        "执行一条有结果数量限制的 SQL 查询，可显式启用写入模式与凭据表读取。",
         "safe_read",
         arguments=(
             ArgumentSpec("sql", "string", "单条 SQL 语句，与 file 互斥。"),
@@ -157,10 +162,19 @@ ACTIONS: dict[str, ActionSpec] = {
                 default=False,
                 has_default=True,
             ),
+            ArgumentSpec(
+                "show_secrets",
+                "boolean",
+                "是否允许引用集中存放实例凭据的 systemconfig 表；"
+                "只有用户明确要求核对配置值本身时才可设为 true，普通统计不得开启。",
+                default=False,
+                has_default=True,
+            ),
         ),
         argument_rules=(
             "sql 和 file 必须且只能提供一项。",
             "仅允许 SELECT、WITH 和 EXPLAIN；write=true 时才允许写入语句。",
+            "引用 systemconfig 时必须显式提供 show_secrets=true。",
         ),
     ),
     "write": ActionSpec(
@@ -169,10 +183,19 @@ ACTIONS: dict[str, ActionSpec] = {
         arguments=(
             ArgumentSpec("sql", "string", "单条数据写入或结构变更语句，与 file 互斥。"),
             ArgumentSpec("file", "string", "本地 SQL 文件路径，与 sql 互斥。"),
+            ArgumentSpec(
+                "show_secrets",
+                "boolean",
+                "是否允许引用集中存放实例凭据的 systemconfig 表；"
+                "修复配置行等确需触碰该表的操作才设为 true。",
+                default=False,
+                has_default=True,
+            ),
         ),
         argument_rules=(
             "sql 和 file 必须且只能提供一项。",
             "拒绝在一次调用中执行多条 SQL 语句。",
+            "引用 systemconfig 时必须显式提供 show_secrets=true。",
         ),
     ),
 }
@@ -289,9 +312,12 @@ def _sql_literal_end(sql: str, index: int) -> Optional[int]:
     return index
 
 
-def _masked_sql(sql: str) -> Optional[str]:
+def _masked_sql(sql: str, *, reveal_identifiers: bool = False) -> Optional[str]:
     """
     用等长空白遮蔽字面值、标识符与注释，未闭合结构按无效 SQL 拒绝。
+
+    :param sql: 待分析的 SQL 文本
+    :param reveal_identifiers: 是否只遮蔽标识符定界符以保留表名本体，用于识别引号写法
     """
     code = list(sql)
     index = 0
@@ -306,11 +332,25 @@ def _masked_sql(sql: str) -> Optional[str]:
         if end is None:
             return None
         if end > index:
-            code[index:end] = " " * (end - index)
+            if reveal_identifiers and sql[index] in _IDENTIFIER_QUOTES:
+                code[index] = " "
+                code[end - 1] = " "
+            else:
+                code[index:end] = " " * (end - index)
             index = end
         else:
             index += 1
     return "".join(code)
+
+
+def _secret_table_names(sql: str) -> set[str]:
+    """
+    返回语句实际引用的凭据配置表名；引号包裹与模式限定写法都会被识别。
+    """
+    code = _masked_sql(sql, reveal_identifiers=True)
+    if code is None:
+        return set()
+    return {word.lower() for word in _STATEMENT_WORD_RE.findall(code)} & _SECRET_TABLE_NAMES
 
 
 def _contains_multiple_statements(sql: str) -> bool:
@@ -329,14 +369,20 @@ def _is_write_statement(sql: str) -> bool:
     return code is not None and bool(WRITE_STATEMENT_RE.match(code))
 
 
-def _is_supported_statement(sql: str, allow_write: bool) -> bool:
+def _is_supported_statement(sql: str, allow_write: bool, *, show_secrets: bool = False) -> bool:
     """
     判断 SQL 是否在当前权限模式下允许执行。
+
+    :param sql: 待校验的 SQL 语句
+    :param allow_write: 是否允许写操作或结构变更操作
+    :param show_secrets: 是否允许引用集中存放实例凭据的 systemconfig 表
     """
     if _contains_multiple_statements(sql):
         return False
     code = _masked_sql(sql)
     if code is None or not code.strip().strip(";"):
+        return False
+    if not show_secrets and _secret_table_names(sql):
         return False
     if allow_write:
         return True
@@ -401,21 +447,29 @@ def show_schema(table_name: str) -> int:
     return 0
 
 
-def run_query(sql: str, *, limit: int = 100, allow_write: bool = False) -> int:
+def run_query(sql: str, *, limit: int = 100, allow_write: bool = False, show_secrets: bool = False) -> int:
     """
     执行 SQL 语句并输出 JSON 结果。
 
     :param sql: 要执行的 SQL 语句
     :param limit: 查询语句默认追加的最大行数
     :param allow_write: 是否允许写操作或结构变更操作
+    :param show_secrets: 是否允许引用集中存放实例凭据的 systemconfig 表
     :return: 进程退出码
     """
     normalized_sql = _normalize_sql(sql)
     if not normalized_sql:
         print("Error: SQL is empty", file=sys.stderr)
         return 1
-    if not _is_supported_statement(normalized_sql, allow_write):
-        print("Error: write statements require --write", file=sys.stderr)
+    if not _is_supported_statement(normalized_sql, allow_write, show_secrets=show_secrets):
+        blocked_tables = sorted(_secret_table_names(normalized_sql))
+        if blocked_tables:
+            print(
+                f"Error: statements referencing {', '.join(blocked_tables)} require --show-secrets",
+                file=sys.stderr,
+            )
+        else:
+            print("Error: write statements require --write", file=sys.stderr)
         return 1
 
     statement_sql = _append_limit(normalized_sql, limit)
@@ -459,10 +513,22 @@ def _build_parser() -> argparse.ArgumentParser:
     query_parser.add_argument("--file", dest="sql_file", help="从文件读取 SQL")
     query_parser.add_argument("--limit", type=int, default=100, help="SELECT 默认返回行数上限")
     query_parser.add_argument("--write", action="store_true", help="允许写入语句")
+    query_parser.add_argument(
+        "--show-secrets",
+        action="store_true",
+        dest="show_secrets",
+        help="允许引用集中存放实例凭据的 systemconfig 表",
+    )
 
     write_parser = subparsers.add_parser("write", help="执行一条写入语句")
     write_parser.add_argument("sql", nargs="?", help="SQL 语句")
     write_parser.add_argument("--file", dest="sql_file", help="从文件读取 SQL")
+    write_parser.add_argument(
+        "--show-secrets",
+        action="store_true",
+        dest="show_secrets",
+        help="允许引用集中存放实例凭据的 systemconfig 表",
+    )
 
     subparsers.add_parser("tables", help="列出数据库表")
 
@@ -485,10 +551,15 @@ def main() -> int:
         return show_schema(args.table_name)
     if args.command == "query":
         sql = _read_sql(args.sql, args.sql_file)
-        return run_query(sql, limit=args.limit, allow_write=args.write)
+        return run_query(
+            sql,
+            limit=args.limit,
+            allow_write=args.write,
+            show_secrets=args.show_secrets,
+        )
     if args.command == "write":
         sql = _read_sql(args.sql, args.sql_file)
-        return run_query(sql, limit=0, allow_write=True)
+        return run_query(sql, limit=0, allow_write=True, show_secrets=args.show_secrets)
 
     parser.print_help()
     return 0

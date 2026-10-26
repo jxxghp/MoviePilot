@@ -5,6 +5,7 @@
 import asyncio
 import json
 import threading
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -94,13 +95,25 @@ def test_database_mcp_schema_exposes_all_actions_and_sql_sources() -> None:
         "write",
     ]
     query_arguments = _branch(schema, "query")["properties"]["arguments"]
-    assert set(query_arguments["properties"]) == {"sql", "file", "limit", "write"}
+    assert set(query_arguments["properties"]) == {
+        "sql",
+        "file",
+        "limit",
+        "write",
+        "show_secrets",
+    }
     assert query_arguments["properties"]["limit"]["default"] == 100
     assert query_arguments["properties"]["limit"]["minimum"] == 1
+    assert query_arguments["properties"]["show_secrets"]["default"] is False
     assert query_arguments["oneOf"] == [
         {"required": ["sql"], "not": {"required": ["file"]}},
         {"required": ["file"], "not": {"required": ["sql"]}},
     ]
+    assert set(_branch(schema, "write")["properties"]["arguments"]["properties"]) == {
+        "sql",
+        "file",
+        "show_secrets",
+    }
     assert _branch(schema, "schema")["properties"]["arguments"]["required"] == [
         "table_name"
     ]
@@ -185,6 +198,28 @@ def test_database_operation_rejects_invalid_nested_arguments_before_script() -> 
             )
 
     runner.assert_not_called()
+
+
+def test_database_operation_forwards_show_secrets_only_when_requested() -> None:
+    """
+    数据库工具应把凭据表开关原样传给固定脚本，默认关闭并拒绝非布尔取值。
+    """
+    tool = DatabaseOperationTool(session_id="session", user_id="api_user")
+    completed = SimpleNamespace(returncode=0, stdout='{"rows": [], "row_count": 0}', stderr="")
+    with patch(
+        "app.agent.tools.impl.service.subprocess.run",
+        return_value=completed,
+    ) as runner:
+        asyncio.run(tool.run(action="query", arguments={"sql": "SELECT 1", "show_secrets": True}))
+        assert "--show-secrets" in runner.call_args.args[0]
+
+        asyncio.run(tool.run(action="write", arguments={"sql": "UPDATE subscribe SET name = 'x'"}))
+        assert "--show-secrets" not in runner.call_args.args[0]
+
+        with pytest.raises(ValueError, match="show_secrets"):
+            asyncio.run(
+                tool.run(action="query", arguments={"sql": "SELECT 1", "show_secrets": "true"})
+            )
 
 
 def test_service_operation_tool_calls_fixed_script_once() -> None:
