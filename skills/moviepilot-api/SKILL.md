@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 67
+version: 68
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -302,6 +302,12 @@ Call the gateway with this shape:
 ```
 
 ### Common read and download contracts
+
+`search.recommend` with `check_only=true` reads current status without loading search results.
+Disabled recommendations return `disabled` immediately. `force=true` takes precedence over
+the read-only flag and loads candidates to start a new task.
+The browser endpoints `/media/status` and `/subscribe/calendar` are outside the Agent
+operation catalog; do not invent gateway calls for them.
 
 Select the operation for the task first, then send only fields declared by that operation. Common verification contracts are:
 

@@ -9,11 +9,11 @@
 **表示规则**而非领域策略——真正的策略（按配置选来源、判音乐实体类型）仍留在
 app/domain/media.py。放在这里，持久化层就不必为了一条表示规则去依赖领域层。
 """
-from typing import TYPE_CHECKING, Any, Optional, Self, Tuple, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Self, Tuple, Union
 
-from pydantic import model_validator
+from pydantic import BaseModel, Field, model_validator
 
-from app.schemas.types import MediaSource
+from app.schemas.types import MediaSource, MediaType
 
 MEDIA_SOURCE_ALIASES = {
     "tmdb": MediaSource.TMDB,
@@ -228,6 +228,32 @@ class OptionalMediaIdentityMixin:
         # 校验器内部的规范化不能伪装成请求显式提交字段，否则 PATCH 会误清空存量身份。
         object.__setattr__(self, "media_id", normalized_id)
         return self
+
+
+class MediaStatusQuery(OptionalMediaIdentityMixin, BaseModel):
+    """
+    卡片状态查询身份，只使用本地媒体库与当前用户订阅，不调用外部媒体服务。
+    """
+
+    media_source: Optional[MediaSource] = Field(default=None, description="主媒体来源，与 media_id 同时提供")
+    media_id: Optional[str] = Field(default=None, description="来源原生媒体标识")
+    title: Optional[str] = Field(default=None, description="用于历史身份回退的媒体标题")
+    year: Optional[str] = Field(default=None, description="用于精确匹配的发行年份")
+    mtype: Optional[MediaType] = Field(default=None, description="电影、电视剧或音乐")
+    season: Optional[int] = Field(default=None, description="当前展示季，省略时判断任意季")
+    music_type: Optional[str] = Field(default=None, description="音乐实体类型，避免混淆专辑与单曲")
+
+
+class MediaStatusResult(BaseModel):
+    """
+    与输入顺序对应的本地入库、订阅状态和当前媒体各季订阅模式。
+    """
+
+    item_id: Optional[str] = Field(default=None, description="本地媒体库条目标识，未入库时为空")
+    subscribed: bool = Field(default=False, description="当前用户是否订阅了查询媒体及指定季")
+    seasons: dict[int, Literal["normal", "best_version", "best_version_full"]] = Field(
+        default_factory=dict, description="同来源当前剧集的已订阅季及普通、洗版、完整洗版模式"
+    )
 
 
 class RequiredMediaIdentityMixin:

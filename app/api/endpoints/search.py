@@ -817,56 +817,39 @@ async def recommend_search_results(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    AI推荐资源 - 轮询接口
-    前端轮询此接口，发送筛选后的索引（如果有筛选）
-    后端根据请求变化自动取消旧任务并启动新任务
+    启动 AI 推荐或只读查询当前状态，禁用和只读状态无需读取搜索结果缓存。
 
-    参数：
-    - filtered_indices: 筛选后的索引列表（可选，为空或不提供时使用所有结果）
-    - check_only: 仅检查状态（首次打开页面时使用，避免触发不必要的重新推理）
-    - force: 强制重新推荐（清除旧结果并重新启动）
-
-    返回数据结构：
-    {
-        "success": bool,
-        "message": string,   // 错误信息（仅在错误时存在）
-        "data": {
-            "status": string,    // 状态: disabled | idle | running | completed | error
-            "results": array     // 推荐结果（仅status=completed时存在）
-        }
-    }
+    :param filtered_indices: 可选资源索引，省略时推荐当前全部候选
+    :param check_only: 仅读取状态，不启动或取消任务，也不反序列化搜索缓存
+    :param force: 清除旧状态并启动新任务，优先于 check_only
+    :param _: 已验证的访问令牌
+    :return: 推荐状态与已完成结果索引；推荐失败在 message 中返回原因
     """
-    # 从缓存获取上次搜索结果
-    results = await SearchChain().async_last_search_results() or []
+    recommend_chain = SearchChain()
+    # 禁用与只读轮询仅访问推荐状态，不反序列化可能很大的搜索结果缓存。
+    if not recommend_chain.is_ai_recommend_enabled:
+        return _SchemaResponse(success=True, data={"status": "disabled"})
+    if check_only and not force:
+        current_status = recommend_chain.get_current_recommend_status_only()
+        if current_status.get("status") == "error":
+            error_msg = current_status.pop("error", "未知错误")
+            return _SchemaResponse(success=False, message=error_msg, data=current_status)
+        return _SchemaResponse(success=True, data=current_status)
+
+    # 只有真正启动或检查推荐输入变化时才读取候选资源。
+    results = await recommend_chain.async_last_search_results() or []
     if not results:
         return _SchemaResponse(
             success=False, message="没有可用的搜索结果", data={"status": "error"}
         )
 
-    recommend_chain = SearchChain()
-
     # 如果是强制模式，先取消并清除旧结果，然后直接启动新任务
     if force:
-        # 检查功能是否启用
-        if not recommend_chain.is_ai_recommend_enabled:
-            return _SchemaResponse(success=True, data={"status": "disabled"})
         logger.info("收到新推荐请求，清除旧结果并启动新任务")
         recommend_chain.cancel_ai_recommend()
         recommend_chain.start_recommend_task(filtered_indices, len(results), results)
         # 直接返回运行中状态
         return _SchemaResponse(success=True, data={"status": "running"})
-
-    # 如果是仅检查模式，不传递 filtered_indices（避免触发请求变化检测）
-    if check_only:
-        # 返回当前运行状态，不做任何任务启动或取消操作
-        current_status = recommend_chain.get_current_recommend_status_only()
-        # 如果有错误，将错误信息放到message中
-        if current_status.get("status") == "error":
-            error_msg = current_status.pop("error", "未知错误")
-            return _SchemaResponse(
-                success=False, message=error_msg, data=current_status
-            )
-        return _SchemaResponse(success=True, data=current_status)
 
     # 获取当前状态（会检测请求是否变化）
     status_data = recommend_chain.get_recommend_status(filtered_indices, len(results))
