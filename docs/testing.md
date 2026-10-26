@@ -178,6 +178,8 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 时间缺失或无效时等待该规则全长。`tests/test_search_site_throttle.py`、`tests/test_search_scan.py`
 和 `tests/test_subscription_site_budget.py` 覆盖两类限制同时配置、剩余时间、时间异常与共享预算，
 验证短冷却不累计长冷却止损，也不会提前关闭优先站点。
+自动分页未实际发出请求时，共享预算取消完整请求间隔的预约，只保留实际剩余冷却；
+真实成功请求仍保留最小间隔。该收口使用临时 SQLite 验证跨订阅可见的预算时间和租约释放。
 
 全集洗版（`best_version=1`、`best_version_full=1`）的主动搜索始终使用洗版规则组，
 包括尚无下载记录或仍有缺集的订阅；未通过洗版规则的整包不会回落到普通订阅规则组。

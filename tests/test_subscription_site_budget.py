@@ -335,6 +335,40 @@ def test_skipped_search_releases_budget_without_external_interval():
     assert captured["next_allowed_at"] == now.isoformat(timespec="seconds")
 
 
+@pytest.mark.parametrize("outcome, attempted, delay", [
+    ("deferred", False, 6),
+    ("deferred", False, 3601),
+    ("skipped", False, 0),
+    ("success", True, 0),
+])
+def test_request_reservation_preserves_only_actual_request_interval(tmp_path, outcome, attempted, delay):
+    """
+    未发请求时按实际剩余时间释放预约，真实成功请求仍受完整访问间隔约束。
+    """
+    repository, engine = _repository(tmp_path)
+    now = datetime.now(timezone.utc)
+    budget = SubscriptionSiteBudget(
+        repository=repository, owner="scan", cancelled=lambda: False,
+        stop_state=ProcessStopState(), clock=lambda: now,
+    )
+    try:
+        claim = budget.acquire(15, minimum_interval=20)
+        assert claim.acquired
+        assert budget.finish(
+            claim, SiteSearchObservation(attempted=attempted, outcome=outcome),
+            deferral_seconds=delay,
+        )
+        with Session(engine) as session:
+            record = session.execute(select(SiteBudgetRecord).where(SiteBudgetRecord.site_id == 15)).scalar_one()
+            expected = claim.retry_at if attempted else (now + timedelta(seconds=delay)).isoformat(timespec="seconds")
+            assert record.next_allowed_at == expected
+            assert record.last_outcome == outcome
+            assert record.consecutive_failures == 0
+            assert record.lease_token is None
+    finally:
+        engine.dispose()
+
+
 def test_local_rate_limit_defers_site_budget_for_full_window():
     """
     本地流控拒绝必须按站点窗口写入冷却，而不是立即恢复后再次触发限流。
