@@ -246,6 +246,7 @@ def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
     assert not (APP_ROOT / "chain" / "subscribe.py").exists()
     expected_files = {
         "__init__.py",
+        "calendar.py",
         "completion.py",
         "contract.py",
         "context.py",

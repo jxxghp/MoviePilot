@@ -12731,6 +12731,12 @@
               "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
+            "latest_seeding_only": {
+              "default": false,
+              "description": "仅窗口内最新记录返回做种明细，历史统计不变",
+              "title": "Latest Seeding Only",
+              "type": "boolean"
+            },
             "page": {
               "anyOf": [
                 {
@@ -15259,6 +15265,70 @@
           "const": "torrent.cache.get",
           "description": "白名单中的精确操作标识，用于选择对应 oneOf 分支。",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "torrent.cache.get 的筛选和控制参数。查看种子上下文缓存及已识别的媒体身份。仅使用下列已声明字段。",
+          "properties": {
+            "brief": {
+              "default": false,
+              "description": "描述最多返回 200 字符，缓存 hash 仍基于完整原文",
+              "title": "Brief",
+              "type": "boolean"
+            },
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
+              "title": "Page"
+            },
+            "site": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "精确匹配的站点名称",
+              "title": "Site"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "不区分大小写的标题包含条件",
+              "title": "Title"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [

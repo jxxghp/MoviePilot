@@ -177,7 +177,7 @@ Purpose: 读取最近采集的指定站点账号统计。
 Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: `site_id*` (integer): site.list 返回的持久化站点标识。
-- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。; `workdate` (string|null): 读取站点历史用户统计时使用的日期。
+- `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `latest_seeding_only` (boolean; default `False`): 仅窗口内最新记录返回做种明细，历史统计不变; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。; `workdate` (string|null): 读取站点历史用户统计时使用的日期。
 - `body`: none
 
 ### `site.userdata.latest`

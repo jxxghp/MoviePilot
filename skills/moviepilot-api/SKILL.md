@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 66
+version: 67
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
