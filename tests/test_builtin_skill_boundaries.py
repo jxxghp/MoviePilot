@@ -127,7 +127,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
     expected_versions = {
         "browser-use": "4",
         "command-dispatch": "2",
-        "database-operation": "15",
+        "database-operation": "16",
         "feedback-issue": "12",
         "anysearch": "3",
         "moviepilot-api": "65",

@@ -270,6 +270,76 @@ def test_system_settings_secret_read_has_enforced_sensitive_policy() -> None:
     assert policy.subagent_allowed is False
 
 
+def test_database_operation_secret_read_has_enforced_sensitive_policy() -> None:
+    """
+    显式读取凭据配置表只能进入宿主强制确认策略，结果不得写入回执摘要。
+    """
+    policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="database_operation",
+        arguments={
+            "action": "query",
+            "arguments": {
+                "sql": "SELECT value FROM systemconfig",
+                "show_secrets": True,
+            },
+        },
+        requires_admin=True,
+    )
+
+    assert policy.effect is ActionEffect.SENSITIVE_READ
+    assert policy.required_role is PrincipalRole.SYSTEM_ADMIN
+    assert policy.confirmation.value == "required"
+    assert policy.result_sensitivity is ResultSensitivity.SECRET
+    assert policy.migration_state is MigrationState.ENFORCED
+    assert policy.background_allowed is False
+    assert policy.subagent_allowed is False
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"sql": "SELECT 1"},
+        {"sql": "SELECT 1", "show_secrets": False},
+        {"sql": "SELECT 1", "show_secrets": None},
+        {"sql": "SELECT 1", "show_secrets": "true"},
+    ],
+    ids=["plain", "false", "null", "string"],
+)
+def test_database_operation_without_secret_read_keeps_legacy_shadow(arguments) -> None:
+    """
+    未显式请求凭据表读取时数据库工具维持既有 shadow 观测，非布尔取值也不升级。
+    """
+    policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="database_operation",
+        arguments={"action": "query", "arguments": arguments},
+        requires_admin=True,
+    )
+
+    assert policy.migration_state is MigrationState.LEGACY_SHADOW
+    assert policy.effect is ActionEffect.UNKNOWN
+    assert policy.result_sensitivity is ResultSensitivity.UNKNOWN
+
+
+def test_database_operation_secret_write_stays_unclassified() -> None:
+    """
+    凭据表写入保持写入类工具的既有策略，不按敏感读取处理。
+    """
+    policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="database_operation",
+        arguments={
+            "action": "write",
+            "arguments": {
+                "sql": "UPDATE systemconfig SET value = 'x' WHERE id = 1",
+                "show_secrets": True,
+            },
+        },
+        requires_admin=True,
+    )
+
+    assert policy.effect is ActionEffect.UNKNOWN
+    assert policy.migration_state is MigrationState.LEGACY_SHADOW
+
+
 def test_system_settings_secret_read_query_cannot_bypass_confirmation() -> None:
     """
     GET 查询参数不能绕过敏感设置读取的确认策略。

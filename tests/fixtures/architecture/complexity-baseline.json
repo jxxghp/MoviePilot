@@ -21,7 +21,6 @@
       "app/agent/tools/impl/agent_task.py:AgentTaskTool._update_task": 16,
       "app/agent/tools/impl/apply_patch.py:parse_patch": 23,
       "app/agent/tools/impl/browse_webpage.py:BrowseWebpageTool._do_action": 20,
-      "app/agent/tools/impl/service.py:_run_database_script": 20,
       "app/api/endpoints/media.py:_scrape_impl": 16,
       "app/api/endpoints/transfer.py:_execute_manual_transfer": 28,
       "app/api/protocol.py:extract_text_and_images": 19,
