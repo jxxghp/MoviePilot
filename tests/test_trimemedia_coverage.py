@@ -150,3 +150,24 @@ def test_module_image_cookies_returns_none_when_no_instance_owns_image(monkeypat
 
     assert module.mediaserver_image_cookies(image_url="https://other.example/poster.jpg") is None
     server.get_image_cookies.assert_called_once_with("https://other.example/poster.jpg")
+
+
+def test_verify_access_code_failure_log_omits_access_code(monkeypatch):
+    """
+    访问码是校验地址的路径段，连接失败时日志只记录设备根地址。
+
+    :param monkeypatch: 隔离 HTTP 会话与日志输出
+    """
+    api = trimemedia_api.Api(
+        host="https://trimemedia.example/v",
+        apikey="apikey",
+        access_code="device-access-code",
+    )
+    logs = Mock()
+    monkeypatch.setattr(trimemedia_api, "logger", logs)
+    monkeypatch.setattr(api._request_utils, "get_res", lambda *_args, **_kwargs: None)
+
+    assert api.verify_access_code() is False
+    message = logs.error.call_args[0][0]
+    assert "device-access-code" not in message
+    assert "https://trimemedia.example" in message

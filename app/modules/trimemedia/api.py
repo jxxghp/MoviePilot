@@ -285,7 +285,8 @@ class Api:
         url = f"{root}/c/{quote(self._access_code, safe='')}"
         res = self._request_utils.get_res(url, allow_redirects=True)
         if res is None:
-            logger.error(f"校验飞牛访问码失败，无法访问 {url}")
+            # 访问码是 URL 路径段而非查询参数，整串进日志等于泄露凭据
+            logger.error(f"校验飞牛访问码失败，无法访问 {root}")
             return False
         if res.status_code == 404:
             # 访问码错误或校验失败时返回404
