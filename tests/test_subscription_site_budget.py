@@ -335,6 +335,40 @@ def test_skipped_search_releases_budget_without_external_interval():
     assert captured["next_allowed_at"] == now.isoformat(timespec="seconds")
 
 
+@pytest.mark.parametrize("outcome, attempted, delay", [
+    ("deferred", False, 6),
+    ("deferred", False, 3601),
+    ("skipped", False, 0),
+    ("success", True, 0),
+])
+def test_request_reservation_preserves_only_actual_request_interval(tmp_path, outcome, attempted, delay):
+    """
+    未发请求时按实际剩余时间释放预约，真实成功请求仍受完整访问间隔约束。
+    """
+    repository, engine = _repository(tmp_path)
+    now = datetime.now(timezone.utc)
+    budget = SubscriptionSiteBudget(
+        repository=repository, owner="scan", cancelled=lambda: False,
+        stop_state=ProcessStopState(), clock=lambda: now,
+    )
+    try:
+        claim = budget.acquire(15, minimum_interval=20)
+        assert claim.acquired
+        assert budget.finish(
+            claim, SiteSearchObservation(attempted=attempted, outcome=outcome),
+            deferral_seconds=delay,
+        )
+        with Session(engine) as session:
+            record = session.execute(select(SiteBudgetRecord).where(SiteBudgetRecord.site_id == 15)).scalar_one()
+            expected = claim.retry_at if attempted else (now + timedelta(seconds=delay)).isoformat(timespec="seconds")
+            assert record.next_allowed_at == expected
+            assert record.last_outcome == outcome
+            assert record.consecutive_failures == 0
+            assert record.lease_token is None
+    finally:
+        engine.dispose()
+
+
 def test_local_rate_limit_defers_site_budget_for_full_window():
     """
     本地流控拒绝必须按站点窗口写入冷却，而不是立即恢复后再次触发限流。
@@ -525,10 +559,18 @@ def test_search_provider_releases_successful_site_budget():
     assert not chain.consume_subscription_site_budget_failures()
 
 
-def test_search_provider_defers_budget_for_local_rate_limit_window():
+@pytest.mark.parametrize("reason, seconds", [
+    ("访问间隔不得小于 20 秒", 21),
+    ("3600 秒内访问次数不得超过 25 次", 3601),
+    ("未知限制", 3601),
+])
+def test_search_provider_defers_budget_for_local_rate_limit_window(monkeypatch, reason, seconds):
     """
-    同步 provider 遇到本地流控拒绝时同样按站点窗口写入冷却，且不算站点失败。
+    同步 provider 按实际限流原因持久化冷却，短间隔不扩大为小时窗口，且不算站点失败。
     """
+    from app.chain.search import provider
+
+    monkeypatch.setattr(provider, "_wait_for_site_request", lambda _site: None)
     captured = {}
 
     class _Repository(_WaitingRepository):
@@ -569,7 +611,7 @@ def test_search_provider_defers_budget_for_local_rate_limit_window():
         """
         模拟索引器被本地流控拒绝，未发出任何请求。
         """
-        report_site_search_outcome(attempted=False, outcome="deferred", error="触发流控规则")
+        report_site_search_outcome(attempted=False, outcome="deferred", error=f"触发流控规则，{reason}")
         return []
 
     chain.search_site_torrents = search_site_torrents
@@ -585,8 +627,9 @@ def test_search_provider_defers_budget_for_local_rate_limit_window():
 
     assert result == []
     assert captured["outcome"] == "deferred"
-    assert captured["error"] == "触发流控规则"
-    assert datetime.fromisoformat(captured["next_allowed_at"]) >= before + timedelta(seconds=3600)
+    assert captured["error"] == f"触发流控规则，{reason}"
+    delay = (datetime.fromisoformat(captured["next_allowed_at"]) - before).total_seconds()
+    assert seconds - 1 < delay <= seconds
     assert chain.consume_subscription_site_budget_failures() == ()
 
 

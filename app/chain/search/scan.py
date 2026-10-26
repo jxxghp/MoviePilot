@@ -180,8 +180,8 @@ class SearchSources:
                 if self.activity:
                     self.activity.site(int(query["site"]), name=str(site.get("name") or ""), candidates=len(items), status=observation.outcome, attempted=observation.attempted)
                 if observation.outcome == "deferred":
-                    # 本地流控未发出请求，按站点窗口退避，避免在限流窗口内以秒级间隔反复重试。
-                    deferral_seconds = _site_rate_limit_backoff(site) or float(AUTOMATIC_REQUEST_INTERVAL)
+                    # 本地流控未发出请求，只按实际受限规则退避，不能把短间隔扩大为小时计数窗口。
+                    deferral_seconds = _site_rate_limit_backoff(site, observation.error) or float(AUTOMATIC_REQUEST_INTERVAL)
                     retry_at = (datetime.now(timezone.utc) + timedelta(seconds=deferral_seconds)).isoformat(timespec="seconds")
                     return ScanPage(items, observation, retry_at, "cooldown")
                 if claim and budget:

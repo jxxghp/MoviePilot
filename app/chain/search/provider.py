@@ -89,9 +89,16 @@ def _site_request_interval(site: SiteIndexer) -> float:
         return 0.0
 
 
-def _site_rate_limit_backoff(site: SiteIndexer) -> float:
+def _site_rate_limit_backoff(site: SiteIndexer, error: Optional[str] = None) -> float:
     """
-    本地流控拒绝后的退避秒数：覆盖访问间隔与计数窗口，并留 1 秒越过窗口的严格比较边界。
+    按实际流控规则计算剩余等待时间，未知原因沿用完整配置窗口。
+
+    资源包现有接口只返回状态和说明；使用说明中的拒绝原因与本机上次访问时间，
+    不读取限流器私有状态。保留 1 秒余量，跨过秒精度时间和计数窗口的严格比较边界。
+
+    :param site: 本次搜索使用的站点流控配置
+    :param error: 资源包返回的本地流控说明；缺失或无法识别时保守等待完整窗口
+    :return: 允许重试前的秒数；没有有效流控配置时返回 0
     """
     interval = _site_request_interval(site)
     window = 0.0
@@ -100,9 +107,23 @@ def _site_rate_limit_backoff(site: SiteIndexer) -> float:
             window = max(0.0, float(site.get("limit_interval") or 0))
         except (TypeError, ValueError):
             window = 0.0
-    wait = max(interval, window)
-    # 计数窗口按 `current - last > interval` 清零，等于窗口时长时仍可能被拒，所以多等 1 秒。
-    return wait + 1.0 if wait > 0 else 0.0
+    message = error or ""
+    if "访问间隔不得小于" in message:
+        wait = interval
+    elif "访问次数不得超过" in message:
+        wait = window
+    else:
+        wait = max(interval, window)
+        return wait + 1.0 if wait > 0 else 0.0
+    if wait <= 0:
+        return 0.0
+    try:
+        # 资源包通过 localtime 输出该时间，按同一进程的本地时区解析，避免重复等待已经过去的时间。
+        last_visit = datetime.strptime(message.partition("上次访问时间：")[2].strip(), "%Y-%m-%d %H:%M:%S")
+        elapsed = max(0.0, time.time() - last_visit.timestamp())
+    except (ValueError, OverflowError, OSError):
+        elapsed = 0.0
+    return max(0.0, wait - elapsed) + 1.0
 
 
 def _reserve_site_request(site: SiteIndexer) -> float:
@@ -325,7 +346,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         observation: SiteSearchObservation,
     ) -> float:
         """
-        记录一次已返回站点页的候选与限流事实，返回本地流控需要的窗口退避秒数。
+        记录一次已返回站点页的候选与限流事实，返回实际触发规则的剩余退避秒数。
         """
         activity = current_activity_run()
         if activity:
@@ -341,8 +362,8 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 self.record_subscription_site_budget_failure(message)
                 logger.warning(message)
         elif observation.outcome == "deferred":
-            # 本地流控未发出请求，按站点窗口写入冷却，避免其它订阅继续触发限流。
-            return _site_rate_limit_backoff(site)
+            # 本地流控未发出请求，只等待实际受限规则，避免短间隔误占整个计数窗口。
+            return _site_rate_limit_backoff(site, observation.error)
         return 0.0
 
     def _search_site_torrents_with_budget(

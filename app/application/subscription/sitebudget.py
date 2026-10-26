@@ -272,7 +272,7 @@ class SubscriptionSiteBudget:
         self._metrics = metrics
         self._outcome_lock = threading.Lock()
         self._successful_site_ids: set[int] = set()
-        # 带最小请求间隔认领的租约；释放时下次允许时间不早于认领时预留的开始间隔。
+        # 带最小请求间隔认领的租约；只有实际发出请求，释放后才保留预留的开始间隔。
         self._paced_leases: set[str] = set()
 
     def acquire(self, site_id: int, *, minimum_interval: float = 0) -> SiteBudgetClaim:
@@ -341,13 +341,13 @@ class SubscriptionSiteBudget:
     def finish(self, claim: SiteBudgetClaim, observation: SiteSearchObservation,
                *, deferral_seconds: float = 0) -> bool:
         """
-        正常结果立即释放站点，错误结果按类别写入冷却，本地流控按站点窗口退避。
+        释放站点租约，真实请求保留最小间隔或错误退避，本地拒绝只等待实际剩余流控时间。
         """
         if not claim.lease_token:
             self.record_release_failure()
             return False
         if observation.outcome == "deferred":
-            # 本地限流没有发出请求，不累计失败；只按站点窗口写入冷却供其它订阅共享退避。
+            # 本地限流没有发出请求，不累计失败；只写入实际剩余冷却供其它订阅共享退避。
             outcome = "deferred"
             delay = max(0.0, deferral_seconds)
         else:
@@ -357,7 +357,7 @@ class SubscriptionSiteBudget:
         with self._outcome_lock:
             paced = claim.lease_token in self._paced_leases
             self._paced_leases.discard(claim.lease_token)
-        if paced and claim.retry_at:
+        if paced and claim.retry_at and observation.attempted:
             next_allowed_at = max(next_allowed_at, claim.retry_at)
         released = self._repository.finish_site(
             site_id=claim.site_id,
