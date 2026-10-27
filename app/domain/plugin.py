@@ -7,11 +7,13 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
+
+from app.foundation.url import UrlUtils
 
 LOCAL_PLUGIN_SOURCE_PREFIX = "local://"
 PLUGIN_SYSTEM_VERSION_FIELD = "system_version"
@@ -21,6 +23,22 @@ _PHYSICAL_PLUGIN_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 PLUGIN_GENERATION_COMPATIBILITY: dict[str, tuple[str, ...]] = {
     "v3": ("v2",),
 }
+# 与插件索引中的链接字段共用长度边界，文档仅作为浏览器外链使用。
+PLUGIN_DOCUMENTATION_URL_MAX_LENGTH = 2048
+
+
+def normalize_plugin_documentation_url(value: object) -> Optional[str]:
+    """
+    保留有效的 HTTP(S) 文档外链，忽略超长地址、凭据与非链接输入。
+
+    :param value: 插件作者声明的文档地址
+    :return: 可展示的外链；不符合约定时返回 None，不影响插件目录加载
+    """
+    url = UrlUtils.normalize_http_url(value)
+    if url is None or len(url) > PLUGIN_DOCUMENTATION_URL_MAX_LENGTH:
+        return None
+    parsed = urlsplit(url)
+    return None if parsed.username or parsed.password else url
 
 
 def normalize_plugin_market_repo_url(repo_url: str) -> str | None:

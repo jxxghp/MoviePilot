@@ -363,6 +363,7 @@ SCHEMA_EXPORTS = {
     'PluginDataKeySummary': ('app.schemas.plugin', 'PluginDataKeySummary'),
     'PluginDataResetEventData': ('app.schemas.event', 'PluginDataResetEventData'),
     'PluginDataSummary': ('app.schemas.plugin', 'PluginDataSummary'),
+    'PluginDocumentation': ('app.schemas.plugin', 'PluginDocumentation'),
     'PluginFolderConfigData': ('app.schemas.plugin', 'PluginFolderConfigData'),
     'PluginFolderPluginsUpdateRequest': ('app.schemas.plugin', 'PluginFolderPluginsUpdateRequest'),
     'PluginFolderUpdateRequest': ('app.schemas.plugin', 'PluginFolderUpdateRequest'),

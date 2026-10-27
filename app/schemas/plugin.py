@@ -14,6 +14,7 @@ from pydantic import PrivateAttr as _PrivateAttr
 from pydantic import computed_field as _computed_field
 
 from app.domain.plugin import is_physical_plugin_id as _is_physical_plugin_id
+from app.domain.plugin import normalize_plugin_documentation_url as _normalize_plugin_documentation_url
 from app.schemas.common import JsonData
 
 
@@ -217,6 +218,7 @@ class Plugin(BaseModel):
     plugin_label: Optional[str] = Field(default=None, description="插件标签")
     plugin_author: Optional[str] = Field(default=None, description="插件作者")
     author_url: Optional[str] = Field(default=None, description="作者主页")
+    plugin_readme: Optional[str] = Field(default=None, description="插件使用说明的 HTTP(S) 外链；未声明时为空")
     plugin_config_prefix: Optional[str] = Field(default=None, description="插件配置项ID前缀")
     plugin_order: Optional[int] = Field(default=0, description="加载顺序")
     auth_level: Optional[int] = Field(default=0, description="可使用的用户级别")
@@ -252,6 +254,14 @@ class Plugin(BaseModel):
     is_enabled: Optional[bool] = Field(default=True, description="该实例是否应当被实例化并启动；与 state 不同，后者说的是此刻在不在跑")
     log_level_effective: Optional[str] = Field(default=None, description="该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空")
 
+    @field_validator("plugin_readme", mode="before")
+    @classmethod
+    def validate_plugin_readme(cls, value: object) -> Optional[str]:
+        """
+        丢弃不可作为浏览器外链的文档地址，保持存量插件元数据兼容。
+        """
+        return _normalize_plugin_documentation_url(value)
+
     @property
     def package_version(self) -> Optional[str]:
         """
@@ -265,6 +275,14 @@ class Plugin(BaseModel):
         保存插件包代际，但不把它暴露到 API 响应模型。
         """
         self._package_version = value
+
+
+class PluginDocumentation(BaseModel):
+    """
+    插件详情按需查询的使用说明入口，不包含远端文档正文。
+    """
+
+    url: Optional[str] = Field(default=None, description="显式声明或已确认存在的 README 外链；不可用时为空")
 
 
 class PluginRuntimeSummary(BaseModel):

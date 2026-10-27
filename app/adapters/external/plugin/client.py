@@ -62,6 +62,8 @@ PLUGIN_INDEX_MAX_HISTORY_ENTRIES = 512
 PLUGIN_INDEX_MAX_NESTING = 64
 PLUGIN_INDEX_READ_CHUNK_SIZE = 64 * 1024
 PLUGIN_INDEX_REQUEST_TIMEOUT = 15
+# 文档探测只在打开详情时执行，失败结果也缓存五分钟。
+PLUGIN_README_REQUEST_TIMEOUT = 5
 DEFAULT_PLUGIN_INDEX_FETCH_CONCURRENCY = 5
 PLUGIN_INDEX_COMPATIBILITY_FLAG_PATTERN = re.compile(r"^v\d+t?$")
 PLUGIN_INDEX_TEXT_LIMITS = {
@@ -73,6 +75,7 @@ PLUGIN_INDEX_TEXT_LIMITS = {
     "authorUrl": 2048,
     "project_url": 2048,
     "homepage": 2048,
+    "plugin_readme": 2048,
     "repo_url": 2048,
 }
 
@@ -1717,6 +1720,58 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         return await PluginMarketTransport.__async_request_with_fallback(
             url, headers=headers, timeout=timeout, is_api=is_api
         )
+
+    @cached(maxsize=256, ttl=300, skip_none=False, local_only=True)
+    async def async_get_plugin_readme_url(
+        self, pid: str, repo_url: str, package_version: Optional[str]
+    ) -> Optional[str]:
+        """
+        沿用 GitHub 代理策略探测 README，只读取响应头并缓存存在与缺失结果。
+
+        :param pid: 市场索引中的源插件 ID
+        :param repo_url: 已由目录确认的 GitHub 仓库地址
+        :param package_version: 实际候选代际，基础索引使用 None 或空字符串
+        :return: 可在浏览器打开的 README 地址；缺失或短超时后返回 None
+        """
+        normalized_repo = normalize_plugin_market_repo_url(repo_url)
+        if not normalized_repo or not is_physical_plugin_id(pid):
+            return None
+        if package_version and not PLUGIN_INDEX_COMPATIBILITY_FLAG_PATTERN.fullmatch(package_version):
+            return None
+        user, repo = self.get_repo_info(normalized_repo)
+        directory = f"plugins.{package_version}" if package_version and package_version != "v1" else "plugins"
+        path = f"{directory}/{pid.lower()}/README.md"
+        raw_url = f"{self._base_url.format(user=user, repo=repo)}{path}"
+        headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=f"{user}/{repo}")
+        strategies = self._build_github_request_strategies(
+            raw_url, headers=headers, timeout=PLUGIN_README_REQUEST_TIMEOUT,
+        )
+        try:
+            async with asyncio.timeout(PLUGIN_README_REQUEST_TIMEOUT):
+                for _strategy, target_url, options in strategies:
+                    try:
+                        if await self._async_plugin_readme_exists(target_url, options):
+                            return f"{normalized_repo}/blob/main/{path}"
+                    except Exception as error:  # noqa: BLE001
+                        logger.debug(f"探测插件 {pid} README 失败：{_format_request_error(error)}")
+        except TimeoutError:
+            logger.debug(f"探测插件 {pid} README 超时")
+        return None
+
+    @staticmethod
+    async def _async_plugin_readme_exists(url: str, options: PluginRequestOptions) -> bool:
+        """
+        流式检查 README 响应头，拒绝镜像验证页，不下载文档正文。
+
+        :param url: GitHub 原始文件地址或既有配置中的镜像地址
+        :param options: 代理策略提供的鉴权、出口和短超时参数
+        :return: 响应成功且不是 HTML 时为 True；传输异常交由外层降级处理
+        """
+        async with AsyncRequestUtils(**options).get_stream(url=url, raise_exception=True) as response:
+            return bool(
+                response is not None and response.status_code == 200
+                and "text/html" not in response.headers.get("content-type", "").lower()
+            )
 
     async def __async_get_plugin_meta(
         self, pid: str, repo_url: str, package_version: Optional[str]
