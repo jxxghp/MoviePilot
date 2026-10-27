@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9846,
-  "edge_sha256": "07b850a0ae496213cf1d1dbc9355b48e9cda9948f3b6af9cb80d8504dae33445",
+  "edge_count": 9850,
+  "edge_sha256": "4ee56369dee810a01662c3c2f63eb016d57c308836d1e6ca9254ca31f434dc6f",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7073,6 +7073,8 @@
     "app.domain.music -> app.foundation.text",
     "app.domain.music -> app.schemas",
     "app.domain.music -> app.schemas.types",
+    "app.domain.plugin -> app.foundation",
+    "app.domain.plugin -> app.foundation.url",
     "app.domain.projection.anilist -> app.domain",
     "app.domain.projection.anilist -> app.domain.metainfo",
     "app.domain.projection.anilist -> app.domain.projection",
@@ -9236,6 +9238,8 @@
     "app.runtime.extensions.plugin.manager -> app.schemas.exception",
     "app.runtime.extensions.plugin.manager -> app.schemas.plugin",
     "app.runtime.extensions.plugin.manager -> app.schemas.types",
+    "app.runtime.extensions.plugin.metadata -> app.domain",
+    "app.runtime.extensions.plugin.metadata -> app.domain.plugin",
     "app.runtime.extensions.plugin.metadata -> app.runtime",
     "app.runtime.extensions.plugin.metadata -> app.runtime.extensions",
     "app.runtime.extensions.plugin.metadata -> app.runtime.extensions.plugin",

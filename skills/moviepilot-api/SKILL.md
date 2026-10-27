@@ -238,6 +238,11 @@ credential, or enable, rotate, or export widget grants on a user's behalf. Readi
 issue or rotate credentials. See `docs/widgets.md` for the protocol and user scope. System extensions
 must not hold the main login token.
 
+Plugin metadata may include `plugin_readme`, an optional HTTP(S) documentation link.
+The UI resolves missing links through the admin REST endpoint
+`GET /api/v1/plugin/readme/{plugin_id}?repo_url=...`, which returns `url` or null
+without installing the plugin. This endpoint does not add an Agent operation.
+
 For installed plugins with a bound source, `plugin.market` only lists an update
 when that repository has a newer version. A higher version in another repository
 does not trigger `has_update`. Use `plugin.source.options` to inspect alternative

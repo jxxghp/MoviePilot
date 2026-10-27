@@ -105,6 +105,7 @@ class PluginCatalogFacade:
                 plugin_icon=getattr(plugin_class, "plugin_icon", None),
                 plugin_author=getattr(plugin_class, "plugin_author", None),
                 author_url=getattr(plugin_class, "author_url", None),
+                plugin_readme=getattr(plugin_class, "plugin_readme", None),
                 plugin_order=getattr(plugin_class, "plugin_order", 0),
                 has_update=False,
                 is_local=True,

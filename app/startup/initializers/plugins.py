@@ -612,6 +612,7 @@ def configure_plugin_services() -> None:
             process_plugins=plugin_manager.process_plugins_list,
             identities=persistence.list_identities,
             free_threaded=is_free_threaded_runtime,
+            readme_url=market_transport.async_get_plugin_readme_url,
         )
     )
     configure_plugin_rating_service(

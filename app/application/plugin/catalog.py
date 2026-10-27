@@ -21,6 +21,7 @@ from app.application.plugin.inventory import normalize_github_plugin_source
 from app.domain.plugin import check_plugin_runtime_compatibility
 from app.schemas.plugin import (
     Plugin,
+    PluginDocumentation,
     PluginSourceBindingStatus,
     PluginUpdateCandidate,
 )
@@ -526,6 +527,7 @@ class PluginCatalogQuery:
         process_plugins: Callable[[list[Plugin], list[Plugin]], list[Plugin]],
         identities: Callable[[list[str]], Awaitable[list[PluginIdentity]]],
         free_threaded: Callable[[], bool],
+        readme_url: Optional[Callable[[str, str, Optional[str]], Awaitable[Optional[str]]]] = None,
     ) -> None:
         """
         保存运行态目录、来源身份读取和解释器变体判定窄端口。
@@ -537,6 +539,37 @@ class PluginCatalogQuery:
         self._process_plugins = process_plugins
         self._identities = identities
         self._free_threaded = free_threaded
+        self._readme_url = readme_url
+
+    async def documentation(self, plugin_id: str, repo_url: str) -> PluginDocumentation:
+        """
+        为所选市场来源返回显式说明链接，缺省时按候选的真实代际探测 README。
+
+        :param plugin_id: 源插件 ID，不要求已安装
+        :param repo_url: 用户当前查看或选择安装的仓库；本地来源只使用显式链接
+        :return: 文档入口；不在目录中的来源、缺失文档均返回空入口
+        """
+        candidates = (
+            self._local_repo_plugins()
+            if repo_url.startswith("local://")
+            else await self._online_candidates(False)
+        )
+        matches = [
+            plugin for plugin in candidates
+            if (plugin.id or "").lower() == plugin_id.lower()
+            and (plugin.repo_url or "").rstrip("/").lower() == repo_url.rstrip("/").lower()
+        ]
+        # 同一仓库可能同时提供多代索引，沿用市场卡片的版本与代际选择规则。
+        candidate = next(iter(self._process_plugins(matches, [])), None)
+        if candidate is None:
+            return PluginDocumentation()
+        if candidate.plugin_readme:
+            return PluginDocumentation(url=candidate.plugin_readme)
+        if self._readme_url is None or repo_url.startswith("local://"):
+            return PluginDocumentation()
+        return PluginDocumentation(
+            url=await self._readme_url(candidate.id or plugin_id, candidate.repo_url or repo_url, candidate.package_version),
+        )
 
     async def query(
         self, *, state: str = "all", force: bool = False

@@ -67,6 +67,7 @@ from app.schemas.plugin import PluginAgentPet as _SchemaPluginAgentPet
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
 from app.schemas.plugin import PluginDataSummary as _SchemaPluginDataSummary
+from app.schemas.plugin import PluginDocumentation as _SchemaPluginDocumentation
 from app.schemas.plugin import PluginInstallOutcome as _SchemaPluginInstallOutcome
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
 from app.schemas.plugin import PluginRatingMap as _SchemaPluginRatingMap
@@ -280,6 +281,22 @@ async def runtime_status(
             if plugin_id.lower() in installed_plugin_ids
         ],
     )
+
+
+@router.get("/readme/{plugin_id}", summary="获取插件使用说明入口", response_model=_SchemaPluginDocumentation)
+async def plugin_readme(
+    plugin_id: str,
+    repo_url: str = Query(max_length=2048, description="当前查看的插件仓库地址"),
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> _SchemaPluginDocumentation:
+    """
+    按需查询安装前可用的说明链接，文档缺失时返回空入口。
+
+    :param plugin_id: 市场源插件 ID
+    :param repo_url: 当前详情或安装来源的仓库地址
+    :return: 显式文档或已探测 README 的外链
+    """
+    return await get_plugin_catalog_query().documentation(plugin_id, repo_url)
 
 
 @router.get("/history/{plugin_id}", summary="获取插件更新说明", response_model=_SchemaPlugin)

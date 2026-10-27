@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Optional
 
+from app.domain.plugin import normalize_plugin_documentation_url
 from app.runtime.extensions.plugin.contracts import supports_plugin_hook
 from app.schemas.plugin import Plugin
 
@@ -99,6 +100,13 @@ class PluginMetadataMapper:
         plugin.plugin_icon = info.get("icon")
         plugin.plugin_label = self.normalize_label(info.get("labels"))
         plugin.plugin_author = info.get("author")
+        plugin.plugin_readme = next(
+            (
+                url for key in ("plugin_readme", "homepage", "project_url")
+                if (url := normalize_plugin_documentation_url(info.get(key)))
+            ),
+            None,
+        )
         plugin.history = info.get("history") or {}
         plugin.release = bool(info.get("release"))
         plugin.repo_url = market

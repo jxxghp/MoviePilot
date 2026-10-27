@@ -4,6 +4,14 @@
 
 **最短调用路径：**配置连接与密钥 → `initialize` → `notifications/initialized` → `tools/list` → `tools/call`。已有 MCP 客户端通常会自动完成初始化和工具发现，只需配置下表中的连接信息。
 
+### 插件安装前说明入口
+
+插件目录的可选 `plugin_readme` 提供 HTTP(S) 文档外链，兼容索引中的 `homepage` 和 `project_url`。
+详情界面通过管理员接口 `GET /api/v1/plugin/readme/{plugin_id}?repo_url=...` 查询当前来源，
+返回 `{"url":"https://..."}`；链接未声明时按所选候选的实际代际探测 GitHub README，
+缺失或超时返回 `{"url":null}`，不要求先安装插件。本地来源只返回显式声明的链接。
+探测总时限为五秒，结果缓存五分钟；接口不返回文档正文，也不新增 Agent operation。
+
 ### 订阅下载的提交来源
 
 新产生的订阅下载在订阅活动和日志中区分“首次订阅”“洗版升级”或“全集洗版”。
