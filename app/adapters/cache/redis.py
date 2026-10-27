@@ -15,6 +15,7 @@ from redis.asyncio import BlockingConnectionPool as AsyncBlockingConnectionPool
 from redis.asyncio import Redis
 
 from app.foundation.singleton import Singleton
+from app.foundation.url import mask_url_credentials
 from app.runtime.cache import DEFAULT_CACHE_REGION, AsyncCacheBackend, AtomicCacheBackend
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
@@ -30,6 +31,24 @@ _socket_timeout = 30
 _socket_connect_timeout = 5
 # 空闲连接重新使用前的健康检查间隔，单位为秒
 _health_check_interval = 60
+
+
+def _mask_cache_key(key: Union[str, bytes], *, encoded: bool = False) -> str:
+    """
+    生成只用于日志的缓存键文本，遮盖键中 URL 形态的凭据。
+
+    第三方请求封装会把带 api_key 的完整请求地址当作缓存键，Redis 抖动时原样记录就等于
+    把凭据写进日志。缓存读写仍然使用原始键，只有日志经过遮盖，主机、路径与非凭据参数
+    保持原样以便定位。
+
+    :param key: 区域内的原始缓存键，允许是尚未解码的字节串
+    :param encoded: 输入是否为 ``__make_redis_key`` 生成的 URL 编码键；为 True 时先解码再遮盖
+    :return: 凭据值替换为占位符后的键文本
+    """
+    text = key.decode("utf-8", errors="replace") if isinstance(key, bytes) else str(key)
+    if encoded:
+        text = unquote(text)
+    return mask_url_credentials(text)
 
 
 def serialize(value: Any) -> bytes:
@@ -206,7 +225,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
             parts = redis_key.split(":key:")
             return unquote(parts[-1])
         except Exception as e:
-            logger.warn("解析 Redis 缓存键失败：%r，错误：%s", redis_key, e)
+            logger.warn("解析 Redis 缓存键失败：%s，错误：%s", _mask_cache_key(redis_key, encoded=True), e)
             return redis_key.decode("utf-8", errors="replace") if isinstance(redis_key, bytes) else redis_key
 
     def set(self, key: str, value: Any, ttl: Optional[int] = None,
@@ -223,7 +242,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         try:
             self.store(key=key, value=value, ttl=ttl, region=region, **kwargs)
         except Exception as e:
-            logger.error(f"Failed to set key: {key} in region: {region}, error: {e}")
+            logger.error(f"Failed to set key: {_mask_cache_key(key)} in region: {region}, error: {e}")
 
     def store(self, key: str, value: Any, ttl: Optional[int] = None,
               region: Optional[str] = "DEFAULT", **kwargs: Any) -> None:
@@ -258,7 +277,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
             redis_key = self.__make_redis_key(region, key)
             return bool(client.exists(redis_key) == 1)
         except Exception as e:
-            logger.error(f"Failed to exists key: {key} region: {region}, error: {e}")
+            logger.error(f"Failed to exists key: {_mask_cache_key(key)} region: {region}, error: {e}")
             return False
 
     def get(self, key: str, region: Optional[str] = "DEFAULT") -> Optional[Any]:
@@ -277,7 +296,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
                 return deserialize(value)
             return None
         except Exception as e:
-            logger.error(f"Failed to get key: {key} in region: {region}, error: {e}")
+            logger.error(f"Failed to get key: {_mask_cache_key(key)} in region: {region}, error: {e}")
             return None
 
     def pop(self, key: str, region: Optional[str] = "DEFAULT") -> Optional[Any]:
@@ -323,7 +342,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
             redis_key = self.__make_redis_key(region, key)
             client.delete(redis_key)
         except Exception as e:
-            logger.error(f"Failed to delete key: {key} in region: {region}, error: {e}")
+            logger.error(f"Failed to delete key: {_mask_cache_key(key)} in region: {region}, error: {e}")
 
     def clear(self, region: Optional[str] = None) -> None:
         """
@@ -597,7 +616,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             parts = redis_key.split(":key:")
             return unquote(parts[-1])
         except Exception as e:
-            logger.warn("解析 Redis 缓存键失败：%r，错误：%s", redis_key, e)
+            logger.warn("解析 Redis 缓存键失败：%s，错误：%s", _mask_cache_key(redis_key, encoded=True), e)
             return redis_key.decode("utf-8", errors="replace") if isinstance(redis_key, bytes) else redis_key
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None,
@@ -619,7 +638,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             kwargs.pop("maxsize", None)
             await client.set(redis_key, serialized_value, ex=ttl, **kwargs)
         except Exception as e:
-            logger.error(f"Failed to set key (async): {key} in region: {region}, error: {e}")
+            logger.error(f"Failed to set key (async): {_mask_cache_key(key)} in region: {region}, error: {e}")
 
     async def exists(self, key: str, region: Optional[str] = "DEFAULT") -> bool:
         """
@@ -636,7 +655,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             result = await client.exists(redis_key)
             return bool(result == 1)
         except Exception as e:
-            logger.error(f"Failed to exists key (async): {key} region: {region}, error: {e}")
+            logger.error(f"Failed to exists key (async): {_mask_cache_key(key)} region: {region}, error: {e}")
             return False
 
     async def get(self, key: str, region: Optional[str] = "DEFAULT") -> Optional[Any]:
@@ -656,7 +675,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
                 return deserialize(value)
             return None
         except Exception as e:
-            logger.error(f"Failed to get key (async): {key} in region: {region}, error: {e}")
+            logger.error(f"Failed to get key (async): {_mask_cache_key(key)} in region: {region}, error: {e}")
             return None
 
     async def delete(self, key: str, region: Optional[str] = "DEFAULT") -> None:
@@ -672,7 +691,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
             redis_key = self.__make_redis_key(region, key)
             await client.delete(redis_key)
         except Exception as e:
-            logger.error(f"Failed to delete key (async): {key} in region: {region}, error: {e}")
+            logger.error(f"Failed to delete key (async): {_mask_cache_key(key)} in region: {region}, error: {e}")
 
     async def clear(self, region: Optional[str] = None) -> None:
         """

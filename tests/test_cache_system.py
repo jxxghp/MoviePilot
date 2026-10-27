@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.adapters.cache import redis as redis_module
 from app.adapters.cache.backends import AsyncFileBackend, FileBackend
 from app.adapters.cache.redis import (
     AsyncRedisBackend,
@@ -1148,3 +1149,122 @@ def test_file_backend_items_skip_directories(tmp_path):
     (tmp_path / "region" / "empty_dir").mkdir()
 
     assert list(cache.items(region="region")) == [("nested/value", b"value")]
+
+
+# 第三方请求封装把带凭据的完整请求地址当作缓存键，这里用假值代表真实键形态
+CREDENTIAL_CACHE_KEY = (
+    "request_('GET', 'https://api.example.com/3/person/25673"
+    "?api_key=SUPERSECRET&append_to_response=videos&language=zh', None, None)"
+)
+
+
+@pytest.fixture
+def redis_failure_logs(monkeypatch):
+    """
+    收集 Redis 后端故障日志，避免用例把错误打到真实日志。
+
+    :return: 收集到的错误与告警日志文本列表
+    """
+    logs: list[str] = []
+    monkeypatch.setattr(redis_module.logger, "error", logs.append)
+    monkeypatch.setattr(redis_module.logger, "warn", logs.append)
+    return logs
+
+
+def _failing_sync_client():
+    """
+    构造各命令都抛出连接错误的同步 Redis 客户端替身。
+
+    :return: set/exists/get/delete 均失败的 MagicMock 客户端
+    """
+    client = MagicMock()
+    error = ConnectionError("(104, 'Connection reset by peer')")
+    for command in ("set", "exists", "get", "delete"):
+        getattr(client, command).side_effect = error
+    return client
+
+
+class _FailingAsyncClient:
+    """
+    所有命令都抛出连接错误的异步 Redis 客户端替身。
+    """
+
+    async def _fail(self, *_args, **_kwargs):
+        """
+        模拟 Redis 命令在读写阶段失败。
+        """
+        raise ConnectionError("(104, 'Connection reset by peer')")
+
+    set = _fail
+    exists = _fail
+    get = _fail
+    delete = _fail
+
+
+def test_redis_helper_failure_logs_mask_cache_key_credentials(monkeypatch, redis_failure_logs):
+    """
+    缓存键携带请求凭据时，Redis 故障日志不得输出凭据原文，并保留可定位的键结构。
+    """
+    helper = RedisHelper()
+    monkeypatch.setattr(helper, "client", None)
+    monkeypatch.setattr(helper, "_connect", lambda: _failing_sync_client())
+
+    helper.set(CREDENTIAL_CACHE_KEY, {"result": 1}, region="TMDb:request")
+    assert helper.get(CREDENTIAL_CACHE_KEY, region="TMDb:request") is None
+    assert helper.exists(CREDENTIAL_CACHE_KEY, region="TMDb:request") is False
+    helper.delete(CREDENTIAL_CACHE_KEY, region="TMDb:request")
+
+    assert len(redis_failure_logs) == 4
+    for message in redis_failure_logs:
+        assert "SUPERSECRET" not in message
+        assert "api_key=<REDACTED>" in message
+        assert "3/person/25673" in message
+        assert "language=zh" in message
+
+
+def test_async_redis_helper_failure_logs_mask_cache_key_credentials(monkeypatch, redis_failure_logs):
+    """
+    异步后端与同步后端必须采用同样的日志脱敏语义。
+    """
+    helper = AsyncRedisHelper()
+
+    async def _fake_connect():
+        """
+        返回命令必然失败的异步客户端替身。
+        """
+        return _FailingAsyncClient()
+
+    monkeypatch.setattr(helper, "client", None)
+    monkeypatch.setattr(helper, "_connect", _fake_connect)
+
+    async def exercise():
+        """
+        依次触发异步后端的写入、读取、存在性判断与删除故障。
+        """
+        await helper.set(CREDENTIAL_CACHE_KEY, {"result": 1}, region="TMDb:request")
+        assert await helper.get(CREDENTIAL_CACHE_KEY, region="TMDb:request") is None
+        assert await helper.exists(CREDENTIAL_CACHE_KEY, region="TMDb:request") is False
+        await helper.delete(CREDENTIAL_CACHE_KEY, region="TMDb:request")
+
+    asyncio.run(exercise())
+
+    assert len(redis_failure_logs) == 4
+    for message in redis_failure_logs:
+        assert "SUPERSECRET" not in message
+        assert "api_key=<REDACTED>" in message
+        assert "language=zh" in message
+
+
+def test_mask_cache_key_masks_encoded_redis_keys_and_bytes():
+    """
+    日志脱敏对 URL 编码后的 Redis 键与字节键同样生效。
+    """
+    redis_key = f"region:TMDb:request:key:{redis_module.quote(CREDENTIAL_CACHE_KEY)}"
+
+    masked = redis_module._mask_cache_key(redis_key, encoded=True)
+
+    assert "SUPERSECRET" not in masked
+    assert "api_key=<REDACTED>" in masked
+    assert redis_module._mask_cache_key(b"region:poster:key:nested/value") == (
+        "region:poster:key:nested/value"
+    )

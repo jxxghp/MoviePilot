@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9845,
-  "edge_sha256": "99374b39d7fc2d92d7bb86130dcaf3acced6fc093286c272cb7b3b2139e00d55",
+  "edge_count": 9846,
+  "edge_sha256": "07b850a0ae496213cf1d1dbc9355b48e9cda9948f3b6af9cb80d8504dae33445",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -972,6 +972,7 @@
     "app.adapters.cache.backends -> app.runtime.settings",
     "app.adapters.cache.redis -> app.foundation",
     "app.adapters.cache.redis -> app.foundation.singleton",
+    "app.adapters.cache.redis -> app.foundation.url",
     "app.adapters.cache.redis -> app.runtime",
     "app.adapters.cache.redis -> app.runtime.cache",
     "app.adapters.cache.redis -> app.runtime.log",
