@@ -208,6 +208,7 @@ def _patch_release_install_settings(monkeypatch, tmp_path: Path) -> None:
     values = SimpleNamespace(
         ROOT_PATH=tmp_path,
         REPO_GITHUB_HEADERS=lambda repo=None: {},
+        PLUGIN_RELEASE_TIMEOUT=30,
     )
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.get_runtime_setting",
@@ -218,6 +219,9 @@ def _patch_release_install_settings(monkeypatch, tmp_path: Path) -> None:
     safe_root = tmp_path.resolve()
 
     def guarded_mkdir(path: Path, *args, **kwargs):
+        """
+        拒绝在测试临时目录以外创建插件文件夹。
+        """
         try:
             path.resolve().relative_to(safe_root)
         except ValueError as exc:

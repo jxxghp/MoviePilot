@@ -1213,6 +1213,12 @@
       "source_file": "app/runtime/config.py",
       "source_line": 613
     },
+    "PLUGIN_INSTALL_FROM_RELEASE": {
+      "description": "插件默认优先安装 Release 资产；false 直接安装当前索引文件，显式选择版本不受影响",
+      "group": "plugins",
+      "source_file": "app/runtime/config.py",
+      "source_line": 633
+    },
     "PLUGIN_LOCAL_REPO_PATHS": {
       "description": "本地插件仓库目录，多个地址使用,分隔",
       "group": "plugins",
@@ -1224,6 +1230,12 @@
       "group": "plugins",
       "source_file": "app/runtime/config.py",
       "source_line": 607
+    },
+    "PLUGIN_RELEASE_TIMEOUT": {
+      "description": "插件 Release 元数据和资产各出口的请求超时秒数，默认 30，范围 1 至 300",
+      "group": "plugins",
+      "source_file": "app/runtime/config.py",
+      "source_line": 637
     },
     "PLUGIN_STATISTIC_SHARE": {
       "description": "插件安装数据共享",
