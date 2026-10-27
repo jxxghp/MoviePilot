@@ -322,6 +322,9 @@ class LocalDirectoryWatcher:
             if change_type not in self._HANDLE_CHANGES:
                 continue
             event_path = Path(path_str)
+            # 下载临时文件会持续写入，须在稳定性排队前排除，避免正常下载触发超时告警。
+            if self._is_download_temporary_file(event_path):
+                continue
             event = self._build_event(change_type=change_type, event_path=event_path)
             if not event:
                 # 「文件已消失」与「挂载抖动瞬时不可见」在此刻无法区分，静默丢弃就是
@@ -352,6 +355,19 @@ class LocalDirectoryWatcher:
                 )
             except Exception as err:
                 logger.error(f"处理本地目录监控事件失败: {path_str} - {err}")
+
+    @staticmethod
+    def _is_download_temporary_file(event_path: Path) -> bool:
+        """
+        按当前下载临时后缀配置过滤文件，沿用整理分发器的大小写不敏感匹配。
+
+        :param event_path: 待检查的监控路径
+        :return: 文件后缀是否属于配置的下载临时后缀
+        """
+        return bool(event_path.suffix) and event_path.suffix.casefold() in {
+            extension.casefold()
+            for extension in get_runtime_setting('DOWNLOAD_TMPEXT')
+        }
 
     def _queue_stability_event(self, change_type: Change, event_path: Path,
                                file_size: int) -> None:
@@ -409,6 +425,9 @@ class LocalDirectoryWatcher:
             if not item:
                 continue
             event_path = item["path"]
+            # 配置可能在文件入队后变化，告警前再次核对，避免旧条目继续误报。
+            if self._is_download_temporary_file(event_path):
+                continue
             if (
                     not item.get("warning_sent")
                     and now - item.get("first_seen", now) >= self.FILE_STABILITY_WARNING_SECONDS
