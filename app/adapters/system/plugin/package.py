@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Optional, Protocol, Sequence, cast
+from urllib.parse import quote
 
 import aiofiles
 import aioshutil
@@ -244,6 +245,7 @@ class PluginPackageSourcePort(Protocol):
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
         """
         同步读取 GitHub 元数据或制品。
@@ -251,7 +253,8 @@ class PluginPackageSourcePort(Protocol):
         :param url: GitHub 元数据或制品地址
         :param headers: 附加请求头；None 使用请求适配器默认值
         :param timeout: 每次请求超时，单位为秒，默认 60；None 沿用传输实现约定
-        :param is_api: 是否为 API 请求；True 时不尝试静态资源镜像
+        :param is_api: 是否为 API 请求；True 且未提供公开资产地址时跳过镜像
+        :param mirror_url: 可选的公开 Release 资产地址，镜像匿名下载失败后回退原始地址
         :return: 已读取内容的响应；所有传输策略均失败时返回 None
         """
 
@@ -262,6 +265,7 @@ class PluginPackageSourcePort(Protocol):
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
         """
         异步读取 GitHub 元数据或制品。
@@ -269,7 +273,8 @@ class PluginPackageSourcePort(Protocol):
         :param url: GitHub 元数据或制品地址
         :param headers: 附加请求头；None 使用请求适配器默认值
         :param timeout: 每次请求超时，单位为秒，默认 60；None 沿用传输实现约定
-        :param is_api: 是否为 API 请求；True 时不尝试静态资源镜像
+        :param is_api: 是否为 API 请求；True 且未提供公开资产地址时跳过镜像
+        :param mirror_url: 可选的公开 Release 资产地址，镜像匿名下载失败后回退原始地址
         :return: 已读取内容的响应；所有传输策略均失败时返回 None
         """
 
@@ -1049,12 +1054,15 @@ class PluginPackageManager:
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
         """
         通过外部来源客户端同步读取远端内容。
+
+        :param mirror_url: 可选的公开 Release 资产地址，由来源客户端隔离镜像凭据
         """
         return self._require_source().request(
-            url, headers=headers, timeout=timeout, is_api=is_api
+            url, headers=headers, timeout=timeout, is_api=is_api, mirror_url=mirror_url
         )
 
     async def __async_request_with_fallback(
@@ -1063,12 +1071,15 @@ class PluginPackageManager:
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
         """
         通过外部来源客户端异步读取远端内容。
+
+        :param mirror_url: 可选的公开 Release 资产地址，由来源客户端隔离镜像凭据
         """
         return await self._require_source().async_request(
-            url, headers=headers, timeout=timeout, is_api=is_api
+            url, headers=headers, timeout=timeout, is_api=is_api, mirror_url=mirror_url
         )
 
     @staticmethod
@@ -1081,10 +1092,16 @@ class PluginPackageManager:
     ) -> tuple[Optional[PluginReleaseInstallPlan], str]:
         """
         使用纯领域规则选择 Release 或文件列表安装计划。
+
+        文件列表偏好只影响默认安装，显式选择的 Release 仍按指定版本安装。
         """
         return build_plugin_release_install_plan(
             plugin_id=pid,
-            metadata=meta,
+            metadata=(
+                meta
+                if release_version or not meta.get("release") or get_runtime_setting('PLUGIN_INSTALL_FROM_RELEASE')
+                else {**meta, "release": False}
+            ),
             release_version=release_version,
             release_items=release_items,
             current_version=get_app_version(),
@@ -1354,6 +1371,9 @@ class PluginPackageManager:
         # 未声明 release 打包的插件继续使用文件列表方式安装。
 
         def prepare_filelist(staging_dir: Path) -> tuple[bool, str]:
+            """
+            将当前索引对应的源码文件准备到暂存目录。
+            """
             return self.__prepare_content_via_filelist_sync(
                 pid,
                 selection.user_repo,
@@ -2138,15 +2158,22 @@ class PluginPackageManager:
         通过 GitHub Release 资产文件安装插件。
         规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
         将其全部解压到 dest_root，未指定时直接解压到插件运行目录。
+
+        :param pid: 插件标识
+        :param user_repo: GitHub 仓库所有者及仓库名
+        :param release_tag: 要安装的发布标签，同时用于确定规范资产名
+        :param dest_root: 本次安装的暂存目录；None 使用插件运行目录
+        :return: 安装是否成功及失败原因；镜像不可用时保留 API 下载
         """
         # 拼接资产文件名
         asset_name = f"{release_tag.lower()}.zip"
+        timeout = get_runtime_setting('PLUGIN_RELEASE_TIMEOUT')
 
         release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
         rel_res = self.__request_with_fallback(
             release_api,
             headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
-            timeout=30,
+            timeout=timeout,
             is_api=True,
         )
         if rel_res is None:
@@ -2174,7 +2201,13 @@ class PluginPackageManager:
         # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
         headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo).copy()
         headers["Accept"] = "application/octet-stream"
-        res = self.__request_with_fallback(download_url, headers=headers, is_api=True)
+        mirror_url = (
+            f"https://github.com/{user_repo}/releases/download/"
+            f"{quote(release_tag, safe='')}/{quote(asset_name, safe='')}"
+        )
+        res = self.__request_with_fallback(
+            download_url, headers=headers, timeout=timeout, is_api=True, mirror_url=mirror_url,
+        )
         if res is None or res.status_code != 200:
             return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
 
@@ -2535,6 +2568,9 @@ class PluginPackageManager:
         # 未声明 release 打包的插件继续使用文件列表方式安装。
 
         async def prepare_filelist(staging_dir: Path) -> tuple[bool, str]:
+            """
+            将当前索引对应的源码文件异步准备到暂存目录。
+            """
             return await self.__prepare_content_via_filelist_async(
                 pid,
                 selection.user_repo,
@@ -2733,15 +2769,22 @@ class PluginPackageManager:
         通过 GitHub Release 资产文件安装插件（异步）。
         规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
         将其全部解压到 dest_root，未指定时直接解压到插件运行目录。
+
+        :param pid: 插件标识
+        :param user_repo: GitHub 仓库所有者及仓库名
+        :param release_tag: 要安装的发布标签，同时用于确定规范资产名
+        :param dest_root: 本次安装的暂存目录；None 使用插件运行目录
+        :return: 安装是否成功及失败原因；镜像不可用时保留 API 下载
         """
         # 拼接资产文件名
         asset_name = f"{release_tag.lower()}.zip"
+        timeout = get_runtime_setting('PLUGIN_RELEASE_TIMEOUT')
 
         release_api = f"https://api.github.com/repos/{user_repo}/releases/tags/{release_tag}"
         rel_res = await self.__async_request_with_fallback(
             release_api,
             headers=get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo),
-            timeout=30,
+            timeout=timeout,
             is_api=True,
         )
         if rel_res is None:
@@ -2769,9 +2812,13 @@ class PluginPackageManager:
         # 使用资产的API端点下载，需要设置Accept头为application/octet-stream
         headers = get_runtime_setting('REPO_GITHUB_HEADERS')(repo=user_repo).copy()
         headers["Accept"] = "application/octet-stream"
-        res = await self.__async_request_with_fallback(download_url,
-                                                       headers=headers,
-                                                       is_api=True)
+        mirror_url = (
+            f"https://github.com/{user_repo}/releases/download/"
+            f"{quote(release_tag, safe='')}/{quote(asset_name, safe='')}"
+        )
+        res = await self.__async_request_with_fallback(
+            download_url, headers=headers, timeout=timeout, is_api=True, mirror_url=mirror_url,
+        )
         if res is None or res.status_code != 200:
             return False, f"下载资产失败：{res.status_code if res else '连接失败'}"
 

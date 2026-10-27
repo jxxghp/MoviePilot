@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import re
 import threading
 import time
 import traceback
+import zipfile
 from collections import Counter
 from concurrent.futures import Future
 from pathlib import Path
@@ -98,6 +100,20 @@ def _format_request_error(error: Exception) -> str:
     """
     detail = str(error).strip()
     return f"{type(error).__name__}: {detail}" if detail else type(error).__name__
+
+
+def _is_release_archive_response(response: Any) -> bool:
+    """
+    确认镜像返回 ZIP，避免将 HTTP 错误或下载提示页当作发布资产。
+
+    :param response: 已读取响应体的镜像响应
+    :return: 响应成功且包含 ZIP 目录结构时返回 True
+    """
+    return (
+        response is not None
+        and response.status_code == 200
+        and zipfile.is_zipfile(io.BytesIO(response.content))
+    )
 
 
 def build_local_repo_url(
@@ -1507,17 +1523,28 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             headers: Optional[dict[str, str]] = None,
             timeout: Optional[int] = 60,
             is_api: bool = False,
+            mirror_url: Optional[str] = None,
     ) -> list[tuple[str, str, PluginRequestOptions]]:
         """
         构造同步与异步 GitHub 请求共用的镜像和单一出口顺序。
+
+        :param url: 原始 GitHub 地址，保留给直连或 HTTP 代理出口
+        :param headers: 原始出口请求头，不会复制到 Release 资产镜像
+        :param timeout: 每个出口请求的超时秒数
+        :param is_api: 普通 API 不使用静态资源镜像
+        :param mirror_url: Release 资产的公开下载地址；提供时先匿名访问其镜像
+        :return: 可选镜像与单一原始出口的有序列表
         """
         strategies: list[tuple[str, str, PluginRequestOptions]] = []
-        if not is_api and get_runtime_setting('GITHUB_PROXY'):
+        content_url = mirror_url or (None if is_api else url)
+        if content_url and get_runtime_setting('GITHUB_PROXY'):
             proxy_url = (
-                f"{UrlUtils.standardize_base_url(get_runtime_setting('GITHUB_PROXY'))}{url}"
+                f"{UrlUtils.standardize_base_url(get_runtime_setting('GITHUB_PROXY'))}{content_url}"
             )
+            # 发布资产镜像只读取公开文件，不能接收 API Token、Cookie 等凭据。
+            mirror_headers = {"Accept": "application/octet-stream"} if mirror_url else headers
             strategies.append(
-                ("镜像站", proxy_url, {"headers": headers, "timeout": timeout})
+                ("镜像站", proxy_url, {"headers": mirror_headers, "timeout": timeout})
             )
         if get_runtime_setting('PROXY_HOST'):
             strategies.append(
@@ -1541,7 +1568,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def __request_with_fallback(url: str,
                                 headers: Optional[dict[str, str]] = None,
                                 timeout: Optional[int] = 60,
-                                is_api: bool = False) -> Optional[Response]:
+                                is_api: bool = False,
+                                mirror_url: Optional[str] = None) -> Optional[Response]:
         """
         使用自动降级策略，请求资源：可选镜像站后只使用一个出口；
         显式配置代理时不再追加无效直连。
@@ -1549,7 +1577,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         :param url: 目标URL
         :param headers: 请求头信息
         :param timeout: 请求超时时间
-        :param is_api: 是否为GitHub API请求，API请求不走镜像站
+        :param is_api: 普通 API 跳过镜像；Release 资产可额外提供公开下载地址
+        :param mirror_url: 可选的公开 Release 资产地址，镜像请求不携带原始请求头
         :return: 请求成功则返回 Response，失败返回 None
         """
         strategies = PluginMarketTransport._build_github_request_strategies(
@@ -1557,6 +1586,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             headers=headers,
             timeout=timeout,
             is_api=is_api,
+            mirror_url=mirror_url,
         )
 
         # 遍历策略并尝试请求
@@ -1565,6 +1595,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
             try:
                 res = RequestUtils(**request_params).get_res(url=target_url, raise_exception=True)
+                if mirror_url and strategy_name == "镜像站" and not _is_release_archive_response(res):
+                    logger.warning("[GitHub] 镜像未返回有效 Release 压缩包，继续使用原始出口")
+                    continue
                 logger.debug(f"[GitHub] 请求成功，策略：{strategy_name}, URL: {target_url}")
                 return res
             except Exception as e:
@@ -1583,12 +1616,15 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Optional[Response]:
         """
         向包来源客户端公开既有同步 GitHub 降级传输。
+
+        :param mirror_url: 可选的公开 Release 资产地址，失败后保留原 API 出口
         """
         return PluginMarketTransport.__request_with_fallback(
-            url, headers=headers, timeout=timeout, is_api=is_api
+            url, headers=headers, timeout=timeout, is_api=is_api, mirror_url=mirror_url
         )
 
     def __get_plugin_meta(
@@ -1671,7 +1707,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     async def __async_request_with_fallback(url: str,
                                             headers: Optional[dict[str, str]] = None,
                                             timeout: Optional[int] = 60,
-                                            is_api: bool = False) -> Optional[httpx2.Response]:
+                                            is_api: bool = False,
+                                            mirror_url: Optional[str] = None) -> Optional[httpx2.Response]:
         """
         使用自动降级策略，异步请求资源：可选镜像站后只使用一个出口；
         显式配置代理时不再追加无效直连。
@@ -1679,7 +1716,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         :param url: 目标URL
         :param headers: 请求头信息
         :param timeout: 请求超时时间
-        :param is_api: 是否为GitHub API请求，API请求不走镜像站
+        :param is_api: 普通 API 跳过镜像；Release 资产可额外提供公开下载地址
+        :param mirror_url: 可选的公开 Release 资产地址，镜像请求不携带原始请求头
         :return: 请求成功则返回 Response，失败返回 None
         """
         strategies = PluginMarketTransport._build_github_request_strategies(
@@ -1687,6 +1725,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             headers=headers,
             timeout=timeout,
             is_api=is_api,
+            mirror_url=mirror_url,
         )
 
         # 遍历策略并尝试请求
@@ -1695,6 +1734,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
             try:
                 res = await AsyncRequestUtils(**request_params).get_res(url=target_url, raise_exception=True)
+                if mirror_url and strategy_name == "镜像站" and not _is_release_archive_response(res):
+                    logger.warning("[GitHub] 镜像未返回有效 Release 压缩包，继续使用原始出口")
+                    continue
                 logger.debug(f"[GitHub] 请求成功，策略：{strategy_name}, URL: {target_url}")
                 return res
             except Exception as e:
@@ -1713,12 +1755,15 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Optional[httpx2.Response]:
         """
         向包来源客户端公开既有异步 GitHub 降级传输。
+
+        :param mirror_url: 可选的公开 Release 资产地址，失败后保留原 API 出口
         """
         return await PluginMarketTransport.__async_request_with_fallback(
-            url, headers=headers, timeout=timeout, is_api=is_api
+            url, headers=headers, timeout=timeout, is_api=is_api, mirror_url=mirror_url
         )
 
     @cached(maxsize=256, ttl=300, skip_none=False, local_only=True)
@@ -2332,12 +2377,15 @@ class PluginPackageSourceClient:
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
         """
         同步读取 GitHub 元数据或制品。
+
+        :param mirror_url: 可选的公开 Release 资产地址，镜像使用匿名请求
         """
         return self._transport.request_with_fallback(
-            url, headers=headers, timeout=timeout, is_api=is_api
+            url, headers=headers, timeout=timeout, is_api=is_api, mirror_url=mirror_url
         )
 
     async def async_request(
@@ -2347,12 +2395,15 @@ class PluginPackageSourceClient:
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = 60,
         is_api: bool = False,
+        mirror_url: Optional[str] = None,
     ) -> Any:
         """
         异步读取 GitHub 元数据或制品。
+
+        :param mirror_url: 可选的公开 Release 资产地址，镜像使用匿名请求
         """
         return await self._transport.async_request_with_fallback(
-            url, headers=headers, timeout=timeout, is_api=is_api
+            url, headers=headers, timeout=timeout, is_api=is_api, mirror_url=mirror_url
         )
 
 

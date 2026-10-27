@@ -630,6 +630,14 @@ class ConfigModel(BaseModel):
     PLUGIN_STATISTIC_SHARE: bool = Field(default=True, description='插件安装数据共享')
     USAGE_STATISTIC_SHARE: bool = Field(default=True, description='安装版本统计上报')
     PLUGIN_AUTO_RELOAD: bool = Field(default=False, description='是否开启插件热加载')
+    PLUGIN_INSTALL_FROM_RELEASE: bool = Field(
+        default=True,
+        description='插件默认优先安装 Release 资产；false 直接安装当前索引文件，显式选择版本不受影响',
+    )
+    PLUGIN_RELEASE_TIMEOUT: int = Field(
+        default=30, ge=1, le=300,
+        description='插件 Release 元数据和资产各出口的请求超时秒数，默认 30，范围 1 至 300',
+    )
     DEPRECATION_ENABLED: Optional[str] = Field(default=None, description='临时放行的废弃标识，多个用,分隔；仅对已进入停用阶段的接口有效，用于观察真实依赖方')
     PLUGIN_LOCAL_REPO_PATHS: Optional[str] = Field(default=None, description='本地插件仓库目录，多个地址使用,分隔')
 
