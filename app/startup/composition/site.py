@@ -2,7 +2,7 @@
 站点访问技术端口的宿主组合根。
 """
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import Any, Callable, Iterator, Mapping, Optional, cast
 from urllib.parse import urljoin, urlsplit
 
@@ -43,7 +43,29 @@ from app.chain.site import (
     configure_site_ports,
     reset_site_ports,
 )
-from app.foundation.url import UrlUtils
+from app.foundation.url import UrlUtils, url_origin_for_log
+from app.runtime.log import logger
+
+
+def _redirect_destination(url: str, response: Any) -> tuple[Optional[str], Optional[str]]:
+    """
+    解析一跳重定向的目标地址，只接受不带 URL 凭据的 HTTP(S) 目标。
+
+    :param url: 当前跳的请求地址
+    :param response: 当前跳的重定向响应
+    :return: 目标地址与失败原因，二者恰有一个非空
+    """
+    location = response.headers.get("Location")
+    if not location:
+        return None, "站点请求重定向缺少目标地址"
+    try:
+        destination = urljoin(url, location)
+        target = urlsplit(destination)
+    except ValueError:
+        return None, "站点请求重定向目标无效"
+    if target.scheme not in ("http", "https") or not target.hostname or target.username or target.password:
+        return None, "站点请求重定向目标无效"
+    return destination, None
 
 
 class _RssHttpAdapter:
@@ -214,6 +236,10 @@ class _SiteHttpAdapter:
         """
         打开响应并在所有返回或异常分支后关闭底层连接。
 
+        GET 请求逐跳跟随重定向，跨域跳转清除 Cookie 与认证头。重定向缺少目标、目标无效、出现环路
+        或超过跳数上限时只记录来源地址的告警并提供 None，与请求失败的语义一致，
+        由调用方按无法打开站点处理，不能以异常中断 CookieCloud 同步等批量流程。
+
         :param method: HTTP 请求方法
         :param url: 完整请求地址
         :param headers: 额外请求头
@@ -226,9 +252,11 @@ class _SiteHttpAdapter:
         """
         request_headers = dict(headers or {})
         seen = set()
+        failure = "站点请求重定向次数超过上限"
         for _hop in range(9):
             if url in seen:
-                raise ValueError("站点请求重定向出现环路")
+                failure = "站点请求重定向出现环路"
+                break
             seen.add(url)
             request = RequestUtils(
                 headers=request_headers, cookies=cookie or "", ua=ua or "",
@@ -237,17 +265,22 @@ class _SiteHttpAdapter:
             request_options: dict[str, Any] = {} if json_body is None else {"json": dict(json_body)}
             if method.upper() == "GET":
                 request_options["allow_redirects"] = False
-            with request.response_manager(method=method, url=url, **request_options) as response:
+            with ExitStack() as stack:
+                try:
+                    response = stack.enter_context(
+                        request.response_manager(method=method, url=url, **request_options)
+                    )
+                except ValueError:
+                    # 请求地址或响应 Location 畸形时 requests 会在打开响应时抛出，禁用自动跟随也会预解析 Location
+                    failure = "站点请求地址或重定向目标无效"
+                    break
                 if method.upper() != "GET" or response is None or response.status_code not in (301, 302, 303, 307, 308):
                     yield cast(Optional[SiteResponsePort], response)
                     return
-                location = response.headers.get("Location")
-                if not location:
-                    raise ValueError("站点请求重定向缺少目标地址")
-                destination = urljoin(url, location)
-                target = urlsplit(destination)
-                if target.scheme not in ("http", "https") or not target.hostname or target.username or target.password:
-                    raise ValueError("站点请求重定向目标无效")
+                destination, invalid_reason = _redirect_destination(url, response)
+                if destination is None:
+                    failure = invalid_reason or failure
+                    break
                 if not UrlUtils.same_origin(url, destination):
                     cookie = None
                     request_headers = {
@@ -255,7 +288,8 @@ class _SiteHttpAdapter:
                         if key.lower() not in ("cookie", "authorization", "proxy-authorization", "referer")
                     }
                 url = destination
-        raise ValueError("站点请求重定向次数超过上限")
+        logger.warning(f"{failure}：{url_origin_for_log(url)}")
+        yield None
 
 
 class _SiteBrowserAdapter:

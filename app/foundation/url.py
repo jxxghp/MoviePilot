@@ -283,6 +283,24 @@ def mask_url_credentials(url: str) -> str:
     )
 
 
+def url_origin_for_log(url: str) -> str:
+    """
+    只保留协议、主机与端口，用于记录来自站点页面或重定向的地址。
+
+    路径和查询参数可能携带签名、passkey 或会话令牌，且参数名无法穷举，因此一律省略；
+    userinfo 同样不保留。
+
+    :param url: 需要记录的地址
+    :return: 来源地址；地址无法解析时返回固定占位文本
+    """
+    try:
+        parts = urlparse(url)
+        port = f":{parts.port}" if parts.port else ""
+    except ValueError:
+        return "（地址无法解析）"
+    return f"{parts.scheme}://{parts.hostname or ''}{port}"
+
+
 def parse_address(
     address: str,
     include_scheme: bool = True,
