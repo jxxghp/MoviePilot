@@ -851,7 +851,12 @@ def test_access_token_round_trips_agent_channel_claims():
         userid=1, username="admin", super_user=True, agent_channel="Telegram",
     ))
     plain = decode_access_token(create_access_token(userid=1, username="admin", super_user=True))
+    resource = decode_access_token(create_access_token(
+        userid=1, username="admin", super_user=True, purpose="resource",
+        agent_channel="Telegram", agent_channel_user="123456789",
+    ), purpose="resource")
 
     assert (signed.agent_channel, signed.agent_channel_user) == ("Telegram", "123456789")
     assert (partial.agent_channel, partial.agent_channel_user) == (None, None)
     assert (plain.agent_channel, plain.agent_channel_user) == (None, None)
+    assert (resource.agent_channel, resource.agent_channel_user) == (None, None)

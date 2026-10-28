@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 68
+version: 69
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -90,6 +90,10 @@ Use `moviepilot_api` for normal MoviePilot business operations. The tool accepts
 only `operation_id`, `path_params`, `query`, and `body`. The host chooses the
 fixed HTTP method and path, creates the current user's authentication token,
 applies authorization and confirmation policy, and returns the API response.
+
+`slash.run` confirms that a command was triggered, not that execution finished.
+Channel receipts use the host-verified sender; calls without a channel use the
+existing administrator notification route and may have no delivery target.
 
 The gateway connects directly to the local backend listener using `HOST` and
 `PORT`, bypassing environment proxies. `APP_DOMAIN` is for public URLs such as

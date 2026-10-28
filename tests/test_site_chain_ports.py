@@ -437,3 +437,130 @@ def test_site_chain_has_no_concrete_adapter_imports() -> None:
     ]
 
     assert violations == []
+
+
+def _redirect(location: Optional[str]) -> SimpleNamespace:
+    """
+    构造带可选目标地址的重定向响应。
+    """
+    return SimpleNamespace(status_code=302, headers={"Location": location} if location else {})
+
+
+def _scripted_request(monkeypatch, responses: list) -> list[dict]:
+    """
+    用按序回放的 RequestUtils 替身替换组合根传输，并记录每一跳的构造参数和请求参数。
+    """
+    hops: list[dict] = []
+    queue = list(responses)
+
+    class ScriptedRequest:
+        """
+        记录每一跳携带的 Cookie 与请求地址。
+        """
+
+        def __init__(self, **kwargs) -> None:
+            """
+            保存 adapter 传入的 Cookie 等构造参数。
+            """
+            self.options = kwargs
+
+        @contextmanager
+        def response_manager(self, **kwargs):
+            """
+            依次返回预设响应。
+            """
+            hops.append({**self.options, **kwargs})
+            item = queue.pop(0)
+            if isinstance(item, Exception):
+                # 模拟 requests 在打开响应时即抛出的异常，例如预解析畸形 Location
+                raise item
+            yield item
+
+    monkeypatch.setattr(site_composition, "RequestUtils", ScriptedRequest)
+    return hops
+
+
+@pytest.mark.parametrize("responses,reason", [
+    ([_redirect("/dl/1/auth?X-Amz-Signature=sig")] * 2, "站点请求重定向出现环路"),
+    ([_redirect(None)], "站点请求重定向缺少目标地址"),
+    ([_redirect("ftp://site.test/file")], "站点请求重定向目标无效"),
+    ([_redirect("https://user:pass@site.test/")], "站点请求重定向目标无效"),
+    ([_redirect("https://[bad/path")], "站点请求重定向目标无效"),
+    ([_redirect(f"/page{index}") for index in range(9)], "站点请求重定向次数超过上限"),
+    ([ValueError("Invalid IPv6 URL")], "站点请求地址或重定向目标无效"),
+    ([_redirect("/next"), ValueError("Invalid IPv6 URL")], "站点请求地址或重定向目标无效"),
+], ids=[
+    "loop", "missing-location", "invalid-scheme", "userinfo", "malformed", "too-many-hops",
+    "transport-rejects-location", "transport-rejects-next-hop",
+])
+def test_site_adapter_redirect_failures_yield_none(monkeypatch, responses, reason) -> None:
+    """
+    重定向失败按端口约定提供 None 并告警，不抛出异常打断 CookieCloud 同步等批量流程；
+    告警只含来源地址，路径与查询参数中的签名、passkey 等凭据都不写入日志。
+    """
+    hops = _scripted_request(monkeypatch, responses)
+    warnings = []
+    monkeypatch.setattr(site_composition.logger, "warning", warnings.append)
+
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url="https://site.test/index.php?passkey=secret", cookie="uid=1",
+    ) as response:
+        assert response is None
+
+    assert len(hops) == len(responses)
+    assert warnings == [f"{reason}：https://site.test"]
+
+
+def test_cookiecloud_sync_continues_after_redirect_loop(monkeypatch) -> None:
+    """
+    单个新站点的重定向环路只记为该站点添加失败，同步继续处理后续站点。
+    """
+    hops = _scripted_request(monkeypatch, [_redirect("/")])
+    monkeypatch.setattr(site_composition.logger, "warning", lambda _message: None)
+    _configure(site_composition._SiteHttpAdapter())
+    chain = _chain()
+    chain.runtime_config.cookiecloud_blacklist = ""
+
+    result = chain._sync_cookiecloud_domain(
+        domain="loop.test",
+        cookie="uid=1",
+        indexer={"name": "环路站点", "domain": "https://loop.test/"},
+        site_info=None,
+        repository=SimpleNamespace(),
+        rsshelper=SimpleNamespace(),
+    )
+
+    # 跳回同一地址在第二跳发出前即判定为环路
+    assert result == (0, 0, 1, False)
+    assert [hop["url"] for hop in hops] == ["https://loop.test/"]
+
+
+def test_site_adapter_does_not_swallow_caller_errors(monkeypatch) -> None:
+    """
+    调用方在响应上下文内抛出的异常必须原样传播，不能被当作重定向失败吞掉。
+    """
+    _scripted_request(monkeypatch, [_FakeResponse(200, text="ok")])
+    warnings = []
+    monkeypatch.setattr(site_composition.logger, "warning", warnings.append)
+
+    with pytest.raises(ValueError, match="调用方错误"):
+        with site_composition._SiteHttpAdapter().open(method="GET", url="https://site.test/") as response:
+            assert response is not None
+            raise ValueError("调用方错误")
+
+    assert warnings == []
+
+
+def test_favicon_failure_logs_only_site_origin(monkeypatch) -> None:
+    """
+    图标或页面读取失败的日志只记录来源地址，页面提供的图标 URL 中的令牌不能写入日志。
+    """
+    _configure(_FakeHttpPort(_FakeResponse(200, text='<link rel="icon" href="/icon.png?token=secret">'), None))
+    errors = []
+    monkeypatch.setattr(site_module.logger, "error", errors.append)
+
+    favicon_url, content = SiteChain._SiteChain__parse_favicon("https://site.test/?passkey=secret", "uid=1", "UA")
+
+    assert favicon_url == "https://site.test/icon.png?token=secret"
+    assert content is None
+    assert errors == ["获取站点图标失败：https://site.test"]

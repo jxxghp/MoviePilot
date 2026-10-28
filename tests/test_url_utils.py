@@ -4,7 +4,7 @@
 
 import pytest
 
-from app.foundation.url import UrlUtils, mask_url_credentials, url_matches_trusted_hosts
+from app.foundation.url import UrlUtils, mask_url_credentials, url_matches_trusted_hosts, url_origin_for_log
 
 
 @pytest.mark.parametrize(
@@ -128,3 +128,17 @@ def test_mask_url_credentials_applies_to_free_text_with_url():
     assert "SECRET" not in masked
     assert "passkey=<REDACTED>" in masked
     assert masked.startswith("Max retries exceeded with url: /torrentrss.php?")
+
+
+@pytest.mark.parametrize("url,expected", [
+    ("https://site.test/dl/1/auth?X-Amz-Signature=sig", "https://site.test"),
+    ("https://user:pass@site.test:8443/path?passkey=secret", "https://site.test:8443"),
+    ("http://site.test", "http://site.test"),
+    ("https://[bad/path", "（地址无法解析）"),
+    ("https://site.test:99999/", "（地址无法解析）"),
+])
+def test_url_origin_for_log_drops_path_query_and_userinfo(url, expected):
+    """
+    日志地址只保留协议、主机与端口，路径、查询参数和 userinfo 中的凭据都不保留。
+    """
+    assert url_origin_for_log(url) == expected

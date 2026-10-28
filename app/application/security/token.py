@@ -90,7 +90,7 @@ def create_access_token(
     创建带身份、权限等级和用途声明的 JWT 访问令牌。
 
     宿主 Agent 代渠道用户调用内部 API 时，可把发起会话的渠道及渠道用户标识写入签名声明；
-    两项需同时提供才会写入，外部登录令牌与固定 API 凭据不携带这组声明。
+    两项需同时提供且令牌用途为认证时才会写入，资源令牌不携带这组声明。
 
     :param userid: 令牌主体的 MoviePilot 用户 ID
     :param username: 令牌主体的用户名
@@ -130,7 +130,7 @@ def create_access_token(
         "level": level,
         "purpose": purpose,
     }
-    if agent_channel and agent_channel_user:
+    if purpose == "authentication" and agent_channel and agent_channel_user:
         payload["agent_channel"] = agent_channel
         payload["agent_channel_user"] = agent_channel_user
     encoded: str = jwt.encode(payload, secret_key, algorithm=ALGORITHM)

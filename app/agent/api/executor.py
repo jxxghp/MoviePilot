@@ -146,7 +146,7 @@ class MoviePilotApiExecutor:
         if not user_id.isdigit():
             raise ApiExecutionError("当前 Agent 身份没有可用于 API 鉴权的用户 ID")
         username = self._context.username or user_id
-        if self._context.channel and self._context.channel_user_id:
+        if self._context.channel and self._context.channel_user_id and not self._context.public_read_only:
             # 渠道发起人写入宿主签名声明而非请求头，外部调用者无法伪造命令回执和会话操作的目标。
             token = create_access_token(
                 userid=int(user_id),

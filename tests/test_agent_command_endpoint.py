@@ -115,11 +115,11 @@ async def test_agent_command_rejects_unverified_channel_identity(claim_channel, 
     dispatch_command.assert_not_called()
 
 
-@pytest.mark.parametrize("channel", [None, NotificationChannel.Web, NotificationChannel.WebAgent])
+@pytest.mark.parametrize("channel", [NotificationChannel.Web, NotificationChannel.WebAgent])
 @pytest.mark.asyncio
 async def test_agent_command_web_receipt_keeps_moviepilot_user_id(channel) -> None:
     """
-    Web、WebAgent 与无渠道调用按 MoviePilot 用户 ID 执行，忽略令牌中的渠道用户声明。
+    Web 与 WebAgent 按 MoviePilot 用户 ID 执行，忽略令牌中的渠道用户声明。
     """
     response, dispatch_command = await _run_command(
         channel,
@@ -129,3 +129,14 @@ async def test_agent_command_web_receipt_keeps_moviepilot_user_id(channel) -> No
 
     assert response.success is True
     assert dispatch_command.call_args.kwargs["user_id"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_agent_command_without_channel_has_no_recipient() -> None:
+    """
+    无渠道调用没有真实渠道用户，不能把内部主键交给插件作为通知目标。
+    """
+    response, dispatch_command = await _run_command(None)
+
+    assert response.success is True
+    assert dispatch_command.call_args.kwargs["user_id"] is None
