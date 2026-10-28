@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9850,
-  "edge_sha256": "4ee56369dee810a01662c3c2f63eb016d57c308836d1e6ca9254ca31f434dc6f",
+  "edge_count": 9855,
+  "edge_sha256": "687e67edb6af0ba4637cdabce72f2c42b49f8f262ac8a68b54f5c4cc77629ac3",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2337,6 +2337,10 @@
     "app.api.deps -> app.api.dependencies.site",
     "app.api.deps -> app.api.dependencies.subscription",
     "app.api.deps -> app.api.dependencies.workflow",
+    "app.api.endpoints.agent -> app.adapters",
+    "app.api.endpoints.agent -> app.adapters.web",
+    "app.api.endpoints.agent -> app.adapters.web.security",
+    "app.api.endpoints.agent -> app.adapters.web.security.access",
     "app.api.endpoints.agent -> app.agent",
     "app.api.endpoints.agent -> app.agent.mcp",
     "app.api.endpoints.agent -> app.api",
@@ -2362,6 +2366,7 @@
     "app.api.endpoints.agent -> app.schemas.agent",
     "app.api.endpoints.agent -> app.schemas.message",
     "app.api.endpoints.agent -> app.schemas.response",
+    "app.api.endpoints.agent -> app.schemas.token",
     "app.api.endpoints.agent -> app.schemas.types",
     "app.api.endpoints.anilist -> app.adapters",
     "app.api.endpoints.anilist -> app.adapters.web",

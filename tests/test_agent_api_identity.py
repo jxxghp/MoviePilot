@@ -346,3 +346,35 @@ def test_identity_scopes_cover_every_operation_and_match_rest_dependencies():
             if spec.identity_scope is ApiIdentityScope.PUBLIC:
                 assert dependencies.get("verify_token") == "_", spec.operation_id
                 assert not any("current_user" in name or "active_" in name for name in dependencies), spec.operation_id
+
+
+def test_channel_executor_carries_sender_id_for_command_receipts(db):
+    """
+    通知渠道调用 API 时以绑定用户鉴权，同时保留渠道发送者 ID 供命令回执投递。
+    """
+    user = db.add(User(
+        name="alice", is_active=True, is_superuser=True,
+        settings={"telegram_userid": "123456789"},
+    ))
+    users = TransactionalUserRepository(sync_session=SessionFactory, async_session=async_session_scope)
+    gateway = MoviePilotApiTool(session_id="session", user_id="123456789", data=SimpleNamespace(users=users))
+    gateway.set_message_attr(channel=NotificationChannel.Telegram.value, source="bot", username="alice")
+
+    executor, _ = asyncio.run(gateway._get_executor())
+
+    assert executor._context.user_id == str(user.id)
+    assert executor._context.channel_user_id == "123456789"
+
+
+def test_background_executor_has_no_channel_user(db):
+    """
+    无渠道的后台任务没有可回复的渠道用户。
+    """
+    user = db.add(User(name="alice", is_active=True, is_superuser=True))
+    users = TransactionalUserRepository(sync_session=SessionFactory, async_session=async_session_scope)
+    gateway = MoviePilotApiTool(session_id="session", user_id=str(user.id), data=SimpleNamespace(users=users))
+    gateway.set_message_attr(channel=None, source=None, username=user.name)
+
+    executor, _ = asyncio.run(gateway._get_executor())
+
+    assert executor._context.channel_user_id is None

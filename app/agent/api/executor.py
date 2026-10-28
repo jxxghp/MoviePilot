@@ -52,6 +52,9 @@ class ApiExecutionContext:
     :param channel: 调用所属消息渠道；直接 API 调用可为 None
     :param source: 渠道内的消息来源标识；没有来源时为 None
     :param public_read_only: 是否仅允许使用宿主身份查询公共资料；不能复用于其他操作
+    :param channel_user_id: 发起会话的用户在消息渠道内的原始标识，如 Telegram 用户 ID；
+        与渠道一起写入宿主令牌的签名声明，供命令回执等需要回复原渠道的场景使用，
+        不参与 API 用户鉴权；无渠道时为 None
     """
 
     user_id: str
@@ -61,6 +64,7 @@ class ApiExecutionContext:
     channel: str | None = None
     source: str | None = None
     public_read_only: bool = False
+    channel_user_id: str | None = None
 
 
 class MoviePilotApiExecutor:
@@ -141,11 +145,22 @@ class MoviePilotApiExecutor:
         user_id = str(self._context.user_id or "")
         if not user_id.isdigit():
             raise ApiExecutionError("当前 Agent 身份没有可用于 API 鉴权的用户 ID")
-        token = create_access_token(
-            userid=int(user_id),
-            username=self._context.username or user_id,
-            super_user=self._context.is_admin,
-        )
+        username = self._context.username or user_id
+        if self._context.channel and self._context.channel_user_id:
+            # 渠道发起人写入宿主签名声明而非请求头，外部调用者无法伪造命令回执和会话操作的目标。
+            token = create_access_token(
+                userid=int(user_id),
+                username=username,
+                super_user=self._context.is_admin,
+                agent_channel=self._context.channel,
+                agent_channel_user=self._context.channel_user_id,
+            )
+        else:
+            token = create_access_token(
+                userid=int(user_id),
+                username=username,
+                super_user=self._context.is_admin,
+            )
         headers = {
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",

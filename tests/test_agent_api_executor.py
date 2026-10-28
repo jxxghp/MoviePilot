@@ -345,3 +345,33 @@ def test_executor_keeps_ascii_session_header_verbatim() -> None:
     headers = _build_context_headers(session_id)
 
     assert headers["X-MoviePilot-Agent-Session"] == session_id
+
+
+@pytest.mark.parametrize("channel,channel_user_id", [
+    (NotificationChannel.Telegram.value, "123456789"),
+    (NotificationChannel.Wechat.value, "张三"),
+    (NotificationChannel.Telegram.value, None),
+    (None, "123456789"),
+])
+def test_executor_signs_channel_user_into_host_token(channel, channel_user_id) -> None:
+    """
+    渠道发起人只写入宿主令牌的签名声明，不再以可伪造的请求头透传。
+    """
+    executor = MoviePilotApiExecutor(
+        context=ApiExecutionContext(
+            user_id="1",
+            username="admin",
+            is_admin=True,
+            channel=channel,
+            channel_user_id=channel_user_id,
+        ),
+        request_factory=MagicMock(return_value=SimpleNamespace(request=AsyncMock())),
+    )
+
+    with patch("app.agent.api.executor.create_access_token", return_value="token") as create_token:
+        headers = executor._build_headers()
+
+    signed = bool(channel and channel_user_id)
+    assert create_token.call_args.kwargs.get("agent_channel") == (channel if signed else None)
+    assert create_token.call_args.kwargs.get("agent_channel_user") == (channel_user_id if signed else None)
+    assert not any(name.lower() == "x-moviepilot-agent-user" for name in headers)

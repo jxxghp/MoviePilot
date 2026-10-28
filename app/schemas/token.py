@@ -42,3 +42,11 @@ class TokenPayload(BaseModel):
     super_user: Optional[bool] = Field(default=None, description="超级用户")
     level: Optional[int] = Field(default=None, description="权限级别")
     purpose: Optional[str] = Field(default=None, description="令牌用途 authentication\\resource")
+    agent_channel: Optional[str] = Field(
+        default=None,
+        description="宿主 Agent 签发令牌时绑定的消息渠道；仅宿主内部调用的令牌携带",
+    )
+    agent_channel_user: Optional[str] = Field(
+        default=None,
+        description="宿主 Agent 签发令牌时绑定的渠道发起用户标识；仅宿主内部调用的令牌携带",
+    )
