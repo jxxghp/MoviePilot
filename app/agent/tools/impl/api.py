@@ -396,6 +396,10 @@ class MoviePilotApiTool(MoviePilotTool):
                     channel=self._channel,
                     source=self._source,
                     public_read_only=public_read_only,
+                    # 公共资料使用宿主身份只读查询，不绑定渠道发起人
+                    channel_user_id=(
+                        str(self._user_id) if self._channel and self._user_id and not public_read_only else None
+                    ),
                 )
             ),
             is_admin,

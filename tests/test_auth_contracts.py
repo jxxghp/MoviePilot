@@ -758,6 +758,9 @@ def test_auth_exchange_sets_resource_cookie():
         "super_user": user.is_superuser,
         "level": token.level,
         "purpose": "resource",
+        # 资源令牌不携带宿主 Agent 的渠道声明
+        "agent_channel": None,
+        "agent_channel_user": None,
     }
 
 
@@ -834,3 +837,26 @@ def test_auth_providers_response_model_keeps_plugin_clone_source_id():
         if provider["type"] == "plugin"
     )
     assert plugin_provider["remote"]["source_plugin_id"] == "DemoPlugin"
+
+
+def test_access_token_round_trips_agent_channel_claims():
+    """
+    宿主 Agent 令牌的渠道声明经签名往返保持不变；只给出其中一项时不写入，普通令牌不携带。
+    """
+    signed = decode_access_token(create_access_token(
+        userid=1, username="admin", super_user=True,
+        agent_channel="Telegram", agent_channel_user="123456789",
+    ))
+    partial = decode_access_token(create_access_token(
+        userid=1, username="admin", super_user=True, agent_channel="Telegram",
+    ))
+    plain = decode_access_token(create_access_token(userid=1, username="admin", super_user=True))
+    resource = decode_access_token(create_access_token(
+        userid=1, username="admin", super_user=True, purpose="resource",
+        agent_channel="Telegram", agent_channel_user="123456789",
+    ), purpose="resource")
+
+    assert (signed.agent_channel, signed.agent_channel_user) == ("Telegram", "123456789")
+    assert (partial.agent_channel, partial.agent_channel_user) == (None, None)
+    assert (plain.agent_channel, plain.agent_channel_user) == (None, None)
+    assert (resource.agent_channel, resource.agent_channel_user) == (None, None)

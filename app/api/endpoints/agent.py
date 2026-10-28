@@ -20,6 +20,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 
+from app.adapters.web.security.access import verify_token
 from app.agent.mcp import agent_mcp_manager
 from app.api.dependencies.agent import (
     get_agent_chat_persistence,
@@ -61,6 +62,7 @@ from app.schemas.agent import AgentWebCommandInfo as _SchemaAgentWebCommandInfo
 from app.schemas.message import AgentWebChatRequest as _SchemaAgentWebChatRequest
 from app.schemas.message import AgentWebChoiceRequest as _SchemaAgentWebChoiceRequest
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import NotificationChannel
 
 router = ResponseAPIRouter()
@@ -90,6 +92,33 @@ def _parse_agent_channel_header(value: Optional[str]) -> Optional[NotificationCh
                 return NotificationChannel(unquote(value))
             except ValueError:
                 return None
+
+
+def _command_user_id(
+    channel: Optional[NotificationChannel],
+    token_data: _SchemaTokenPayload,
+    current_user_id: object,
+) -> Optional[str]:
+    """
+    确定命令执行与回执所属的用户标识。
+
+    Web 与 WebAgent 以 MoviePilot 用户 ID 标识会话。无渠道时不携带收件人，避免插件将
+    内部主键发往其他渠道；通知路由可按已有管理员目标回退。Telegram 等通知渠道按渠道用户
+    执行会话操作并投递回执，该标识只取宿主签发令牌的签名声明，不信任请求头。
+
+    :param channel: 宿主透传的消息渠道；直接 API 调用为 None
+    :param token_data: 已验证签名的当前请求令牌载荷
+    :param current_user_id: 当前认证用户的 MoviePilot 用户 ID
+    :return: 命令事件使用的用户标识；无渠道时为 None
+    :raises ValueError: 通知渠道调用缺少与该渠道一致的签名渠道用户声明
+    """
+    if channel is None:
+        return None
+    if channel in (NotificationChannel.Web, NotificationChannel.WebAgent):
+        return str(current_user_id)
+    if token_data.agent_channel == channel.value and token_data.agent_channel_user:
+        return token_data.agent_channel_user
+    raise ValueError("无法确认命令发起人在该渠道的身份，请在对应渠道的 Agent 会话中执行命令")
 
 
 @router.get(
@@ -354,11 +383,21 @@ async def list_web_agent_commands(
 async def run_agent_command(
     payload: _SchemaAgentCommandRunRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user),
+    token_data: _SchemaTokenPayload = Depends(verify_token),
     agent_channel: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Channel"),
     agent_source: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Source"),
 ) -> _SchemaResponse[Any]:
     """
     以当前认证用户和宿主透传渠道触发已注册命令。
+
+    通知渠道的命令按令牌签名声明中的渠道用户执行和回执；没有渠道时不指定收件人。
+
+    :param payload: 包含命令及参数的请求正文
+    :param current_user: 已认证的当前用户，必须为超级管理员
+    :param token_data: 认证后验证过签名的令牌声明
+    :param agent_channel: 宿主透传的渠道名称，可为 URL 编码的枚举值
+    :param agent_source: 宿主透传的渠道实例名称，可为 URL 编码的文本
+    :return: 命令触发结果；命令无效或渠道身份不可验证时返回失败信息
     """
     _ensure_superuser(current_user)
     channel = _parse_agent_channel_header(agent_channel)
@@ -366,7 +405,7 @@ async def run_agent_command(
     try:
         data = web_agent_application.dispatch_command(
             payload.command,
-            user_id=str(current_user.id),
+            user_id=_command_user_id(channel, token_data, current_user.id),
             channel=channel,
             source=agent_source,
             publish_event=eventmanager.send_event,

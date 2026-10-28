@@ -70,13 +70,21 @@ def init_commands(plugin_id: Optional[str] = None) -> None:
 def dispatch_command(
     command: str,
     *,
-    user_id: str,
+    user_id: Optional[str],
     channel: Optional[NotificationChannel] = None,
     source: Optional[str] = None,
     publish_event: Callable[[EventType, dict[str, Any]], Any],
 ) -> dict[str, Any]:
     """
     校验斜杠命令并通过注入的事件端口异步触发执行。
+
+    :param command: 包含可选参数的命令文本
+    :param user_id: 渠道用户标识或 Web 会话用户标识；无真实目标时为 None
+    :param channel: 命令所属渠道；无渠道时为 None
+    :param source: 渠道来源实例；无来源时为 None
+    :param publish_event: 注入的命令事件发布入口
+    :return: 已触发命令的描述和可选插件标识
+    :raises ValueError: 命令为空或未注册
     """
     normalized = command.strip()
     if not normalized:

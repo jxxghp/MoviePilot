@@ -83,9 +83,25 @@ def create_access_token(
     expires_delta: Optional[timedelta] = None,
     level: Optional[int] = 1,
     purpose: Optional[str] = "authentication",
+    agent_channel: Optional[str] = None,
+    agent_channel_user: Optional[str] = None,
 ) -> str:
     """
     创建带身份、权限等级和用途声明的 JWT 访问令牌。
+
+    宿主 Agent 代渠道用户调用内部 API 时，可把发起会话的渠道及渠道用户标识写入签名声明；
+    两项需同时提供且令牌用途为认证时才会写入，资源令牌不携带这组声明。
+
+    :param userid: 令牌主体的 MoviePilot 用户 ID
+    :param username: 令牌主体的用户名
+    :param super_user: 是否为超级用户
+    :param expires_delta: 自定义有效期；None 时按用途使用默认有效期
+    :param level: 权限级别
+    :param purpose: 令牌用途，authentication 或 resource
+    :param agent_channel: 宿主 Agent 会话所属的消息渠道
+    :param agent_channel_user: 发起该会话的用户在渠道内的原始标识
+    :return: 已签名的 JWT 字符串
+    :raises ValueError: 自定义有效期不是正数
     """
     config = _token_config()
     if purpose == "resource":
@@ -114,6 +130,9 @@ def create_access_token(
         "level": level,
         "purpose": purpose,
     }
+    if purpose == "authentication" and agent_channel and agent_channel_user:
+        payload["agent_channel"] = agent_channel
+        payload["agent_channel_user"] = agent_channel_user
     encoded: str = jwt.encode(payload, secret_key, algorithm=ALGORITHM)
     return encoded
 
