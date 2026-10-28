@@ -745,7 +745,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             if res:
                 html_text = res.text
             else:
-                logger.error(f"获取站点页面失败：{url}")
+                logger.error(f"获取站点页面失败：{url_tools.url_origin_for_log(url)}")
                 return favicon_url, None
         html = etree.HTML(html_text)
         try:
@@ -760,7 +760,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             ) as res:
                 if res:
                     return favicon_url, base64.b64encode(res.content).decode()
-                logger.error(f"获取站点图标失败：{favicon_url}")
+                logger.error(f"获取站点图标失败：{url_tools.url_origin_for_log(favicon_url)}")
         finally:
             if html is not None:
                 del html
