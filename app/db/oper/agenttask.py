@@ -158,6 +158,9 @@ class AgentTaskOper(DbOper):
                 "enabled",
                 "last_status",
                 "last_result",
+                "execution_user_id",
+                "execution_user_identity",
+                "username",
             }
         }
         if not normalized_payload:

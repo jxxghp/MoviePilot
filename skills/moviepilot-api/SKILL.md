@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 69
+version: 70
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -370,6 +370,7 @@ token exchange downloads retain their existing credential rules.
 ## Agent Task And Conversation State
 
 - For `agent_task` updates, `enabled=null` preserves the current enabled state. Renaming a paused task does not resume its schedule.
+- `agent_task` pins a real execution account at creation. Channel senders must uniquely bind to an active MoviePilot user. Background API calls retain that account's permissions, and invalid identity fails the run. Confirm legacy tasks with `update` in their original conversation or recreate them; never substitute a same-name account or fall back to the superuser.
 - Traditional message sessions are scoped by channel, configured source, and user ID. A stop, clear, status query, or confirmation targets the current source's session.
 - Background WebAgent completion appends the current turn to display history. Frontend complete snapshots keep their existing replacement contract.
 - File creation with `overwrite=false` rejects a concurrent creator. Versioned edits reject a peer's intervening write; reread the file and use its current SHA before retrying.

@@ -32,8 +32,13 @@ from app.agent.tools.tags import ToolTag
 from app.chain.agent import AgentChain
 from app.db import SessionFactory
 from app.db.adapters.agent import TransactionalAgentTaskRepository
+from app.db.adapters.user import TransactionalUserRepository
 from app.db.models.agenttask import AgentTask
+from app.db.models.agenttaskrun import AgentTaskRun
+from app.db.models.user import User
 from app.db.oper.agenttask import AgentTaskOper
+from app.db.oper.user import UserOper
+from app.db.session import async_session_scope
 from app.runtime.config import settings
 from app.runtime.loop import main_loop_registry
 from app.runtime.scheduling import TimerUtils
@@ -99,6 +104,34 @@ def enable_ai_agent(monkeypatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def task_execution_account(db) -> None:
+    """
+    为调度与生命周期回归提供真实执行账号，新旧身份迁移由专项测试覆盖。
+    """
+    db.watermark(AgentTask, AgentTaskRun)
+    db.add(User(name="schedule-test-account", is_active=True, is_superuser=True))
+
+
+def _task_identity() -> dict[str, object]:
+    """
+    返回当前测试账号的持久化主键和不可变身份。
+    """
+    account = UserOper().get_by_name("schedule-test-account")
+    return {"execution_user_id": account.id, "execution_user_identity": account.notification_identity}
+
+
+def _test_data():
+    """
+    装配调度测试实际使用的隔离用户、会话和任务仓储。
+    """
+    return SimpleNamespace(
+        users=TransactionalUserRepository(sync_session=SessionFactory, async_session=async_session_scope),
+        tasks=TransactionalAgentTaskRepository(SessionFactory),
+        chat=SimpleNamespace(get_sync=lambda **_kwargs: None),
+    )
+
+
+@pytest.fixture(autouse=True)
 def isolate_scheduler_main_loop() -> Generator[None, None, None]:
     """
     隔离主循环登记，避免前序兼容层假循环改变 Scheduler 投递路径。
@@ -140,6 +173,7 @@ def _add_agent_task(trigger_type: str, trigger_value: str, prefix: str):
     """
     user_id = f"{prefix}-{uuid4().hex}"
     return AgentTaskOper().add(
+        **_task_identity(),
         name=f"{prefix} 检查",
         content="检查资源并报告",
         trigger_type=trigger_type,
@@ -176,13 +210,14 @@ def _build_tool(tool_class, user_id: str):
     """
     构造带当前用户消息上下文的 Agent 工具。
     """
+    UserOper().add(
+        name=f"bound-{uuid4().hex}", is_active=True, is_superuser=True,
+        settings={"telegram_userid": user_id},
+    )
     tool = tool_class(
         session_id=f"session-{user_id}",
         user_id=user_id,
-        data=SimpleNamespace(
-            tasks=TransactionalAgentTaskRepository(SessionFactory),
-            chat=SimpleNamespace(get_sync=lambda **_kwargs: None),
-        ),
+        data=_test_data(),
     )
     tool.set_message_attr(
         channel="Telegram",
@@ -302,6 +337,7 @@ def test_scheduler_registers_and_removes_agent_task_job() -> None:
     """
     user_id = f"user-{uuid4().hex}"
     task = AgentTaskOper().add(
+        **_task_identity(),
         name="定时检查",
         content="检查资源",
         trigger_type="date",
@@ -392,6 +428,7 @@ async def test_date_task_reload_job_is_removed_after_run_finishes(
         execute_scheduled_task=AgentManager.execute_scheduled_task,
         process_message=process_message,
         _accepting_tasks=True,
+        _data=_test_data(),
     )
     manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
     monkeypatch.setattr(
@@ -513,6 +550,7 @@ async def test_interrupted_date_task_manual_run_disables_and_removes_job(
         execute_scheduled_task=AgentManager.execute_scheduled_task,
         process_message=process_message,
         _accepting_tasks=True,
+        _data=_test_data(),
     )
     manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
     monkeypatch.setattr(
@@ -781,6 +819,7 @@ async def test_scheduler_config_reload_does_not_interrupt_running_agent_task() -
     assert not oper.mark_running(task.id)
 
     manager = AgentManager()
+    manager._data = _test_data()
     manager.process_message = AsyncMock()
     success, result = await manager.execute_scheduled_task(task.id)
     assert success is False
@@ -810,6 +849,7 @@ async def test_scheduler_config_reload_preserves_active_agent_task(
         execute_scheduled_task=AgentManager.execute_scheduled_task,
         process_message=process_message,
         _accepting_tasks=True,
+        _data=_test_data(),
     )
     manager.execute_scheduled_task = AgentManager.execute_scheduled_task.__get__(manager)
     monkeypatch.setattr(
@@ -1042,6 +1082,7 @@ async def test_run_agent_task_enforces_owner_and_enabled_state(monkeypatch) -> N
     """
     owner_id = f"owner-{uuid4().hex}"
     task = AgentTaskOper().add(
+        **_task_identity(),
         name="检查资源",
         content="检查资源并报告",
         trigger_type="cron",
@@ -1090,6 +1131,7 @@ async def test_agent_manager_executes_task_with_broadcast_delivery(
     """
     user_id = f"user-{uuid4().hex}"
     task = AgentTaskOper().add(
+        **_task_identity(),
         name="检查电影资源",
         content="搜索示例电影是否已有资源",
         trigger_type="date",
@@ -1103,6 +1145,7 @@ async def test_agent_manager_executes_task_with_broadcast_delivery(
         original_chat_id="chat-123",
     )
     manager = AgentManager()
+    manager._data = _test_data()
     manager.process_message = AsyncMock(return_value="已找到 2 个资源")
     post_message = AsyncMock()
     monkeypatch.setattr(AgentChain, "async_post_message", post_message)
@@ -1131,6 +1174,7 @@ async def test_agent_manager_executes_task_with_broadcast_delivery(
     assert completed.run_count == 1
 
     recurring_task = AgentTaskOper().add(
+        **_task_identity(),
         name="周期检查电影资源",
         content="继续检查示例电影是否已有资源",
         trigger_type="cron",
@@ -1162,6 +1206,7 @@ async def test_agent_manager_runs_contextless_task_in_broadcast_mode(
     """
     user_id = f"api-{uuid4().hex}"
     task = AgentTaskOper().add(
+        **_task_identity(),
         name="后台检查资源",
         content="检查示例电影是否已有资源",
         trigger_type="cron",
@@ -1175,6 +1220,7 @@ async def test_agent_manager_runs_contextless_task_in_broadcast_mode(
         original_chat_id=None,
     )
     manager = AgentManager()
+    manager._data = _test_data()
     manager.process_message = AsyncMock(return_value="后台检查完成")
     post_message = AsyncMock()
     monkeypatch.setattr(AgentChain, "async_post_message", post_message)
@@ -1198,6 +1244,7 @@ async def test_agent_manager_records_cancelled_scheduled_task_as_failed() -> Non
     """
     user_id = f"cancel-{uuid4().hex}"
     task = AgentTaskOper().add(
+        **_task_identity(),
         name="取消中的后台检查",
         content="检查资源并报告",
         trigger_type="cron",
@@ -1211,6 +1258,7 @@ async def test_agent_manager_records_cancelled_scheduled_task_as_failed() -> Non
         original_chat_id=None,
     )
     manager = AgentManager()
+    manager._data = _test_data()
     manager.process_message = AsyncMock(side_effect=asyncio.CancelledError)
 
     with pytest.raises(asyncio.CancelledError):
@@ -1231,6 +1279,7 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
     session_id = f"session-{user_id}"
     tasks = [
         AgentTaskOper().add(
+            **_task_identity(),
             name=f"关闭中的后台检查 {index}",
             content="检查资源并报告",
             trigger_type="cron",
@@ -1246,6 +1295,7 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
         for index in range(2)
     ]
     manager = AgentManager()
+    manager._data = _test_data()
     await manager.initialize()
     started = asyncio.Event()
 
@@ -1286,6 +1336,7 @@ async def test_cached_agent_clears_channel_for_background_task() -> None:
     复用会话 Agent 时，后台任务必须覆盖上一轮保留的渠道信息。
     """
     manager = AgentManager()
+    manager._data = _test_data()
     agent = MoviePilotAgent(
         session_id="scheduled-cached-session",
         user_id="user-1",
@@ -1317,6 +1368,17 @@ async def test_cached_agent_clears_channel_for_background_task() -> None:
     assert agent.is_channel_admin is None
     assert agent.original_chat_id is None
 
+    task.execution_user_id = _task_identity()["execution_user_id"]
+    task.execution_user_identity = _task_identity()["execution_user_identity"]
+    await manager._process_message_internal(task)
+    assert agent.execution_user_id == task.execution_user_id
+    assert agent.execution_user_identity == task.execution_user_identity
+    task.execution_user_id = None
+    task.execution_user_identity = None
+    await manager._process_message_internal(task)
+    assert agent.execution_user_id is None
+    assert agent.execution_user_identity is None
+
 
 @pytest.mark.anyio
 async def test_cached_agent_overwrites_channel_admin_with_explicit_false(monkeypatch) -> None:
@@ -1324,6 +1386,7 @@ async def test_cached_agent_overwrites_channel_admin_with_explicit_false(monkeyp
     同会话换用户必须清理旧实例，以新实例装配明确的非管理员身份。
     """
     manager = AgentManager()
+    manager._data = _test_data()
     agent = MoviePilotAgent(
         session_id="channel-admin-cached-session",
         user_id="user-1",

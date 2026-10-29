@@ -7,6 +7,7 @@ import uuid
 from typing import Callable, Optional
 
 from app.agent.contracts import ReplyMode
+from app.agent.identity import AgentIdentityError, require_execution_user
 from app.agent.lifecycle import AgentLifecycleOwner
 from app.agent.middleware.guardrails import GUARDRAIL_REPLY_PREFIX
 from app.agent.middleware.jobs import filter_active_jobs, load_jobs_metadata
@@ -74,6 +75,8 @@ class AgentTaskOwner(AgentLifecycleOwner):
 
         :param task_id: Agent 定时任务 ID
         :param trigger_source: 触发入口，scheduled-自动调度，manual-显式立即执行
+        :param scheduler_generation: 调度器登记代际，用于避免旧执行误删新计划
+        :param remove_schedule: 按代际移除已完成的一次性任务的回调
         :return: 执行是否成功及结果摘要
         """
         if not get_runtime_setting('AI_AGENT_ENABLE'):
@@ -102,8 +105,13 @@ class AgentTaskOwner(AgentLifecycleOwner):
         )
         success = True
         result = ""
-        notification_username = run.username or get_runtime_setting('SUPERUSER')
+        notification_username = None
         try:
+            user = await require_execution_user(
+                self._data.users if self._data is not None else None, run.execution_user_id,
+                run.execution_user_identity or "",
+            )
+            notification_username = user.name
             result = await self.process_message(
                 session_id=run.session_id,
                 user_id=run.user_id,
@@ -116,6 +124,8 @@ class AgentTaskOwner(AgentLifecycleOwner):
                 allow_message_tools=True,
                 wait_for_completion=True,
                 scheduled_run_id=run.run_id,
+                execution_user_id=user.id,
+                execution_user_identity=user.notification_identity,
             )
             result_text = str(result or "").strip()
             success = not result_text.startswith(
@@ -136,15 +146,20 @@ class AgentTaskOwner(AgentLifecycleOwner):
                 error_message = "AgentManager 已关闭"
             result = f"Agent 定时任务执行失败：{error_message}"
             logger.error(f"Agent 定时任务 {task_id} 执行失败: {str(err)}")
-            await AgentChain().async_post_message(
-                Message(
-                    mtype=MessageType.Agent,
-                    username=notification_username,
-                    title=f"定时任务执行失败：{run.name}",
-                    text=result,
-                    save_history=False,
+            if notification_username or run.channel:
+                await AgentChain().async_post_message(
+                    Message.model_validate({
+                        "mtype": MessageType.Agent,
+                        "username": notification_username,
+                        "channel": run.channel if isinstance(err, AgentIdentityError) else None,
+                        "source": run.message_source if isinstance(err, AgentIdentityError) else None,
+                        "userid": run.user_id if isinstance(err, AgentIdentityError) else None,
+                        "original_chat_id": run.original_chat_id if isinstance(err, AgentIdentityError) else None,
+                        "title": f"定时任务执行失败：{run.name}",
+                        "text": result,
+                        "save_history": False,
+                    })
                 )
-            )
         finally:
             await task_service.finalize(
                 run,

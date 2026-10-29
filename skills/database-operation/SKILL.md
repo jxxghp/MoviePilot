@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 16
+version: 17
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -178,13 +178,13 @@ and pass the flag only for an explicitly authorized repair.
 - Purpose: Stores one-shot or recurring Agent task definitions, triggers, and the latest execution summary.
 - Useful queries: Inspecting task ownership, enablement, cron/run_at settings, and the latest result.
 - Write boundary: Create, update, enable, disable, or delete tasks through the Agent task API.
-- Columns: `id`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `enabled`, `user_id`, `username`, `session_id`, `channel`, `source`, `original_chat_id`, `last_status`, `last_run_at`, `last_result`, `last_run_id`, `run_count`, `created_at`, `updated_at`
+- Columns: `id`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `enabled`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `session_id`, `channel`, `source`, `original_chat_id`, `last_status`, `last_run_at`, `last_result`, `last_run_id`, `run_count`, `created_at`, `updated_at`
 
 ### `agenttaskrun`
 - Purpose: Stores the input snapshot, status, timestamps, and result of each Agent task execution.
 - Useful queries: Auditing one run or correlating a failure with task_id, run_id, and trigger source.
 - Write boundary: Execution evidence owned by the task runner; never fabricate rows or edit run status.
-- Columns: `id`, `run_id`, `task_id`, `trigger_source`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `user_id`, `username`, `session_id`, `channel`, `message_source`, `original_chat_id`, `status`, `started_at`, `finished_at`, `result`
+- Columns: `id`, `run_id`, `task_id`, `trigger_source`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `user_id`, `username`, `execution_user_id`, `execution_user_identity`, `session_id`, `channel`, `message_source`, `original_chat_id`, `status`, `started_at`, `finished_at`, `result`
 
 ### `alembic_version`
 - Purpose: Records the Alembic migration revision currently applied to the database.

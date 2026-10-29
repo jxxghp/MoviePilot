@@ -18,13 +18,25 @@ from app.agent.orchestrator import AgentManager
 from app.agent.tools.impl.agent_task import AgentTaskTool
 from app.db import base as db_base
 from app.db.adapters.agent import TransactionalAgentTaskRepository
+from app.db.adapters.user import TransactionalUserRepository
 from app.db.engine import get_engine
 from app.db.models.agenttask import AgentTask
 from app.db.models.agenttaskrun import AgentTaskRun
+from app.db.models.user import User
 from app.db.oper.agenttask import AgentTaskOper
-from app.db.session import SessionFactory
+from app.db.oper.user import UserOper
+from app.db.session import SessionFactory, async_session_scope
 
 Engine = get_engine()
+
+
+@pytest.fixture(autouse=True)
+def task_execution_account(db) -> None:
+    """
+    为运行记录回归提供真实执行账号并清理本轮新建任务和用户。
+    """
+    db.watermark(AgentTask, AgentTaskRun)
+    db.add(User(name="task-runs-account", is_active=True, is_superuser=True))
 
 
 def _add_task(prefix: str, *, trigger_type: str = "cron") -> AgentTask:
@@ -32,7 +44,10 @@ def _add_task(prefix: str, *, trigger_type: str = "cron") -> AgentTask:
     创建带隔离 owner 的 Agent 自主任务。
     """
     user_id = f"{prefix}-{uuid4().hex}"
+    account = UserOper().get_by_name("task-runs-account")
     return AgentTaskOper().add(
+        execution_user_id=account.id,
+        execution_user_identity=account.notification_identity,
         name=f"{prefix} 检查",
         content="检查资源并报告",
         trigger_type=trigger_type,
@@ -437,6 +452,9 @@ async def test_agent_manager_records_manual_trigger_source(monkeypatch, reply, s
     )
     task = _add_task("run-manager")
     manager = AgentManager()
+    manager._data = SimpleNamespace(users=TransactionalUserRepository(
+        sync_session=SessionFactory, async_session=async_session_scope,
+    ))
     captured = {}
 
     async def process_message(**kwargs):

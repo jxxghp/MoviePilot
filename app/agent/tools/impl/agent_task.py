@@ -9,9 +9,11 @@ from typing import Literal, Optional, Type, cast
 import pytz
 from pydantic import BaseModel, Field, model_validator
 
+from app.agent.identity import AgentIdentityError, resolve_task_user
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.application.agenttask import agent_task_run_to_dict, agent_task_to_dict
+from app.application.security.user import UserSnapshot
 from app.runtime.scheduling import TimerUtils
 from app.runtime.settings import get_runtime_setting
 
@@ -211,9 +213,15 @@ class AgentTaskTool(MoviePilotTool):
         )
         return normalized
 
-    def _create_task(self, payload: AgentTaskInput) -> dict[str, object]:
+    def _create_task(
+        self, payload: AgentTaskInput, user: UserSnapshot,
+    ) -> dict[str, object]:
         """
-        持久化任务并立即注册到运行时调度器。
+        持久化已验证的执行主体，保留渠道会话归属并注册调度。
+
+        :param payload: 已验证的任务定义及调度参数
+        :param user: 由可信入口解析的启用账号，不接受模型指定的身份
+        :return: 注册调度后的任务展示数据
         """
         from app.application.scheduling import update_agent_task_job
 
@@ -231,7 +239,9 @@ class AgentTaskTool(MoviePilotTool):
             cron_expression=(trigger_value if payload.trigger_type == "cron" else None),
             run_at=trigger_value if payload.trigger_type == "date" else None,
             user_id=str(self._user_id),
-            username=self._username or (chat.username if chat else None),
+            username=user.name,
+            execution_user_id=user.id,
+            execution_user_identity=user.notification_identity,
             session_id=str(self._session_id),
             channel=self._channel or (chat.channel if chat else None),
             source=self._source or (chat.source if chat else None),
@@ -283,9 +293,14 @@ class AgentTaskTool(MoviePilotTool):
     def _update_task(
         self,
         payload: AgentTaskInput,
+        identity_payload: dict[str, object] | None = None,
     ) -> Optional[dict[str, object]]:
         """
         更新当前用户任务并刷新运行时调度。
+
+        :param payload: 已验证的更新参数
+        :param identity_payload: 仅供旧任务一次性确认的身份字段；仓储拒绝覆盖已确认账号
+        :return: 更新后的展示数据、运行中提示，或未找到任务时返回 None
         """
         from app.application.scheduling import update_agent_task_job
 
@@ -329,7 +344,7 @@ class AgentTaskTool(MoviePilotTool):
                 ),
             )
 
-        update_payload: dict[str, object] = {}
+        update_payload: dict[str, object] = dict(identity_payload or {})
         if payload.name is not None:
             update_payload["name"] = payload.name
         if payload.content is not None:
@@ -398,6 +413,60 @@ class AgentTaskTool(MoviePilotTool):
             remove_agent_task_job(task_id)
         return deleted
 
+    async def _execution_identity(self) -> UserSnapshot:
+        """
+        从可信入口解析创建主体；渠道用户名和旧会话昵称不参与认证。
+
+        :return: 真实用户的身份与权限快照
+        :raises AgentIdentityError: 无法解析唯一启用的用户
+        """
+        context_id = self._agent_context.get("execution_user_id")
+        chat = await self.run_blocking(
+            "db", self.data.chat.get_sync, session_id=self._session_id, user_id=self._user_id,
+        )
+        return await resolve_task_user(
+            self.data.users,
+            user_id=str(self._user_id or ""),
+            username=self._username or (chat.username if chat else None),
+            channel=self._channel or (chat.channel if chat else None),
+            source=self._source or (chat.source if chat else None),
+            is_admin=await self.is_admin_user(),
+            execution_user_id=context_id if isinstance(context_id, int) else None,
+            execution_user_identity=str(self._agent_context.get("execution_user_identity") or ""),
+        )
+
+    async def _update(self, payload: AgentTaskInput) -> str:
+        """
+        更新任务；旧任务只允许从创建时的原会话确认执行主体，暂停不要求补绑。
+
+        :param payload: 已验证的任务更新参数
+        :return: 更新后的任务或不能更新的明确原因
+        """
+        current = await self.run_blocking(
+            "db", self.data.tasks.get, task_id=payload.task_id, user_id=str(self._user_id),
+        )
+        identity_payload: dict[str, object] = {}
+        if current is not None and current.execution_user_id is None and payload.enabled is not False:
+            if (current.session_id, current.channel, current.source) != (
+                self._session_id, self._channel, self._source,
+            ):
+                return "请从创建任务的原会话更新执行账号，或在原会话删除后重新创建。"
+            try:
+                user = await self._execution_identity()
+            except AgentIdentityError as error:
+                return str(error)
+            identity_payload = {
+                "execution_user_id": user.id,
+                "execution_user_identity": user.notification_identity,
+                "username": user.name,
+            }
+        task = await self.run_blocking("db", self._update_task, payload, identity_payload)
+        if not task:
+            return f"Agent 定时任务 {payload.task_id} 不存在或不属于当前用户"
+        if update_error := task.get("error"):
+            return str(update_error)
+        return json.dumps(task, ensure_ascii=False, indent=2)
+
     # 具体参数由 args_schema 验证，执行入口保留与工具基类的动态分发兼容。
     async def run(  # type: ignore[override]
         self,
@@ -427,7 +496,11 @@ class AgentTaskTool(MoviePilotTool):
         if payload.action == "create":
             if not get_runtime_setting("AI_AGENT_ENABLE"):
                 return "AI Agent 未启用，无法创建自主定时任务"
-            task = await self.run_blocking("db", self._create_task, payload)
+            try:
+                user = await self._execution_identity()
+            except AgentIdentityError as error:
+                return str(error)
+            task = await self.run_blocking("db", self._create_task, payload, user)
             return json.dumps(task, ensure_ascii=False, indent=2)
         if payload.action == "list":
             tasks = await self.run_blocking(
@@ -442,12 +515,7 @@ class AgentTaskTool(MoviePilotTool):
                 indent=2,
             )
         if payload.action == "update":
-            task = await self.run_blocking("db", self._update_task, payload)
-            if not task:
-                return f"Agent 定时任务 {payload.task_id} 不存在或不属于当前用户"
-            if error := task.get("error"):
-                return str(error)
-            return json.dumps(task, ensure_ascii=False, indent=2)
+            return await self._update(payload)
         if payload.action == "run":
             return await self._run_now(payload.task_id)
         return await self._delete(payload.task_id)

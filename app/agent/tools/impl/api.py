@@ -17,6 +17,7 @@ from app.agent.api.arguments import (
     coerce_string_body,
 )
 from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, MoviePilotApiExecutor
+from app.agent.identity import AgentIdentityError, require_execution_user, resolve_channel_user
 from app.agent.policy.api import API_UNBOUND_READ_OPERATIONS, resolve_api_operation
 from app.agent.policy.contracts import ExecutionOutcome, PrincipalRole
 from app.agent.policy.sanitizer import summarize_input
@@ -272,6 +273,17 @@ class MoviePilotApiTool(MoviePilotTool):
         把 Web、渠道或集成身份解析为真实 MoviePilot API 用户身份。
         """
         raw_user_id = str(self._user_id or "")
+        execution_user_id = self._agent_context.get("execution_user_id")
+        if isinstance(execution_user_id, int):
+            try:
+                execution_user = await require_execution_user(
+                    self._data.users if self._data is not None else None, execution_user_id,
+                    str(self._agent_context.get("execution_user_identity") or ""),
+                )
+            except AgentIdentityError as error:
+                self._record_identity_error(str(error))
+                raise ApiExecutionError(str(error)) from error
+            return str(execution_user.id), execution_user.name, bool(execution_user.is_superuser)
         is_authenticated_integration = self._source == "api" or (
             self._channel == NotificationChannel.Web.value
             and self._source in {"openai", "openai.responses", "anthropic"}
@@ -345,29 +357,7 @@ class MoviePilotApiTool(MoviePilotTool):
         data = self._data
         if data is None:
             return None
-        try:
-            channel = NotificationChannel(self._channel)
-        except (TypeError, ValueError):
-            return None
-        binding_keys = {
-            NotificationChannel.Telegram: ("telegram_userid",),
-            NotificationChannel.Discord: ("discord_userid",),
-            NotificationChannel.Wechat: ("wechat_userid",),
-            NotificationChannel.Feishu: ("feishu_userid", "feishu_openid"),
-            NotificationChannel.WechatClawBot: ("wechatclawbot_userid",),
-            NotificationChannel.Slack: ("slack_userid",),
-            NotificationChannel.VoceChat: ("vocechat_userid",),
-            NotificationChannel.SynologyChat: ("synologychat_userid",),
-            NotificationChannel.QQ: ("qq_userid", "qq_openid"),
-        }.get(channel)
-        if not binding_keys or not raw_user_id:
-            return None
-        # userid/openid 是候选字段，仓储必须拒绝匹配到多个用户的歧义绑定。
-        username = await self.run_blocking(
-            "db", data.users.find_name_by_bindings,
-            {key: raw_user_id for key in binding_keys}, match_any=True,
-        )
-        return await data.users.async_get_by_name(username) if username else None
+        return await resolve_channel_user(data.users, raw_user_id, self._channel)
 
     async def _get_executor(
         self,
@@ -380,7 +370,7 @@ class MoviePilotApiTool(MoviePilotTool):
         """
         if self._executor is not None:
             return self._executor, await self.is_admin_user()
-        if public_read_only:
+        if public_read_only and not isinstance(self._agent_context.get("execution_user_id"), int):
             user_id, username, is_admin = await self._resolve_superuser_integration_identity()
         else:
             user_id, username, is_admin = await self._resolve_api_identity(
@@ -406,6 +396,19 @@ class MoviePilotApiTool(MoviePilotTool):
         )
 
     # 具体参数由 args_schema 验证，执行入口保留与工具基类的动态分发兼容。
+    def _record_api_identity_failure(self, payload: object) -> None:
+        """
+        将业务 API 的鉴权拒绝同步到计划任务结果，避免模型最终回复掩盖失败。
+
+        :param payload: API 的结构化响应；仅识别明确的身份或权限拒绝
+        """
+        if (
+            isinstance(payload, dict)
+            and payload.get("error") == "api_error"
+            and payload.get("status_code") in {401, 403}
+        ):
+            self._record_identity_error("任务执行账号未通过业务 API 身份或权限校验，请检查账号状态及权限后重试。")
+
     async def run(  # type: ignore[override]
         self,
         operation_id: str,
@@ -455,6 +458,7 @@ class MoviePilotApiTool(MoviePilotTool):
                 public_read_only=operation_id in API_UNBOUND_READ_OPERATIONS,
             )
             if requires_system_admin and not is_admin:
+                self._record_identity_error("任务执行账号不具备此操作需要的系统管理员权限。")
                 return json.dumps(
                     {
                         "success": False,
@@ -473,6 +477,7 @@ class MoviePilotApiTool(MoviePilotTool):
                 payload = json.loads(result)
             except (TypeError, ValueError):
                 payload = None
+            self._record_api_identity_failure(payload)
             if (
                 isinstance(payload, dict)
                 and payload.get("error") == "api_error"
