@@ -18,6 +18,7 @@ from app.db.models.systemconfig import SystemConfig
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.session import SessionFactory
 from app.modules.apppush import AppPushModule
+from app.runtime.extensions.service import configure_service_config_reader
 from app.schemas.system import NotificationConf
 from app.schemas.types import SystemConfigKey
 
@@ -38,23 +39,26 @@ def fresh_service() -> SystemConfigService:
 @pytest.fixture
 def configuration(monkeypatch):
     """
-    只替换本模块的配置入口，复用测试引导的临时 SQL，结束时还原本键。
+    使用临时 SQL 隔离渠道、凭据及配置读取端口，结束时还原原有状态。
     """
     service = fresh_service()
-    original = service.get(SystemConfigKey.AppPushCredentials)
+    original = {key: service.get(key) for key in (SystemConfigKey.AppPushCredentials, SystemConfigKey.Notifications)}
     service.set(SystemConfigKey.AppPushCredentials, {})
+    previous_reader = configure_service_config_reader(service.get)
     monkeypatch.setattr("app.modules.apppush.get_configured_system_config", lambda: service)
     monkeypatch.setattr("app.modules.apppush.get_runtime_setting", lambda _key: SERVER)
     monkeypatch.setattr(MoviePilotServerHelper, "get_user_uid", lambda: UID)
     try:
         yield service
     finally:
-        service.set(SystemConfigKey.AppPushCredentials, original)
+        configure_service_config_reader(previous_reader)
+        for key, value in original.items():
+            service.set(key, value)
 
 
 def test_registration_persists_before_network_and_reuses_key_after_restart(monkeypatch, configuration):
     """
-    先落库再登记，渠道和普通状态响应均不包含密钥，重启不产生第二个实例。
+    渠道及凭据真实落库，重启后恢复相同配置和设备列表，不产生第二个实例。
     """
     calls = []
 
@@ -82,13 +86,14 @@ def test_registration_persists_before_network_and_reuses_key_after_restart(monke
                 assert options["json"] == {"user_uid": UID}
                 payload = {"instance": "a" * 32, "registered": True}
             else:
-                payload = {"devices": []}
+                payload = {"devices": [{"id": "bound-web-device", "transport": "webpush"}]}
             return SimpleNamespace(status_code=200, json=lambda: payload)
 
     monkeypatch.setattr("app.adapters.external.server.RequestUtils", Transport)
     conf = NotificationConf(name="automatic", type="apppush", enabled=True, config={})
+    configuration.set(SystemConfigKey.Notifications, [conf.model_dump()])
     module = AppPushModule.__new__(AppPushModule)
-    monkeypatch.setattr(module, "get_configs", lambda: {"automatic": conf})
+    module.init_module()
     result = module.channel_manage("AppPush", "status", owner="a" * 32)
     key = configuration.get(SystemConfigKey.AppPushCredentials)[SERVER]["key"]
     assert result["success"] is True and result["data"]["relay_url"] == SERVER + "/push/app/"
@@ -96,9 +101,13 @@ def test_registration_persists_before_network_and_reuses_key_after_restart(monke
     assert key not in str(result) and key not in str(conf.model_dump())
     restarted = fresh_service()
     monkeypatch.setattr("app.modules.apppush.get_configured_system_config", lambda: restarted)
+    configure_service_config_reader(restarted.get)
     second_module = AppPushModule.__new__(AppPushModule)
-    monkeypatch.setattr(second_module, "get_configs", lambda: {"automatic": conf})
-    assert second_module.channel_manage("AppPush", "status", owner="a" * 32)["success"] is True
+    second_module.init_module()
+    assert second_module.get_configs()["automatic"].model_dump() == conf.model_dump()
+    restored = second_module.channel_manage("AppPush", "status", owner="a" * 32)
+    assert restored["success"] is True
+    assert restored["data"] == result["data"]
     assert sum(url.endswith('/instances') for _, url, _ in calls) == 1
     assert {request_key for _, _, request_key in calls} == {key}
 
