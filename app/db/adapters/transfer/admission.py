@@ -49,6 +49,19 @@ class TransactionalTransferAdmissionRepository:
         """
         self._session_factory = session_factory
 
+    def get_task_id_by_identity(self, *, storage: str, src_path: str) -> Optional[str]:
+        """
+        只读源文件的持久任务身份，不投影或改写旧规划和执行检查点。
+
+        :param storage: 源文件存储标识
+        :param src_path: 源文件规范路径
+        :return: 已准入任务的稳定身份；不存在时为 None
+        """
+        with self._session_factory() as session:
+            return TransferPendingOper(db=session).get_task_id_by_identity(
+                storage=storage, src_path=src_path,
+            )
+
     @staticmethod
     def _now() -> str:
         """

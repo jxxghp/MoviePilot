@@ -1004,6 +1004,16 @@ class TransferAdmissionRepository(Protocol):
     认领和状态推进必须核对当前租约，不能让过期执行者覆盖新执行者的结果。
     """
 
+    def get_task_id_by_identity(self, *, storage: str, src_path: str) -> Optional[str]:
+        """
+        查询源文件已有的持久任务身份，供自动发现保留原任务而非重新准入。
+
+        :param storage: 源文件存储标识
+        :param src_path: 源文件规范路径
+        :return: 既有任务标识；未准入时为 None
+        """
+        ...
+
     def defer_planning(self, *, task_id: str, lease_token: str, error: str,
                        retry_after: int, max_retries: int) -> bool:
         """
