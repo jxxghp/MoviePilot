@@ -27,28 +27,11 @@ class _DictionarySerializable(Protocol):
         """
 
 
-class _TransferTaskMetaSource(Protocol):
-    """
-    描述整理任务提供已解析领域元数据的最小形状。
-
-    :ivar meta: 整理任务中已解析的发布名元数据；未完成识别时为 None
-    """
-
-    meta: MetaBase | None
-
-
 def domain_to_dict(value: object) -> dict[str, Any]:
     """
     按领域对象既有 ``to_dict`` 合同生成字典投影。
     """
     return cast(_DictionarySerializable, value).to_dict()
-
-
-def transfer_task_meta(task: _TransferTaskMetaSource) -> MetaBase:
-    """
-    声明进入作业与规划边界的整理任务已完成元数据解析。
-    """
-    return cast(MetaBase, task.meta)
 
 
 def _music_preview_status(meta: MetaMusic, info: Optional[MusicInfo], diagnostic: dict[str, Any], selected: bool) -> str:
