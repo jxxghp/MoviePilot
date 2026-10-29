@@ -1321,7 +1321,15 @@ class LLMHelper:
             model_kwargs: dict[str, Any],
     ) -> tuple[dict[str, str] | None, dict[str, Any]]:
         """
-        为官方端点构造稳定会话及提示词缓存路由参数。
+        为官方端点及通用 OpenAI 兼容 Responses 构造稳定缓存路由参数。
+
+        :param provider: 提供商标识；openai 对应用户配置的通用兼容入口
+        :param base_url: 实际 API 地址，用于识别供应商专属协议
+        :param use_responses_api: 本次实际是否使用 Responses；None 表示未强制指定
+        :param prompt_cache_key: 稳定且脱敏的会话键；空值不添加缓存参数
+        :param default_headers: 原始请求头，不原地修改
+        :param model_kwargs: 原始模型参数，不原地修改其 extra_body
+        :return: 合入会话路由参数的请求头与模型参数副本
         """
         cache_key = str(prompt_cache_key or "").strip()
         headers = dict(default_headers or {})
@@ -1344,7 +1352,10 @@ class LLMHelper:
             base_url,
             "api.x.ai",
         )
-        if not is_openai and not is_xai:
+        # Responses 的标准缓存键也供 Sub2API 等网关维持会话路由；
+        # 通用 Chat Completions 仍保留原有兼容边界，避免向旧服务增加参数。
+        is_compatible_responses = provider_name == "openai" and use_responses_api is True
+        if not is_openai and not is_xai and not is_compatible_responses:
             return headers or None, kwargs
 
         if is_xai and use_responses_api is not True:
