@@ -5,7 +5,7 @@
 import re
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, Generator, List, Literal, Optional, Tuple, Union, cast
 
 from app.application.audio import capture_audio_metadata
 from app.application.classification.reference import (
@@ -628,6 +628,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
         file_items = self._filter_manual_transfer_history(file_items, bool(manual and skip_success), submission.record_history_skip)
+        file_items = self._filter_automatic_pending_transfers(
+            file_items, not (manual or preview or recovery_admission), submission.record,
+        )
         if not file_items:
             return submission.result(True, [], preview=bool(preview), preview_items=[])
         file_items, inherited_meta_map = candidate_planner._plan_file_items(file_items)
@@ -705,6 +708,35 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 self._TransferChain__mark_torrent_completed_if_done(skipped_hash, skipped_downloader)
 
         return submission.result(all_success, err_msgs, preview=bool(preview), preview_items=preview_items)
+
+    def _filter_automatic_pending_transfers(
+            self,
+            fileitems: List[Tuple[FileItem, bool]],
+            enabled: bool,
+            record_skipped: Callable[[FileItem, Literal["skipped"], str], None],
+    ) -> List[Tuple[FileItem, bool]]:
+        """
+        自动发现跳过已有持久任务的源文件，同批未准入成员继续规划。
+
+        :param fileitems: 本轮已收集的精确文件项
+        :param enabled: 自动新任务时启用；手动、预览及明确恢复保留原入口
+        :param record_skipped: 记录本次发现跳过，不声称原任务已经完成
+        :return: 尚无持久任务的候选；不重写原任务或建立新恢复流程
+        """
+        if not enabled:
+            return fileitems
+        candidates = []
+        for fileitem, bluray_dir in fileitems:
+            task_id = self.transfer_admission_repository.get_task_id_by_identity(
+                storage=fileitem.storage or "local", src_path=fileitem.path,
+            )
+            if task_id:
+                message = "源文件已有持久整理任务，由原任务继续处理"
+                record_skipped(fileitem, "skipped", message)
+                logger.debug(f"{fileitem.path} {message}：{task_id}")
+            else:
+                candidates.append((fileitem, bluray_dir))
+        return candidates
 
     def _enqueue_transfer_candidate(
         self, task: TransferTask, errors: list[str], submission: _TransferSubmissionCollector,

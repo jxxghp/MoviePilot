@@ -267,11 +267,16 @@ def make_transfer_chain() -> TransferChain:
         return planned
 
     admissions.admit.side_effect = admit
+    admissions.get_task_id_by_identity.side_effect = lambda *, storage, src_path: (
+        admissions_by_identity[(storage, src_path)].task_id
+        if (storage, src_path) in admissions_by_identity else None
+    )
     admissions.claim_task.side_effect = claim_task
     admissions.checkpoint_plan.side_effect = checkpoint_plan
     admissions.abandon_unstarted.return_value = 1
     admissions.release_claim.return_value = True
     chain._transfer_admissions = admissions
+    chain.transfer_admission_repository = admissions
     chain._TransferChain__ensure_lease_heartbeat_owner = MagicMock()
 
     class ImmediateStepRunner:
@@ -316,6 +321,11 @@ def make_transfer_chain() -> TransferChain:
         history = kwargs["stage_history"](staging)
         if kwargs["publish"] is not None:
             kwargs["publish"](kwargs["event_payload"])
+        settlement = kwargs["settlement"]
+        if settlement.outcome == "succeeded":
+            completed = admissions_by_id.pop(settlement.task_id, None)
+            if completed is not None:
+                admissions_by_identity.pop((completed.storage, completed.src_path), None)
         return TransferSettlementResult(
             history_id=getattr(history, "id", 1) if history is not None else 1,
             settlement_revision=1,
