@@ -13,9 +13,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, Tuple, Union, 
 from app.application.transfer.projection import (
     domain_to_dict as _domain_to_dict,
 )
-from app.application.transfer.projection import (
-    transfer_task_meta as _transfer_task_meta,
-)
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase
@@ -200,8 +197,9 @@ job_lock = threading.Lock()
 
 class JobManager:
     """
-    作业管理器
-    task任务负责一个文件的整理，job作业负责一个媒体的整理
+    按媒体或解析名称聚合文件任务，缺少识别上下文时按源文件隔离。
+
+    仅维护进程内视图与状态，不重建或改写持久恢复使用的元数据快照。
     """
 
     # 整理中的作业
@@ -224,15 +222,19 @@ class JobManager:
         self._task_state_changed_at = {}
         self._active_executions = set()
 
-    @staticmethod
     def __get_meta_id(
-            meta: Optional[MetaBase] = None,
-            season: Optional[int] = None,
+            self,
+            task: TransferTask,
     ) -> JobId:
         """
-        获取元数据ID
+        按解析名称和季分组；尚无元数据的恢复任务按源文件隔离。
+
+        :param task: 可缺少元数据的整理任务
+        :return: 元数据作业身份，或带存储和路径的源文件作业身份
         """
-        return cast(MetaBase, meta).name, season
+        if task.meta is not None:
+            return task.meta.name, task.meta.begin_season
+        return "file", self.__get_file_key(task.fileitem)
 
     @staticmethod
     def __get_media_id(media: Optional[Union[MediaInfo, MusicInfo]] = None,
@@ -291,15 +293,14 @@ class JobManager:
 
     def __get_id(self, task: TransferTask) -> JobId:
         """
-        获取作业ID
+        获取作业身份；无元数据时不推测季号，未识别媒体时按源文件分组。
         """
-        resolved_task = task
-        meta = _transfer_task_meta(resolved_task)
-        if resolved_task.mediainfo:
+        if task.mediainfo:
             return self.__get_media_id(
-                media=resolved_task.mediainfo, season=meta.begin_season
+                media=task.mediainfo,
+                season=task.meta.begin_season if task.meta else None,
             )
-        return self.__get_meta_id(meta=meta, season=meta.begin_season)
+        return self.__get_meta_id(task)
 
     def get_job_id(self, task: TransferTask) -> JobId:
         """
@@ -319,7 +320,12 @@ class JobManager:
                 return _SchemaMusicInfo(**_domain_to_dict(mediainfo))
             return _SchemaMediaInfo(**_domain_to_dict(mediainfo))
         else:
-            meta = _transfer_task_meta(task)
+            meta = task.meta
+            if meta is None:
+                return _SchemaMediaInfo(
+                    title=task.fileitem.name,
+                    title_year=task.fileitem.name,
+                )
             if isinstance(meta, MetaMusic):
                 # 未识别的音乐按已解析元数据兜底展示；音乐年份为 int，
                 # 不能复用 MediaInfo（year 为 str），否则触发 pydantic 校验异常
@@ -342,20 +348,23 @@ class JobManager:
             )
 
     @staticmethod
-    def __get_meta(task: TransferTask) -> Union[_SchemaMetaInfo, _SchemaMusicMeta]:
+    def __get_meta(task: TransferTask) -> Optional[Union[_SchemaMetaInfo, _SchemaMusicMeta]]:
         """
-        获取元数据
+        投影已解析元数据，恢复任务未携带时保留空值。
         """
+        if task.meta is None:
+            return None
         if isinstance(task.meta, MetaMusic):
             return _SchemaMusicMeta(**task.meta.to_dict())
-        return _SchemaMetaInfo(**_domain_to_dict(_transfer_task_meta(task)))
+        return _SchemaMetaInfo(**_domain_to_dict(task.meta))
 
     def add_task(self, task: TransferTask, state: Optional[str] = "waiting") -> bool:
         """
-        添加整理任务，自动分组到对应的作业中
+        添加整理任务，缺少元数据时仍按媒体或源文件身份登记。
+
         :return: True表示任务已添加，False表示任务无效或已存在（重复）
         """
-        if not all([task, task.meta, task.fileitem]):
+        if not all([task, task.fileitem]):
             return False
         file_key = self.__get_file_key(task.fileitem)
         if not file_key:
@@ -369,7 +378,7 @@ class JobManager:
             if __mediaid__ not in self._job_view:
                 self._job_view[__mediaid__] = TransferJob(
                     media=self.__get_media(task),
-                    season=_transfer_task_meta(task).begin_season,
+                    season=task.meta.begin_season if task.meta else None,
                     tasks=[
                         TransferJobTask(
                             fileitem=task.fileitem,
@@ -392,29 +401,30 @@ class JobManager:
                     )
                 )
             self._task_state_changed_at[file_key] = monotonic()
+            episodes = task.meta.episode_list if task.meta else []
             if self._season_episodes.get(__mediaid__):
                 self._season_episodes[__mediaid__].extend(
-                    _transfer_task_meta(task).episode_list
+                    episodes
                 )
                 self._season_episodes[__mediaid__] = list(
                     set(self._season_episodes[__mediaid__])
                 )
             else:
-                self._season_episodes[__mediaid__] = _transfer_task_meta(task).episode_list
+                self._season_episodes[__mediaid__] = episodes
             return True
 
     def migrate_task(self, task: TransferTask) -> bool:
         """
-        将任务从 meta 作业迁移到 media 作业
+        将元数据或源文件作业迁入媒体作业，保留原任务状态与执行标记。
         """
         curr_task, source_job_id = self.__remove_task_with_job_id(
             task.fileitem, preserve_execution=True
         )
         if not self.add_task(task, state=curr_task.state if curr_task else "waiting"):
             return False
-        if curr_task and task.mediainfo:
-            meta = _transfer_task_meta(task)
-            metaid = self.__get_meta_id(meta=meta, season=meta.begin_season)
+        # 无元数据的源文件作业只含当前任务，迁走即为空，无需保留跨作业关联。
+        if curr_task and task.mediainfo and task.meta is not None:
+            metaid = self.__get_meta_id(task)
             mediaid = self.__get_id(task)
             if source_job_id == metaid and mediaid != metaid:
                 with job_lock:
@@ -594,7 +604,7 @@ class JobManager:
             if __mediaid__ in self._season_episodes:
                 self._season_episodes[__mediaid__] = list(
                     set(self._season_episodes[__mediaid__])
-                    - set(_transfer_task_meta(task).episode_list)
+                    - set(task.meta.episode_list if task.meta else [])
                 )
 
     def fail_unfinished_task(self, task: TransferTask) -> None:
@@ -617,7 +627,7 @@ class JobManager:
                         if mediaid in self._season_episodes:
                             self._season_episodes[mediaid] = list(
                                 set(self._season_episodes[mediaid])
-                                - set(_transfer_task_meta(task).episode_list)
+                                - set(getattr(job_task.meta, "episode_list", None) or [])
                             )
                     return
 
@@ -658,6 +668,7 @@ class JobManager:
                             self._active_executions.discard(file_key)
                         if not _job_tasks(job):
                             self._job_view.pop(mediaid)
+                            self._season_episodes.pop(mediaid, None)
                         if mediaid in self._season_episodes:
                             episodes = getattr(task.meta, "episode_list", None) or []
                             self._season_episodes[mediaid] = list(
@@ -684,10 +695,10 @@ class JobManager:
         尝试移除任务对应的作业（严格检查未完成作业，线程安全）
         """
         with job_lock:
-            meta = _transfer_task_meta(task)
-            __metaid__ = self.__get_meta_id(meta=meta, season=meta.begin_season)
+            __metaid__ = self.__get_meta_id(task)
             __mediaid__ = self.__get_media_id(
-                media=task.mediainfo, season=meta.begin_season
+                media=task.mediainfo,
+                season=task.meta.begin_season if task.meta else None,
             )
 
             related_media_ids = set(self._meta_to_media_ids.get(__metaid__, set()))
@@ -710,10 +721,10 @@ class JobManager:
         检查任务对应的作业是否整理完成（不管成功还是失败）
         """
         with job_lock:
-            meta = _transfer_task_meta(task)
-            __metaid__ = self.__get_meta_id(meta=meta, season=meta.begin_season)
+            __metaid__ = self.__get_meta_id(task)
             __mediaid__ = self.__get_media_id(
-                media=task.mediainfo, season=meta.begin_season
+                media=task.mediainfo,
+                season=task.meta.begin_season if task.meta else None,
             )
             if __metaid__ in self._job_view:
                 meta_done = all(
@@ -736,10 +747,10 @@ class JobManager:
         检查任务对应的作业是否已完成且有成功的记录
         """
         with job_lock:
-            meta = _transfer_task_meta(task)
-            __metaid__ = self.__get_meta_id(meta=meta, season=meta.begin_season)
+            __metaid__ = self.__get_meta_id(task)
             __mediaid__ = self.__get_media_id(
-                media=task.mediainfo, season=meta.begin_season
+                media=task.mediainfo,
+                season=task.meta.begin_season if task.meta else None,
             )
             if __metaid__ in self._job_view:
                 meta_finished = all(
@@ -762,10 +773,10 @@ class JobManager:
         检查任务对应的作业是否全部成功
         """
         with job_lock:
-            meta = _transfer_task_meta(task)
-            __metaid__ = self.__get_meta_id(meta=meta, season=meta.begin_season)
+            __metaid__ = self.__get_meta_id(task)
             __mediaid__ = self.__get_media_id(
-                media=task.mediainfo, season=meta.begin_season
+                media=task.mediainfo,
+                season=task.meta.begin_season if task.meta else None,
             )
             if __metaid__ in self._job_view:
                 meta_success = all(
@@ -837,7 +848,7 @@ class JobManager:
                 if __mediaid__ in self._job_view:
                     return True
 
-            __metaid__ = self.__get_meta_id(meta=meta, season=season)
+            __metaid__ = meta.name, season
             return (
                 __metaid__ in self._job_view
                 and len(_job_tasks(self._job_view[__metaid__])) > 0
