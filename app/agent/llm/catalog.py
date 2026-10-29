@@ -423,6 +423,14 @@ class _ProviderCatalog:
                 api_key_hint="填写 Runcrate API Key，可在 https://www.runcrate.ai/dashboard/api-keys?utm_source=MoviePilot&utm_medium=directory&utm_campaign=gpu_pricing 获取。",
                 description="Runcrate GPU 云的 OpenAI-compatible 推理端点，提供 DeepSeek、GLM、Qwen、Kimi 与 gpt-oss 等模型，用 GitHub 账号即可免费使用开源模型。",
             ),
+            openai_provider(
+                provider_id="obscurify-ai",
+                name="Obscurify.ai",
+                default_base_url="https://obscurify.ai/v1",
+                sort_order=59,
+                api_key_hint="填写 Obscurify.ai API Key（sk-obs1_ 开头），在 https://obscurify.ai/?utm_source=moviepilot 创建账户后，于 Account 页面点击 Show API Key 获取。",
+                description="Obscurify.ai 注重隐私的 OpenAI-compatible 聚合模型平台：账户为随机 16 位账号，无需邮箱，服务端不保存提示词与回复。",
+            ),
             ProviderSpec(
                 id="github-copilot",
                 name="GitHub Copilot",
