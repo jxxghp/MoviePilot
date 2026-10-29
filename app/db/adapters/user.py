@@ -389,6 +389,34 @@ class TransactionalUserRepository(ChainUserRepository):
             settings["apppush"] = user.notification_identity
         return settings
 
+    def get_notification_broadcast_targets(self) -> Mapping[str, tuple[str, ...]]:
+        """
+        在独立会话中读取启用账号的通知身份，不使用可编辑的个人设置。
+
+        :return: AppPush 的明确接收账号集合；没有可用账号时返回空字典
+        """
+        with self._sync_session() as session:
+            owners = tuple(session.execute(
+                select(User.notification_identity)
+                .where(User.is_active.is_(True), User.notification_identity != "")
+                .order_by(User.id)
+            ).scalars())
+        return {"apppush": owners} if owners else {}
+
+    async def async_get_notification_broadcast_targets(self) -> Mapping[str, tuple[str, ...]]:
+        """
+        在独占异步会话中读取与同步入口相同的启用账号集合。
+
+        :return: AppPush 的明确接收账号集合；没有可用账号时返回空字典
+        """
+        async with self._async_session() as session:
+            owners = tuple((await session.execute(
+                select(User.notification_identity)
+                .where(User.is_active.is_(True), User.notification_identity != "")
+                .order_by(User.id)
+            )).scalars())
+        return {"apppush": owners} if owners else {}
+
     def find_name_by_bindings(
         self,
         bindings: Mapping[str, object],

@@ -99,7 +99,9 @@ Web 会话沿用当前用户；无渠道调用不携带收件人，插件回执�
 AppPush 地址 `PUSH_SERVER_URL` 留空时使用 `MP_SERVER_HOST`；首次操作自动生成并先行持久保存256位实例凭据，再向中心幂等登记现有 `user_uid`。UID 只关联来源，不能据此获取、重置或认领已有凭据。内部 `AppPushCredentials` 按中心地址隔离，不进入通知渠道配置；中心只保存凭据摘要。已有 `PUSH_RELAY_KEY` 手工配置继续兼容。
 `POST /api/v1/notification/app/instance` 仅容器超级管理员可调用，正文为 `{"action":"rotate","source":"已保存的渠道名称"}`。轮换保留设备，候选凭据先落库，响应丢失可在重启后接续；返回值不包含密钥。普通用户的 `/notification/app` 不接受该动作。
 Apple/VAPID 私钥只放在中心 Server，不放入 App 或用户容器。
-消息沿用现有类型开关和管理员/用户路由；无明确用户目标时不广播。部署与免费自签说明见
+消息沿用现有类型开关和管理员/用户路由；“所有用户”范围会查询本实例所有启用账号的不可变通知身份，
+逐账号投递到各自绑定的设备。停用账号和空身份不会进入接收集合，组合路由中已投递的账号不重复发送。
+未经过该范围解析且缺少明确用户目标时不广播，其他渠道继续使用原有默认目标。部署与免费自签说明见
 [MoviePilot-Server](https://github.com/jxxghp/MoviePilot-Server#私有-app-消息推送)。
 
 Discord 仅指定 `userid` 的定向通知使用私聊；无法私聊时返回失败，不转发公共频道。

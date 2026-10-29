@@ -366,13 +366,13 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
 
     def get_notification_targets(self, message: Message) -> Optional[dict[str, Any]]:
         """
-        返回渠道可用的通知目标，管理员范围缺少个人目标时启用渠道默认目标。
+        返回渠道可用的通知目标，管理员和所有用户范围缺少本渠道目标时使用默认目标。
 
         :param message: 已确定路由范围和用户绑定目标的通知
-        :return: 渠道目标映射；管理员范围没有个人目标时返回 None，允许使用渠道默认目标
+        :return: 渠道目标映射；允许默认投递的范围没有本渠道目标时返回 None
         """
         if (
-            message.notification_route_scope == "admin"
+            message.notification_route_scope in {"admin", "all"}
             and not self._has_notification_target(message)
         ):
             return None

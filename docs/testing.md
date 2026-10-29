@@ -62,6 +62,11 @@ focused 测试验证，不要求启动产品全套测试。
 提交失败与取消后的重试，以及关闭超时保留资源。`tests/test_telegram.py` 覆盖海报失败后的文本
 兜底、会话/话题/按钮保留、429 不追加请求，以及发送失败不能被 outbox 当作成功确认。
 
+AppPush 的所有用户范围由 `tests/test_notification_routing_parity.py` 验证：下载、入库和订阅消息
+经同步、异步与持久事件入口到达真实渠道；明确用户和管理员范围保持隔离，组合范围不重复发送。
+`tests/test_user_repository.py` 使用临时数据库验证接收集合只含启用账号的不可变身份，
+`tests/test_apppush.py` 验证无明确范围时不广播，以及单账号投递失败不阻断其他账号；投递 HTTP 均使用替身。
+
 `tests/test_db_error_diagnostics.py` 在临时 SQLite 的同步及异步连接池中注入
 `SQLITE_IOERR_SHORT_READ`：失败事务保留原始异常、不自动重放写入，后续独立事务
 使用新连接恢复；锁争用和约束错误不触发额外的连接失效。

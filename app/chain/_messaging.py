@@ -31,11 +31,11 @@ class _NotificationRouteLookup:
     """
     通知路由状态机请求读取指定用户的渠道设置。
 
-    :param username: 需要查询个人通知设置的 MoviePilot 用户名
+    :param username: 需要查询个人通知设置的 MoviePilot 用户名；None 表示查询所有启用账号
     :param log_message: 执行本次路由查询前记录的中文诊断说明
     """
 
-    username: str
+    username: Optional[str]
     log_message: str
 
 
@@ -70,6 +70,32 @@ _NotificationRouteStep = Union[
 ]
 
 
+def _notification_broadcast_message(
+    message: Message,
+    broadcast_targets: Mapping[str, tuple[str, ...]],
+    delivered_targets: list[Mapping[str, object]],
+) -> Message:
+    """
+    为所有用户消息补充逐账号渠道目标，保留原目标并排除已投递账号。
+
+    :param message: 尚未修改的原通知，不在本方法中原地变更
+    :param broadcast_targets: 仓储确认的启用账号身份，其他渠道继续使用自身默认投递规则
+    :param delivered_targets: 本次路由已发送的用户目标，避免组合范围重复投递
+    :return: 携带明确目标及所有用户范围的独立消息
+    """
+    routed = copy.deepcopy(message)
+    targets = dict(routed.targets or {})
+    for channel, owners in broadcast_targets.items():
+        if owners and not targets.get(channel):
+            targets[channel] = tuple(
+                owner for owner in owners
+                if all(previous.get(channel) != owner for previous in delivered_targets)
+            )
+    routed.targets = targets or None
+    routed.set_notification_route_scope("all")
+    return routed
+
+
 def _notification_route_steps(
     message: Message,
     *,
@@ -86,9 +112,11 @@ def _notification_route_steps(
     生成器只表达用户设置查询、日志和投递决策，调用方分别执行真实同步或
     异步 I/O，避免两套外壳各自维护管理员回退和原消息投递规则。没有可用的
     用户范围必须携带用户个人渠道目标；管理员范围允许在个人设置为空时由
-    各渠道使用自身配置的默认目标。
+    各渠道使用自身配置的默认目标。所有用户范围为逐账号渠道补充启用账号身份，
+    其他渠道保持原有默认投递，不把缺少目标当作无条件广播。
     """
     admin_sent = False
+    delivered_targets: list[Mapping[str, object]] = []
     send_original = action is None
     route_actions: tuple[str, ...] = ()
     if action is not None:
@@ -157,6 +185,15 @@ def _notification_route_steps(
                     if username == superuser:
                         admin_sent = True
         elif route_action == "all":
+            broadcast_targets = yield _NotificationRouteLookup(
+                username=None,
+                log_message=f"{routed_message.mtype} 的消息已设置发送给所有用户",
+            )
+            message = _notification_broadcast_message(
+                message,
+                cast(Mapping[str, tuple[str, ...]], broadcast_targets or {}),
+                delivered_targets,
+            )
             send_original = not admin_sent
             break
         else:
@@ -172,6 +209,7 @@ def _notification_route_steps(
             admin_sent = True
             routed_message.targets = dict(settings) if settings is not None else None
             routed_message.set_notification_route_scope("admin")
+        delivered_targets.append(routed_message.targets or {})
         yield _NotificationRouteDelivery(
             message=routed_message,
             immediately=False,
@@ -446,8 +484,10 @@ class NotificationMixin:
             lookup_result = None
             if isinstance(step, _NotificationRouteLookup):
                 logger.info(step.log_message)
-                lookup_result = self.user_repository.get_notification_settings(
-                    step.username
+                lookup_result = (
+                    self.user_repository.get_notification_broadcast_targets()
+                    if step.username is None
+                    else self.user_repository.get_notification_settings(step.username)
                 )
             elif isinstance(step, _NotificationRouteLog):
                 logger.info(step.message)
@@ -529,9 +569,9 @@ class NotificationMixin:
             if isinstance(step, _NotificationRouteLookup):
                 logger.info(step.log_message)
                 lookup_result = (
-                    await self.user_repository.async_get_notification_settings(
-                        step.username
-                    )
+                    await self.user_repository.async_get_notification_broadcast_targets()
+                    if step.username is None
+                    else await self.user_repository.async_get_notification_settings(step.username)
                 )
             elif isinstance(step, _NotificationRouteLog):
                 logger.info(step.message)

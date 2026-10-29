@@ -258,6 +258,20 @@ class ChainUserRepository(Protocol):
         :return: 用户通知设置的只读快照；用户不存在时返回 None
         """
 
+    def get_notification_broadcast_targets(self) -> Mapping[str, tuple[str, ...]]:
+        """
+        查询所有启用用户的逐账号通知目标，仅由所有用户范围使用。
+
+        :return: 渠道绑定键与不可变用户身份集合，不包含用户自行填写的目标或停用账号
+        """
+
+    async def async_get_notification_broadcast_targets(self) -> Mapping[str, tuple[str, ...]]:
+        """
+        异步查询所有启用用户的逐账号通知目标。
+
+        :return: 与同步入口一致的渠道绑定键和不可变用户身份集合
+        """
+
     def find_name_by_bindings(
         self,
         bindings: Mapping[str, object],
