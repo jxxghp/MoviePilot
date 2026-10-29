@@ -80,6 +80,34 @@ def test_apppush_reuses_message_switches_and_never_broadcasts(monkeypatch):
     assert len(calls) == 1
 
 
+@pytest.mark.parametrize("scope", [None, "user", "admin", "all"])
+def test_apppush_account_sets_require_explicit_all_scope(monkeypatch, scope):
+    """
+    账号集合只在明确的所有用户范围生效，重复身份去重且单账号失败不阻断后续账号。
+    """
+    conf = NotificationConf(name="App", type="apppush", enabled=True, switchs=["资源下载"])
+    module = AppPushModule.__new__(AppPushModule)
+    module._channel = NotificationChannel.AppPush
+    module._configs = {conf.name: conf}
+    monkeypatch.setattr(module, "get_configs", lambda: {conf.name: conf})
+    owners = []
+
+    def request(_conf, _method, _path, data):
+        """
+        在中转边界记录账号并模拟首个接收账号投递失败。
+        """
+        owners.append(data["owner"])
+        if len(owners) == 1:
+            raise ValueError("临时投递失败")
+        return {"total": 1, "accepted": 1}
+
+    monkeypatch.setattr(module, "_request", request)
+    message = Message(mtype=MessageType.Download, targets={"apppush": ("a" * 32, "a" * 32, "b" * 32)})
+    message.set_notification_route_scope(scope)
+    module.post_message(message)
+    assert owners == (["a" * 32, "b" * 32] if scope == "all" else [])
+
+
 def test_device_management_endpoint_reaches_private_relay_without_exposing_key(monkeypatch):
     """
     真实端点经渠道和 HTTP 适配器管理本账号设备，私有密钥只进入中转请求头。

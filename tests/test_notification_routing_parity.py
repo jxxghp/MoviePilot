@@ -10,11 +10,14 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
+from app.modules.apppush import AppPushModule
+from app.modules.discord import DiscordModule
+from app.modules.slack import SlackModule
 from app.modules.telegram.module import TelegramModule
 from app.modules.wechat import WechatModule
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf
-from app.schemas.types import MessageType
+from app.schemas.types import MessageType, NotificationChannel
 
 
 class _NotificationSettingsRepository:
@@ -57,6 +60,23 @@ class _NotificationSettingsRepository:
         if username == self.failure:
             raise RuntimeError(f"无法读取 {username} 的通知设置")
         return self.settings.get(username)
+
+    def get_notification_broadcast_targets(self) -> dict[str, tuple[str, ...]]:
+        """
+        只为需要逐账号投递的 AppPush 提供测试用户身份，不读取真实数据库。
+        """
+        owners = tuple(
+            str(settings["apppush"])
+            for settings in self.settings.values()
+            if settings and settings.get("apppush")
+        )
+        return {"apppush": owners} if owners else {}
+
+    async def async_get_notification_broadcast_targets(self) -> dict[str, tuple[str, ...]]:
+        """
+        异步查询使用相同的测试账号集合。
+        """
+        return self.get_notification_broadcast_targets()
 
 
 class _NotificationHarness(MessageProcessingMixin, NotificationMixin):
@@ -169,6 +189,93 @@ def test_notification_routing_sync_async_parity(
     )
     assert sync_chain.messageoper.add.call_count == 1
     assert async_chain.messageoper.async_add.await_count == 1
+
+
+@pytest.mark.parametrize("mode", ["sync", "async", "strict"])
+@pytest.mark.parametrize("mtype", [MessageType.Download, MessageType.Organize, MessageType.Subscribe])
+@pytest.mark.parametrize(
+    ("action", "expected_owners"),
+    [
+        ("all", ["a" * 32, "b" * 32]),
+        ("user", ["a" * 32]),
+        ("admin", ["b" * 32]),
+        ("user,admin", ["a" * 32, "b" * 32]),
+        ("user,all", ["a" * 32, "b" * 32]),
+    ],
+)
+def test_apppush_receives_business_notifications_through_real_routing(
+    monkeypatch, mode: str, mtype: MessageType, action: str, expected_owners: list[str],
+) -> None:
+    """
+    业务消息经同步、异步和持久事件入口到达真实渠道，所有用户范围逐账号去重投递。
+    """
+    monkeypatch.setattr("app.chain._messaging.get_notification_switch", lambda _mtype: action)
+    repository = _NotificationSettingsRepository({
+        "alice": {"apppush": "a" * 32},
+        "admin": {"apppush": "b" * 32},
+    })
+    chain = _NotificationHarness(repository)
+    conf = NotificationConf(name="App", type="apppush", enabled=True, switchs=[mtype.value])
+    module = AppPushModule.__new__(AppPushModule)
+    module._channel = NotificationChannel.AppPush
+    module._configs = {conf.name: conf}
+    monkeypatch.setattr(module, "get_configs", lambda: {conf.name: conf})
+    requests = Mock(return_value={"total": 1, "accepted": 1})
+    monkeypatch.setattr(module, "_request", requests)
+
+    def deliver(_method: str, *, message: Message, **_kwargs: object) -> None:
+        """
+        仅在最终中转 HTTP 边界使用替身，保留链路和渠道的真实筛选。
+        """
+        module.post_message(message)
+
+    chain.messagequeue.send_message.side_effect = deliver
+    chain.messagequeue.async_send_message.side_effect = deliver
+    chain.run_module_strict = Mock(side_effect=deliver)
+    message = Message(mtype=mtype, title="业务通知", username="alice", save_history=False)
+    if mode == "async":
+        asyncio.run(chain.async_post_message(message))
+    elif mode == "strict":
+        chain.post_message_strict(message, event_key="download.added.notification:test")
+    else:
+        chain.post_message(message)
+
+    assert [call.args[3]["owner"] for call in requests.call_args_list] == expected_owners
+    assert all(call.args[2] == "messages" for call in requests.call_args_list)
+    assert message.targets is None
+    assert message.notification_route_scope is None
+
+
+@pytest.mark.parametrize(
+    ("module_type", "channel"),
+    [
+        (TelegramModule, NotificationChannel.Telegram),
+        (SlackModule, NotificationChannel.Slack),
+        (DiscordModule, NotificationChannel.Discord),
+        (WechatModule, NotificationChannel.Wechat),
+    ],
+)
+def test_all_user_apppush_targets_preserve_other_channel_defaults(monkeypatch, module_type, channel) -> None:
+    """
+    补齐 AppPush 账号后，其他渠道仍只发送一次默认通知，不误判为缺少个人绑定。
+    """
+    monkeypatch.setattr("app.chain._messaging.get_notification_switch", lambda _mtype: "all")
+    chain = _NotificationHarness(_NotificationSettingsRepository({"admin": {"apppush": "a" * 32}}))
+    chain.post_message(Message(mtype=MessageType.Download, title="下载完成"))
+    message = chain.messagequeue.send_message.call_args.kwargs["message"]
+    conf = NotificationConf(name="channel", type="channel", enabled=True, switchs=["资源下载"])
+    module = module_type.__new__(module_type)
+    module._channel = channel
+    module._configs = {conf.name: conf}
+    client = Mock()
+    module._instances = {conf.name: client}
+    monkeypatch.setattr(module, "get_configs", lambda: {conf.name: conf})
+    monkeypatch.setattr(module, "get_instance", lambda _name: client)
+
+    assert module.get_notification_targets(message) is None
+    module.post_message(message)
+    client.send_msg.assert_called_once()
+    assert client.send_msg.call_args.kwargs["userid"] is None
 
 
 def test_notification_routing_lookup_failure_sync_async_parity(monkeypatch) -> None:

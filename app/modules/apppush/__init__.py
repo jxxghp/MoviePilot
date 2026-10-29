@@ -211,6 +211,20 @@ class AppPushModule(_ModuleBase, _MessageBase[object]):
         except ValueError as error:
             return {"success": False, "message": str(error)}
 
+    def _notification_owners(self, message: Message) -> tuple[str, ...]:
+        """
+        解析明确单账号或所有用户路由生成的账号集合，缺少目标时不隐式广播。
+
+        :param message: 已由通知链确定范围和账号目标的消息
+        :return: 本渠道需要逐个投递的不可变账号身份
+        """
+        target = (self.get_notification_targets(message) or {}).get("apppush")
+        if isinstance(target, str):
+            return (target,) if target else ()
+        if message.notification_route_scope == "all" and isinstance(target, tuple):
+            return tuple(dict.fromkeys(target))
+        return ()
+
     def post_message(self, message: Message, **kwargs: object) -> None:
         """
         仅向路由确定的不可变账号身份投递；缺少绑定绝不退回全设备广播。
@@ -218,18 +232,16 @@ class AppPushModule(_ModuleBase, _MessageBase[object]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            owner = str((self.get_notification_targets(message) or {}).get("apppush") or "")
-            if not owner:
-                continue
             link = message.link or "/?shotcut=message"
             # 外部下载或媒体链接留在消息列表中，系统通知点击始终交给本实例。
             route = link if link.startswith("/") and not link.startswith("//") and "\\" not in link else "/?shotcut=message"
-            try:
-                result = self._request(conf, "POST", "messages", {
-                    "owner": owner, "title": (message.title or "MoviePilot")[:256],
-                    "body": (message.text or "")[:1000], "route": route,
-                })
-                if result.get("failed"):
-                    logger.warning(f"AppPush 有 {len(result['failed'])} 个设备投递失败，请检查 Server 配置")
-            except ValueError as error:
-                logger.warning(f"AppPush 投递失败：{error}")
+            for owner in self._notification_owners(message):
+                try:
+                    result = self._request(conf, "POST", "messages", {
+                        "owner": owner, "title": (message.title or "MoviePilot")[:256],
+                        "body": (message.text or "")[:1000], "route": route,
+                    })
+                    if result.get("failed"):
+                        logger.warning(f"AppPush 有 {len(result['failed'])} 个设备投递失败，请检查 Server 配置")
+                except ValueError as error:
+                    logger.warning(f"AppPush 投递失败：{error}")
