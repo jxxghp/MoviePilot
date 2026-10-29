@@ -601,6 +601,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         permission_result = await self._check_permission()
         if permission_result:
+            self._record_identity_error(permission_result)
             # 工具被权限门禁拦截时，模型在调用前可能已输出一段引导文本，且这里
             # 不会产生工具消息或统计摘要；补一个换行分隔符，避免随后的失败说明
             # 与引导文本直接连在一起。
@@ -951,6 +952,18 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         return await self._check_local_file_access(path=path, operation=operation)
 
+    def _record_identity_error(self, message: str) -> None:
+        """
+        记录计划任务本轮的身份或权限阻塞，子代理通过共享错误槽回传同一事实。
+
+        :param message: 不含凭据的身份或权限拒绝原因；普通会话不记录计划任务状态
+        """
+        if not isinstance(self._agent_context.get("execution_user_id"), int):
+            return
+        state = self._agent_context.setdefault("execution_identity_error", {})
+        if isinstance(state, dict):
+            state["message"] = message
+
     async def _check_permission(self) -> Optional[str]:
         """
         检查管理员工具权限。
@@ -968,6 +981,9 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             not self._channel or not self._source
         ):
             return None
+
+        if isinstance(self._agent_context.get("execution_user_id"), int):
+            return "任务执行账号不具备此工具需要的系统管理员权限，请联系管理员核对该账号权限。"
 
         return (
             "抱歉，您没有执行此工具的权限。"

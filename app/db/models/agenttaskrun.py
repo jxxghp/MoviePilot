@@ -32,6 +32,10 @@ class AgentTaskRun(Base):
     run_at: Mapped[Optional[str]] = mapped_column(String)
     user_id: Mapped[str] = mapped_column(String, nullable=False)
     username: Mapped[Optional[str]] = mapped_column(String)
+    # 认领时冻结的真实执行账号主键，与渠道会话归属分开保存
+    execution_user_id: Mapped[Optional[int]] = mapped_column(Integer)
+    # 账号不可变身份随本次认领冻结，不能通过修改任务影响运行中的主体
+    execution_user_identity: Mapped[Optional[str]] = mapped_column(String(32))
     session_id: Mapped[str] = mapped_column(String, nullable=False)
     channel: Mapped[Optional[str]] = mapped_column(String)
     message_source: Mapped[Optional[str]] = mapped_column(String)
@@ -85,6 +89,8 @@ class AgentTaskRun(Base):
                 AgentTask.run_at,
                 AgentTask.user_id,
                 AgentTask.username,
+                AgentTask.execution_user_id,
+                AgentTask.execution_user_identity,
                 AgentTask.session_id,
                 AgentTask.channel,
                 AgentTask.source,
@@ -105,6 +111,8 @@ class AgentTaskRun(Base):
             run_at=claimed["run_at"],
             user_id=claimed["user_id"],
             username=claimed["username"],
+            execution_user_id=claimed["execution_user_id"],
+            execution_user_identity=claimed["execution_user_identity"],
             session_id=claimed["session_id"],
             channel=claimed["channel"],
             message_source=claimed["source"],

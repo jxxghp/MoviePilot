@@ -29,6 +29,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
 from app.agent.graph import AgentGraphCache, CompiledAgentBundle
+from app.agent.identity import require_execution_user
 from app.agent.learning.session import LearningSession
 from app.agent.llm.helper import LLMHelper
 from app.agent.llm.tools import ServerToolRegistry
@@ -518,6 +519,9 @@ class MoviePilotAgent:
         self.channel = channel
         self.source = source
         self.username = username
+        # 自主任务的真实账号与会话渠道 owner 独立，队列宿主每轮覆盖以避免权限串用。
+        self.execution_user_id: int | None = None
+        self.execution_user_identity: str | None = None
         self.is_channel_admin = is_channel_admin
         self.original_message_id = original_message_id
         self.original_chat_id = original_chat_id
@@ -1074,7 +1078,15 @@ class MoviePilotAgent:
     async def _is_system_admin_context(self) -> bool:
         """
         判断当前 Agent 会话是否应按系统管理员上下文运行工具。
+
+        自主任务使用已固定账号的实时权限，内部后台维护仍保留宿主管理员语义。
         """
+        if self.execution_user_id is not None:
+            execution_user = await require_execution_user(
+                self._data.users if self._data is not None else None, self.execution_user_id,
+                self.execution_user_identity or "",
+            )
+            return bool(execution_user.is_superuser)
         if self.is_background:
             return True
         if self.channel == NotificationChannel.Web.value and self.source in {
@@ -1105,6 +1117,9 @@ class MoviePilotAgent:
             "reply_mode": None,
             "should_dispatch_reply": should_dispatch_reply,
             "is_admin": await self._is_system_admin_context(),
+            "execution_user_id": self.execution_user_id,
+            "execution_user_identity": self.execution_user_identity,
+            "execution_identity_error": {},
             "require_secret_confirmation": True,
             "secret_confirmation_handler": self._register_secret_confirmation,
             # 工具回调消息需要发回原会话（群聊@机器人时按钮选择等卡片不能发到私聊），
@@ -1899,6 +1914,9 @@ class MoviePilotAgent:
                 "reply_mode": None,
                 "should_dispatch_reply": False,
                 "is_admin": bool(self._tool_context.get("is_admin")),
+                "execution_user_id": self.execution_user_id,
+                "execution_user_identity": self.execution_user_identity,
+                "execution_identity_error": self._tool_context.get("execution_identity_error", {}),
                 "require_secret_confirmation": True,
             },
             allow_message_tools=False,
@@ -1936,6 +1954,9 @@ class MoviePilotAgent:
                 "reply_mode": None,
                 "should_dispatch_reply": False,
                 "is_admin": bool(self._tool_context.get("is_admin")),
+                "execution_user_id": self.execution_user_id,
+                "execution_user_identity": self.execution_user_identity,
+                "execution_identity_error": self._tool_context.get("execution_identity_error", {}),
             },
             specs=specs,
         )
@@ -2221,9 +2242,13 @@ class MoviePilotAgent:
             with bind_terminal_scope(scope), interactive_execution(
                 enabled=not self.is_background and scope.kind != "scheduled"
             ):
-                return await self._process(
+                result = await self._process(
                     message, images=images, files=files, has_audio_input=has_audio_input
                 )
+                identity_error = self._tool_context.get("execution_identity_error")
+                if self.execution_user_id is not None and isinstance(identity_error, dict) and identity_error.get("message"):
+                    return f"{AGENT_EXECUTION_ERROR_PREFIX}{identity_error['message']}"
+                return result
         finally:
             reset_steering_inbox(steering_token)
 

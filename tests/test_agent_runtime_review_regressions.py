@@ -382,7 +382,7 @@ async def test_mcp_null_task_update_does_not_enable_paused_task(monkeypatch):
     from app.api.endpoints import mcp
 
     task = SimpleNamespace(id=1, last_status="waiting", enabled=False, trigger_type="cron",
-        cron_expression="0 0 * * *", run_at=None, name="paused")
+        cron_expression="0 0 * * *", run_at=None, name="paused", execution_user_id=1)
     payloads = []
 
     def update(*, payload, **_kwargs):

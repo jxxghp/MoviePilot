@@ -63,6 +63,10 @@ class AgentTask(Base):
     # 创建任务的用户与会话上下文
     user_id: Mapped[str] = mapped_column(String, nullable=False)
     username: Mapped[Optional[str]] = mapped_column(String)
+    # 固定的真实执行账号主键；旧任务保持空值，显式更新后才允许执行
+    execution_user_id: Mapped[Optional[int]] = mapped_column(Integer)
+    # 防止 SQLite 自增主键在删除账号后被另一个账号复用
+    execution_user_identity: Mapped[Optional[str]] = mapped_column(String(32))
     session_id: Mapped[str] = mapped_column(String, nullable=False)
     channel: Mapped[Optional[str]] = mapped_column(String)
     source: Mapped[Optional[str]] = mapped_column(String)
@@ -143,4 +147,7 @@ class AgentTask(Base):
         )
         if user_id is not None:
             statement = statement.where(cls.user_id == user_id)
+        if "execution_user_id" in payload:
+            # 执行账号只能从未绑定状态确认一次，并发更新不能替换已确认的主体。
+            statement = statement.where(cls.execution_user_id.is_(None))
         return bool(execute_dml(db, statement.values(payload)))

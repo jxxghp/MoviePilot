@@ -119,6 +119,8 @@ class _MessageTask:
     :param completion_future: 向排队调用方交付最终文本或异常的 Future；无需等待时为 None
     :param enqueued_at: 入队时的单调时钟秒数；尚未入队时为 None
     :param scheduled_run_id: 定时任务持久化运行标识；普通消息任务为 None
+    :param execution_user_id: 宿主已验证的计划任务执行账号；普通会话为 None
+    :param execution_user_identity: 执行账号的不可变身份；普通会话为 None
     :param steering_status_callback: 报告运行中补充消息处理状态的回调
     :ivar steering_inbox: 宿主执行时绑定的补充消息队列，初始为 None，不接受构造输入
     :ivar terminal_scope: 宿主装配的终端所有权作用域；定时任务在初始化时绑定
@@ -150,6 +152,8 @@ class _MessageTask:
     completion_future: Optional[asyncio.Future[str]] = None
     enqueued_at: Optional[float] = None
     scheduled_run_id: Optional[str] = None
+    execution_user_id: Optional[int] = None
+    execution_user_identity: Optional[str] = None
     steering_status_callback: Optional[SteeringStatusCallback] = None
     steering_inbox: Optional[SteeringInbox] = field(default=None, init=False, repr=False)
     terminal_scope: Optional[TerminalScope] = field(default=None, init=False)
@@ -358,10 +362,15 @@ class AgentSessionOwner:
             agent_setup: Optional[Callable[[MoviePilotAgent], None]] = None,
             wait_for_completion: bool = False,
             scheduled_run_id: Optional[str] = None,
+            execution_user_id: Optional[int] = None,
+            execution_user_identity: Optional[str] = None,
     ) -> str:
         """
         处理用户消息：同渠道的运行中补充输入进入当前上下文，其余消息按会话排队。
         等待完整结果的调用保留独立任务，不同会话之间互不影响。
+
+        :param execution_user_id: 宿主已验证的计划任务执行账号，不由模型或渠道输入指定
+        :param execution_user_identity: 对应账号的不可变身份，避免删除后的用户主键复用
         """
         completion_future: Optional[asyncio.Future[str]] = (
             asyncio.get_running_loop().create_future() if wait_for_completion else None
@@ -390,6 +399,8 @@ class AgentSessionOwner:
             agent_setup=agent_setup,
             completion_future=completion_future,
             scheduled_run_id=scheduled_run_id,
+            execution_user_id=execution_user_id,
+            execution_user_identity=execution_user_identity,
         )
         async with self._lifecycle_lock:
             if not self._accepting_tasks:
@@ -793,6 +804,9 @@ class AgentSessionOwner:
             if task.message_callback is not None and hasattr(agent, "set_message_callback"):
                 agent.set_message_callback(task.message_callback)
 
+        # 每轮都覆盖执行主体，防止计划任务与交互消息复用会话时串用权限。
+        agent.execution_user_id = task.execution_user_id
+        agent.execution_user_identity = task.execution_user_identity
         task.agent = agent
         inbox = self._session_steering_inboxes.get(session_id)
         if inbox is None:

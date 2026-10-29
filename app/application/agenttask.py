@@ -45,8 +45,8 @@ class AgentTaskSnapshot:
     :param cron_expression: 周期任务的 Cron 表达式，非周期任务可为 None
     :param run_at: 一次性任务的计划执行时间字符串，周期任务可为 None
     :param enabled: 任务是否允许调度执行
-    :param user_id: 任务所属真实用户标识
-    :param username: 用户显示名称，未提供时为 None
+    :param user_id: 创建任务的会话归属标识，渠道入口保留渠道发送者 ID
+    :param username: 已解析的执行账号名，旧任务可能仍为渠道展示名
     :param session_id: 任务绑定的 Agent 会话标识
     :param channel: 结果通知使用的渠道，未配置时为 None
     :param source: 通知渠道实例标识，未配置时为 None
@@ -58,6 +58,8 @@ class AgentTaskSnapshot:
     :param run_count: 任务累计运行次数
     :param created_at: 任务创建时间字符串
     :param updated_at: 任务最近更新时间字符串
+    :param execution_user_id: 固定的真实执行账号主键；旧任务为 None，须显式更新绑定
+    :param execution_user_identity: 账号不可变身份，防止删除账号后的主键复用
     """
 
     id: int
@@ -80,6 +82,8 @@ class AgentTaskSnapshot:
     run_count: int
     created_at: str
     updated_at: str
+    execution_user_id: int | None = None
+    execution_user_identity: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,8 +99,8 @@ class AgentTaskRunSnapshot:
     :param trigger_type: 触发类型：cron 为周期任务，date 为一次性任务
     :param cron_expression: 周期任务的 Cron 表达式，非周期任务可为 None
     :param run_at: 一次性任务的计划执行时间字符串，周期任务可为 None
-    :param user_id: 任务所属真实用户标识
-    :param username: 用户显示名称，未提供时为 None
+    :param user_id: 原任务的会话归属标识，渠道入口保留渠道发送者 ID
+    :param username: 执行账号名快照，旧任务可能仍为渠道展示名
     :param session_id: 任务绑定的 Agent 会话标识
     :param channel: 结果通知使用的渠道，未配置时为 None
     :param message_source: 本次运行快照中的通知渠道实例标识
@@ -105,6 +109,8 @@ class AgentTaskRunSnapshot:
     :param started_at: 本次运行开始时间字符串
     :param finished_at: 本次运行结束时间字符串，尚未结束时为 None
     :param result: 本次运行的结果摘要，尚未产生时为 None
+    :param execution_user_id: 认领时冻结的真实执行账号主键；旧记录为 None
+    :param execution_user_identity: 认领时冻结的账号不可变身份
     """
 
     run_id: str
@@ -125,6 +131,8 @@ class AgentTaskRunSnapshot:
     started_at: str
     finished_at: str | None
     result: str | None
+    execution_user_id: int | None = None
+    execution_user_identity: str | None = None
 
 
 class AgentTaskRepository(Protocol):

@@ -24,7 +24,9 @@ from app.application.agent import AgentDataContext
 from app.application.agenttask import AgentTaskRepository, AgentTaskSnapshot
 from app.application.filtering import FilterRuleService
 from app.db.adapters.agent import TransactionalAgentTaskRepository
-from app.db.session import SessionFactory
+from app.db.adapters.user import TransactionalUserRepository
+from app.db.models.user import User
+from app.db.session import SessionFactory, async_session_scope
 
 # Scheduler 由惰性稳定入口导出，Pylint 无法静态解析。
 # pylint: disable=no-name-in-module
@@ -348,7 +350,7 @@ def test_tool_factory_injects_context_only_into_builtin_tools(monkeypatch) -> No
 @pytest.mark.asyncio
 @pytest.mark.parametrize("entrypoint", ["channel", "web", "openai"])
 async def test_session_entrypoints_inject_data_and_memory_into_agent_tasks(
-    monkeypatch, entrypoint: str,
+    db, monkeypatch, entrypoint: str,
 ) -> None:
     """
     渠道和协议工厂必须复用宿主上下文，支持同一会话创建及查询任务。
@@ -357,9 +359,15 @@ async def test_session_entrypoints_inject_data_and_memory_into_agent_tasks(
     from app.api.endpoints.openai import _get_collecting_agent_type
 
     repository = TransactionalAgentTaskRepository(SessionFactory)
+    sender = f"data-context-user-{entrypoint}"
+    account = db.add(User(
+        name=f"data-context-account-{entrypoint}", is_active=True, is_superuser=True,
+        settings={"telegram_userid": sender},
+    ))
     chat = MagicMock()
     chat.get_sync.return_value = None
-    context = replace(_context(repository), chat=chat)
+    users = TransactionalUserRepository(sync_session=SessionFactory, async_session=async_session_scope)
+    context = replace(_context(repository), chat=chat, users=users)
     memory = MemoryManager()
     owner = AgentSessionOwner(data=context, memory=memory)
     factory = {
@@ -368,7 +376,15 @@ async def test_session_entrypoints_inject_data_and_memory_into_agent_tasks(
         "openai": _get_collecting_agent_type,
     }[entrypoint]
     agent_factory = factory() if factory is not None else None
-    channel = NotificationChannel.WebAgent.value if entrypoint == "web" else None
+    channel = {
+        "channel": NotificationChannel.Telegram.value,
+        "web": NotificationChannel.WebAgent.value,
+        "openai": NotificationChannel.Web.value,
+    }[entrypoint]
+    monkeypatch.setattr(
+        "app.application.security.auth.build_superuser_token_payload",
+        lambda: SimpleNamespace(sub=account.id),
+    )
     monkeypatch.setattr(
         MoviePilotToolFactory,
         "_get_builtin_tool_classes",
@@ -393,6 +409,7 @@ async def test_session_entrypoints_inject_data_and_memory_into_agent_tasks(
         """
         保留真实 Agent 与工具构造，只替换外部模型推理。
         """
+        agent._tool_context = {"is_admin": True}
         tool = agent._initialize_tools()[0]
         if action == "create":
             return await tool.run(
@@ -405,7 +422,8 @@ async def test_session_entrypoints_inject_data_and_memory_into_agent_tasks(
     monkeypatch.setattr(MoviePilotAgent, "process", process)
     task_kwargs = {
         "session_id": f"data-context-{entrypoint}",
-        "user_id": f"data-context-user-{entrypoint}",
+        "user_id": str(account.id) if entrypoint == "web" else sender,
+        "username": account.name,
         "source": entrypoint,
         "channel": channel,
         "agent_factory": agent_factory,
@@ -428,6 +446,8 @@ async def test_session_entrypoints_inject_data_and_memory_into_agent_tasks(
         saved = repository.get(created["id"], user_id=task_kwargs["user_id"])
         assert saved is not None
         assert saved.user_id == task_kwargs["user_id"]
+        assert saved.execution_user_id == account.id
+        assert saved.execution_user_identity == account.notification_identity
         assert saved.session_id == task_kwargs["session_id"]
         assert saved.channel == channel
         register_job.assert_called_once_with(created["id"])
