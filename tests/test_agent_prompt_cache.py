@@ -170,6 +170,38 @@ def test_xai_chat_completions_uses_stable_conversation_header() -> None:
     assert kwargs == {}
 
 
+@pytest.mark.parametrize("provider", ["openai", "chatgpt", "xai", "custom"])
+@pytest.mark.parametrize("use_responses_api", [True, False, None])
+@pytest.mark.parametrize("cache_key", ["  cache-key  ", None, " "])
+def test_compatible_responses_cache_options(
+    provider: str, use_responses_api: bool | None, cache_key: str | None,
+) -> None:
+    """
+    OpenAI 兼容 Responses 应透传非空缓存键，其余第三方协议保持原合同。
+
+    :param provider: 提供商标识，用于区分通用兼容入口与专属适配器
+    :param use_responses_api: 本次模型实际使用的协议；None 表示未强制指定
+    :param cache_key: 会话缓存键，空值不得创建额外路由参数
+    """
+    original_headers = {"User-Agent": "MoviePilot"}
+    original_kwargs = {"extra_body": {"existing": True}}
+    headers, kwargs = LLMHelper._build_openai_prompt_cache_options(
+        provider=provider,
+        base_url="https://sub2api.example/v1",
+        use_responses_api=use_responses_api,
+        prompt_cache_key=cache_key,
+        default_headers=original_headers,
+        model_kwargs=original_kwargs,
+    )
+
+    expected: dict[str, bool | str] = {"existing": True}
+    if provider == "openai" and use_responses_api is True and cache_key and cache_key.strip():
+        expected["prompt_cache_key"] = cache_key.strip()
+    assert headers == original_headers
+    assert kwargs == {"extra_body": expected}
+    assert original_kwargs == {"extra_body": {"existing": True}}
+
+
 def test_prompt_cache_adapter_preserves_control_after_tool_binding() -> None:
     """
     Provider 缓存参数应在 Agent 最终绑定工具时仍然存在。
