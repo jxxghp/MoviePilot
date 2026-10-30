@@ -198,8 +198,8 @@ def rate_limit_cooldown(message: Optional[str]) -> Optional[int]:
     """
     识别种子下载限流语义并返回冷却秒数；未知错误返回空。
 
-    每日下载配额采用完整 24 小时以覆盖站点时区；短期限流沿用至少一小时的
-    订阅冷却，提示更长等待时按提示延长，不在下载调用内立即重试。
+    每日下载配额采用完整 24 小时以覆盖站点时区；明确的频控秒数按原值冷却。
+    其他短期限流沿用至少一小时的订阅冷却，不在下载调用内立即重试。
     """
     text = str(message or "").lower()
     daily_quota = (
@@ -209,6 +209,9 @@ def rate_limit_cooldown(message: Optional[str]) -> Optional[int]:
     )
     if daily_quota:
         return 86400
+    frequency_limit = re.search(r"request frequency limit,?\s*please try in\s+(\d+)\s+seconds?", text)
+    if frequency_limit:
+        return max(1, int(frequency_limit.group(1)))
     keywords = ("限流", "流控", "请求太多", "请求过多", "请求频繁", "请求过于频繁",
                 "請求太多", "請求過多", "請求頻繁", "請求過於頻繁", "too many requests", "rate limit")
     if not any(keyword in text for keyword in keywords):

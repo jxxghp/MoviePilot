@@ -8,6 +8,7 @@ import datetime
 import json
 import re
 import time
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
@@ -19,6 +20,7 @@ from torrentool.exceptions import TorrentoolException
 
 from app.application.configuration import get_chain_runtime_config_snapshot, get_configured_system_config
 from app.application.site.query import get_configured_site_query_service
+from app.application.site.throttle import defer_site_request, site_request_config, wait_for_site_request
 from app.domain import torrent as torrent_rules
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
@@ -29,6 +31,7 @@ from app.foundation.crypto import HashUtils
 from app.foundation.url import UrlUtils
 from app.runtime.cache import FileCache, TTLCache
 from app.runtime.log import logger
+from app.schemas.exception import RateLimitExceededException
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
@@ -54,15 +57,18 @@ class TorrentResponsePort(Protocol):
     """
 
     status_code: int
-    headers: dict[str, str]
+    headers: Mapping[str, str]
     content: bytes
     text: str
     reason: str
 
 
-def _torrent_rate_limit_error(response: Optional[TorrentResponsePort]) -> Optional[str]:
+def torrent_rate_limit_error(response: Optional[TorrentResponsePort]) -> Optional[str]:
     """
-    在种子解析前提取明确的 JSON 限流提示；HTTP 429 保留既有流控错误。
+    在种子解析前提取 JSON 或 HTML 中明确的限流提示，保留站点原文。
+
+    :param response: 换票或取种子响应；None 表示没有取得响应
+    :return: 可传递到通知和冷却记录的原因；未识别出限流时为 None
     """
     if response is None:
         return None
@@ -72,9 +78,18 @@ def _torrent_rate_limit_error(response: Optional[TorrentResponsePort]) -> Option
             payload = json.loads(content)
         except (ValueError, UnicodeError):
             payload = {}
-        message = payload.get("message") or payload.get("msg")
+        message = (payload.get("message") or payload.get("msg")) if isinstance(payload, dict) else None
         if isinstance(message, str) and torrent_rules.rate_limit_cooldown(message) is not None:
             return f"站点限流：{message}"
+    if response.status_code in (403, 429) or content.lstrip().startswith(b"<"):
+        # 只提取明确的频控句子，不把整页 HTML 或合法种子的文件名写入错误。
+        text = re.sub(r"<[^>]*>", " ", response.text)
+        message_match = re.search(
+            r"Request\s+frequency\s+limit,?\s*please\s+try\s+in\s+\d+\s+seconds?\.?",
+            text, re.IGNORECASE,
+        )
+        if message_match:
+            return f"站点限流：{' '.join(message_match.group().split())}"
     if response.status_code == 429:
         return "触发站点流控，请稍后重试"
     return None
@@ -315,13 +330,25 @@ class TorrentHelper:
         """
         self._invalid_torrents = TTLCache(region="invalid_torrents", maxsize=128, ttl=3600 * 24)
 
-    def _request_torrent_get(self, http_port: TorrentHttpPort, retry: bool,
+    @staticmethod
+    def _request_torrent(http_port: TorrentHttpPort, site: Mapping[str, Any],
+                         **request_options: Any) -> Optional[TorrentResponsePort]:
+        """
+        每次实际 HTTP 请求前共享站点额度，重试、重定向和确认 POST 均受约束。
+        """
+        wait_for_site_request(site)
+        response = http_port.request(**request_options)
+        if error := torrent_rate_limit_error(response):
+            defer_site_request(site, error)
+        return response
+
+    def _request_torrent_get(self, http_port: TorrentHttpPort, retry: bool, site: Mapping[str, Any],
                              **request_options: Any) -> Optional[TorrentResponsePort]:
         """
         普通种子 GET 瞬时失败时退避 1、2 秒；签名换票和确认 POST 不在此重试。
         """
         for attempt in range(3 if retry else 1):
-            response = http_port.request(method="GET", **request_options)
+            response = self._request_torrent(http_port, site, method="GET", **request_options)
             if not retry or attempt == 2 or not self._should_retry_torrent_response(response):
                 return response
             logger.warning(f"种子下载遇到瞬时失败，将进行第 {attempt + 1} 次重试")
@@ -338,6 +365,7 @@ class TorrentHelper:
         referer: Optional[str],
         proxies: Optional[dict[str, Any]],
         retry: bool,
+        site: Mapping[str, Any],
     ) -> tuple[Optional[TorrentResponsePort], str, Optional[str]]:
         """
         有界处理GET跳转，跨来源后永久移除原站点凭据和Referer。
@@ -349,6 +377,7 @@ class TorrentHelper:
         :param referer: 原始来源页地址
         :param proxies: 本次请求代理
         :param retry: 是否对普通GET执行既有瞬时失败重试
+        :param site: 原始资源所属站点的流控配置，跳转到其他主机后仍共用该额度
         :return: 最终响应、最终地址及允许在该地址使用的Cookie
         :raises ValueError: 跳转缺少地址、目标非法、重复或超过上限
         """
@@ -358,7 +387,7 @@ class TorrentHelper:
                 raise ValueError("种子下载重定向出现环路")
             seen.add(url)
             response = self._request_torrent_get(
-                http_port, retry and not torrent_rules.is_expiring_download_url(url),
+                http_port, retry and not torrent_rules.is_expiring_download_url(url), site,
                 url=url, cookie=cookie, ua=ua, referer=referer,
                 proxies=proxies, allow_redirects=False,
             )
@@ -387,7 +416,7 @@ class TorrentHelper:
         """
         if response is None:
             return True
-        if _torrent_rate_limit_error(response):
+        if torrent_rate_limit_error(response):
             return False
         if response.status_code != 200:
             return _is_transient_torrent_status(response.status_code)
@@ -398,12 +427,35 @@ class TorrentHelper:
             return False
         return "下载种子文件".encode("utf-8") not in content
 
+    def _cached_torrent_content(self, cache_backend: Any, cache_path: Path) -> Optional[tuple[
+        Union[str, bytes], str, list[str],
+    ]]:
+        """
+        读取并校验已缓存的种子文件，损坏内容回退到实际下载。
+
+        :param cache_backend: 本地种子缓存端口
+        :param cache_path: 由下载地址生成的缓存相对路径
+        :return: 合法内容、目录和文件列表；没有合法缓存时为 None
+        """
+        content = cache_backend.get(cache_path.as_posix(), region="torrents")
+        if not content:
+            return None
+        try:
+            folder_name, files = self.get_fileinfo_from_torrent_content(content)
+            if not folder_name and not files:
+                raise ValueError("无效的缓存种子文件")
+            return content, folder_name, files
+        except Exception as err:
+            logger.error(f"处理缓存的种子文件 {cache_path} 时出错: {err}，将重新下载")
+            return None
+
     def download_torrent(self, url: str,
                          cookie: Optional[str] = None,
                          ua: Optional[str] = None,
                          referer: Optional[str] = None,
                          proxy: Optional[bool] = False,
-                         cache_invalid: bool = True) \
+                         cache_invalid: bool = True,
+                         site_id: Optional[int] = None) \
             -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list[str]], Optional[str]]:
         """
         把种子下载到本地
@@ -413,6 +465,7 @@ class TorrentHelper:
         :param referer: 请求来源地址
         :param proxy: 是否使用系统代理
         :param cache_invalid: 是否缓存失败地址并启用普通 GET 重试；短时凭证及换票地址必须关闭
+        :param site_id: 资源所属站点 ID，使不同下载/API 主机共用站点流控；缺省时按地址匹配
         :return: 种子缓存相对路径【用于索引缓存】, 种子内容、种子主目录、种子文件清单、错误信息
         """
         if url.startswith("magnet:"):
@@ -421,29 +474,22 @@ class TorrentHelper:
         original_url = url
         # 种子二进制固定落 TEMP_PATH/torrents 不进 Redis，下载器与提交链须按同一路由读取
         cache_backend = FileCache(local_only=True)
-        torrent_content = cache_backend.get(cache_path.as_posix(), region="torrents")
-        if torrent_content:
-            try:
-                folder_name, file_list = self.get_fileinfo_from_torrent_content(torrent_content)
-                # 无法获取信息，则认为缓存文件无效
-                if not folder_name and not file_list:
-                    raise ValueError("无效的缓存种子文件")
-                return cache_path, torrent_content, folder_name, file_list, ""
-            except Exception as err:
-                logger.error(f"处理缓存的种子文件 {cache_path} 时出错: {err}，将重新下载")
+        if cached := self._cached_torrent_content(cache_backend, cache_path):
+            return cache_path, *cached, ""
         config = get_chain_runtime_config_snapshot()
         http_port = _require_torrent_port()
+        site = site_request_config(url, site_id)
         retry = cache_invalid and not torrent_rules.is_expiring_download_url(url)
         try:
             req, url, cookie = self._request_torrent_redirects(
                 http_port, url=url, cookie=cookie, ua=ua, referer=referer,
-                proxies=config.proxy if proxy else None, retry=retry,
+                proxies=config.proxy if proxy else None, retry=retry, site=site,
             )
-        except ValueError as err:
+        except (ValueError, RateLimitExceededException) as err:
             return cache_path, None, "", [], str(err)
         if url.startswith("magnet:"):
             return None, url, "", [], "获取到磁力链接"
-        if rate_limit_error := _torrent_rate_limit_error(req):
+        if rate_limit_error := torrent_rate_limit_error(req):
             return cache_path, None, "", [], rate_limit_error
         if req is not None and req.status_code == 200:
             if not req.content:
@@ -464,11 +510,14 @@ class TorrentHelper:
                         self.add_invalid(original_url)
                     return cache_path, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
                 action, data = confirmation
-                req = http_port.request(
-                    method="POST", url=action, cookie=cookie, ua=ua,
-                    referer=url, proxies=config.proxy if proxy else None, data=data, allow_redirects=False,
-                )
-                if rate_limit_error := _torrent_rate_limit_error(req):
+                try:
+                    req = self._request_torrent(
+                        http_port, site, method="POST", url=action, cookie=cookie, ua=ua,
+                        referer=url, proxies=config.proxy if proxy else None, data=data, allow_redirects=False,
+                    )
+                except RateLimitExceededException as err:
+                    return cache_path, None, "", [], str(err)
+                if rate_limit_error := torrent_rate_limit_error(req):
                     return cache_path, None, "", [], rate_limit_error
                 if req is None:
                     return cache_path, None, "", [], "无法打开链接"

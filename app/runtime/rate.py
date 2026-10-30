@@ -7,10 +7,95 @@ import inspect
 import threading
 import time
 from collections import deque
+from dataclasses import dataclass, field
 from typing import Any, Callable, List, Optional, Tuple
 
 from app.runtime.log import logger
 from app.schemas.exception import LimitException, RateLimitExceededException
+
+
+@dataclass
+class _RequestSchedule:
+    """
+    单个请求来源的实际开始时间和远端冷却事实。
+
+    :param last_started: 上次获准请求的单调时钟时间；None 表示尚未请求
+    :param starts: 当前计数窗口内的实际请求时间
+    :param retry_at: 远端冷却到期的单调时钟时间
+    :param reason: 远端明确返回的冷却原因
+    """
+
+    last_started: Optional[float] = None
+    starts: deque[float] = field(default_factory=deque)
+    retry_at: float = 0.0
+    reason: str = ""
+
+
+class RequestRateLimiter:
+    """
+    按来源原子检查请求间隔、滑动窗口和远端冷却，不持锁等待或执行 I/O。
+
+    等待者必须重新申请许可，避免线程迟醒或异步取消后按过期预约连续发出请求。
+    """
+
+    def __init__(self) -> None:
+        """
+        创建进程内共享的来源状态和短临界区锁。
+        """
+        self._lock = threading.Lock()
+        self._schedules: dict[str, _RequestSchedule] = {}
+
+    def acquire(self, key: str, *, interval: float, window: float, count: int) -> tuple[float, str]:
+        """
+        检查并记录一次实际请求；受限时不消耗请求额度。
+
+        :param key: 调用方提供的稳定来源标识
+        :param interval: 相邻请求的最小间隔秒数，0 表示关闭
+        :param window: 滑动计数窗口秒数，0 表示关闭
+        :param count: 窗口内最大请求数量，0 表示关闭
+        :return: 剩余等待秒数及远端冷却原因；本地排队的原因为空
+        """
+        with self._lock:
+            now = time.monotonic()
+            state = self._schedules.setdefault(key, _RequestSchedule())
+            if state.retry_at > now:
+                return state.retry_at - now, state.reason
+            ready_at = now if state.last_started is None else max(now, state.last_started + interval)
+            while state.starts and state.starts[0] <= now - window:
+                state.starts.popleft()
+            if window > 0 and count > 0 and len(state.starts) >= count:
+                ready_at = max(ready_at, state.starts[-count] + window)
+            if ready_at > now:
+                return ready_at - now, ""
+            state.last_started = now
+            if window > 0 and count > 0:
+                state.starts.append(now)
+            return 0.0, ""
+
+    def defer(self, key: str, seconds: float, reason: str) -> None:
+        """
+        延长一个来源的远端冷却，较短的新提示不能提前解除旧冷却。
+
+        :param key: 需要停止请求的来源标识
+        :param seconds: 从当前时刻起的冷却秒数
+        :param reason: 向后续调用方传递的原始限流说明
+        """
+        with self._lock:
+            state = self._schedules.setdefault(key, _RequestSchedule())
+            retry_at = time.monotonic() + seconds
+            if retry_at > state.retry_at:
+                state.retry_at, state.reason = retry_at, reason
+
+    def cooldown(self, key: str) -> float:
+        """
+        查询远端冷却的剩余秒数，不改变到期时间。
+
+        :param key: 来源的稳定标识
+        :return: 剩余秒数，未冷却或已经到期时为 0
+        """
+        with self._lock:
+            state = self._schedules.get(key)
+            return max(0.0, state.retry_at - time.monotonic()) if state else 0.0
 
 
 class BaseRateLimiter:

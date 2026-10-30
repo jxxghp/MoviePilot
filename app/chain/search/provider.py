@@ -2,8 +2,6 @@
 站点与插件资源搜索的并发分发、预算控制与结果归集。
 """
 
-import asyncio
-import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from contextlib import aclosing
@@ -20,6 +18,11 @@ from app.application.site.observation import (
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.site.throttle import (
+    async_wait_for_site_request,
+    site_request_cooldown,
+    wait_for_site_request,
+)
 from app.application.subscription.activity import current_activity_run
 from app.application.subscription.sitebudget import (
     SubscriptionSiteBudget,
@@ -33,14 +36,11 @@ from app.runtime.log import logger
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.runtime.stop import runtime_stop_state
 from app.runtime.thread import ThreadHelper
+from app.schemas.exception import RateLimitExceededException
 from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
 
 SiteIndexer = Dict[str, Any]
 SyncPending = dict[Future[Any], tuple[SiteIndexer, int, int]]
-
-_site_request_schedule_lock = threading.Lock()
-_site_next_request_at: Dict[str, float] = {}
-
 
 def _site_keyword(site: SiteIndexer, keyword: str, mediainfo: Optional[MediaInfo]) -> str:
     """
@@ -91,15 +91,17 @@ def _site_request_interval(site: SiteIndexer) -> float:
 
 def _site_rate_limit_backoff(site: SiteIndexer, error: Optional[str] = None) -> float:
     """
-    按实际流控规则计算剩余等待时间，未知原因沿用完整配置窗口。
+    优先沿用共享远端冷却，否则按本地流控规则计算剩余等待时间。
 
     资源包现有接口只返回状态和说明；使用说明中的拒绝原因与本机上次访问时间，
     不读取限流器私有状态。保留 1 秒余量，跨过秒精度时间和计数窗口的严格比较边界。
 
     :param site: 本次搜索使用的站点流控配置
-    :param error: 资源包返回的本地流控说明；缺失或无法识别时保守等待完整窗口
+    :param error: 共享冷却或资源包返回的本地流控说明；未知原因保守等待完整配置窗口
     :return: 允许重试前的秒数；没有有效流控配置时返回 0
     """
+    if cooldown := site_request_cooldown(site):
+        return cooldown + 1.0
     interval = _site_request_interval(site)
     window = 0.0
     if site.get("limit_interval") and site.get("limit_count"):
@@ -126,39 +128,34 @@ def _site_rate_limit_backoff(site: SiteIndexer, error: Optional[str] = None) -> 
     return max(0.0, wait - elapsed) + 1.0
 
 
-def _reserve_site_request(site: SiteIndexer) -> float:
+def _wait_for_site_request(site: SiteIndexer) -> Optional[str]:
     """
-    按站点原子预约请求起始时间，避免并发搜索绕过同一流控窗口。
+    等待站点共享额度；远端冷却不发出请求，并交回订阅调度处理。
+
+    :param site: 搜索站点的流控配置
+    :return: 远端冷却原因，已获准请求时为 None
     """
-    interval = _site_request_interval(site)
-    if interval <= 0:
-        return 0.0
-    site_key = str(site.get("id") or site.get("domain") or site.get("url") or site.get("name"))
-    now = time.monotonic()
-    with _site_request_schedule_lock:
-        request_at = max(now, _site_next_request_at.get(site_key, now))
-        _site_next_request_at[site_key] = request_at + interval
-    return max(0.0, request_at - now)
+    try:
+        wait_for_site_request(site)
+    except RateLimitExceededException as error:
+        report_site_search_outcome(attempted=False, outcome="deferred", error=str(error))
+        return str(error)
+    return None
 
 
-def _wait_for_site_request(site: SiteIndexer) -> None:
+async def _async_wait_for_site_request(site: SiteIndexer) -> Optional[str]:
     """
-    同步等待当前站点预约时间，不阻塞其他站点的线程任务。
-    """
-    delay = _reserve_site_request(site)
-    if delay > 0:
-        logger.debug(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
-        time.sleep(delay)
+    异步等待同一站点额度；冷却期间保留原因，其他站点继续运行。
 
-
-async def _async_wait_for_site_request(site: SiteIndexer) -> None:
+    :param site: 搜索站点的流控配置
+    :return: 远端冷却原因，已获准请求时为 None
     """
-    异步等待当前站点预约时间，让其他站点继续并发搜索。
-    """
-    delay = _reserve_site_request(site)
-    if delay > 0:
-        logger.debug(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
-        await asyncio.sleep(delay)
+    try:
+        await async_wait_for_site_request(site)
+    except RateLimitExceededException as error:
+        report_site_search_outcome(attempted=False, outcome="deferred", error=str(error))
+        return str(error)
+    return None
 
 
 def _search_site_page(
@@ -170,9 +167,10 @@ def _search_site_page(
     page: int,
 ) -> List[TorrentInfo]:
     """
-    等待站点预约后执行一页同步搜索，避免增加 owner 的复杂度。
+    获得站点共享请求许可后执行一页同步搜索。
     """
-    _wait_for_site_request(site)
+    if _wait_for_site_request(site):
+        return []
     return owner.search_site_torrents(
         site=site,
         keyword=keyword,
@@ -930,7 +928,8 @@ class SearchProviderOwner(_SearchProviderSyncOwner):
             """
             在统一分页器调度下请求一页站点资源。
             """
-            await _async_wait_for_site_request(site)
+            if await _async_wait_for_site_request(site):
+                return []
             return await self.async_search_site_torrents(
                 site=site,
                 keyword=_site_keyword(site, search_keyword, mediainfo),

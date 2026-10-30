@@ -173,7 +173,7 @@ def test_indirect_download_keeps_cookie_free_final_request(boundary):
     chain._resolve_indirect_download_url = Mock(return_value=URL)
     enclosure = "[encoded]https://tracker.example/api"
     assert chain.download_torrent(TorrentInfo(site=8, enclosure=enclosure)) == CONTENT[1:4]
-    chain._resolve_indirect_download_url.assert_called_once_with(url=enclosure, ua=None, cookie=None)
+    chain._resolve_indirect_download_url.assert_called_once_with(url=enclosure, ua=None, cookie=None, site_id=8)
     assert helper.download_torrent.call_args.kwargs["cookie"] is None
     chain.site_repository.get.assert_not_called()
     chain.site_repository.list.assert_not_called()

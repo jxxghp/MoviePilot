@@ -632,16 +632,21 @@ async def test_recovery_requests_both_pages_through_existing_site_interval(manua
     """
     恢复前页与请求目标页共用已有站点请求间隔。
     """
-    from app.chain.search import provider
+    import app.application.site.throttle as site_throttle
+    import app.runtime.rate as rate
 
     owner, calls, _ = manual_owner
     monkeypatch.setattr(owner, "_sync_indexers", lambda _ids: [{"id": 1, "name": "A", "limit_seconds": 10}])
     waits = []
     def sleep(delay):
+        """
+        推进分页搜索使用的虚拟时钟。
+        """
         waits.append(delay)
         page_clock[0] += delay
-    monkeypatch.setattr(provider, "time", SimpleNamespace(monotonic=lambda: page_clock[0], sleep=sleep))
-    monkeypatch.setattr(provider, "_site_next_request_at", {})
+    clock = SimpleNamespace(monotonic=lambda: page_clock[0], sleep=sleep)
+    monkeypatch.setattr(site_throttle, "time", clock)
+    monkeypatch.setattr(rate, "time", clock)
     result = await events(SearchManualOwner.events(owner, params={
         "keyword": "Show", "page": 3, "source": encode_source("1", "Show")}))
     assert [page for _site, _keyword, page in calls] == [2, 3]

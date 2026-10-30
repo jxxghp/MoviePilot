@@ -206,8 +206,15 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 种子下载重试的离线边界见 `tests/test_torrent_download_retry.py`：普通 GET 在网络失败、
 403/5xx、空响应或无法解析的响应后最多重试两次，退避为 1、2 秒。签名链接刷新、换票地址、
 首次下载确认按 HTML 表单语义读取控件，兼容单双引号、属性顺序、空 action 和提交按钮；
-仅向同来源的下载端点提交一次 POST，使用确认页地址作为 Referer。HTTP 429 或 JSON `message` / `msg` 明确提示限流时，
+仅向同来源的下载端点提交一次 POST，使用确认页地址作为 Referer。HTTP 429、JSON `message` / `msg` 或 HTML 频控页明确提示限流时，
 停止短退避重试并在通知中保留原因，不把限流响应交给种子解析器或写入无效地址缓存。
+
+`tests/test_site_request_throttle.py` 验证搜索、换票、取种子、重定向和确认 POST 共享站点的
+`limit_seconds`、`limit_interval`、`limit_count`，不同 API 主机按原站点 ID 共用额度。
+HTML `Request frequency limit, please try in N seconds` 按 N 秒冷却整个站点；冷却期间
+不再请求或刷新签名，并保留原文到通知和下载失败记录。虚拟时钟、并发许可和异步取消用例
+验证实际请求起点，缓存命中不消耗额度。无需要集数的拆包继续复用已验证的种子内容，
+不会被记录为资源下载失败；缺集变化后仍可立即选用缓存中的集数。
 测试替换 HTTP 端口与等待，不访问真实站点。
 瞬时状态不会写入 24 小时无效链接缓存；订阅记录的泛化“下载种子内容为空”使用 1 小时冷却，
 明确资源失效仍保留 24 小时冷却。每日下载配额耗尽冷却 24 小时，覆盖站点时区差异；

@@ -3,41 +3,51 @@
 """
 
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
+from app.application.site import throttle
 from app.chain.search import provider
+from app.runtime.rate import RequestRateLimiter
 
 
 @pytest.fixture(autouse=True)
-def reset_site_request_schedule():
+def reset_site_request_schedule(monkeypatch):
     """
     隔离进程级站点预约状态。
     """
-    # 清理进程内站点限流状态，避免前后用例互相影响。
-    provider._site_next_request_at.clear()  # pylint: disable=protected-access
-    yield
-    # 清理进程内站点限流状态，避免前后用例互相影响。
-    provider._site_next_request_at.clear()  # pylint: disable=protected-access
+    monkeypatch.setattr(throttle, "_site_requests", RequestRateLimiter())
 
 
-def test_site_without_interval_does_not_wait():
+def test_site_without_interval_does_not_wait(monkeypatch):
     """
     未配置请求间隔的站点不需要等待。
     """
-    assert provider._reserve_site_request({"id": 1, "name": "普通站点"}) == 0
+    monkeypatch.setattr(throttle.time, "sleep", lambda _delay: pytest.fail("未配置流控不应等待"))
+    assert provider._wait_for_site_request({"id": 1, "name": "普通站点"}) is None
 
 
 def test_configured_requests_are_reserved_twenty_seconds_apart(monkeypatch):
     """
     配置二十秒间隔后，连续站点请求按该间隔预留执行时间。
     """
-    monkeypatch.setattr(provider.time, "monotonic", lambda: 100.0)
+    clock = SimpleNamespace(now=100.0, starts=[])
+
+    def advance(delay):
+        """
+        推进虚拟时间以模拟真实等待。
+        """
+        clock.now += delay
+
+    monkeypatch.setattr(throttle.time, "monotonic", lambda: clock.now)
+    monkeypatch.setattr(throttle.time, "sleep", advance)
     site = {"id": 6, "name": "观众", "limit_seconds": 20}
 
-    assert provider._reserve_site_request(site) == 0
-    assert provider._reserve_site_request(site) == 20
-    assert provider._reserve_site_request(site) == 40
+    for _ in range(3):
+        assert provider._wait_for_site_request(site) is None
+        clock.starts.append(clock.now)
+    assert clock.starts == [100, 120, 140]
 
 
 def test_invalid_interval_does_not_throttle(monkeypatch):
@@ -47,7 +57,7 @@ def test_invalid_interval_does_not_throttle(monkeypatch):
     monkeypatch.setattr(provider.time, "monotonic", lambda: 100.0)
     site = {"id": 6, "name": "观众", "limit_seconds": "invalid"}
 
-    assert provider._reserve_site_request(site) == 0
+    assert provider._wait_for_site_request(site) is None
 
 
 @pytest.mark.parametrize("interval, reason, elapsed, expected", [
@@ -105,12 +115,17 @@ async def test_async_wait_only_sleeps_for_throttled_site(monkeypatch):
     异步入口只为受限站点等待预留间隔。
     """
     delays = []
+    clock = SimpleNamespace(now=100.0)
 
     async def fake_sleep(delay):
+        """
+        记录异步等待并推进虚拟时间。
+        """
         delays.append(delay)
+        clock.now += delay
 
-    monkeypatch.setattr(provider.time, "monotonic", lambda: 100.0)
-    monkeypatch.setattr(provider.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(throttle.time, "monotonic", lambda: clock.now)
+    monkeypatch.setattr(throttle.asyncio, "sleep", fake_sleep)
     site = {"id": 6, "name": "观众", "limit_seconds": 20}
 
     await provider._async_wait_for_site_request({"id": 1, "name": "普通站点"})

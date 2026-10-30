@@ -96,6 +96,16 @@ class SiteQueryService:
         item = await self._repository.async_get_by_domain(domain)
         return Site.model_validate(item) if item else None
 
+    def get_by_domain_sync(self, domain: str) -> Optional[Site]:
+        """
+        同步按规范域名读取站点配置，供独立种子下载匹配流控规则。
+
+        :param domain: 请求地址提取出的规范站点域名
+        :return: 站点配置；没有匹配站点时为 None
+        """
+        item = self._repository.get_by_domain(domain)
+        return Site.model_validate(item) if item else None
+
     async def userdata_latest(
         self,
         *,

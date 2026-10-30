@@ -538,6 +538,16 @@ def test_application_classification_uses_same_named_package() -> None:
     assert len(init_tree.body) == 1
 
 
+def test_site_application_owners_use_single_word_module_names() -> None:
+    """
+    站点流控等用例必须留在站点包中，新增子模块保持单词命名。
+    """
+    package = APP_ROOT / "application" / "site"
+    assert (package / "throttle.py").is_file()
+    assert all(path.stem.isalpha() for path in package.glob("*.py") if path.stem != "__init__")
+    assert not (APP_ROOT / "application" / "site_throttle.py").exists()
+
+
 def test_application_torrent_uses_same_named_single_word_package() -> None:
     """
     种子应用能力必须归入同名包，包根不得重复导出内部实现。

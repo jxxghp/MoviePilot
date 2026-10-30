@@ -63,6 +63,7 @@ to make the directory tree look symmetrical.
 | `app/application/*.py` | Established single-word application services; same-domain implementations use subpackages, while old paths are routed only by the exact Compat/SDK boundaries |
 | `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity and search stay in their single-word modules |
 | `app/application/search/` | Search state and later search-plan use cases |
+| `app/application/site/throttle.py` | 站点搜索、换票与种子 HTTP 请求共享的间隔、次数窗口及远端冷却策略；使用 `runtime.rate.RequestRateLimiter` 原子记录实际请求起点，缓存命中不计费，等待与取消不提前占用额度 |
 | `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
 | `app/application/history/` | History use cases and persistence contracts; DownloadHistory and TransferHistory own deeply frozen DTOs plus typed query/write/staging ports |
 | `app/application/music/` | 多来源音乐目录编排；`observation.py` 沿用站点搜索的调用观察模式，隔离一次音乐识别的结果、候选摘要与请求/等待预算，不持有来源客户端、不改变旧模块返回合同；`recognition.py` 通过注入来源回调串行回退、汇总诊断，并按领域候选计划有界补充真实Artist身份别名，子来源共享祖先预算，`catalog.py` 声明目录查询所需的最小来源 Port |

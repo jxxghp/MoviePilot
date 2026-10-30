@@ -21,9 +21,11 @@ from app.application.download.admission import SubscriptionDownloadGovernance, s
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.application.torrent.download import TorrentHelper
+from app.application.site.throttle import defer_site_request, site_request_config, wait_for_site_request
+from app.application.torrent.download import TorrentHelper, torrent_rate_limit_error
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.download.ports import (
+    DownloadResponsePort,
     _close_download_response,
     _download_ports_snapshot,
 )
@@ -42,6 +44,7 @@ from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.schemas.download import DOWNLOAD_TASK_ALREADY_EXISTS
 from app.schemas.event import ResourceDownloadEventData
+from app.schemas.exception import RateLimitExceededException
 from app.schemas.file import FileURI
 from app.schemas.media import resolve_media_identity
 from app.schemas.message import Message
@@ -159,9 +162,17 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             url: str,
             ua: Optional[str] = None,
             cookie: Optional[str] = None,
+            site_id: Optional[int] = None,
     ) -> Optional[str]:
         """
         解析索引器编码的换票请求，并返回可信来源的临时下载地址。
+
+        :param url: 索引器编码的换票地址与请求参数
+        :param ua: 本次换票使用的用户代理
+        :param cookie: 换票协议允许时附带的站点 Cookie
+        :param site_id: 原始资源的站点 ID，用于共享流控额度
+        :return: 临时下载地址；换票失败时返回 None
+        :raises RateLimitExceededException: 站点限流，保留原始提示供通知和冷却记录使用
         """
         match = re.search(r"\[(.*)](.*)", url)
         if not match:
@@ -191,6 +202,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             if request_params.get("proxy")
             else None
         )
+        site = site_request_config(request_url, site_id)
+        wait_for_site_request(site)
         if request_params.get("method") == "get":
             response = http.get(
                 request_url,
@@ -209,42 +222,58 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 proxies=proxies,
                 params=params,
             )
-        if not response:
+        if response is None:
             return None
         try:
-            if not request_params.get("result"):
-                return response.text
-            data: Any = response.json()
-            success_key = request_params.get("success")
-            if success_key and not data.get(success_key):
+            if error := torrent_rate_limit_error(response):
+                defer_site_request(site, error)
+                raise RateLimitExceededException(error)
+            if not response:
                 return None
-            for key in str(request_params.get("result")).split("."):
-                if not isinstance(data, dict):
-                    return None
-                data = data.get(key)
-                if not data:
-                    return None
-            result_path = request_params.get("result_path")
-            result_query_param = request_params.get("result_query_param")
-            if result_path and result_query_param:
-                if not isinstance(result_query_param, str):
-                    return None
-                result_url = urljoin(
-                    f"{str(request_params.get('result_base_url')).rstrip('/')}/",
-                    str(result_path).lstrip("/"),
-                )
-                return f"{result_url}?{urlencode({result_query_param: data})}"
-            if not isinstance(data, str):
-                return None
-            base_url = request_params.get("result_base_url")
-            normalized_url = self._normalize_indirect_download_url(
-                url=data,
-                base_url=base_url if isinstance(base_url, str) else None,
-            )
-            logger.info("已获取到站点临时下载地址")
-            return normalized_url
+            return self._indirect_download_result(response, request_params)
         finally:
             _close_download_response(response)
+
+    def _indirect_download_result(self, response: DownloadResponsePort,
+                                  request_params: Dict[str, Any]) -> Optional[str]:
+        """
+        从成功换票响应提取并规范化下载地址，不承担 HTTP 请求或重试。
+
+        :param response: 已完成限流检查的换票响应
+        :param request_params: 索引器声明的结果字段、成功标志及可信 API 地址
+        :return: 可下载的临时地址；结果缺失或类型不符时为 None
+        """
+        if not request_params.get("result"):
+            return response.text
+        data: Any = response.json()
+        success_key = request_params.get("success")
+        if success_key and not data.get(success_key):
+            return None
+        for key in str(request_params.get("result")).split("."):
+            if not isinstance(data, dict):
+                return None
+            data = data.get(key)
+            if not data:
+                return None
+        result_path = request_params.get("result_path")
+        result_query_param = request_params.get("result_query_param")
+        if result_path and result_query_param:
+            if not isinstance(result_query_param, str):
+                return None
+            result_url = urljoin(
+                f"{str(request_params.get('result_base_url')).rstrip('/')}/",
+                str(result_path).lstrip("/"),
+            )
+            return f"{result_url}?{urlencode({result_query_param: data})}"
+        if not isinstance(data, str):
+            return None
+        base_url = request_params.get("result_base_url")
+        normalized_url = self._normalize_indirect_download_url(
+            url=data,
+            base_url=base_url if isinstance(base_url, str) else None,
+        )
+        logger.info("已获取到站点临时下载地址")
+        return normalized_url
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: Optional[NotificationChannel] = None,
@@ -327,11 +356,15 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         site_cookie: Optional[str] = torrent.site_cookie
         indirect_download = torrent.enclosure.startswith("[")
         if indirect_download:
-            torrent_url = self._resolve_indirect_download_url(
-                url=torrent.enclosure,
-                ua=torrent.site_ua,
-                cookie=site_cookie,
-            )
+            try:
+                torrent_url = self._resolve_indirect_download_url(
+                    url=torrent.enclosure,
+                    ua=torrent.site_ua,
+                    cookie=site_cookie,
+                    site_id=torrent.site,
+                )
+            except RateLimitExceededException as err:
+                return None, "", [], str(err)
             # 涉及解析地址的不使用Cookie下载种子，否则MT会出错
             site_cookie = None
         else:
@@ -366,6 +399,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 ua=torrent.site_ua or self.runtime_config.user_agent,
                 proxy=torrent.site_proxy,
                 cache_invalid=not (indirect_download or expiring),
+                site_id=torrent.site,
             )
             if result[1] or attempt or indirect_download or not expiring:
                 return result
@@ -389,6 +423,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             site = next((item for item in SitesHelper().get_indexers() if item.get("id") == torrent.site), None)
             if not site:
                 return False
+            wait_for_site_request(site)
             for candidate in self.search_site_torrents(site=site, keyword=torrent.title):
                 if (torrent_rules.resource_identity(candidate) != identity
                         or not candidate.enclosure

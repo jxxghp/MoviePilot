@@ -150,7 +150,7 @@ class SearchSources:
 
     def fetch(self, key: str, page: int, *, budget: Optional[SubscriptionSiteBudget] = None) -> ScanPage:
         """
-        请求一个来源的指定页；自动订阅经站点预算限流，手动沿用站点既有请求间隔。
+        请求来源指定页；自动订阅额外经过站点预算，所有入口共用站点请求额度。
         """
         query = self.queries[key]
         # 标题搜索未指定类型时沿用 None；UNKNOWN 可能被站点解释为电影分区。
@@ -170,13 +170,12 @@ class SearchSources:
                 if self.activity:
                     self.activity.site(error.site_id, name=str(site.get("name") or ""), status="waiting")
                 return ScanPage([], SiteSearchObservation(error=str(error)), error.retry_at, error.wait_reason)
-        else:
-            _wait_for_site_request(site)
         with capture_site_search_observation() as observation:
             deferral_seconds = 0.0
             try:
-                items = self.owner.search_site_torrents(site=site, keyword=query["keyword"],
-                                                       mtype=media_type, page=page) or []
+                items = ([] if _wait_for_site_request(site) else
+                         self.owner.search_site_torrents(site=site, keyword=query["keyword"],
+                                                         mtype=media_type, page=page) or [])
                 if self.activity:
                     self.activity.site(int(query["site"]), name=str(site.get("name") or ""), candidates=len(items), status=observation.outcome, attempted=observation.attempted)
                 if observation.outcome == "deferred":
