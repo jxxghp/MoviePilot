@@ -480,15 +480,15 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
         sensitivity=ResultSensitivity.PRIVATE,
     ),
     _user_write("subscription.share", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=RecoveryMode.RECONCILE),
-    _user_write(
+    _write(
         "subscription.share.delete",
         effect=ActionEffect.EXTERNAL_SIDE_EFFECT,
         recovery=RecoveryMode.RECONCILE,
     ),
     _user_write("subscription.fork", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=RecoveryMode.RECONCILE),
-    _spec("subscription.follow.list"),
-    _user_write("subscription.follow.add"),
-    _user_write("subscription.follow.delete"),
+    _admin_read("subscription.follow.list"),
+    _write("subscription.follow.add"),
+    _write("subscription.follow.delete"),
     _public_read("subscription.share.statistics"),
     _spec(
         "storage.manage",
@@ -506,7 +506,7 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
         recovery=RecoveryMode.MANUAL_ONLY,
     ),
     _spec("transfer.queue", result_sensitivity=ResultSensitivity.PRIVATE),
-    _user_write(
+    _write(
         "transfer.queue.delete",
         effect=ActionEffect.DESTRUCTIVE_WRITE,
         recovery=RecoveryMode.RECONCILE,

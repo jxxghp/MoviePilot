@@ -160,8 +160,8 @@ Identity scope: `bound_user`; required role: `user`.
 
 ### `transfer.queue.delete`
 `DELETE /api/v1/transfer/queue`; policy effect: `destructive_write`.
-Purpose: 从整理队列移除一个精确存储项目，并停止其整理。
-Identity scope: `bound_user`; required role: `user`.
+Purpose: 从实例整理队列移除一个精确存储项目，并停止其整理。
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: `basename` (string|null): 不含扩展名的文件基本名称; `children` (array<FileItem-Input>|null): 子节点; `drive_id` (string|null): 云盘驱动器标识; `extension` (string|null): 文件后缀; `fileid` (string|null): 存储服务分配的文件标识; `modify_time` (number|null): 文件修改时间的 Unix 时间戳; `name` (string|null): 文件名; `parent_fileid` (string|null): 父ID; `path` (string|null; default `/`): 文件路径; `pickcode` (string|null): 115 文件下载提取码; `size` (integer|null): 文件大小; `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储; `thumbnail` (string|null): 缩略图; `type` (string|null): 条目类型，dir 表示目录，file 表示文件; `url` (string|null): 访问地址

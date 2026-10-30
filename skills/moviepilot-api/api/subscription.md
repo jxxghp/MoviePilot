@@ -71,24 +71,24 @@ Identity scope: `bound_user`; required role: `user`.
 
 ### `subscription.follow.add`
 `POST /api/v1/subscribe/follow`; policy effect: `reversible_write`.
-Purpose: 按精确分享用户标识关注一个订阅分享用户。
-Identity scope: `bound_user`; required role: `user`.
+Purpose: 修改实例级关注的订阅分享用户列表。
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `share_uid` (string|null): 需要关注或取消关注的精确 MoviePilot Server 分享用户标识。
 - `body`: none
 
 ### `subscription.follow.delete`
 `DELETE /api/v1/subscribe/follow`; policy effect: `reversible_write`.
-Purpose: 按精确分享用户标识取消关注一个订阅分享用户。
-Identity scope: `bound_user`; required role: `user`.
+Purpose: 从实例级关注列表移除一个订阅分享用户。
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `share_uid` (string|null): 需要关注或取消关注的精确 MoviePilot Server 分享用户标识。
 - `body`: none
 
 ### `subscription.follow.list`
 `GET /api/v1/subscribe/follow`; policy effect: `safe_read`.
-Purpose: 列出当前用户关注的订阅分享用户标识。
-Identity scope: `bound_user`; required role: `user`.
+Purpose: 读取实例级关注的订阅分享用户列表。
+Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): 旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。; `page` (integer|null): 旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。
@@ -198,8 +198,8 @@ Identity scope: `bound_user`; required role: `user`.
 
 ### `subscription.share.delete`
 `DELETE /api/v1/subscribe/share/{share_id}`; policy effect: `external_side_effect`.
-Purpose: 按分享标识删除一条共享订阅发布记录。
-Identity scope: `bound_user`; required role: `user`.
+Purpose: 按分享标识删除一条实例级共享订阅发布记录。
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `share_id*` (integer): 分享列表操作返回的持久化 MoviePilot Server 分享标识。
 - `query`: none
 - `body`: none

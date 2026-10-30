@@ -283,6 +283,12 @@ def test_storage_agent_list_reuses_bounded_filter_and_sort(monkeypatch) -> None:
         返回固定目录列表，不访问真实存储服务。
         """
 
+        def get_item(self, fileitem):
+            """
+            返回通过服务端路径核验的目录项。
+            """
+            return fileitem
+
         def list_files(self, _fileitem):
             """
             返回两个与自然名称顺序相反的目录项。
@@ -293,9 +299,23 @@ def test_storage_agent_list_reuses_bounded_filter_and_sort(monkeypatch) -> None:
             ]
 
     monkeypatch.setattr(storage_endpoint, "StorageChain", _StorageChain)
+    monkeypatch.setattr(
+        storage_endpoint.DirectoryHelper,
+        "get_dirs",
+        staticmethod(
+            lambda: [
+                SimpleNamespace(
+                    storage="local",
+                    download_path="/media",
+                    library_storage="local",
+                    library_path=None,
+                )
+            ]
+        ),
+    )
 
     result = storage_endpoint.list_agent_files(
-        fileitem=FileItem(path="/"),
+        fileitem=FileItem(path="/media"),
         sort="name",
         keyword="Episode*",
         _=object(),
