@@ -284,7 +284,7 @@ async def download_history(
 def delete_download_history(
     history_in: _SchemaDownloadHistory,
     command: DownloadHistoryMutationCommand = Depends(get_download_history_mutation_command),
-    _: _SchemaTokenPayload = Depends(verify_token),
+    _: Any = Depends(get_current_active_manage_user),
 ) -> Any:
     """
     删除下载历史记录

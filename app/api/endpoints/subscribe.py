@@ -20,6 +20,7 @@ from app.api.context import (
     resolve_background_task_registry,
 )
 from app.api.dependencies.auth import (
+    get_current_active_manage_user_async,
     get_current_active_user,
     get_current_active_user_async,
 )
@@ -812,7 +813,10 @@ async def subscribe_share(
 
 
 @router.delete("/share/{share_id}", summary="删除分享", response_model=_SchemaResponse[None])
-async def subscribe_share_delete(share_id: int, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def subscribe_share_delete(
+    share_id: int,
+    _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+) -> Any:
     """
     删除分享
     """
@@ -844,7 +848,9 @@ async def subscribe_fork(
 
 @router.get("/follow", summary="查询已Follow的订阅分享人", response_model=List[str])
 async def followed_subscribers(
-    _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None
+    _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询已Follow的订阅分享人
@@ -853,7 +859,10 @@ async def followed_subscribers(
 
 
 @router.post("/follow", summary="Follow订阅分享人", response_model=_SchemaResponse[None])
-async def follow_subscriber(share_uid: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def follow_subscriber(
+    share_uid: Optional[str] = None,
+    _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+) -> Any:
     """
     Follow订阅分享人
     """
@@ -865,7 +874,10 @@ async def follow_subscriber(share_uid: Optional[str] = None, _: _SchemaTokenPayl
 
 
 @router.delete("/follow", summary="取消Follow订阅分享人", response_model=_SchemaResponse[None])
-async def unfollow_subscriber(share_uid: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def unfollow_subscriber(
+    share_uid: Optional[str] = None,
+    _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+) -> Any:
     """
     取消Follow订阅分享人
     """

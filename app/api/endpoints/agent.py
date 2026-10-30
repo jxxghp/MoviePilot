@@ -20,7 +20,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 
-from app.adapters.web.security.access import verify_token
+from app.adapters.web.security.access import verify_resource_token, verify_token
 from app.agent.mcp import agent_mcp_manager
 from app.api.dependencies.agent import (
     get_agent_chat_persistence,
@@ -233,7 +233,10 @@ def _build_web_agent_sse(
         }
     },
 )
-async def download_web_agent_file(file_id: str) -> FileResponse:
+async def download_web_agent_file(
+    file_id: str,
+    _: _SchemaTokenPayload = Depends(verify_resource_token),
+) -> FileResponse:
     """
     下载 Web 智能助手本轮生成的临时附件。
 

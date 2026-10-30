@@ -256,7 +256,7 @@ async def get_notification_message(
 )
 async def clear_notification_message(
     scope: _SchemaMessageClearScope = _SchemaMessageClearScope.All,
-    _: _SchemaTokenPayload = Depends(verify_token),
+    _: Any = Depends(get_current_active_superuser),
 ) -> _SchemaResponse[dict[str, Any]]:
     """
     记录通知中心清理时间，后续通知历史查询会在服务端过滤。

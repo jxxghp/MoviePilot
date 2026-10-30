@@ -13603,7 +13603,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "按精确分享用户标识关注一个订阅分享用户。请求方法：POST；路径：/api/v1/subscribe/follow。操作效果：reversible_write；身份范围：bound_user。所需角色：user。",
+      "description": "修改实例级关注的订阅分享用户列表。请求方法：POST；路径：/api/v1/subscribe/follow。操作效果：reversible_write；身份范围：admin。所需角色：system_admin。",
       "properties": {
         "operation_id": {
           "const": "subscription.follow.add",
@@ -13638,7 +13638,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "按精确分享用户标识取消关注一个订阅分享用户。请求方法：DELETE；路径：/api/v1/subscribe/follow。操作效果：reversible_write；身份范围：bound_user。所需角色：user。",
+      "description": "从实例级关注列表移除一个订阅分享用户。请求方法：DELETE；路径：/api/v1/subscribe/follow。操作效果：reversible_write；身份范围：admin。所需角色：system_admin。",
       "properties": {
         "operation_id": {
           "const": "subscription.follow.delete",
@@ -13673,7 +13673,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "列出当前用户关注的订阅分享用户标识。请求方法：GET；路径：/api/v1/subscribe/follow。操作效果：safe_read；身份范围：bound_user。所需角色：user。集合响应：data 保持列表形式；同时省略 page 和 count 可保留原有完整结果。网关成功响应会增加 collection.result_count 和精确的 collection.total_count。查询数量或摘要时，请传入 page=1 和 count=1，再读取 collection.total_count；不要仅因条目数据被截断就查询数据库。",
+      "description": "读取实例级关注的订阅分享用户列表。请求方法：GET；路径：/api/v1/subscribe/follow。操作效果：safe_read；身份范围：admin。所需角色：system_admin。集合响应：data 保持列表形式；同时省略 page 和 count 可保留原有完整结果。网关成功响应会增加 collection.result_count 和精确的 collection.total_count。查询数量或摘要时，请传入 page=1 和 count=1，再读取 collection.total_count；不要仅因条目数据被截断就查询数据库。",
       "properties": {
         "operation_id": {
           "const": "subscription.follow.list",
@@ -14274,7 +14274,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "按分享标识删除一条共享订阅发布记录。请求方法：DELETE；路径：/api/v1/subscribe/share/{share_id}。操作效果：external_side_effect；身份范围：bound_user。所需角色：user。",
+      "description": "按分享标识删除一条实例级共享订阅发布记录。请求方法：DELETE；路径：/api/v1/subscribe/share/{share_id}。操作效果：external_side_effect；身份范围：admin。所需角色：system_admin。",
       "properties": {
         "operation_id": {
           "const": "subscription.share.delete",
@@ -15979,7 +15979,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "从整理队列移除一个精确存储项目，并停止其整理。请求方法：DELETE；路径：/api/v1/transfer/queue。操作效果：destructive_write；身份范围：bound_user。所需角色：user。",
+      "description": "从实例整理队列移除一个精确存储项目，并停止其整理。请求方法：DELETE；路径：/api/v1/transfer/queue。操作效果：destructive_write；身份范围：admin。所需角色：system_admin。",
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",

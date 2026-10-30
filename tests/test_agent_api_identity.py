@@ -152,6 +152,25 @@ def test_public_allowlist_only_contains_audited_metadata_queries():
         assert spec.confirmation is ConfirmationMode.NONE
 
 
+@pytest.mark.parametrize(
+    "operation_id",
+    [
+        "subscription.share.delete",
+        "subscription.follow.list",
+        "subscription.follow.add",
+        "subscription.follow.delete",
+        "transfer.queue.delete",
+    ],
+)
+def test_global_mutations_are_not_bound_user_operations(operation_id):
+    """
+    影响实例级状态的 Agent 操作必须要求系统管理员身份。
+    """
+    spec = resolve_api_operation(operation_id)
+    assert spec.identity_scope is ApiIdentityScope.ADMIN
+    assert spec.required_role is PrincipalRole.SYSTEM_ADMIN
+
+
 @pytest.mark.parametrize("changes", [
     {"effect": ActionEffect.REVERSIBLE_WRITE},
     {"effect": ActionEffect.SENSITIVE_READ},

@@ -557,7 +557,7 @@ async def query_queue_page(
     "/queue", summary="从整理队列中删除任务", response_model=_SchemaResponse[None]
 )
 async def remove_queue(
-    fileitem: _SchemaFileItem, _: _SchemaTokenPayload = Depends(verify_token)
+    fileitem: _SchemaFileItem, _: Any = Depends(get_current_active_manage_user)
 ) -> Any:
     """
     查询整理队列

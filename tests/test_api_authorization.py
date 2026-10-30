@@ -12,7 +12,7 @@ from fastapi import HTTPException, UploadFile
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.adapters.web.security.access import verify_token
+from app.adapters.web.security.access import verify_resource_token, verify_token
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
@@ -22,6 +22,7 @@ from app.api.deps import (
     get_current_active_user_async,
 )
 from app.api.endpoints import dashboard as dashboard_endpoint
+from app.api.endpoints import agent as agent_endpoint
 from app.api.endpoints import github as github_endpoint
 from app.api.endpoints import history as history_endpoint
 from app.api.endpoints import login as login_endpoint
@@ -31,6 +32,7 @@ from app.api.endpoints import plugin as plugin_endpoint
 from app.api.endpoints import rule as rule_endpoint
 from app.api.endpoints import site as site_endpoint
 from app.api.endpoints import storage as storage_endpoint
+from app.api.endpoints import subscribe as subscribe_endpoint
 from app.api.endpoints import system as system_endpoint
 from app.api.endpoints import transfer as transfer_endpoint
 from app.api.endpoints import user as user_endpoint
@@ -191,6 +193,20 @@ def test_webpush_send_requires_superuser_and_subscribe_accepts_login_user():
     """
     assert _dependency_of(message_endpoint.send_notification, "_") is get_current_active_superuser
     assert _dependency_of(message_endpoint.subscribe, "_") is verify_token
+
+
+def test_global_mutations_and_agent_file_access_keep_privilege_boundaries():
+    """
+    全局状态修改和临时附件下载不能退化为普通登录或匿名访问。
+    """
+    assert _dependency_of(subscribe_endpoint.subscribe_share_delete, "_") is get_current_active_manage_user_async
+    assert _dependency_of(subscribe_endpoint.followed_subscribers, "_") is get_current_active_manage_user_async
+    assert _dependency_of(subscribe_endpoint.follow_subscriber, "_") is get_current_active_manage_user_async
+    assert _dependency_of(subscribe_endpoint.unfollow_subscriber, "_") is get_current_active_manage_user_async
+    assert _dependency_of(transfer_endpoint.remove_queue, "_") is get_current_active_manage_user
+    assert _dependency_of(history_endpoint.delete_download_history, "_") is get_current_active_manage_user
+    assert _dependency_of(message_endpoint.clear_notification_message, "_") is get_current_active_superuser
+    assert _dependency_of(agent_endpoint.download_web_agent_file, "_") is verify_resource_token
 
 
 def test_manage_page_endpoints_accept_manage_permission():
