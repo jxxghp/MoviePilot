@@ -21,8 +21,8 @@ from app.api.deps import (
     get_current_active_user,
     get_current_active_user_async,
 )
-from app.api.endpoints import dashboard as dashboard_endpoint
 from app.api.endpoints import agent as agent_endpoint
+from app.api.endpoints import dashboard as dashboard_endpoint
 from app.api.endpoints import github as github_endpoint
 from app.api.endpoints import history as history_endpoint
 from app.api.endpoints import login as login_endpoint
