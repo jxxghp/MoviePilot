@@ -211,7 +211,7 @@ def list_files(
     :param _: 依赖注入的已登录管理身份，仅用于权限校验
     :return: 所有目录和文件
     """
-    _ensure_manage_storage_path(fileitem, _)
+    fileitem = _ensure_manage_storage_item(fileitem, _)
     return _list_files(fileitem=fileitem, sort=sort, keyword=keyword)
 
 
@@ -347,6 +347,74 @@ def _storage_child_item(fileitem: _SchemaFileItem, name: str) -> _SchemaFileItem
     return fileitem.model_copy(update={"path": child_path})
 
 
+def _storage_sibling_item(fileitem: _SchemaFileItem, name: str) -> _SchemaFileItem:
+    """
+    按存储类型构造一个待校验的同级目标路径。
+
+    重命名接口实际把目标放在源对象的父目录中，不能复用创建子目录
+    使用的 ``当前路径/名称`` 计算方式。
+    """
+    if (fileitem.storage or StorageSchema.Local.value) == StorageSchema.Local.value:
+        target_path = (Path(fileitem.path or "/").parent / name).as_posix()
+    else:
+        source_path = posixpath.normpath(f"/{(fileitem.path or '/').lstrip('/')}")
+        target_path = posixpath.join(posixpath.dirname(source_path), name)
+    return fileitem.model_copy(
+        update={
+            "path": target_path,
+            "fileid": None,
+            "parent_fileid": None,
+        }
+    )
+
+
+def _storage_identity_matches(
+    requested: _SchemaFileItem,
+    actual: _SchemaFileItem,
+) -> bool:
+    """
+    确认客户端提交的对象标识与按路径查询到的真实对象一致。
+
+    ``path`` 由客户端提供，只能作为查询条件，不能单独作为授权凭据。
+    远端存储的实际删除、重命名和目录浏览可能使用 ``fileid`` 或
+    ``drive_id``，所以凡是客户端提交了这些标识，都必须与服务端回执
+    完全一致；缺少服务端回执时拒绝继续操作。
+    """
+    if (requested.storage or StorageSchema.Local.value) != (
+        actual.storage or StorageSchema.Local.value
+    ):
+        return False
+    for field in ("fileid", "drive_id"):
+        requested_value = getattr(requested, field, None)
+        if requested_value is not None and requested_value != getattr(actual, field, None):
+            return False
+    return True
+
+
+def _resolve_verified_storage_item(
+    fileitem: _SchemaFileItem,
+) -> Optional[_SchemaFileItem]:
+    """
+    按路径查询并核验存储对象，返回可直接交给存储提供方的服务端对象。
+
+    这是 Agent 和普通管理用户的对象级授权边界：客户端路径只用于定位
+    候选对象，底层实际操作必须使用同一个已核验的 ``FileItem``，避免
+    合法路径搭配另一组远端文件 ID 或云盘空间标识。
+    """
+    if not _is_agent_storage_path_allowed(fileitem):
+        return None
+    try:
+        actual = StorageChain().get_item(fileitem)
+    except Exception:
+        # 无法确认远端对象状态时必须拒绝，不能退回信任客户端字段。
+        return None
+    if not actual or not _storage_identity_matches(fileitem, actual):
+        return None
+    if not _is_agent_storage_path_allowed(actual):
+        return None
+    return actual
+
+
 def _ensure_manage_storage_path(fileitem: _SchemaFileItem, current_user: Any) -> None:
     """
     将非超级管理员的文件管理范围限制到已配置的下载或媒体库目录。
@@ -360,6 +428,24 @@ def _ensure_manage_storage_path(fileitem: _SchemaFileItem, current_user: Any) ->
         return
     if not _is_agent_storage_path_allowed(fileitem):
         raise HTTPException(status_code=403, detail="管理用户只能操作已配置的存储目录")
+
+
+def _ensure_manage_storage_item(
+    fileitem: _SchemaFileItem,
+    current_user: Any,
+) -> _SchemaFileItem:
+    """
+    校验并返回非超级管理员实际可以操作的服务端对象。
+
+    超级管理员沿用原有完整文件管理能力；其他管理用户必须使用按路径
+    查询并完成身份绑定的对象，失败时拒绝访问。
+    """
+    if not hasattr(current_user, "is_superuser") or current_user.is_superuser:
+        return fileitem
+    actual = _resolve_verified_storage_item(fileitem)
+    if not actual:
+        raise HTTPException(status_code=403, detail="无法验证存储对象或对象不在允许范围内")
+    return actual
 
 
 @router.post(
@@ -379,9 +465,10 @@ def list_agent_files(
     """
     只允许 Agent 浏览已配置的下载或媒体库目录，不开放创建、改名或删除入口。
     """
-    if not _is_agent_storage_path_allowed(fileitem):
-        raise HTTPException(status_code=403, detail="Agent 只能浏览已配置的存储目录")
-    return _list_files(fileitem=fileitem, sort=sort, keyword=keyword)
+    verified_item = _resolve_verified_storage_item(fileitem)
+    if not verified_item:
+        raise HTTPException(status_code=403, detail="Agent 只能浏览已验证的存储目录")
+    return _list_files(fileitem=verified_item, sort=sort, keyword=keyword)
 
 
 @router.post("/mkdir", summary="创建目录", response_model=_SchemaResponse[None])
@@ -401,7 +488,7 @@ def mkdir(
         return _SchemaResponse(success=False)
     if not _is_safe_storage_child_name(name):
         return _SchemaResponse(success=False, message="目录名不能包含路径分隔符")
-    _ensure_manage_storage_path(fileitem, _)
+    fileitem = _ensure_manage_storage_item(fileitem, _)
     _ensure_manage_storage_path(_storage_child_item(fileitem, name), _)
     result = StorageChain().create_folder(fileitem, name)
     if result:
@@ -420,7 +507,7 @@ def delete(
     :param fileitem: 文件项
     :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
-    _ensure_manage_storage_path(fileitem, _)
+    fileitem = _ensure_manage_storage_item(fileitem, _)
     result = StorageChain().delete_file(fileitem)
     if result:
         return _SchemaResponse(success=True)
@@ -450,7 +537,7 @@ def download(
     :param fileitem: 文件项
     :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
-    _ensure_manage_storage_path(fileitem, _)
+    fileitem = _ensure_manage_storage_item(fileitem, _)
     # 临时目录
     tmp_file = StorageChain().download_file(fileitem)
     if tmp_file:
@@ -480,7 +567,7 @@ def image(
     :param fileitem: 文件项
     :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
-    _ensure_manage_storage_path(fileitem, _)
+    fileitem = _ensure_manage_storage_item(fileitem, _)
     # 临时目录
     tmp_file = StorageChain().download_file(fileitem)
     if not tmp_file:
@@ -507,8 +594,8 @@ def rename(
         return _SchemaResponse(success=False, message="新名称为空")
     if not _is_safe_storage_child_name(new_name):
         return _SchemaResponse(success=False, message="名称不能包含路径分隔符")
-    _ensure_manage_storage_path(fileitem, _)
-    _ensure_manage_storage_path(_storage_child_item(fileitem, new_name), _)
+    fileitem = _ensure_manage_storage_item(fileitem, _)
+    _ensure_manage_storage_path(_storage_sibling_item(fileitem, new_name), _)
 
     # 重命名目录内文件
     if recursive:

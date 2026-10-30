@@ -115,3 +115,103 @@ def test_manage_storage_guard_blocks_non_superuser_outside_configured_roots(monk
 
     escaped = storage_endpoint._storage_child_item(FileItem(path=str(allowed)), "../config")
     assert not storage_endpoint._is_agent_storage_path_allowed(escaped)
+
+
+def test_remote_object_identity_must_match_path_before_delete(monkeypatch):
+    """
+    合法路径搭配云盘根目录或其他文件 ID 时必须拒绝，不能调用提供方。
+    """
+    monkeypatch.setattr(
+        storage_endpoint.DirectoryHelper,
+        "get_dirs",
+        staticmethod(lambda: [_directory(download_path="/library", storage="u115")]),
+    )
+    monkeypatch.setattr(
+        storage_endpoint.StorageChain,
+        "get_item",
+        lambda _chain, _fileitem: FileItem(
+            storage="u115",
+            path="/library/",
+            fileid="42",
+            type="dir",
+        ),
+    )
+    deleted = False
+
+    def _delete_file(_chain, _fileitem):
+        nonlocal deleted
+        deleted = True
+        return True
+
+    monkeypatch.setattr(storage_endpoint.StorageChain, "delete_file", _delete_file)
+
+    request_item = FileItem(storage="u115", path="/library", fileid="0", type="dir")
+    with pytest.raises(HTTPException) as exc_info:
+        storage_endpoint.delete(request_item, SimpleNamespace(is_superuser=False))
+
+    assert exc_info.value.status_code == 403
+    assert deleted is False
+
+
+def test_verified_remote_object_is_used_for_provider_operation(monkeypatch):
+    """
+    通过核验后，底层必须收到服务端返回的对象，而不是客户端原始对象。
+    """
+    monkeypatch.setattr(
+        storage_endpoint.DirectoryHelper,
+        "get_dirs",
+        staticmethod(lambda: [_directory(download_path="/library", storage="u115")]),
+    )
+    actual = FileItem(
+        storage="u115",
+        path="/library/",
+        fileid="42",
+        drive_id="drive-a",
+        type="dir",
+    )
+    monkeypatch.setattr(
+        storage_endpoint.StorageChain,
+        "get_item",
+        lambda _chain, _fileitem: actual,
+    )
+    received = []
+    monkeypatch.setattr(
+        storage_endpoint.StorageChain,
+        "delete_file",
+        lambda _chain, fileitem: received.append(fileitem) or True,
+    )
+
+    request_item = FileItem(
+        storage="u115",
+        path="/library",
+        fileid="42",
+        drive_id="drive-a",
+        type="dir",
+    )
+    result = storage_endpoint.delete(request_item, SimpleNamespace(is_superuser=False))
+
+    assert result.success is True
+    assert received == [actual]
+
+
+def test_rename_target_is_checked_in_source_parent(monkeypatch, tmp_path):
+    """
+    重命名目标必须是源对象同级路径，配置根目录不能被移出允许范围。
+    """
+    allowed = tmp_path / "library"
+    allowed.mkdir()
+    monkeypatch.setattr(
+        storage_endpoint.DirectoryHelper,
+        "get_dirs",
+        staticmethod(lambda: [_directory(download_path=str(allowed))]),
+    )
+    source = FileItem(path=str(allowed), type="dir")
+    target = storage_endpoint._storage_sibling_item(source, "moved")
+
+    assert target.path == str(tmp_path / "moved")
+    with pytest.raises(HTTPException) as exc_info:
+        storage_endpoint._ensure_manage_storage_path(
+            target,
+            SimpleNamespace(is_superuser=False),
+        )
+    assert exc_info.value.status_code == 403
