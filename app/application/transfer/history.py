@@ -31,17 +31,17 @@ def classification_fields(
 
 
 def history_title(
-    meta: MetaBase,
+    meta: Optional[MetaBase],
     mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
 ) -> Optional[str]:
     """
-    音乐文件优先记录曲目标题，其它媒体保持识别标题。
+    音乐文件优先记录曲目标题，其它媒体保持识别标题；均未识别时不推测标题。
     """
     if isinstance(meta, MetaMusic) and meta.title:
         return str(meta.title)
     if mediainfo and mediainfo.title:
         return str(mediainfo.title)
-    return str(meta.name) if meta.name else None
+    return str(meta.name) if meta and meta.name else None
 
 
 def history_source_path(fileitem: FileItem) -> str:
@@ -118,7 +118,7 @@ def success_fields(
 def failure_fields(
     fileitem: FileItem,
     mode: str,
-    meta: MetaBase,
+    meta: Optional[MetaBase],
     mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
     transferinfo: Optional[TransferInfo] = None,
     downloader: Optional[str] = None,
@@ -130,10 +130,12 @@ def failure_fields(
     投影转移失败记录，不执行数据库写入。
 
     识别结果与整理结果齐备时按完整字段落库；缺任一项则走「未识别到媒体信息」分支，
-    此时只有文件名解析出的元数据可用，不写目标路径。
+    此时仅保存已有的文件名元数据，不写目标路径。元数据为空时仍保留源文件与失败原因，
+    不推测年份或季集。
+
     :param fileitem: 源文件项
     :param mode: 整理方式
-    :param meta: 文件名识别结果
+    :param meta: 文件名识别结果，未解析时为 None
     :param mediainfo: 媒体识别结果，未识别时为 None
     :param transferinfo: 整理结果，未进入整理时为 None
     :param downloader: 下载器
@@ -165,7 +167,7 @@ def failure_fields(
             type=(mediainfo.type.value if mediainfo.type else ""),
             **classification_fields(mediainfo),
             title=history_title(meta, mediainfo),
-            year=history_year(mediainfo.year or meta.year),
+            year=history_year(mediainfo.year or (meta.year if meta else None)),
             media_source=media_source,
             media_id=media_id,
             music_type=getattr(mediainfo, "music_type", None),
@@ -175,8 +177,8 @@ def failure_fields(
             bit_depth=getattr(meta, "bit_depth", None),
             sample_rate=getattr(meta, "sample_rate", None),
             bitrate=getattr(meta, "bitrate", None),
-            seasons=meta.season,
-            episodes=meta.episode,
+            seasons=meta.season if meta else None,
+            episodes=meta.episode if meta else None,
             image=mediainfo.get_poster_image(),
             downloader=downloader,
             download_hash=download_hash,
@@ -194,9 +196,9 @@ def failure_fields(
     else:
         media_source, media_id = resolve_media_identity(media=meta)
         history = dict(
-            type=meta.type.value if meta.type else None,
+            type=meta.type.value if meta and meta.type else None,
             title=history_title(meta),
-            year=history_year(meta.year),
+            year=history_year(meta.year if meta else None),
             media_source=media_source,
             media_id=media_id,
             music_type=MUSIC_ENTITY_RECORDING if isinstance(meta, MetaMusic) else None,
@@ -209,8 +211,8 @@ def failure_fields(
             src_storage=fileitem.storage,
             src_fileitem=fileitem.model_dump(),
             mode=mode,
-            seasons=meta.season,
-            episodes=meta.episode,
+            seasons=meta.season if meta else None,
+            episodes=meta.episode if meta else None,
             downloader=downloader,
             download_hash=download_hash,
             status=False,

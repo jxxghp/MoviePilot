@@ -161,34 +161,38 @@ def test_migrated_tasks_without_meta_keep_unfinished_siblings() -> None:
     assert not manager._task_state_changed_at
 
 
-def test_successful_recognition_without_meta_does_not_skip_transfer() -> None:
+def test_missing_meta_rejection_preserves_media_and_cleans_job() -> None:
     """
-    识别得到媒体的无元数据任务继续规划执行，不得被迁移失败误报为重复。
+    已识别媒体不能替代季集元数据，缺失时应明确拒绝并清理作业而非误报重复。
     """
-    task = _task()
+    task = _task(has_media=True)
     task.preview = True
     task.target_directory = TransferDirectoryConf(library_path="/library")
     task.mark_planning_context_restored()
     chain = _chain()
     chain.jobview = JobManager()
     chain.runtime_config = SimpleNamespace(scrape_follow_tmdb=True)
-    chain._recognize_task_meta = Mock(return_value=_task(has_media=True).mediainfo)
-    chain._plan_checkpoint_and_execute = Mock(
-        return_value=TransferInfo(success=True, message="完成", fileitem=task.fileitem),
-    )
+    media = task.mediainfo
+    chain._recognize_task_meta = Mock()
+    chain._plan_checkpoint_and_execute = Mock()
     chain._finish_scrape_batch_task = Mock()
     assert chain.jobview.add_task(task)
 
     def settle(recovered: TransferTask, info: TransferInfo) -> tuple[bool, str]:
         """
-        回读真实迁移后的任务并结束作业，避免保留未完成测试状态。
+        保留已有媒体身份与明确失败原因，并结束无元数据作业。
         """
         assert recovered.meta is None
-        chain.jobview.finish_task(recovered)
+        assert recovered.mediainfo is media
+        assert info.success is False
+        chain.jobview.fail_task(recovered)
         return info.success, info.message
 
-    assert chain._TransferChain__perform_transfer(task, settle) == (True, "完成")
-    chain._plan_checkpoint_and_execute.assert_called_once()
+    state, message = chain._TransferChain__perform_transfer(task, settle)
+    assert state is False
+    assert "缺少文件名元数据" in message
+    chain._recognize_task_meta.assert_not_called()
+    chain._plan_checkpoint_and_execute.assert_not_called()
     assert chain.jobview.total() == 0
 
 

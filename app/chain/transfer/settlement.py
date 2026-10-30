@@ -606,8 +606,8 @@ class TransferSettlementOwner(_TransferOwnerBase):
             self._record_scrape_target(task, transferinfo)
             self.notify_successful_transfer(task, transferinfo)
 
-        # 全部整理完成且有成功的任务时，发送消息和事件
-        if self.jobview.is_finished(task):
+        # 成功汇总需要季集元数据；缺少元数据的规划拒绝只走失败反馈。
+        if task.meta is not None and self.jobview.is_finished(task):
             with job_lock:
                 transferinfo.file_list_new = list(dict.fromkeys(
                     self._success_target_files.pop(job_id, [])

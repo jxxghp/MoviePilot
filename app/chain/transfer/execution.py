@@ -39,7 +39,6 @@ from app.chain.transfer.music import defer_music_recognition, refresh_music_retr
 from app.chain.transfer.records import apply_download_history_classification
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import is_music_media_source
-from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
 from app.schemas.transfer import TransferInfo
@@ -519,7 +518,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
             callback: Optional[Callable[[TransferTask, TransferInfo], Tuple[bool, str]]] = None,
     ) -> Optional[Tuple[bool, str]]:
         """
-        处理整理任务
+        执行冻结计划，或在元数据完整时识别并规划新任务。
+
+        未规划任务缺少文件名元数据时走可结算的规划拒绝，不猜测季集或执行文件操作。
         """
         try:
             if task.plan_checkpoint is not None:
@@ -528,6 +529,14 @@ class TransferExecutionOwner(_TransferOwnerBase):
                     self._TransferChain__handle_planned_transfer(task, callback),
                 )
             refresh_music_retry_context(self, task)
+            if task.meta is None:
+                transferinfo = self._TransferChain__checkpoint_planning_rejection(
+                    task,
+                    "整理规划输入缺少文件名元数据，请重新预览并确认季集信息后重新整理",
+                )
+                return callback(task, transferinfo) if callback else (
+                    transferinfo.success, transferinfo.message or ""
+                )
             transferhis = self.transfer_history_repository
             # 显式标注联合：下面既会赋回音乐识别结果（MusicInfo），也会赋回影视识别
             # 结果（MediaInfo），不标注时会被推断成其中一种，另一种就成了假错误
@@ -637,11 +646,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
             ):
                 # 第零季表示特别篇，不能按空值回退为第一季。
                 season_num = cast(MediaInfo, mediainfo).season
-                if season_num is None and cast(MetaBase, task.meta).season_seq:
-                    if cast(MetaBase, task.meta).season_seq.isdigit():
-                        season_num = int(cast(MetaBase, task.meta).season_seq)
                 if season_num is None:
-                    season_num = 1
+                    season_seq = task.meta.season_seq
+                    season_num = int(season_seq) if season_seq.isdigit() else 1
                 task.episodes_info = TmdbChain().tmdb_episodes(
                     tmdbid=mediainfo.tmdb_id,
                     season=season_num,
