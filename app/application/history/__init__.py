@@ -709,7 +709,7 @@ def add_transfer_success(
 def add_transfer_fail(
     fileitem: FileItem,
     mode: str,
-    meta: MetaBase,
+    meta: Optional[MetaBase],
     mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
     transferinfo: Optional[TransferInfo] = None,
     downloader: Optional[str] = None,
@@ -722,10 +722,11 @@ def add_transfer_fail(
     新增转移失败历史记录。
 
     识别结果与整理结果齐备时按完整字段落库；缺任一项则走「未识别到媒体信息」分支，
-    此时只有文件名解析出的元数据可用，不写目标路径。
+    此时仅保存已有文件名元数据，不写目标路径；缺少元数据也必须保留源文件与失败原因。
+
     :param fileitem: 源文件项
     :param mode: 整理方式
-    :param meta: 文件名识别结果
+    :param meta: 文件名识别结果，未解析时为 None
     :param mediainfo: 媒体识别结果，未识别时为 None
     :param transferinfo: 整理结果，未进入整理时为 None
     :param downloader: 下载器
