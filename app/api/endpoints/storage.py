@@ -304,12 +304,14 @@ def _is_agent_storage_path_allowed(fileitem: _SchemaFileItem) -> bool:
                     return True
             return False
 
-        requested_path = posixpath.normpath(f"/{requested_raw_path.lstrip('/')}")
+        requested_remote_path = posixpath.normpath(f"/{requested_raw_path.lstrip('/')}")
         for root_storage, root_raw_path in configured_roots:
             if root_storage != requested_storage:
                 continue
-            root_path = posixpath.normpath(f"/{root_raw_path.lstrip('/')}")
-            if requested_path == root_path or requested_path.startswith(f"{root_path.rstrip('/')}/"):
+            root_remote_path = posixpath.normpath(f"/{root_raw_path.lstrip('/')}")
+            if requested_remote_path == root_remote_path or requested_remote_path.startswith(
+                f"{root_remote_path.rstrip('/')}/"
+            ):
                 return True
         return False
     except (OSError, RuntimeError, TypeError, ValueError):

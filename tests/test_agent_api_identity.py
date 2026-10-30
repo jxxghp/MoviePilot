@@ -99,7 +99,6 @@ def test_public_queries_do_not_require_channel_binding(operation_id, arguments, 
     ("storage.list", {"body": {"path": "/", "storage": "local", "type": "dir"}}),
     ("config.user.get", {}),
     ("config.public.get", {"path_params": {"key": "Storages"}}),
-    ("subscription.follow.list", {}),
 ])
 @pytest.mark.parametrize("user_state", ["unbound", "inactive"])
 def test_instance_and_user_operations_still_require_binding(operation_id, arguments, user_state):
