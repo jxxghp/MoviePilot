@@ -4,6 +4,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.schemas.types import MediaSource, MediaType
@@ -97,9 +99,9 @@ def _reconcile(target, candidate, meta, torrent, context):
     )
 
 
-def test_inferred_tmdb_conflict_falls_back_to_strict_alias_match():
+def test_inferred_tmdb_conflict_rejects_matching_alias_and_year():
     """
-    标题推断到重复 TMDB 条目时应允许订阅目标别名复核。
+    别名和首播年份一致也不能覆盖候选自身的不同 TMDB ID。
     """
     target = _target_media()
     candidate = _candidate_media()
@@ -113,11 +115,11 @@ def test_inferred_tmdb_conflict_falls_back_to_strict_alias_match():
 
     result = _reconcile(target, candidate, meta, torrent, context)
 
-    assert result is target
-    assert context.media_info is target
-    assert context.match_source == "title"
-    assert context.candidate_recognized is False
-    assert context.media_info_is_target is True
+    assert result is None
+    assert context.media_info is candidate
+    assert context.match_source == "tmdbid"
+    assert context.candidate_recognized is True
+    assert context.media_info_is_target is False
 
 
 def test_no_year_alias_rejects_candidate_with_different_first_air_year():
@@ -153,9 +155,9 @@ def test_no_year_alias_rejects_candidate_with_different_first_air_year():
     assert context.match_source == "tmdbid"
 
 
-def test_explicit_target_year_can_override_wrong_same_name_candidate():
+def test_explicit_target_year_cannot_override_other_media_identity():
     """
-    资源明确携带目标年份时应允许纠正同名候选的错误识别。
+    资源年份与订阅一致时，仍须拒绝已识别为不同作品的候选。
     """
     target = _target_media(
         tmdb_id=236356,
@@ -182,9 +184,9 @@ def test_explicit_target_year_can_override_wrong_same_name_candidate():
     )
     context = _context(meta, candidate, torrent)
 
-    assert _reconcile(target, candidate, meta, torrent, context) is target
-    assert context.media_info is target
-    assert context.match_source == "title"
+    assert _reconcile(target, candidate, meta, torrent, context) is None
+    assert context.media_info is candidate
+    assert context.match_source == "tmdbid"
 
 
 def test_inferred_tmdb_conflict_rejects_nonmatching_title():
@@ -208,9 +210,9 @@ def test_inferred_tmdb_conflict_rejects_nonmatching_title():
     assert context.media_info_is_target is False
 
 
-def test_inferred_douban_conflict_falls_back_to_strict_alias_match():
+def test_inferred_douban_conflict_rejects_matching_alias():
     """
-    豆瓣 ID 推断冲突时应使用同一套严格标题复核。
+    豆瓣 ID 冲突同样不能由相同别名覆盖。
     """
     target = _target_media(tmdb_id=None, douban_id="30170816")
     candidate = _candidate_media(tmdb_id=None, douban_id="36612345")
@@ -224,9 +226,9 @@ def test_inferred_douban_conflict_falls_back_to_strict_alias_match():
 
     result = _reconcile(target, candidate, meta, torrent, context)
 
-    assert result is target
-    assert context.media_info is target
-    assert context.match_source == "title"
+    assert result is None
+    assert context.media_info is candidate
+    assert context.match_source == "tmdbid"
 
 
 def test_explicit_tmdb_identity_keeps_strict_conflict_rejection():
@@ -285,5 +287,27 @@ def test_matching_media_id_preserves_candidate_identity():
     assert result is candidate
     assert context.media_info is candidate
     assert context.match_source == "tmdbid"
+    assert context.candidate_recognized is True
+    assert context.media_info_is_target is False
+
+
+@pytest.mark.parametrize("candidate_source", [MediaSource.Douban, MediaSource.Bangumi, MediaSource.AniList])
+def test_same_numeric_id_from_different_source_is_rejected(candidate_source: MediaSource) -> None:
+    """
+    不同媒体来源中的相同数字 ID 不是同一作品，标题一致也不能跨来源放行。
+    """
+    target = _target_media()
+    candidate = _candidate_media(tmdb_id=target.tmdb_id)
+    candidate.media_source = candidate_source
+    meta = _torrent_meta()
+    torrent = TorrentInfo(
+        title="A Record Of A Mortals Journey To Immortality S01E186",
+        site_name="测试站点",
+        category=MediaType.TV.value,
+    )
+    context = _context(meta, candidate, torrent)
+
+    assert _reconcile(target, candidate, meta, torrent, context) is None
+    assert context.media_info is candidate
     assert context.candidate_recognized is True
     assert context.media_info_is_target is False

@@ -44,7 +44,7 @@ class CandidateIndex:
                 elif meta_identity:
                     self._explicit_identity[position] = meta_identity
                 else:
-                    # 标题解析未携带显式 ID 的识别冲突仍可能通过同作品证据复核。
+                    # 无显式标题 ID 的候选保守路由，最终匹配仍须严格核对识别身份。
                     self._reconcilable.add(position)
 
     def select_cache_candidates(
@@ -77,7 +77,7 @@ class CandidateIndex:
         """
         保守路由可能命中的候选，并在外部事实查询前应用站点范围。
 
-        无显式 ID 的候选识别类型可由后续严格复核纠正，不能据此提前排除；
+        路由只收集候选，不代表允许下载；媒体身份和类型由最终匹配严格核对。
         标题解析出的类型和季范围仍须符合订阅要求。
         """
         if subscribe.custom_words:

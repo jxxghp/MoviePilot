@@ -192,84 +192,35 @@ def _reconcile_candidate_media(
     context: Context,
 ) -> Optional[MediaInfo]:
     """
-    在推断媒体 ID 或类型冲突时，以订阅目标对候选标题做严格复核。
+    严格核对候选自身的媒体身份和类型，冲突时直接拒绝。
 
-    标题携带明确媒体身份或目标缺少可比较身份时保持严格拒绝；只有普通
-    标题推断产生冲突且标题、别名、类型和同作品证据复核通过时才回填订阅目标。
-    电影和电视剧可能共用数字 ID，因此身份相同时仍须复核类型冲突。
+    同名真人、动漫及翻拍作品可能拥有相同标题、别名或年份，不能据此覆盖
+    已识别出的不同媒体 ID。TMDB 的电影和电视剧数字 ID 也不可跨类型比较。
+
+    :param target_mediainfo: 订阅目标媒体信息
+    :param candidate_mediainfo: 候选自身的识别结果，通过时保留原对象
+    :param torrent_meta: 为既有调用入口保留的标题元数据，不再用于覆盖候选身份
+    :param torrent_info: 候选资源信息，用于记录拒绝原因
+    :param context: 为既有调用入口保留的上下文，本方法不修改其匹配依据或媒体信息
+    :return: 身份和类型未冲突的候选；冲突时返回 None
     """
+    if candidate_mediainfo.type != target_mediainfo.type:
+        logger.debug(
+            f"{torrent_info.site_name} - {torrent_info.title} "
+            f"媒体类型 {(candidate_mediainfo.type or MediaType.UNKNOWN).value} != "
+            f"{(target_mediainfo.type or MediaType.UNKNOWN).value}，已跳过"
+        )
+        return None
+
     candidate_source, candidate_id = resolve_media_identity(media=candidate_mediainfo)
     target_source, target_id = resolve_media_identity(media=target_mediainfo)
-    type_conflict = candidate_mediainfo.type != target_mediainfo.type
-    conflicts = []
-    if candidate_source and candidate_id and (
-        candidate_source != target_source or candidate_id != target_id or type_conflict
-    ):
-        conflicts.append(
-            (
-                str(candidate_source),
-                candidate_id,
-                f"{target_source}:{target_id}" if target_source and target_id else None,
-            )
-        )
-    if not conflicts:
-        return candidate_mediainfo
-
-    conflict_text = "、".join(
-        f"{source} {candidate_id} != {target_id if target_id is not None else '缺失'}"
-        for source, candidate_id, target_id in conflicts
-    )
-    if type_conflict:
-        conflict_text = (
-            f"媒体类型 {(candidate_mediainfo.type or MediaType.UNKNOWN).value} != "
-            f"{(target_mediainfo.type or MediaType.UNKNOWN).value}；{conflict_text}"
-        )
-    if any(target_id is None for _, _, target_id in conflicts):
+    if candidate_id and (candidate_source, candidate_id) != (target_source, target_id):
         logger.debug(
-            f"{torrent_info.site_name} - {torrent_info.title} 候选媒体ID与订阅目标不可比较：{conflict_text}"
+            f"{torrent_info.site_name} - {torrent_info.title} 候选媒体ID与订阅目标不匹配："
+            f"{candidate_source}:{candidate_id} != {target_source}:{target_id}，已跳过"
         )
         return None
-
-    explicit_source, explicit_id = resolve_media_identity(media=torrent_meta)
-    if explicit_source and explicit_id:
-        logger.debug(
-            f"{torrent_info.site_name} - {torrent_info.title} 标题含明确媒体ID "
-            f"{explicit_source}:{explicit_id}，保持严格校验：{conflict_text}"
-        )
-        return None
-
-    if not TorrentHelper.match_torrent(
-        mediainfo=target_mediainfo,
-        torrent_meta=torrent_meta,
-        torrent=torrent_info,
-    ):
-        logger.debug(
-            f"{torrent_info.site_name} - {torrent_info.title} 候选媒体ID冲突且标题复核失败：{conflict_text}"
-        )
-        return None
-
-    evidence_matched, evidence = TorrentHelper.match_same_work_evidence(
-        target_mediainfo=target_mediainfo,
-        candidate_mediainfo=candidate_mediainfo,
-        torrent_meta=torrent_meta,
-    )
-    if not evidence_matched:
-        logger.debug(
-            f"{torrent_info.site_name} - {torrent_info.title} 候选媒体ID冲突且缺少同作品证据："
-            f"{evidence}；{conflict_text}"
-        )
-        return None
-
-    context.media_info = target_mediainfo
-    context.match_source = "title"
-    context.candidate_recognized = False
-    context.media_info_is_target = True
-    logger.debug(
-        f"{target_mediainfo.title_year} 候选媒体ID冲突（{conflict_text}），"
-        f"经标题或别名及{evidence}复核匹配到订阅目标："
-        f"{torrent_info.site_name} - {torrent_info.title}"
-    )
-    return target_mediainfo
+    return candidate_mediainfo
 
 
 def _prepare_subscription_match(

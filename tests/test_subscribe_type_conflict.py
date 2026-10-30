@@ -1,5 +1,5 @@
 """
-验证订阅候选被推断成其他媒体类型时的严格复核与缓存隔离。
+验证订阅候选的媒体身份与类型冲突不会进入下载或污染缓存。
 """
 
 from collections.abc import Iterator
@@ -142,6 +142,73 @@ def _reconcile(case: SimpleNamespace) -> Optional[MediaInfo]:
     )
 
 
+@pytest.mark.parametrize(
+    ("torrent_year", "candidate_year"),
+    [("2026", "2024"), ("2026", "2026"), (None, "2026"), (None, None), (None, "2024")],
+)
+def test_live_action_subscription_rejects_same_title_animation(
+    conflict_case: SimpleNamespace,
+    torrent_year: Optional[str],
+    candidate_year: Optional[str],
+) -> None:
+    """
+    《剑来》同名真人与动漫使用不同身份时，标题和年份均不能使动漫进入下载。
+
+    ID 和年份为离线样例，覆盖资源年份相同、共同首播年份及缺失年份的放行路径。
+    """
+    case = conflict_case
+    case.target.type = MediaType.TV
+    case.target.title = case.target.original_title = "剑来"
+    case.target.season_years = {1: "2026"}
+    case.target.genre_ids = [18]
+    case.candidate.type = MediaType.TV
+    case.candidate.title = case.candidate.original_title = "剑来"
+    case.candidate.year = candidate_year
+    case.candidate.genre_ids = [16]
+    case.torrent.title = f"剑来 {torrent_year or ''} S01E01 1080p WEB-DL"
+    case.torrent.description = "剑来 | 动画版 | 国语中字"
+    case.torrent.category = MediaType.TV.value
+    case.meta = MetaInfo(title=case.torrent.title, subtitle=case.torrent.description)
+    case.context.meta_info = case.meta
+    case.subscribe = replace(case.subscribe, name="剑来", type=MediaType.TV.value, season=1)
+
+    assert _execute_match(case) == "completed"
+
+    case.download.assert_not_called()
+    assert case.context.media_info is case.candidate
+    assert case.context.media_info.media_id != case.target.media_id
+    assert case.context.candidate_recognized is True
+    assert case.context.media_info_is_target is False
+
+
+@pytest.mark.parametrize("recognized", [True, False])
+def test_matching_identity_and_unrecognized_title_still_reach_download(
+    conflict_case: SimpleNamespace, recognized: bool
+) -> None:
+    """
+    身份一致的正常资源及尚未识别出身份的标题兜底继续下载，并保留各自匹配依据。
+    """
+    case = conflict_case
+    candidate = replace(case.target) if recognized else None
+    case.context.media_info = candidate
+    case.context.match_source = MediaSource.TMDB.value if recognized else "unknown"
+    case.context.candidate_recognized = recognized
+
+    assert _execute_match(case) == "completed"
+
+    case.download.assert_called_once()
+    matched = case.download.call_args.kwargs["contexts"][0]
+    assert matched.media_info.media_source == case.target.media_source
+    assert matched.media_info.media_id == case.target.media_id
+    assert matched.media_info.type == case.target.type
+    if recognized:
+        assert matched.media_info is candidate
+    assert matched.match_source == (MediaSource.TMDB.value if recognized else "title")
+    assert matched.candidate_recognized is recognized
+    assert matched.media_info_is_target is (not recognized)
+    assert case.context.media_info is candidate
+
+
 def test_inferred_type_conflict_reaches_subscription_review(conflict_case: SimpleNamespace) -> None:
     """
     只由识别结果产生的类型冲突不能在候选路由阶段丢失。
@@ -154,11 +221,11 @@ def test_inferred_type_conflict_reaches_subscription_review(conflict_case: Simpl
 
 
 @pytest.mark.parametrize("candidate_id", ["21494", "1567937"])
-def test_movie_subtitle_reconciles_inferred_tv_without_changing_cache(
+def test_movie_subtitle_and_year_cannot_override_inferred_tv(
     conflict_case: SimpleNamespace, candidate_id: str
 ) -> None:
     """
-    副标题及精确年份可纠正跨类型推断，相同数字 ID 也必须复核且不污染 RSS 缓存。
+    副标题和精确年份不能覆盖类型冲突，相同数字 ID 也不允许进入下载。
     """
     case = conflict_case
     case.candidate.media_id = candidate_id
@@ -166,14 +233,7 @@ def test_movie_subtitle_reconciles_inferred_tv_without_changing_cache(
 
     assert _execute_match(case) == "completed"
 
-    case.download.assert_called_once()
-    matched = case.download.call_args.kwargs["contexts"]
-    assert len(matched) == 1
-    assert matched[0].media_info.media_id == case.target.media_id
-    assert matched[0].media_info.type == MediaType.MOVIE
-    assert matched[0].match_source == "title"
-    assert matched[0].candidate_recognized is False
-    assert matched[0].media_info_is_target is True
+    case.download.assert_not_called()
     assert case.context.media_info is case.candidate
     assert case.candidate.type == MediaType.TV
     assert case.candidate.media_id == candidate_id
@@ -183,11 +243,11 @@ def test_movie_subtitle_reconciles_inferred_tv_without_changing_cache(
 
 
 @pytest.mark.parametrize("candidate_id", ["21494", "1567937"])
-def test_type_conflict_with_same_numeric_id_still_requires_title_review(
+def test_type_conflict_with_same_numeric_id_is_rejected(
     conflict_case: SimpleNamespace, candidate_id: str
 ) -> None:
     """
-    TMDB 的电影与电视剧数字 ID 相同时仍不能绕过标题校验。
+    TMDB 的电影与电视剧数字 ID 相同也不能绕过类型校验。
     """
     case = conflict_case
     case.candidate.media_id = candidate_id
@@ -233,7 +293,7 @@ def test_no_year_tv_title_cannot_override_other_type_without_work_evidence(
     conflict_case: SimpleNamespace, candidate_id: str
 ) -> None:
     """
-    无年份剧集标题虽命中，仍需同作品证据才能覆盖错误类型。
+    无年份剧集标题命中也不能覆盖候选自身的媒体类型。
     """
     case = conflict_case
     case.target.type = MediaType.TV
@@ -252,11 +312,11 @@ def test_no_year_tv_title_cannot_override_other_type_without_work_evidence(
     case.download.assert_not_called()
 
 
-def test_cross_type_rejection_logs_type_and_review_reason(
+def test_cross_type_rejection_logs_conflicting_types(
     conflict_case: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """
-    冲突诊断须同时记录两种媒体类型和标题复核失败原因。
+    冲突诊断须同时记录候选和目标的媒体类型。
     """
     case = conflict_case
     case.torrent.description = "其他电影"
@@ -264,12 +324,12 @@ def test_cross_type_rejection_logs_type_and_review_reason(
     monkeypatch.setattr(subscribe_match.logger, "debug", messages.append)
 
     assert _reconcile(case) is None
-    assert any("电视剧" in message and "电影" in message and "标题复核失败" in message for message in messages)
+    assert any("电视剧" in message and "电影" in message and "已跳过" in message for message in messages)
 
 
-def test_tv_title_and_year_can_reconcile_inferred_movie(conflict_case: SimpleNamespace) -> None:
+def test_tv_title_and_year_cannot_override_inferred_movie(conflict_case: SimpleNamespace) -> None:
     """
-    电视剧被误识别为电影时，同样可经标题及目标季年份复核后提交。
+    电视剧标题及目标季年份命中，仍不能覆盖候选自身的电影类型。
     """
     case = conflict_case
     case.target.type = MediaType.TV
@@ -283,11 +343,9 @@ def test_tv_title_and_year_can_reconcile_inferred_movie(conflict_case: SimpleNam
 
     assert _execute_match(case) == "completed"
 
-    case.download.assert_called_once()
-    matched = case.download.call_args.kwargs["contexts"][0]
-    assert matched.media_info.type == MediaType.TV
-    assert matched.media_info.media_id == case.target.media_id
-    assert matched.match_source == "title"
+    case.download.assert_not_called()
+    assert case.context.media_info is case.candidate
+    assert case.context.media_info.type == MediaType.MOVIE
 
 
 def test_global_identity_remains_valid_cross_type_evidence(conflict_case: SimpleNamespace) -> None:

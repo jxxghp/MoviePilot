@@ -173,6 +173,11 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 验证双语作品名及艺人署名只有在括号两侧均属于同一实体的可信名称时才匹配；
 未知别名、副标题、不同录音版本及歌曲所属专辑继续保留各自的身份边界。
 
+`tests/test_subscribe_media_id_conflict.py` 与 `tests/test_subscribe_type_conflict.py` 验证
+订阅候选已识别出的媒体来源、ID 或类型冲突时直接拒绝，不以标题、别名或年份覆盖身份。
+《剑来》同名真人与动漫的离线回归覆盖资源年份一致、共同首播年份及缺失年份，断言动漫
+不会进入下载且共享候选不被回填；身份一致的资源和未识别出身份的标题兜底仍可下载。
+
 普通电视剧首次下载的整包优先回归见 `tests/test_subscribe_paged_search.py`：订阅没有下载记录，
 且最新媒体库缺失全部目标集时，先收集所选搜索范围内的候选再尝试完整包；单页策略仍只查每个
 来源的第一页。整包继续通过规则过滤、优先级门槛和种子文件完整覆盖校验，无可用整包时按集
