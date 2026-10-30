@@ -80,6 +80,37 @@ def test_apppush_reuses_message_switches_and_never_broadcasts(monkeypatch):
     assert len(calls) == 1
 
 
+@pytest.mark.parametrize(("poster", "image", "expected"), [
+    ("https://images.test/poster.jpg", "https://images.test/backdrop.jpg", "https://images.test/poster.jpg"),
+    (None, "https://images.test/backdrop.jpg", "https://images.test/backdrop.jpg"),
+    ("data:image/png;base64,AA", "https://images.test/legacy.jpg", "https://images.test/legacy.jpg"),
+    (None, "javascript:alert(1)", None),
+    (None, "https://user:secret@images.test/poster.jpg", None),
+    (None, "https://images.test/" + "a" * 2048, None),
+    (None, None, None),
+])
+def test_apppush_preserves_poster_and_keeps_invalid_images_out_of_relay(monkeypatch, poster, image, expected):
+    """
+    真实消息投递优先海报并兼容旧图片，无效附件不阻断正文和实例内跳转。
+    """
+    conf = NotificationConf(name="App", type="apppush", enabled=True, switchs=["资源下载"])
+    module = AppPushModule.__new__(AppPushModule)
+    module._channel = NotificationChannel.AppPush
+    module._configs = {conf.name: conf}
+    calls = []
+    monkeypatch.setattr(module, "get_configs", lambda: {conf.name: conf})
+    monkeypatch.setattr(module, "_request", lambda *args: calls.append(args) or {"accepted": 1})
+    message = Message(mtype=MessageType.Download, targets={"apppush": "a" * 32}, title="下载完成",
+                      text="第一行\n第二行", link="/history", poster=poster, image=image)
+    message.set_notification_route_scope("user")
+    module.post_message(message)
+    assert len(calls) == 1
+    payload = calls[0][3]
+    assert payload["title"] == message.title and payload["body"] == message.text and payload["route"] == "/history"
+    assert payload.get("image") == expected
+    assert ("image" in payload) == (expected is not None)
+
+
 @pytest.mark.parametrize("scope", [None, "user", "admin", "all"])
 def test_apppush_account_sets_require_explicit_all_scope(monkeypatch, scope):
     """
