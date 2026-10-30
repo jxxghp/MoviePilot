@@ -508,7 +508,7 @@ def test_rate_limit_json_preserves_reason_without_retry(boundary, message, ttl, 
 @pytest.mark.parametrize("content", [
     b'{"message":"torrent not found"}', b'{"message":"SUCCESS"}',
     b'{"message":10}', b'{"message":{"error":"too many requests"}}',
-    b'{"message":"too many requests"', b'["too many requests"]',
+    b'{"message":"too many requests"', b'["too many requests"]', b'{"message":null}',
 ])
 def test_other_json_does_not_become_rate_limit(boundary, content):
     """
@@ -535,14 +535,42 @@ def test_rate_limit_at_redirect_destination_is_not_retried(boundary):
     sleep.assert_not_called()
 
 
+@pytest.mark.parametrize("status", [200, 403, 429])
+def test_html_frequency_limit_preserves_exact_cooldown(boundary, status):
+    """
+    HTML 频控正文优先于状态码，按站点明确秒数冷却且不触发任何重试。
+    """
+    helper, port, cache, sleep = boundary
+    message = "Request frequency limit, please try in 600 seconds."
+    port.request.return_value = _response(status, f"<html><h1>403 Forbidden</h1><p>{message}</p></html>".encode())
+    parser = Mock(wraps=helper.get_fileinfo_from_torrent_content)
+    helper.get_fileinfo_from_torrent_content = parser
+
+    result = helper.download_torrent(URL)
+
+    assert result[4] == f"站点限流：{message}"
+    assert DownloadFailureOwner._download_failure_ttl(result[4]) == 600
+    port.request.assert_called_once()
+    sleep.assert_not_called()
+    parser.assert_not_called()
+    cache.set.assert_not_called()
+    helper.add_invalid.assert_not_called()
+
+
 @pytest.mark.parametrize("link_type", ["ordinary", "signed", "indirect"])
-def test_daily_quota_reaches_notification_and_persisted_cooldown(boundary, monkeypatch, link_type):
+@pytest.mark.parametrize("message, ttl, status", [
+    ("相同種子當天最多下載10次", 86400, 200),
+    ("Request frequency limit, please try in 600 seconds.", 600, 403),
+])
+def test_daily_quota_reaches_notification_and_persisted_cooldown(boundary, monkeypatch, link_type,
+                                                              message, ttl, status):
     """
     真实准备流程保留限流原因到通知和冷却记录，签名与换票也不得刷新重试。
     """
     _, port, cache, sleep = boundary
-    message = "相同種子當天最多下載10次"
-    port.request.return_value = _response(content=json.dumps({"code": "1", "message": message}).encode())
+    content = (f"<html><h1>403 Forbidden</h1><p>{message}</p></html>".encode() if status == 403
+               else json.dumps({"code": "1", "message": message}).encode())
+    port.request.return_value = _response(status, content)
     chain = object.__new__(DownloadChain)
     chain.post_message = Mock()
     chain.search_site_torrents = Mock()
@@ -574,7 +602,7 @@ def test_daily_quota_reaches_notification_and_persisted_cooldown(boundary, monke
     failure = chain.download_failure_repository.record_failure.call_args.args[0]
     assert failure.error_message == error
     assert (datetime.fromisoformat(failure.next_retry_at)
-            - datetime.fromisoformat(failure.failed_at)).total_seconds() == 86400
+            - datetime.fromisoformat(failure.failed_at)).total_seconds() == ttl
     chain.post_message.assert_called_once()
     assert error in chain.post_message.call_args.args[0].text
     chain.search_site_torrents.assert_not_called()

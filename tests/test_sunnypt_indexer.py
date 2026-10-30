@@ -33,6 +33,8 @@ class _FakeResponse:
         self._payload = payload
         self.status_code = status_code
         self.reason = "OK"
+        self.text = json.dumps(payload)
+        self.content = self.text.encode("utf-8")
 
     def __bool__(self) -> bool:
         """

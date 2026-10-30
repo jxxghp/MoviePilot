@@ -908,3 +908,14 @@ def terminal_scope():
     scope = TerminalScope(user_id="terminal-test-owner", task_id="terminal-test", kind="test")
     with bind_terminal_scope(scope):
         yield scope
+
+
+@pytest.fixture(autouse=True)
+def isolate_site_request_schedule(monkeypatch):
+    """
+    隔离搜索与种子下载共享的进程级流控，避免限流响应污染后续用例。
+    """
+    import app.application.site.throttle as site_throttle
+    from app.runtime.rate import RequestRateLimiter
+
+    monkeypatch.setattr(site_throttle, "_site_requests", RequestRateLimiter())

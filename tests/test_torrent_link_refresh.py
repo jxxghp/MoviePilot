@@ -443,6 +443,9 @@ def test_uncached_mteam_content_obtains_new_token_for_each_download(download_cha
     responses = [Mock(), Mock()]
     responses[0].json.return_value = {"data": "https://api.m-team.cc/download/first"}
     responses[1].json.return_value = {"data": "https://api.m-team.cc/download/second"}
+    for response in responses:
+        response.status_code = 200
+        response.content = json.dumps(response.json.return_value).encode()
     http = Mock()
     http.post.side_effect = responses
     monkeypatch.setattr(submission, "_download_ports_snapshot", Mock(return_value=(http, Mock())))

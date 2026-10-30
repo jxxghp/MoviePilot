@@ -4,9 +4,31 @@
 
 from unittest.mock import Mock
 
-from app.application.site.contract import SiteUserDataSnapshot
+import pytest
+
+from app.application.site.contract import SiteSnapshot, SiteUserDataSnapshot
 from app.application.site.query import SiteQueryService
 from app.schemas.site import SiteUserData
+
+
+@pytest.mark.parametrize("found", [False, True])
+def test_sync_domain_query_projects_config_for_request_throttle(found) -> None:
+    """
+    独立种子下载按规范域名读取脱离 Session 的流控配置，不引入异步查询。
+    """
+    repository = Mock()
+    repository.get_by_domain.return_value = (
+        SiteSnapshot(id=42, name="站点", url="https://tracker.example/", limit_seconds=10,
+                     limit_interval=60, limit_count=8) if found else None
+    )
+
+    result = SiteQueryService(repository).get_by_domain_sync("tracker.example")
+
+    repository.get_by_domain.assert_called_once_with("tracker.example")
+    if found:
+        assert (result.id, result.limit_seconds, result.limit_interval, result.limit_count) == (42, 10, 60, 8)
+    else:
+        assert result is None
 
 
 def test_userdata_latest_sync_projects_snapshot_to_dto() -> None:
