@@ -260,7 +260,7 @@ class AppPushModule(_ModuleBase, _MessageBase[object]):
                 try:
                     result = self._request(conf, "POST", "messages", {
                         "owner": owner, "title": (message.title or "MoviePilot")[:256],
-                        "body": (message.text or "")[:1000], "route": route,
+                        "body": message.text or "", "route": route,
                         **({"image": image} if image else {}),
                     })
                     if result.get("failed"):

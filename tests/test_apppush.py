@@ -101,7 +101,7 @@ def test_apppush_preserves_poster_and_keeps_invalid_images_out_of_relay(monkeypa
     monkeypatch.setattr(module, "get_configs", lambda: {conf.name: conf})
     monkeypatch.setattr(module, "_request", lambda *args: calls.append(args) or {"accepted": 1})
     message = Message(mtype=MessageType.Download, targets={"apppush": "a" * 32}, title="下载完成",
-                      text="第一行\n第二行", link="/history", poster=poster, image=image)
+                      text="第一行\n第二行" + "长正文与海报应完整交接。\n" * 500, link="/history", poster=poster, image=image)
     message.set_notification_route_scope("user")
     module.post_message(message)
     assert len(calls) == 1
