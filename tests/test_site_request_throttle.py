@@ -111,7 +111,7 @@ def test_search_ticket_and_content_share_interval_and_window(boundary):
     boundary.port.request.assert_called_once()
 
 
-@pytest.mark.parametrize("first", ["redirect", "retry", "confirm"])
+@pytest.mark.parametrize("first", ["redirect", "retry", "confirm", "confirm-redirect"])
 def test_each_actual_http_request_consumes_one_slot(boundary, first):
     """
     跳转、普通重试及首次确认 POST 均需重新申请同一站点请求额度。
@@ -119,9 +119,14 @@ def test_each_actual_http_request_consumes_one_slot(boundary, first):
     first_response = _response(status=302 if first == "redirect" else 503)
     if first == "redirect":
         first_response.headers["Location"] = "https://cdn.example/file.torrent"
-    if first == "confirm":
+    if first in ("confirm", "confirm-redirect"):
         first_response = _response('下载种子文件<form method="post"><input name="confirm" value="yes"></form>'.encode())
-    responses = iter([first_response, _response()])
+    response_sequence = [first_response, _response()]
+    if first == "confirm-redirect":
+        redirect = _response(status=302)
+        redirect.headers["Location"] = "https://cdn.example/file.torrent"
+        response_sequence.insert(1, redirect)
+    responses = iter(response_sequence)
     starts = []
 
     def request(**_kwargs):
@@ -134,9 +139,12 @@ def test_each_actual_http_request_consumes_one_slot(boundary, first):
     boundary.port.request.side_effect = request
 
     assert download.TorrentHelper().download_torrent(URL, site_id=42)[1] == CONTENT
-    assert starts == [100, 110]
+    assert starts == ([100, 110, 160] if first == "confirm-redirect" else [100, 110])
     methods = [call.kwargs["method"] for call in boundary.port.request.call_args_list]
-    assert methods == ["GET", "POST" if first == "confirm" else "GET"]
+    assert methods == {
+        "redirect": ["GET", "GET"], "retry": ["GET", "GET"],
+        "confirm": ["GET", "POST"], "confirm-redirect": ["GET", "POST", "GET"],
+    }[first]
 
 
 def test_remote_cooldown_blocks_other_resources_and_search_until_expiry(boundary):
