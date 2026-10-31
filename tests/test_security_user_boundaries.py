@@ -248,6 +248,37 @@ def test_upload_denies_foreign_session_without_saving_file(monkeypatch):
     save.assert_not_awaited()
 
 
+def test_web_agent_file_download_is_scoped_to_owner(tmp_path):
+    """
+    Web Agent 临时附件只能由登记它的用户下载，旧无归属记录同样不可访问。
+    """
+    private_file = tmp_path / "private.txt"
+    private_file.write_text("private attachment", encoding="utf-8")
+    attachment = web_agent.register_web_agent_file(str(private_file), owner_id="1")
+    assert attachment is not None
+    file_id = attachment["url"].rsplit("/", 1)[-1]
+
+    app = FastAPI()
+    app.include_router(agent_endpoint.router, prefix="/agent")
+    app.dependency_overrides[agent_endpoint.verify_resource_token] = lambda: SimpleNamespace(sub=1)
+    try:
+        with TestClient(app) as client:
+            own_response = client.get(f"/agent/file/{file_id}")
+            app.dependency_overrides[agent_endpoint.verify_resource_token] = lambda: SimpleNamespace(sub=2)
+            foreign_response = client.get(f"/agent/file/{file_id}")
+
+            web_agent._WEB_AGENT_FILE_REGISTRY[file_id].pop("owner_id")
+            app.dependency_overrides[agent_endpoint.verify_resource_token] = lambda: SimpleNamespace(sub=1)
+            legacy_response = client.get(f"/agent/file/{file_id}")
+    finally:
+        web_agent._WEB_AGENT_FILE_REGISTRY.pop(file_id, None)
+
+    assert own_response.status_code == 200
+    assert own_response.content == b"private attachment"
+    assert foreign_response.status_code == 404
+    assert legacy_response.status_code == 404
+
+
 @pytest.mark.parametrize("method,path", [
     ("GET", "/agent/sessions/web-agent:victim"),
     ("POST", "/agent/sessions/web-agent:victim/stop"),
