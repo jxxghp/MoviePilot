@@ -2,7 +2,7 @@
 提供站点配置、认证、数据查询和状态管理接口。
 """
 
-from typing import Annotated, Any, List, Literal, Optional, cast
+from typing import Annotated, Any, List, Literal, Optional
 
 from fastapi import Depends, HTTPException, Query, Response
 
@@ -691,11 +691,13 @@ async def site_category(
     category_value = indexer.get("category")
     if not isinstance(category_value, dict):
         return []
-    category = cast(dict[str, list[dict[str, Any]]], category_value)
-    result = []
-    for cats in category.values():
+    # field、delimiter、param 等是搜索请求参数，只有列表值才是分类项
+    result: list[dict[str, Any]] = []
+    for cats in category_value.values():
+        if not isinstance(cats, list):
+            continue
         for cat in cats:
-            if cat not in result:
+            if isinstance(cat, dict) and cat not in result:
                 result.append(cat)
     return result
 

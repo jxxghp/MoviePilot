@@ -8,12 +8,14 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
+from pydantic import TypeAdapter
 
 from app.api.endpoints import bangumi, download, history, mediaserver, message, search, site, tmdb, transfer
 from app.domain.context import MediaInfo
 from app.schemas.context import MediaInfo as MediaInfoInput
 from app.schemas.context import SubtitleInfo
 from app.schemas.file import FileItem
+from app.schemas.site import SiteCategory
 from app.schemas.transfer import ManualTransferItem
 from app.schemas.types import MediaType
 
@@ -122,6 +124,28 @@ def test_site_category_only_projects_category_mappings(category, monkeypatch):
     monkeypatch.setattr(site, "SitesHelper", Mock(return_value=helper))
     result = asyncio.run(site.site_category(1, query=query, _=None))
     assert result == ([{"id": 1}, {"id": 2}] if isinstance(category, dict) else [])
+
+
+def test_site_category_skips_search_parameter_settings(monkeypatch):
+    """
+    分类配置中的 field、delimiter、param 等搜索参数不能被当成分类项逐字符返回。
+    """
+    category = {
+        "field": "cat[]",
+        "delimiter": "&",
+        "param": "cat",
+        "movie": [{"id": 401, "cat": "Movies", "desc": "电影"}, "invalid"],
+        "tv": [{"id": 402, "cat": "TV", "desc": "剧集"}],
+    }
+    query = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(domain="https://example.test")))
+    helper = SimpleNamespace(async_get_indexer=AsyncMock(return_value={"category": category}))
+    monkeypatch.setattr(site, "SitesHelper", Mock(return_value=helper))
+    result = asyncio.run(site.site_category(1, query=query, _=None))
+    assert result == [{"id": 401, "cat": "Movies", "desc": "电影"}, {"id": 402, "cat": "TV", "desc": "剧集"}]
+    assert TypeAdapter(list[SiteCategory]).validate_python(result) == [
+        SiteCategory(id=401, cat="Movies", desc="电影"),
+        SiteCategory(id=402, cat="TV", desc="剧集"),
+    ]
 
 
 @pytest.mark.parametrize("batch", [False, True])
