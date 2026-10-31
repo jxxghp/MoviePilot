@@ -2,8 +2,8 @@
 声明后端与前端发布版本。
 """
 
-APP_VERSION = 'v3.2.2'
-FRONTEND_VERSION = 'v3.2.2'
+APP_VERSION = 'v3.2.3'
+FRONTEND_VERSION = 'v3.2.3'
 # 本版本要求的最低 Docker 镜像系统基线（ISO 日期），与镜像内 /etc/moviepilot/system-baseline 比较。
 # 低于该值的镜像拒绝应用内更新，提示用户先更新 Docker 镜像。只在修复严重系统级漏洞时提高，
 # 且在同一发布中把 docker/system-baseline 改成相同日期，保证新镜像自身满足要求。
