@@ -672,7 +672,10 @@ async def site_category(
     count: CompatibleCountParam = None,
 ) -> Any:
     """
-    获取站点分类
+    获取站点分类，排除搜索参数并按配置顺序合并去重。
+
+    :param site_id: 已保存的站点标识
+    :return: 站点分类映射，分类标识支持数字和文本
     """
     site = await query.get(site_id)
     if not site:

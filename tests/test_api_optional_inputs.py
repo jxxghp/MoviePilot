@@ -128,23 +128,27 @@ def test_site_category_only_projects_category_mappings(category, monkeypatch):
 
 def test_site_category_skips_search_parameter_settings(monkeypatch):
     """
-    分类配置中的 field、delimiter、param 等搜索参数不能被当成分类项逐字符返回。
+    分类搜索参数及非法列表项不进入响应，音乐分类与跨分组去重保持兼容。
     """
     category = {
-        "field": "cat[]",
-        "delimiter": "&",
-        "param": "cat",
+        "param": "cat[]",
         "movie": [{"id": 401, "cat": "Movies", "desc": "电影"}, "invalid"],
-        "tv": [{"id": 402, "cat": "TV", "desc": "剧集"}],
+        "tv": [{"id": 401, "cat": "Movies", "desc": "电影"}, {"id": 402, "cat": "TV", "desc": "剧集"}],
+        "music": [{"id": 410, "cat": "Music", "desc": "音乐"}],
     }
     query = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(domain="https://example.test")))
     helper = SimpleNamespace(async_get_indexer=AsyncMock(return_value={"category": category}))
     monkeypatch.setattr(site, "SitesHelper", Mock(return_value=helper))
     result = asyncio.run(site.site_category(1, query=query, _=None))
-    assert result == [{"id": 401, "cat": "Movies", "desc": "电影"}, {"id": 402, "cat": "TV", "desc": "剧集"}]
+    assert result == [
+        {"id": 401, "cat": "Movies", "desc": "电影"},
+        {"id": 402, "cat": "TV", "desc": "剧集"},
+        {"id": 410, "cat": "Music", "desc": "音乐"},
+    ]
     assert TypeAdapter(list[SiteCategory]).validate_python(result) == [
         SiteCategory(id=401, cat="Movies", desc="电影"),
         SiteCategory(id=402, cat="TV", desc="剧集"),
+        SiteCategory(id=410, cat="Music", desc="音乐"),
     ]
 
 

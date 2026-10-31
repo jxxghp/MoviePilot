@@ -128,10 +128,14 @@ class SiteCookieSet(BaseModel):
 
 class SiteCategory(BaseModel):
     """
-    站点资源分类。
+    站点资源分类，标识来自站点索引配置，可以是数字或文本。
     """
 
-    id: Optional[int] = Field(default=None, description="记录标识")
+    id: Optional[Union[int, str]] = Field(
+        default=None,
+        union_mode="left_to_right",
+        description="站点分类标识；数字字符串沿用整数响应，其余文本保持原值",
+    )
     cat: Optional[str] = Field(default=None, description="站点分类标识")
     desc: Optional[str] = Field(default=None, description="分类说明")
 

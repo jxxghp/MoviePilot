@@ -327,6 +327,10 @@ Select the operation for the task first, then send only fields declared by that 
 | `download.tasks.active` | none | optional `page`, `count`, `name` |
 | `site.list` | none | optional `page`, `count`, `name`, `status=all\|active\|inactive` |
 
+`site.category` 只返回站点分类，不返回分类搜索参数。分类 `id` 可以是整数或文本，
+数字字符串沿用整数响应。将所选标识用逗号拼接后传入 `site.resource` 的 `query.cat`，
+保留返回值，不要把文本分类强制转为整数。
+
 Subscription execution logs are browser resource endpoints:
 `GET /api/v1/subscribe/{subscription_id}/logs` (SSE, or text with `length=-1`)
 and `/logs/download` (ZIP). They require the existing resource Cookie and enforce
