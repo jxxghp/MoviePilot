@@ -17,7 +17,6 @@ from app.domain.metainfo import MetaInfo
 from app.schemas.mediaserver import ExistMediaInfo, NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType
 
-
 # Issue #7252 中《一念永恒》的默认合并季与所选分季剧集组。
 _EPISODE_GROUP = "6580f4c53a48c556a0af6c00"
 _GROUP_TOTALS = {1: 52, 2: 54, 3: 59, 4: 35}
