@@ -229,6 +229,24 @@ def _load_settings() -> Any:
     return settings
 
 
+def _sync_postgres_url(url: str) -> str:
+    """
+    返回同步引擎可用的 PostgreSQL URL。
+
+    SQLAlchemy 对 `postgresql://` 默认使用 psycopg2，而 v3 镜像只内置了
+    psycopg 3（`psycopg`）。检测到 psycopg 3 时显式指定驱动，避免
+    `ModuleNotFoundError: No module named 'psycopg2'`；没有 psycopg 3 的环境
+    保持原行为，URL 已显式带驱动时也不做改动。
+    """
+    if "+" in url.split("://", 1)[0]:
+        return url
+    try:
+        import psycopg  # noqa: F401  pylint: disable=import-outside-toplevel,unused-import
+    except ImportError:
+        return url
+    return url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+
 def _build_engine() -> Engine:
     """
     根据 MoviePilot 配置创建同步数据库引擎。
@@ -236,7 +254,7 @@ def _build_engine() -> Engine:
     settings = _load_settings()
     if str(settings.DB_TYPE).lower() == "postgresql":
         return create_engine(
-            settings.DB_POSTGRESQL_URL(),
+            _sync_postgres_url(settings.DB_POSTGRESQL_URL()),
             pool_pre_ping=settings.DB_POOL_PRE_PING,
             pool_recycle=settings.DB_POOL_RECYCLE,
         )
