@@ -35,7 +35,7 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
         检查媒体库，查询电影或音乐是否存在；对于剧集同时返回不存在的季集信息
 
         :param meta: 元数据
-        :param mediainfo: 已识别的媒体信息
+        :param mediainfo: 已识别的媒体信息，指定剧集组时重新识别对应的季集结构
         :param no_exists: 在调用该方法前已经存储的不存在的季集信息，有传入时该函数搜索的内容将会叠加后输出
         :param totals: 电视剧每季的总集数
         :return: 当前媒体是否缺失，各标题总的季集和缺失的季集
@@ -83,7 +83,8 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
         else:
             if not isinstance(mediainfo, MediaInfo):
                 return False, {}
-            if not mediainfo.seasons:
+            # 请求中的季信息可能来自默认排序，选择剧集组后必须按该组重新识别。
+            if not mediainfo.seasons or mediainfo.episode_group:
                 recognized_media = MediaChain().recognize_media(
                     mtype=mediainfo.type,
                     media_source=media_source,
