@@ -327,6 +327,10 @@ Select the operation for the task first, then send only fields declared by that 
 | `download.tasks.active` | none | optional `page`, `count`, `name` |
 | `site.list` | none | optional `page`, `count`, `name`, `status=all\|active\|inactive` |
 
+`site.category` returns category entries without search settings. Category `id`
+values may be integers or text; numeric strings retain the integer response.
+Join selected IDs with commas for `site.resource`'s `query.cat`, preserving text IDs.
+
 Subscription execution logs are browser resource endpoints:
 `GET /api/v1/subscribe/{subscription_id}/logs` (SSE, or text with `length=-1`)
 and `/logs/download` (ZIP). They require the existing resource Cookie and enforce

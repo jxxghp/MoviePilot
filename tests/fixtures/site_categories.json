@@ -1,0 +1,485 @@
+{
+  "source": {
+    "repository": "jxxghp/MoviePilot-Build",
+    "commit": "085e3d3cd2b0a44f83346f2aca97cc658d9adaeb",
+    "files": {
+      "hhanclub": "sites/private/hhanclub.yml",
+      "totheglory": "sites/private/totheglory.yml",
+      "animez": "sites/private/animez.yml",
+      "starspace": "sites/private/starspace.yml",
+      "anibt": "sites/public/anibt.yml"
+    }
+  },
+  "indexers": {
+    "hhanclub": {
+      "id": "hhanclub",
+      "name": "憨憨",
+      "domain": "https://hhanclub.net/",
+      "encoding": "UTF-8",
+      "schema": "NexusHhanclub",
+      "search": {
+        "paths": [
+          {
+            "path": "torrents.php",
+            "method": "get",
+            "type": "all"
+          },
+          {
+            "path": "special.php",
+            "method": "get",
+            "type": "music"
+          }
+        ],
+        "params": {
+          "search": "{keyword}",
+          "search_area": 4
+        },
+        "batch": {
+          "delimiter": " ",
+          "space_replace": "_"
+        }
+      },
+      "category": {
+        "param": "cat[]",
+        "movie": [
+          {
+            "id": 401,
+            "cat": "Movies",
+            "desc": "Movies/电影"
+          },
+          {
+            "id": 405,
+            "cat": "Anime",
+            "desc": "Animations/动漫"
+          },
+          {
+            "id": 404,
+            "cat": "Documentary",
+            "desc": "Documentaries/纪录片"
+          }
+        ],
+        "tv": [
+          {
+            "id": 404,
+            "cat": "Documentary",
+            "desc": "Documentaries/纪录片"
+          },
+          {
+            "id": 405,
+            "cat": "Anime",
+            "desc": "Animations/动漫"
+          },
+          {
+            "id": 402,
+            "cat": "TV",
+            "desc": "TV Series/连续剧"
+          },
+          {
+            "id": 403,
+            "cat": "TV",
+            "desc": "TV Shows/综艺"
+          }
+        ],
+        "music": [
+          {
+            "id": 410,
+            "cat": "Music",
+            "desc": "Music/音乐"
+          }
+        ]
+      }
+    },
+    "totheglory": {
+      "id": "ttg",
+      "name": "听听歌",
+      "domain": "https://totheglory.im/",
+      "encoding": "UTF-8",
+      "schema": "NexusPhp",
+      "search": {
+        "paths": [
+          {
+            "path": "browse.php?c=M"
+          }
+        ],
+        "params": {
+          "search_field": "{keyword}",
+          "c": "M"
+        },
+        "imdbid_format": "imdb{imdbid_num}",
+        "batch": {
+          "delimiter": "+",
+          "space_replace": "+"
+        }
+      },
+      "category": {
+        "field": "search_field",
+        "delimiter": " 分类:",
+        "movie": [
+          {
+            "id": "电影DVDRip",
+            "cat": "Movies/SD"
+          },
+          {
+            "id": "电影720p",
+            "cat": "Movies/HD"
+          },
+          {
+            "id": "电影1080i/p",
+            "cat": "Movies/HD"
+          },
+          {
+            "id": "BluRay原盘",
+            "cat": "Movies/BluRay"
+          },
+          {
+            "id": "影视2160p",
+            "cat": "Movies/UHD"
+          },
+          {
+            "id": "UHD原盘",
+            "cat": "Movies/UHD"
+          },
+          {
+            "id": "高清动漫",
+            "cat": "Anime/HD"
+          },
+          {
+            "id": "动漫原盘",
+            "cat": "Anime/BluRay"
+          }
+        ],
+        "tv": [
+          {
+            "id": "纪录片720p",
+            "cat": "Movies/HD"
+          },
+          {
+            "id": "纪录片1080i/p",
+            "cat": "Movies/HD"
+          },
+          {
+            "id": "纪录片BluRay原盘",
+            "cat": "Movies/BluRay"
+          },
+          {
+            "id": "影视2160p",
+            "cat": "TV/UHD"
+          },
+          {
+            "id": "欧美剧720p",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "欧美剧1080i/p",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "高清日剧",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "大陆港台剧1080i/p",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "大陆港台剧720p",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "高清韩剧",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "欧美剧包",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "日剧包",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "韩剧包",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "华语剧包",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "高清动漫",
+            "cat": "Anime/HD"
+          },
+          {
+            "id": "韩国综艺",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "日本综艺",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "高清综艺",
+            "cat": "TV/HD"
+          },
+          {
+            "id": "动漫原盘",
+            "cat": "Anime/BluRay"
+          }
+        ],
+        "music": [
+          {
+            "id": "无损音乐FLAC&APE",
+            "cat": "Music"
+          }
+        ]
+      }
+    },
+    "animez": {
+      "id": "animez",
+      "name": "AnimeZ",
+      "domain": "https://animez.to/",
+      "encoding": "UTF-8",
+      "schema": "NexusPhp",
+      "search": {
+        "paths": [
+          {
+            "path": "torrents.php",
+            "method": "get"
+          }
+        ],
+        "params": {
+          "search": "{keyword}"
+        },
+        "result_media_type": "requested"
+      },
+      "category": {
+        "movie": [
+          {
+            "id": "MOVIE",
+            "value": "MOVIE",
+            "param": "format[]",
+            "cat": "Anime",
+            "desc": "Anime/Movie"
+          },
+          {
+            "id": "SPECIAL",
+            "value": "SPECIAL",
+            "param": "format[]",
+            "cat": "Anime",
+            "desc": "Anime/Special"
+          },
+          {
+            "id": "OVA",
+            "value": "OVA",
+            "param": "format[]",
+            "cat": "Anime",
+            "desc": "Anime/OVA"
+          },
+          {
+            "id": "ONA",
+            "value": "ONA",
+            "param": "format[]",
+            "cat": "Anime",
+            "desc": "Anime/ONA"
+          }
+        ],
+        "tv": [
+          {
+            "id": "TV",
+            "value": "TV",
+            "param": "format[]",
+            "cat": "Anime",
+            "desc": "Anime/TV"
+          },
+          {
+            "id": "TV_SHORT",
+            "value": "TV_SHORT",
+            "param": "format[]",
+            "cat": "Anime",
+            "desc": "Anime/TV Short"
+          },
+          {
+            "id": "SPECIAL",
+            "value": "SPECIAL",
+            "param": "format[]",
+            "cat": "Anime",
+            "desc": "Anime/Special"
+          },
+          {
+            "id": "OVA",
+            "value": "OVA",
+            "param": "format[]",
+            "cat": "Anime",
+            "desc": "Anime/OVA"
+          },
+          {
+            "id": "ONA",
+            "value": "ONA",
+            "param": "format[]",
+            "cat": "Anime",
+            "desc": "Anime/ONA"
+          }
+        ],
+        "music": [
+          {
+            "id": "MUSIC",
+            "value": "MUSIC",
+            "param": "format[]",
+            "cat": "Music",
+            "desc": "Anime/Music"
+          }
+        ]
+      }
+    },
+    "starspace": {
+      "id": "starspace",
+      "name": "星空",
+      "domain": "https://star-space.net/",
+      "encoding": "UTF-8",
+      "schema": "NexusPhp",
+      "search": {
+        "paths": [
+          {
+            "path": "p_torrent/video_list_t.php",
+            "method": "get",
+            "type": "all"
+          },
+          {
+            "path": "p_music/music_list_t.php",
+            "method": "get",
+            "type": "music"
+          }
+        ],
+        "params": {
+          "search": "{keyword}",
+          "area": "name"
+        },
+        "result_media_type": "requested",
+        "batch": {
+          "delimiter": " ",
+          "space_replace": "_"
+        }
+      },
+      "category": {
+        "movie": [
+          {
+            "id": 401,
+            "cat": "Movies",
+            "desc": "Movies/电影"
+          },
+          {
+            "id": 405,
+            "cat": "Anime",
+            "desc": "Animations/动漫"
+          },
+          {
+            "id": 404,
+            "cat": "Documentary",
+            "desc": "Documentaries/纪录片"
+          }
+        ],
+        "tv": [
+          {
+            "id": 404,
+            "cat": "Documentary",
+            "desc": "Documentaries/纪录片"
+          },
+          {
+            "id": 405,
+            "cat": "Anime",
+            "desc": "Animations/动漫"
+          },
+          {
+            "id": 402,
+            "cat": "TV",
+            "desc": "TV Series/连续剧"
+          },
+          {
+            "id": 403,
+            "cat": "TV",
+            "desc": "TV Shows/综艺"
+          }
+        ],
+        "music": [
+          {
+            "id": "music",
+            "cat": "Music",
+            "desc": "音乐区"
+          }
+        ]
+      }
+    },
+    "anibt": {
+      "id": "anibt",
+      "name": "AniBT",
+      "domain": "https://anibt.net/",
+      "encoding": "UTF-8",
+      "search": {
+        "paths": [
+          {
+            "path": "rss/magnets.xml",
+            "method": "get",
+            "type": "all"
+          },
+          {
+            "path": "rss/magnets.xml",
+            "method": "get",
+            "type": "movie"
+          },
+          {
+            "path": "rss/magnets.xml",
+            "method": "get",
+            "type": "tv"
+          },
+          {
+            "path": "rss/other/music.xml",
+            "method": "get",
+            "type": "music"
+          }
+        ],
+        "params": {
+          "q": "{keyword}"
+        },
+        "result_media_type": "requested"
+      },
+      "category": {
+        "movie": [
+          {
+            "id": "anime",
+            "cat": "Anime",
+            "desc": "Anime"
+          },
+          {
+            "id": "raw",
+            "cat": "Anime",
+            "desc": "Raw"
+          }
+        ],
+        "tv": [
+          {
+            "id": "anime",
+            "cat": "Anime",
+            "desc": "Anime"
+          },
+          {
+            "id": "raw",
+            "cat": "Anime",
+            "desc": "Raw"
+          }
+        ],
+        "music": [
+          {
+            "id": "music",
+            "cat": "Music",
+            "desc": "Music"
+          },
+          {
+            "id": "stage",
+            "cat": "Music",
+            "desc": "Stage"
+          }
+        ]
+      }
+    }
+  }
+}

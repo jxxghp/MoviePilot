@@ -53,6 +53,10 @@
 并传入 `latest_seeding_only=true`，仅窗口内最新记录携带 `seeding_info`，历史统计字段不变。
 省略该选项时保留每条记录的完整明细；这不会删除或修改采集历史。
 
+`GET /api/v1/site/category/{site_id}` 只返回分类项，不包含 `field`、`delimiter`、`param`
+等搜索配置。分类 `id` 支持整数和文本，数字字符串沿用整数响应；客户端应保留返回值，
+浏览资源时将所选分类用逗号拼接后传入 `site.resource` 的 `query.cat`，不要强制转为整数。
+
 `GET /api/v1/torrent/cache` 支持可选 `page` / `count`，每页最多 200 条，省略两项时保留全量合同。
 `title` 为不区分大小写的标题包含条件，`site` 为站点名称精确条件，均在分页前应用。
 `brief=true` 将描述截至 200 字符，缓存 hash 仍由完整原文生成。
