@@ -12,6 +12,7 @@ import sys
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
 from threading import Barrier
 from types import MethodType, SimpleNamespace
@@ -687,7 +688,7 @@ async def test_webagent_background_turns_preserve_display_history(tmp_path, monk
         bind_user_session=lambda *_args: None, apply_display_event=application.apply_web_agent_display_event,
         build_display_message=application.build_web_agent_display_message,
         build_input_attachments=application.build_web_agent_input_attachments,
-        build_message_events_async=application.build_web_agent_message_events_async,
+        build_message_events_async=partial(application.build_web_agent_message_events_async, owner_id="1"),
         save_display_snapshot=application.save_web_agent_display_snapshot,
         split_output=application.split_web_agent_output, create_background_task=create_task,
         source="web-agent", heartbeat_seconds=1)

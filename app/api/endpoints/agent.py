@@ -235,15 +235,20 @@ def _build_web_agent_sse(
 )
 async def download_web_agent_file(
     file_id: str,
-    _: _SchemaTokenPayload = Depends(verify_resource_token),
+    token_payload: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> FileResponse:
     """
     下载 Web 智能助手本轮生成的临时附件。
 
     :param file_id: 附件随机标识
+    :param token_payload: 当前资源令牌中的登录用户身份
     :return: 附件文件响应
     """
-    file_info = web_agent_application.get_web_agent_registered_file(f"message/agent/file/{file_id}")
+    owner_id = str(token_payload.sub) if token_payload.sub is not None else ""
+    file_info = web_agent_application.get_web_agent_registered_file(
+        f"message/agent/file/{file_id}",
+        owner_id=owner_id,
+    )
     if not file_info:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="附件不存在或已过期")
 
@@ -299,6 +304,7 @@ async def upload_web_agent_file(
         file_name=safe_name,
         kind=web_agent_application.guess_web_agent_attachment_kind(mime_type),
         mime_type=mime_type,
+        owner_id=str(current_user.id),
     )
     if not attachment:
         target_path.unlink(missing_ok=True)

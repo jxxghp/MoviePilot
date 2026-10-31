@@ -206,7 +206,7 @@ def test_global_mutations_and_agent_file_access_keep_privilege_boundaries():
     assert _dependency_of(transfer_endpoint.remove_queue, "_") is get_current_active_manage_user
     assert _dependency_of(history_endpoint.delete_download_history, "_") is get_current_active_manage_user
     assert _dependency_of(message_endpoint.clear_notification_message, "_") is get_current_active_superuser
-    assert _dependency_of(agent_endpoint.download_web_agent_file, "_") is verify_resource_token
+    assert _dependency_of(agent_endpoint.download_web_agent_file, "token_payload") is verify_resource_token
 
 
 def test_manage_page_endpoints_accept_manage_permission():
