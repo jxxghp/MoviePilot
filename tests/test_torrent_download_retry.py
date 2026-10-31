@@ -174,6 +174,249 @@ def test_first_download_confirmation_empty_response_is_transient(boundary):
     helper.add_invalid.assert_not_called()
 
 
+@pytest.mark.parametrize("status", [301, 302, 303])
+@pytest.mark.parametrize("location", ["/file.torrent", "?id=39&confirmed=1", URL])
+def test_confirmation_redirect_switches_to_get_and_caches_original_url(boundary, status, location):
+    """
+    首次确认后的跳转改用 GET，兼容相对地址及原地址并保留原始缓存键。
+    """
+    helper, port, cache, sleep = boundary
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    redirect = _response(status)
+    redirect.headers["Location"] = location
+    redirect.close = Mock()
+    port.request.side_effect = [_response(content=page), redirect, _response()]
+
+    result = helper.download_torrent(URL, cookie="session=test", ua="TestAgent")
+
+    assert result[1:5] == (CONTENT, "", ["Series.mkv"], "")
+    calls = [call.kwargs for call in port.request.call_args_list]
+    assert [call["method"] for call in calls] == ["GET", "POST", "GET"]
+    assert calls[1]["data"] == {"confirm": "yes"}
+    assert calls[2]["url"] == download.urljoin(URL, location)
+    assert calls[2].get("data") is None
+    assert [call["cookie"] for call in calls] == ["session=test"] * 3
+    assert calls[2]["referer"] == URL
+    assert all(call["ua"] == "TestAgent" and call["allow_redirects"] is False for call in calls)
+    cache.set.assert_called_once_with(result[0].as_posix(), CONTENT, region="torrents")
+    assert result[0] == Path(download.HashUtils.md5(URL)).with_suffix(".torrent")
+    redirect.close.assert_called_once()
+    helper.add_invalid.assert_not_called()
+    sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [307, 308])
+@pytest.mark.parametrize("final_status", [200, 503])
+def test_confirmation_redirect_preserves_post_without_retry(boundary, status, final_status):
+    """
+    307/308 在同来源保留确认表单，目标瞬时失败也不能重试 POST。
+    """
+    helper, port, cache, sleep = boundary
+    page = '下载种子文件<form action="?"><input name="token" value="secret"></form>'.encode()
+    redirect = _response(status)
+    redirect.headers["Location"] = "/confirmed.php?id=39"
+    redirect.close = Mock()
+    port.request.side_effect = [_response(content=page), redirect, _response(final_status)]
+
+    result = helper.download_torrent(URL, cookie="session=test")
+
+    assert result[1] == (CONTENT if final_status == 200 else None)
+    assert result[4] == ("" if final_status == 200 else "下载种子出错，状态码：503")
+    calls = [call.kwargs for call in port.request.call_args_list]
+    assert [call["method"] for call in calls] == ["GET", "POST", "POST"]
+    assert calls[2]["url"] == "https://tracker.example/confirmed.php?id=39"
+    assert calls[1]["data"] == calls[2]["data"] == {"token": "secret"}
+    assert calls[2]["cookie"] == "session=test"
+    assert calls[2]["allow_redirects"] is False
+    assert cache.set.call_count == (1 if final_status == 200 else 0)
+    redirect.close.assert_called_once()
+    helper.add_invalid.assert_not_called()
+    sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [307, 308])
+def test_confirmation_redirect_refuses_cross_origin_post(boundary, status):
+    """
+    需要保留 POST 的跨来源跳转必须终止，不能外发 Cookie 或隐藏表单凭据。
+    """
+    helper, port, cache, sleep = boundary
+    page = '下载种子文件<form action="?"><input name="token" value="secret"></form>'.encode()
+    redirect = _response(status)
+    redirect.headers["Location"] = "https://other.example/file.torrent"
+    redirect.close = Mock()
+    port.request.side_effect = [_response(content=page), redirect]
+
+    result = helper.download_torrent(URL, cookie="session=test")
+
+    assert result[1] is None
+    assert result[4] == "首次下载确认重定向不能向其他来源提交表单"
+    assert port.request.call_count == 2
+    redirect.close.assert_called_once()
+    cache.set.assert_not_called()
+    helper.add_invalid.assert_not_called()
+    sleep.assert_not_called()
+
+
+def test_confirmation_redirect_drops_credentials_permanently_after_cross_origin(boundary):
+    """
+    确认后跨站改用 GET，再回原站也不恢复 Cookie、Referer 和表单字段。
+    """
+    helper, port, _, _ = boundary
+    page = '下载种子文件<form action="?"><input name="token" value="secret"></form>'.encode()
+    redirects = [_response(302), _response(307)]
+    redirects[0].headers["Location"] = "https://cdn.example/file.torrent"
+    redirects[1].headers["Location"] = "https://tracker.example/final.torrent"
+    for response in redirects:
+        response.close = Mock()
+    port.request.side_effect = [_response(content=page), *redirects, _response()]
+
+    assert helper.download_torrent(URL, cookie="session=test", referer="https://tracker.example/private")[1] == CONTENT
+
+    calls = [call.kwargs for call in port.request.call_args_list]
+    assert [call["method"] for call in calls] == ["GET", "POST", "GET", "GET"]
+    assert [call["cookie"] for call in calls] == ["session=test", "session=test", None, None]
+    assert [call["referer"] for call in calls] == ["https://tracker.example/private", URL, None, None]
+    assert all(call.get("data") is None for call in calls[2:])
+    for response in redirects:
+        response.close.assert_called_once()
+
+
+@pytest.mark.parametrize("location, error", [
+    (None, "种子下载重定向缺少目标地址"),
+    ("file:///tmp/private.torrent", "种子下载重定向目标无效"),
+    ("https://user:secret@other.example/file.torrent", "种子下载重定向目标无效"),
+])
+def test_confirmation_redirect_rejects_invalid_target(boundary, location, error):
+    """
+    确认后缺失或非法跳转目标时返回明确错误，不能发起额外请求或缓存无效地址。
+    """
+    helper, port, cache, _ = boundary
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    redirect = _response(302)
+    if location is not None:
+        redirect.headers["Location"] = location
+    redirect.close = Mock()
+    port.request.side_effect = [_response(content=page), redirect]
+
+    assert helper.download_torrent(URL)[4] == error
+    assert port.request.call_count == 2
+    redirect.close.assert_called_once()
+    cache.set.assert_not_called()
+    helper.add_invalid.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [302, 307])
+def test_confirmation_redirect_loop_is_bounded(boundary, status):
+    """
+    按方法与地址识别确认跳转环路，允许 POST 转 GET，但不循环重发确认。
+    """
+    helper, port, cache, _ = boundary
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    redirect = _response(status)
+    redirect.headers["Location"] = URL
+    redirect.close = Mock()
+    port.request.side_effect = [_response(content=page), redirect, redirect]
+
+    assert helper.download_torrent(URL)[4] == "种子下载重定向出现环路"
+    assert port.request.call_count == (3 if status == 302 else 2)
+    assert [call.kwargs["method"] for call in port.request.call_args_list].count("POST") == 1
+    cache.set.assert_not_called()
+    helper.add_invalid.assert_not_called()
+
+
+def test_confirmation_redirect_hop_limit_is_shared_by_post_and_get(boundary):
+    """
+    确认 POST 和后续 GET 共用有限跳转预算，不能无限追逐不同地址。
+    """
+    helper, port, cache, _ = boundary
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    redirects = [_response(302) for _ in range(9)]
+    for index, response in enumerate(redirects):
+        response.headers["Location"] = f"/file.torrent?hop={index}"
+        response.close = Mock()
+    port.request.side_effect = [_response(content=page), *redirects]
+
+    assert helper.download_torrent(URL)[4] == "种子下载重定向次数超过上限"
+    assert port.request.call_count == 10
+    for response in redirects:
+        response.close.assert_called_once()
+    cache.set.assert_not_called()
+    helper.add_invalid.assert_not_called()
+
+
+@pytest.mark.parametrize("in_body", [False, True])
+def test_confirmation_redirect_can_return_magnet(boundary, in_body):
+    """
+    确认后跳转或落地正文给出磁力链接时直接返回，不缓存为损坏种子。
+    """
+    helper, port, cache, _ = boundary
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    magnet = "magnet:?xt=urn:btih:abc"
+    redirect = _response(302)
+    redirect.headers["Location"] = "/file.torrent" if in_body else magnet
+    redirect.close = Mock()
+    responses = [_response(content=page), redirect]
+    if in_body:
+        responses.append(_response(content=magnet.encode()))
+    port.request.side_effect = responses
+
+    assert helper.download_torrent(URL)[1] == magnet
+    assert port.request.call_count == (3 if in_body else 2)
+    cache.set.assert_not_called()
+    helper.add_invalid.assert_not_called()
+
+
+def test_confirmation_redirect_preserves_rate_limit(boundary):
+    """
+    确认后的落地频控保留站点原因，不触发普通 GET 重试或失效缓存。
+    """
+    helper, port, cache, sleep = boundary
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    redirect = _response(302)
+    redirect.headers["Location"] = "/file.torrent"
+    redirect.close = Mock()
+    message = "Request frequency limit, please try in 600 seconds."
+    port.request.side_effect = [_response(content=page), redirect, _response(403, f"<html>{message}</html>".encode())]
+
+    assert helper.download_torrent(URL)[4] == f"站点限流：{message}"
+    assert port.request.call_count == 3
+    cache.set.assert_not_called()
+    helper.add_invalid.assert_not_called()
+    sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("link_type, attempts", [("ordinary", 3), ("signed", 1), ("indirect", 1), ("signed-target", 1)])
+def test_confirmation_redirect_get_keeps_original_retry_policy(boundary, link_type, attempts):
+    """
+    确认后的普通 GET 可退避，签名和换票链路仍只尝试一次且从不重放确认。
+    """
+    helper, port, cache, sleep = boundary
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    url = URL + "&t=1&sign=old" if link_type == "signed" else URL
+    redirect = _response(302)
+    redirect.headers["Location"] = "/file.torrent?t=1&sign=new" if link_type == "signed-target" else "/file.torrent"
+    redirect.close = Mock()
+    port.request.side_effect = [_response(content=page), redirect, *[_response(503) for _ in range(attempts)]]
+
+    assert helper.download_torrent(url, cache_invalid=link_type != "indirect")[4] == "下载种子出错，状态码：503"
+    assert [call.kwargs["method"] for call in port.request.call_args_list] == ["GET", "POST", *["GET"] * attempts]
+    assert sleep.call_count == attempts - 1
+    cache.set.assert_not_called()
+    helper.add_invalid.assert_not_called()
+
+
+def test_magnet_body_on_error_does_not_bypass_status_check(boundary):
+    """
+    非成功响应即使正文看似磁力链接也必须保留 HTTP 错误。
+    """
+    helper, port, cache, _ = boundary
+    port.request.return_value = _response(401, b"magnet:?xt=urn:btih:abc")
+
+    assert helper.download_torrent(URL)[4] == "下载种子出错，状态码：401"
+    port.request.assert_called_once()
+    cache.set.assert_not_called()
+
+
 @pytest.mark.parametrize("form", [
     '<form action="?"><input value="yes" name="confirm"></form>',
     "<form method='POST' action='?'><input value='a&amp;b' name='token'></form>",

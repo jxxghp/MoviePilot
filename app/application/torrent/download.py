@@ -63,6 +63,21 @@ class TorrentResponsePort(Protocol):
     reason: str
 
 
+def _torrent_magnet_link(response: Optional[TorrentResponsePort], url: str) -> Optional[str]:
+    """
+    从最终跳转地址或响应正文提取磁力链接，GET 和首次下载确认共用该判断。
+
+    :param response: 最终 HTTP 响应；直接跳到磁力链接时为空
+    :param url: 最终下载地址或磁力链接
+    :return: 磁力链接；响应仍需按种子或错误处理时返回 None
+    """
+    if url.startswith("magnet:"):
+        return url
+    if response is not None and response.status_code == 200 and response.content.startswith(b"magnet:"):
+        return response.text
+    return None
+
+
 def torrent_rate_limit_error(response: Optional[TorrentResponsePort]) -> Optional[str]:
     """
     在种子解析前提取 JSON 或 HTML 中明确的限流提示，保留站点原文。
@@ -366,9 +381,14 @@ class TorrentHelper:
         proxies: Optional[dict[str, Any]],
         retry: bool,
         site: Mapping[str, Any],
+        method: str = "GET",
+        data: Optional[dict[str, Any]] = None,
     ) -> tuple[Optional[TorrentResponsePort], str, Optional[str]]:
         """
-        有界处理GET跳转，跨来源后永久移除原站点凭据和Referer。
+        有界处理种子 GET 和首次确认 POST 的跳转，跨来源后永久移除凭据和 Referer。
+
+        POST 收到 301/302/303 后改用 GET；307/308 仅在同来源保留表单。
+        确认 POST 不自动重试，后续 GET 沿用原下载地址的重试策略。
 
         :param http_port: 已装配HTTP端口
         :param url: 当前下载地址
@@ -378,19 +398,27 @@ class TorrentHelper:
         :param proxies: 本次请求代理
         :param retry: 是否对普通GET执行既有瞬时失败重试
         :param site: 原始资源所属站点的流控配置，跳转到其他主机后仍共用该额度
+        :param method: 起始请求方法，只使用 GET 或 POST
+        :param data: 首次确认表单；改用 GET 后永久移除
         :return: 最终响应、最终地址及允许在该地址使用的Cookie
-        :raises ValueError: 跳转缺少地址、目标非法、重复或超过上限
+        :raises ValueError: 跳转缺少地址、目标非法、重复、超过上限或要求跨来源提交表单
         """
         seen = set()
         for _hop in range(9):
-            if url in seen:
+            if (method, url) in seen:
                 raise ValueError("种子下载重定向出现环路")
-            seen.add(url)
-            response = self._request_torrent_get(
-                http_port, retry and not torrent_rules.is_expiring_download_url(url), site,
-                url=url, cookie=cookie, ua=ua, referer=referer,
-                proxies=proxies, allow_redirects=False,
-            )
+            seen.add((method, url))
+            if method == "POST":
+                response = self._request_torrent(
+                    http_port, site, method=method, url=url, cookie=cookie, ua=ua,
+                    referer=referer, proxies=proxies, data=data, allow_redirects=False,
+                )
+            else:
+                response = self._request_torrent_get(
+                    http_port, retry and not torrent_rules.is_expiring_download_url(url), site,
+                    url=url, cookie=cookie, ua=ua, referer=referer,
+                    proxies=proxies, allow_redirects=False,
+                )
             if response is None or response.status_code not in (301, 302, 303, 307, 308):
                 return response, url, cookie
             location = response.headers.get("Location") or response.headers.get("location")
@@ -405,7 +433,11 @@ class TorrentHelper:
             target = urlsplit(destination)
             if target.scheme not in ("http", "https") or not target.hostname or target.username or target.password:
                 raise ValueError("种子下载重定向目标无效")
+            if response.status_code in (301, 302, 303):
+                method, data = "GET", None
             if not UrlUtils.same_origin(url, destination):
+                if method == "POST":
+                    raise ValueError("首次下载确认重定向不能向其他来源提交表单")
                 cookie, referer = None, None
             url = destination
         raise ValueError("种子下载重定向次数超过上限")
@@ -487,15 +519,13 @@ class TorrentHelper:
             )
         except (ValueError, RateLimitExceededException) as err:
             return cache_path, None, "", [], str(err)
-        if url.startswith("magnet:"):
-            return None, url, "", [], "获取到磁力链接"
+        if magnet := _torrent_magnet_link(req, url):
+            return cache_path if req is not None else None, magnet, "", [], "获取到磁力链接"
         if rate_limit_error := torrent_rate_limit_error(req):
             return cache_path, None, "", [], rate_limit_error
         if req is not None and req.status_code == 200:
             if not req.content:
                 return cache_path, None, "", [], "未下载到种子数据"
-            if req.content.startswith(b"magnet:"):
-                return cache_path, req.text, "", [], "获取到磁力链接"
             # 优先按原始二进制解析，避免合法 torrent 被误判为首次下载 HTML。
             folder_name, file_list = _cache_valid_torrent_content(
                 self.get_fileinfo_from_torrent_content, cache_backend, cache_path, req.content
@@ -511,12 +541,14 @@ class TorrentHelper:
                     return cache_path, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
                 action, data = confirmation
                 try:
-                    req = self._request_torrent(
-                        http_port, site, method="POST", url=action, cookie=cookie, ua=ua,
-                        referer=url, proxies=config.proxy if proxy else None, data=data, allow_redirects=False,
+                    req, url, cookie = self._request_torrent_redirects(
+                        http_port, site=site, method="POST", url=action, cookie=cookie, ua=ua,
+                        referer=url, proxies=config.proxy if proxy else None, data=data, retry=retry,
                     )
-                except RateLimitExceededException as err:
+                except (ValueError, RateLimitExceededException) as err:
                     return cache_path, None, "", [], str(err)
+                if magnet := _torrent_magnet_link(req, url):
+                    return cache_path if req is not None else None, magnet, "", [], "获取到磁力链接"
                 if rate_limit_error := torrent_rate_limit_error(req):
                     return cache_path, None, "", [], rate_limit_error
                 if req is None:
@@ -526,14 +558,13 @@ class TorrentHelper:
                 if not req.content:
                     return cache_path, None, "", [], "未下载到种子数据"
                 logger.info("已提交站点首次种子下载确认，正在校验种子内容")
-            # 首次下载提示页面完成后，重新按原始二进制解析 POST 响应。
+            # 首次下载提示页面完成后，校验确认请求及其后续跳转取得的内容。
             assert req is not None
-            if req.content:
-                folder_name, file_list = _cache_valid_torrent_content(
-                    self.get_fileinfo_from_torrent_content, cache_backend, cache_path, req.content
-                )
-                if file_list:
-                    return cache_path, req.content, folder_name, file_list, ""
+            folder_name, file_list = _cache_valid_torrent_content(
+                self.get_fileinfo_from_torrent_content, cache_backend, cache_path, req.content
+            )
+            if file_list:
+                return cache_path, req.content, folder_name, file_list, ""
             # 解析失败时终止，避免把 HTML 继续下沉到下载器或缓存。
             if cache_invalid:
                 self.add_invalid(original_url)
