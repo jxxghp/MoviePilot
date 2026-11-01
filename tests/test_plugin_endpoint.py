@@ -657,6 +657,7 @@ def test_runtime_status_reports_pending_and_terminal_counts():
         "RemovedPlugin": ("native-removed",),
     }
     plugin_manager.get_plugin_gil_fallbacks.return_value = ["NativePlugin", "RemovedPlugin"]
+    plugin_manager.get_plugin_lifecycle_activity.return_value = None
     config = MagicMock()
     config.get.return_value = ["NativePlugin"]
 

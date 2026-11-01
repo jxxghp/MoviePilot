@@ -269,8 +269,9 @@ async def runtime_status(
         _SchemaPluginRuntimeStatus.LOAD_FAILED,
         _SchemaPluginRuntimeStatus.INCOMPATIBLE_RUNTIME,
     }
+    activity = plugin_manager.get_plugin_lifecycle_activity()
     return _SchemaPluginRuntimeSummary(
-        ready=not plugin_manager.is_plugin_settling(),
+        ready=not plugin_manager.is_plugin_settling() and activity is None,
         generation=plugin_manager.get_plugin_runtime_generation(),
         pending_count=sum(status in pending for status in statuses.values()),
         failed_count=sum(status in failed for status in statuses.values()),
@@ -280,6 +281,7 @@ async def runtime_status(
             for plugin_id in plugin_manager.get_plugin_gil_fallbacks()
             if plugin_id.lower() in installed_plugin_ids
         ],
+        active_operation=activity,
     )
 
 

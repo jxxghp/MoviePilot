@@ -24,6 +24,7 @@ from app.application.plugin.source import (
     PluginLocalCandidate,
     PluginMarketCandidate,
 )
+from app.schemas.exception import PluginMutationRejectedError
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 REPO_URL = "https://github.com/jxxghp/MoviePilot-Plugins"
@@ -50,6 +51,34 @@ def _inventory() -> CandidateInventory:
             package_generation="v3",
         ),
     ))
+
+
+@pytest.mark.asyncio
+async def test_gateway_reports_lifecycle_busy_before_identity_or_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    生命周期准入预算耗尽时返回明确失败，不能继续读取身份或写入载荷。
+    """
+    identity = AsyncMock()
+    executor = AsyncMock()
+
+    monkeypatch.setattr(
+        gateway_module.plugin_lifecycle, "hold",
+        Mock(side_effect=PluginMutationRejectedError("安装 DemoPlugin", "插件生命周期准入正忙")),
+    )
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(return_value=_inventory()), identity=identity,
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor, clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
+    )
+    result = await gateway.install(plugin_id="DemoPlugin", repo_url=REPO_URL)
+    assert result.success is False
+    assert result.failure_stage == "admission"
+    assert "准入正忙" in result.message
+    identity.assert_not_awaited()
+    executor.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio

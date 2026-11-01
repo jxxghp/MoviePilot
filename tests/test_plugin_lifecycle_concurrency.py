@@ -5,11 +5,12 @@
 import threading
 from unittest.mock import MagicMock
 
-from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
+import pytest
 
-# 停止一侧在停机 hook 里等待加载一侧的预算。start 不持锁时加载会立刻完成并置位，
-# 等待即刻返回；start 持锁时加载被挡在锁外，这里必然等满。两种实现下交错顺序都是
-# 确定的，用例不依赖线程被调度的先后。
+from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
+from app.schemas.exception import PluginMutationRejectedError
+
+# 停止一侧在停机 hook 里等待加载一侧的预算；竞争加载必须先拒绝，停机后才允许重试。
 _INTERLEAVE_BUDGET = 0.3
 # 线程握手与回收的宽松预算，仅用于避免实现回归时把整个测试进程挂死
 _HANDSHAKE_BUDGET = 5.0
@@ -120,7 +121,8 @@ def test_concurrent_start_does_not_orphan_the_instance_it_loads() -> None:
         等停止进入停机 hook 之后再发起加载，制造确定的交错顺序。
         """
         assert quiesce_entered.wait(_HANDSHAKE_BUDGET)
-        lifecycle.start("DemoPlugin")
+        with pytest.raises(PluginMutationRejectedError):
+            lifecycle.start("DemoPlugin")
         start_finished.set()
 
     loader = threading.Thread(target=load, name="plugin-start", daemon=True)
@@ -132,6 +134,9 @@ def test_concurrent_start_does_not_orphan_the_instance_it_loads() -> None:
 
     assert not loader.is_alive()
     assert stopped == [seed]
+    assert constructed == []
+    # 明确拒绝没有执行副作用，原 owner 完成后可安全重试，并继续验证实例不会遗失。
+    lifecycle.start("DemoPlugin")
     assert len(constructed) == 1
     orphaned = [
         instance

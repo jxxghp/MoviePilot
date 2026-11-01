@@ -196,18 +196,21 @@ async def test_quiesce_timeout_retains_admitted_owner_and_nested_reload(
         await entered.wait()
 
         assert await manager.quiesce_plugins(timeout=0.01) is False
-        owner = manager._plugin_quiesce_future
-        assert owner is not None
-        assert owner.done() is False
+        waiter = manager._plugin_quiesce_future
         assert manager._plugin_mutation_admission.active_count == 1
         assert manager.finalize_plugins() is False
         with pytest.raises(PluginMutationRejectedError):
             with manager.mutation("新的配置写入"):
                 pass
 
+        if waiter is not None:
+            # 等待者可以按预算退出，真实变更仍由 admission 持有；再次停机才关闭 handler。
+            assert await asyncio.wrap_future(waiter) is False
+        assert manager._plugin_mutation_admission.active_count == 1
+        manager._plugin_lifecycle.quiesce_handlers.assert_not_called()
         release.set()
         assert await mutation_task is PluginRuntimeStatus.ACTIVE
-        assert await asyncio.wrap_future(owner) is True
+        assert await manager.quiesce_plugins(timeout=1) is True
 
     manager._plugin_lifecycle.reload.assert_called_once_with(
         "DemoPlugin",

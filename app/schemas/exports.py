@@ -376,6 +376,7 @@ SCHEMA_EXPORTS = {
     'PluginInstanceLogLevelUpdateRequest': ('app.schemas.plugin', 'PluginInstanceLogLevelUpdateRequest'),
     'PluginInstancePurgeOutcome': ('app.schemas.plugin', 'PluginInstancePurgeOutcome'),
     'PluginInstancePurgeRequest': ('app.schemas.plugin', 'PluginInstancePurgeRequest'),
+    'PluginLifecycleActivity': ('app.schemas.plugin', 'PluginLifecycleActivity'),
     'PluginMarketSyncData': ('app.schemas.system', 'PluginMarketSyncData'),
     'PluginMarketSyncRequest': ('app.schemas.system', 'PluginMarketSyncRequest'),
     'PluginMemoryInfo': ('app.schemas.plugin', 'PluginMemoryInfo'),

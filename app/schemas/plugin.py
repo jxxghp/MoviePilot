@@ -285,12 +285,24 @@ class PluginDocumentation(BaseModel):
     url: Optional[str] = Field(default=None, description="显式声明或已确认存在的 README 外链；不可用时为空")
 
 
+class PluginLifecycleActivity(BaseModel):
+    """
+    当前仍持有执行权的插件操作，不包含配置或凭据。
+    """
+
+    operation: str = Field(description="正在执行的生命周期操作或变更事务")
+    plugin_id: Optional[str] = Field(default=None, description="当前处理的插件 ID；全局操作准备阶段为空")
+    hook: Optional[str] = Field(default=None, description="当前执行的插件钩子或加载阶段；未进入时为空")
+    elapsed_seconds: float = Field(ge=0, description="本次操作已经持续的秒数")
+    hook_elapsed_seconds: float = Field(default=0, ge=0, description="当前钩子已经持续的秒数")
+
+
 class PluginRuntimeSummary(BaseModel):
     """
     插件后台收敛状态和前端刷新代次。
     """
 
-    ready: bool = Field(description="本轮插件源码、依赖和加载是否已收敛")
+    ready: bool = Field(description="本轮插件源码、依赖和加载已收敛，且没有在途变更或生命周期操作")
     generation: int = Field(description="插件运行状态变化代次")
     pending_count: int = Field(description="仍处于准备阶段的插件数量")
     failed_count: int = Field(description="加载失败或被策略阻止的插件数量")
@@ -301,6 +313,10 @@ class PluginRuntimeSummary(BaseModel):
     gil_enabled_plugin_ids: List[str] = Field(
         default_factory=list,
         description="当前进程内加载时导致 free-threaded 运行时回退到 GIL 的插件 ID",
+    )
+    active_operation: Optional[PluginLifecycleActivity] = Field(
+        default=None,
+        description="仍持有执行权的插件操作；调用方超时后仍会保留，直至实际结束",
     )
 
 

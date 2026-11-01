@@ -561,7 +561,7 @@ def build_plugin_runtime(
             runner=host._run_file_watcher,
             log=environment.logger,
         ),
-        admission=PluginMutationAdmission(),
+        admission=PluginMutationAdmission(activity=lifecycle.activity),
         dependencies=dependencies,
         loader=loader,
         tools=tools,

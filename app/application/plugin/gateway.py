@@ -30,6 +30,7 @@ from app.application.plugin.source import (
     select_plugin_candidate,
 )
 from app.domain.plugin import PLUGIN_SYSTEM_VERSION_FIELD
+from app.schemas.exception import PluginMutationRejectedError
 
 InventoryProvider = Callable[[bool], Awaitable[CandidateInventory]]
 IdentityReader = Callable[[str], Awaitable[PluginIdentity | None]]
@@ -168,6 +169,8 @@ class PluginInstallGateway:
                         PluginLocalCandidate,
                     ),
                 )
+        except PluginMutationRejectedError as error:
+            return PluginInstallResult(success=False, message=str(error), failure_stage="admission")
         except (TypeError, ValueError, PluginSourceAdmissionError) as error:
             return PluginInstallResult(
                 success=False,

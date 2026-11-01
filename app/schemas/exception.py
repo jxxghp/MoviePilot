@@ -71,15 +71,18 @@ class OperationInterrupted(KeyboardInterrupt):
 
 class PluginMutationRejectedError(RuntimeError):
     """
-    表示插件运行时已封口，新的可变事务未获准执行。
+    表示插件运行时已封口或正忙，当前操作未获准执行。
     """
 
-    def __init__(self, operation: str) -> None:
+    def __init__(self, operation: str, reason: str = "插件运行时已进入停机阶段") -> None:
         """
         保存被拒绝的操作名称并生成稳定诊断消息。
+
+        :param operation: 尚未取得执行权的操作
+        :param reason: 拒绝原因，可包含持有方信息，不包含插件配置
         """
         self.operation = operation
-        super().__init__(f"插件运行时已进入停机阶段，拒绝{operation}")
+        super().__init__(f"{reason}，拒绝{operation}")
 
 
 class StorageQueryError(Exception):

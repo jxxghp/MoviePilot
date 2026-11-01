@@ -1301,6 +1301,7 @@ driven workflow registration.
 | `app/runtime/extensions/module/manager.py` | Module discovery and lifecycle |
 | `app/runtime/extensions/plugin/manager.py` | Stable PluginManager ABI facade plus plugin discovery/lifecycle entrypoints; its constructor only consumes the startup-injected Runtime factory and does not build an environment or individual owner |
 | `app/runtime/extensions/plugin/runtime.py` | Frozen typed aggregate and construction primitive for plugin registry, lifecycle, catalog, dependency, monitor, projection, sync and package-system owners; it does not choose concrete startup dependencies |
+| `app/runtime/extensions/plugin/gate.py` | 插件生命周期的可重入执行权与钩子耗时快照；仅更新 owner 时持锁，竞争者立即拒绝，第三方代码在锁外执行；`admission.py` 在完整可变事务的副作用前取得同一运行时的根事务资格 |
 | `app/runtime/extensions/plugin/system.py` | Startup-injected market/package/dependency system-port facade, including delegation to the unique physical package deletion owner; it does not construct concrete adapters |
 | `app/runtime/extensions/plugin/dependency.py` | Virtual-instance dependency classification and runtime-status persistence owner |
 | `app/startup/initializers/plugins.py` | Plugin Runtime dependency-graph composition, concrete system/storage/catalog ports and lifecycle initialization |

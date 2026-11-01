@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 70
+version: 71
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -66,6 +66,11 @@ allowed-api-operations: >-
 ---
 
 # MoviePilot API
+
+When a plugin mutation is busy or its outcome is unknown, inspect `plugin.runtime.status`
+before retrying. `active_operation` identifies the running plugin, operation, hook, and
+elapsed time. A caller timeout or cancellation does not stop the hook and must never
+trigger automatic replay of the same mutation.
 
 For a historical invalid plugin instance ID reported in logs, `plugin.instance.purge`
 accepts the exact ID with only `config: true` (all other scope flags false). It deletes

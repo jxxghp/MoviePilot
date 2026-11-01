@@ -54,7 +54,7 @@ from app.schemas.category import ClassificationFactValue, ClassificationFieldDef
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
-from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
+from app.schemas.plugin import PluginInstance, PluginLifecycleActivity, PluginRuntimeStatus
 from app.schemas.types import EventType
 
 LegacyDiagnosticsConfigurator = Callable[..., None]
@@ -243,6 +243,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._suppressed_monitor_plugins: Dict[str, int] = {}
         self._monitor_suppressed_until: Dict[str, float] = {}
         self._plugin_quiesce_lock = threading.RLock()
+        # 仅保护停机状态和 Future 引用；禁止在此锁内调用第三方生命周期。
         self._plugin_quiesce_future: Optional[
             concurrent.futures.Future[bool]
         ] = None
@@ -323,20 +324,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
         try:
             with self.mutation("启动插件"):
-                with self._plugin_quiesce_lock:
-                    _legacy_diagnostics_configurator(
-                        enabled=get_runtime_setting('DEBUG'),
-                        emitter=logger.warning,
+                _legacy_diagnostics_configurator(
+                    enabled=get_runtime_setting('DEBUG'),
+                    emitter=logger.warning,
+                )
+                gil_enabled_before = is_gil_enabled()
+                try:
+                    return self._plugin_lifecycle.start(pid)
+                finally:
+                    _warn_if_plugin_enabled_gil(
+                        gil_enabled_before=gil_enabled_before,
+                        plugin_id=pid,
+                        registry=self._plugin_registry,
                     )
-                    gil_enabled_before = is_gil_enabled()
-                    try:
-                        return self._plugin_lifecycle.start(pid)
-                    finally:
-                        _warn_if_plugin_enabled_gil(
-                            gil_enabled_before=gil_enabled_before,
-                            plugin_id=pid,
-                            registry=self._plugin_registry,
-                        )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             if pid:
@@ -352,8 +352,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         try:
             with self.mutation("初始化插件配置"):
-                with self._plugin_quiesce_lock:
-                    self._plugin_lifecycle.initialize(plugin_id, conf)
+                self._plugin_lifecycle.initialize(plugin_id, conf)
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
 
@@ -384,9 +383,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         try:
             with self.mutation("停止插件"):
-                with self._plugin_quiesce_lock:
-                    if self._plugin_lifecycle.stop(pid) is False:
-                        return False
+                if self._plugin_lifecycle.stop(pid) is False:
+                    return False
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return False
@@ -397,6 +395,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         为一个完整插件可变事务取得可跨异步边界传播的准入 lease。
         """
         return self._plugin_mutation_admission.hold(operation)
+
+    def get_plugin_lifecycle_activity(self) -> Optional[PluginLifecycleActivity]:
+        """
+        只读返回仍持有执行权的插件、操作及钩子耗时。
+        """
+        return self._plugin_lifecycle.activity() or self._plugin_mutation_admission.activity()
 
     def reopen_plugins(self) -> bool:
         """
@@ -421,8 +425,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     async def quiesce_plugins(self, timeout: float = 240.0) -> bool:
         """
-        封口变更事务并停用插件 handler，超时后保留 Future ownership。
+        在同一预算内封口、等待变更并停用 handler；超时保留实际执行者。
         """
+        deadline = time.monotonic() + max(0.0, timeout)
         if self._plugin_mutation_admission.is_held():
             logger.warning("插件可变事务不能等待自身收敛，拒绝在事务内执行停机")
             return False
@@ -431,12 +436,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self._plugin_mutation_admission.seal()
             future = self._plugin_quiesce_future
             if future is None or future.done():
-                future = ThreadHelper().submit(self._quiesce_after_mutations)
+                future = ThreadHelper().submit(
+                    self._quiesce_after_mutations,
+                    deadline,
+                )
                 self._plugin_quiesce_future = future
         try:
             result = await asyncio.wait_for(
                 asyncio.shield(asyncio.wrap_future(future)),
-                timeout=max(0.0, timeout),
+                timeout=max(0.0, deadline - time.monotonic()),
             )
             return bool(result)
         except asyncio.TimeoutError:
@@ -456,6 +464,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         在事件结算后执行旧插件停机 hook，并有界等待同步 owner。
         """
+        deadline = time.monotonic() + max(0.0, timeout)
         with self._plugin_quiesce_lock:
             prepare_future = self._plugin_quiesce_future
             if prepare_future is not None and not prepare_future.done():
@@ -476,7 +485,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         try:
             result = await asyncio.wait_for(
                 asyncio.shield(asyncio.wrap_future(future)),
-                timeout=max(0.0, timeout),
+                timeout=max(0.0, deadline - time.monotonic()),
             )
             return bool(result)
         except asyncio.TimeoutError:
@@ -507,13 +516,25 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         if self._plugin_mutation_admission.active_count:
             logger.warning("插件可变事务仍在执行，拒绝释放运行实例")
             return False
-        return self._plugin_lifecycle.finalize()
+        try:
+            return self._plugin_lifecycle.finalize()
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False
 
-    def _quiesce_after_mutations(self) -> bool:
+    def _quiesce_after_mutations(self, deadline: float) -> bool:
         """
-        等待已获准变更自然结束后，再停用插件事件入口。
+        按预算等待已获准变更，再停用事件入口；不取消仍在运行的变更。
+
+        :param deadline: 从异步入口开始计算的单调时钟截止秒数，包含线程池排队
         """
-        self._plugin_mutation_admission.wait_until_idle()
+        if not self._plugin_mutation_admission.wait_until_idle(
+            timeout=max(0.0, deadline - time.monotonic()),
+        ):
+            logger.warning(f"插件变更未收敛：{self.get_plugin_lifecycle_activity()}")
+            return False
+        if time.monotonic() >= deadline:
+            return False
         return self._plugin_lifecycle.quiesce_handlers()
 
     @property
@@ -708,10 +729,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         try:
             with self.mutation("移除插件实例"):
-                with self._plugin_quiesce_lock:
-                    if self._plugin_lifecycle.stop(plugin_id) is False:
-                        return False
-                    self._plugin_registry.remove(plugin_id)
+                if self._plugin_lifecycle.stop(plugin_id) is False:
+                    return False
+                self._plugin_registry.remove(plugin_id)
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return False
@@ -731,19 +751,18 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         try:
             with self.mutation("重新加载插件"):
-                with self._plugin_quiesce_lock:
-                    gil_enabled_before = is_gil_enabled()
-                    try:
-                        return self._plugin_lifecycle.reload(
-                            plugin_id,
-                            EventType.PluginReload,
-                        )
-                    finally:
-                        _warn_if_plugin_enabled_gil(
-                            gil_enabled_before=gil_enabled_before,
-                            plugin_id=plugin_id,
-                            registry=self._plugin_registry,
-                        )
+                gil_enabled_before = is_gil_enabled()
+                try:
+                    return self._plugin_lifecycle.reload(
+                        plugin_id,
+                        EventType.PluginReload,
+                    )
+                finally:
+                    _warn_if_plugin_enabled_gil(
+                        gil_enabled_before=gil_enabled_before,
+                        plugin_id=plugin_id,
+                        registry=self._plugin_registry,
+                    )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return PluginRuntimeStatus.LOAD_FAILED
@@ -754,12 +773,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         try:
             with self.mutation("重载插件实例树"):
-                with self._plugin_quiesce_lock:
-                    source_plugin_id = self.get_plugin_source_id(plugin_id)
-                    status = self.reload_plugin(source_plugin_id)
-                    for instance in self._plugin_instance_store.for_source(source_plugin_id):
-                        self.reload_plugin(instance.instance_id)
-                    return status
+                source_plugin_id = self.get_plugin_source_id(plugin_id)
+                status = self.reload_plugin(source_plugin_id)
+                for instance in self._plugin_instance_store.for_source(source_plugin_id):
+                    self.reload_plugin(instance.instance_id)
+                return status
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return PluginRuntimeStatus.LOAD_FAILED

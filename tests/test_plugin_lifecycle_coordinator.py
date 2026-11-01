@@ -6,10 +6,12 @@ import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
+from unittest.mock import Mock
 
 import pytest
 
 from app.application.plugin.lifecycle import PluginLifecycleCoordinator
+from app.schemas.exception import PluginMutationRejectedError
 
 
 async def _assert_event_waits(event: asyncio.Event) -> None:
@@ -168,7 +170,13 @@ async def test_startup_token_can_cross_threads_without_contextvar() -> None:
     main_thread = threading.current_thread().name
 
     def run_in_thread(startup_token: object) -> tuple[str, set[str]]:
+        """
+        在独立事件循环中验证启动令牌的显式跨线程授权。
+        """
         async def hold_plugin() -> tuple[str, set[str]]:
+            """
+            在工作线程内取得逐插件资格并返回持有事实。
+            """
             async with coordinator.hold("DemoPlugin", startup_token):
                 return threading.current_thread().name, set(coordinator._active_plugins)
 
@@ -203,3 +211,48 @@ async def test_hold_without_token_retains_startup_waiting_compatibility() -> Non
         task = asyncio.create_task(external_hold())
         await _assert_event_waits(entered)
         await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_admission_deadline_does_not_release_plugin_or_startup_owner() -> None:
+    """
+    等待预算耗尽后现有租约仍有效，后续请求不能越权进入。
+    """
+    coordinator = PluginLifecycleCoordinator()
+    async with coordinator.hold("SlowPlugin"):
+        with pytest.raises(PluginMutationRejectedError, match="slowplugin.*秒"):
+            async with coordinator.hold("SLOWPLUGIN", timeout=0.01):
+                pytest.fail("重复插件资格被放行")
+        with pytest.raises(PluginMutationRejectedError, match="slowplugin"):
+            async with coordinator.hold_startup(timeout=0.01):
+                pytest.fail("启动资格被错误放行")
+        assert coordinator._active_plugins == {"slowplugin"}
+        async with coordinator.hold("OtherPlugin", timeout=0):
+            assert coordinator._active_plugins == {"slowplugin", "otherplugin"}
+    async with coordinator.hold_startup() as token:
+        with pytest.raises(PluginMutationRejectedError, match="启动同步"):
+            async with coordinator.hold("OtherPlugin", timeout=0):
+                pytest.fail("外部请求穿过启动屏障")
+        assert coordinator._startup_token is token
+    async with coordinator.hold("SlowPlugin", timeout=0):
+        assert coordinator._active_plugins == {"slowplugin"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("startup", [False, True])
+async def test_admission_does_not_acquire_after_wait_budget_expires(
+    startup: bool, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    即使持有者在等待预算耗尽时释放，也不能在截止时间之后取得新资格。
+    """
+    coordinator = PluginLifecycleCoordinator()
+    acquire = Mock(side_effect=[None, object()] if startup else [False, True])
+    monkeypatch.setattr(
+        coordinator, "_try_acquire_startup" if startup else "_try_acquire_plugin", acquire,
+    )
+    lease = coordinator.hold_startup(timeout=0.01) if startup else coordinator.hold("DemoPlugin", timeout=0.01)
+    with pytest.raises(PluginMutationRejectedError, match="准入正忙"):
+        async with lease:
+            pytest.fail("预算耗尽后仍然取得执行权")
+    acquire.assert_called_once()
