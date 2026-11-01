@@ -252,13 +252,30 @@ def test_scale_validator_rejects_fake_site_pressure(monkeypatch, tmp_path, mutat
     assert result["site_request_boundary_peak"] >= 2
 
 
-def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
+@pytest.mark.parametrize("request_start_delay", [0.0, 0.1])
+def test_scale_validator_rejects_unfinished_site_wrapper(
+    monkeypatch, tmp_path, request_start_delay,
+):
     """
     延后已登记但 wrapper 尚未返回时，压力门禁必须拒绝并暴露未收口 owner。
     """
     original_wrapper = SearchChain._search_site_torrents_with_budget
     release_stalled = threading.Event()
+    rejection_stalled = threading.Event()
     threads_before = set(threading.enumerate())
+
+    class DelayedRequestBoundary(scale._ScaleSiteRequestBoundary):
+        """
+        模拟慢速 CI 在首个请求进入前的调度延迟，不能提前耗尽协调预算。
+        """
+
+        def request(self, *, owner):
+            """
+            只延迟首个请求，延迟超过故障收口的 50 毫秒等待。
+            """
+            if request_start_delay and not self.first_started.is_set():
+                threading.Event().wait(request_start_delay)
+            return super().request(owner=owner)
 
     def stall_after_rejection(self, *, site, keyword, mtype, page):
         """
@@ -270,6 +287,7 @@ def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
             """
             在拒绝已登记后阻塞原始 wrapper 的返回。
             """
+            rejection_stalled.set()
             original_record_deferred(deferral)
             release_stalled.wait()
 
@@ -290,7 +308,8 @@ def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
         "_search_site_torrents_with_budget",
         stall_after_rejection,
     )
-    monkeypatch.setattr(scale, "_SITE_PRESSURE_SYNC_TIMEOUT", 0.05)
+    monkeypatch.setattr(scale, "_ScaleSiteRequestBoundary", DelayedRequestBoundary)
+    monkeypatch.setattr(scale, "_SITE_PRESSURE_JOIN_TIMEOUT", 0.05)
 
     try:
         result = _run_durable_governance(
@@ -298,6 +317,8 @@ def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
             tmp_path,
         )
 
+        assert rejection_stalled.is_set(), "必须实际进入拒绝后的挂起路径"
+        assert result["site_observations"][0]["request_active_at_rejection"] == 1
         assert result["site_pressure_valid"] is False
         assert result["site_pressure_concurrency_verified"] is False
         assert result["site_observations"][0]["owners_finished"] is False
