@@ -676,18 +676,21 @@ Shared subscription metadata and media-key construction belongs to
 `app.application.subscription.contract`; `app.chain.subscribe` is a same-named package
 whose root exposes only the stable `SubscribeChain`. `facade.py` owns the class
 identity and event entry wrappers; `create.py`, `search.py`, `match.py`, `refresh.py`,
-`completion.py`, `music.py`, `reconcile.py` and `notify.py` are the single owners of their
+`completion.py`, `music.py`, `reconcile.py`, `library.py` and `notify.py` are the single owners of their
 respective workflows, while `query.py`, `interaction.py`, `identity.py` and `policy.py`
 own the remaining focused capabilities. Startup imports the subscription share Port
 directly from `notify.py`; canonical callers import identity projection directly from
 `identity.py`. The retired `app/chain/subscribe.py` monolith must not return, package
 owners must not be re-exported, and `_music` must not import its concrete chain owner.
+`library.py` 消费整理完成事件，把本次交付的集号补写为订阅的入库集号并同步收缩缺失集数，
+使订阅卡片与日历在整理完成后立即反映媒体库状态；入库事实只按订阅目标范围内的集号写入，
+缺失集数与入库集号来自同一份事实。
 `music.py` 通过已注入的下载/整理历史 Port 关联成功入库文件，只读取本地音频标签和
 有效 CUE，按真实发行身份分组对账；发行身份与逐盘完整覆盖的纯规则归 `domain/music.py`。
 它通过既有订阅 mutation 写入事实和总曲目数，不新增数据库字段，也不从文件数量猜测完成。
 下载提交 owner 则按种子实际 hash、全部音频成功整理记录及仍存在的本地目标阻止音乐订阅重复提交；人工下载
 和未完整整理的任务保留原行为。新增 owner 使冷导入宿主模块数各增加 1：
-`app.startup.lifecycle` 586 → 587、`app.factory` 599 → 600、`app.main` 601 → 602；
+`app.startup.lifecycle` 598 → 599、`app.factory` 612 → 613、`app.main` 614 → 615；
 原有耗时预算、采样和生命周期约束保持不变。
 `app.chain.search.execution` reads the Application-owned `SubscriptionSiteBudget`
 contract to apply subscription-only keyword scheduling and IMDb query deduplication;

@@ -16,6 +16,7 @@ from app.chain.search.facade import SearchChain
 from app.chain.subscribe.completion import SubscribeCompletionOwner
 from app.chain.subscribe.create import SubscribeCreateOwner
 from app.chain.subscribe.interaction import SubscribeInteractionOwner
+from app.chain.subscribe.library import SubscribeLibraryOwner
 from app.chain.subscribe.match import SubscribeMatchOwner
 from app.chain.subscribe.music import SubscribeMusicProgressOwner
 from app.chain.subscribe.notify import SubscribeNotificationOwner
@@ -42,6 +43,7 @@ class SubscribeChain(
     SubscribeNotificationOwner,
     SubscribePolicyOwner,
     SubscribeReconciliationOwner,
+    SubscribeLibraryOwner,
     InteractionChainMixin,
     ChainBase,
 ):
@@ -113,6 +115,13 @@ class SubscribeChain(
         配置变更后协调订阅规则组引用。
         """
         return self._reconcile_rule_group_references(event)
+
+    @eventmanager.register(EventType.TransferComplete)
+    def sync_library_progress_after_transfer(self, event: Event) -> None:
+        """
+        整理入库后同步订阅的入库事实。
+        """
+        return self._sync_library_progress_after_transfer(event)
 
 
 # 保持旧插件对类模块身份、repr 与序列化路径的观察结果不变。

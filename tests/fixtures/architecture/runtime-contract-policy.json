@@ -155,6 +155,24 @@
         "reason": "配置变更后由 SubscribeChain 对齐订阅规则组引用。"
       },
       {
+        "caller": "app.chain.subscribe.facade",
+        "qualname": "SubscribeChain",
+        "method": "register",
+        "receiver_kind": "canonical_singleton",
+        "events": [
+          "EventType.TransferComplete"
+        ],
+        "dynamic": false,
+        "invalid": false,
+        "handler": "SubscribeChain.sync_library_progress_after_transfer",
+        "registration_kind": "decorator",
+        "priority": "<default>",
+        "fingerprint": "ff208671796f8e35b6d88733b5038a1799f33f67db8e62e9f61189d4e91a4d8e",
+        "classification": "approved_static_registration",
+        "owner": "app.chain.subscribe.facade",
+        "reason": "整理入库后由 SubscribeChain 把交付集号同步为订阅入库事实。"
+      },
+      {
         "caller": "app.chain.workflow",
         "qualname": "WorkflowChain",
         "method": "register",

@@ -124,7 +124,7 @@ def test_event_policy_accepts_exact_static_and_dynamic_facts() -> None:
 
 def test_current_event_consumer_policy_matches_exact_reviewed_set() -> None:
     """
-    当前 17 条宿主 consumer 必须逐条匹配人工政策且没有非法成员。
+    当前 18 条宿主 consumer 必须逐条匹配人工政策且没有非法成员。
     """
     facts = current_event_facts()["consumers"]
     policy = json.loads(DEFAULT_EVENT_POLICY_PATH.read_text(encoding="utf-8"))
@@ -133,17 +133,17 @@ def test_current_event_consumer_policy_matches_exact_reviewed_set() -> None:
     result = check_event_consumer_policy(facts)
 
     assert result.ok
-    assert result.actual_count == result.reviewed_count == 17
-    assert result.static_count == 16
+    assert result.actual_count == result.reviewed_count == 18
+    assert result.static_count == 17
     assert result.dynamic_count == 1
     assert result.invalid_count == 0
-    assert len({fact["fingerprint"] for fact in facts}) == 17
+    assert len({fact["fingerprint"] for fact in facts}) == 18
     assert {entry["fingerprint"] for entry in entries} == {
         fact["fingerprint"] for fact in facts
     }
     assert sum(
         entry["classification"] == STATIC_CLASSIFICATION for entry in entries
-    ) == 16
+    ) == 17
     dynamic_entries = [
         entry
         for entry in entries

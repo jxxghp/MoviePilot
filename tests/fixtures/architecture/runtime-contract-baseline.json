@@ -1381,8 +1381,8 @@
     ]
   },
   "event_facts": {
-    "consumer_event_reference_count": 16,
-    "consumer_registration_count": 17,
+    "consumer_event_reference_count": 17,
+    "consumer_registration_count": 18,
     "consumers": [
       {
         "caller": "app.chain.download.facade",
@@ -1497,6 +1497,21 @@
         ],
         "fingerprint": "713e0ff077b9f76ea4b6695ca730dd2360f25059f677c1d6496cb2a4ffc8e1c4",
         "handler": "SubscribeChain.reconcile_rule_group_references",
+        "invalid": false,
+        "method": "register",
+        "priority": "<default>",
+        "qualname": "SubscribeChain",
+        "receiver_kind": "canonical_singleton",
+        "registration_kind": "decorator"
+      },
+      {
+        "caller": "app.chain.subscribe.facade",
+        "dynamic": false,
+        "events": [
+          "EventType.TransferComplete"
+        ],
+        "fingerprint": "ff208671796f8e35b6d88733b5038a1799f33f67db8e62e9f61189d4e91a4d8e",
+        "handler": "SubscribeChain.sync_library_progress_after_transfer",
         "invalid": false,
         "method": "register",
         "priority": "<default>",
@@ -1983,7 +1998,9 @@
         ]
       },
       "EventType.TransferComplete": {
-        "consumer_fingerprints": [],
+        "consumer_fingerprints": [
+          "ff208671796f8e35b6d88733b5038a1799f33f67db8e62e9f61189d4e91a4d8e"
+        ],
         "producer_fingerprints": [
           "6b3cb59b259d9ca82a52fe8376504ad848351c433d4427efd9b496874acdb1b2",
           "b9c576056cd1bea0a768eea4e927144e393e194c44a0f0b6f3fe1a86fe91ddd5"
@@ -2017,7 +2034,7 @@
         ]
       }
     },
-    "fact_count": 103,
+    "fact_count": 104,
     "invalid_consumer_count": 0,
     "invalid_producer_count": 0,
     "producer_call_count": 86,
@@ -3056,7 +3073,7 @@
         "receiver_kind": "canonical_singleton"
       }
     ],
-    "static_consumer_count": 16,
+    "static_consumer_count": 17,
     "static_producer_call_count": 85
   },
   "event_specs": {

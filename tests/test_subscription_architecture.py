@@ -254,6 +254,7 @@ def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
         "facade.py",
         "identity.py",
         "interaction.py",
+        "library.py",
         "match.py",
         "metadata.py",
         "music.py",
@@ -290,6 +291,7 @@ def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
         "_music_site_keywords",
         "reconcile_rule_group_references",
         "remove_site",
+        "sync_library_progress_after_transfer",
     }
 
     package = importlib.import_module("app.chain.subscribe")
@@ -339,6 +341,7 @@ def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
         "_reconcile_music_album_progress": "app.chain.subscribe.music",
         "_SubscribeChain__build_completion_notification": "app.chain.subscribe.notify",
         "_remove_site": "app.chain.subscribe.reconcile",
+        "_sync_library_progress_after_transfer": "app.chain.subscribe.library",
         "follow": "app.chain.subscribe.query",
         "remote_delete": "app.chain.subscribe.interaction",
         "get_episode_priority": "app.chain.subscribe.policy",
