@@ -1196,7 +1196,7 @@ def handler(event):
 
 def test_collect_event_facts_matches_current_host_inventory() -> None:
     """
-    统一事实覆盖当前 86 个 producer 调用与 17 个 consumer 调用。
+    统一事实覆盖当前 86 个 producer 调用与 18 个 consumer 调用。
     """
     facts = current_event_facts()
     producers = facts["producers"]
@@ -1207,10 +1207,10 @@ def test_collect_event_facts_matches_current_host_inventory() -> None:
     assert sum(fact["dynamic"] for fact in producers) == 1
     assert sum(fact["invalid"] for fact in producers) == 0
     assert sum(len(fact["events"]) for fact in producers) == 87
-    assert len(consumers) == 17
-    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in consumers) == 16
+    assert len(consumers) == 18
+    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in consumers) == 17
     assert sum(fact["dynamic"] for fact in consumers) == 1
     assert sum(fact["invalid"] for fact in consumers) == 0
-    assert sum(len(fact["events"]) for fact in consumers) == 16
+    assert sum(len(fact["events"]) for fact in consumers) == 17
     consumer_fingerprints = [fact["fingerprint"] for fact in consumers]
     assert len(consumer_fingerprints) == len(set(consumer_fingerprints))

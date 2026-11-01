@@ -10,6 +10,7 @@ import pytest
 
 from app.application.chain.events import restore_transfer_result, snapshot_transfer_result
 from app.application.subscription.contract import SubscriptionSnapshot
+from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.library import SubscribeLibraryOwner
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -73,6 +74,19 @@ def _build_event(filename: str, media_id: str = "874", end_episode: Optional[int
             "meta": meta,
         },
     )
+
+
+def test_subscribe_chain_transfer_complete_wrapper_delegates() -> None:
+    """
+    SubscribeChain 的公开事件包装器委托到入库事实 owner。
+    """
+    chain = object.__new__(SubscribeChain)
+    event = Event(EventType.TransferComplete, {})
+    chain._sync_library_progress_after_transfer = Mock()
+
+    chain.sync_library_progress_after_transfer(event)
+
+    chain._sync_library_progress_after_transfer.assert_called_once_with(event)
 
 
 def test_transfer_complete_records_delivered_episodes_as_library_facts() -> None:
