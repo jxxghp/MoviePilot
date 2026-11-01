@@ -47,7 +47,7 @@ dependencies = [
     "langgraph-checkpoint~=4.2.0",
     # 宿主飞书渠道已改用自研 OpenAPI 与长连接客户端，此 SDK 暂时保留给插件使用。
     "lark-oapi~=1.6.8",
-    "moviepilot-rust~=0.3.12",
+    "moviepilot-rust~=0.3.13",
     "mutagen~=1.47.0",
     "openai~=2.41.1",
     "orjson==3.12.0",
