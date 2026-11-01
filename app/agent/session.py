@@ -177,6 +177,16 @@ class AgentManagerUnavailableError(RuntimeError):
 
     code = "agent_manager_unavailable"
 
+    def __init__(self, *args: object, task_accepted: bool = True) -> None:
+        """
+        标明异常发生时是否可能已接收任务，供交互入口决定能否安全重试。
+
+        :param args: 原有异常说明，保持 RuntimeError 调用兼容
+        :param task_accepted: 默认按可能已执行处理；明确准入拒绝时为 False
+        """
+        super().__init__(*args)
+        self.task_accepted = task_accepted
+
 
 class AgentManagerQueueFullError(RuntimeError):
     """
@@ -184,6 +194,8 @@ class AgentManagerQueueFullError(RuntimeError):
     """
 
     code = "agent_manager_queue_full"
+    # 排队已满发生在入队前，可安全重试原交互。
+    task_accepted = False
 
     def __init__(self, session_id: str, limit: int) -> None:
         """
@@ -275,10 +287,7 @@ class AgentSessionOwner:
         status["shutdown_pending"] = bool(
             pending_shutdown and not pending_shutdown.done()
         )
-        status["is_processing"] = (
-            session_id in self._session_workers
-            and not self._session_workers[session_id].done()
-        )
+        status["is_processing"] = self.is_session_busy(session_id)
         inbox = self._session_steering_inboxes.get(session_id)
         status["steering_pending"] = inbox.pending_count if inbox else 0
         status["steering_active"] = bool(inbox and inbox.running)
@@ -322,9 +331,10 @@ class AgentSessionOwner:
 
     def is_session_busy(self, session_id: str) -> bool:
         """
-        查询会话是否仍有正在执行或排队的任务。
+        查询实际执行或排队状态，空闲等待消息的 worker 不计入。
         """
-        return self._is_session_busy(session_id)
+        queue = self._session_queues.get(session_id)
+        return session_id in self._session_active_tasks or bool(queue and not queue.empty())
 
     def _expired_idle_sessions(self) -> list[tuple[str, str]]:
         """
@@ -406,7 +416,7 @@ class AgentSessionOwner:
             if not self._accepting_tasks:
                 if completion_future and not completion_future.done():
                     completion_future.cancel()
-                raise AgentManagerUnavailableError("AgentManager 未运行或已关闭")
+                raise AgentManagerUnavailableError("AgentManager 未运行或已关闭", task_accepted=False)
             pending_shutdown = self._session_shutdown_pending.get(session_id)
             if pending_shutdown:
                 if pending_shutdown.done():
@@ -415,7 +425,7 @@ class AgentSessionOwner:
                     if completion_future and not completion_future.done():
                         completion_future.cancel()
                     raise AgentManagerUnavailableError(
-                        f"Agent 会话 {session_id} 仍在停止，暂时不能接收新任务"
+                        f"Agent 会话 {session_id} 仍在停止，暂时不能接收新任务", task_accepted=False,
                     )
             self._record_session_activity(session_id, user_id)
             if await self._try_steer_channel_message(task):
@@ -610,8 +620,8 @@ class AgentSessionOwner:
                             queue_wait_ms,
                             3,
                         )
-                    await self._start_task_processing_status(task)
                     self._session_active_tasks[session_id] = task
+                    await self._start_task_processing_status(task)
                     record_metric(
                         "agent.active_tasks",
                         1,

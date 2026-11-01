@@ -350,9 +350,9 @@ async def web_agent_callback(
             ),
         )
 
-    result = web_agent_application.resolve_web_agent_choice_payload(
+    result = await web_agent_application.resolve_and_save_web_agent_choice(
         callback_data=payload.callback_data,
-        user_id=str(current_user.id),
+        current_user=current_user,
     )
     if not result:
         return _SchemaResponse(success=False, message="该选择已失效，请重新发起选择")

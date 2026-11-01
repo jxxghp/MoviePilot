@@ -11,6 +11,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Optional,
 
 from app.agent.steering import SteeringMessage
 from app.application import agent as agent_application
+from app.application.messaging.interaction.agent import agent_interaction_manager
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.message import Message
@@ -244,13 +245,18 @@ def _build_web_agent_tool_event_callback(
     """
     构造结构化工具生命周期回调，确保快照与 SSE 使用同一事件顺序。
     """
+    tool_messages: dict[str, dict[str, Any]] = {}
 
     def tool_event_callback(event: dict[str, Any]) -> None:
         """
         投影工具开始、完成和失败事件。
         """
-        display_event = _attach_assistant_message_id(event, assistant_message_ref)
-        apply_display_event(display_event, assistant_message_ref["message"])
+        tool_id = str(event.get("tool_id") or event.get("tool_call_id") or "")
+        target = tool_messages.setdefault(tool_id, assistant_message_ref["message"]) if tool_id else assistant_message_ref["message"]
+        display_event = _attach_assistant_message_id(event, {"message": target})
+        if tool_id and target.get("id"):
+            display_event = {**display_event, "assistant_message_id": target["id"]}
+        apply_display_event(display_event, target)
         event_publisher.publish(display_event)
 
     return tool_event_callback
@@ -264,6 +270,32 @@ def _build_web_agent_files(command: Any) -> list[dict[str, Any]]:
     files = [file for file in command.files if str(file.get("ref") or "") not in audio_refs]
     files.extend({"ref": audio_ref, "mime_type": "audio/*"} for audio_ref in command.audio_refs)
     return files
+
+
+def _finish_web_agent_display_messages(
+    messages: list[dict[str, Any]],
+    apply_display_event: Callable[[dict[str, Any], dict[str, Any]], None],
+) -> None:
+    """
+    主运行终止时收口本轮所有助手段，保留工具已报告的终态。
+    """
+    for message in messages:
+        if message.get("role") == "assistant":
+            apply_display_event({"type": "done"}, message)
+
+
+def _prepare_web_agent_run(command: Any, current_user: Any, session_id: str) -> tuple[Any, Any, bool]:
+    """
+    确认执行服务和 Agent 工厂就绪后，才领取本次选择。
+    """
+    manager = agent_application.get_running_agent_manager()
+    if manager is None:
+        raise RuntimeError("智能助手服务尚未就绪，请稍后重试。")
+    agent_factory = agent_application.get_web_agent_type()
+    choice_id = str((command.choice_selection or {}).get("choice_id") or "")
+    if choice_id and agent_interaction_manager.claim_web_choice(choice_id, str(current_user.id), session_id) is None:
+        raise RuntimeError("该选择已领取执行")
+    return manager, agent_factory, bool(choice_id)
 
 
 def _build_web_agent_event_generator(
@@ -297,10 +329,10 @@ def _build_web_agent_event_generator(
         """
         后台执行 Agent，并在完成后持久化展示快照。
         """
+        choice_id = str((command.choice_selection or {}).get("choice_id") or "")
+        choice_claimed = False
         try:
-            runtime_manager = agent_application.get_running_agent_manager()
-            if runtime_manager is None:
-                raise RuntimeError("智能助手服务尚未就绪，请稍后重试。")
+            runtime_manager, agent_factory, choice_claimed = _prepare_web_agent_run(command, current_user, session_id)
             await runtime_manager.process_message(
                 session_id=session_id,
                 user_id=str(current_user.id),
@@ -318,13 +350,16 @@ def _build_web_agent_event_generator(
                 protected_output_callback=(protected_output_callback if protected_transport_supported else None),
                 message_callback=message_callback,
                 steering_status_callback=steering_status_callback,
-                agent_factory=agent_application.get_web_agent_type(),
+                agent_factory=agent_factory,
                 wait_for_completion=True,
             )
         except asyncio.CancelledError:
             # 显式停止会话沿用正常终止语义；服务关闭由 manager 的稳定异常分支处理。
             pass
         except Exception as err:
+            if choice_claimed and getattr(err, "task_accepted", True) is False:
+                agent_interaction_manager.release_web_choice(choice_id, str(current_user.id), session_id)
+                choice_claimed = False
             logger.error(f"Web智能助手执行失败: {str(err)}")
             error_event = _attach_assistant_message_id({
                 "type": "error",
@@ -334,10 +369,10 @@ def _build_web_agent_event_generator(
             event_publisher.publish(error_event)
         finally:
             done_event = _attach_assistant_message_id({"type": "done"}, assistant_message_ref)
-            dependencies.apply_display_event(done_event, assistant_message_ref["message"])
+            _finish_web_agent_display_messages(display_messages, dependencies.apply_display_event)
             # 终态先进入事件队列，避免展示快照落库延迟前端结束动画。
             event_publisher.publish(done_event)
-            if not is_secret_confirmation_control:
+            if not is_secret_confirmation_control and (not choice_id or choice_claimed):
                 try:
                     await dependencies.save_display_snapshot(
                         session_id=session_id,
@@ -425,14 +460,15 @@ def build_agent_web_agent_stream(
         audio_refs=command.audio_refs,
     )
     display_messages = []
-    if command.echo_user and not is_secret_confirmation_control:
+    if (command.echo_user or command.choice_selection) and not is_secret_confirmation_control:
         user_display_message = dependencies.build_display_message(
             role="user",
-            content=display_prompt or prompt,
+            content=(display_prompt or prompt) if command.echo_user else "",
             attachments=user_attachments,
         )
         if command.choice_selection:
             user_display_message["choice_selection"] = command.choice_selection
+            user_display_message["id"] = f"choice-selection-{command.choice_selection['choice_id']}"
         display_messages.append(user_display_message)
     assistant_display_message = dependencies.build_display_message(
         role="assistant",

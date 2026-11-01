@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9899,
-  "edge_sha256": "fa4b6dd62edd439a931b77de55e0debf482fcc09c2caa223027a214959df9124",
+  "edge_count": 9904,
+  "edge_sha256": "4fbaf07e93f98d96204ced4acdd8be21af9ac11e2a7c3aa9bbce1b4c0785a5b6",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3953,6 +3953,9 @@
     "app.application.messaging.webagent.stream -> app.agent.steering",
     "app.application.messaging.webagent.stream -> app.application",
     "app.application.messaging.webagent.stream -> app.application.agent",
+    "app.application.messaging.webagent.stream -> app.application.messaging",
+    "app.application.messaging.webagent.stream -> app.application.messaging.interaction",
+    "app.application.messaging.webagent.stream -> app.application.messaging.interaction.agent",
     "app.application.messaging.webagent.stream -> app.runtime",
     "app.application.messaging.webagent.stream -> app.runtime.log",
     "app.application.messaging.webagent.stream -> app.runtime.stop",
@@ -6785,6 +6788,8 @@
     "app.db.oper.agentchat -> app.db.models.agentchat",
     "app.db.oper.agentchat -> app.db.oper",
     "app.db.oper.agentchat -> app.db.oper.agentinvocation",
+    "app.db.oper.agentchat -> app.domain",
+    "app.db.oper.agentchat -> app.domain.chat",
     "app.db.oper.agentchat -> app.schemas",
     "app.db.oper.agentchat -> app.schemas.types",
     "app.db.oper.agentinvocation -> app.db",
@@ -10862,7 +10867,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1144,
+  "module_count": 1145,
   "modules": [
     "app",
     "app.adapters",
@@ -11539,6 +11544,7 @@
     "app.doctor.runner",
     "app.domain",
     "app.domain.artwork",
+    "app.domain.chat",
     "app.domain.classification",
     "app.domain.classification.conditions",
     "app.domain.classification.evaluator",

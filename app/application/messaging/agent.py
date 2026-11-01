@@ -10,7 +10,7 @@ import shutil
 import time
 import uuid
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -498,9 +498,9 @@ def _apply_web_agent_tool_event(event: dict[str, Any], assistant_message: dict[s
             matching_tool["status"] = tool_status
         return
 
-    # 兼容尚未升级的事件生产者：没有调用 ID 时只能把前一批提示视为已结束。
+    # 旧提示没有调用 ID，只收口上一条旧提示，保留结构化并行工具的实际状态。
     for tool in assistant_message["tools"]:
-        if tool.get("status") == "running":
+        if tool.get("status") == "running" and tool.get("tool_name") is None:
             tool["status"] = "done"
     tool_index = len(assistant_message["tools"])
     assistant_message["tools"].append(
@@ -566,14 +566,14 @@ def apply_web_agent_display_event(event: dict[str, Any], assistant_message: dict
             )
         for tool in assistant_message["tools"]:
             if tool.get("status") == "running":
-                tool["status"] = "done"
+                tool["status"] = "error"
     elif event_type == "done":
         assistant_message["thinking"] = False
         if assistant_message.get("status") != "error":
             assistant_message["status"] = "done"
         for tool in assistant_message["tools"]:
             if tool.get("status") == "running":
-                tool["status"] = "done"
+                tool["status"] = "done" if tool.get("tool_name") is None else "error"
 
 
 async def save_web_agent_display_snapshot(
@@ -1143,7 +1143,7 @@ def resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Option
         return None
 
     request_id, option_index = parsed
-    resolved = agent_interaction.agent_interaction_manager.resolve(
+    resolved = agent_interaction.agent_interaction_manager.resolve_web_choice(
         request_id=request_id,
         option_index=option_index,
         user_id=str(user_id),
@@ -1151,10 +1151,11 @@ def resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Option
     if not resolved:
         return None
 
-    request, option = resolved
+    request, option, already_selected = resolved
     buttons, button_rows = agent_interaction.build_agent_choice_button_rows(request)
     selected_description = option.description or option.label
     return {
+        "already_selected": already_selected,
         "message": option.value,
         "session_id": request.session_id,
         "display_message": selected_description,
@@ -1179,6 +1180,42 @@ def resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Option
             "button_rows": button_rows,
         },
     }
+
+
+async def resolve_and_save_web_agent_choice(
+    callback_data: str, current_user: AgentChatPrincipal,
+    service: Optional[AgentChatService] = None,
+    persistence: Optional[AgentChatPersistenceService] = None,
+) -> Optional[dict[str, Any]]:
+    """
+    校验会话归属并在返回选择反馈前持久化，失败不会派发 Agent。
+    """
+    parsed = agent_interaction.parse_agent_choice_callback(callback_data)
+    if parsed is None:
+        return None
+    request = agent_interaction.agent_interaction_manager.get_request(parsed[0], str(current_user.id))
+    if request is None:
+        return None
+    service = service or get_configured_agent_chat_service()
+    existing = await service.get(request.session_id)
+    if existing is not None and not can_access_agent_chat(existing, current_user):
+        return None
+    result = resolve_web_agent_choice_payload(callback_data, str(current_user.id))
+    if result is None:
+        return None
+    receipt = build_web_agent_display_message(role="user")
+    receipt["id"] = f"choice-selection-{request.request_id}"
+    receipt["choice_selection"] = result["choice_selection"]
+    try:
+        await save_web_agent_display_snapshot(
+            session_id=request.session_id, current_user=current_user, messages=[receipt],
+            service=service, persistence=persistence, append=True,
+        )
+    except Exception:
+        agent_interaction.agent_interaction_manager.finish_web_choice(request.request_id, str(current_user.id), persisted=False)
+        raise
+    agent_interaction.agent_interaction_manager.finish_web_choice(request.request_id, str(current_user.id), persisted=True)
+    return result
 
 
 def build_web_agent_message_events(
@@ -1654,6 +1691,22 @@ async def build_web_agent_stream(
         return WebAgentStreamResult(
             events=_single_web_agent_event({"type": "error", "message": "会话不存在或无权访问"})
         )
+    if command.choice_selection:
+        choice_id = str(command.choice_selection.get("choice_id") or "")
+        claimed = agent_interaction.agent_interaction_manager.get_web_choice(choice_id, str(current_user.id), session_id)
+        if claimed is None:
+            return WebAgentStreamResult(events=_single_web_agent_event({
+                "type": "error", "message": "该选择已处理或不属于当前会话",
+            }))
+        choice_request, option = claimed
+        canonical = resolve_web_agent_choice_payload(
+            agent_interaction.build_agent_choice_callback(choice_id, choice_request.selected_index or 1), str(current_user.id),
+        )
+        if canonical is None:
+            return WebAgentStreamResult(events=_single_web_agent_event({"type": "error", "message": "该选择已失效"}))
+        prompt = option.value
+        display_prompt = option.description or option.label
+        command = replace(command, text=prompt, display_text=display_prompt, choice_selection=canonical["choice_selection"])
     is_secret_confirmation_candidate = (
         prompt in {"确认", "取消"} and not command.images and not command.audio_refs and not command.files
     )
@@ -1678,7 +1731,7 @@ async def build_web_agent_stream(
             )
         )
 
-    is_traditional_message = not agent_interaction.is_agent_learning_command(prompt) and (
+    is_traditional_message = not command.choice_selection and not agent_interaction.is_agent_learning_command(prompt) and (
         is_web_agent_traditional_message(prompt) or has_web_agent_traditional_interaction(str(current_user.id))
     )
     if is_traditional_message:
@@ -1743,7 +1796,7 @@ async def build_web_agent_stream(
             )
         )
     # 活动 Agent 运行内的补充输入走同一张图；无活动运行时才创建新一轮。
-    steering_message = await submit_web_agent_steering(
+    steering_message = None if command.choice_selection else await submit_web_agent_steering(
         manager=manager,
         session_id=session_id,
         user_id=str(current_user.id),

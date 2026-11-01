@@ -252,6 +252,9 @@ class AgentChatOper(DbOper):
         )
         if not chat:
             return None
+        from app.domain.chat import merge_choice_state
+
+        normalized_messages = merge_choice_state(chat.display_messages or [], normalized_messages)
         normalized_title = (
             chat.title
             if self.has_custom_title(chat.title)

@@ -82,6 +82,9 @@ class PendingAgentInteraction:
     :param prompt: 向用户说明选择目的的提示正文
     :param options: 按展示顺序排列的可选项
     :param created_at: 会话创建的本地时间，用于计算过期时间
+    :ivar selected_index: 已确认的选项序号；未选择时为 None
+    :ivar selection_persisted: Web 选择结果是否已完成持久化
+    :ivar execution_claimed: Web 选择是否已交给一次 Agent 执行
     """
 
     request_id: str
@@ -94,6 +97,9 @@ class PendingAgentInteraction:
     prompt: str
     options: list[AgentInteractionOption]
     created_at: datetime = field(default_factory=datetime.now)
+    selected_index: Optional[int] = field(default=None, init=False)
+    selection_persisted: bool = field(default=False, init=False)
+    execution_claimed: bool = field(default=False, init=False)
 
 
 def build_agent_choice_button_rows(
@@ -202,6 +208,80 @@ class AgentInteractionManager:
         """
         with self._lock:
             self._pending_interactions.clear()
+
+    def get_request(self, request_id: str, user_id: str) -> Optional[PendingAgentInteraction]:
+        """
+        读取当前用户的交互归属，供异步会话授权使用，不消费请求。
+        """
+        with self._lock:
+            self._cleanup_locked()
+            request = self._pending_interactions.get(request_id)
+            return request if request and request.user_id == str(user_id) else None
+
+    def resolve_web_choice(
+        self, request_id: str, option_index: int, user_id: str,
+    ) -> Optional[tuple[PendingAgentInteraction, AgentInteractionOption, bool]]:
+        """
+        保留 Web 选择收据；重复按钮始终返回首次选项。
+        """
+        with self._lock:
+            self._cleanup_locked()
+            request = self._pending_interactions.get(request_id)
+            if not request or request.user_id != str(user_id) or not 1 <= option_index <= len(request.options):
+                return None
+            repeated = request.execution_claimed
+            if request.selected_index is None:
+                request.selected_index = option_index
+            return request, request.options[request.selected_index - 1], repeated
+
+    def finish_web_choice(self, request_id: str, user_id: str, *, persisted: bool) -> None:
+        """
+        确认选择落库；失败保留首次选项，重试不会换成另一按钮。
+        """
+        with self._lock:
+            request = self._pending_interactions.get(request_id)
+            if request is None or request.user_id != str(user_id):
+                return
+            if persisted:
+                request.selection_persisted = True
+
+    def get_web_choice(
+        self, request_id: str, user_id: str, session_id: str,
+    ) -> Optional[tuple[PendingAgentInteraction, AgentInteractionOption]]:
+        """
+        读取已落库的同一用户、同一会话选择，不领取执行。
+        """
+        with self._lock:
+            self._cleanup_locked()
+            request = self._pending_interactions.get(request_id)
+            if (request is None or request.user_id != str(user_id) or request.session_id != session_id
+                    or request.selected_index is None or not request.selection_persisted):
+                return None
+            return request, request.options[request.selected_index - 1]
+
+    def release_web_choice(self, request_id: str, user_id: str, session_id: str) -> None:
+        """
+        仅在执行入口明确拒绝接收任务时归还领取，允许原选项重试。
+        """
+        with self._lock:
+            request = self._pending_interactions.get(request_id)
+            if request and request.user_id == str(user_id) and request.session_id == session_id:
+                request.execution_claimed = False
+
+    def claim_web_choice(
+        self, request_id: str, user_id: str, session_id: str,
+    ) -> Optional[tuple[PendingAgentInteraction, AgentInteractionOption]]:
+        """
+        仅为同一用户和会话领取一次已落库选择，重复流请求不再执行业务。
+        """
+        with self._lock:
+            self._cleanup_locked()
+            request = self._pending_interactions.get(request_id)
+            if (request is None or request.user_id != str(user_id) or request.session_id != session_id
+                    or request.selected_index is None or not request.selection_persisted or request.execution_claimed):
+                return None
+            request.execution_claimed = True
+            return request, request.options[request.selected_index - 1]
 
 
 agent_interaction_manager = AgentInteractionManager()

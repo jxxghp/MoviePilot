@@ -1319,6 +1319,7 @@ driven workflow registration.
 | `app/application/server/report.py` | Server reporting use cases over injected local readers and transport callbacks |
 | `app/application/server/share.py` | Server sharing use cases over injected repositories and transport callbacks |
 | `app/domain/plugin.py` | Pure local-source, generation-compatibility and Release-install-plan rules |
+| `app/domain/chat.py` | 会话展示快照的纯选择状态合并规则；保留首次选择，不读取交互管理器或持久化服务 |
 | `app/adapters/external/plugin/client.py` | `PluginMarketTransport`, the unique market transport, index/Release and local-candidate owner |
 | `app/adapters/system/plugin/package.py` | `PluginPackageManager`, the unique install, checkpoint, backup, restore and physical-delete owner |
 | `app/adapters/system/plugin/dependency.py` | `PluginDependencyInstaller`, enabled-source dependency inspection and constrained per-plugin recovery owner; `async_install` has two completion-owned worker boundaries for request preparation and fallback planning, while package subprocess cancellation remains with `PluginRuntimeHealth` |

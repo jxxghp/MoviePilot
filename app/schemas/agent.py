@@ -279,6 +279,7 @@ class AgentWebCallbackData(BaseModel):
     """
 
     message: str = Field(description="下一条用户消息")
+    already_selected: bool = Field(default=False, description="选择是否已领取执行；为 True 时仅恢复首次反馈，不再派发消息")
     display_message: str = Field(default="", description="前端展示消息")
     session_id: Optional[str] = Field(default=None, description="Agent 会话 ID")
     traditional: bool = Field(default=False, description="是否为传统消息链回调")
