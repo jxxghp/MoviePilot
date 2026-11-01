@@ -71,7 +71,7 @@
       "app/chain/transfer/workflow.py:TransferWorkflowOwner._collect_transfer_candidates": 16,
       "app/chain/transfer/workflow.py:TransferWorkflowOwner._execute_transfer_tasks": 18,
       "app/chain/workflow.py:WorkflowExecutor.evaluate_target_state": 16,
-      "app/domain/meta/metaanime.py:MetaAnime.__init__": 46,
+      "app/domain/meta/metaanime.py:MetaAnime.__init__": 42,
       "app/domain/meta/metaanime.py:MetaAnime.__prepare_title": 16,
       "app/domain/meta/metabase.py:MetaBase.init_subtitle": 41,
       "app/domain/meta/metamusic.py:MetaMusic._parse_music_scene_tokens": 19,

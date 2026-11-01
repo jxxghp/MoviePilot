@@ -5,7 +5,7 @@
 import logging
 import re
 import traceback
-from typing import Optional
+from typing import Any, Optional
 
 import anitopy
 
@@ -35,6 +35,19 @@ TV_EPISODE_BRACKET_RE = re.compile(r"\[TV\s+(\d{1,4})", re.IGNORECASE)
 FOUR_K_BRACKET_RE = re.compile(r'\[4k]', re.IGNORECASE)
 NUMERIC_BRACKET_RE = re.compile(r"\[\d+", re.IGNORECASE)
 MIXED_CHINESE_TOKEN_RE = re.compile(r'[\d|#:：\-()（）\u4e00-\u9fff]')
+# 分类词仅在占据整个标签时排除，片名内部的 Movie、TV 和动画仍属于名称。
+ANIME_CATEGORY_LABEL_RE = re.compile(
+    r"^[★☆\s]*(?:(?:\d{2,4}年)?(?:\d{1,2}月|月)?新?番|(?:\d{2,4}年)?(?:日剧|美剧)|"
+    r"动漫|动画(?:片)?|Animations?(?:\(动画片\))?|Anime|Movie|"
+    r"TV(?:\s+(?:Series|\d{1,4}(?:-\d{1,4})?(?:\s+Fin)?))?)[★☆\s]*$",
+    re.IGNORECASE,
+)
+SUBTITLE_LABEL_RE = re.compile(
+    r"字幕|双语|雙語|简体|繁体|简繁|繁日|中日|国语|国配|招募|片源|翻译|翻譯|校对|校對|内封|外挂|中字"
+)
+LATIN_TITLE_RE = re.compile(r"[A-Za-z]")
+# 多词英文片名可能被 anitopy 误归为发布组，只在预处理后的标题位置允许恢复。
+RELEASE_GROUP_TITLE_RE = re.compile(r"[A-Za-z0-9]+(?:\s+[A-Za-z0-9]+)+")
 
 
 class MetaAnime(MetaBase):
@@ -74,15 +87,7 @@ class MetaAnime(MetaBase):
             title = self.__prepare_title(title)
             anitopy_info = anitopy.parse(title)
             if anitopy_info:
-                name = anitopy_info.get("anime_title")
-                if not name or name in self._anime_no_words or (len(name) < 5 and not text_tools.contains_chinese(name)):
-                    anitopy_info = anitopy.parse("[ANIME]" + title)
-                    if anitopy_info:
-                        name = anitopy_info.get("anime_title")
-                if not name or name in self._anime_no_words or (len(name) < 5 and not text_tools.contains_chinese(name)):
-                    name_match = BRACKET_TITLE_RE.search(title)
-                    if name_match and name_match.group(1):
-                        name = name_match.group(1).strip()
+                name = self._resolve_anime_name(title, original_title, anitopy_info, anitopy_info_origin)
                 if name:
                     _split_flag = True
                     if name.find("/") != -1:
@@ -211,6 +216,92 @@ class MetaAnime(MetaBase):
                 self.type = MediaType.TV
         except Exception as e:
             logger.error(f"解析动漫信息失败：{str(e)} - {traceback.format_exc()}")
+
+    @classmethod
+    def _invalid_anime_name(cls, name: Optional[str], release_groups: tuple[str, ...]) -> bool:
+        """
+        排除字幕、完整分类标签和已识别的发布组，保留片名内部的分类词。
+
+        :param name: 第三方解析器或方括号提供的候选标题
+        :param release_groups: 当前发布名中已识别的制作组名称
+        :return: 候选项是否不能作为真实片名
+        """
+        return (
+            not name
+            or name in cls._anime_no_words
+            or (len(name) < 5 and not text_tools.contains_chinese(name))
+            or bool(SUBTITLE_LABEL_RE.search(name))
+            or bool(ANIME_CATEGORY_LABEL_RE.fullmatch(name))
+            or name.casefold() in release_groups
+        )
+
+    @classmethod
+    def _resolve_anime_name(
+        cls, prepared: str, original: str, parsed: dict[str, Any], parsed_origin: dict[str, Any],
+    ) -> Optional[str]:
+        """
+        从原始解析和方括号恢复真实标题，只替换名称而不改写资源规格与季集字段。
+
+        :param prepared: 预处理后交给 anitopy 的发布名
+        :param original: 保留双语片名和发布组的原始发布名
+        :param parsed: 预处理后的第三方解析结果
+        :param parsed_origin: 原始发布名的第三方解析结果
+        :return: 有效标题；只有分类或规格标签时返回 None
+        """
+        matched_group = ReleaseGroupsMatcher().match(title=original)
+        release_groups = tuple(
+            group.casefold() for group in (matched_group, parsed_origin.get("release_group")) if group
+        )
+        origin_name = parsed_origin.get("anime_title")
+        for name in (parsed.get("anime_title"), cls._recovered_anime_name(origin_name)):
+            if not cls._invalid_anime_name(name, release_groups):
+                return name
+        retry_name: Optional[str] = anitopy.parse("[ANIME]" + prepared).get("anime_title")
+        if not cls._invalid_anime_name(retry_name, release_groups):
+            return retry_name
+        # 只允许预处理后第一个方括号中的多词英文名突破第三方发布组误判。
+        first_bracket = BRACKET_TITLE_RE.search(prepared)
+        configured_groups = (matched_group.casefold(),) if matched_group else ()
+        if first_bracket:
+            name = first_bracket.group(1).strip()
+            if RELEASE_GROUP_TITLE_RE.fullmatch(name) and not cls._invalid_anime_name(name, configured_groups):
+                return name
+        return cls._bracket_anime_name(original, release_groups)
+
+    @staticmethod
+    def _recovered_anime_name(name: Optional[str]) -> Optional[str]:
+        """
+        双语方括号名称恢复时优先保留英文片名，与既有预处理的结果一致。
+
+        :param name: 原始解析器或方括号给出的候选名称
+        :return: 可用英文名称，或不含英文时的右侧名称；空值保持不变
+        """
+        if not name or "/" not in name:
+            return name
+        parts = [part.strip() for part in name.split("/")]
+        return next((part for part in parts if LATIN_TITLE_RE.search(part)), parts[-1])
+
+    @classmethod
+    def _bracket_anime_name(cls, original: str, release_groups: tuple[str, ...]) -> Optional[str]:
+        """
+        第三方解析失败时，从原始方括号中跳过发布组、分类和资源规格后恢复标题。
+
+        :param original: 未丢失中文或双语名称的原始发布名
+        :param release_groups: 已识别发布组的大小写折叠值
+        :return: 第一个有效候选名称，没有真实片名时返回 None
+        """
+        for match in BRACKET_TITLE_RE.finditer(original.replace("【", "[").replace("】", "]")):
+            name = cls._recovered_anime_name(match.group(1).strip("[] "))
+            if not name or cls._invalid_anime_name(name, release_groups) or name.isdigit():
+                continue
+            metadata = anitopy.parse(f"[{name}]")
+            if any(field in metadata for field in (
+                "video_resolution", "video_term", "audio_term", "source", "file_extension", "file_checksum",
+                "anime_year", "episode_number",
+            )):
+                continue
+            return name
+        return None
 
     def __init_anime_fps(self, anitopy_info: dict[str, object], original_title: str) -> None:
         """
