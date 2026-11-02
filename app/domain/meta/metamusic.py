@@ -2332,6 +2332,11 @@ class MetaMusic(MetaBase):
             parse_title=True,
         )
         if title_from_name and filename_meta.title:
+            # 「艺人 - 曲名」分支不剥离扩展名，曲名可能残留 `.strm` 等后缀，
+            # 后续命名模板再拼 fileExt 就会写出 `xxx.strm.strm`，这里统一清理。
+            suffix = file_path.suffix
+            if suffix and filename_meta.title.lower().endswith(suffix.lower()):
+                filename_meta.title = filename_meta.title[: -len(suffix)].rstrip()
             self.title = filename_meta.title
             self.field_sources["title"] = "filename"
         for field_name in (
