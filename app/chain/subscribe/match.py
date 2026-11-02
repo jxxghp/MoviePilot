@@ -155,23 +155,16 @@ def _is_title_match_allowed(
     torrent_info: TorrentInfo,
 ) -> bool:
     """
-    判断资源是否可以通过标题兜底匹配订阅目标。
+    判断识别不到作品的资源能否按标题或别名对上订阅目标。
+
+    只有资源自身识别不到作品时才会走到这里，没有反证；无年份别名也按订阅目标处理，
+    宁可偶尔下错同名作品，也不能让资源一直下不下来。
     """
-    if not TorrentHelper.match_torrent(
+    return TorrentHelper.match_torrent(
         mediainfo=mediainfo,
         torrent_meta=torrent_meta,
         torrent=torrent_info,
-    ):
-        return False
-    if not TorrentHelper.requires_identity_disambiguation(
-        mediainfo=mediainfo,
-        torrent_meta=torrent_meta,
-    ):
-        return True
-    logger.debug(
-        f"{torrent_info.site_name} - {torrent_info.title} 仅通过无年份别名命中且候选媒体身份无法确认，已跳过"
     )
-    return False
 
 
 def _get_media_id_match_source(mediainfo: Optional[MediaInfo]) -> str:

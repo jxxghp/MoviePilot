@@ -311,3 +311,19 @@ def test_same_numeric_id_from_different_source_is_rejected(candidate_source: Med
     assert context.media_info is candidate
     assert context.candidate_recognized is True
     assert context.media_info_is_target is False
+
+
+def test_unrecognized_no_year_alias_resource_matches_subscription():
+    """
+    资源自身识别不到作品时没有反证，无年份英文别名也按订阅目标处理，避免资源一直下不下来。
+    """
+    from app.chain.subscribe.match import _is_title_match_allowed
+    from app.domain.metainfo import MetaInfo
+
+    target = MediaInfo(media_source=MediaSource.TMDB, media_id="96102", tmdb_id=96102, type=MediaType.TV,
+                       title="机智的医生生活", original_title="슬기로운 의사생활", names=["Hospital Playlist"],
+                       year="2020", season_years={1: "2020", 2: "2021"})
+    title = "Hospital Playlist S02 1080p NF WEB-DL DDP2.0 x264-DoA"
+    meta = MetaInfo(title=title)
+    assert _is_title_match_allowed(mediainfo=target, torrent_meta=meta,
+                                   torrent_info=TorrentInfo(title=title, site_name="测试站点"))

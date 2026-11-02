@@ -991,12 +991,14 @@ class TorrentHelper:
             torrent_meta: MetaBase,
     ) -> Tuple[bool, str]:
         """
-        判断媒体 ID 冲突时是否存在足以覆盖候选识别的同作品证据。
+        判断无年份别名资源能否按订阅目标处理，只有明确属于另一部作品时才拒绝。
 
-        TMDB 的电影与电视剧数字 ID 不可跨类型比较；类型冲突时仍需资源精确年份、
-        其他共同标识或一致的作品元数据，不能仅凭相同 TMDB ID 覆盖候选。
+        同名撞车偶尔下错的代价远低于资源一直下不下来：原名或语言不同、候选条目没有首播日期
+        （多为未播出或残缺的重复条目）都不足以否定目标，按目标处理。唯一拒绝的情况是候选是另一部
+        已播出作品，且首播年份与目标及其各季年份都对不上，例如 2024 年韩剧的英文别名撞上 2008 年同名美剧。
+        TMDB 的电影与电视剧数字 ID 不可跨类型比较。
 
-        :return: 是否有同作品证据，以及用于诊断的证据或拒绝原因
+        :return: 是否按目标处理，以及给用户看的依据或拒绝原因
         """
         target_identity = resolve_media_identity(media=target_mediainfo)
         candidate_identity = resolve_media_identity(media=candidate_mediainfo)
@@ -1004,60 +1006,35 @@ class TorrentHelper:
         if all(target_identity) and target_identity == candidate_identity and (
                 same_type or target_identity[0] != MediaSource.TMDB
         ):
-            return True, f"媒体身份 {target_identity[0]}:{target_identity[1]}"
+            return True, "识别结果就是订阅的作品"
 
-        torrent_year = str(getattr(torrent_meta, "year", None) or "")[:4]
+        candidate_year = str(candidate_mediainfo.year or "")[:4]
+        if not candidate_year:
+            return True, f"按名字查到的《{candidate_mediainfo.title}》没有首播日期，不能说明是另一部作品"
+
         target_years = {
             str(year)[:4]
-            for year in (
-                [getattr(target_mediainfo, "year", None)]
-                + list((getattr(target_mediainfo, "season_years", None) or {}).values())
-            )
+            for year in [target_mediainfo.year, *(target_mediainfo.season_years or {}).values()]
             if year
         }
-        if torrent_year and torrent_year in target_years:
-            return True, f"资源年份 {torrent_year}"
+        torrent_year = str(torrent_meta.year or "")[:4]
+        if candidate_year in target_years or (torrent_year and torrent_year in target_years):
+            return True, "年份与订阅的作品一致"
 
         for field in ("tmdb_id", "imdb_id", "tvdb_id", "douban_id", "bangumi_id"):
             if field == "tmdb_id" and not same_type:
                 continue
-            target_id = getattr(target_mediainfo, field, None)
-            candidate_id = getattr(candidate_mediainfo, field, None)
+            target_id = getattr(target_mediainfo, field)
+            candidate_id = getattr(candidate_mediainfo, field)
             if target_id and candidate_id and str(target_id) == str(candidate_id):
-                return True, f"共同 {field}"
+                return True, "与订阅的作品有相同的媒体编号"
 
-        target_year = str(getattr(target_mediainfo, "year", None) or "")[:4]
-        candidate_year = str(getattr(candidate_mediainfo, "year", None) or "")[:4]
-        if target_year and candidate_year and target_year != candidate_year:
-            return False, f"首播年份冲突 {candidate_year} != {target_year}"
-
-        target_original_title = text_tools.normalize_upper(
-            getattr(target_mediainfo, "original_title", None) or ""
+        if not target_years:
+            return True, "订阅的作品没有年份可以比较"
+        return False, (
+            f"按名字查到的是另一部作品《{candidate_mediainfo.title}》（{candidate_year}），"
+            f"和订阅的《{target_mediainfo.title}》（{target_mediainfo.year}）首播年份不同"
         )
-        candidate_original_title = text_tools.normalize_upper(
-            getattr(candidate_mediainfo, "original_title", None) or ""
-        )
-        if (
-                target_original_title
-                and candidate_original_title
-                and target_original_title != candidate_original_title
-        ):
-            return False, "原始标题冲突"
-
-        target_language = str(
-            getattr(target_mediainfo, "original_language", None) or ""
-        ).casefold()
-        candidate_language = str(
-            getattr(candidate_mediainfo, "original_language", None) or ""
-        ).casefold()
-        if target_language and candidate_language and target_language != candidate_language:
-            return False, f"原始语言冲突 {candidate_language} != {target_language}"
-
-        if target_year and candidate_year:
-            return True, f"共同首播年份 {target_year}"
-        if target_original_title and candidate_original_title:
-            return True, "共同原始标题"
-        return False, "资源无年份，候选与目标也没有可核验的共同元数据"
 
     @staticmethod
     def filter_torrent(torrent_info: TorrentInfo,

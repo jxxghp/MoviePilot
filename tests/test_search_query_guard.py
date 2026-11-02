@@ -82,7 +82,7 @@ def checkpoint(scan: SearchScan) -> SearchSessionSnapshot:
 
 def test_third_unmatched_page_releases_other_site_candidate(search):
     """
-    异常站点恰好请求 3 页，随后提交另一站点早已匹配的电影，而不是等待 20 页。
+    另一站点第一页已匹配电影时，各站第一页到齐就提交，不等异常站点翻页。
     """
     owner, data, calls = search
     data[1, 0] = [resource(1, 0, matched=True)]
@@ -92,15 +92,15 @@ def test_third_unmatched_page_releases_other_site_candidate(search):
 
     def submit(items, ready):
         """
-        记录提交发生时的请求边界，确认尚未请求异常来源第 4 页。
+        记录提交发生时的请求边界，确认异常来源只请求了第一页。
         """
         batches.append((list(calls), [item.torrent_info.site for item in items]))
         return ready
 
     scan.run(submit)
-    assert batches == [([(1, 0), (2, 0), (1, 1), (2, 1), (2, 2)], [1])]
+    assert batches == [([(1, 0), (2, 0)], [1])]
     source = scan.collection.sources["2:tt4633694"]
-    assert source.unmatched_pages == 3 and source.limit_reached
+    assert source.unmatched_pages == 1
     assert not source.exhausted and not source.failed
     assert scan.ended and not scan.collection.remaining
 

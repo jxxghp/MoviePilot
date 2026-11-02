@@ -173,22 +173,26 @@ def _same_work_matched(
     cache: DisambiguationCache,
 ) -> bool:
     """
-    确认无年份别名候选与目标媒体属于同一作品。
+    无年份资源只靠别名对上订阅时，按名字再识别一次；只有明确属于另一部作品才跳过。
+
+    识别不到不算反证：宁可偶尔下错同名作品，也不能让资源一直下不下来。
     """
     key = _disambiguation_key(torrent_meta)
     if key not in cache:
         cache[key] = MediaChain().recognize_by_meta(torrent_meta, obtain_images=False)
     candidate = cache[key]
     if not candidate:
-        logger.info(f"{torrent.site_name} - {torrent.title} 仅通过无年份别名命中且候选媒体身份无法确认，已跳过")
-        return False
+        logger.debug(f"{torrent.site_name} - {torrent.title} 资源名没有年份，按名字也识别不到作品，按订阅的作品处理")
+        return True
     matched, evidence = TorrentHelper.match_same_work_evidence(
         target_mediainfo=mediainfo,
         candidate_mediainfo=candidate,
         torrent_meta=torrent_meta,
     )
-    if not matched:
-        logger.info(f"{torrent.site_name} - {torrent.title} 无年份同名候选未通过消歧：{evidence}")
+    if matched:
+        logger.debug(f"{torrent.site_name} - {torrent.title} 资源名没有年份，{evidence}，按订阅的作品处理")
+    else:
+        logger.info(f"跳过 {torrent.title}（{torrent.site_name}）：资源名没有年份，{evidence}")
     return matched
 
 

@@ -41,12 +41,15 @@ class SubscriptionSearchDeferred(RuntimeError):
 
     def __init__(
         self, *, retry_at: str, site_ids: tuple[int, ...], wait_reason: Optional[str] = None,
+        message: Optional[str] = None,
     ) -> None:
         """
         保存队列恢复所需的时间和站点，避免把临时等待写成错误。
+
+        :param message: 给用户看的等待说明，例如在等哪个站、为什么、几点继续；短暂停顿不传
         """
-        messages = {"slice": "分页进度已保存，等待下一时间片", "cooldown": "站点冷却中"}
-        super().__init__(messages.get(wait_reason or "", "等待站点"))
+        messages = {"rate_limit": "站点设置的访问次数已用完，到时自动继续", "busy": "站点正在被其他订阅搜索，稍等自动继续"}
+        super().__init__(message or messages.get(wait_reason or "", "正在搜索"))
         self.retry_at = retry_at
         self.site_ids = site_ids
         self.wait_reason = wait_reason
@@ -63,15 +66,28 @@ class SubscriptionSiteBudgetUnavailable(RuntimeError):
         site_id: int,
         retry_at: str,
         wait_reason: Optional[str] = None,
+        consecutive_failures: int = 0,
+        last_error: Optional[str] = None,
     ) -> None:
         """
         保存站点和下一次可尝试时间，供订阅队列恢复。
+
+        :param wait_reason: busy 其他订阅正在用该站，cooldown 两次请求之间的间隔，
+            rate_limit 站点设置的访问次数已用完，failing 站点最近搜索出错、暂停访问中
+        :param consecutive_failures: 该站点连续失败次数，用于判断是否需要提醒用户检查站点
+        :param last_error: 该站点最近一次失败的原因，给用户看
         """
-        message = "站点正在处理其他搜索，稍后会自动继续" if wait_reason == "busy" else "站点暂时不可用，稍后会自动重试"
-        super().__init__(message)
+        messages = {
+            "busy": "站点正在被其他订阅搜索",
+            "rate_limit": "站点设置的访问次数已用完",
+            "failing": f"站点最近搜索出错：{last_error}" if last_error else "站点最近搜索出错",
+        }
+        super().__init__(messages.get(wait_reason or "", "两次搜索之间需要间隔一会儿"))
         self.site_id = site_id
         self.retry_at = retry_at
         self.wait_reason = wait_reason
+        self.consecutive_failures = consecutive_failures
+        self.last_error = last_error
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +100,8 @@ class SiteBudgetClaim:
     :param retry_at: 该站点最早可再次尝试的时间文本
     :param consecutive_failures: 该站点连续失败次数，用于计算后续冷却
     :param lease_token: 当前认领者的租约令牌；未取得租约时为 None
-    :param wait_reason: 等待原因，例如在途占用、冷却或时间片耗尽
+    :param wait_reason: 等待原因，取值见 SubscriptionSiteBudgetUnavailable
+    :param last_error: 该站点最近一次失败的原因；从未失败或已恢复时为 None
     """
 
     site_id: int
@@ -93,6 +110,7 @@ class SiteBudgetClaim:
     consecutive_failures: int
     lease_token: Optional[str] = None
     wait_reason: Optional[str] = None
+    last_error: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,6 +319,8 @@ class SubscriptionSiteBudget:
             site_id=site_id,
             retry_at=claim.retry_at,
             wait_reason=claim.wait_reason,
+            consecutive_failures=claim.consecutive_failures,
+            last_error=claim.last_error,
         )
 
     def _report_phase(self, phase: str, site_id: Optional[int]) -> None:

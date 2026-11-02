@@ -25,6 +25,7 @@ class SubscriptionExecutionStatus:
     :param next_run_at: 下一次允许执行的时间文本；没有计划时为 None
     :param error: 可展示的错误摘要；无错误时为 None
     :param can_cancel: 当前状态是否支持用户取消
+    :param submitted_count: 本次任务已添加的下载数量，用于区分「已添加下载」与「暂无资源」；旧活动为 0
     """
 
     state: str
@@ -37,6 +38,7 @@ class SubscriptionExecutionStatus:
     next_run_at: Optional[str] = None
     error: Optional[str] = None
     can_cancel: bool = False
+    submitted_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +251,7 @@ class SubscriptionExecutionStatusService:
             updated_at=task.updated_at,
             error=cls._safe_error(task.last_error),
             can_cancel=state in cls._ACTIVE_STATES,
+            submitted_count=task.download_counts.get("submitted", 0),
         )
 
     @classmethod

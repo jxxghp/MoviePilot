@@ -433,7 +433,13 @@ class TransactionalSubscriptionSearchRepository:
                 and record.lease_expires_at > now.isoformat(timespec="seconds")
             )
             if not acquired and cooldown_active:
-                wait_reason = "cooldown"
+                # 出错后的暂停与站点访问次数限制要和普通请求间隔分开，调用方据此决定本轮跳过还是等待。
+                if record.last_outcome == "deferred":
+                    wait_reason = "rate_limit"
+                elif record.last_outcome not in {None, "success", "skipped"}:
+                    wait_reason = "failing"
+                else:
+                    wait_reason = "cooldown"
             elif not acquired and lease_busy:
                 wait_reason = "busy"
                 short_retry = (now + timedelta(seconds=_BUSY_SITE_RETRY_SECONDS)).isoformat(
@@ -447,6 +453,7 @@ class TransactionalSubscriptionSearchRepository:
                 consecutive_failures=record.consecutive_failures,
                 lease_token=record.lease_token if acquired else None,
                 wait_reason=wait_reason,
+                last_error=record.last_error,
             )
 
         return self._write(operation)

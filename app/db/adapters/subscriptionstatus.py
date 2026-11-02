@@ -2,7 +2,8 @@
 订阅执行状态的请求级异步 SQLAlchemy 适配器。
 """
 
-from typing import Optional
+from dataclasses import replace
+from typing import Any, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,14 +13,21 @@ from app.db.models.subscribeactivity import SubscribeActivity
 from app.db.models.subscriptionsearch import SubscriptionSearchBatch, SubscriptionSearchTask
 
 
+def _download_counts(counts: dict[str, Any]) -> dict[str, int]:
+    """
+    从活动计数中取出成功提交的分类计数。
+    """
+    return {key: value for key, value in counts.items()
+            if key in {"submitted", "initial_submitted", "upgrade_submitted", "full_upgrade_submitted"}
+            and isinstance(value, int)}
+
+
 def _task(record: SubscriptionSearchTask, activity: Optional[SubscribeActivity] = None) -> SearchTaskSnapshot:
     """
     复制可脱离 AsyncSession 使用的搜索任务快照。
     """
     return SearchTaskSnapshot(
-        download_counts={key: value for key, value in (activity.counts if activity else {}).items()
-                         if key in {"submitted", "initial_submitted", "upgrade_submitted", "full_upgrade_submitted"}
-                         and isinstance(value, int)},
+        download_counts=_download_counts(activity.counts if activity else {}),
         downloads=tuple({**resource, "subscription_id": record.subscription_id, "task_id": record.task_id}
                         for resource in (activity.details.get("resources", []) if activity else [])
                         if isinstance(resource, dict) and resource.get("decision") == "submitted"),
@@ -96,7 +104,16 @@ class SessionSubscriptionExecutionStatusRepository:
         snapshots: dict[int, SearchTaskSnapshot] = {}
         for record in result.scalars().all():
             snapshots.setdefault(record.subscription_id, _task(record))
-        return snapshots
+        if not snapshots:
+            return snapshots
+        # 列表只需要提交计数，单独读取最新任务的 counts，避免带出活动明细大字段。
+        counts = await self._session.execute(
+            select(SubscribeActivity.event_id, SubscribeActivity.counts)
+            .where(SubscribeActivity.event_id.in_([task.task_id for task in snapshots.values()]))
+        )
+        by_task = {event_id: value for event_id, value in counts.all()}
+        return {subscription_id: replace(task, download_counts=_download_counts(by_task.get(task.task_id) or {}))
+                for subscription_id, task in snapshots.items()}
 
     async def list_batches(self, *, limit: int) -> list[SearchBatchSnapshot]:
         """

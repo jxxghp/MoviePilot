@@ -234,7 +234,7 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
                       page_limit=1 if strategy == "single_page" else None,
                       execution=execution_context, repository=repository, snapshot=snapshot,
                       target_scope=(subscribe.start_episode or 1, subscribe.total_episode or 0),
-                      prefer_complete=prefer_initial_pack)
+                      prefer_complete=prefer_initial_pack, complete_scan=strategy == "full")
     if execution_context:
         execution_context.incremental_search = True
 

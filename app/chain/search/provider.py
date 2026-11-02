@@ -2,6 +2,7 @@
 站点与插件资源搜索的并发分发、预算控制与结果归集。
 """
 
+import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from contextlib import aclosing
@@ -41,6 +42,37 @@ from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
 
 SiteIndexer = Dict[str, Any]
 SyncPending = dict[Future[Any], tuple[SiteIndexer, int, int]]
+
+# 站点连续搜索失败达到该次数后，订阅搜索跳过它时在日志里提醒检查站点。
+SITE_FAILING_NOTICE_FAILURES = 3
+# 同一站点提醒的间隔，单位为秒；跳过发生在每个订阅的每一轮，不能每次都写警告。
+SITE_FAILING_NOTICE_SECONDS = 24 * 3600
+_site_failing_noticed_at: Dict[int, float] = {}
+_site_failing_notice_lock = threading.Lock()
+
+
+def log_site_skipped(site: SiteIndexer, error: SubscriptionSiteBudgetUnavailable, *, subject: str = "") -> None:
+    """
+    订阅搜索跳过出错暂停中的站点时写日志；连续失败较多时每天给一次带处理建议的警告。
+
+    只写日志不发通知，提醒时间只保存在进程内，重启后会再警告一次。
+
+    :param subject: 日志开头的订阅名称，没有时省略
+    """
+    name = site.get("name") or f"站点 {error.site_id}"
+    prefix = f"{subject} " if subject else ""
+    logger.info(f"{prefix}这一轮先跳过 {name}：{error}")
+    if error.consecutive_failures < SITE_FAILING_NOTICE_FAILURES:
+        return
+    now = time.time()
+    with _site_failing_notice_lock:
+        if now - _site_failing_noticed_at.get(error.site_id, 0.0) < SITE_FAILING_NOTICE_SECONDS:
+            return
+        _site_failing_noticed_at[error.site_id] = now
+    reason = f"最近一次错误：{error.last_error}。" if error.last_error else ""
+    logger.warning(f"站点 {name} 最近连续 {error.consecutive_failures} 次搜索都失败了，订阅搜索会先跳过它。{reason}"
+                   "请检查站点能否正常访问（Cookie、登录信息或网络），不再使用可以在站点管理里停用")
+
 
 def _site_keyword(site: SiteIndexer, keyword: str, mediainfo: Optional[MediaInfo]) -> str:
     """
@@ -390,6 +422,12 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         try:
             claim = budget.acquire(site_id)
         except SubscriptionSiteBudgetUnavailable as error:
+            if error.wait_reason == "failing":
+                # 出错暂停中的站点这一轮直接不搜，用其他站点的结果继续，不让整个订阅等它。
+                if activity:
+                    activity.site(error.site_id, name=str(site.get("name") or ""), status="failed")
+                log_site_skipped(site, error)
+                return []
             if activity:
                 activity.site(error.site_id, name=str(site.get("name") or ""), status="waiting")
             self.record_subscription_site_budget_deferred(

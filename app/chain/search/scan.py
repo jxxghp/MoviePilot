@@ -35,6 +35,7 @@ from app.chain.search.provider import (
     _site_rate_limit_backoff,
     _site_request_interval,
     _wait_for_site_request,
+    log_site_skipped,
 )
 from app.chain.search.result import DisambiguationCache, SearchResultOwner, _resource_targets, stored_meta
 from app.domain.context import Context, MediaInfo, TorrentInfo
@@ -52,11 +53,26 @@ RESTART_AFTER_SECONDS = 36 * 3600
 _CHECKPOINT_FORMAT = 3
 # 重取临时下载票据所在原页连续失败达到该次数后放弃该候选，避免一个候选卡住整个订阅。
 RECOVERY_ATTEMPTS = 3
-# 单个来源本轮因站点预算长冷却被推迟达到该次数后结算该来源：检查点随本轮结束删除，下一轮重新尝试，
-# 既打破"全部来源结束才提交"的屏障死锁，也不永久拉黑偶尔不可用的站点。
-BUDGET_DEFERRAL_LIMIT = 3
-# 只累计不短于该秒数的冷却推迟；请求间隔与并发租约的秒级等待是健康站点噪声，不计入。
-BUDGET_DEFERRAL_SECONDS = 600.0
+# 站点要等超过该秒数才能再请求时，本轮不再等它，先用其他站点的结果提交，下一轮重新带上；
+# 出错暂停中的站点不论要等多久都直接跳过。请求间隔、其他订阅占用这类短暂停顿照常等待。
+LONG_WAIT_SECONDS = 600.0
+# 等待超过该秒数才写入常规日志；更短的停顿是正常搜索节奏，只写调试日志。
+VISIBLE_WAIT_SECONDS = 120.0
+# 站点出错暂停或要等太久时，来源在本轮记为这两类结果并跳过；下一轮重新搜索。
+SKIPPED_THIS_ROUND = frozenset({"unavailable", "deferred"})
+# 等待原因给用户看的说明，接在站点名后面。
+_WAIT_REASON_TEXT = {
+    "rate_limit": "设置的访问次数已用完",
+    "busy": "正在被其他订阅搜索",
+    "cooldown": "两次搜索之间需要间隔一会儿",
+}
+
+
+def _local_time(value: str) -> str:
+    """
+    把检查点里的 UTC 时间转成用户所在时区的「时:分」，用于日志和状态说明。
+    """
+    return datetime.fromisoformat(value).astimezone().strftime("%H:%M")
 
 
 def search_targets(plan: MediaSearchPlan) -> set[str]:
@@ -87,12 +103,14 @@ class ScanPage:
     :param observation: 本次站点请求的成功、失败和分页观察事实
     :param retry_at: 因预算或流控延迟时允许恢复的 UTC 时间字符串，None 表示未延迟
     :param wait_reason: 需要暂缓本页请求的原因，None 表示未延迟
+    :param unavailable: 站点预算拒绝本次请求的原因与站点失败情况，只在预算拒绝时存在
     """
 
     torrents: list[TorrentInfo]
     observation: SiteSearchObservation
     retry_at: Optional[str] = None
     wait_reason: Optional[str] = None
+    unavailable: Optional[SubscriptionSiteBudgetUnavailable] = None
 
 
 class SearchSources:
@@ -168,8 +186,10 @@ class SearchSources:
                                        minimum_interval=max(AUTOMATIC_REQUEST_INTERVAL, _site_request_interval(site)))
             except SubscriptionSiteBudgetUnavailable as error:
                 if self.activity:
-                    self.activity.site(error.site_id, name=str(site.get("name") or ""), status="waiting")
-                return ScanPage([], SiteSearchObservation(error=str(error)), error.retry_at, error.wait_reason)
+                    # 出错暂停的站本轮直接跳过，活动里记为失败，不显示成「等待继续」。
+                    self.activity.site(error.site_id, name=str(site.get("name") or ""),
+                                       status="failed" if error.wait_reason == "failing" else "waiting")
+                return ScanPage([], SiteSearchObservation(error=str(error)), error.retry_at, error.wait_reason, error)
         with capture_site_search_observation() as observation:
             deferral_seconds = 0.0
             try:
@@ -182,7 +202,7 @@ class SearchSources:
                     # 本地流控未发出请求，只按实际受限规则退避，不能把短间隔扩大为小时计数窗口。
                     deferral_seconds = _site_rate_limit_backoff(site, observation.error) or float(AUTOMATIC_REQUEST_INTERVAL)
                     retry_at = (datetime.now(timezone.utc) + timedelta(seconds=deferral_seconds)).isoformat(timespec="seconds")
-                    return ScanPage(items, observation, retry_at, "cooldown")
+                    return ScanPage(items, observation, retry_at, "rate_limit")
                 if claim and budget:
                     budget.record_request(claim.site_id, len(items))
                     if observation.outcome == "success":
@@ -213,11 +233,14 @@ class SearchScan:
         target_scope: Optional[tuple[int, int]] = None,
         page_limit: Optional[int] = None,
         prefer_complete: bool = False,
+        complete_scan: Optional[bool] = None,
     ) -> None:
         """
         创建或恢复一轮搜索，候选与匹配前史由检查点一起持有。
 
         :param prefer_complete: 提交分集前先准备覆盖全部目标的候选；由订阅当前整包优先策略决定
+        :param complete_scan: 是否翻完所有页再择优（用户选了完整搜索或洗版）；否则各站第一页到齐就先提交，
+            凑不齐的目标再继续翻页。未指定时跟随 full
         """
         if not isinstance(plan.mediainfo, MediaInfo):
             raise ValueError("分页影视搜索不适用于音乐")
@@ -225,11 +248,12 @@ class SearchScan:
         self.owner, self.plan, self.execution = cast(_SearchOwnerBase, owner), plan, execution
         self.repository, self.snapshot = repository, snapshot
         targets = search_targets(plan)
-        # 整季缺失即使展开为逐集结算目标，也必须保留整季收集屏障。
+        # 整季缺失即使展开为逐集结算目标，各站第一页也要到齐才提交，避免快的站散集抢先、慢的站整季包没机会参与。
         self.full = (full or any(target.endswith(":season") for target in targets)
                      or (self.media.type == MediaType.TV and any(
                          not missing.episodes for seasons in (plan.no_exists or {}).values()
                          for missing in seasons.values())))
+        self.complete_scan = full if complete_scan is None else complete_scan
         self.target_scope = target_scope
         self.page_limit = page_limit
         self.prefer_complete = prefer_complete
@@ -249,6 +273,12 @@ class SearchScan:
         self.recovery_failures: dict[str, int] = {}
         # 本轮已提交下载的目标，仅用于进度展示。
         self.submitted: set[str] = set()
+        # 本进程已写过「本轮跳过」日志的站点，同一站点多个关键词只提示一次。
+        self.skipped_sites: set[str] = set()
+        # 各来源第一页到齐后是否已先按现有资源提交过一次；随检查点保存，续跑不会把深页资源当成第一页提前提交。
+        self.first_pass_done = False
+        # 本轮因要等很久而先跳过的来源及其可再搜时间和原因；整轮什么都没交时改为等它们，不判搜索失败。
+        self.long_waits: dict[str, tuple[str, str]] = {}
         self.sources = SearchSources(owner, plan)
         self._media_identity = encode_search_state({
             "source": self.media.media_source, "id": self.media.media_id, "type": self.media.type,
@@ -326,6 +356,9 @@ class SearchScan:
         self.retry_reasons = data.get("retry_reasons", {})
         self.recovery_failures = data.get("recovery_failures", {})
         self.submitted = set(data.get("submitted", []))
+        # 旧检查点没有这两项：按未先提交处理，升级后卡在整季屏障的任务能先交第一页已有的资源。
+        self.first_pass_done = bool(data.get("first_pass_done", False))
+        self.long_waits = {key: (value[0], value[1]) for key, value in data.get("long_waits", {}).items()}
         same_media = data["media_identity"] == self._media_identity
         if not same_media:
             self.restart = True
@@ -378,25 +411,46 @@ class SearchScan:
                 "keywords": self.sources.keywords, "keyword_index": self.sources.keyword_index,
                 "retry": self.retry, "retry_reasons": self.retry_reasons,
                 "recovery_failures": {key: count for key, count in self.recovery_failures.items() if key in candidates},
-                "submitted": sorted(self.submitted), "saved_at": time.time()}
+                "submitted": sorted(self.submitted), "first_pass_done": self.first_pass_done,
+                "long_waits": self.long_waits, "saved_at": time.time()}
 
     def progress_text(self) -> str:
         """
-        写入日志的进度摘要：提交、仍缺集和本轮结束分开表达，不把分页结束叫作补齐。
+        写入日志的进度摘要：已添加下载、还缺哪些和本轮是否结束分开说，不把翻页结束说成补齐。
         """
         episodes = [int(target.split(":")[1]) for target in self.collection.remaining
                     if ":" in target and not target.endswith(":season")]
         remaining = format_ranges(episodes) or (("影片" if self.media.type == MediaType.MOVIE else "整季")
-                                                 if self.collection.remaining else "无")
+                                                 if self.collection.remaining else "")
         submitted = format_ranges([int(target.split(":")[1]) for target in self.submitted
-                                   if ":" in target and not target.endswith(":season")]) or "无"
-        page = max((source.next_page for source in self.collection.sources.values()), default=0)
+                                   if ":" in target and not target.endswith(":season")])
+        if not submitted and self.submitted:
+            submitted = "影片" if self.media.type == MediaType.MOVIE else "整季"
+        added = f"已添加下载 {submitted}" if submitted else "还没有添加下载"
+        missing = f"，还缺 {remaining}" if remaining else "，不缺了"
         unreleased = "" if self.full else format_ranges([int(target.split(":")[1]) for target in self.collection.unreleased()])
-        waiting = f"（其中 {unreleased} 站点尚未收录，交给订阅模式追更）" if unreleased else ""
+        if not unreleased:
+            waiting = ""
+        elif unreleased == remaining:
+            waiting = "（站点上还没有，之后的定时检查会继续找）"
+        else:
+            waiting = f"（其中 {unreleased} 站点上还没有，之后的定时检查会继续找）"
         if self.ended:
-            failed = any(source.failed for source in self.collection.sources.values())
-            return f"本轮搜索结束，已提交：{submitted}，仍缺：{remaining}{waiting}" + ("；部分来源失败" if failed else "")
-        return f"已搜索到第 {page} 页，已提交：{submitted}，仍缺：{remaining}{waiting}"
+            skipped = sorted({self._site_name(key) for key, source in self.collection.sources.items()
+                              if source.failed and not key.startswith("plugin:")})
+            note = f"。{('、'.join(skipped))} 这次没有搜成" if skipped else ""
+            return f"搜索结束，{added}{missing}{waiting}{note}"
+        page = max((source.next_page for source in self.collection.sources.values()), default=0)
+        return f"已搜到第 {page} 页，{added}{missing}{waiting}"
+
+    def _site_name(self, key: str) -> str:
+        """
+        搜索来源对应的站点名，日志里给用户看，不暴露「站点编号:关键词」这种内部键。
+        """
+        site_id = self.queries[key]["site"]
+        if site_id == "plugin":
+            return "插件"
+        return str(self.sources.sites.get(site_id, {}).get("name") or f"站点 {site_id}")
 
     def _lost_ownership(self) -> None:
         """
@@ -480,10 +534,9 @@ class SearchScan:
                                       stop_unmatched=self._stop_unmatched_query(key))
         if accepted:
             if source.unmatched_pages == UNMATCHED_PAGE_LIMIT:
-                logger.warning(f"{self.media.title_year} 搜索来源 {key} 连续 {UNMATCHED_PAGE_LIMIT} 页明确不匹配目标作品，"
-                               "本轮停止该来源，继续处理其他来源候选")
+                logger.info(f"{self.media.title_year} 在 {self._site_name(key)} 用「{self.queries[key]['keyword']}」"
+                            f"连续 {UNMATCHED_PAGE_LIMIT} 页都不是这部作品，这个站不再往后翻")
             source.failure_outcome = None
-            source.budget_deferrals = 0
             self.retry.pop(key, None)
             self.retry_reasons.pop(key, None)
             self.live.update(contexts)
@@ -498,29 +551,37 @@ class SearchScan:
 
     def _record_budget_wait(self, key: str, result: ScanPage) -> None:
         """
-        翻页与候选票据恢复共享来源长冷却计数，达到上限后仅停止本轮来源。
+        站点暂时不能请求时决定等还是本轮跳过：出错暂停中的站和要等很久的站本轮不等，
+        先用其他站点的结果提交，下一轮重新带上；请求间隔这类短暂停顿照常等待。
 
         :param key: 当前页或待恢复候选所属的搜索来源
         :param result: 携带重试时间和等待原因的页面结果
         """
         source = self.collection.sources[key]
         wait_reason = result.wait_reason or "busy"
-        self.retry[key] = cast(str, result.retry_at)
-        self.retry_reasons[key] = wait_reason
+        retry_at = cast(str, result.retry_at)
         source.error = result.observation.error
-        if wait_reason == "cooldown":
-            # 预算时间保存到秒，当前时间使用相同精度，避免恰好 600 秒的冷却被小数部分排除。
-            deferral_seconds = (datetime.fromisoformat(cast(str, result.retry_at))
-                                - datetime.now(timezone.utc).replace(microsecond=0)).total_seconds()
-            if deferral_seconds >= BUDGET_DEFERRAL_SECONDS:
-                source.budget_deferrals += 1
-        if source.budget_deferrals >= BUDGET_DEFERRAL_LIMIT:
-            source.failure_outcome = "deferred"
-            source.failed = True
-            self.retry.pop(key, None)
-            self.retry_reasons.pop(key, None)
-            logger.warning(f"{self.media.title_year} 搜索来源 {key} 本轮 {source.budget_deferrals} 次等待站点预算未果，"
-                           "跳过该来源以提交已收集候选，下一轮将重新搜索")
+        wait_seconds = (datetime.fromisoformat(retry_at) - datetime.now(timezone.utc)).total_seconds()
+        if wait_reason != "failing" and wait_seconds <= LONG_WAIT_SECONDS:
+            self.retry[key] = retry_at
+            self.retry_reasons[key] = wait_reason
+            return
+        source.failure_outcome = "unavailable" if wait_reason == "failing" else "deferred"
+        source.failed = True
+        self.retry.pop(key, None)
+        self.retry_reasons.pop(key, None)
+        if wait_reason != "failing":
+            self.long_waits[key] = (retry_at, wait_reason)
+        site = self._site_name(key)
+        if site in self.skipped_sites:
+            return
+        self.skipped_sites.add(site)
+        if wait_reason == "failing" and result.unavailable:
+            log_site_skipped(self.sources.sites[self.queries[key]["site"]], result.unavailable,
+                             subject=self.media.title_year)
+        else:
+            logger.info(f"{self.media.title_year} {site}：{result.observation.error}，"
+                        f"要到 {_local_time(retry_at)} 才能再搜，先用其他站点的结果")
 
     def _candidate_context(self, key: str) -> Optional[Context]:
         """
@@ -577,7 +638,8 @@ class SearchScan:
         record = self.candidates[key]
         source, page = record["source"], record["page"]
         cursor = self.collection.sources[source]
-        if cursor.budget_deferrals >= BUDGET_DEFERRAL_LIMIT:
+        if cursor.failure_outcome in SKIPPED_THIS_ROUND:
+            # 所在站点本轮已跳过，临时下载票据取不回来，让其他站点的候选继续提交。
             del self.candidates[key]
             self.checkpoint()
             return None
@@ -587,7 +649,7 @@ class SearchScan:
         result = self.sources.fetch(source, page, budget=self._budget())
         if result.retry_at:
             self._record_budget_wait(source, result)
-            if cursor.budget_deferrals < BUDGET_DEFERRAL_LIMIT:
+            if cursor.failure_outcome not in SKIPPED_THIS_ROUND:
                 self._defer(waiting_source=source)
             # 临时票据尚未恢复时不能下载；放弃该候选，让仍可用的次优候选继续提交。
             del self.candidates[key]
@@ -601,11 +663,10 @@ class SearchScan:
             # 多次重取仍失败时放弃该候选，让排在后面的候选和兜底继续推进，下一轮搜索再重新发现。
             self.recovery_failures.pop(key, None)
             del self.candidates[key]
-            logger.warning(f"{self.media.title_year} 候选资源所在页面连续 {failures} 次重取失败，本轮放弃该候选："
-                           f"{result.observation.error or '请求未成功'}")
+            logger.warning(f"{self.media.title_year} 资源所在的 {self._site_name(source)} 第 {page + 1} 页连续 {failures} 次"
+                           f"没打开（{result.observation.error or '请求未成功'}），这一轮先不下载它")
             self.checkpoint()
             return None
-        cursor.budget_deferrals = 0
         self.recovery_failures.pop(key, None)
         self.retry.pop(source, None)
         self.retry_reasons.pop(source, None)
@@ -707,6 +768,25 @@ class SearchScan:
         self.collection.deepen(ready - settled - cached)
         self.checkpoint()
 
+    def _first_pass_targets(self) -> set[str]:
+        """
+        各站第一页到齐后可以先提交的目标，和只搜第一页时一样快；没选中的由 choose 转入深页兜底。
+
+        只放行已有候选覆盖的目标，没有候选的目标仍按原规则继续翻页，不提前转成完整兜底。
+        逐集缺失时各集独立，有候选就先提交。整季缺失时只有第一页已经凑齐全部缺集（整季包或全套散集）
+        才先提交，否则继续收集到底：先下一部分散集、后面再来整季包会重复下载。首次下载优先整包时，
+        只有整包能先交，全套散集不算，避免深页的整季包失去被选中的机会。
+        """
+        untried = [key for key in self.candidates if key not in self.attempted]
+        covered = {target for key in untried for target in self._coverage(key)}
+        remaining = set(self.collection.remaining)
+        if self.prefer_complete:
+            # 首次下载优先整包：只有单个资源就覆盖全部缺集才先交，散集凑齐也继续找整包。
+            return remaining if any(self._coverage(key) >= remaining for key in untried) else set()
+        if self.full:
+            return remaining if covered >= remaining else set()
+        return covered
+
     def _has_cached_ready(self) -> bool:
         """
         末页后仍有分批未提交的就绪候选时，先处理缓存，不能提前结束整轮。
@@ -722,6 +802,8 @@ class SearchScan:
         self.collection = SearchCollection(search_targets(self.plan), settled=self.collection.settled)
         self.identity, self.candidates, self.live, self.retry, self.retry_reasons = {}, {}, {}, {}, {}
         self.recovery_failures = {}
+        self.first_pass_done = False
+        self.long_waits = {}
         self.sources.queries = {}
         self.sources.keyword_index = 0
         self.attempted.clear()
@@ -751,10 +833,17 @@ class SearchScan:
         retry_at = min(self.retry.values(), default=default_retry_at)
         site_ids = tuple(int(self.queries[key]["site"]) for key in active_sources
                          if self.queries[key]["site"] != "plugin")
-        reason = "cooldown" if self.retry and all(
-            self.retry_reasons.get(key) == "cooldown" for key in self.retry) else "busy" if self.retry else "slice"
-        logger.info(f"{self.media.title_year} 分页搜索暂停（{reason}），{retry_at} 后继续：{self.progress_text()}")
-        raise SubscriptionSearchDeferred(retry_at=retry_at, site_ids=tuple(dict.fromkeys(site_ids)), wait_reason=reason)
+        waiting_key = min(self.retry, key=lambda key: self.retry[key], default=None)
+        reason = self.retry_reasons.get(waiting_key, "busy") if waiting_key else "slice"
+        message = None
+        if waiting_key and (datetime.fromisoformat(retry_at) - now).total_seconds() > VISIBLE_WAIT_SECONDS:
+            # 只有明显的等待才告诉用户在等哪个站、为什么、几点继续；请求间隔这类停顿属于正常搜索节奏。
+            message = f"{self._site_name(waiting_key)} {_WAIT_REASON_TEXT.get(reason, '暂时不能搜索')}，{_local_time(retry_at)} 继续搜索"
+            logger.info(f"{self.media.title_year} {message}。{self.progress_text()}")
+        else:
+            logger.debug(f"{self.media.title_year} 搜索稍停，{_local_time(retry_at)} 继续。{self.progress_text()}")
+        raise SubscriptionSearchDeferred(retry_at=retry_at, site_ids=tuple(dict.fromkeys(site_ids)),
+                                         wait_reason=reason, message=message)
 
     def _stopping(self) -> bool:
         """
@@ -776,11 +865,32 @@ class SearchScan:
                 continue
             advanced = self.step(key) or advanced
             ready = self.collection.ready(full=self.full)
+            if not self.first_pass_done and not self.complete_scan and self.collection.first_pages_ready():
+                self.first_pass_done = True
+                ready |= self._first_pass_targets()
             if ready:
                 self.choose(ready, submit)
             if self.execution and time.monotonic() - started >= SEARCH_SLICE_SECONDS:
                 self._defer()
         return advanced
+
+    def _wait_for_long_waits(self) -> bool:
+        """
+        本轮没有添加任何下载、又有站只是要等很久（不是出错）时，改为等最早能再搜的站，
+        避免把一次到点就能完成的搜索判成失败、拖到下一次定时搜索。
+
+        :return: 已把等待中的来源放回重试队列时为 True，调用方继续循环并按重试时间交还队列
+        """
+        if self.submitted or not self.long_waits or not self.collection.remaining:
+            return False
+        for key, (retry_at, reason) in self.long_waits.items():
+            source = self.collection.sources[key]
+            source.failed = False
+            source.failure_outcome = None
+            self.retry[key] = retry_at
+            self.retry_reasons[key] = reason
+        self.long_waits = {}
+        return True
 
     def _finish_round(self) -> None:
         """
@@ -814,6 +924,8 @@ class SearchScan:
                     continue
                 # 智能模式只剩站点未收录目标时不再尝试别名；完整模式仍保留别名的深页收集机会。
                 if not (self.full or self.collection.pending) or not self._add_sources():
+                    if self._wait_for_long_waits():
+                        continue
                     self._finish_round()
                     return
                 self.checkpoint()
