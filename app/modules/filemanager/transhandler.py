@@ -506,15 +506,28 @@ class TransHandler:
                 if str(fileitem.path or "").casefold().endswith(".lyricsfile.yaml")
                 else f".{fileitem.extension}"
             )
-            final_target = self.get_rename_path(
-                path=target_path,
-                template_string=rename_format,
-                rename_dict=self.get_naming_dict(
+            _naming_dict = self.get_naming_dict(
+                meta=planning_meta,
+                mediainfo=mediainfo,
+                episodes_info=episodes_info,
+                file_ext=file_extension,
+            )
+            # 曲名可能来自“文件名已带后缀”的解析结果（如 STRM 外部链接文件，或标签
+            # 缺失时回退到主干名），此时模板追加 fileExt 会得到 `xxx.strm.strm`。
+            # 仅在曲名末尾已经带有当前文件后缀时省略 fileExt，避免重复追加。
+            _rendered_title = str(_naming_dict.get("title") or "")
+            if file_extension and _rendered_title.casefold().endswith(file_extension.casefold()):
+                file_extension = ""
+                _naming_dict = self.get_naming_dict(
                     meta=planning_meta,
                     mediainfo=mediainfo,
                     episodes_info=episodes_info,
-                    file_ext=file_extension,
-                ),
+                    file_ext="",
+                )
+            final_target = self.get_rename_path(
+                path=target_path,
+                template_string=rename_format,
+                rename_dict=_naming_dict,
                 source_path=fileitem.path,
                 source_item=fileitem,
             )

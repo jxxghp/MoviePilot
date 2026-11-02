@@ -541,16 +541,23 @@ def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: Optional[
             mtype not in (MediaType.MOVIE, MediaType.TV) and is_audio_file
     )):
         parsed_title, apply_words = WordsMatcher().prepare(title, custom_words=custom_words)
-        parsed_path = Path(parsed_title)
-        music_meta = MetaMusic.parse_resource(
-            parsed_path.stem if is_audio_file and parsed_path.suffix.lower() in get_audio_extensions() else parsed_title,
-            subtitle,
-        )
+        # 音频文件只取文件名（保留扩展名）交给解析器：曲序/碟号前缀
+        # （01 -、1-02、0101 -）的提取依赖真实扩展名分支，既不能带目录，也不能
+        # 提前取 stem；否则 `0101 - 曲名` 会被当成「艺人 - 曲名」，曲名带上序号
+        # 且曲序丢失。
+        music_source = parsed_title
+        if is_audio_file:
+            music_source = parsed_title.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+        music_meta = MetaMusic.parse_resource(music_source, subtitle)
         music_meta.org_string = parsed_title
         music_meta.apply_words = apply_words
         if is_audio_file:
             music_meta.audio_format = normalize_audio_format(audio_suffix.lstrip("."))
             music_meta.audio_lossless = infer_audio_lossless(music_meta.audio_format)
+            # 「艺人 - 曲名」分支不剥离后缀，曲名可能残留 `.strm` 等扩展名，
+            # 后续命名模板再拼 fileExt 就会写出 `xxx.strm.strm`，这里统一清理。
+            if music_meta.title and music_meta.title.lower().endswith(audio_suffix):
+                music_meta.title = music_meta.title[: -len(audio_suffix)].rstrip()
         return music_meta
     rust_meta = None
     accelerator = get_metainfo_accelerator()

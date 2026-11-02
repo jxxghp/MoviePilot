@@ -353,7 +353,7 @@ _MUSIC_EDITION_BRACKET_RE = re.compile(
     r"\[([^\[\]]*\b(?:deluxe|expanded|special|limited|anniversary|remaster(?:ed)?)\b[^\[\]]*)\]",
     re.IGNORECASE,
 )
-_MUSIC_AUDIO_EXTENSION_RE = re.compile(r"\.(?:flac|mp3|m4a|aac|wav|ape|ogg|opus|wma|aiff?|dsf|dff)$", re.I)
+_MUSIC_AUDIO_EXTENSION_RE = re.compile(r"\.(?:flac|mp3|m4a|aac|wav|ape|ogg|opus|wma|aiff?|dsf|dff|strm)$", re.I)
 _MUSIC_CLASSICAL_WORK_RE = re.compile(
     r"\b(?:No\.|Op\.?|BWV|KV|Hob\.)\s*\d|"
     r"\b(?:symphony|concerto|sonata|quartet|quintet|suite)\b.*(?:\d|\bin\b|\bfor\b)|"
@@ -454,15 +454,44 @@ _MUSIC_DISC_TRACK_PREFIX_RE = re.compile(
     r"\s*[-–—.。、) ]*\s*(?P<rest>.*\S)?\s*$",
     re.IGNORECASE,
 )
+# 允许 4 位曲序：部分转码工具输出 `0101 - 曲名`（碟号 01 + 曲序 01 合并）或 `0001 - 曲名`。
+# 若限制为 3 位，这类前缀会被整体当作艺术家段，导致曲名带上曲序号、曲序丢失。
 _MUSIC_TRACK_PREFIX_RE = re.compile(
-    r"^\s*(?:track\s*)?(?P<num>\d{1,3})\s*[-–—.。、) ]+\s*(?P<rest>.*\S)\s*$",
+    r"^\s*(?:track\s*)?(?P<num>\d{1,4})\s*[-–—.。、) ]+\s*(?P<rest>.*\S)\s*$",
     re.IGNORECASE,
 )
-# 纯数字文件名：01.wav、Track 12.flac，只能得到曲序没有曲名
+# 纯数字文件名：01.wav、Track 12.flac、0101.flac，只能得到曲序没有曲名
 _MUSIC_NUMBER_ONLY_RE = re.compile(
-    r"^\s*(?:(?:track|cd|disc|disk)\s*)?(?P<num>\d{1,3})\s*$",
+    r"^\s*(?:(?:track|cd|disc|disk)\s*)?(?P<num>\d{1,4})\s*$",
     re.IGNORECASE,
 )
+# 合并书写的「碟号+曲号」4 位前缀：`0101`、`0203`、`1215`。
+# 碟号与曲号均为 1~99 且前两位不为 00，用于区分 `1999 - 曲名` 这类真实年份/编号。
+_MUSIC_COMBINED_DISC_TRACK_RE = re.compile(r"^(?P<disc>[0-9][1-9]|[1-9][0-9])(?P<num>[0-9][1-9]|[1-9][0-9])$")
+# 以 19xx / 20xx 开头且后两位像年份的编号更可能是发行年份或作品编号，
+# 例如 `1999 - 曲名`、`2001 - 曲名`，不能当作碟号 19 曲 99。
+_MUSIC_YEARLIKE_PREFIX_RE = re.compile(r"^(?:19|20)[0-9][0-9]$")
+
+
+def _split_combined_disc_track(number: str) -> Optional[tuple[int, int]]:
+    """
+    把 4 位「碟号+曲号」前缀拆为 (碟号, 曲号)。
+
+    只有形如 `0101`、`0203`、`1215` 的补零碟号与有效曲号才拆分；`1999`、`2001`、
+    `0100` 等不符合边界时返回 None，交由调用方按普通曲序或原样处理。
+
+    :param number: 4 位数字前缀文本
+    :return: (碟号, 曲号)；无法按碟号曲号解释时返回 None
+    """
+    if len(number) != 4:
+        return None
+    # `1999`、`2001` 这类形似年份的前缀保持原语义，不拆成碟号与曲号。
+    if _MUSIC_YEARLIKE_PREFIX_RE.match(number):
+        return None
+    match = _MUSIC_COMBINED_DISC_TRACK_RE.match(number)
+    if not match:
+        return None
+    return int(match.group("disc")), int(match.group("num"))
 # 碟片目录名：CD1、Disc 2、Disk01
 _MUSIC_DISC_DIR_RE = re.compile(
     r"^\s*(?:cd|disc|disk)\s*(?P<num>\d{1,2})\s*$",
@@ -1529,9 +1558,19 @@ class MetaMusic(MetaBase):
         stem = Path(value).stem
         track: Optional[int]
         disc: Optional[int]
-        prefix = re.match(r"^(\d{1,3})(?:\.\s+|\.(?=[^\d\s])|\s+-\s+)(.+)$", stem)
+        # 4 位曲序前缀按「碟号 + 曲号」拆分：`0101 - 曲名` 视为第 1 碟第 1 曲，
+        # `0203 - 曲名` 视为第 2 碟第 3 曲。这类前缀来自把碟号与曲号合并书写的转码
+        # 工具（如 Alist/115 的 STRM 曲库），直接取整会得到 101 这类超出专辑实际
+        # 音轨数的曲序。3 位及以下仍按曲序处理，避免影响 `001 - 曲名` 等旧命名。
+        prefix = re.match(r"^(\d{1,4})(?:\.\s+|\.(?=[^\d\s])|\s+-\s+)(.+)$", stem)
         if prefix:
-            track, disc, remainder = int(prefix.group(1)), None, prefix.group(2)
+            number = prefix.group(1)
+            combined = _split_combined_disc_track(number)
+            if combined is not None:
+                disc, track = combined
+            else:
+                track, disc = int(number), None
+            remainder = prefix.group(2)
         else:
             track, disc, remainder = self.split_track_prefix(stem)
         if track is None and disc is None:
@@ -2162,9 +2201,19 @@ class MetaMusic(MetaBase):
             )
         match = _MUSIC_TRACK_PREFIX_RE.match(text)
         if match:
-            return int(match.group("num")), None, cls._clean_text(match.group("rest"))
+            number = match.group("num")
+            # 与 _prepare_filename_input 保持一致：`0101 - 曲名` 按「碟号+曲号」拆分，
+            # `1999 - 曲名` 这类真实年份仍只作为曲序，不误判为碟号。
+            combined = _split_combined_disc_track(number)
+            if combined is not None:
+                disc, track = combined
+                return track, disc, cls._clean_text(match.group("rest"))
+            return int(number), None, cls._clean_text(match.group("rest"))
         match = _MUSIC_NUMBER_ONLY_RE.match(text)
         if match:
+            # 形似年份的纯数字（如 `2002`）更可能是作品名，不提取曲序。
+            if _MUSIC_YEARLIKE_PREFIX_RE.match(match.group("num")):
+                return None, None, None
             # 纯数字文件名保留原始文本作为兜底标题，只提取曲序
             return int(match.group("num")), None, None
         return None, None, None
