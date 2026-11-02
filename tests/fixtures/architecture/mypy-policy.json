@@ -299,6 +299,16 @@
       "reason": "async-tool-run"
     },
     {
+      "path": "app/agent/tools/impl/read_log.py",
+      "owner": "ReadLogTool.run",
+      "codes": [
+        "override"
+      ],
+      "fingerprint": "1a3f5f74c120c3e5e7983e4dfc750377144ea683eac03eaebe22055554150792",
+      "statement": "async def run(self, logfile: str, tail: Optional[int]=DEFAULT_LOG_TAIL, level: Optional[str]=None, keyword: Optional[str]=None, **kwargs: object) -> str:",
+      "reason": "async-tool-run"
+    },
+    {
       "path": "app/agent/tools/impl/recognize_captcha.py",
       "owner": "RecognizeCaptchaTool.run",
       "codes": [

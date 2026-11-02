@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9930,
-  "edge_sha256": "723708b08703c8b8a3121676a00792baf0fedfff2342aee706b1c7b52d7cf3a2",
+  "edge_count": 9941,
+  "edge_sha256": "478e50b35aa27a02d36c7bf3e60e414c1423b0f4aa74ba3f7caec69b640a15f8",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1916,6 +1916,7 @@
     "app.agent.tools.factory -> app.agent.tools.impl.persona",
     "app.agent.tools.factory -> app.agent.tools.impl.query_doctor_report",
     "app.agent.tools.factory -> app.agent.tools.impl.read_file",
+    "app.agent.tools.factory -> app.agent.tools.impl.read_log",
     "app.agent.tools.factory -> app.agent.tools.impl.recognize_captcha",
     "app.agent.tools.factory -> app.agent.tools.impl.search_web",
     "app.agent.tools.factory -> app.agent.tools.impl.send_local_file",
@@ -2059,6 +2060,16 @@
     "app.agent.tools.impl.read_file -> app.agent.tools.tags",
     "app.agent.tools.impl.read_file -> app.runtime",
     "app.agent.tools.impl.read_file -> app.runtime.log",
+    "app.agent.tools.impl.read_log -> app.agent",
+    "app.agent.tools.impl.read_log -> app.agent.tools",
+    "app.agent.tools.impl.read_log -> app.agent.tools.base",
+    "app.agent.tools.impl.read_log -> app.agent.tools.tags",
+    "app.agent.tools.impl.read_log -> app.application",
+    "app.agent.tools.impl.read_log -> app.application.security",
+    "app.agent.tools.impl.read_log -> app.application.security.url",
+    "app.agent.tools.impl.read_log -> app.runtime",
+    "app.agent.tools.impl.read_log -> app.runtime.log",
+    "app.agent.tools.impl.read_log -> app.runtime.settings",
     "app.agent.tools.impl.recognize_captcha -> app.adapters",
     "app.agent.tools.impl.recognize_captcha -> app.adapters.external",
     "app.agent.tools.impl.recognize_captcha -> app.adapters.external.ocr",
@@ -10893,7 +10904,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1147,
+  "module_count": 1148,
   "modules": [
     "app",
     "app.adapters",
@@ -11075,6 +11086,7 @@
     "app.agent.tools.impl.persona",
     "app.agent.tools.impl.query_doctor_report",
     "app.agent.tools.impl.read_file",
+    "app.agent.tools.impl.read_log",
     "app.agent.tools.impl.recognize_captcha",
     "app.agent.tools.impl.search_web",
     "app.agent.tools.impl.send_local_file",
