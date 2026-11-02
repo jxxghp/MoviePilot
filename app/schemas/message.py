@@ -432,6 +432,10 @@ class AgentWebChatRequest(BaseModel):
     )
     original_chat_id: Optional[Union[str, int]] = Field(default=None, description="WebAgent 按钮回调关联的原聊天 ID，用于传统交互原地编辑卡片")
     echo_user: bool = Field(default=True, description="是否在展示历史中记录本轮用户消息")
+    diagnostic: bool = Field(
+        default=False,
+        description="是否启用只读诊断会话；启用后仅开放日志读取等只读工具，不执行任何修复动作",
+    )
 
 
 class AgentWebChoiceRequest(BaseModel):

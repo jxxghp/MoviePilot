@@ -110,6 +110,7 @@ class _MessageTask:
     :param processing_status: 已建立的渠道处理中状态，供任务结束时收口
     :param reply_mode: 回复投递方式，默认通过渠道派发
     :param allow_message_tools: 是否允许本次 Agent 使用消息发送工具
+    :param diagnostic: 是否启用只读诊断会话，启用后仅开放只读工具
     :param output_callback: 接收增量文本的同步回调；未提供时为 None
     :param tool_event_callback: 接收工具调用事件的同步回调；未提供时为 None
     :param protected_output_callback: 接收敏感输出的受保护回调，返回值表示是否接收；未提供时为 None
@@ -143,6 +144,7 @@ class _MessageTask:
     processing_status: Optional[dict[str, Any]] = None
     reply_mode: ReplyMode = ReplyMode.DISPATCH
     allow_message_tools: bool = True
+    diagnostic: bool = False
     output_callback: Optional[Callable[[str], None]] = None
     tool_event_callback: Optional[Callable[[dict[str, Any]], None]] = None
     protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None
@@ -168,6 +170,28 @@ class _MessageTask:
             self.terminal_scope = TerminalScope(
                 user_id=self.user_id, task_id=self.scheduled_run_id, kind="scheduled"
             )
+
+
+def _agent_reuse_mismatch(existing_agent: MoviePilotAgent, task: "_MessageTask") -> bool:
+    """
+    判断会话中已有 Agent 是否可继续承接当前任务。
+
+    用户、宿主工厂类型或诊断模式任一项不一致时都必须重建实例，
+    避免只读诊断会话复用普通会话的写工具图。
+
+    :param existing_agent: 会话中已存在的 Agent 实例
+    :param task: 当前待处理的消息任务
+    :return: 需要重建 Agent 时为 True
+    """
+    if existing_agent.user_id != task.user_id:
+        return True
+    if bool(getattr(existing_agent, "diagnostic_mode", False)) != task.diagnostic:
+        return True
+    return bool(
+        task.agent_factory
+        and isinstance(task.agent_factory, type)
+        and not isinstance(existing_agent, task.agent_factory)
+    )
 
 
 class AgentManagerUnavailableError(RuntimeError):
@@ -363,6 +387,7 @@ class AgentSessionOwner:
             original_chat_id: Optional[str] = None,
             reply_mode: ReplyMode = ReplyMode.DISPATCH,
             allow_message_tools: bool = True,
+            diagnostic: bool = False,
             output_callback: Optional[Callable[[str], None]] = None,
             tool_event_callback: Optional[Callable[[dict[str, Any]], None]] = None,
             protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
@@ -400,6 +425,7 @@ class AgentSessionOwner:
             original_chat_id=original_chat_id,
             reply_mode=reply_mode,
             allow_message_tools=allow_message_tools,
+            diagnostic=diagnostic,
             output_callback=output_callback,
             tool_event_callback=tool_event_callback,
             protected_output_callback=protected_output_callback,
@@ -729,17 +755,7 @@ class AgentSessionOwner:
         """
         session_id = task.session_id
         existing_agent = self.active_agents.get(session_id)
-        if (
-                existing_agent
-                and (
-                    existing_agent.user_id != task.user_id
-                    or (
-                        task.agent_factory
-                        and isinstance(task.agent_factory, type)
-                        and not isinstance(existing_agent, task.agent_factory)
-                    )
-                )
-        ):
+        if existing_agent and _agent_reuse_mismatch(existing_agent, task):
             if await existing_agent.cleanup() is False:
                 raise AgentManagerUnavailableError(
                     f"Agent 会话 {session_id} 仍有子代理或终端在停止"
@@ -763,6 +779,7 @@ class AgentSessionOwner:
                     original_chat_id=task.original_chat_id,
                     replay_mode=task.reply_mode,
                     allow_message_tools=task.allow_message_tools,
+                    diagnostic=task.diagnostic,
                     output_callback=task.output_callback,
                     protected_output_callback=task.protected_output_callback,
                     data=self._data,
@@ -781,6 +798,7 @@ class AgentSessionOwner:
                     "original_chat_id": task.original_chat_id,
                     "replay_mode": task.reply_mode,
                     "allow_message_tools": task.allow_message_tools,
+                    "diagnostic": task.diagnostic,
                     "output_callback": task.output_callback,
                     "protected_output_callback": task.protected_output_callback,
                     "data": self._data,

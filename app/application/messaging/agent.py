@@ -197,6 +197,7 @@ class WebAgentStreamCommand:
     :param original_message_id: 来源消息标识，供渠道回执或回复关联使用
     :param original_chat_id: 来源聊天标识，无外部渠道上下文时为 None
     :param echo_user: 是否把用户消息写入展示流，默认开启
+    :param diagnostic: 是否启用只读诊断会话，启用后仅开放只读工具且不执行修复
     """
 
     text: str = ""
@@ -209,6 +210,7 @@ class WebAgentStreamCommand:
     original_message_id: Optional[Union[str, int]] = None
     original_chat_id: Optional[Union[str, int]] = None
     echo_user: bool = True
+    diagnostic: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1841,6 +1843,7 @@ async def build_web_agent_stream(
             persistence=persistence,
             is_disconnected=is_disconnected,
             dependencies=stream_dependencies,
+            diagnostic=command.diagnostic,
         ),
         control=("secret-confirmation" if is_secret_confirmation_control else None),
     )
