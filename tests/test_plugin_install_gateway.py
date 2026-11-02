@@ -30,7 +30,7 @@ NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 REPO_URL = "https://github.com/jxxghp/MoviePilot-Plugins"
 
 
-def _inventory() -> CandidateInventory:
+def _inventory(plugin_version: str = "1.0.0") -> CandidateInventory:
     """
     构造仅含官方候选的完整库存。
     """
@@ -44,6 +44,29 @@ def _inventory() -> CandidateInventory:
                     source_type=TrustedPluginSourceType.OFFICIAL,
                     repo_url=REPO_URL,
                     package_generation="v3",
+                    plugin_version=plugin_version,
+                    dto={"v3": True},
+                ),
+            ),
+            package_generation="v3",
+        ),
+    ))
+
+
+def _other_plugin_inventory() -> CandidateInventory:
+    """
+    构造不含目标插件的库存，用于验证本地专属安装不强刷市场。
+    """
+    return CandidateInventory((
+        MarketRead.present(
+            REPO_URL,
+            (
+                PluginMarketCandidate(
+                    plugin_id="OtherPlugin",
+                    source_key="github:jxxghp/moviepilot-plugins",
+                    source_type=TrustedPluginSourceType.OFFICIAL,
+                    repo_url=REPO_URL,
+                    package_generation="v3",
                     plugin_version="1.0.0",
                     dto={"v3": True},
                 ),
@@ -51,6 +74,116 @@ def _inventory() -> CandidateInventory:
             package_generation="v3",
         ),
     ))
+
+
+def _gateway(
+    *,
+    inventory,
+    executor,
+    market_refresh=None,
+    identity=None,
+):
+    """
+    组装一个只依赖注入桩件的 Gateway。
+    """
+    return PluginInstallGateway(
+        inventory=inventory,
+        identity=identity or AsyncMock(return_value=None),
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor,
+        clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
+        market_refresh=market_refresh,
+    )
+
+
+def _executor() -> AsyncMock:
+    """
+    返回带成功结果的执行器桩件。
+    """
+    executor = AsyncMock()
+    executor.execute.return_value = type(
+        "Result",
+        (),
+        {"success": True, "message": ""},
+    )()
+    return executor
+
+
+@pytest.mark.asyncio
+async def test_forced_update_refreshes_only_the_markets_holding_the_plugin() -> None:
+    """
+    未指定版本的强制更新只重读该插件出现过的市场，并按新索引准入。
+
+    Release tag 取自索引里的 version；沿用缓存索引会把同一个旧版本重装一遍
+    还提示更新成功，这正是「关于」里点更新没有反应的原因。
+    """
+    inventory = AsyncMock(side_effect=[_inventory(), _inventory("1.0.1")])
+    market_refresh = AsyncMock()
+    executor = _executor()
+    gateway = _gateway(
+        inventory=inventory, executor=executor, market_refresh=market_refresh
+    )
+
+    result = await gateway.install(
+        plugin_id="DemoPlugin",
+        repo_url=REPO_URL,
+        package_version="v3",
+        force=True,
+        explicit_source=True,
+    )
+
+    assert result.success is True
+    market_refresh.assert_awaited_once_with((REPO_URL,))
+    # 全市场读取仍然只走缓存，不能被单个插件的更新放大成强制刷新
+    assert [call.args[0] for call in inventory.await_args_list] == [False, False]
+    assert executor.execute.await_args.kwargs["admission"].candidate.plugin_version == "1.0.1"
+
+
+@pytest.mark.asyncio
+async def test_selected_release_skips_the_market_refresh() -> None:
+    """
+    用户已点名 Release 版本时不需要重读索引，tag 直接由所选版本拼出。
+    """
+    inventory = AsyncMock(return_value=_inventory())
+    market_refresh = AsyncMock()
+    gateway = _gateway(
+        inventory=inventory, executor=_executor(), market_refresh=market_refresh
+    )
+
+    await gateway.install(
+        plugin_id="DemoPlugin",
+        repo_url=REPO_URL,
+        package_version="v3",
+        release_version="0.9.0",
+        force=True,
+        explicit_source=True,
+    )
+
+    market_refresh.assert_not_awaited()
+    inventory.assert_awaited_once_with(False)
+
+
+@pytest.mark.asyncio
+async def test_market_without_the_plugin_is_not_refreshed_on_forced_install() -> None:
+    """
+    目标插件不在任何市场索引里（本地专属安装）时不发起市场刷新。
+    """
+    inventory = AsyncMock(return_value=_other_plugin_inventory())
+    market_refresh = AsyncMock()
+    gateway = _gateway(
+        inventory=inventory, executor=_executor(), market_refresh=market_refresh
+    )
+
+    await gateway.install(
+        plugin_id="DemoPlugin",
+        repo_url="local://DemoPlugin?version=v3",
+        package_version="v3",
+        force=True,
+    )
+
+    market_refresh.assert_not_awaited()
+    inventory.assert_awaited_once_with(False)
 
 
 @pytest.mark.asyncio
