@@ -131,6 +131,7 @@ class SubscriptionExecutionStatus(BaseModel):
     next_run_at: Optional[str] = Field(default=None, description="下次计划执行时间")
     error: Optional[str] = Field(default=None, description="错误摘要")
     can_cancel: bool = Field(default=False, description="当前任务是否允许取消")
+    submitted_count: int = Field(default=0, description="本次任务已添加的下载数量，用于区分已添加下载与暂无资源")
 
     model_config = ConfigDict(from_attributes=True)
 

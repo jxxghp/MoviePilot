@@ -85,6 +85,8 @@ def restore_collection(values: dict[str, Any]) -> SearchCollection:
         params = dict(data)
         # 旧检查点未记录作品匹配前史；已有进度时不能断言此前从未命中，只应用页数上限。
         params.setdefault("matched_work", bool(params.get("next_page")))
+        # 旧检查点的长等待计数已废弃，站点要等太久时改为本轮直接跳过。
+        params.pop("budget_deferrals", None)
         for name in ("seen", "closed"):
             params[name] = set(params.get(name, []))
         sources[key] = SearchSourceCursor(**params)

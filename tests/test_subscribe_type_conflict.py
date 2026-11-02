@@ -365,4 +365,4 @@ def test_global_identity_remains_valid_cross_type_evidence(conflict_case: Simple
     )
 
     assert matched is True
-    assert "tt1234567" in evidence
+    assert evidence == "识别结果就是订阅的作品"

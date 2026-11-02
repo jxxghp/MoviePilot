@@ -181,10 +181,11 @@ def raise_subscription_site_budget_deferral(
     """
     if not deferrals or (execution_context and execution_context.download_started and not execution_context.incremental_search):
         return
-    retry_at = min(deferrals, key=lambda item: item.retry_at).retry_at
+    earliest = min(deferrals, key=lambda item: item.retry_at)
     site_ids = tuple(dict.fromkeys(item.site_id for item in deferrals))
-    wait_reason = "cooldown" if all(item.wait_reason == "cooldown" for item in deferrals) else "busy"
-    raise SubscriptionSearchDeferred(retry_at=retry_at, site_ids=site_ids, wait_reason=wait_reason)
+    # 以最先恢复的站点说明等待原因，和恢复时间保持一致。
+    raise SubscriptionSearchDeferred(retry_at=earliest.retry_at, site_ids=site_ids,
+                                     wait_reason=earliest.wait_reason or "busy")
 
 
 def handle_subscription_search_deferred(

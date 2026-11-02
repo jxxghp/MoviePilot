@@ -126,7 +126,7 @@ def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, mon
         return items
     monkeypatch.setattr(search, "search_site_torrents", request)
     _process_paged_subscription(scope.chain, scope.initial, search, target, SystemConfigKey.SubscribeFilterRuleGroups, None)
-    assert calls == [0, 1]
+    assert calls == [0]
     scope.download.download_single.assert_called_once()
     scope.finished.assert_not_called()
     assert _missing(scope, scope.current["value"])["tmdb:1"][1].episodes == [2]

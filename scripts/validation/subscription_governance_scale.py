@@ -678,10 +678,11 @@ def _run_site_pressure_case(
                 )
                 cooldown_calls = boundary.calls - calls_before_cooldown
                 cooldown_deferrals = loser.consume_subscription_site_budget_deferrals()
+                # 出错暂停中的站点本轮直接跳过：不发请求，也不让订阅进入等待。
                 error_cooldown_blocked = bool(
                     not cooldown_result
                     and cooldown_calls == 0
-                    and cooldown_deferrals
+                    and not cooldown_deferrals
                 )
                 error_cooldown_persisted = bool(
                     error_record

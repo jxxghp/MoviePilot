@@ -21,8 +21,7 @@ from app.chain.search.facade import SearchChain
 from app.chain.search.result import TorrentHelper
 from app.chain.search.scan import (
     AUTOMATIC_REQUEST_INTERVAL,
-    BUDGET_DEFERRAL_LIMIT,
-    BUDGET_DEFERRAL_SECONDS,
+    LONG_WAIT_SECONDS,
     ScanPage,
     SearchScan,
     SearchSources,
@@ -84,7 +83,7 @@ def pages(owner, monkeypatch, data):
 
 def test_thirty_seven_episodes_fill_older_pages_and_download_early(owner, monkeypatch):
     """
-    多页搜索补齐缺集，同时在较早目标具备候选时提前提交下载。
+    多页搜索补齐缺集；第一页到齐就先提交已有的集，较早的集继续往后翻。
     """
     calls = pages(owner, monkeypatch, {0: [torrent(ep, v) for ep in range(16, 38) for v in range(1, 4)],
                                      1: [torrent(ep) for ep in range(1, 16)]})
@@ -95,7 +94,7 @@ def test_thirty_seven_episodes_fill_older_pages_and_download_early(owner, monkey
         return ready
     scan.run(submit)
     assert calls == [0, 1, 2]
-    assert batches[0] == (1, {f"1:{ep}" for ep in range(16, 38)})
+    assert batches[0] == (0, {f"1:{ep}" for ep in range(16, 38)})
     assert not scan.collection.remaining
 
 
@@ -117,7 +116,7 @@ def test_single_page_policy_does_not_expand_after_missing_or_failed_download(own
     source = scan.collection.sources["1:Show"]
     assert source.limit_reached
     assert not source.exhausted
-    assert scan.ended and "本轮搜索结束" in scan.progress_text()
+    assert scan.ended and scan.progress_text().startswith("搜索结束")
 
 
 def test_single_page_policy_keeps_each_alias_first_page(owner, monkeypatch):
@@ -195,10 +194,10 @@ def test_single_page_limit_survives_checkpoint_before_download(owner, monkeypatc
     assert restored.collection.sources["1:Show"].limit_reached
 
 
-@pytest.mark.parametrize("full,expected", [(False, [0, 1]), (True, [0, 1, 2, 3])])
+@pytest.mark.parametrize("full,expected", [(False, [0]), (True, [0, 1, 2, 3])])
 def test_movie_smart_boundary_and_complete_upgrade_search(owner, monkeypatch, full, expected):
     """
-    电影智能搜索按覆盖边界停止，完整搜索继续收集后续升级候选。
+    电影智能搜索第一页找到就提交，完整搜索继续收集后续升级候选。
     """
     from app.application.subscription.contract import SubscriptionSnapshot
     from app.chain.download import DownloadChain
@@ -359,7 +358,8 @@ def test_whole_season_restarts_old_smart_checkpoint_and_keeps_submitted_targets(
     calls = pages(owner, monkeypatch, {0: [torrent(1), torrent(2)]})
     batches = []
     scan.run(lambda _items, ready: batches.append(ready) or ready)
-    assert calls == [0, 1]
+    # 第一页已凑齐剩下的集，先提交，不再往后翻。
+    assert calls == [0]
     assert batches == [{"1:2"}]
     assert scan.submitted == {"1:1", "1:2"}
 
@@ -391,7 +391,8 @@ def test_unchanged_resource_recognized_once_even_when_repeated(owner, monkeypatc
         identified.append(params["torrent"].description)
         return original(**params)
     monkeypatch.setattr(result_module, "_torrent_meta", identify)
-    SearchScan(owner=owner, plan=plan([1, 4])).run(lambda _items, ready: ready)
+    # 下载层一直拒绝，搜索才会翻过重复资源所在的后续页。
+    SearchScan(owner=owner, plan=plan([1, 4])).run(lambda _items, _ready: set())
     assert calls == [0, 1, 2]
     assert identified == ["1-1", "4-1"]
 
@@ -400,7 +401,8 @@ def test_twelve_hundred_episodes_with_multiple_versions(owner, monkeypatch):
     """
     20 页范围内仍能收集 1200 集的多版本候选，不在最后一页遗漏提交。
     """
-    data = {page: [torrent(episode, version) for episode in range(page * 60 + 1, (page + 1) * 60 + 1)
+    # 站点按上传时间倒序返回，越新的集越靠前。
+    data = {page: [torrent(episode, version) for episode in range(1200 - page * 60, 1200 - (page + 1) * 60, -1)
                    for version in (1, 2)] for page in range(20)}
     calls = pages(owner, monkeypatch, data)
     scan = SearchScan(owner=owner, plan=plan(list(range(1, 1201))))
@@ -438,7 +440,7 @@ def test_full_mode_collects_late_candidates_after_a_gap(owner, monkeypatch):
 
 def test_pack_waits_for_all_covered_goals_and_is_submitted_once(owner, monkeypatch):
     """
-    合集等待其覆盖目标全部具备选择条件后只提交一次。
+    第一页的合集已覆盖全部缺集时立即提交，且只提交一次。
     """
     pack = TorrentInfo(site=1, description="pack", title="Show S01E01-E04 2026 1080p", enclosure="https://site.example/download?id=pack")
     calls = pages(owner, monkeypatch, {0: [pack], 1: [torrent(4)], 2: [torrent(9)]})
@@ -446,27 +448,27 @@ def test_pack_waits_for_all_covered_goals_and_is_submitted_once(owner, monkeypat
     scan = SearchScan(owner=owner, plan=plan([1, 4]))
     scan.run(lambda items, ready: batches.append((calls[-1], {item.torrent_info.description for item in items}, ready)) or ready)
     assert len(batches) == 1
-    assert batches[0][0] == 2
+    assert batches[0][0] == 0
     assert "pack" in batches[0][1]
     assert batches[0][2] == {"1:1", "1:4"}
 
 
 def test_single_episode_can_download_while_a_pack_waits(owner, monkeypatch):
     """
-    合集仍在等待时，独立集数可以先提交下载。
+    第一页同时有合集和单集时一起交给下载层择优，合集只提交一次。
     """
     pack = TorrentInfo(site=1, description="pack", title="Show S01E01-E04 2026 1080p", enclosure="https://site.example/download?id=pack")
     calls = pages(owner, monkeypatch, {0: [pack, torrent(1)], 1: [torrent(4)], 2: [torrent(9)]})
     batches = []
     scan = SearchScan(owner=owner, plan=plan([1, 4]))
     scan.run(lambda items, ready: batches.append((calls[-1], {item.torrent_info.description for item in items}, ready)) or ready)
-    assert batches[0] == (1, {"1-1"}, {"1:1"})
+    assert batches[0] == (0, {"pack", "1-1"}, {"1:1", "1:4"})
     assert sum("pack" in items for _, items, _ in batches) == 1
 
 
 def test_cross_site_barrier_keeps_late_opportunistic_candidate(owner, monkeypatch):
     """
-    跨站点等待期间保留其他站点稍后发现的可用候选。
+    各站第一页到齐后先提交已找到的集，不等其他站翻完。
     """
     monkeypatch.setattr(owner, "_sync_indexers", lambda _ids: [{"id": 1}, {"id": 2}])
     data = {1: {0: [torrent(1)], 1: [torrent(4)], 2: [torrent(1, 7), torrent(4, 2)]},
@@ -485,9 +487,7 @@ def test_cross_site_barrier_keeps_late_opportunistic_candidate(owner, monkeypatc
     batches = []
     SearchScan(owner=owner, plan=plan([1, 4])).run(
         lambda items, ready: batches.append((calls[-1], {item.torrent_info.description for item in items}, ready)) or ready)
-    assert batches[0][0] == (2, 2)
-    assert "1-7" in batches[0][1]
-    assert batches[0][2] == {"1:1"}
+    assert batches[0] == ((2, 0), {"1-1"}, {"1:1"})
 
 
 def test_rejected_candidate_is_rejudged_only_in_a_new_round(owner, monkeypatch):
@@ -595,7 +595,7 @@ def test_rejected_ticket_candidates_finish_across_short_budget_waits(
         assert submitted == ["1-1", "1-2"]
         assert calls == ([0, 1, 2] if source_active else [0, 1])
         assert scan.collection.remaining == {"1:1", "1:2"}
-        assert scan.collection.sources[source_key].budget_deferrals == 0
+        assert not scan.collection.sources[source_key].failed
     finally:
         engine.dispose()
 
@@ -612,7 +612,7 @@ def test_site_window_wait_keeps_cursor(owner, monkeypatch):
     scan = SearchScan(owner=owner, plan=plan([1]))
     key = next(key for key in scan.queries if not key.startswith("plugin:"))
     assert not scan.step(key)
-    assert scan.retry_reasons[key] == "cooldown"
+    assert scan.retry_reasons[key] == "rate_limit"
     assert scan.collection.sources[key].next_page == 0
     assert not scan.collection.sources[key].failed
     assert not scan.collection.sources[key].exhausted
@@ -646,12 +646,18 @@ def test_site_rate_limit_window_defers_retry_until_window_refresh(owner, monkeyp
 
     assert not scan.step(key)
 
-    delay = (datetime.fromisoformat(scan.retry[key]) - before).total_seconds()
-    assert seconds - 1 < delay <= seconds
-    assert scan.retry_reasons[key] == "cooldown"
-    assert not scan.collection.sources[key].failed
-    assert not scan.collection.sources[key].exhausted
-    assert scan.collection.sources[key].budget_deferrals == (1 if seconds >= 600 else 0)
+    source = scan.collection.sources[key]
+    assert not source.exhausted
+    if seconds <= LONG_WAIT_SECONDS:
+        delay = (datetime.fromisoformat(scan.retry[key]) - before).total_seconds()
+        assert seconds - 1 < delay <= seconds
+        assert scan.retry_reasons[key] == "rate_limit"
+        assert not source.failed
+    else:
+        # 次数窗口要等一小时，本轮不等这个站，下一轮再搜。
+        assert key not in scan.retry
+        assert source.failed
+        assert source.failure_outcome == "deferred"
 
 
 def test_scan_persists_local_rate_limit_window_on_site_budget(owner, monkeypatch):
@@ -776,7 +782,7 @@ def test_all_sources_failing_is_not_reported_as_exhausted(owner, monkeypatch):
     source = next(value for key, value in scan.collection.sources.items() if not key.startswith("plugin:"))
     assert not source.exhausted
     assert source.next_page == 0
-    assert "部分来源失败" in scan.progress_text()
+    assert "这次没有搜成" in scan.progress_text()
 
 
 def test_language_or_capability_skip_keeps_existing_non_failure_semantics(owner, monkeypatch):
@@ -917,7 +923,7 @@ def test_one_unidentifiable_resource_does_not_block_the_page(owner, monkeypatch)
     scan = SearchScan(owner=owner, plan=plan([1]))
     scan.run(lambda items, ready: submitted.extend(item.torrent_info.description for item in items) or ready)
     assert submitted == ["1-1"]
-    assert calls == [0, 1]
+    assert calls == [0]
     assert not scan.collection.remaining
 
 
@@ -965,7 +971,7 @@ def test_progress_log_summary_reports_page_and_remaining_episodes(owner, monkeyp
     scan = SearchScan(owner=owner, plan=plan(list(range(1, 38))))
     for key in list(scan.collection.sources):
         scan.step(key)
-    assert scan.progress_text() == "已搜索到第 1 页，已提交：无，仍缺：E01-E37"
+    assert scan.progress_text() == "已搜到第 1 页，还没有添加下载，还缺 E01-E37"
 
 def test_site_repeating_the_same_page_ends_the_source_instead_of_looping(owner, monkeypatch):
     """
@@ -980,10 +986,11 @@ def test_site_repeating_the_same_page_ends_the_source_instead_of_looping(owner, 
         return [torrent(1)] if params["page"] == 0 else repeated
     monkeypatch.setattr(owner, "search_site_torrents", request)
     scan = SearchScan(owner=owner, plan=plan([1, 2]))
-    scan.run(lambda _items, ready: ready)
+    # 下载层一直拒绝，搜索才会继续往后翻到重复页。
+    scan.run(lambda _items, _ready: set())
     assert calls == [0, 1, 2]
     assert scan.ended
-    assert scan.collection.remaining == {"1:2"}
+    assert scan.collection.remaining == {"1:1", "1:2"}
 
 
 def _snapshot_after_first_pages(owner, episodes, **changes):
@@ -1064,8 +1071,8 @@ def test_checkpoint_older_than_thirty_six_hours_restarts_from_first_page(owner, 
 
 
 def test_failed_episode_falls_back_and_uses_a_later_page_candidate_after_sources_finish(owner, monkeypatch):
-    # 第 0 页有 E1，第 1 页没有：E1 结束收集并提交，但下载失败；
-    # 为 E5 继续翻页时第 2 页又出现新的 E1，兜底在来源翻完后用它重新择优，失败的不再重试。
+    # 第 0 页有 E1 和 E5：第一页到齐后一起提交，E1 下载失败；
+    # 为 E1 继续翻页时第 2 页又出现新的 E1，兜底在来源翻完后用它重新择优，失败的不再重试。
     """
     单集下载失败后，在来源结束时使用后续页候选回退。
     """
@@ -1078,7 +1085,7 @@ def test_failed_episode_falls_back_and_uses_a_later_page_candidate_after_sources
             item.torrent_info.description == "1-2" for item in items) else set())
     scan = SearchScan(owner=owner, plan=plan([1, 5]))
     scan.run(submit)
-    assert ["1-1"] in attempts
+    assert attempts[0] == ["1-1", "5-1"]
     assert "1-2" in attempts[-1] and "1-1" not in attempts[-1]
     assert calls == [0, 1, 2, 3]
     assert not scan.collection.remaining
@@ -1186,11 +1193,11 @@ def test_ongoing_series_releases_round_after_available_episodes_are_submitted(ow
     submitted = []
     scan = SearchScan(owner=owner, plan=plan([1003, 1006, 1007]))
     scan.run(lambda _items, ready: submitted.append(set(ready)) or ready)
-    assert calls == [0, 1]
+    assert calls == [0]
     assert submitted == [{"1:1003"}]
     assert scan.ended
     assert scan.collection.remaining == {"1:1006", "1:1007"}
-    assert "E1006-E1007 站点尚未收录" in scan.progress_text()
+    assert "还缺 E1006-E1007（站点上还没有，之后的定时检查会继续找）" in scan.progress_text()
 
 
 def test_only_unreleased_episodes_check_first_page_and_do_not_try_aliases(owner, monkeypatch):
@@ -1331,13 +1338,12 @@ def _restored_ticket_scan(owner, monkeypatch, first_page, refetched, *, prefer_c
                       snapshot=snapshot), fetched
 
 
-@pytest.mark.parametrize("outcome", ["cooldown", "error"])
-@pytest.mark.parametrize("recovery_succeeds", [False, True])
+@pytest.mark.parametrize("outcome, recovery_succeeds", [("cooldown", True), ("error", False), ("error", True)])
 def test_complete_pack_recovery_waits_across_checkpoints_before_partial_fallback(
     owner, monkeypatch, scan_clock, outcome, recovery_succeeds,
 ):
     """
-    整包恢复等待期间不提交分集；检查点保留重试次数，恢复成功或达到上限后才能推进。
+    整包恢复的短暂等待期间不提交分集；检查点保留重试次数，恢复成功或失败达到上限后才能推进。
     """
     pack = TorrentInfo(site=1, description="pack", title="Show S01 Complete 2026 1080p")
     scan, _ = _restored_ticket_scan(owner, monkeypatch, [torrent(1), pack], [], prefer_complete=True)
@@ -1355,7 +1361,7 @@ def test_complete_pack_recovery_waits_across_checkpoints_before_partial_fallback
                                    enclosure="https://site.example/download?id=pack")
             return ScanPage([torrent(1), restored], SiteSearchObservation(True, "success", raw_count=2))
         if outcome == "cooldown":
-            retry_at = (scan_clock["now"] + timedelta(hours=1)).isoformat(timespec="seconds")
+            retry_at = (scan_clock["now"] + timedelta(minutes=5)).isoformat(timespec="seconds")
             return ScanPage([], SiteSearchObservation(), retry_at, "cooldown")
         return ScanPage([], SiteSearchObservation(True, "error", error="timeout"))
 
@@ -1382,6 +1388,22 @@ def test_complete_pack_recovery_waits_across_checkpoints_before_partial_fallback
 
     assert calls == [0, 0, 0]
     assert submitted == ([({"1-1", "pack"}, {"1:1", "1:2"})] if recovery_succeeds else [({"1-1"}, {"1:1"})])
+
+
+def test_complete_pack_recovery_long_cooldown_falls_back_to_parts_at_once(owner, monkeypatch, scan_clock):
+    """
+    整包所在站点要等一小时才能重取票据时，本轮不等，直接用已有分集提交。
+    """
+    pack = TorrentInfo(site=1, description="pack", title="Show S01 Complete 2026 1080p")
+    scan, _ = _restored_ticket_scan(owner, monkeypatch, [torrent(1), pack], [], prefer_complete=True)
+    part_key = next(key for key, saved in scan.candidates.items() if saved["torrent"]["description"] == "1-1")
+    scan.candidates[part_key]["torrent"]["enclosure"] = "https://site.example/download?id=1"
+    retry_at = (scan_clock["now"] + timedelta(hours=1)).isoformat(timespec="seconds")
+    monkeypatch.setattr(SearchSources, "fetch", lambda *_args, **_kwargs: ScanPage(
+        [], SiteSearchObservation(), retry_at, "rate_limit"))
+    submitted = []
+    scan.run(lambda items, goals: submitted.append(({item.torrent_info.description for item in items}, goals)) or goals)
+    assert submitted == [({"1-1"}, {"1:1"})]
 
 
 @pytest.mark.parametrize("still_listed", [False, True])
@@ -1484,10 +1506,9 @@ def scan_clock(monkeypatch):
     return clock
 
 
-def test_budget_deferred_dead_site_settles_and_releases_cached_candidates(owner, monkeypatch, scan_clock):
+def test_long_wait_site_is_skipped_and_cached_candidates_submit(owner, monkeypatch, scan_clock):
     """
-    永久预算冷却的站点在本轮结算后放行"全部来源才提交"的屏障，缓存候选得以提交；
-    结算只在本轮有效，下一轮该站点重新参与搜索。
+    要等很久的站点本轮直接跳过，不拖住其他站点已找到的资源；跳过只在本轮有效。
     """
     monkeypatch.setattr(owner, "_sync_indexers",
                         lambda _sites: [{"id": 1, "name": "test", "parser": "mTorrent"},
@@ -1506,39 +1527,47 @@ def test_budget_deferred_dead_site_settles_and_releases_cached_candidates(owner,
     monkeypatch.setattr(owner, "search_site_torrents", request)
     monkeypatch.setattr(owner, "_subscription_site_budget",
                         _StubSiteBudget(deferred_site_id=2, retry_seconds=3600.0), raising=False)
-
-    scan = SearchScan(owner=owner, plan=plan([1]))
     submitted = []
 
     def submit(contexts, ready):
         """
-        记录屏障放行后真正提交的候选。
+        记录不等故障站点就提交的候选。
         """
         submitted.extend(contexts)
         return ready
 
-    # 按保存的重试时间推进时钟，并恢复检查点，模拟持久队列再次唤醒。
-    for _ in range(5):
-        scan.run(submit)
-        if scan.ended:
-            break
-        if scan.retry:
-            scan_clock["now"] = datetime.fromisoformat(min(scan.retry.values())) + timedelta(seconds=1)
-        snapshot = SearchSessionSnapshot("round", 0, encode_search_state(scan.state()))
-        scan = SearchScan(owner=owner, plan=plan([1]), snapshot=snapshot)
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    scan.run(submit)
 
     deferred_keys = [key for key in scan.collection.sources if key.startswith("2:")]
     assert deferred_keys
     assert all(scan.collection.sources[key].failed for key in deferred_keys)
-    assert all(scan.collection.sources[key].budget_deferrals >= BUDGET_DEFERRAL_LIMIT for key in deferred_keys)
+    assert all(scan.collection.sources[key].failure_outcome == "deferred" for key in deferred_keys)
+    assert not any(key in scan.retry for key in deferred_keys)
     assert scan.collection.settled == {"1:1"}
     assert submitted
     assert scan.ended is True
+    assert not SearchScan(owner=owner, plan=plan([1])).collection.sources[deferred_keys[0]].failed
+
+
+def test_failing_site_is_skipped_even_when_cooldown_is_short(owner, monkeypatch):
+    """
+    出错暂停中的站点不论暂停多久都不等，记为本轮不可用，不写入重试时间。
+    """
+    retry_at = (datetime.now(timezone.utc) + timedelta(seconds=180)).isoformat(timespec="seconds")
+    monkeypatch.setattr(SearchSources, "fetch", lambda *_args, **_kwargs: ScanPage(
+        [], SiteSearchObservation(error="站点最近搜索出错"), retry_at, "failing"))
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    assert not scan.step("1:Show")
+    source = scan.collection.sources["1:Show"]
+    assert source.failed is True
+    assert source.failure_outcome == "unavailable"
+    assert "1:Show" not in scan.retry
 
 
 def test_short_budget_wait_does_not_settle_source(owner, monkeypatch):
     """
-    秒级预算等待（请求间隔、并发租约）属于健康站点噪声，不得计数或结算来源。
+    秒级预算等待（请求间隔、并发租约）属于健康站点的正常节奏，照常等待，不结算来源。
     """
     monkeypatch.setattr(owner, "_subscription_site_budget",
                         _StubSiteBudget(deferred_site_id=1, retry_seconds=11.0), raising=False)
@@ -1560,28 +1589,28 @@ def test_short_budget_wait_does_not_settle_source(owner, monkeypatch):
     key = next(key for key in scan.collection.sources if key.startswith("1:"))
     source = scan.collection.sources[key]
     assert source.failed is False
-    assert source.budget_deferrals == 0
     assert submitted == []
     assert scan.ended is False
 
 
-def test_exact_long_cooldown_counts_after_timestamp_truncation(owner, monkeypatch, scan_clock):
+@pytest.mark.parametrize("seconds, skipped", [(LONG_WAIT_SECONDS, False), (LONG_WAIT_SECONDS + 1, True)])
+def test_wait_longer_than_limit_skips_source_for_round(owner, monkeypatch, scan_clock, seconds, skipped):
     """
-    预算时间保存到秒，恰好达到长冷却门槛时不能因当前时间的小数部分漏计。
+    恰好等到上限仍然等待，超过上限才本轮跳过该来源。
     """
-    fixed_now = scan_clock["now"]
-    retry_at = (fixed_now + timedelta(seconds=BUDGET_DEFERRAL_SECONDS)).isoformat(timespec="seconds")
+    retry_at = (scan_clock["now"] + timedelta(seconds=seconds)).isoformat(timespec="seconds")
     monkeypatch.setattr(SearchSources, "fetch", lambda *_args, **_kwargs: ScanPage(
-        [], SiteSearchObservation(), retry_at, "cooldown"))
+        [], SiteSearchObservation(), retry_at, "rate_limit"))
     scan = SearchScan(owner=owner, plan=plan([1]))
     scan.step("1:Show")
-    assert scan.collection.sources["1:Show"].budget_deferrals == 1
+    assert scan.collection.sources["1:Show"].failed is skipped
+    assert ("1:Show" in scan.retry) is not skipped
 
 
 @pytest.mark.parametrize("ticket_count", [1, 2])
-def test_ticket_recovery_long_cooldown_is_bounded_across_checkpoints(owner, monkeypatch, scan_clock, ticket_count):
+def test_ticket_recovery_long_cooldown_submits_backup_without_waiting(owner, monkeypatch, scan_clock, ticket_count):
     """
-    缓存候选重取票据也必须有限等待；恢复检查点后保留计数并继续提交可用候选。
+    缓存候选重取票据时站点要等很久，本轮放弃这些候选，直接提交仍可用的候选。
     """
     scan, _ = _restored_ticket_scan(owner, monkeypatch, [torrent(1, version)
                                                       for version in range(1, ticket_count + 2)], [])
@@ -1592,11 +1621,11 @@ def test_ticket_recovery_long_cooldown_is_bounded_across_checkpoints(owner, monk
 
     def fetch(_sources, _key, page, **_params):
         """
-        模拟原页重取持续受站点长冷却阻塞。
+        模拟原页重取受站点长冷却阻塞。
         """
         requests.append(page)
         retry_at = (scan_clock["now"] + timedelta(hours=1)).isoformat(timespec="seconds")
-        return ScanPage([], SiteSearchObservation(), retry_at, "cooldown")
+        return ScanPage([], SiteSearchObservation(), retry_at, "rate_limit")
 
     monkeypatch.setattr(SearchSources, "fetch", fetch)
     submitted = []
@@ -1608,69 +1637,120 @@ def test_ticket_recovery_long_cooldown_is_bounded_across_checkpoints(owner, monk
         submitted.extend(item.torrent_info.description for item in items)
         return goals
 
-    for version in range(BUDGET_DEFERRAL_LIMIT - 1):
-        with pytest.raises(SubscriptionSearchDeferred) as error:
-            scan.run(submit)
-        assert error.value.wait_reason == "cooldown"
-        assert error.value.site_ids == (1,)
-        assert datetime.fromisoformat(error.value.retry_at) > scan_clock["now"] + timedelta(minutes=59)
-        snapshot = SearchSessionSnapshot("round", version, encode_search_state(scan.state()))
-        scan = SearchScan(owner=owner, plan=plan([1, 2]), full=True, snapshot=snapshot)
-        with pytest.raises(SubscriptionSearchDeferred):
-            scan.run(submit)
-        assert len(requests) == version + 1
-        scan_clock["now"] = datetime.fromisoformat(error.value.retry_at) + timedelta(seconds=1)
     scan.run(submit)
-    assert len(requests) == BUDGET_DEFERRAL_LIMIT
+    assert len(requests) == 1
     assert submitted == [f"1-{ticket_count + 1}"]
     assert scan.ended
 
 
-def test_successful_ticket_recovery_resets_budget_wait_count(owner, monkeypatch):
+def test_legacy_checkpoint_with_wait_count_and_without_processed_candidates_restores(owner):
     """
-    原页成功取回票据后清零等待计数，后续页不继承此前冷却。
-    """
-    scan, _ = _restored_ticket_scan(owner, monkeypatch, [torrent(1)], [torrent(1)])
-    scan.collection.sources["1:Show"].budget_deferrals = BUDGET_DEFERRAL_LIMIT - 1
-    scan.run(lambda _items, goals: goals)
-    assert scan.collection.sources["1:Show"].budget_deferrals == 0
-    assert scan.collection.settled == {"1:1"}
-
-
-@pytest.mark.parametrize("wait_reason, seconds, expected", [
-    ("cooldown", 11, 1), ("busy", 3600, 1), ("cooldown", 3600, 2),
-])
-def test_budget_wait_count_restores_and_success_resets(owner, monkeypatch, wait_reason, seconds, expected):
-    """
-    检查点保留长冷却累计，短等待与忙碌不加计数，成功取页后清零。
-    """
-    scan = SearchScan(owner=owner, plan=plan([1]))
-    scan.collection.sources["1:Show"].budget_deferrals = 1
-    snapshot = SearchSessionSnapshot("round", 0, encode_search_state(scan.state()))
-    scan = SearchScan(owner=owner, plan=plan([1]), snapshot=snapshot)
-    retry_at = (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat(timespec="seconds")
-    monkeypatch.setattr(SearchSources, "fetch", lambda *_args, **_kwargs: ScanPage(
-        [], SiteSearchObservation(), retry_at, wait_reason))
-    scan.step("1:Show")
-    assert scan.collection.sources["1:Show"].budget_deferrals == expected
-    pages(owner, monkeypatch, {0: []})
-    monkeypatch.setattr(SearchSources, "fetch", lambda *_args, **_kwargs: ScanPage(
-        [], SiteSearchObservation(True, "success", raw_count=0)))
-    scan.step("1:Show")
-    assert scan.collection.sources["1:Show"].budget_deferrals == 0
-    assert SearchScan(owner=owner, plan=plan([1])).collection.sources["1:Show"].budget_deferrals == 0
-
-
-def test_legacy_checkpoint_defaults_budget_wait_count_and_processed_candidates(owner):
-    """
-    缺少预算计数和候选处理记录的旧检查点仍可恢复，不会重启或提前结算来源。
+    旧检查点带已废弃的长等待计数、缺少候选处理记录时仍可恢复，不会重启或提前结算来源。
     """
     state = SearchScan(owner=owner, plan=plan([1])).state()
     state.pop("attempted")
     for source in state["collection"]["sources"].values():
-        source.pop("budget_deferrals")
+        source["budget_deferrals"] = 2
     snapshot = SearchSessionSnapshot("round", 0, encode_search_state(state))
     scan = SearchScan(owner=owner, plan=plan([1]), snapshot=snapshot)
     assert not scan.restart
     assert not scan.attempted
-    assert all(source.budget_deferrals == 0 and not source.failed for source in scan.collection.sources.values())
+    assert all(not source.failed for source in scan.collection.sources.values())
+
+
+def test_whole_season_submits_first_page_pack_without_paging_deeper(owner, monkeypatch):
+    """
+    首次订阅缺整季时，各站第一页已凑齐全部缺集就立即提交，不再翻完所有页。
+    """
+    monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+    season_plan = plan([])
+    season_plan.no_exists["tmdb:1"][1].total_episode = 3
+    pack = TorrentInfo(site=2, description="complete", title="Show 2026 S01 Complete 1080p",
+                       enclosure="https://site.example/download?id=complete")
+    data = {"1:Show": {0: [torrent(1)], 1: [torrent(2)]}, "2:Show": {0: [pack], 1: [torrent(3)]}}
+    calls = []
+
+    def fetch(_sources, key, page, **_params):
+        """
+        两个站点都还有后续页，第一页已经出现整季包。
+        """
+        calls.append((key, page))
+        items = data.get(key, {}).get(page, [])
+        return ScanPage(items, SiteSearchObservation(True, "success", raw_count=len(items), has_more=True))
+
+    monkeypatch.setattr(SearchSources, "fetch", fetch)
+    submitted = []
+    scan = SearchScan(owner=owner, plan=season_plan, full=True, prefer_complete=True, complete_scan=False)
+    scan.run(lambda items, ready: submitted.append({item.torrent_info.description for item in items}) or ready)
+    assert submitted == [{"1-1", "complete"}]
+    assert ("1:Show", 1) not in calls and ("2:Show", 1) not in calls
+    assert scan.ended and not scan.collection.remaining
+
+
+def test_complete_scan_strategy_keeps_collecting_after_first_pages(owner, monkeypatch):
+    """
+    用户选了完整搜索时，第一页凑齐也要翻完再择优。
+    """
+    calls = pages(owner, monkeypatch, {0: [torrent(1)], 1: [torrent(1, 2)]})
+    chosen = []
+    scan = SearchScan(owner=owner, plan=plan([1]), full=True, complete_scan=True)
+    scan.run(lambda items, ready: chosen.extend(item.torrent_info.description for item in items) or ready)
+    assert calls == [0, 1, 2]
+    assert set(chosen) == {"1-1", "1-2"}
+
+
+def test_only_long_waits_left_waits_instead_of_failing(owner, monkeypatch, scan_clock):
+    """
+    唯一的站只是访问次数暂时用完（不是出错）时，等它恢复，而不是把本轮判成搜索失败。
+    """
+    retry_at = (scan_clock["now"] + timedelta(minutes=20)).isoformat(timespec="seconds")
+    monkeypatch.setattr(SearchSources, "fetch", lambda *_args, **_kwargs: ScanPage(
+        [], SiteSearchObservation(error="站点设置的访问次数已用完"), retry_at, "rate_limit"))
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    scan.run(lambda _items, ready: ready)
+    scan.run(lambda _items, ready: ready)
+    assert not scan.ended
+    assert scan.retry["1:Show"] == retry_at
+    assert scan.collection.sources["1:Show"].failed is False
+
+
+def test_first_pass_is_not_repeated_after_checkpoint_resume(owner, monkeypatch):
+    """
+    第一页先交只发生一次并随检查点保存；续跑后深页资源按正常收尾择优，不会被单独提前提交。
+    """
+    scan = SearchScan(owner=owner, plan=plan([1, 2]))
+    scan.first_pass_done = True
+    snapshot = SearchSessionSnapshot("round", 0, encode_search_state(scan.state()))
+    assert SearchScan(owner=owner, plan=plan([1, 2]), snapshot=snapshot).first_pass_done is True
+    state = scan.state()
+    state.pop("first_pass_done")
+    legacy = SearchSessionSnapshot("round", 0, encode_search_state(state))
+    assert SearchScan(owner=owner, plan=plan([1, 2]), snapshot=legacy).first_pass_done is False
+
+
+def test_pack_first_keeps_looking_for_pack_when_first_page_only_has_singles(owner, monkeypatch):
+    """
+    首次下载优先整包时，第一页凑齐全套散集也继续找，另一个站深页的整季包仍参与选择。
+    """
+    monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+    season_plan = plan([])
+    season_plan.no_exists["tmdb:1"][1].total_episode = 3
+    pack = TorrentInfo(site=2, description="complete", title="Show 2026 S01 Complete 1080p",
+                       enclosure="https://site.example/download?id=complete")
+    data = {"1:Show": {0: [torrent(1), torrent(2), torrent(3)]}, "2:Show": {0: [torrent(1, 2)], 1: [pack]}}
+    calls = []
+
+    def fetch(_sources, key, page, **_params):
+        """
+        站点 A 第一页有全套散集，站点 B 第二页才有整季包。
+        """
+        calls.append((key, page))
+        items = data.get(key, {}).get(page, [])
+        return ScanPage(items, SiteSearchObservation(True, "success", raw_count=len(items), has_more=bool(items)))
+
+    monkeypatch.setattr(SearchSources, "fetch", fetch)
+    submitted = []
+    scan = SearchScan(owner=owner, plan=season_plan, full=True, prefer_complete=True, complete_scan=False)
+    scan.run(lambda items, ready: submitted.append({item.torrent_info.description for item in items}) or ready)
+    assert ("2:Show", 1) in calls
+    assert any("complete" in batch for batch in submitted)

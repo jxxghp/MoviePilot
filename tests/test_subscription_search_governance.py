@@ -453,7 +453,7 @@ def test_site_budget_conflict_requeues_task_without_batch_failure(tmp_path, monk
         assert task.state == "queued"
         assert task.phase == "waiting_site_budget"
         assert task.available_at == retry_at
-        assert task.last_error == "等待站点"
+        assert task.last_error == "正在搜索"
         assert task.pending_site_ids == [31]
     assert chain.subscription_search_repository.claim_next(owner="worker-after-retry") is None
 
