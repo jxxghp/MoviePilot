@@ -51,6 +51,10 @@ class TransferHistory(Base):
     transfer_task_id: Mapped[Optional[str]] = mapped_column(String(64))
     # 失败 pending 当前映射对应的结算版本
     transfer_settlement_revision: Mapped[Optional[int]] = mapped_column(Integer)
+    # external 表示外部登记；旧记录未记录来源
+    origin: Mapped[Optional[str]] = mapped_column(String(16))
+    # 外部整理登记的服务端操作者、时间和核验证据；旧行不回填来源
+    registration: Mapped[Optional[Any]] = mapped_column(JSON)
     # 源路径
     src: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 源存储
@@ -142,7 +146,7 @@ class TransferHistory(Base):
 
     @classmethod
     def list_by_title(cls, db: Session, title: str, page: int = 1, count: int = 30,
-                      status: Optional[bool] = None, wildcard: bool = False) -> list[Self]:
+                      status: Optional[bool] = None, wildcard: bool = False, origin: Optional[str] = None) -> list[Self]:
         """
         按标题或路径分页查询整理历史。
         """
@@ -163,6 +167,9 @@ class TransferHistory(Base):
             statement = statement.where(cls.status == status)
         statement = statement.order_by(cls.date.desc())
 
+        if origin is not None:
+            statement = statement.where(cls.origin == origin)
+
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
             statement = statement.offset((page - 1) * count).limit(count)
@@ -171,7 +178,7 @@ class TransferHistory(Base):
 
     @classmethod
     async def async_list_by_title(cls, db: AsyncSession, title: str, page: int = 1, count: int = 30,
-                                  status: Optional[bool] = None, wildcard: bool = False) -> list[Self]:
+                                  status: Optional[bool] = None, wildcard: bool = False, origin: Optional[str] = None) -> list[Self]:
         """
         异步按标题或路径分页查询整理历史。
         """
@@ -192,6 +199,9 @@ class TransferHistory(Base):
             query = query.filter(cls.status == status)
         query = query.order_by(cls.date.desc())
 
+        if origin is not None:
+            query = query.where(cls.origin == origin)
+
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
             query = query.offset((page - 1) * count).limit(count)
@@ -200,7 +210,7 @@ class TransferHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
-    def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: Optional[bool] = None) -> list[Self]:
+    def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: Optional[bool] = None, origin: Optional[str] = None) -> list[Self]:
         """
         按时间倒序分页读取整理历史。
         """
@@ -208,6 +218,9 @@ class TransferHistory(Base):
         if status is not None:
             statement = statement.where(cls.status == status)
         statement = statement.order_by(cls.date.desc())
+
+        if origin is not None:
+            statement = statement.where(cls.origin == origin)
 
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
@@ -217,7 +230,7 @@ class TransferHistory(Base):
 
     @classmethod
     async def async_list_by_page(cls, db: AsyncSession, page: int = 1, count: int = 30,
-                                 status: Optional[bool] = None) -> list[Self]:
+                                 status: Optional[bool] = None, origin: Optional[str] = None) -> list[Self]:
         """
         异步按时间倒序分页读取整理历史。
         """
@@ -231,6 +244,9 @@ class TransferHistory(Base):
             query = select(cls).order_by(
                 cls.date.desc()
             )
+
+        if origin is not None:
+            query = query.where(cls.origin == origin)
 
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
@@ -605,34 +621,35 @@ class TransferHistory(Base):
         return rows
 
     @classmethod
-    def count(cls, db: Session, status: Optional[bool] = None) -> int:
+    def count(cls, db: Session, status: Optional[bool] = None, origin: Optional[str] = None) -> int:
         """
         统计指定状态的整理历史数量。
         """
         statement = select(func.count(cls.id))
         if status is not None:
             statement = statement.where(cls.status == status)
+        if origin is not None:
+            statement = statement.where(cls.origin == origin)
+
         count: int = db.execute(statement).scalar()
         return count
 
     @classmethod
-    async def async_count(cls, db: AsyncSession, status: Optional[bool] = None) -> int:
+    async def async_count(cls, db: AsyncSession, status: Optional[bool] = None, origin: Optional[str] = None) -> int:
         """
         异步统计指定状态的整理历史数量。
         """
+        statement = select(func.count(cls.id))
         if status is not None:
-            result = await db.execute(
-                select(func.count(cls.id)).filter(cls.status == status)
-            )
-        else:
-            result = await db.execute(
-                select(func.count(cls.id))
-            )
+            statement = statement.where(cls.status == status)
+        if origin is not None:
+            statement = statement.where(cls.origin == origin)
+        result = await db.execute(statement)
         count: int = result.scalar()
         return count
 
     @classmethod
-    def count_by_title(cls, db: Session, title: str, status: Optional[bool] = None, wildcard: bool = False) -> int:
+    def count_by_title(cls, db: Session, title: str, status: Optional[bool] = None, wildcard: bool = False, origin: Optional[str] = None) -> int:
         """
         统计与标题或路径匹配的整理历史数量。
         """
@@ -651,11 +668,14 @@ class TransferHistory(Base):
         statement = select(func.count(cls.id)).where(text_filter)
         if status is not None:
             statement = statement.where(cls.status == status)
+        if origin is not None:
+            statement = statement.where(cls.origin == origin)
+
         count: int = db.execute(statement).scalar()
         return count
 
     @classmethod
-    async def async_count_by_title(cls, db: AsyncSession, title: str, status: Optional[bool] = None, wildcard: bool = False) -> int:
+    async def async_count_by_title(cls, db: AsyncSession, title: str, status: Optional[bool] = None, wildcard: bool = False, origin: Optional[str] = None) -> int:
         """
         异步统计与标题或路径匹配的整理历史数量。
         """
@@ -674,6 +694,9 @@ class TransferHistory(Base):
         stmt = select(func.count(cls.id)).filter(text_filter)
         if status is not None:
             stmt = stmt.filter(cls.status == status)
+        if origin is not None:
+            stmt = stmt.where(cls.origin == origin)
+
         result = await db.execute(stmt)
         count: int = result.scalar()
         return count

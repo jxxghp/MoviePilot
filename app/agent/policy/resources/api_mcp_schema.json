@@ -5950,6 +5950,144 @@
       "title": "TransferHistory",
       "type": "object"
     },
+    "TransferHistoryRegisterRequest": {
+      "additionalProperties": false,
+      "description": "管理员声明已完成的外部整理路径、模式和媒体身份，文件事实由服务器核验。",
+      "properties": {
+        "dest": {
+          "description": "整理后目标文件的绝对路径",
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Dest",
+          "type": "string"
+        },
+        "dest_storage": {
+          "description": "目标存储配置标识",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Dest Storage",
+          "type": "string"
+        },
+        "download_hash": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "已知下载任务标识，仅作关联声明",
+          "title": "Download Hash"
+        },
+        "episodes": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "pattern": "^E(?:0[1-9]|[1-9]\\d{1,3})(?:-E(?:0[1-9]|[1-9]\\d{1,3}))?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "集号或集范围，例如 E01 或 E01-E12",
+          "title": "Episodes"
+        },
+        "media_id": {
+          "description": "来源中的规范原生媒体标识",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Id",
+          "type": "string"
+        },
+        "media_source": {
+          "$ref": "#/$defs/MediaSource",
+          "description": "元数据来源标识，保留与 media_id 一同返回的精确值。"
+        },
+        "mode": {
+          "description": "已完成的复制、本地硬链接或移动",
+          "enum": [
+            "copy",
+            "link",
+            "move"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "seasons": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "pattern": "^S\\d{2,4}(?:-S\\d{2,4})?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "季号或季范围，例如 S01",
+          "title": "Seasons"
+        },
+        "src": {
+          "description": "整理前源文件的绝对路径",
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Src",
+          "type": "string"
+        },
+        "src_storage": {
+          "description": "源存储配置标识",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Src Storage",
+          "type": "string"
+        },
+        "title": {
+          "description": "管理员确认的媒体标题",
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "type": {
+          "description": "管理员确认的电影或电视剧类型",
+          "enum": [
+            "电影",
+            "电视剧"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "四位发行年份",
+          "title": "Year"
+        }
+      },
+      "required": [
+        "src_storage",
+        "dest_storage",
+        "src",
+        "dest",
+        "mode",
+        "type",
+        "title",
+        "media_source",
+        "media_id"
+      ],
+      "title": "TransferHistoryRegisterRequest",
+      "type": "object"
+    },
     "TransferHistoryReplanRequest": {
       "additionalProperties": false,
       "description": "对零文件副作用的识别拒绝提交已核实的媒体身份及季集修正。",
@@ -6069,6 +6207,59 @@
         "decision"
       ],
       "title": "TransferManualReviewRequest",
+      "type": "object"
+    },
+    "TransferRegistrationAudit": {
+      "additionalProperties": false,
+      "description": "服务器记录的外部登记操作者、UTC 时间和文件核验证据。",
+      "properties": {
+        "actor_id": {
+          "description": "登记管理员的完整用户主键，身份以此字段为准",
+          "minimum": 1.0,
+          "title": "Actor Id",
+          "type": "integer"
+        },
+        "actor_name": {
+          "description": "管理员名称显示快照，最多 128 字符；超长时取前 127 字符加省略号，空名称显示 #用户ID",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Actor Name",
+          "type": "string"
+        },
+        "registered_at": {
+          "description": "服务器生成的 UTC ISO 登记时间",
+          "maxLength": 40,
+          "title": "Registered At",
+          "type": "string"
+        },
+        "source_state": {
+          "description": "核验时源文件存在或确认不存在",
+          "enum": [
+            "present",
+            "absent"
+          ],
+          "title": "Source State",
+          "type": "string"
+        },
+        "verification": {
+          "description": "两端大小匹配、本地硬链接或仅目标存在；均不代表内容校验和",
+          "enum": [
+            "matching_sizes",
+            "native_hardlink",
+            "destination_only"
+          ],
+          "title": "Verification",
+          "type": "string"
+        }
+      },
+      "required": [
+        "actor_id",
+        "actor_name",
+        "registered_at",
+        "verification",
+        "source_state"
+      ],
+      "title": "TransferRegistrationAudit",
       "type": "object"
     },
     "Workflow-Input": {
@@ -15526,6 +15717,19 @@
               "description": "当前页最多返回的记录数。",
               "title": "Count"
             },
+            "origin": {
+              "anyOf": [
+                {
+                  "const": "external",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "整理历史来源；external 仅返回管理员登记的外部整理记录，省略时保留全部历史。",
+              "title": "Origin"
+            },
             "page": {
               "anyOf": [
                 {
@@ -15700,6 +15904,27 @@
         "body"
       ],
       "title": "transfer.history.redo_batch",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "管理员登记已完成的外部复制、原生硬链接或移动；严格核验文件事实并记录审计，不操作文件或下载器，同一声明重试返回原回执。请求方法：POST；路径：/api/v1/history/transfer。操作效果：reversible_write；身份范围：admin。所需角色：system_admin。",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/TransferHistoryRegisterRequest",
+          "description": "transfer.history.register 的请求内容。管理员登记已完成的外部复制、原生硬链接或移动；严格核验文件事实并记录审计，不操作文件或下载器，同一声明重试返回原回执。严格使用下列类型和字段。"
+        },
+        "operation_id": {
+          "const": "transfer.history.register",
+          "description": "白名单中的精确操作标识，用于选择对应 oneOf 分支。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "transfer.history.register",
       "type": "object"
     },
     {
@@ -16919,6 +17144,7 @@
         "transfer.history.delete",
         "transfer.history.redo",
         "transfer.history.redo_batch",
+        "transfer.history.register",
         "transfer.history.replan",
         "transfer.manual_history",
         "transfer.manual_review",

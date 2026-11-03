@@ -125,6 +125,27 @@ def test_runtime_composition_reuses_dependencies_and_projects_api_identity() -> 
     assert composition.site_health._repository is inputs.dependencies.site
 
 
+def test_runtime_composition_injects_application_owned_registration_fact(tmp_path) -> None:
+    """
+    系统适配器通过组合根注入的构造器返回应用冻结 DTO，不反向依赖应用包。
+    """
+    from app.application.history.registration import LocalRegistrationEntry
+
+    source = tmp_path / "registration.mkv"
+    source.write_bytes(b"film")
+    runtime = runtime_composition.compose_runtime(_inputs()).runtime
+    entry = runtime.history.registration_local_entry(str(source))
+    assert isinstance(entry, LocalRegistrationEntry)
+    assert entry.name == source.name
+    assert entry.is_file
+    assert not entry.is_symlink
+    assert entry.size == 4
+    with runtime.history.registration_scope() as first:
+        with runtime.history.registration_scope() as second:
+            assert first.repository is not second.repository
+            assert first.unit_of_work is not second.unit_of_work
+
+
 def test_runtime_composition_publishes_and_resets_exact_projection(monkeypatch) -> None:
     """
     运行时 owner 应发布并按对称顺序撤销其拥有的全部投影。

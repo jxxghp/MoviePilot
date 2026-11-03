@@ -19,6 +19,7 @@ from app.application.history import (
     configure_transfer_history_repository,
     reset_transfer_history_repository,
 )
+from app.application.history.registration import LocalRegistrationEntry
 from app.application.site.contract import SiteRepository
 from app.application.site.health import (
     SiteHealthService,
@@ -189,7 +190,9 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
     从同一批组合输入构造 HostRuntime 及旧 API 数据投影。
     """
     # 领域 Runtime 的具体持久化投影只在组合阶段解析，保持模块冷导入合同。
+    from app.adapters.system.registration import probe_local_entry
     from app.db.adapters.history.download import SessionDownloadHistoryRepository
+    from app.db.adapters.history.registration import TransferRegistrationScopeFactory
     from app.db.adapters.history.transfer import SessionTransferHistoryRepository
     from app.db.adapters.outbox import (
         SqlAlchemyAsyncOutboxDispatchStore,
@@ -257,6 +260,8 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             transfer_mutation_repository=SessionTransferHistoryRepository,
             media_server_repository=cast(RepositoryFactory, MediaServerOper),
             transfer_execution_repository=dependencies.transfer_execution,
+            registration_scope=TransferRegistrationScopeFactory(SessionFactory),
+            registration_local_entry=partial(probe_local_entry, entry_factory=LocalRegistrationEntry),
         ),
         site=SiteRuntime(
             repository=SessionSiteRepository,

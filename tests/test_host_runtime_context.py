@@ -234,6 +234,8 @@ def _runtime() -> HostRuntime:
             transfer_mutation_repository=_Repository,
             media_server_repository=_Repository,
             transfer_execution_repository=_Repository(object()),
+            registration_scope=lambda: None,
+            registration_local_entry=lambda _path: None,
         ),
         site=SiteRuntime(
             repository=_Repository,

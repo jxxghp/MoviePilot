@@ -71,6 +71,12 @@ def api_transport(monkeypatch: pytest.MonkeyPatch) -> tuple[MoviePilotApiTool, A
             "description": "{\"原始副标题\": \"不应被递归解码\"}",
         }, "media_source": "tmdb", "media_id": "568160"}),
         ("transfer.history.delete", {"id": 7}),
+        ("transfer.history.register", {
+            "src": "/downloads/a.mkv", "src_storage": "local",
+            "dest": "/library/a.mkv", "dest_storage": "local",
+            "mode": "copy", "type": "电影", "title": "A",
+            "media_source": "tmdb", "media_id": "42",
+        }),
         ("slash.run", {"command": "/help"}),
         ("media.classification.policy.preview", {"input": {
             "kind": "media", "media": {"title": "天气之子"},

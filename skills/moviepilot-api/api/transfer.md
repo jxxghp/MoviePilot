@@ -65,7 +65,7 @@ Purpose: 按条件和分页读取文件整理历史。
 Identity scope: `bound_user`; required role: `user`.
 - `response`: structured page object; items stay in `data.list` and the exact total stays in `data.total`.
 - `path_params`: none
-- `query`: `count` (integer|null; default `30`): 当前页最多返回的记录数。; `page` (integer|null; default `1`): 从 1 开始的结果页码。; `status` (boolean|null): 用于筛选历史或描述记录的整理成功状态。; `title` (string|null): 操作使用的媒体、种子、订阅或历史标题。
+- `query`: `count` (integer|null; default `30`): 当前页最多返回的记录数。; `origin` (string=external|null): 整理历史来源；external 仅返回管理员登记的外部整理记录，省略时保留全部历史。; `page` (integer|null; default `1`): 从 1 开始的结果页码。; `status` (boolean|null): 用于筛选历史或描述记录的整理成功状态。; `title` (string|null): 操作使用的媒体、种子、订阅或历史标题。
 - `body`: none
 
 ### `transfer.history.clear`
@@ -99,6 +99,19 @@ Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: `history_ids` (array<integer>): 历史记录 ID 列表
+
+### `transfer.history.register`
+`POST /api/v1/history/transfer`; policy effect: `reversible_write`.
+Purpose: 管理员登记已完成的外部复制、原生硬链接或移动；严格核验文件事实并记录审计，不操作文件或下载器，同一声明重试返回原回执。
+Identity scope: `admin`; required role: `system_admin`.
+- `path_params`: none
+- `query`: none
+- `body`: `dest*` (string; minimum length `1`): 整理后目标文件的绝对路径; `dest_storage*` (string; minimum length `1`): 目标存储配置标识; `download_hash` (string|null): 已知下载任务标识，仅作关联声明; `episodes` (string|null): 集号或集范围，例如 E01 或 E01-E12; `media_id*` (string; minimum length `1`): 来源中的规范原生媒体标识; `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `mode*` (string(copy,link,move)): 已完成的复制、本地硬链接或移动; `seasons` (string|null): 季号或季范围，例如 S01; `src*` (string; minimum length `1`): 整理前源文件的绝对路径; `src_storage*` (string; minimum length `1`): 源存储配置标识; `title*` (string; minimum length `1`): 管理员确认的媒体标题; `type*` (string): 管理员确认的电影或电视剧类型; `year` (string|null): 四位发行年份
+- **Completed external work only:** Register a completed copy, native local hard link, or move; this operation only writes history and never moves files, scrapes metadata, or changes downloads.
+- Supply administrator-confirmed media identity and absolute paths. The server queries file facts. Copy requires equal file sizes; link requires distinct local directory entries with the same inode; move requires a confirmed absent source and verifies only the destination. These are not content checksums.
+- Retrying the same source, destination and metadata returns the original receipt. Conflicting or internal history returns a conflict and is never overwritten. Actor and registration time come from the server.
+- The complete `actor_id` is authoritative. `actor_name` is a display snapshot: nonempty names up to 128 characters stay unchanged; longer names use the first 127 characters plus `…`; empty names use `#<actor_id>`.
+- Use transfer.history with query origin=external to page through external registrations; older records have no recorded origin.
 
 ### `transfer.history.replan`
 `POST /api/v1/history/transfer/{history_id}/replan`; policy effect: `external_side_effect`.

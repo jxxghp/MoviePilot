@@ -598,10 +598,12 @@ class HistoryQueryService:
         page: int = 1,
         count: int = 30,
         status: Optional[bool] = None,
+        origin: Optional[str] = None,
     ) -> TransferHistoryPage:
         """
         应用历史筛选规则并返回整理历史分页 DTO。
         """
+        origin_filter = {"origin": origin} if origin is not None else {}
         if title:
             wildcard = "*" in title or "?" in title
             if wildcard:
@@ -612,6 +614,7 @@ class HistoryQueryService:
                 pattern,
                 status=status,
                 wildcard=wildcard,
+                **origin_filter,
             )
             records = await self._transfer_repository.async_list_by_title(
                 pattern,
@@ -619,14 +622,16 @@ class HistoryQueryService:
                 count=count,
                 status=status,
                 wildcard=wildcard,
+                **origin_filter,
             )
         else:
             records = await self._transfer_repository.async_list_by_page(
                 page=page,
                 count=count,
                 status=status,
+                **origin_filter,
             )
-            total = await self._transfer_repository.async_count(status=status)
+            total = await self._transfer_repository.async_count(status=status, **origin_filter)
 
         return TransferHistoryPage(
             list=[TransferHistory.model_validate(record) for record in records],

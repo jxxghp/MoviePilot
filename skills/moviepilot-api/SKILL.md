@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 71
+version: 72
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -17,11 +17,11 @@ allowed-api-operations: >-
   download.clients download.paths download.history.list download.history.delete
   transfer.history.delete site.update site.list site.userdata site.test site.cookie.update
   recommendation.list library.exists library.latest storage.settings storage.list transfer.history
-  transfer.file scheduler.list scheduler.run workflow.list workflow.run plugin.installed
-  plugin.market plugin.capabilities plugin.config.get plugin.config.update plugin.source.options
-  plugin.source.install plugin.source.change plugin.reload plugin.install plugin.uninstall
-  slash.list config.identifiers.get config.identifiers.update search.torrents search.results
-  filter.builtin filter.custom filter.groups filter.custom.add filter.custom.update
+  transfer.history.register transfer.file scheduler.list scheduler.run workflow.list workflow.run
+  plugin.installed plugin.market plugin.capabilities plugin.config.get plugin.config.update
+  plugin.source.options plugin.source.install plugin.source.change plugin.reload plugin.install
+  plugin.uninstall slash.list config.identifiers.get config.identifiers.update search.torrents
+  search.results filter.builtin filter.custom filter.groups filter.custom.add filter.custom.update
   filter.custom.delete filter.group.add filter.group.update filter.group.delete plugin.data
   config.system.list config.system.describe config.system.get config.system.update slash.run
   music.recognize music.explore music.album.get music.album.related music.artist.get

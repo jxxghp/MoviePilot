@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *最后更新：2026-10-19*
+> *最后更新：2026-11-03*
 
 ---
 
@@ -820,8 +820,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1147 |
-| 内部导入边 | 9,930 |
+| Python 模块 | 1150 |
+| 内部导入边 | 9,961 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |

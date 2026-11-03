@@ -20,6 +20,7 @@
 import json
 import os
 import shutil
+import stat
 import sys
 import time
 from pathlib import Path
@@ -72,6 +73,16 @@ class _StatResult(TypedDict):
     ino: int
     is_dir: bool
     is_file: bool
+
+
+class _EntryStatResult(_StatResult):
+    """
+    非跟随查询在普通属性上补充最终目录项的符号链接事实。
+
+    :ivar is_symlink: 最终目录项是否为符号链接，包括悬空链接
+    """
+
+    is_symlink: bool
 
 
 class _CopyProgress(TypedDict):
@@ -137,6 +148,21 @@ def _stat(payload: _Request, _emit: _Emit) -> _StatResult:
         "ino": info.st_ino,
         "is_dir": os.path.isdir(path),
         "is_file": os.path.isfile(path),
+    }
+
+
+def _lstat(payload: _Request, _emit: _Emit) -> _EntryStatResult:
+    """
+    只查询最终目录项，不跟随符号链接，所有类型均来自同一次 lstat。
+    """
+    info = os.lstat(payload["path"])
+    return {
+        "size": info.st_size, "mtime": info.st_mtime,
+        "mtime_ns": info.st_mtime_ns, "ctime_ns": info.st_ctime_ns,
+        "dev": info.st_dev, "ino": info.st_ino,
+        "is_dir": stat.S_ISDIR(info.st_mode),
+        "is_file": stat.S_ISREG(info.st_mode),
+        "is_symlink": stat.S_ISLNK(info.st_mode),
     }
 
 
@@ -279,6 +305,7 @@ def _rmtree(payload: _Request, _emit: _Emit) -> bool:
 
 _HANDLERS: dict[str, Callable[[_Request, _Emit], _Result]] = {
     "stat": _stat,
+    "lstat": _lstat,
     "realpath": _realpath,
     "exists": _exists,
     "listdir": _listdir,
