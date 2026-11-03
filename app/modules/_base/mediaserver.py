@@ -5,9 +5,8 @@
 定时重连与连接测试。服务器差异（认证 API、存在性检查端点、连接探测方式）
 通过类属性与钩子方法保留在各模块。
 """
-from typing import Any, Generator, Iterable, Mapping, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Generator, Iterable, Mapping, Optional, Tuple, cast
 
-from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MusicMediaServerHelper
 from app.domain.context import MediaInfo, MusicInfo
 from app.modules import TService, _MediaServerBase, _ModuleBase
@@ -19,19 +18,22 @@ from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
 from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.types import ChainEventType, MediaType
 
+if TYPE_CHECKING:
+    from app.adapters.network.http import RequestUtils
+
 # 默认全量枚举按 200 条读取，限制单页 JSON 及递归目录同时保留的数据量。
 _EMBY_ITEMS_PAGE_SIZE = 200
 
 
 def _read_emby_item_page(
-    request: RequestUtils,
+    request: "RequestUtils",
     url: str,
     params: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], Optional[int]]:
     """
     读取一页原始条目，并在交给同步迭代器前释放 HTTP 响应及其字节缓冲。
 
-    :param request: 对应服务器已配置认证头的请求工具
+    :param request: 对应服务器的请求工具，保留其请求头配置
     :param url: 当前用户的条目列表接口
     :param params: 包含目录、投影和分页范围的请求参数
     :return: 原始条目列表与服务端可选总数；总数包含随后可能被过滤的条目
@@ -51,7 +53,7 @@ def _read_emby_item_page(
 
 
 def iter_emby_items(
-    request: RequestUtils,
+    request: "RequestUtils",
     url: str,
     params: Mapping[str, Any],
     *,
