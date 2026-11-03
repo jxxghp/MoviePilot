@@ -5,19 +5,26 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 from app.application.history import TransferHistorySnapshot
 from app.application.notification import agent_transfer_notification_key, apply_notification_policy
-from app.application.outbox import OutboxDispatcher
+from app.application.outbox import (
+    AGENT_TRANSFER_NOTIFICATION_TOPIC,
+    ClaimedOutboxMessage,
+    OutboxDispatcher,
+    OutboxIntent,
+)
 from app.application.settings.contract import SYSTEMCONFIG_CONTRACTS
 from app.application.transfer.execution import TransferExecutionState, TransferSettlementSnapshot, TransferTerminalState
 from app.application.transfer.recovery import ai_takeover_result
@@ -26,7 +33,7 @@ from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain.transfer import retry
 from app.chain.transfer.facade import TransferChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
-from app.db.adapters.outbox import SqlAlchemyOutboxDispatchStore
+from app.db.adapters.outbox import SqlAlchemyAsyncOutboxStager, SqlAlchemyOutboxDispatchStore, SqlAlchemyOutboxStager
 from app.db.models.outbox import OutboxMessage
 from app.schemas.message import Message, MessageNotificationContext
 from app.schemas.system import NotificationPoliciesConf
@@ -238,6 +245,249 @@ def test_missing_automatic_context_cannot_enter_durable_notification(outbox_stor
     _factory, writer = outbox_store
     with pytest.raises(ValueError, match="自动任务身份"):
         writer.agent_transfer_notification(message=Message(title="手动回复"), publish=Mock())
+
+
+@pytest.mark.parametrize("winner_committed", [True, False], ids=["duplicate", "other-constraint"])
+def test_sync_registration_only_deduplicates_verified_unique_conflicts(
+        outbox_store: tuple[sessionmaker, TransactionalChainDurableEventWriter],
+        monkeypatch: pytest.MonkeyPatch, winner_committed: bool,
+) -> None:
+    """
+    回滚后仅在同一通知确已落库时去重，其他完整性错误必须原样传播。
+
+    :param outbox_store: 独立临时库与真实事务写入器
+    :param monkeypatch: 只在暂存边界注入确定性的数据库冲突
+    :param winner_committed: 是否模拟另一个事务已提交同一通知
+    """
+    factory, writer = outbox_store
+    original_stage = SqlAlchemyOutboxStager.stage
+    error = IntegrityError("INSERT", {}, RuntimeError("测试约束冲突"))
+    publish = Mock()
+
+    def inject_conflict(_stager: SqlAlchemyOutboxStager, intent: OutboxIntent, now: datetime) -> None:
+        """
+        在首次查询后提交竞争事务，再让当前暂存收到完整性错误。
+
+        :param _stager: 当前事务的暂存器，不使用其会话制造竞争记录
+        :param intent: 真实写入器构造的稳定通知意图
+        :param now: 写入器传入的登记时间
+        :raises IntegrityError: 模拟当前事务被数据库拒绝
+        """
+        if winner_committed:
+            with factory() as winner:
+                original_stage(SqlAlchemyOutboxStager(winner), intent, now)
+                winner.commit()
+        raise error
+
+    monkeypatch.setattr(SqlAlchemyOutboxStager, "stage", inject_conflict)
+    if winner_committed:
+        assert not writer.agent_transfer_notification(message=_message(), publish=publish)
+    else:
+        with pytest.raises(IntegrityError) as caught:
+            writer.agent_transfer_notification(message=_message(), publish=publish)
+        assert caught.value is error
+    publish.assert_not_called()
+    with factory() as session:
+        rows = session.scalars(select(OutboxMessage)).all()
+        assert len(rows) == int(winner_committed)
+        if rows:
+            assert rows[0].status == "pending" and rows[0].attempt == 0
+            assert rows[0].event_key == agent_transfer_notification_key(_message().notification_context)
+
+
+@pytest.mark.parametrize("winner_committed", [True, False], ids=["duplicate", "other-constraint"])
+def test_async_registration_only_deduplicates_verified_unique_conflicts(
+        outbox_store: tuple[sessionmaker, TransactionalChainDurableEventWriter],
+        monkeypatch: pytest.MonkeyPatch, winner_committed: bool,
+) -> None:
+    """
+    异步回滚同样核实唯一身份，不将无关约束失败当作重复或成功。
+
+    :param outbox_store: 独立临时库与配置异步会话工厂的写入器
+    :param monkeypatch: 在异步暂存边界注入竞争事务和约束失败
+    :param winner_committed: 是否存在真正提交成功的竞争通知
+    """
+    factory, writer = outbox_store
+    async_factory = writer._async_session_factory
+    assert async_factory is not None
+    original_stage = SqlAlchemyAsyncOutboxStager.stage
+    error = IntegrityError("INSERT", {}, RuntimeError("测试约束冲突"))
+
+    async def inject_conflict(_stager: SqlAlchemyAsyncOutboxStager, intent: OutboxIntent, now: datetime) -> None:
+        """
+        用另一个真实异步短事务登记竞争记录，再拒绝当前事务。
+
+        :param _stager: 被拒绝事务的暂存器，不复用其会话
+        :param intent: 写入器生成的完整通知意图
+        :param now: 当前登记时间
+        :raises IntegrityError: 模拟唯一键或其他约束失败
+        """
+        if winner_committed:
+            async with async_factory() as winner:
+                await original_stage(SqlAlchemyAsyncOutboxStager(winner), intent, now)
+                await winner.commit()
+        raise error
+
+    monkeypatch.setattr(SqlAlchemyAsyncOutboxStager, "stage", inject_conflict)
+    if winner_committed:
+        assert not asyncio.run(writer.async_agent_transfer_notification(message=_message()))
+    else:
+        with pytest.raises(IntegrityError) as caught:
+            asyncio.run(writer.async_agent_transfer_notification(message=_message()))
+        assert caught.value is error
+    with factory() as session:
+        rows = session.scalars(select(OutboxMessage)).all()
+        assert len(rows) == int(winner_committed)
+        if rows:
+            assert rows[0].status == "pending" and rows[0].attempt == 0
+            assert rows[0].event_key == agent_transfer_notification_key(_message().notification_context)
+
+
+def test_async_registration_requires_explicit_session_composition() -> None:
+    """
+    异步工厂未装配时明确报错，不悄悄使用同步会话或丢弃通知。
+    """
+    sync_factory = Mock()
+    writer = TransactionalChainDurableEventWriter(sync_factory)
+    with pytest.raises(RuntimeError, match="未装配异步 Session 工厂"):
+        asyncio.run(writer.async_agent_transfer_notification(message=_message()))
+    sync_factory.assert_not_called()
+
+
+@pytest.mark.parametrize("entry", ["sync", "async"])
+def test_explicit_manual_reply_cannot_enter_automatic_outbox(
+        outbox_store: tuple[sessionmaker, TransactionalChainDurableEventWriter], entry: str,
+) -> None:
+    """
+    手动来源即使具备完整上下文，也不能进入自动通知的持久登记通道。
+
+    :param outbox_store: 真实临时 Outbox 与同步、异步写入器
+    :param entry: 当前验证的同步或异步入口
+    """
+    factory, writer = outbox_store
+    publish = Mock()
+    with pytest.raises(ValueError, match="自动任务身份"):
+        if entry == "sync":
+            writer.agent_transfer_notification(message=_message(trigger="manual"), publish=publish)
+        else:
+            asyncio.run(writer.async_agent_transfer_notification(message=_message(trigger="manual")))
+    publish.assert_not_called()
+    with factory() as session:
+        assert session.scalars(select(OutboxMessage)).all() == []
+
+
+@pytest.fixture
+def notification_outbox_message() -> ClaimedOutboxMessage:
+    """
+    提供提交前冻结的消息和独立策略上下文，不接触外部渠道。
+
+    :return: 已认领的自动接管通知投影
+    """
+    message = _message()
+    return ClaimedOutboxMessage(
+        message_id=1, event_key=agent_transfer_notification_key(message.notification_context),
+        topic=AGENT_TRANSFER_NOTIFICATION_TOPIC, payload_version=1, attempt=1,
+        payload={"message": message.model_dump(mode="json"),
+                 "notification_context": message.notification_context.model_dump(mode="json")},
+    )
+
+
+def test_notification_restore_rejects_unknown_payload_version(
+        notification_outbox_message: ClaimedOutboxMessage, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    未知快照版本先拒绝，不调用通知对象或降级成普通广播。
+
+    :param notification_outbox_message: 合法自动通知快照
+    :param monkeypatch: 隔离真实通知对象构造
+    """
+    command_factory = Mock()
+    monkeypatch.setattr(outbox_composition, "CommandChain", command_factory)
+    handler = outbox_composition.build_outbox_handlers()[AGENT_TRANSFER_NOTIFICATION_TOPIC]
+    with pytest.raises(ValueError, match="快照版本不受支持"):
+        handler(replace(notification_outbox_message, payload_version=2))
+    command_factory.assert_not_called()
+
+
+@pytest.mark.parametrize("field", ["message", "notification_context"])
+@pytest.mark.parametrize("shape", ["missing", "null", "array", "string"])
+def test_notification_restore_rejects_corrupt_snapshot_parts(
+        notification_outbox_message: ClaimedOutboxMessage, monkeypatch: pytest.MonkeyPatch,
+        field: str, shape: str,
+) -> None:
+    """
+    缺失或类型损坏的消息与上下文均先拒绝，不能绕过场景策略投递。
+
+    :param notification_outbox_message: 用于构造损坏快照的合法投影
+    :param monkeypatch: 监视是否错误创建真实通知对象
+    :param field: 当前损坏的消息或上下文字段
+    :param shape: 缺失、空值、数组或字符串等持久数据形态
+    """
+    payload = dict(notification_outbox_message.payload)
+    if shape == "missing":
+        payload.pop(field)
+    else:
+        payload[field] = {"null": None, "array": [], "string": "损坏快照"}[shape]
+    command_factory = Mock()
+    monkeypatch.setattr(outbox_composition, "CommandChain", command_factory)
+    handler = outbox_composition.build_outbox_handlers()[AGENT_TRANSFER_NOTIFICATION_TOPIC]
+    with pytest.raises(ValueError, match="缺少消息或策略上下文"):
+        handler(replace(notification_outbox_message, payload=payload))
+    command_factory.assert_not_called()
+
+
+@pytest.mark.parametrize("trigger,error_type", [("manual", ValueError), ("invalid", ValidationError)])
+def test_notification_restore_rejects_nonautomatic_context(
+        notification_outbox_message: ClaimedOutboxMessage, monkeypatch: pytest.MonkeyPatch,
+        trigger: str, error_type: type[ValueError],
+) -> None:
+    """
+    手动和非法触发来源不能通过伪装快照进入自动通知恢复流程。
+
+    :param notification_outbox_message: 其他字段合法的自动通知快照
+    :param monkeypatch: 隔离通知对象构造
+    :param trigger: 被篡改的触发来源
+    :param error_type: 模型或宿主边界应抛出的校验错误
+    """
+    payload = {**notification_outbox_message.payload,
+               "notification_context": {**notification_outbox_message.payload["notification_context"], "trigger": trigger}}
+    command_factory = Mock()
+    monkeypatch.setattr(outbox_composition, "CommandChain", command_factory)
+    handler = outbox_composition.build_outbox_handlers()[AGENT_TRANSFER_NOTIFICATION_TOPIC]
+    with pytest.raises(error_type):
+        handler(replace(notification_outbox_message, payload=payload))
+    command_factory.assert_not_called()
+
+
+@pytest.mark.parametrize("delivery_fails", [False, True])
+def test_notification_restore_preserves_context_and_delivery_failure(
+        notification_outbox_message: ClaimedOutboxMessage, monkeypatch: pytest.MonkeyPatch,
+        delivery_fails: bool,
+) -> None:
+    """
+    恢复保留完整策略身份和稳定事件键，严格投递失败仍向 Outbox 传播。
+
+    :param notification_outbox_message: 包含完整分析与独立摘要的合法通知快照
+    :param monkeypatch: 只替换实际渠道投递边界
+    :param delivery_fails: 是否模拟提供方拒绝投递
+    """
+    command = Mock()
+    error = RuntimeError("模拟渠道拒绝")
+    if delivery_fails:
+        command.post_message_strict.side_effect = error
+    monkeypatch.setattr(outbox_composition, "CommandChain", lambda: command)
+    handler = outbox_composition.build_outbox_handlers()[AGENT_TRANSFER_NOTIFICATION_TOPIC]
+    if delivery_fails:
+        with pytest.raises(RuntimeError) as caught:
+            handler(notification_outbox_message)
+        assert caught.value is error
+    else:
+        handler(notification_outbox_message)
+    command.post_message_strict.assert_called_once()
+    restored = command.post_message_strict.call_args.args[0]
+    assert restored.model_dump(mode="json") == notification_outbox_message.payload["message"]
+    assert restored.notification_context.model_dump(mode="json") == notification_outbox_message.payload["notification_context"]
+    assert command.post_message_strict.call_args.kwargs == {"event_key": notification_outbox_message.event_key}
 
 
 @pytest.fixture
