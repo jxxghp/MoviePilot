@@ -162,7 +162,7 @@ def _extract_model_fields(
     default_group: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """
-    提取 Pydantic 配置模型字段的说明、分类和源码位置。
+    提取 Pydantic 配置模型字段的说明、分类和源文件。
     """
     module, lines = _load_module(path)
     class_node = _find_class(module, class_name)
@@ -186,14 +186,13 @@ def _extract_model_fields(
             "description": description,
             "group": group,
             "source_file": str(path.relative_to(PROJECT_ROOT)),
-            "source_line": node.lineno,
         }
     return results
 
 
 def _extract_systemconfig_fields(path: Path) -> dict[str, dict[str, Any]]:
     """
-    提取 SystemConfigKey 枚举值的业务说明和源码位置。
+    提取 SystemConfigKey 枚举值的业务说明和源文件。
     """
     module, lines = _load_module(path)
     class_node = _find_class(module, "SystemConfigKey")
@@ -207,7 +206,6 @@ def _extract_systemconfig_fields(path: Path) -> dict[str, dict[str, Any]]:
             "enum_name": field_name,
             "description": " ".join(_preceding_comments(lines, node.lineno, exclude_sections=False)).strip(),
             "source_file": str(path.relative_to(PROJECT_ROOT)),
-            "source_line": node.lineno,
         }
     return results
 
@@ -272,15 +270,19 @@ def generate_catalog() -> dict[str, Any]:
     }
 
 
+def render_catalog() -> str:
+    """
+    按稳定的键序和缩进序列化来源目录，生成与一致性测试共用同一输出格式。
+    """
+    return json.dumps(generate_catalog(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
 def main() -> int:
     """
     写入格式稳定的系统设置来源目录。
     """
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(
-        json.dumps(generate_catalog(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    OUTPUT_PATH.write_text(render_catalog(), encoding="utf-8")
     print(f"generated {OUTPUT_PATH.relative_to(PROJECT_ROOT)}")
     return 0
 
