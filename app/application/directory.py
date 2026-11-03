@@ -30,7 +30,9 @@ from app.application.configuration import (
     get_configured_system_config,
 )
 from app.application.database import AsyncDatabaseExecutor
+from app.application.download.mediafolder import MediaFolderValue, render_media_folder
 from app.domain.context import MediaInfo, MusicInfo
+from app.domain.mediafolder import media_folder_template_index
 from app.runtime.log import logger
 from app.schemas.category import ClassificationPolicy
 from app.schemas.file import FileURI as _SchemaFileURI
@@ -49,9 +51,14 @@ def build_media_download_path(
     directory: _SchemaTransferDirectoryConf,
     media: DirectoryMedia,
     directory_helper: Optional["DirectoryHelper"] = None,
+    *,
+    media_folder_values: Optional[dict[str, MediaFolderValue]] = None,
 ) -> Path:
     """
-    按下载目录开关和稳定分类快照构造保存路径。
+    按类型、分类、媒体目录顺序构造保存路径。
+
+    :param media_folder_values: 历史命名事实；None 使用当前媒体信息
+    :raises ValueError: 开启媒体目录后无法安全渲染标题目录
     """
     download_path = root_path
     type_folder_enabled = bool(
@@ -61,19 +68,37 @@ def build_media_download_path(
         download_path = download_path / (media.type or MediaType.UNKNOWN).value
 
     helper = directory_helper or DirectoryHelper()
-    if helper.has_fixed_category(directory) or not directory.download_category_folder:
-        return download_path
-    category_path = helper.resolve_media_category(media).path
-    if not category_path:
-        return download_path
-    category_path = category_path_below_media_type(
-        category_path,
-        media.type,
-        type_folder_enabled=type_folder_enabled,
-    )
-    if not category_path:
-        return download_path
-    return append_classification_category_path(download_path, category_path)
+    if not helper.has_fixed_category(directory) and directory.download_category_folder:
+        category_path = category_path_below_media_type(
+            helper.resolve_media_category(media).path,
+            media.type,
+            type_folder_enabled=type_folder_enabled,
+        )
+        download_path = append_classification_category_path(download_path, category_path)
+    if getattr(directory, "download_media_folder", False) and isinstance(media, MediaInfo) and media.type in {MediaType.MOVIE, MediaType.TV}:
+        download_path /= render_media_folder(media, media_folder_values)
+    return download_path
+
+
+def download_media_boundary(
+    file_path: Path,
+    root: Path,
+    directory: _SchemaTransferDirectoryConf,
+    media_type: object,
+) -> Path:
+    """
+    在类型、分类边界后识别共享影视目录，不把直接文件当成目录。
+
+    :param file_path: 正在回查历史或清理的文件路径
+    :param root: 已识别的类型及分类边界
+    :param directory: 对应下载目录配置
+    :param media_type: 目录配置或类型子目录提供的媒体类型
+    :return: 影视共享目录；开关关闭、音乐或无子目录时返回原边界
+    """
+    if not getattr(directory, "download_media_folder", False) or classification_media_type(media_type) == "音乐":
+        return root
+    relative_parts = file_path.relative_to(root).parts
+    return root / relative_parts[0] if len(relative_parts) > 1 else root
 
 
 class DiskTopology(Protocol):
@@ -538,6 +563,24 @@ class DirectoryHelper:
             media_type = relative_parts[0]
             root = root / media_type
 
+        root = self._category_cleanup_root(
+            file_path, root, directory, library=library, media_type=media_type, type_folder=bool(type_folder),
+        )
+        return root if library else download_media_boundary(file_path, root, directory, media_type)
+
+    def _category_cleanup_root(
+        self,
+        file_path: Path,
+        root: Path,
+        directory: _SchemaTransferDirectoryConf,
+        *,
+        library: bool,
+        media_type: Optional[str],
+        type_folder: bool,
+    ) -> Path:
+        """
+        保留最深的有效分类目录；分类策略失效时保守保留第一层。
+        """
         category_folder = directory.library_category_folder if library else directory.download_category_folder
         fixed_category = self.has_fixed_category(directory)
         if not category_folder or (fixed_category and not library):
@@ -801,19 +844,9 @@ class DirectoryHelper:
             return media_root
         rename_list = rename_format.split("/")
         rename_format_level = len(rename_list) - 1
-        for level, name in enumerate(reversed(rename_list)):
-            if level == 0:
-                # 跳过文件名的标题参数
-                continue
-            matchs = JINJA2_VAR_PATTERN.findall(name)
-            if not matchs:
-                continue
-            # 处理特例，有的人重命名的第一层是年份、分辨率
-            if (any("title" in m for m in matchs)
-                    and not any("season" in m for m in matchs)):
-                # 找出最后一层含有标题且不含季参数的目录作为媒体根目录
-                rename_format_level = level
-                break
+        index = media_folder_template_index(rename_format)
+        if index is not None:
+            rename_format_level = len(rename_list) - index - 1
         else:
             # 假定第一层目录是媒体根目录
             logger.warn(f"重命名格式 {rename_format} 缺少标题目录")

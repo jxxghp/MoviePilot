@@ -15,12 +15,17 @@ from app.application.directory import (
     build_media_download_path,
     validate_download_save_path,
 )
+from app.application.download.mediafolder import (
+    MediaFolderValue,
+    media_folder_context,
+    validate_media_folder_context,
+)
 from app.application.download.validation import validate_torrent_hash
 from app.application.history import DownloadHistorySnapshot
 from app.domain.classification.validation import validate_classification_category_path
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.transfer import DownloaderTorrent
-from app.schemas.types import MediaType
+from app.schemas.types import MediaSource, MediaType
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +100,37 @@ def _history_media(history: DownloadHistorySnapshot) -> MediaInfo | MusicInfo:
     )
 
 
+def _history_media_folder_values(
+    history: DownloadHistorySnapshot,
+    media: MediaInfo,
+) -> dict[str, MediaFolderValue]:
+    """
+    恢复命名快照；旧历史只投影确定存在的标题、年份及主来源标识。
+
+    :raises ValueError: 历史中已有的版本化快照无效
+    """
+    note = history.note if isinstance(history.note, dict) else {}
+    if "media_folder" in note:
+        snapshot = note["media_folder"]
+        if not isinstance(snapshot, dict) or snapshot.get("version") != 1:
+            raise ValueError("下载历史媒体目录命名快照版本无效")
+        return validate_media_folder_context(snapshot.get("context"))
+    values = media_folder_context(media)
+    result = {key: values[key] for key in ("title", "year", "title_year")}
+    if history.media_source and history.media_id:
+        result.update(media_source=history.media_source, media_id=history.media_id)
+        field = {
+            MediaSource.TMDB: "tmdbid",
+            MediaSource.IMDb: "imdbid",
+            MediaSource.Douban: "doubanid",
+            MediaSource.Bangumi: "bangumiid",
+            MediaSource.AniList: "anilistid",
+        }.get(MediaSource(history.media_source))
+        if field:
+            result[field] = history.media_id
+    return result
+
+
 def resolve_download_source_classification(
     torrent: DownloaderTorrent,
     history: DownloadHistorySnapshot,
@@ -145,6 +181,11 @@ def resolve_download_source_classification(
         directory,
         media,
         directory_helper=helper,
+        media_folder_values=(
+            _history_media_folder_values(history, media)
+            if directory.download_media_folder and isinstance(media, MediaInfo) and media.type in {MediaType.MOVIE, MediaType.TV}
+            else None
+        ),
     ).as_posix()
     target_save_path = validate_download_save_path(target_path)
     return DownloadSourceClassificationPlan(

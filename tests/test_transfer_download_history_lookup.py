@@ -5,6 +5,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from app.chain.transfer.facade import TransferChain
 
 
@@ -73,6 +75,48 @@ def _download_dir(**overrides):
     }
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+@pytest.mark.parametrize("options,folder", [
+    ({}, "/downloads/示例 (2026)"),
+    ({"media_type": "电视剧"}, "/downloads/示例 (2026)"),
+    ({"download_type_folder": True, "download_category_folder": True}, "/downloads/电视剧/亚洲/国产/示例 (2026)"),
+    ({"media_category": "国产", "download_category_folder": True}, "/downloads/示例 (2026)"),
+])
+def test_shared_media_folder_does_not_associate_another_season(monkeypatch, options, folder):
+    """
+    媒体目录属于多个资源共享边界，不得借用另一季的保存目录历史。
+    """
+    expected = SimpleNamespace(download_hash="season-one", downloader="qb")
+    oper = FakeDownloadHistoryOper(
+        histories_by_path={folder: expected},
+        histories_by_hash={"season-one": expected},
+        files_by_savepath={folder: [SimpleNamespace(
+            download_hash="season-one", fullpath=f"{folder}/S01E01.mkv", filepath="S01E01.mkv",
+        )]},
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.DirectoryHelper.get_download_dirs",
+        lambda _: [_download_dir(download_media_folder=True, **options)],
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.DirectoryHelper.classification_category_paths",
+        lambda _, media_type=None: (("电视剧", "亚洲", "国产"),),
+    )
+    chain = _make_chain()
+    assert chain._resolve_download_history(repository=oper, file_path=Path(folder) / "S02E01.mkv") is None
+    assert chain._resolve_download_history(repository=oper, file_path=Path(folder) / "S01E01.mkv") is expected
+
+
+def test_shared_media_boundary_does_not_treat_direct_file_as_directory(monkeypatch):
+    """
+    开关启用前已在根目录的文件不能被当成新增媒体目录。
+    """
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.DirectoryHelper.get_download_dirs",
+        lambda _: [_download_dir(download_media_folder=True)],
+    )
+    assert _make_chain()._get_shared_download_roots(Path("/downloads/old.mkv")) == {"/downloads"}
 
 
 def test_resolve_download_history_falls_back_to_parent_download_path():

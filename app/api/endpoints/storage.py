@@ -108,6 +108,7 @@ def directory_settings(
                 "media_category_id": directory.media_category_id,
                 "download_type_folder": directory.download_type_folder,
                 "download_category_folder": directory.download_category_folder,
+                "download_media_folder": directory.download_media_folder,
                 "monitor_type": directory.monitor_type,
                 "monitor_mode": directory.monitor_mode,
                 "transfer_type": directory.transfer_type,

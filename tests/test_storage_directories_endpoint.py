@@ -16,6 +16,7 @@ def test_directory_settings_projects_complete_selection_contract() -> None:
         name="日番库",
         download_type_folder=True,
         download_category_folder=True,
+        download_media_folder=True,
         library_path="/library/anime",
         library_storage="local",
         library_type_folder=True,
@@ -36,6 +37,7 @@ def test_directory_settings_projects_complete_selection_contract() -> None:
     assert response.data[0]["media_category"] == "动漫/日番"
     assert response.data[0]["download_type_folder"] is True
     assert response.data[0]["download_category_folder"] is True
+    assert response.data[0]["download_media_folder"] is True
     assert response.data[0]["library_type_folder"] is True
     assert response.data[0]["library_category_folder"] is True
 
@@ -70,9 +72,11 @@ def test_transfer_directory_round_trip_keeps_stable_reference_snapshot() -> None
         "media_type": "music",
         "media_category_id": "music.live",
         "media_category": "音乐/现场",
+        "download_media_folder": True,
     }
 
     restored = TransferDirectoryConf.model_validate(payload)
 
     assert restored.model_dump()["media_category_id"] == "music.live"
     assert restored.model_dump()["media_category"] == "音乐/现场"
+    assert restored.model_dump()["download_media_folder"] is True

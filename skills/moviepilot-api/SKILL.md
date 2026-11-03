@@ -156,6 +156,15 @@ paths. Cross-share moves copy on the server before deleting the source and are
 not atomic; cross-share hard links are unsupported. Update saved directory and
 downloader mappings when switching path modes.
 
+Download directory settings can opt into `download_media_folder` (default off).
+New movie/TV downloads then append one title folder from the configured rename
+template after existing type/category folders; music is unchanged. The folder
+uses media titles, year and IDs only, so file/release/season-dependent templates
+fail explicitly. This does not move existing tasks or invoke transfer rename
+plugins. New download history keeps a bounded naming snapshot for later source
+classification; legacy history rejects templates requiring unknown naming fields.
+Use only the listed configuration operations; this setting adds no new operation.
+
 ## Overall Workflow
 
 1. Select the exact `operation_id` from the category index below.

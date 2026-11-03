@@ -11,6 +11,7 @@ from app.application.chain.events import (
     snapshot_download_processing,
 )
 from app.application.classification.reference import effective_classification_snapshot
+from app.application.download.mediafolder import media_folder_context
 from app.application.history import DownloadFileWrite, DownloadHistoryWrite
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain.context import (
@@ -42,10 +43,16 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             meta: MetaBase,
     ) -> dict[str, Any]:
         """
-        构造下载历史备注，并为音乐保存可恢复的版本化上下文。
+        构造下载历史备注，保存影视命名事实及音乐版本化上下文。
         """
         note: dict[str, Any] = {"source": source}
         if getattr(media, "type", None) != MediaType.MUSIC:
+            if isinstance(media, MediaInfo) and media.type in {MediaType.MOVIE, MediaType.TV}:
+                try:
+                    note["media_folder"] = {"version": 1, "context": media_folder_context(media)}
+                except ValueError as error:
+                    # 命名字段异常不应让未启用媒体目录的既有下载结算失败。
+                    logger.warn(f"未保存下载媒体目录命名快照：{error}")
             return note
         media_payload = media.to_dict()
         media_payload.pop("raw_data", None)

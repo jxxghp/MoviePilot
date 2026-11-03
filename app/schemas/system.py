@@ -434,6 +434,7 @@ class TransferDirectoryConf(BaseModel):
     media_category_id: Optional[str] = Field(default=None, description="适用媒体类别稳定 ID；media_category 在兼容期保存路径快照")
     download_type_folder: Optional[bool] = Field(default=False, description="下载类型子目录")
     download_category_folder: Optional[bool] = Field(default=False, description="下载类别子目录")
+    download_media_folder: Optional[bool] = Field(default=False, description="下载媒体子目录；默认关闭，仅影视使用重命名模板中的标题目录")
     monitor_type: Optional[str] = Field(default=None, description="监控方式 downloader/monitor，None为不监控")
     monitor_mode: Optional[str] = Field(default="fast", description="监控模式 fast / compatibility")
     transfer_type: Optional[str] = Field(default=None, description="整理方式 move/copy/link/softlink/reflink")

@@ -12,7 +12,7 @@ from app.application.classification.reference import (
     category_path_below_media_type,
 )
 from app.application.configuration import get_configured_system_config
-from app.application.directory import DirectoryHelper
+from app.application.directory import DirectoryHelper, download_media_boundary
 from app.application.formatting import FormatParser
 from app.application.history.retry import (
     describe_history_gate,
@@ -314,10 +314,13 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     for category_part in category_parts:
                         category_root = category_root / category_part
                         shared_roots.add(category_root.as_posix())
+                    current_root = category_root
                     break
                 if not category_matched:
                     category_root = current_root / relative_parts[part_index]
                     shared_roots.add(category_root.as_posix())
+                    current_root = category_root
+            shared_roots.add(download_media_boundary(file_path, current_root, dir_info, media_type).as_posix())
 
         return shared_roots
 

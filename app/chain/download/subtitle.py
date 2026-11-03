@@ -363,11 +363,14 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
                 save_path=validated_save_path,
             )
             if dir_info:
-                target_dir = cls._append_download_classification(
-                    root_path=target_dir,
-                    dir_info=dir_info,
-                    media_info=media_info,
-                )
+                try:
+                    target_dir = cls._append_download_classification(
+                        root_path=target_dir,
+                        dir_info=dir_info,
+                        media_info=media_info,
+                    )
+                except ValueError as err:
+                    return None, None, str(err)
             return storage, target_dir, ""
 
         dir_info = DirectoryHelper().get_download_dir(media_info)
@@ -378,11 +381,14 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
 
         if not dir_info.download_path:
             return None, None, "下载目录路径为空"
-        download_dir = cls._append_download_classification(
-            root_path=Path(dir_info.download_path),
-            dir_info=dir_info,
-            media_info=media_info,
-        )
+        try:
+            download_dir = cls._append_download_classification(
+                root_path=Path(dir_info.download_path),
+                dir_info=dir_info,
+                media_info=media_info,
+            )
+        except ValueError as err:
+            return None, None, str(err)
         return storage, download_dir, ""
 
     @staticmethod
@@ -392,12 +398,13 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             media_info: MediaInfo,
     ) -> Path:
         """
-        按下载目录配置拼装媒体类型和类别子目录。
+        按下载目录配置拼装媒体类型、类别和媒体子目录。
 
         :param root_path: 下载根目录
         :param dir_info: 下载目录配置
         :param media_info: 媒体信息
         :return: 应传给存储或下载器的媒体下载目录
+        :raises ValueError: 媒体目录模板无法安全渲染
         """
         return build_media_download_path(root_path, dir_info, media_info)
 

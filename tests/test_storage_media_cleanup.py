@@ -111,6 +111,11 @@ def test_library_cleanup_preserves_shared_directories(tmp_path, cleanup, options
     ({"download_type_folder": True, "download_category_folder": True}, "电影/华语电影/资源包", "电影/华语电影"),
     ({"download_category_folder": True, "media_category": "华语电影"}, "资源包", ""),
     ({"media_type": "电影", "download_type_folder": True}, "资源包", ""),
+    ({"download_media_folder": True}, "某片 (2026)/资源包", "某片 (2026)"),
+    ({"download_media_folder": True, "download_category_folder": True}, "亚洲/华语/某片/资源包", "亚洲/华语/某片"),
+    ({"download_media_folder": True, "download_type_folder": True, "download_category_folder": True},
+     "电影/华语电影/某片/资源包", "电影/华语电影/某片"),
+    ({"download_media_folder": True, "media_type": "音乐"}, "专辑/资源包", ""),
 ])
 def test_source_cleanup_uses_download_folder_rules(tmp_path, cleanup, options, relative_path, boundary):
     """
