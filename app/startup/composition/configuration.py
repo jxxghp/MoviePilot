@@ -18,6 +18,7 @@ from app.application.configuration import (
     configure_runtime_settings,
     configure_system_config,
     configure_token_runtime_config,
+    preserve_invalid_system_config,
     reset_configuration_services,
 )
 from app.application.database import AsyncDatabaseExecutor
@@ -74,6 +75,7 @@ async def compose_configuration(
     加载系统与用户配置快照，并在全部成功后发布配置服务。
     """
     system_config = cast(Callable[[], SystemConfigOper], SystemConfigOper)()
+    system_config.configure_invalid_value_retention(preserve_invalid_system_config)
     user_config = TransactionalUserConfigurationRepository(SessionFactory)
     await executor.run(system_config.load_snapshot)
     await executor.run(user_config.load_snapshot)

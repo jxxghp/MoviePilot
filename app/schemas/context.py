@@ -383,6 +383,9 @@ class TorrentInfo(OptionalMediaIdentityMixin, BaseModel):
     搜索种子信息。
     """
     site: Optional[int] = Field(default=None, description="站点ID")
+    uploader: Optional[str] = Field(default=None, description="来源或插件返回的发布者名称，未知时为空")
+    torrent_id: Optional[str] = Field(default=None, description="来源或插件返回的具体种子标识，不是分组 ID")
+    info_hash: Optional[str] = Field(default=None, description="来源或插件返回的 BitTorrent 内容哈希")
     site_name: Optional[str] = Field(default=None, description="站点名称")
     site_cookie: Optional[str] = Field(default=None, description="站点Cookie")
     site_ua: Optional[str] = Field(default=None, description="站点UA")

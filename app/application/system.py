@@ -448,6 +448,8 @@ class SystemService:
         """
         按配置所有权更新运行设置或持久化系统配置。
         """
+        if key == SystemConfigKey.TorrentBlacklist.value:
+            return SystemOperationResult(False, "请使用专用黑名单操作，通用设置不能替换永久种子黑名单")
         if self.settings.contains(key):
             success, message = self.settings.update(key, value)
             if success:

@@ -422,6 +422,8 @@ class SystemConfigKey(Enum):
 
     # 下载器配置
     Downloaders = "Downloaders"
+    # 永久种子黑名单，存储有界规则和脱敏资源身份
+    TorrentBlacklist = "TorrentBlacklist"
     # 媒体服务器配置
     MediaServers = "MediaServers"
     # 消息通知配置

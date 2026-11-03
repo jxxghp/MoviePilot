@@ -20,6 +20,10 @@ OPERATION_DESCRIPTIONS = {
     "download.clients": "列出已启用下载器的实例名称和提供方类型，不返回凭据。",
     "download.history.list": "按时间倒序分页读取下载历史。",
     "download.history.delete": "删除一条下载历史记录。",
+    "download.blacklist.list": "管理员分页查询永久种子黑名单，不返回站点凭据。",
+    "download.blacklist.add": "管理员添加关键词、站点、发布者永久规则；同条条件按与，多条按或。",
+    "download.blacklist.history": "管理员按服务端下载历史 ID 屏蔽具体资源；缺少合法身份时改用手动规则。",
+    "download.blacklist.remove": "管理员幂等移除黑名单条目，不删除下载任务、文件或历史。",
     "download.paths": (
         "列出可传给 download.add 的下载器保存路径 URI；每项非空 name 也可作为 save_path。"
     ),
@@ -668,6 +672,7 @@ FIELD_DESCRIPTIONS.update(
 
 
 MODEL_DESCRIPTIONS = {
+    "BlacklistRule": "永久种子黑名单手动规则，非空条件按与匹配。",
     "AgentCommandRunRequest": "斜杠命令执行请求。",
     "Body_add_api_v1_download_add_post": "下载提交请求。",
     "Body_download_artist_collection_api_v1_download_artist_collection_post": (

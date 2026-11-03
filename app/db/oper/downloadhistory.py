@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, cast
 from sqlalchemy import delete as sqlalchemy_delete
 from sqlalchemy import func, select
 from sqlalchemy import update as sqlalchemy_update
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -31,6 +32,15 @@ class DownloadHistoryOper(DbOper):
     """
     下载历史管理
     """
+
+    async def async_get_by_id(self, record_id: int) -> Optional[DownloadHistory]:
+        """
+        在调用方独占的异步会话中读取一条下载历史，不隐式创建或提交事务。
+        """
+        if not isinstance(self._db, AsyncSession):
+            raise RuntimeError("下载历史异步查询需要调用方提供 AsyncSession")
+        result = await self._db.execute(select(DownloadHistory).where(DownloadHistory.id == record_id))
+        return cast(Optional[DownloadHistory], result.scalars().first())
 
     def get_by_id(self, record_id: int) -> Optional[DownloadHistory]:
         """

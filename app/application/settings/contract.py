@@ -18,6 +18,7 @@ from typing_extensions import TypedDict
 from app.application.security.secrets import is_secret_setting_key
 from app.runtime.config import Settings
 from app.schemas.agent import AgentMcpServerConfig
+from app.schemas.blacklist import BlacklistConfig
 from app.schemas.category import ClassificationPolicyState
 from app.schemas.common import JsonData
 from app.schemas.plugin import PluginFoldersData
@@ -280,6 +281,11 @@ _LIST_SCALAR_OPERATIONS: tuple[SettingOperation, ...] = (
 _OBJECT_OPERATIONS: tuple[SettingOperation, ...] = ("replace", "merge_dict")
 
 SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
+    SystemConfigKey.TorrentBlacklist: _managed_contract(
+        "downloads", Optional[BlacklistConfig],
+        "download.blacklist.list", "download.blacklist.add",
+        "download.blacklist.history", "download.blacklist.remove",
+    ),
     SystemConfigKey.Downloaders: _contract(
         "downloaders",
         Optional[list[DownloaderConf]],

@@ -2,6 +2,31 @@
 
 本文面向通过 MCP 调用 MoviePilot 的外部 Agent 和工具开发者。接入后，客户端通过工具目录发现能力，按 JSON Schema 构造参数，并根据业务结果判断操作是否完成。
 
+### 永久种子黑名单
+
+管理员可用 `download.blacklist.list`、`download.blacklist.add`、
+`download.blacklist.history`、`download.blacklist.remove` 管理永久限制。
+对应 REST 路由为 `GET/POST /api/v1/torrent/blacklist`、
+`POST /api/v1/torrent/blacklist/history/{history_id}` 和
+`DELETE /api/v1/torrent/blacklist/{entry_id}`。列表参数为 `page>=1`、
+`count=1..100`，返回同一快照的 `items/total/page/count`。
+
+手动规则至少填写 `keyword/site_id/uploader` 之一；同条条件按与、多条按或。
+关键词是不区分大小写的标题或副标题字面包含条件，站点按配置 ID 精确匹配，
+发布者按去除首尾空白和大小写折叠后的名称精确匹配。来源未返回发布者时不会匹配
+发布者规则；功能不额外访问站点补全此字段。没有正则、到期时间或编辑操作。
+
+一键屏蔽只接收服务端下载历史 ID，持久化 SHA256 资源身份摘要和合法 BitTorrent
+哈希，不保存下载 URL、Cookie、passkey 或认证信息。同内容跨站点也会被哈希屏蔽。
+旧历史必须有合法下载哈希，可能要获取种子内容后才能在下载器提交前拦截；身份缺失时
+返回明确错误，请改用手动规则，系统不会按标题猜测具体资源。新增历史将安全身份保存在
+`note.torrent_blacklist`，同时保留来源、音乐和订阅备注。
+
+最多保存 1000 条；重复添加返回 `created=false` 并保留原 ID/时间，资源别名重叠则
+合并，删除不存在条目也成功。配置在现有单 HostRuntime 范围内原子更新。批量候选在
+插件选择后过滤，单次下载在插件处理后和真实提交前检查最新规则；命中不会进入临时失败
+冷却，也不会删除已有任务、文件、历史或订阅。
+
 **最短调用路径：**配置连接与密钥 → `initialize` → `notifications/initialized` → `tools/list` → `tools/call`。已有 MCP 客户端通常会自动完成初始化和工具发现，只需配置下表中的连接信息。
 
 ### 插件安装前说明入口

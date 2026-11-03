@@ -345,7 +345,7 @@ def test_identity_scopes_cover_every_operation_and_match_rest_dependencies():
             path = re.sub(r"\{[^}]+\}", "{}", "/api/v1" + router_spec.prefix + route.path)
             for method in route.methods:
                 endpoints[method, path] = route
-    assert len(API_OPERATION_SPECS) == len(API_OPERATION_ROUTES) == 232
+    assert len(API_OPERATION_SPECS) == len(API_OPERATION_ROUTES) == 236
     for spec in API_OPERATION_SPECS:
         assert isinstance(spec.identity_scope, ApiIdentityScope)
         if spec.identity_scope is not ApiIdentityScope.PUBLIC:

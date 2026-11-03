@@ -358,6 +358,10 @@ API_SYSTEM_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
 
 
 API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
+    _admin_read("download.blacklist.list"),
+    _write("download.blacklist.add"),
+    _write("download.blacklist.history"),
+    _write("download.blacklist.remove"),
     _admin_read("dashboard.media.statistics", sensitivity=ResultSensitivity.PRIVATE),
     _admin_read("dashboard.storage", sensitivity=ResultSensitivity.PRIVATE),
     _admin_read("dashboard.processes", sensitivity=ResultSensitivity.PRIVATE),
@@ -704,6 +708,10 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "download.paths": ApiOperationRoute("GET", "/api/v1/download/paths"),
     "download.history.list": ApiOperationRoute("GET", "/api/v1/history/download"),
     "download.history.delete": ApiOperationRoute("DELETE", "/api/v1/history/download"),
+    "download.blacklist.list": ApiOperationRoute("GET", "/api/v1/torrent/blacklist"),
+    "download.blacklist.add": ApiOperationRoute("POST", "/api/v1/torrent/blacklist"),
+    "download.blacklist.history": ApiOperationRoute("POST", "/api/v1/torrent/blacklist/history/{history_id}"),
+    "download.blacklist.remove": ApiOperationRoute("DELETE", "/api/v1/torrent/blacklist/{entry_id}"),
     "transfer.history.delete": ApiOperationRoute("DELETE", "/api/v1/history/transfer"),
     "site.list": ApiOperationRoute("GET", "/api/v1/site/agent"),
     "site.update": ApiOperationRoute("PUT", "/api/v1/site/"),

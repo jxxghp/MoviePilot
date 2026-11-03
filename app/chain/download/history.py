@@ -13,6 +13,7 @@ from app.application.chain.events import (
 from app.application.classification.reference import effective_classification_snapshot
 from app.application.history import DownloadFileWrite, DownloadHistoryWrite
 from app.chain.download.contract import _DownloadOwnerBase
+from app.domain.blacklist import torrent_blacklist_identity
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -122,6 +123,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             classification_source=classification.source,
             episode_group=media.episode_group,
             note={**self._build_download_note(source, media, meta),
+                  "torrent_blacklist": torrent_blacklist_identity(
+                      torrent, torrent_content, download_hash).model_dump(mode="json"),
                   **({"subscription_download": context.subscription_download} if context.subscription_download else {})},
             custom_words=custom_words,
         )

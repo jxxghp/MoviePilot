@@ -366,6 +366,53 @@
       "title": "BatchTransferHistoryRedoRequest",
       "type": "object"
     },
+    "BlacklistRule": {
+      "additionalProperties": false,
+      "description": "永久种子黑名单手动规则，非空条件按与匹配。",
+      "properties": {
+        "keyword": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "标题或副标题包含的字面关键词，不区分大小写",
+          "title": "Keyword"
+        },
+        "site_id": {
+          "anyOf": [
+            {
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "精确匹配的已配置站点 ID",
+          "title": "Site Id"
+        },
+        "uploader": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "精确匹配的发布者名称，不区分大小写",
+          "title": "Uploader"
+        }
+      },
+      "title": "BlacklistRule",
+      "type": "object"
+    },
     "Body_add_api_v1_download_add_post": {
       "description": "下载提交请求。",
       "properties": {
@@ -1598,7 +1645,7 @@
               "type": "null"
             }
           ],
-          "description": "发布时间",
+          "description": "距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围",
           "title": "Publish Time"
         },
         "rule_id": {
@@ -1627,7 +1674,7 @@
               "type": "null"
             }
           ],
-          "description": "大小范围（MB）",
+          "description": "单集平均文件大小范围，单位为 MiB；a-b、>a、<a 均包含边界，空值不限制",
           "title": "Size Range"
         }
       },
@@ -1698,7 +1745,7 @@
               "type": "null"
             }
           ],
-          "description": "发布时间",
+          "description": "距离发布经过的分钟数；单值为最小等待时间，区间表示允许的时间范围",
           "title": "Publish Time"
         },
         "seeders": {
@@ -1722,7 +1769,7 @@
               "type": "null"
             }
           ],
-          "description": "大小范围（MB）",
+          "description": "单集平均文件大小范围，单位为 MiB；a-b、>a、<a 均包含边界，空值不限制",
           "title": "Size Range"
         }
       },
@@ -2132,6 +2179,18 @@
           "description": "不含扩展名的文件基本名称",
           "title": "Basename"
         },
+        "change_time_ns": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "本地状态变化时间的 Unix 纳秒值，JSON 使用十进制字符串；用于同路径清理核验，未提供时为 None",
+          "title": "Change Time Ns"
+        },
         "children": {
           "anyOf": [
             {
@@ -2192,8 +2251,20 @@
               "type": "null"
             }
           ],
-          "description": "文件修改时间的 Unix 时间戳",
+          "description": "文件修改时间的 Unix 时间戳，单位为秒，未提供时为 None",
           "title": "Modify Time"
+        },
+        "modify_time_ns": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "本地修改时间的 Unix 纳秒值，JSON 使用十进制字符串避免精度丢失；旧快照或远端未提供时为 None",
+          "title": "Modify Time Ns"
         },
         "name": {
           "anyOf": [
@@ -2253,7 +2324,7 @@
               "type": "null"
             }
           ],
-          "description": "文件大小",
+          "description": "文件大小，单位为字节；目录或来源未提供时可为 None",
           "title": "Size"
         },
         "storage": {
@@ -2532,8 +2603,15 @@
           "title": "Episode Part"
         },
         "fileitem": {
-          "$ref": "#/$defs/FileItem-Input",
-          "description": "storage.list 返回的一个完整源存储项目。"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileItem-Input"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "文件项"
         },
         "fileitems": {
           "anyOf": [
@@ -2647,7 +2725,7 @@
             }
           ],
           "default": 0,
-          "description": "最小文件大小",
+          "description": "最低文件大小阈值，单位为 MiB；0 不限制，启用时仅保留严格大于阈值的文件",
           "title": "Min Filesize"
         },
         "music_cue_enable": {
@@ -4987,6 +5065,12 @@
           "title": "State",
           "type": "string"
         },
+        "submitted_count": {
+          "default": 0,
+          "description": "本次任务已添加的下载数量，用于区分已添加下载与暂无资源",
+          "title": "Submitted Count",
+          "type": "integer"
+        },
         "task_id": {
           "anyOf": [
             {
@@ -5148,7 +5232,7 @@
               "type": "null"
             }
           ],
-          "description": "下载因子",
+          "description": "下载统计倍率，例如 0 表示免费下载、0.5 表示按一半下载量计入统计",
           "title": "Downloadvolumefactor"
         },
         "enclosure": {
@@ -5212,6 +5296,18 @@
           "default": false,
           "description": "种子是否存在下载后做种义务",
           "title": "Hit And Run"
+        },
+        "info_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "来源或插件返回的 BitTorrent 内容哈希",
+          "title": "Info Hash"
         },
         "labels": {
           "anyOf": [
@@ -5410,7 +5506,7 @@
             }
           ],
           "default": 0.0,
-          "description": "种子大小",
+          "description": "种子包含的文件总大小，单位为字节",
           "title": "Size"
         },
         "title": {
@@ -5425,6 +5521,30 @@
           "description": "种子名称",
           "title": "Title"
         },
+        "torrent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "来源或插件返回的具体种子标识，不是分组 ID",
+          "title": "Torrent Id"
+        },
+        "uploader": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "来源或插件返回的发布者名称，未知时为空",
+          "title": "Uploader"
+        },
         "uploadvolumefactor": {
           "anyOf": [
             {
@@ -5434,7 +5554,7 @@
               "type": "null"
             }
           ],
-          "description": "上传因子",
+          "description": "上传统计倍率，例如 2 表示按实际上传量的两倍计入站点统计",
           "title": "Uploadvolumefactor"
         },
         "volume_factor": {
@@ -7471,6 +7591,137 @@
     },
     {
       "additionalProperties": false,
+      "description": "管理员添加关键词、站点、发布者永久规则；同条条件按与，多条按或。请求方法：POST；路径：/api/v1/torrent/blacklist。操作效果：reversible_write；身份范围：admin。所需角色：system_admin。",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/BlacklistRule",
+          "description": "download.blacklist.add 的请求内容。管理员添加关键词、站点、发布者永久规则；同条条件按与，多条按或。严格使用下列类型和字段。"
+        },
+        "operation_id": {
+          "const": "download.blacklist.add",
+          "description": "白名单中的精确操作标识，用于选择对应 oneOf 分支。",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "download.blacklist.add",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "管理员按服务端下载历史 ID 屏蔽具体资源；缺少合法身份时改用手动规则。请求方法：POST；路径：/api/v1/torrent/blacklist/history/{history_id}。操作效果：reversible_write；身份范围：admin。所需角色：system_admin。",
+      "properties": {
+        "operation_id": {
+          "const": "download.blacklist.history",
+          "description": "白名单中的精确操作标识，用于选择对应 oneOf 分支。",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "download.blacklist.history 的资源标识参数。管理员按服务端下载历史 ID 屏蔽具体资源；缺少合法身份时改用手动规则。仅使用下列已声明字段。",
+          "properties": {
+            "history_id": {
+              "description": "服务端下载历史 ID",
+              "minimum": 1,
+              "title": "History Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "history_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "download.blacklist.history",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "管理员分页查询永久种子黑名单，不返回站点凭据。请求方法：GET；路径：/api/v1/torrent/blacklist。操作效果：safe_read；身份范围：admin。所需角色：system_admin。集合响应：条目保留在 data.items，精确总数保留在 data.total。仅查询数量时，请使用文档允许的最小分页并读取总数；不要仅因条目数据被截断就查询数据库。",
+      "properties": {
+        "operation_id": {
+          "const": "download.blacklist.list",
+          "description": "白名单中的精确操作标识，用于选择对应 oneOf 分支。",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "download.blacklist.list 的筛选和控制参数。管理员分页查询永久种子黑名单，不返回站点凭据。仅使用下列已声明字段。",
+          "properties": {
+            "count": {
+              "default": 30,
+              "description": "每页条数，最多 100",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Count",
+              "type": "integer"
+            },
+            "page": {
+              "default": 1,
+              "description": "页码，从 1 开始",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "download.blacklist.list",
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "page_object",
+        "default_pagination": "endpoint-defined",
+        "items_field": "data.items",
+        "total_count_field": "data.total"
+      }
+    },
+    {
+      "additionalProperties": false,
+      "description": "管理员幂等移除黑名单条目，不删除下载任务、文件或历史。请求方法：DELETE；路径：/api/v1/torrent/blacklist/{entry_id}。操作效果：reversible_write；身份范围：admin。所需角色：system_admin。",
+      "properties": {
+        "operation_id": {
+          "const": "download.blacklist.remove",
+          "description": "白名单中的精确操作标识，用于选择对应 oneOf 分支。",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "download.blacklist.remove 的资源标识参数。管理员幂等移除黑名单条目，不删除下载任务、文件或历史。仅使用下列已声明字段。",
+          "properties": {
+            "entry_id": {
+              "description": "黑名单条目 ID",
+              "pattern": "^[a-f0-9]{32}$",
+              "title": "Entry Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "entry_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "download.blacklist.remove",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "列出已启用下载器的实例名称和提供方类型，不返回凭据。请求方法：GET；路径：/api/v1/download/clients。操作效果：safe_read；身份范围：bound_user。所需角色：user。集合响应：data 保持列表形式；同时省略 page 和 count 可保留原有完整结果。网关成功响应会增加 collection.result_count 和精确的 collection.total_count。查询数量或摘要时，请传入 page=1 和 count=1，再读取 collection.total_count；不要仅因条目数据被截断就查询数据库。",
       "properties": {
         "operation_id": {
@@ -9293,9 +9544,16 @@
               "title": "Page"
             },
             "season": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "description": "媒体、搜索、订阅或整理操作使用的季号。",
-              "title": "Season",
-              "type": "integer"
+              "title": "Season"
             },
             "title": {
               "anyOf": [
@@ -9310,9 +9568,16 @@
               "title": "Title"
             },
             "year": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "description": "用于区分同名媒体的发行或首映年份。",
-              "title": "Year",
-              "type": "string"
+              "title": "Year"
             }
           },
           "type": "object"
@@ -13612,7 +13877,7 @@
         },
         "query": {
           "additionalProperties": false,
-          "description": "subscription.follow.add 的筛选和控制参数。按精确分享用户标识关注一个订阅分享用户。仅使用下列已声明字段。",
+          "description": "subscription.follow.add 的筛选和控制参数。修改实例级关注的订阅分享用户列表。仅使用下列已声明字段。",
           "properties": {
             "share_uid": {
               "anyOf": [
@@ -13647,7 +13912,7 @@
         },
         "query": {
           "additionalProperties": false,
-          "description": "subscription.follow.delete 的筛选和控制参数。按精确分享用户标识取消关注一个订阅分享用户。仅使用下列已声明字段。",
+          "description": "subscription.follow.delete 的筛选和控制参数。从实例级关注列表移除一个订阅分享用户。仅使用下列已声明字段。",
           "properties": {
             "share_uid": {
               "anyOf": [
@@ -13682,7 +13947,7 @@
         },
         "query": {
           "additionalProperties": false,
-          "description": "subscription.follow.list 的筛选和控制参数。列出当前用户关注的订阅分享用户标识。仅使用下列已声明字段。",
+          "description": "subscription.follow.list 的筛选和控制参数。读取实例级关注的订阅分享用户列表。仅使用下列已声明字段。",
           "properties": {
             "count": {
               "anyOf": [
@@ -14283,7 +14548,7 @@
         },
         "path_params": {
           "additionalProperties": false,
-          "description": "subscription.share.delete 的资源标识参数。按分享标识删除一条共享订阅发布记录。仅使用下列已声明字段。",
+          "description": "subscription.share.delete 的资源标识参数。按分享标识删除一条实例级共享订阅发布记录。仅使用下列已声明字段。",
           "properties": {
             "share_id": {
               "description": "分享列表操作返回的持久化 MoviePilot Server 分享标识。",
@@ -15983,7 +16248,7 @@
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",
-          "description": "transfer.queue.delete 的请求内容。从整理队列移除一个精确存储项目，并停止其整理。严格使用下列类型和字段。"
+          "description": "transfer.queue.delete 的请求内容。从实例整理队列移除一个精确存储项目，并停止其整理。严格使用下列类型和字段。"
         },
         "operation_id": {
           "const": "transfer.queue.delete",
@@ -16735,6 +17000,10 @@
         "database.backups.verify",
         "download.add",
         "download.artist_collection",
+        "download.blacklist.add",
+        "download.blacklist.history",
+        "download.blacklist.list",
+        "download.blacklist.remove",
         "download.clients",
         "download.history.delete",
         "download.history.list",

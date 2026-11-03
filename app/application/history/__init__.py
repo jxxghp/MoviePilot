@@ -443,6 +443,15 @@ class AsyncDownloadHistoryQueryRepository(Protocol):
     下载历史只读用例需要的最小异步持久化端口。
     """
 
+    async def async_get_by_id(self, history_id: int) -> Optional[DownloadHistorySnapshot]:
+        """
+        按主键读取脱离会话的下载历史快照。
+
+        :param history_id: 服务端下载历史 ID
+        :return: 匹配的历史快照，不存在时返回 None
+        """
+        ...
+
     async def async_list_by_page(self, page: int = 1, count: int = 30) -> list[DownloadHistorySnapshot]:
         """
         按下载时间倒序分页读取历史记录。
@@ -590,6 +599,13 @@ class HistoryQueryService:
         返回下载历史精确总数，供分页 API 通过附加元数据报告。
         """
         return await self._download_repository.async_count()
+
+    async def get_download(self, history_id: int) -> Optional[DownloadHistory]:
+        """
+        按主键读取下载历史 DTO，供服务端一键屏蔽等用例消费。
+        """
+        record = await self._download_repository.async_get_by_id(history_id)
+        return DownloadHistory.model_validate(record) if record is not None else None
 
     async def list_transfer(
         self,

@@ -34,6 +34,16 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         self._snapshot_lock = threading.RLock()
         self._write_lock = threading.RLock()
         self._loaded = False
+        self._invalid_value_retention: Callable[[str], bool] | None = None
+
+    def configure_invalid_value_retention(self, policy: Callable[[str], bool]) -> None:
+        """
+        在首次加载前绑定坏行保留策略；后续无参重载复用该策略，判断只传入键。
+
+        :param policy: 返回 True 时保留原始坏行并发布固定无效标记的纯函数
+        """
+        with self._write_lock:
+            self._invalid_value_retention = policy
 
     def load_snapshot(self, db: Optional[Session] = None) -> None:
         """
@@ -47,7 +57,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
 
     def _load_snapshot_values(self, db: Optional[Session]) -> dict[str, Any]:
         """
-        逐行读取配置并把历史非法 JSON 修复为可继续运行的空值。
+        统一解码配置，由注入策略决定保留坏行或沿用空值修复。
         """
         def load(session: Session) -> dict[str, Any]:
             """
@@ -74,10 +84,14 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
                         if isinstance(raw_value, (str, bytes, bytearray))
                         else raw_value
                     )
-                except (TypeError, ValueError, UnicodeDecodeError) as error:
+                except (TypeError, ValueError, UnicodeDecodeError):
+                    if self._invalid_value_retention and self._invalid_value_retention(str(key)):
+                        logger.error(f"系统配置 JSON 无法解析，保留原记录并标记无效：id={row['id']}")
+                        snapshot[str(key)] = {"invalid_persisted_json": True}
+                        continue
                     # 配置快照是启动关键路径；归零坏行后仍允许管理员进入系统重新保存。
                     logger.warning(
-                        f"系统配置 JSON 无法解析，已重置为空值：id={row['id']}，key={key}，error={error}"
+                        f"系统配置 JSON 无法解析，已重置为空值：id={row['id']}"
                     )
                     session.execute(
                         text("UPDATE systemconfig SET value = NULL WHERE id = :id"),

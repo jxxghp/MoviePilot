@@ -187,6 +187,27 @@ async def test_update_environment_publishes_successful_batch() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("value", [None, {}, {"version": 1}, {"version": 1, "entries": []}])
+async def test_legacy_setting_cannot_replace_torrent_blacklist(value) -> None:
+    """
+    旧通用设置用例拒绝黑名单整表替换，不调用原始或原子写端口，也不发布变更。
+    """
+    service, dependencies = _build_service()
+    dependencies.settings.contains.return_value = False
+
+    result = await service.update_setting(SystemConfigKey.TorrentBlacklist.value, value)
+
+    assert result.success is False
+    assert "专用黑名单" in result.message
+    dependencies.system_config.set.assert_not_called()
+    dependencies.system_config.async_set.assert_not_called()
+    dependencies.system_config.async_set_with_normalized_value.assert_not_called()
+    dependencies.system_config.update_atomically.assert_not_called()
+    dependencies.system_config.async_update_atomically.assert_not_called()
+    dependencies.events.publish.assert_not_awaited()
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     ("url", "fetched", "message"),
     [

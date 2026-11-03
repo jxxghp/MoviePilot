@@ -42,9 +42,9 @@ _DOWNLOAD_FIELDS = frozenset({
 })
 _TORRENT_FIELDS = frozenset({
     "category", "date_elapsed", "description", "downloadvolumefactor", "enclosure", "freedate", "freedate_diff",
-    "grabs", "hit_and_run", "labels", "media_id", "media_source", "page_url", "peers", "pri_order", "pubdate",
+    "grabs", "hit_and_run", "info_hash", "labels", "media_id", "media_source", "page_url", "peers", "pri_order", "pubdate",
     "seeders", "site", "site_cookie", "site_downloader", "site_name", "site_order", "site_proxy", "site_ua",
-    "size", "title", "uploadvolumefactor", "volume_factor",
+    "size", "title", "torrent_id", "uploader", "uploadvolumefactor", "volume_factor",
 })
 _SUBSCRIPTION_FIELDS = frozenset({
     "audio_format", "audio_quality", "backdrop", "best_version", "best_version_full", "classification_policy_revision",

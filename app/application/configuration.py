@@ -23,6 +23,16 @@ SystemConfigChangePublisher = Callable[[Any, Any], Awaitable[None]]
 T = TypeVar("T")
 
 
+def preserve_invalid_system_config(key: str) -> bool:
+    """
+    决定损坏配置是否必须保留限制，只检查键，不读取原文或数据库会话。
+
+    :param key: 持久化配置键
+    :return: 永久下载限制损坏时返回 True，其他配置沿用既有空值修复
+    """
+    return key == SystemConfigKey.TorrentBlacklist.value
+
+
 class SystemConfigReader(Protocol):
     """
     持久化用户配置的最小只读端口。

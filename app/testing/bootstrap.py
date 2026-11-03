@@ -245,11 +245,14 @@ def prepare_backend() -> None:
         configs=lambda _config_key, _conf_type: [],
         modules=lambda _module_type: [],
     )
+    from app.application.configuration import preserve_invalid_system_config
     from app.db.adapters.configuration import TransactionalUserConfigurationRepository
     from app.db.oper.systemconfig import SystemConfigOper
 
+    system_config = SystemConfigOper()
+    system_config.configure_invalid_value_retention(preserve_invalid_system_config)
     with SessionFactory() as session:
-        SystemConfigOper().load_snapshot(session)
+        system_config.load_snapshot(session)
     TransactionalUserConfigurationRepository(SessionFactory).load_snapshot()
     # 缓存装饰器在测试模块导入时即创建后端，先装配隔离配置对应的适配器。
     from app.startup.initializers.cache import configure_cache_dependencies

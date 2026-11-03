@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 71
+version: 72
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -27,8 +27,9 @@ allowed-api-operations: >-
   music.recognize music.explore music.album.get music.album.related music.artist.get
   music.artist.albums music.artist.related music.cache.get music.cache.delete music.cache.clear
   system.versions system.update.status system.update.check system.update.download system.restart
-  system.update.install system.upgrade.dev dashboard.media.statistics dashboard.storage
-  dashboard.processes dashboard.system dashboard.downloader scheduler.progress
+  system.update.install system.upgrade.dev download.blacklist.list download.blacklist.add
+  download.blacklist.history download.blacklist.remove dashboard.media.statistics
+  dashboard.storage dashboard.processes dashboard.system dashboard.downloader scheduler.progress
   dashboard.transfer.statistics dashboard.cpu dashboard.memory dashboard.network media.sources
   media.recognize_file media.cache.get media.cache.delete media.cache.clear
   media.classification.fields media.classification.policy.get media.classification.policy.validate

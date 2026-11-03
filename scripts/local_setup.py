@@ -2908,7 +2908,7 @@ def _apply_local_system_config_transactional(config_payload: dict[str, Any]) -> 
         from app.application.classification.reference import (
             ClassificationCategoryResolver,
         )
-        from app.application.configuration import SystemConfigService
+        from app.application.configuration import SystemConfigService, preserve_invalid_system_config
         from app.application.directory import normalize_directory_system_config_value
         from app.db.oper.systemconfig import SystemConfigOper
         from app.schemas.category import ClassificationPolicyState
@@ -2931,6 +2931,7 @@ def _apply_local_system_config_transactional(config_payload: dict[str, Any]) -> 
         print_step(f"超级管理员初始密码：{generated_password}")
 
     system_config = SystemConfigOper()
+    system_config.configure_invalid_value_retention(preserve_invalid_system_config)
     system_config.load_snapshot()
 
     def normalize_local_system_config_value(key: object, value: object) -> object:

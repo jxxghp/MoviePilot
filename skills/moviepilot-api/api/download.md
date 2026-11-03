@@ -20,6 +20,45 @@ Identity scope: `bound_user`; required role: `user`.
 - `query`: none
 - `body`: `artist_id*` (string; minimum length `1`): 音乐搜索或专辑详情返回的来源原生艺术家标识。; `artist_name*` (string; minimum length `1`): 艺术家音乐合集保留的身份名称。; `downloader` (string|null): 已配置下载器的实例名称。; `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `save_path` (string|null): 下载或订阅使用的下载器端配置保存路径，或已配置下载目录的精确名称别名。; `torrent_in*` (TorrentInfo): search.results 或 search.torrents 返回的完整候选种子。
 
+### `download.blacklist.add`
+`POST /api/v1/torrent/blacklist`; policy effect: `reversible_write`.
+Purpose: 管理员添加关键词、站点、发布者永久规则；同条条件按与，多条按或。
+Identity scope: `admin`; required role: `system_admin`.
+- `path_params`: none
+- `query`: none
+- `body`: `keyword` (string|null): 标题或副标题包含的字面关键词，不区分大小写; `site_id` (integer|null): 精确匹配的已配置站点 ID; `uploader` (string|null): 精确匹配的发布者名称，不区分大小写
+- Supply at least one of `keyword`, `site_id`, or `uploader`. Conditions within one rule use AND; entries use OR. Keywords are case-insensitive literal substrings of title or description; uploader names match exactly after trimming and case folding. Missing uploader metadata never matches.
+- Rules are permanent, limited to 1000 entries, and do not delete tasks, files, history, or subscriptions. Duplicates return `created=false` and retain the original ID and creation time.
+
+### `download.blacklist.history`
+`POST /api/v1/torrent/blacklist/history/{history_id}`; policy effect: `reversible_write`.
+Purpose: 管理员按服务端下载历史 ID 屏蔽具体资源；缺少合法身份时改用手动规则。
+Identity scope: `admin`; required role: `system_admin`.
+- `path_params`: `history_id*` (integer; minimum `1`): 服务端下载历史 ID
+- `query`: none
+- `body`: none
+- Read `download.history.list` first and pass its server-side `history_id`. The host stores only safe resource identity digests and legitimate BitTorrent hashes. Equal content is blocked across sites.
+- Legacy history requires a valid download hash; checking it may require fetching torrent bytes before downloader submission. If identity is unavailable, use a manual rule instead. Never infer identity from title.
+
+### `download.blacklist.list`
+`GET /api/v1/torrent/blacklist`; policy effect: `safe_read`.
+Purpose: 管理员分页查询永久种子黑名单，不返回站点凭据。
+Identity scope: `admin`; required role: `system_admin`.
+- `response`: structured page object; items stay in `data.items` and the exact total stays in `data.total`.
+- `path_params`: none
+- `query`: `count` (integer; default `30`; minimum `1`; maximum `100`): 每页条数，最多 100; `page` (integer; default `1`; minimum `1`): 页码，从 1 开始
+- `body`: none
+- All blacklist management requires an administrator. Use `page>=1` and `count` from 1 to 100. The response contains `items`, `total`, `page`, and `count` from one immutable snapshot.
+
+### `download.blacklist.remove`
+`DELETE /api/v1/torrent/blacklist/{entry_id}`; policy effect: `reversible_write`.
+Purpose: 管理员幂等移除黑名单条目，不删除下载任务、文件或历史。
+Identity scope: `admin`; required role: `system_admin`.
+- `path_params`: `entry_id*` (string): 黑名单条目 ID
+- `query`: none
+- `body`: none
+- Pass the exact entry ID returned by the list. Removal is idempotent and never changes existing tasks or files.
+
 ### `download.clients`
 `GET /api/v1/download/clients`; policy effect: `safe_read`.
 Purpose: 列出已启用下载器的实例名称和提供方类型，不返回凭据。
@@ -132,16 +171,18 @@ This category document is self-contained: the shared models below are included s
 ### `FileItem-Input`
 已配置存储提供方返回的一个文件或目录。
 - `basename` (string|null): 不含扩展名的文件基本名称
+- `change_time_ns` (integer|null): 本地状态变化时间的 Unix 纳秒值，JSON 使用十进制字符串；用于同路径清理核验，未提供时为 None
 - `children` (array<FileItem-Input>|null): 子节点
 - `drive_id` (string|null): 云盘驱动器标识
 - `extension` (string|null): 文件后缀
 - `fileid` (string|null): 存储服务分配的文件标识
-- `modify_time` (number|null): 文件修改时间的 Unix 时间戳
+- `modify_time` (number|null): 文件修改时间的 Unix 时间戳，单位为秒，未提供时为 None
+- `modify_time_ns` (integer|null): 本地修改时间的 Unix 纳秒值，JSON 使用十进制字符串避免精度丢失；旧快照或远端未提供时为 None
 - `name` (string|null): 文件名
 - `parent_fileid` (string|null): 父ID
 - `path` (string|null; default `/`): 文件路径
 - `pickcode` (string|null): 115 文件下载提取码
-- `size` (integer|null): 文件大小
+- `size` (integer|null): 文件大小，单位为字节；目录或来源未提供时可为 None
 - `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储
 - `thumbnail` (string|null): 缩略图
 - `type` (string|null): 条目类型，dir 表示目录，file 表示文件
@@ -169,6 +210,7 @@ This runtime model has no directly writable fields.
 - `phase*` (string): 当前执行阶段
 - `source` (string|null): 触发本轮订阅执行的入口或来源
 - `state*` (string): 当前业务状态
+- `submitted_count` (integer; default `0`): 本次任务已添加的下载数量，用于区分已添加下载与暂无资源
 - `task_id` (string|null): 任务标识
 - `updated_at*` (string): 更新时间
 
@@ -177,12 +219,13 @@ This runtime model has no directly writable fields.
 - `category` (string|null): 种子分类 电影/电视剧/音乐
 - `date_elapsed` (string|null): 已过时间
 - `description` (string|null): 种子副标题
-- `downloadvolumefactor` (number|null): 下载因子
+- `downloadvolumefactor` (number|null): 下载统计倍率，例如 0 表示免费下载、0.5 表示按一半下载量计入统计
 - `enclosure` (string|null): 种子链接
 - `freedate` (string|null): 免费截止时间
 - `freedate_diff` (string|null): 剩余免费时间
 - `grabs` (integer|null; default `0`): 完成者
 - `hit_and_run` (boolean|null; default `False`): 种子是否存在下载后做种义务
+- `info_hash` (string|null): 来源或插件返回的 BitTorrent 内容哈希
 - `labels` (array<string>|null): 种子标签
 - `media_id` (string|null): 数据源原生 ID
 - `media_source` (MediaSource|null): 种子页面声明的媒体身份
@@ -198,9 +241,11 @@ This runtime model has no directly writable fields.
 - `site_order` (integer|null; default `0`): 站点优先级
 - `site_proxy` (boolean|null; default `False`): 站点是否使用代理
 - `site_ua` (string|null): 站点UA
-- `size` (number|null; default `0.0`): 种子大小
+- `size` (number|null; default `0.0`): 种子包含的文件总大小，单位为字节
 - `title` (string|null): 种子名称
-- `uploadvolumefactor` (number|null): 上传因子
+- `torrent_id` (string|null): 来源或插件返回的具体种子标识，不是分组 ID
+- `uploader` (string|null): 来源或插件返回的发布者名称，未知时为空
+- `uploadvolumefactor` (number|null): 上传统计倍率，例如 2 表示按实际上传量的两倍计入站点统计
 - `volume_factor` (string|null): 促销
 
 ### `WorkflowExecutionConfig`

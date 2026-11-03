@@ -7,7 +7,7 @@ import hashlib
 import json
 import re
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
 from urllib.parse import urlencode, urljoin, urlparse
@@ -18,6 +18,7 @@ from app.application.directory import (
     validate_download_save_path,
 )
 from app.application.download.admission import SubscriptionDownloadGovernance, subscription_download_label
+from app.application.download.blacklist import TorrentBlacklistService
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -480,6 +481,11 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                     event_data.reason,
                 )
                 return save_path, "下载被事件取消"
+            if event_data.context is not context:
+                if not isinstance(event_data.context, Context):
+                    return save_path, "插件返回的下载上下文无效"
+                for context_field in fields(Context):
+                    setattr(context, context_field.name, getattr(event_data.context, context_field.name))
             if event_data.options and "save_path" in event_data.options:
                 save_path = specified_download_save_path(
                     cast(Optional[str], event_data.options.get("save_path"))
@@ -697,6 +703,13 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         )
         if event_error:
             return None, event_error
+        # 插件可原地修改或替换上下文；后续读取和最终提交使用同一份资源事实。
+        torrent, media, meta = context.torrent_info, context.media_info, context.meta_info
+        if torrent is None or media is None or meta is None:
+            return None, "插件返回的下载上下文缺少媒体、元数据或种子信息"
+        site_downloader = torrent.site_downloader
+        if rejection := TorrentBlacklistService().rejection(torrent):
+            return None, rejection
         download_episodes = episode_rules.format_ranges(list(episodes)) if episodes else None
         if episodes is not None:
             context.selected_episodes = sorted(set(episodes))
@@ -791,6 +804,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         context.subscription_download = None
         if governance and governance.prepare_submission:
             governance.prepare_submission(context)
+        if rejection := TorrentBlacklistService().rejection(prepared.torrent, prepared.torrent_content):
+            return None, rejection
         submission_label = subscription_download_label(context.subscription_download)
         if submission_label:
             logger.info(f"开始下载【{submission_label}】{prepared.torrent.title} ...")

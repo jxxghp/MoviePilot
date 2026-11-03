@@ -212,6 +212,7 @@ def configure_plugin_system_services():
         configure_system_config,
         configure_token_runtime_config,
         configure_transfer_retry_config,
+        preserve_invalid_system_config,
     )
     from app.application.security.token import (
         create_access_token,
@@ -267,6 +268,7 @@ def configure_plugin_system_services():
     configure_token_runtime_config(lambda: build_token_runtime_config(settings))
     database_executor = _TestDatabaseExecutor()
     system_config = SystemConfigOper()
+    system_config.configure_invalid_value_retention(preserve_invalid_system_config)
     user_config = TransactionalUserConfigurationRepository(SessionFactory)
     with SessionFactory() as session:
         system_config.load_snapshot(session)

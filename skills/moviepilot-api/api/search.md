@@ -118,16 +118,18 @@ This category document is self-contained: the shared models below are included s
 ### `FileItem-Input`
 已配置存储提供方返回的一个文件或目录。
 - `basename` (string|null): 不含扩展名的文件基本名称
+- `change_time_ns` (integer|null): 本地状态变化时间的 Unix 纳秒值，JSON 使用十进制字符串；用于同路径清理核验，未提供时为 None
 - `children` (array<FileItem-Input>|null): 子节点
 - `drive_id` (string|null): 云盘驱动器标识
 - `extension` (string|null): 文件后缀
 - `fileid` (string|null): 存储服务分配的文件标识
-- `modify_time` (number|null): 文件修改时间的 Unix 时间戳
+- `modify_time` (number|null): 文件修改时间的 Unix 时间戳，单位为秒，未提供时为 None
+- `modify_time_ns` (integer|null): 本地修改时间的 Unix 纳秒值，JSON 使用十进制字符串避免精度丢失；旧快照或远端未提供时为 None
 - `name` (string|null): 文件名
 - `parent_fileid` (string|null): 父ID
 - `path` (string|null; default `/`): 文件路径
 - `pickcode` (string|null): 115 文件下载提取码
-- `size` (integer|null): 文件大小
+- `size` (integer|null): 文件大小，单位为字节；目录或来源未提供时可为 None
 - `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储
 - `thumbnail` (string|null): 缩略图
 - `type` (string|null): 条目类型，dir 表示目录，file 表示文件
@@ -155,6 +157,7 @@ This runtime model has no directly writable fields.
 - `phase*` (string): 当前执行阶段
 - `source` (string|null): 触发本轮订阅执行的入口或来源
 - `state*` (string): 当前业务状态
+- `submitted_count` (integer; default `0`): 本次任务已添加的下载数量，用于区分已添加下载与暂无资源
 - `task_id` (string|null): 任务标识
 - `updated_at*` (string): 更新时间
 
@@ -163,12 +166,13 @@ This runtime model has no directly writable fields.
 - `category` (string|null): 种子分类 电影/电视剧/音乐
 - `date_elapsed` (string|null): 已过时间
 - `description` (string|null): 种子副标题
-- `downloadvolumefactor` (number|null): 下载因子
+- `downloadvolumefactor` (number|null): 下载统计倍率，例如 0 表示免费下载、0.5 表示按一半下载量计入统计
 - `enclosure` (string|null): 种子链接
 - `freedate` (string|null): 免费截止时间
 - `freedate_diff` (string|null): 剩余免费时间
 - `grabs` (integer|null; default `0`): 完成者
 - `hit_and_run` (boolean|null; default `False`): 种子是否存在下载后做种义务
+- `info_hash` (string|null): 来源或插件返回的 BitTorrent 内容哈希
 - `labels` (array<string>|null): 种子标签
 - `media_id` (string|null): 数据源原生 ID
 - `media_source` (MediaSource|null): 种子页面声明的媒体身份
@@ -184,9 +188,11 @@ This runtime model has no directly writable fields.
 - `site_order` (integer|null; default `0`): 站点优先级
 - `site_proxy` (boolean|null; default `False`): 站点是否使用代理
 - `site_ua` (string|null): 站点UA
-- `size` (number|null; default `0.0`): 种子大小
+- `size` (number|null; default `0.0`): 种子包含的文件总大小，单位为字节
 - `title` (string|null): 种子名称
-- `uploadvolumefactor` (number|null): 上传因子
+- `torrent_id` (string|null): 来源或插件返回的具体种子标识，不是分组 ID
+- `uploader` (string|null): 来源或插件返回的发布者名称，未知时为空
+- `uploadvolumefactor` (number|null): 上传统计倍率，例如 2 表示按实际上传量的两倍计入站点统计
 - `volume_factor` (string|null): 促销
 
 ### `WorkflowExecutionConfig`

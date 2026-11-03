@@ -120,6 +120,41 @@ def test_load_snapshot_repairs_malformed_json_and_allows_follow_up_write():
     assert _stored_config(key).value == {"recovered": True}
 
 
+def test_injected_retention_policy_preserves_bad_row_on_initial_and_legacy_reload():
+    """
+    通用保留策略只接收键，初次及无参重载均保留坏行；其他坏行仍按旧行为修复。
+    """
+    retained_key, repaired_key = _unique_key(), _unique_key()
+    with SessionFactory() as session:
+        session.execute(
+            text("INSERT INTO systemconfig (key, value) VALUES (:key, :value)"),
+            [{"key": key, "value": "invalid-secret"} for key in (retained_key, repaired_key)],
+        )
+        session.commit()
+    oper = object.__new__(SystemConfigOper)
+    oper.__init__()
+    policy = MagicMock(side_effect=lambda key: key == retained_key)
+    oper.configure_invalid_value_retention(policy)
+    try:
+        for _ in range(2):
+            oper.load_snapshot()
+            assert oper.get(retained_key) == {"invalid_persisted_json": True}
+            assert oper.get(repaired_key) is None
+            with SessionFactory() as session:
+                stored = dict(session.execute(
+                    text("SELECT key, value FROM systemconfig WHERE key IN (:retained, :repaired)"),
+                    {"retained": retained_key, "repaired": repaired_key},
+                ).all())
+            assert stored == {retained_key: "invalid-secret", repaired_key: None}
+        assert all(len(call.args) == 1 and call.args[0] in (retained_key, repaired_key)
+                   for call in policy.call_args_list)
+    finally:
+        with SessionFactory() as session:
+            session.execute(text("DELETE FROM systemconfig WHERE key IN (:retained, :repaired)"),
+                            {"retained": retained_key, "repaired": repaired_key})
+            session.commit()
+
+
 def test_load_snapshot_preserves_postgresql_json_string_scalar():
     """
     PostgreSQL JSON 字符串标量经文本投影后应只解码一次。

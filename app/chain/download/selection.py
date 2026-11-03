@@ -8,11 +8,13 @@ from typing import Callable, Dict, List, Optional, Set, Tuple, Union, cast
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.download.admission import SubscriptionDownloadGovernance
+from app.application.download.blacklist import TorrentBlacklistService
 from app.application.download.failures import (
     DownloadFailureSnapshot,
 )
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
+from app.domain.blacklist import BlacklistConfigurationError, blacklist_matches
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -154,7 +156,16 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
                     f"items (source: {event_data.source})"
                 )
                 contexts = event_data.updated_contexts
-        contexts = _new_torrent_helper().sort_torrents(_confirmed_batch_contexts(contexts))
+        try:
+            blacklist = TorrentBlacklistService().snapshot()
+        except BlacklistConfigurationError as exc:
+            logger.error(str(exc))
+            return [], {}
+        contexts = [
+            context for context in _confirmed_batch_contexts(contexts)
+            if context.torrent_info is not None and not blacklist_matches(blacklist.entries, context.torrent_info)
+        ]
+        contexts = _new_torrent_helper().sort_torrents(contexts)
         active_failures: Dict[str, Optional[DownloadFailureSnapshot]] = {
             fingerprint: failure
             for fingerprint, failure in self._active_download_failure_fingerprints(

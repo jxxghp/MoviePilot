@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-MOVIEPILOT_API_SKILL_VERSION = "71"
+MOVIEPILOT_API_SKILL_VERSION = "72"
 DATABASE_OPERATION_SKILL_VERSION = "17"
 
 
@@ -302,6 +302,26 @@ _MEDIA_TYPE_FIELD_VALUES: dict[tuple[str, str, str], str] = {
 # OpenAPI 无法表达的操作级 Agent 指引，在生成时追加到操作参数组之后，
 # 保证运行中的 Skill 包含这些指引，无需手动修改生成的 api/*.md。
 _OPERATION_NOTES: dict[str, list[str]] = {
+    "download.blacklist.add": [
+        "- Supply at least one of `keyword`, `site_id`, or `uploader`. Conditions within one rule use AND; "
+        "entries use OR. Keywords are case-insensitive literal substrings of title or description; "
+        "uploader names match exactly after trimming and case folding. Missing uploader metadata never matches.",
+        "- Rules are permanent, limited to 1000 entries, and do not delete tasks, files, history, or subscriptions. "
+        "Duplicates return `created=false` and retain the original ID and creation time.",
+    ],
+    "download.blacklist.history": [
+        "- Read `download.history.list` first and pass its server-side `history_id`. The host stores only safe "
+        "resource identity digests and legitimate BitTorrent hashes. Equal content is blocked across sites.",
+        "- Legacy history requires a valid download hash; checking it may require fetching torrent bytes before "
+        "downloader submission. If identity is unavailable, use a manual rule instead. Never infer identity from title.",
+    ],
+    "download.blacklist.list": [
+        "- All blacklist management requires an administrator. Use `page>=1` and `count` from 1 to 100. "
+        "The response contains `items`, `total`, `page`, and `count` from one immutable snapshot.",
+    ],
+    "download.blacklist.remove": [
+        "- Pass the exact entry ID returned by the list. Removal is idempotent and never changes existing tasks or files.",
+    ],
     "plugin.instance.purge": [
         "- **Historical invalid-ID recovery:** If the exact instance ID from a warning is "
         "rejected by normal validation, send only `config: true` (all other scope flags false). "

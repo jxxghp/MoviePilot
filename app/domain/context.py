@@ -1667,6 +1667,9 @@ class TorrentInfo:
     :param pri_order: 种子优先级
     :param category: 种子分类 电影/电视剧/音乐
     :param search_resource_id: 自动订阅分页搜索的内部候选标识，只用于提交结果与候选对应，不进入对外字典
+    :param uploader: 来源或插件明确返回的发布者名称；未知时不匹配发布者规则
+    :param torrent_id: 来源或插件明确返回的具体种子标识，不接受分组 ID
+    :param info_hash: 来源或插件明确返回的 BitTorrent 内容哈希
     """
 
     site: Optional[int] = None
@@ -1696,6 +1699,9 @@ class TorrentInfo:
     pri_order: int = 0
     category: Optional[str] = None
     search_resource_id: Optional[str] = None
+    uploader: Optional[str] = None
+    torrent_id: Optional[str] = None
+    info_hash: Optional[str] = None
 
     def __post_init__(self) -> None:
         """

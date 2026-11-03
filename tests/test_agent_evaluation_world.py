@@ -273,6 +273,25 @@ def test_unknown_response_occurs_after_real_download_side_effect() -> None:
     assert sum(row["infohash"] == world.scenario.infohash for row in world.snapshot()["downloads"]) == 1
 
 
+def test_download_accepts_optional_torrent_identity_metadata_without_losing_request() -> None:
+    """
+    独立模拟接受已批准的可选身份字段，并在请求账本中保留原值。
+    """
+    world = EvaluationWorld("unknown_download")
+    body = _download_body(world)
+    metadata = {"uploader": "Alice", "torrent_id": "39", "info_hash": world.scenario.infohash}
+    body["torrent_in"].update(metadata)
+
+    response = world.execute("download.add", body=body)
+
+    assert response["outcome"] == "unknown"
+    assert world.ledger[0]["effects"][0]["action"] == "created"
+    recorded = world.ledger[0]["request"]["body"]["torrent_in"]
+    assert {key: recorded[key] for key in metadata} == metadata
+    body["torrent_in"]["uploader"] = "Changed"
+    assert world.ledger[0]["request"]["body"]["torrent_in"]["uploader"] == "Alice"
+
+
 def test_unavailable_download_reads_do_not_prevent_independent_site_evidence() -> None:
     """
     提交前可排除重复，未知回执后持续不可查；站点仍可独立读取且不能充当下载证据。

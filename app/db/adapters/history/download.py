@@ -150,6 +150,14 @@ class TransactionalDownloadHistoryRepository:
             )
         )
 
+    async def async_get_by_id(self, history_id: int) -> Optional[DownloadHistorySnapshot]:
+        """
+        在独立异步短会话中按主键查询，并在会话关闭前完成深层投影。
+        """
+        async with self._async_session() as session:
+            record = await DownloadHistoryOper(session).async_get_by_id(history_id)
+            return _project_history(record) if record is not None else None
+
     def get_by_hashes(
         self,
         download_hashes: list[str],
@@ -310,6 +318,15 @@ class SessionDownloadHistoryRepository:
         保存由请求依赖独占的数据库 Session。
         """
         self._session = session
+
+    async def async_get_by_id(self, history_id: int) -> Optional[DownloadHistorySnapshot]:
+        """
+        在请求独占的异步会话内读取和投影历史，不返回 ORM 对象。
+        """
+        if not isinstance(self._session, AsyncSession):
+            raise RuntimeError("下载历史异步查询需要 AsyncSession")
+        record = await DownloadHistoryOper(self._session).async_get_by_id(history_id)
+        return _project_history(record) if record is not None else None
 
     async def async_list_by_page(
         self,

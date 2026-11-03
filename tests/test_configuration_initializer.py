@@ -127,6 +127,13 @@ async def test_runtime_settings_service_uses_legacy_settings_from_startup_root(
         提供无需数据库的系统配置快照桩。
         """
 
+        def configure_invalid_value_retention(self, policy):
+            """
+            接收生产配置损坏保留策略。
+            """
+            assert policy("TorrentBlacklist")
+            assert not policy("IndexerSites")
+
         def load_snapshot(self):
             """
             模拟系统配置快照加载。
@@ -182,6 +189,13 @@ async def test_configuration_services_publish_after_both_snapshots_load(
         记录系统配置快照加载顺序。
         """
 
+        def configure_invalid_value_retention(self, policy):
+            """
+            确认策略在首次读取快照前绑定。
+            """
+            assert policy("TorrentBlacklist")
+            events.append("bind-retention")
+
         def load_snapshot(self):
             """
             登记系统快照已加载。
@@ -226,7 +240,7 @@ async def test_configuration_services_publish_after_both_snapshots_load(
         settings=_MutableSettings(),
     )
 
-    assert events == ["load-system", "load-user"]
+    assert events == ["bind-retention", "load-system", "load-user"]
 
     configuration_composition.publish_configuration(
         composition,
@@ -234,6 +248,7 @@ async def test_configuration_services_publish_after_both_snapshots_load(
     )
 
     assert events == [
+        "bind-retention",
         "load-system",
         "load-user",
         "publish-system",
@@ -254,6 +269,12 @@ async def test_configuration_load_failure_does_not_publish_partial_service(
         """
         提供成功的系统配置快照加载桩。
         """
+
+        def configure_invalid_value_retention(self, policy):
+            """
+            接收与生产一致的坏行保留策略。
+            """
+            assert policy("TorrentBlacklist")
 
         def load_snapshot(self):
             """

@@ -583,6 +583,40 @@ def test_api_endpoint_message_expressions_have_english_translations():
     assert untranslated == []
 
 
+def test_blacklist_errors_have_english_and_traditional_chinese_translations():
+    """
+    黑名单接口、应用规则和下载门禁的用户可见错误均有英文与繁体翻译。
+    """
+    messages = {
+        "下载历史不存在": "Download history not found",
+        "种子黑名单配置无效，请管理员修复后重试":
+            "The torrent blacklist configuration is invalid. Ask an administrator to repair it and try again",
+        "种子内容包含多个资源哈希，无法安全提交":
+            "The torrent content contains hashes for multiple resources and cannot be submitted safely",
+        "历史资源身份无效，请添加手动黑名单规则":
+            "The resource identity in this history record is invalid. Add a manual blacklist rule",
+        "历史记录缺少安全资源身份，请添加手动黑名单规则":
+            "This history record has no safe resource identity. Add a manual blacklist rule",
+        "种子黑名单最多保存 1000 条，请先移除不需要的条目":
+            "The torrent blacklist can contain up to 1000 entries. Remove unwanted entries first",
+        "黑名单页码或每页条数无效": "Invalid blacklist page number or page size",
+        "资源命中永久种子黑名单": "The resource matches the permanent torrent blacklist",
+        "请使用专用黑名单操作，通用设置不能替换永久种子黑名单":
+            "Use the dedicated blacklist operations. General settings cannot replace the permanent torrent blacklist",
+        "插件返回的下载上下文无效": "The plugin returned an invalid download context",
+        "插件返回的下载上下文缺少媒体、元数据或种子信息":
+            "The plugin returned a download context without media, metadata, or torrent information",
+        "至少填写关键词、站点或发布者之一": "Provide at least one keyword, site, or uploader",
+        "手动规则数据无效": "Invalid manual rule data",
+        "资源黑名单缺少安全身份": "The resource blacklist entry has no safe identity",
+        "创建时间必须带时区": "The creation time must include a time zone",
+        "黑名单条目标识重复": "Duplicate blacklist entry ID",
+    }
+    for message, english in messages.items():
+        assert LocaleHelper.translate_text(message, locale="en-US") == english
+        assert LocaleHelper.translate_text(message, locale="zh-TW") not in (message, english)
+
+
 def test_api_endpoint_http_exception_details_have_english_translations():
     """
     HTTPException 的中文 detail 应有英文翻译。
