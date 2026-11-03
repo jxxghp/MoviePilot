@@ -27,7 +27,7 @@ def fixture_captured(monkeypatch, tmp_path):
     在内存中捕获文件路由，隔离全局等级及控制台输出。
     """
     entries = []
-    monkeypatch.setattr(LoggerManager, "_writer", SimpleNamespace(write_log=lambda *args: entries.append(args)))
+    monkeypatch.setattr(LoggerManager, "_writer", SimpleNamespace(write_log=lambda *args, **kwargs: entries.append(args)))
     monkeypatch.setattr(LoggerManager, "_log_path", tmp_path)
     monkeypatch.setattr(log_module.log_settings, "DEBUG", False)
     monkeypatch.setattr(log_module.log_settings, "LOG_LEVEL", "INFO")

@@ -61,6 +61,37 @@ def test_exception_accepts_explicit_exception(captured_logs):
     assert caplog.records[-1].exc_info[1] is failure
 
 
+def test_exception_file_log_carries_exc_info(captured_logs):
+    """
+    文件日志写入链路应携带规范化异常三元组，供格式化器输出堆栈。
+    """
+    caplog, writer = captured_logs
+    failure = RuntimeError("file traceback failure")
+    try:
+        raise failure
+    except RuntimeError:
+        logger.error("request failed", exc_info=True)
+    assert caplog.records[-1].exc_info[1] is failure
+    assert writer.call_args.kwargs["exc_info"][1] is failure
+
+
+def test_file_record_formatter_includes_traceback():
+    """
+    文件格式化器应把日志条目携带的异常三元组输出为可读堆栈。
+    """
+    failure = ValueError("formatted file failure")
+    entry = log_module.LogEntry(
+        "ERROR",
+        "API 请求发生未捕获异常: formatted file failure",
+        LoggerManager._default_log_file,
+        exc_info=(type(failure), failure, failure.__traceback__),
+    )
+    record = log_module.NonBlockingFileHandler._to_record(entry)
+    formatter = logging.Formatter(log_module.LogSettings().LOG_FILE_FORMAT)
+    formatted = formatter.format(record)
+    assert "ValueError: formatted file failure" in formatted
+
+
 def test_exception_respects_current_log_threshold(captured_logs, monkeypatch):
     """
     高于 ERROR 的日志阈值继续拦截异常消息。
