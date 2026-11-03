@@ -11,7 +11,7 @@ from functools import partial
 from pathlib import Path
 from threading import Barrier
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import FastAPI
@@ -639,6 +639,32 @@ def test_registration_atomic_insert_rejects_unknown_dialect(monkeypatch, registr
             TransferHistoryOper(session).stage_insert_if_source_absent({
                 "src": "/a.mkv", "src_storage": "local",
             })
+
+
+@pytest.mark.parametrize("provide_async_session", [False, True])
+def test_registration_stage_requires_explicit_sync_session(provide_async_session, monkeypatch):
+    """
+    原子登记拒绝缺失或异步调用方会话，不得自行创建会话、执行语句或提交事务。
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.orm import Session
+
+    from app.db.oper.transferhistory import TransferHistoryOper
+
+    supplied_session = AsyncSession() if provide_async_session else None
+    database_access = Mock(side_effect=AssertionError("拒绝无同步会话的登记时不得访问数据库"))
+    try:
+        with monkeypatch.context() as guarded:
+            for session_type in (Session, AsyncSession):
+                for method in ("__init__", "execute", "flush", "commit"):
+                    guarded.setattr(session_type, method, database_access)
+            oper = TransferHistoryOper(supplied_session)
+            with pytest.raises(RuntimeError, match="^登记整理历史需要调用方提供同步 Session$"):
+                oper.stage_insert_if_source_absent({"src": "/a.mkv", "src_storage": "local"})
+            database_access.assert_not_called()
+    finally:
+        if supplied_session is not None:
+            asyncio.run(supplied_session.close())
 
 
 def test_registration_accepts_canonical_series_identity():
