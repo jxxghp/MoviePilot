@@ -20,6 +20,7 @@ from app.application.settings.contract import (
 )
 from app.runtime.config import Settings
 from app.schemas.types import SystemConfigKey
+from scripts import generate_system_settings_catalog as catalog_generator
 
 
 def test_subscription_search_strategy_contract_declares_three_choices() -> None:
@@ -51,7 +52,6 @@ def test_settings_contract_covers_every_declared_source() -> None:
         assert spec.description
         assert spec.group
         assert spec.source_file
-        assert spec.source_line > 0
         schema = build_value_schema(spec)
         assert schema.get("description") == spec.description
         assert isinstance(schema, dict)
@@ -227,3 +227,12 @@ def test_system_setting_operations_expose_the_three_stage_contract() -> None:
     update_body_ref = branches["config.system.update"]["properties"]["body"]["$ref"]
     update_body = schema["$defs"][update_body_ref.rsplit("/", 1)[-1]]
     assert "expected_revision" in update_body["properties"]
+
+
+def test_system_settings_catalog_matches_source_declarations() -> None:
+    """
+    来源目录必须由生成脚本从源码注释产出；手工修改目录或改注释后未重新生成都会在这里失败。
+    """
+    assert catalog_generator.OUTPUT_PATH.read_text(encoding="utf-8") == catalog_generator.render_catalog(), (
+        "请运行 python scripts/generate_system_settings_catalog.py 重新生成系统设置来源目录"
+    )
