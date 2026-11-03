@@ -189,6 +189,6 @@ def test_resolve_media_download_dir_uses_default_dir_for_blank_save_path():
     """
     default_dir = TransferDirectoryConf(name="剧集库", priority=1, storage="local", download_path="/downloads/tv")
     media = MediaInfo(type=MediaType.TV, title="测试剧集")
-    with patch.object(DirectoryHelper, "get_dir", return_value=default_dir):
+    with patch.object(DirectoryHelper, "get_download_dir", return_value=default_dir):
         result = DownloadSubtitleOwner._resolve_media_download_dir(media, save_path="")
     assert result == ("local", Path("/downloads/tv"), "")
