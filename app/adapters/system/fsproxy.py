@@ -21,6 +21,7 @@ import json
 import os
 import selectors
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -85,6 +86,15 @@ class FileSystemProxy:
         :return: 大小、秒及纳秒修改时间、纳秒状态时间、设备和 inode、文件类型；dev/ino 标识当前文件身份
         """
         return cast(dict[str, Any], self._call("stat", path=str(path)))
+
+    def lstat(self, path: Path) -> Dict[str, Any]:
+        """
+        不跟随最终符号链接读取目录项，供外部整理登记核验。
+
+        :param path: 待核验的原始文件地址
+        :return: 文件身份、纳秒时间、类型和符号链接标志
+        """
+        return cast(dict[str, Any], self._call("lstat", path=str(path)))
 
     def exists(self, path: Path) -> bool:
         """
@@ -298,6 +308,32 @@ class FileSystemProxy:
         return bool(get_runtime_setting("FS_PROXY_ENABLED", True))
 
     @staticmethod
+    def _direct_stat(op: str, path: str) -> Dict[str, Any]:
+        """
+        读取直连模式下的路径或目录项属性，保留既有 stat 跟随链接的语义。
+
+        :param op: stat 或 lstat
+        :param path: 目标路径
+        :return: 对应操作的固定属性集合
+        """
+        if op == "lstat":
+            info = os.lstat(path)
+            return {
+                "size": info.st_size, "mtime": info.st_mtime,
+                "mtime_ns": info.st_mtime_ns, "ctime_ns": info.st_ctime_ns,
+                "dev": info.st_dev, "ino": info.st_ino,
+                "is_dir": stat.S_ISDIR(info.st_mode),
+                "is_file": stat.S_ISREG(info.st_mode),
+                "is_symlink": stat.S_ISLNK(info.st_mode),
+            }
+        info = os.stat(path)
+        return {
+            "size": info.st_size, "mtime": info.st_mtime,
+            "dev": info.st_dev, "ino": info.st_ino,
+            "is_dir": os.path.isdir(path), "is_file": os.path.isfile(path),
+        }
+
+    @staticmethod
     def _direct(op: str, payload: Dict[str, Any]) -> Any:
         """
         不经代理直接执行操作，供代理关闭时使用。
@@ -306,17 +342,8 @@ class FileSystemProxy:
         :param payload: 操作参数
         :return: 操作结果
         """
-        if op == "stat":
-            path = payload["path"]
-            info = os.stat(path)
-            return {
-                "size": info.st_size,
-                "mtime": info.st_mtime,
-                "dev": info.st_dev,
-                "ino": info.st_ino,
-                "is_dir": os.path.isdir(path),
-                "is_file": os.path.isfile(path),
-            }
+        if op in ("stat", "lstat"):
+            return FileSystemProxy._direct_stat(op, payload["path"])
         if op == "realpath":
             return str(Path(payload["path"]).resolve())
         if op == "exists":

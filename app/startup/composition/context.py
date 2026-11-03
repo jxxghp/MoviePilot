@@ -17,6 +17,7 @@ from app.application.history import (
     TransferHistoryMutationRepository,
     TransferHistoryRepository,
 )
+from app.application.history.registration import LocalEntryProbe, RegistrationScopeFactory
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
     AsyncAgentChatRepository,
@@ -388,6 +389,8 @@ class HistoryRuntime:
     :param transfer_mutation_repository: 按请求会话构造整理历史写仓储的工厂
     :param media_server_repository: 构造媒体服务器条目仓储的工厂
     :param transfer_execution_repository: 整理执行状态仓储
+    :param registration_scope: 外部登记的独立短事务工厂
+    :param registration_local_entry: 外部登记的本地非跟随文件证明
     """
 
     download_repository: RepositoryFactory
@@ -395,6 +398,8 @@ class HistoryRuntime:
     transfer_mutation_repository: TransferHistoryRepositoryFactory
     media_server_repository: RepositoryFactory
     transfer_execution_repository: TransferExecutionRepository
+    registration_scope: RegistrationScopeFactory
+    registration_local_entry: LocalEntryProbe
 
 
 @dataclass(frozen=True, slots=True)

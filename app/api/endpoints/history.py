@@ -5,9 +5,9 @@
 import asyncio
 import time
 from collections.abc import Coroutine
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Literal, Optional
 
-from fastapi import Depends, Response
+from fastapi import Depends, HTTPException, Response
 
 from app.adapters.web.security.access import verify_token
 from app.agent.contracts import ReplyMode
@@ -30,6 +30,7 @@ from app.api.dependencies.history import (
     get_history_query_service,
     get_transfer_execution_repository,
     get_transfer_history_mutation_command,
+    get_transfer_registration_command,
 )
 from app.api.response import (
     COLLECTION_TOTAL_HEADER,
@@ -42,6 +43,12 @@ from app.application.history import (
     DownloadHistoryMutationCommand,
     HistoryQueryService,
     TransferHistoryMutationCommand,
+)
+from app.application.history.registration import (
+    RegistrationActor,
+    RegistrationConflictError,
+    RegistrationValidationError,
+    TransferRegistrationCommand,
 )
 from app.application.transfer.execution import (
     TransferExecutionCommand,
@@ -60,6 +67,8 @@ from app.schemas.history import TransferHistory as _SchemaTransferHistory
 from app.schemas.history import TransferHistoryDeleteResult as _SchemaTransferHistoryDeleteResult
 from app.schemas.history import TransferHistoryDiscardResult as _SchemaTransferHistoryDiscardResult
 from app.schemas.history import TransferHistoryPage as _SchemaTransferHistoryPage
+from app.schemas.history import TransferHistoryRegisterRequest as _SchemaTransferHistoryRegisterRequest
+from app.schemas.history import TransferHistoryRegisterResult as _SchemaTransferHistoryRegisterResult
 from app.schemas.history import TransferHistoryReplanRequest as _SchemaTransferHistoryReplanRequest
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -303,6 +312,7 @@ async def transfer_history(
     page: Optional[int] = 1,
     count: Optional[int] = 30,
     status: Optional[bool] = None,
+    origin: Optional[Literal["external"]] = None,
     query: HistoryQueryService = Depends(get_history_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
@@ -311,13 +321,44 @@ async def transfer_history(
     """
     page = page if page is not None else 1
     count = count if count is not None else 30
-    result = await query.list_transfer(
-        title=title,
-        page=page,
-        count=count,
-        status=status,
-    )
+    if origin is None:
+        result = await query.list_transfer(title=title, page=page, count=count, status=status)
+    else:
+        result = await query.list_transfer(
+            title=title,
+            page=page,
+            count=count,
+            status=status,
+            origin=origin,
+        )
     return _SchemaResponse(success=True, data=result)
+
+
+@router.post(
+    "/transfer",
+    summary="登记已完成的外部整理",
+    response_model=_SchemaResponse[_SchemaTransferHistoryRegisterResult],
+)
+def register_transfer_history(
+    payload: _SchemaTransferHistoryRegisterRequest,
+    command: TransferRegistrationCommand = Depends(get_transfer_registration_command),
+    user: Any = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    管理员登记外部复制、硬链接或移动事实，只写历史，不操作文件、下载器或订阅。
+    """
+    try:
+        result = command.execute(payload, RegistrationActor(id=user.id, name=user.name))
+    except RegistrationConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except RegistrationValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaTransferHistoryRegisterResult(
+            history=_SchemaTransferHistory.model_validate(result.history), created=result.created,
+        ),
+    )
 
 
 def _clear_transfer_history(

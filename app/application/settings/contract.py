@@ -139,7 +139,6 @@ class SettingSpec:
     :param sensitive: 是否包含需要脱敏展示的敏感值
     :param systemconfig_key: 数据库配置对应的枚举键；运行配置时为 None
     :param source_file: 声明该设置的源文件路径，便于追溯
-    :param source_line: 设置声明的源码行号；无法定位时为 0
     """
 
     key: str
@@ -161,7 +160,6 @@ class SettingSpec:
     sensitive: bool = False
     systemconfig_key: Optional[SystemConfigKey] = None
     source_file: str = ""
-    source_line: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -654,7 +652,6 @@ def build_setting_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec
             ),
             sensitive=is_secret_setting_key(key),
             source_file=str(metadata.get("source_file") or ""),
-            source_line=int(metadata.get("source_line") or 0),
         )
 
     system_specs: dict[str, SettingSpec] = {}
@@ -692,7 +689,6 @@ def build_setting_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec
             sensitive=contract.sensitive,
             systemconfig_key=item,
             source_file=str(source_metadata.get("source_file") or ""),
-            source_line=int(source_metadata.get("source_line") or 0),
         )
     return core_specs, system_specs
 
