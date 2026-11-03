@@ -173,28 +173,32 @@ def test_get_items_expands_nested_boxsets_and_folders(client, limit):
 
 def test_get_items_pagination_does_not_truncate_collection_members(client):
     """
-    父目录分页参数不能传给合集，否则会漏掉合集成员。
+    合集不继承父目录分页范围，必须从零开始独立分页读取全部成员。
     """
+    members = [_movie(f"member-{index}") for index in range(203)]
+
     def get_res(_url, params):
         """
-        返回父目录的一页数据和合集中完整的三部电影。
+        返回父目录的一页数据，并按请求范围回放跨页合集。
         """
         if params["ParentId"] == "movies":
             return _response({"Items": [
                 {"Id": "collection", "Type": "BoxSet"}, _movie("standalone"),
             ]})
-        return _response({"Items": [_movie(f"member-{index}") for index in range(3)]})
+        start = params["StartIndex"]
+        return _response({"Items": members[start:start + params["Limit"]], "TotalRecordCount": len(members)})
 
     with patch("app.modules.jellyfin.jellyfin.RequestUtils") as request:
         request.return_value.get_res.side_effect = get_res
         items = list(client.get_items("movies", start_index=5, limit=2))
 
-    assert [item.item_id for item in items] == [
-        "member-0", "member-1", "member-2", "standalone",
-    ]
-    parent_call, collection_call = request.return_value.get_res.call_args_list
+    assert [item.item_id for item in items] == [*[member["Id"] for member in members], "standalone"]
+    parent_call, first_collection_call, last_collection_call = request.return_value.get_res.call_args_list
     assert parent_call.args[1]["StartIndex"] == 5
     assert parent_call.args[1]["Limit"] == 2
-    assert collection_call.args[1]["ParentId"] == "collection"
-    assert "StartIndex" not in collection_call.args[1]
-    assert "Limit" not in collection_call.args[1]
+    assert first_collection_call.args[1]["ParentId"] == "collection"
+    assert first_collection_call.args[1]["StartIndex"] == 0
+    assert first_collection_call.args[1]["Limit"] == 200
+    assert last_collection_call.args[1]["ParentId"] == "collection"
+    assert last_collection_call.args[1]["StartIndex"] == 200
+    assert last_collection_call.args[1]["Limit"] == 200

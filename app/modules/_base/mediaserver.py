@@ -5,7 +5,7 @@
 定时重连与连接测试。服务器差异（认证 API、存在性检查端点、连接探测方式）
 通过类属性与钩子方法保留在各模块。
 """
-from typing import Any, Iterable, Mapping, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Generator, Iterable, Mapping, Optional, Tuple, cast
 
 from app.application.mediaserver import MusicMediaServerHelper
 from app.domain.context import MediaInfo, MusicInfo
@@ -17,6 +17,79 @@ from app.schemas.event import AuthInterceptCredentials as _SchemaAuthInterceptCr
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
 from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
 from app.schemas.types import ChainEventType, MediaType
+
+if TYPE_CHECKING:
+    from app.adapters.network.http import RequestUtils
+
+# 默认全量枚举按 200 条读取，限制单页 JSON 及递归目录同时保留的数据量。
+_EMBY_ITEMS_PAGE_SIZE = 200
+
+
+def _read_emby_item_page(
+    request: "RequestUtils",
+    url: str,
+    params: dict[str, Any],
+) -> tuple[list[dict[str, Any]], Optional[int]]:
+    """
+    读取一页原始条目，并在交给同步迭代器前释放 HTTP 响应及其字节缓冲。
+
+    :param request: 对应服务器的请求工具，保留其请求头配置
+    :param url: 当前用户的条目列表接口
+    :param params: 包含目录、投影和分页范围的请求参数
+    :return: 原始条目列表与服务端可选总数；总数包含随后可能被过滤的条目
+    :raises ConnectionError: 请求无响应或返回非成功状态
+    """
+    response = request.get_res(url, params)
+    if response is None:
+        raise ConnectionError("读取媒体服务器条目失败，未收到响应")
+    try:
+        if response.status_code != 200:
+            raise ConnectionError(f"读取媒体服务器条目失败，状态码：{response.status_code}")
+        payload = response.json()
+        total = payload.get("TotalRecordCount")
+        return payload.get("Items") or [], int(total) if total is not None else None
+    finally:
+        response.close()
+
+
+def iter_emby_items(
+    request: "RequestUtils",
+    url: str,
+    params: Mapping[str, Any],
+    *,
+    start_index: Optional[int] = 0,
+    limit: Optional[int] = -1,
+) -> Generator[dict[str, Any], None, None]:
+    """
+    按服务端原始条目分页枚举 Emby 系目录，过滤和递归由客户端处理。
+
+    :param request: 保留对应服务器请求头的 HTTP 工具
+    :param url: 用户条目列表接口
+    :param params: 当前目录、认证与查询投影；不修改调用方参数
+    :param start_index: 显式分页的原始条目起始位置；全量枚举保持从 0 开始
+    :param limit: None 或 -1 时以有界页读取全部条目，否则只读取调用方指定的一页
+    :yields: 尚未经过类型过滤的原始条目
+    :raises ConnectionError: 任意页读取失败；不把失败转换为空库
+    """
+    unlimited = limit is None or limit == -1
+    page_size = _EMBY_ITEMS_PAGE_SIZE if unlimited else limit
+    offset = 0 if unlimited else start_index or 0
+    while True:
+        items, total = _read_emby_item_page(
+            request, url, {**params, "StartIndex": offset, "Limit": page_size},
+        )
+        count = len(items)
+        yield from items
+        # 在下一页请求前释放已消费的列表，不跨页累积原始 JSON。
+        del items
+        offset += count
+        if not unlimited or not count:
+            return
+        if total is not None:
+            if offset >= total:
+                return
+        elif count < _EMBY_ITEMS_PAGE_SIZE:
+            return
 
 
 def emby_episode_numbers(item: Mapping[str, Any]) -> range:
