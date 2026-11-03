@@ -31,9 +31,11 @@ async def test_file_log_follow_drains_all_lines_from_one_append(tmp_path: Path) 
 
     async def collect_lines() -> None:
         """
-        收集同一次写入产生的三行日志。
+        忽略空字符串心跳，只收集同一次写入产生的三行日志。
         """
         async for line in stream:
+            if not line:
+                continue
             collected.append(line)
             if len(collected) == 3:
                 break

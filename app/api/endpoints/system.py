@@ -836,18 +836,22 @@ async def _get_logging_impl(
 
     async def event_generator() -> AsyncIterator[str]:
         """
-        仅将原始日志行包装为 SSE 的 data 消息。
+        原始日志行编码为 data 消息，空字符串心跳编码为不触发消息事件的 SSE 注释。
         """
         try:
             async for line in source:
-                yield f"data: {line}\n\n"
+                yield f"data: {line}\n\n" if line else ": keepalive\n\n"
         except asyncio.CancelledError:
             return
         except Exception as error:
             logger.error("日志读取异常: %s", error)
             yield f"data: 日志读取异常: {error}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get(

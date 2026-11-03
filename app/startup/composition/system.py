@@ -86,7 +86,12 @@ class _FileLogAdapter(SystemLogPort):
         disconnected: Callable[[], Awaitable[bool]],
     ) -> AsyncIterator[str]:
         """
-        先返回历史尾部，再轮询并返回新增日志行。
+        先返回历史尾部，再轮询并返回新增日志行及空字符串心跳。
+
+        :param logfile: 日志根内受准入规则保护的日志文件标识
+        :param length: 首次发送的历史尾部行数
+        :param disconnected: 异步判断客户端是否断开，返回 True 时停止跟随
+        :return: 日志行与空字符串心跳的异步迭代器；心跳由传输层编码为 SSE 注释
         """
         if re.fullmatch(r"subscriptions/[1-9][0-9]*\.log", logfile):
             path = Path(self._settings.get("LOG_PATH")) / logfile
@@ -123,7 +128,9 @@ class _FileLogAdapter(SystemLogPort):
         disconnected: Callable[[], Awaitable[bool]],
     ) -> AsyncIterator[str]:
         """
-        有界读取尾部及完整新增行；重开文件以追踪滚动，并等待订阅首次产生日志。
+        有界读取尾部及完整新增行，每轮提供空字符串心跳以维持空闲连接。
+
+        重开文件以追踪滚动，并等待订阅首次产生日志；心跳不改变文件游标。
         """
         cursor: tuple[int, int] | None = None
         initial = True
@@ -133,8 +140,7 @@ class _FileLogAdapter(SystemLogPort):
                 initial = False
             for line in lines:
                 yield line
-            if path.parent.name == "subscriptions":
-                yield ""
+            yield ""
             await asyncio.sleep(0.5)
 
     def _log_chunk(
