@@ -5,11 +5,14 @@ Chain durable 事件写入端口的 SQLAlchemy 适配器。
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.application.chain.events import (
@@ -28,7 +31,9 @@ from app.application.history import (
     TransferHistoryStagingPort,
     TransferHistoryWrite,
 )
+from app.application.notification import agent_transfer_notification_key
 from app.application.outbox import (
+    AGENT_TRANSFER_NOTIFICATION_TOPIC,
     DOWNLOAD_ADDED_TOPIC,
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_NOTIFICATION_TOPIC,
@@ -36,6 +41,7 @@ from app.application.outbox import (
     DurableEventCommand,
     DurableOutboxEffect,
     OutboxIntent,
+    deliver_outbox_effect,
 )
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -46,9 +52,11 @@ from app.application.transfer.execution import (
 )
 from app.db.adapters.history.transfer import project_transfer_history
 from app.db.adapters.outbox import (
+    SqlAlchemyAsyncOutboxStager,
     SqlAlchemyOutboxDispatchStore,
     SqlAlchemyOutboxStager,
 )
+from app.db.models.outbox import OutboxMessage
 from app.db.models.transfersettlementreceipt import TransferSettlementReceipt
 from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.transferexecutionstep import TransferExecutionStepOper
@@ -56,6 +64,21 @@ from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.transferpending import TransferPendingOper
 from app.db.oper.transfersettlementreceipt import TransferSettlementReceiptOper
 from app.db.uow import SqlAlchemyUnitOfWork
+from app.runtime.log import logger
+from app.schemas.message import Message
+
+
+def _agent_transfer_notification_intent(message: Message) -> OutboxIntent:
+    """
+    校验自动任务身份，并冻结不改变旧消息序列化合同的独立上下文。
+    """
+    context = message.notification_context
+    if context is None or context.trigger != "automatic":
+        raise ValueError("持久接管通知缺少明确的自动任务身份")
+    return OutboxIntent(
+        agent_transfer_notification_key(context), AGENT_TRANSFER_NOTIFICATION_TOPIC,
+        {"message": message.model_dump(mode="json"), "notification_context": context.model_dump(mode="json")},
+    )
 
 
 class _StagingTransferHistoryRepository:
@@ -150,11 +173,75 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
     为每次 Chain 结果事件创建独占同步 Session 和 UoW。
     """
 
-    def __init__(self, session_factory: Callable[[], Session]) -> None:
+    def __init__(
+            self, session_factory: Callable[[], Session],
+            async_session_factory: Optional[Callable[[], AbstractAsyncContextManager[AsyncSession]]] = None,
+    ) -> None:
         """
         注入惰性同步 Session 工厂。
         """
         self._session_factory = session_factory
+        self._async_session_factory = async_session_factory
+
+    def agent_transfer_notification(
+        self, *, message: Message, publish: Callable[[str], None],
+    ) -> bool:
+        """
+        利用 Outbox 唯一键隔离重复登记，提交后才允许调用外部通知。
+
+        :param message: 包含自动接管上下文的消息，普通手动回复不能进入该持久通道
+        :param publish: 真正投递消息的回调，失败不回滚已提交的通知意图
+        :return: 本次是否新登记；唯一键冲突以外的存储错误向上传播
+        """
+        intent = _agent_transfer_notification_intent(message)
+        event_key = intent.event_key
+        with self._session_factory() as session:
+            exists = select(OutboxMessage.id).where(OutboxMessage.event_key == event_key)
+            if session.scalar(exists) is not None:
+                return False
+            try:
+                SqlAlchemyOutboxStager(session).stage(
+                    intent,
+                    datetime.now(timezone.utc),
+                )
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                if session.scalar(exists) is not None:
+                    return False
+                raise
+        try:
+            deliver_outbox_effect(
+                SqlAlchemyOutboxDispatchStore(self._session_factory), event_key,
+                lambda: publish(event_key),
+            )
+        except Exception as error:
+            logger.warning(f"智能助手通知已登记，投递失败将由 Outbox 恢复：{type(error).__name__}")
+        return True
+
+    async def async_agent_transfer_notification(self, *, message: Message) -> bool:
+        """
+        异步短事务只写通知意图，不在线程或数据库事务中等待外部推送。
+
+        :param message: 已冻结原始任务身份的自动回执
+        :return: 本次是否新登记；通知由现有 Outbox 调度器在提交后投递
+        """
+        if self._async_session_factory is None:
+            raise RuntimeError("自动接管通知未装配异步 Session 工厂")
+        intent = _agent_transfer_notification_intent(message)
+        async with self._async_session_factory() as session:
+            exists = select(OutboxMessage.id).where(OutboxMessage.event_key == intent.event_key)
+            if await session.scalar(exists) is not None:
+                return False
+            try:
+                await SqlAlchemyAsyncOutboxStager(session).stage(intent, datetime.now(timezone.utc))
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                if await session.scalar(exists) is not None:
+                    return False
+                raise
+        return True
 
     def download_added(
         self,

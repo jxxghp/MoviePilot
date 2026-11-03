@@ -430,6 +430,8 @@ class SystemConfigKey(Enum):
     AppPushCredentials = "AppPushCredentials"
     # 通知场景开关设置
     NotificationSwitchs = "NotificationSwitchs"
+    # 后台主动通知策略；独立于通知接收范围和渠道开关
+    NotificationPolicies = "NotificationPolicies"
     # 目录配置
     Directories = "Directories"
     # 挂载型本地盘是否删除空目录

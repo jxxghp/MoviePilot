@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from app.application.chain.events import ChainDurableEventWriter
     from app.application.classification.execution import ClassificationExecutionPort
     from app.application.history import TransferHistoryRepository
     from app.application.transfer.execution import TransferExecutionRepository
@@ -21,6 +22,7 @@ class ChainRuntimeMixinHost(Protocol):
     :ivar messageoper: 保存通知历史的持久化能力
     :ivar messagequeue: 异步投递通知的消息队列
     :ivar classification_service: 统一媒体分类服务，None 时兼容未装配服务的旧调用方
+    :ivar durable_event_writer: 业务事件和自动接管通知的持久登记端口，未装配时为 None
     """
 
     runtime_config: Any
@@ -28,6 +30,7 @@ class ChainRuntimeMixinHost(Protocol):
     messageoper: Any
     messagequeue: Any
     classification_service: ClassificationExecutionPort | None
+    durable_event_writer: ChainDurableEventWriter | None
 
     def run_module(self, method: str, **kwargs: Any) -> Any:
         """
@@ -261,6 +264,15 @@ class TransferMixinHost(ChainRuntimeMixinHost, Protocol):
         :param args: 按宿主顺序传入的消息及媒体、种子和整理上下文
         :param kwargs: 渲染或覆盖通知内容的命名参数
         :return: 不返回业务数据；按路由发送或排队投递通知
+        """
+        ...
+
+    def post_message_strict(self, message: Any, *, event_key: str) -> None:
+        """
+        在 Outbox 已认领的投递中同步等待真实通知提供方。
+
+        :param message: 需要投递并经过统一策略和路由的宿主消息
+        :param event_key: 本次投递的稳定幂等键
         """
         ...
 

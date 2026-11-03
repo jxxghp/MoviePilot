@@ -378,6 +378,10 @@ token exchange downloads retain their existing credential rules.
 
 ## Agent Task And Conversation State
 
+- Automatic transfer-takeover push preferences are separate from enabling AI takeover itself.
+  Discover the notification policy through `config.system.get/describe` before changing it;
+  preserve manual replies, ordinary transfer notifications, recipient scopes, and channel filters.
+  Muting automatic reports keeps the analysis in message history and does not stop AI processing.
 - For `agent_task` updates, `enabled=null` preserves the current enabled state. Renaming a paused task does not resume its schedule.
 - `agent_task` pins a real execution account at creation. Channel senders must uniquely bind to an active MoviePilot user. Background API calls retain that account's permissions, and invalid identity fails the run. Confirm legacy tasks with `update` in their original conversation or recreate them; never substitute a same-name account or fall back to the superuser.
 - Traditional message sessions are scoped by channel, configured source, and user ID. A stop, clear, status query, or confirmation targets the current source's session.

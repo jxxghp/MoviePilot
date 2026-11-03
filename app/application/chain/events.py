@@ -35,6 +35,27 @@ class ChainDurableEventWriter(Protocol):
     下载与整理链原子写入业务记录和事件发件箱的宿主端口。
     """
 
+    def agent_transfer_notification(
+        self, *, message: Message, publish: Callable[[str], None],
+    ) -> bool:
+        """
+        按任务、原始结算版本和阶段持久登记一次自动接管通知。
+
+        :param message: 含显式自动来源和稳定任务身份的消息；完整分析作为历史正文保留
+        :param publish: 提交并取得投递租约后调用，参数为稳定事件键；失败保留意图供恢复
+        :return: 首次登记为 True，已存在同一意图时为 False；不承诺外部渠道恰好一次送达
+        """
+        ...
+
+    async def async_agent_transfer_notification(self, *, message: Message) -> bool:
+        """
+        异步登记自动接管通知，外部投递由既有 Outbox worker 执行。
+
+        :param message: 含自动触发身份和完整分析正文的宿主消息
+        :return: 首次登记为 True，重复身份为 False；提交失败向上传播
+        """
+        ...
+
     def download_added(
         self,
         *,

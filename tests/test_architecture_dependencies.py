@@ -1250,7 +1250,7 @@ def test_modules_initializer_delegates_chain_composition():
     for detail in (
         "ChainRuntimeContext(",
         "TransactionalTransferAdmissionRepository(SessionFactory)",
-        "TransactionalChainDurableEventWriter(SessionFactory)",
+        "TransactionalChainDurableEventWriter(SessionFactory, async_session_scope)",
         "def execute_legacy_transfer_command(",
         "def build_chain_runtime_context(",
         "def configure_wallpaper_services(",

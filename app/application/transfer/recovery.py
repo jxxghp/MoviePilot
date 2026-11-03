@@ -6,18 +6,22 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 from app.application.transfer.execution import (
     TransferExecutionConflictError,
     TransferExecutionRepository,
+    TransferExecutionSnapshot,
     TransferExecutionState,
     TransferFailureDiscardResult,
+    TransferSettlementSnapshot,
+    TransferTerminalState,
 )
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaType
 
 if TYPE_CHECKING:
+    from app.application.history import TransferHistoryRepository, TransferHistorySnapshot
     from app.application.transfer.models import TransferPlanCheckpoint, TransferPlanningInput
 
 
@@ -42,6 +46,68 @@ def ai_takeover_rejection(
     if snapshot.state is not TransferExecutionState.FAILED:
         return "整理任务正在处理或等待重试，请等待当前任务结束"
     return None
+
+
+def ai_takeover_result(
+        *, history: TransferHistorySnapshot, repository: TransferExecutionRepository,
+        histories: TransferHistoryRepository,
+) -> tuple[Literal["queued", "resolved", "attention", "unknown"], str]:
+    """
+    根据持久任务和最新历史核实接管结果，不把模型分析结束当作整理成功。
+
+    :param history: 分析开始前读取的原始失败历史身份
+    :param repository: 读取任务执行状态的端口；成功结算可能已删除 pending
+    :param histories: 读取同一历史最新投影的端口
+    :return: 通知阶段及宿主生成的简短说明；缺失或冲突证据明确标为未知
+    """
+    task_id = history.transfer_task_id
+    snapshot = repository.get_snapshot(task_id=task_id) if task_id else None
+    receipt = repository.get_latest_settlement(task_id=task_id) if task_id and snapshot is None else None
+    return _ai_takeover_result(history, histories.get(history.id), snapshot, receipt)
+
+
+async def async_ai_takeover_result(
+        *, history: TransferHistorySnapshot, repository: TransferExecutionRepository,
+        histories: TransferHistoryRepository,
+) -> tuple[Literal["queued", "resolved", "attention", "unknown"], str]:
+    """
+    使用既有异步查询端口核实自动接管结果，不额外创建并发拥有者。
+
+    :param history: 分析开始前冻结的失败身份
+    :param repository: 持久任务和独立结算回执的异步查询端口
+    :param histories: 当前历史的异步查询端口
+    :return: 经宿主证据核实的通知阶段和简短说明
+    """
+    task_id = history.transfer_task_id
+    snapshot = await repository.async_get_snapshot(task_id=task_id) if task_id else None
+    receipt = await repository.async_get_latest_settlement(task_id=task_id) if task_id and snapshot is None else None
+    return _ai_takeover_result(history, await histories.async_get(history.id), snapshot, receipt)
+
+
+def _ai_takeover_result(
+        history: TransferHistorySnapshot, current: Optional[TransferHistorySnapshot],
+        snapshot: Optional[TransferExecutionSnapshot], receipt: Optional[TransferSettlementSnapshot],
+) -> tuple[Literal["queued", "resolved", "attention", "unknown"], str]:
+    """
+    统一解释同步、异步查询证据；成功必须有原任务更新的独立终态回执。
+    """
+    if (receipt is not None and receipt.task_id == history.transfer_task_id
+            and receipt.settlement_revision > (history.transfer_settlement_revision or 0)
+            and receipt.outcome is TransferTerminalState.SUCCEEDED
+            and (receipt.src, receipt.src_storage) == (history.src, history.src_storage)):
+        return "resolved", "原整理任务已有更新的独立成功回执，入库结果沿用普通整理通知。"
+    if current is None or (current.src, current.src_storage) != (history.src, history.src_storage):
+        return "unknown", "原整理历史已不存在或源身份发生变化，请打开整理历史核实。"
+    if current.transfer_task_id not in {None, history.transfer_task_id}:
+        return "unknown", "资源已关联其他整理任务，本轮分析不能确认其最终结果，请人工核实。"
+    if snapshot is not None:
+        if snapshot.state in {TransferExecutionState.FAILED, TransferExecutionState.MANUAL_REVIEW}:
+            if current.status:
+                return "unknown", "任务与整理历史状态不一致，请人工核实，未判定为整理成功。"
+            reason = (snapshot.last_error or current.errmsg or "未能自动修正识别或规划").strip()
+            return "attention", f"自动接管后仍需人工处理：{reason[:400]}。请打开整理历史核对后重试。"
+        return "queued", "任务正在排队或执行，尚未确认入库；后续成败由正常整理结果通知报告。"
+    return "unknown", "未找到可核实的原任务或更新的成功回执，请人工查看整理历史；不能确认已入库。"
 
 
 def music_replanning_input(checkpoint: TransferPlanCheckpoint) -> Optional[TransferPlanningInput]:

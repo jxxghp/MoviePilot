@@ -17,7 +17,7 @@ from app.application.transfer.execution import (
     TransferExecutionState,
 )
 from app.application.transfer.feedback import TransferFailureStage, classify_transfer_failure
-from app.application.transfer.recovery import ai_takeover_rejection
+from app.application.transfer.recovery import ai_takeover_rejection, ai_takeover_result, async_ai_takeover_result
 from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -27,13 +27,36 @@ from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import get_task_registry
 from app.schemas.file import FileItem
-from app.schemas.message import Message
+from app.schemas.message import Message, MessageNotificationContext
 from app.schemas.types import (
     MediaSource,
     MediaType,
+    MessageType,
     NotificationChannel,
     ReplyMode,
 )
+
+
+def _ai_takeover_notice(
+        message: Message, title: str, text: str = "", *, stage: str = "attention", summary: str = "",
+) -> Message:
+    """
+    从冻结的接管身份生成阶段消息，不修改原消息或后续任务的结算身份。
+
+    :param message: 保存接收目标及可选自动触发上下文的原消息
+    :param title: 本阶段的简明标题
+    :param text: 完整分析正文
+    :param stage: 由宿主确定的处理阶段
+    :param summary: 仅需人工处理模式使用的宿主摘要
+    :return: 独立消息副本；自动最终报告保留历史，手动回复保持原行为
+    """
+    notice = message.model_copy(update={"title": title, "text": text}, deep=True)
+    if notice.notification_context is not None:
+        notice.notification_context = notice.notification_context.model_copy(update={
+            "stage": stage, "summary": summary or text,
+        })
+        notice.save_history = stage != "started"
+    return notice
 
 
 def _request_durable_transfer_retry(
@@ -220,6 +243,8 @@ class FailedRetryMixin(_TransferOwnerBase):
             source: Optional[str],
             userid: Optional[Union[str, int]],
             username: Optional[str],
+            *,
+            automatic: bool = False,
     ) -> None:
         """
         校验任务状态后由智能助手分析并修复历史，不提前登记普通重试。
@@ -229,12 +254,17 @@ class FailedRetryMixin(_TransferOwnerBase):
         :param source: 渠道实例标识
         :param userid: 手动操作用户；自动接管时为空
         :param username: 接收结果通知的本地用户名
+        :param automatic: 明确由失败结算自动触发时为 True；手动入口沿用 False
         """
         history = self.transfer_history_repository.get(history_id)
         if not history:
+            if automatic:
+                logger.warning(f"自动接管取消：整理历史 #{history_id} 已不存在")
+                return
             host = cast(TransferMixinHost, self)
             host.post_message(
                 Message(
+                    mtype=MessageType.Agent,
                     channel=channel,
                     source=source,
                     userid=userid,
@@ -247,17 +277,22 @@ class FailedRetryMixin(_TransferOwnerBase):
             )
             return
 
-        if not self.runtime_config.ai_agent_enable:
-            self.post_message(
-                Message(
-                    channel=channel,
-                    source=source,
-                    userid=userid,
-                    username=username,
-                    title="MoviePilot智能助手未启用，请在系统设置中启用",
-                    save_history=False,
-                )
+        message = Message(
+            mtype=MessageType.Agent, channel=channel, source=source, userid=userid,
+            username=username, link=self.runtime_config.history_url, save_history=False,
+        )
+        if automatic:
+            message.notification_context = MessageNotificationContext(
+                scenario="agent.transfer_takeover", trigger="automatic", stage="started",
+                task_id=history.transfer_task_id or "",
+                settlement_revision=history.transfer_settlement_revision or 0, history_id=history_id,
             )
+
+        if not self.runtime_config.ai_agent_enable:
+            if not automatic:
+                self._send_ai_takeover_notification(_ai_takeover_notice(
+                    message, "MoviePilot智能助手未启用，请在系统设置中启用",
+                ))
             return
 
         rejection = ai_takeover_rejection(
@@ -265,109 +300,122 @@ class FailedRetryMixin(_TransferOwnerBase):
             repository=self.transfer_execution_repository,
         )
         if rejection:
-            self.post_message(
-                Message(
-                    channel=channel,
-                    source=source,
-                    userid=userid,
-                    username=username,
-                    title="智能助手暂时无法接管",
-                    text=rejection,
-                    link=self.runtime_config.history_url,
-                    save_history=False,
+            if automatic:
+                stage, summary = ai_takeover_result(
+                    history=history, repository=self.transfer_execution_repository,
+                    histories=self.transfer_history_repository,
                 )
-            )
+                self._send_ai_takeover_notification(_ai_takeover_notice(
+                    message, "智能助手暂时无法接管", rejection, stage=stage, summary=summary,
+                ))
+            else:
+                self._send_ai_takeover_notification(_ai_takeover_notice(message, "智能助手暂时无法接管", rejection))
             return
 
         redo_prompt = build_manual_redo_prompt(history)
-
-        async def _run_ai_takeover() -> None:
-            """
-            运行整理失败后的 AI 接管流程，并收集最终处理说明。
-            """
-            final_output = ""
-
-            def _capture_output(text_output: str) -> None:
-                """
-                记录接管 Agent 的最新输出，供整理失败回执使用。
-                """
-                nonlocal final_output
-                final_output = text_output or ""
-
-            try:
-                await self.async_post_message(
-                    Message(
-                        channel=channel,
-                        source=source,
-                        userid=userid,
-                        username=username,
-                        title=f"已将整理记录 #{history_id} 交给智能助手处理",
-                        text="处理完成后会在这里回复结果。",
-                        link=self.runtime_config.history_url,
-                        save_history=False,
-                    )
-                )
-                manager = get_running_agent_manager()
-                if manager is None:
-                    raise RuntimeError("智能助手服务未运行")
-                await manager.run_background_prompt(
-                    message=redo_prompt,
-                    session_prefix=f"__agent_manual_redo_{history_id}",
-                    output_callback=_capture_output,
-                    reply_mode=ReplyMode.CAPTURE_ONLY,
-                    allow_message_tools=False,
-                )
-                await self.async_post_message(
-                    Message(
-                        channel=channel,
-                        source=source,
-                        userid=userid,
-                        username=username,
-                        title="智能助手分析完成",
-                        text=final_output.strip()
-                        or f"整理记录 #{history_id} 分析结束，请查看整理历史确认文件处理结果。",
-                        link=self.runtime_config.history_url,
-                        save_history=False,
-                    )
-                )
-            except Exception as e:
-                logger.error(f"智能助手重新整理失败：{e}", exc_info=True)
-                await self.async_post_message(
-                    Message(
-                        channel=channel,
-                        source=source,
-                        userid=userid,
-                        username=username,
-                        title="智能助手整理失败",
-                        text="智能助手整理失败，请稍后重试",
-                        link=self.runtime_config.history_url,
-                        save_history=False,
-                    )
-                )
 
         try:
             registry = get_task_registry()
             loop = main_loop_registry.require()
             registry.submit_threadsafe(
-                _run_ai_takeover(),
+                self._run_ai_takeover(history, message, redo_prompt),
                 loop=loop,
                 owner="chain.transfer.ai_takeover",
             )
         except RuntimeError as error:
             logger.warning("智能助手整理任务提交失败：%s", error)
-            self.post_message(
-                Message(
-                    channel=channel,
-                    source=source,
-                    userid=userid,
-                    username=username,
-                    title="智能助手整理失败",
-                    text="系统正在关闭，无法提交处理任务，请稍后重试。",
-                    link=self.runtime_config.history_url,
-                    save_history=False,
-                )
-            )
+            self._send_ai_takeover_notification(_ai_takeover_notice(
+                message, "智能助手整理失败", "系统正在关闭，无法提交处理任务，请稍后重试。", stage="unknown",
+            ))
             return
+
+    def _send_ai_takeover_notification(self, message: Message) -> None:
+        """
+        同步入口区分手动回复与持久自动推送，通知失败不改变业务任务状态。
+        """
+        try:
+            if message.notification_context is None:
+                self.post_message(message)
+                return
+            host = cast(TransferMixinHost, self)
+            writer = host.durable_event_writer
+            if writer is None:
+                raise RuntimeError("自动接管通知的持久写入端口未装配")
+            writer.agent_transfer_notification(
+                message=message, publish=lambda key: host.post_message_strict(message, event_key=key),
+            )
+        except Exception as error:
+            logger.error(f"智能助手接管通知未能提交：{type(error).__name__}")
+
+    async def _async_send_ai_takeover_notification(self, message: Message) -> None:
+        """
+        手动回复沿用异步渠道，自动回执只登记异步短事务，由已有 Outbox worker 投递。
+        """
+        try:
+            if message.notification_context is None:
+                await self.async_post_message(message)
+                return
+            writer = cast(TransferMixinHost, self).durable_event_writer
+            if writer is None:
+                raise RuntimeError("自动接管通知的持久写入端口未装配")
+            await writer.async_agent_transfer_notification(message=message)
+        except Exception as error:
+            logger.error(f"智能助手接管通知未能提交：{type(error).__name__}")
+
+    async def _run_ai_takeover(
+            self, history: TransferHistorySnapshot, message: Message, redo_prompt: str,
+    ) -> None:
+        """
+        执行受管的接管分析；自动结果由真实状态核实，手动回复保持原会话行为。
+
+        :param history: 分析开始前冻结的整理失败身份
+        :param message: 明确区分自动来源与手动会话目标的消息基底
+        :param redo_prompt: 由宿主根据失败记录构造的分析请求
+        """
+        final_output = ""
+
+        def capture_output(text_output: str) -> None:
+            """
+            收集完整分析供消息历史保存，不据此裁决整理是否成功。
+            """
+            nonlocal final_output
+            final_output = text_output or ""
+
+        try:
+            await self._async_send_ai_takeover_notification(_ai_takeover_notice(
+                message, f"已将整理记录 #{history.id} 交给智能助手处理",
+                "处理完成后会在这里回复结果。", stage="started",
+            ))
+            manager = get_running_agent_manager()
+            if manager is None:
+                raise RuntimeError("智能助手服务未运行")
+            await manager.run_background_prompt(
+                message=redo_prompt, session_prefix=f"__agent_manual_redo_{history.id}",
+                output_callback=capture_output, reply_mode=ReplyMode.CAPTURE_ONLY, allow_message_tools=False,
+            )
+            stage, summary, title = "resolved", "", "智能助手分析完成"
+            if message.notification_context is not None:
+                stage, summary = await async_ai_takeover_result(
+                    history=history, repository=self.transfer_execution_repository,
+                    histories=self.transfer_history_repository,
+                )
+                title = {
+                    "queued": "智能助手已提交处理，等待整理结果",
+                    "resolved": "智能助手分析结束，已有成功整理回执",
+                    "attention": "智能助手处理后仍需人工核对",
+                    "unknown": "智能助手处理结果待核实",
+                }[stage]
+            text = f"{summary}\n\n{final_output.strip()}".strip() or "分析结束，请查看整理历史确认文件处理结果。"
+            await self._async_send_ai_takeover_notification(_ai_takeover_notice(
+                message, title, text, stage=stage, summary=summary,
+            ))
+            logger.info(f"整理历史 #{history.id} 的智能接管分析结束，通知阶段：{stage}")
+        except Exception as error:
+            logger.error(f"智能助手重新整理失败：{error}", exc_info=True)
+            await self._async_send_ai_takeover_notification(_ai_takeover_notice(
+                message, "智能助手整理失败", "智能助手运行异常，未确认资源已入库。请查看整理历史和日志后重试。",
+                stage="unknown",
+            ))
 
     def _maybe_take_over_failed_transfer(
             self, *, history_id: int, task_id: Optional[str], error: str,
@@ -399,6 +447,7 @@ class FailedRetryMixin(_TransferOwnerBase):
             return
         self._take_over_transfer_history_by_ai(
             history_id=history_id, channel=None, source=None, userid=None, username=username,
+            automatic=True,
         )
 
     def _re_transfer(

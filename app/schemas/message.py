@@ -7,6 +7,7 @@ from dataclasses import dataclass as _dataclass
 from dataclasses import field as _field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
+from typing import Literal as _Literal
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic import PrivateAttr as _PrivateAttr
@@ -261,6 +262,24 @@ class NotificationContent:
         return _render_notification(self.title, [_asdict(block) for block in self.blocks], text_format.value)
 
 
+class MessageNotificationContext(BaseModel):
+    """
+    宿主生成的通知场景身份，不进入旧消息历史字段和插件事件载荷。
+
+    后台持久投递将该上下文独立保存，恢复后仍按当前策略判断是否推送。
+    """
+
+    scenario: _Literal["agent.transfer_takeover"] = Field(description="自动整理接管的稳定场景标识")
+    trigger: _Literal["automatic", "manual"] = Field(description="显式触发来源，不从渠道或用户标识推断")
+    stage: _Literal["started", "queued", "resolved", "attention", "unknown"] = Field(
+        description="真实处理阶段：开始、等待执行、已有成功记录、需要人工处理或状态未知",
+    )
+    task_id: str = Field(min_length=1, description="原始失败回执关联的持久整理任务标识")
+    settlement_revision: int = Field(ge=1, description="触发本轮分析的失败结算版本，不随后续任务变化改写")
+    history_id: int = Field(gt=0, description="触发本轮分析的整理历史标识")
+    summary: str = Field(default="", description="宿主根据真实任务状态生成的简短说明，不使用模型文字推断执行结果")
+
+
 class Message(BaseModel):
     """
     消息。
@@ -302,6 +321,9 @@ class Message(BaseModel):
     )
     rich_content: Optional[NotificationContent] = Field(default=None, description="渠道无关的结构化通知，宿主按能力渲染；text 始终保留为纯文本回退")
     save_history: bool = Field(default=True, description="是否写入消息历史")
+    notification_context: Optional[MessageNotificationContext] = Field(
+        default=None, exclude=True, description="宿主通知策略上下文；不改变旧历史和插件事件序列化合同",
+    )
 
     # 通知隔离路由范围，仅在运行时传递给通知模块，不写入消息数据
     _notification_route_scope: Optional[str] = _PrivateAttr(default=None)

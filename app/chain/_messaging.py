@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Union, cast
 
 from app.application.messaging.message import MessageTemplateHelper
-from app.application.notification import get_notification_switch
+from app.application.notification import apply_notification_policy, get_notification_switch
 from app.application.security.user import ChainUserRepository
 from app.chain._contracts import ChainRuntimeMixinHost
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
@@ -470,6 +470,11 @@ class NotificationMixin:
         """
         执行通知路由状态机，并在同步边界完成查询、事件和投递。
         """
+        allowed = apply_notification_policy(message)
+        if allowed is None:
+            logger.info("主动通知已按场景策略静默，历史记录仍保留")
+            return
+        message = allowed
         steps = _notification_route_steps(
             message,
             action=_notification_route_action(message),
@@ -554,6 +559,11 @@ class NotificationMixin:
         """
         执行通知路由状态机，并在异步边界完成查询、事件和投递。
         """
+        allowed = apply_notification_policy(message)
+        if allowed is None:
+            logger.info("主动通知已按场景策略静默，历史记录仍保留")
+            return
+        message = allowed
         steps = _notification_route_steps(
             message,
             action=_notification_route_action(message),

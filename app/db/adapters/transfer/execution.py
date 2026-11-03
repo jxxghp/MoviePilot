@@ -9,7 +9,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import uuid4
 
 from sqlalchemy import and_, func, or_, select
@@ -34,9 +34,11 @@ from app.application.transfer.execution import (
     TransferManualReviewStepView,
     TransferManualReviewTaskView,
     TransferRetryRequestResult,
+    TransferSettlementSnapshot,
     TransferStepIntent,
     TransferStepResult,
     TransferStepState,
+    TransferTerminalState,
     build_transfer_operation_id,
     build_transfer_overwrite_paths,
 )
@@ -63,6 +65,7 @@ from app.db.models.transferpending import TransferPending
 from app.db.oper.transferexecutionstep import TransferExecutionStepOper
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.transferpending import TransferPendingOper
+from app.db.oper.transfersettlementreceipt import TransferSettlementReceiptOper
 from app.db.uow import SqlAlchemyUnitOfWork
 
 _LEGACY_REVIEW_STEP_KIND = "legacy_execution_review"
@@ -856,6 +859,37 @@ class TransactionalTransferExecutionRepository:
                 return None
             steps = TransferExecutionStepOper(session).list_by_task_id(task_id=task_id)
             return self._project_snapshot(pending, steps)
+
+    @staticmethod
+    def _read_settlement(session: Session, task_id: str) -> Optional[TransferSettlementSnapshot]:
+        """
+        在会话有效期内把独立回执投影为不可变业务证据。
+        """
+        receipt = TransferSettlementReceiptOper(session).get_latest_by_task_id(task_id=task_id)
+        if receipt is None:
+            return None
+        return TransferSettlementSnapshot(
+            task_id=receipt.task_id, history_id=receipt.history_id,
+            settlement_revision=receipt.settlement_revision, outcome=TransferTerminalState(receipt.outcome),
+            src=receipt.src, src_storage=receipt.src_storage,
+        )
+
+    def get_latest_settlement(self, *, task_id: str) -> Optional[TransferSettlementSnapshot]:
+        """
+        使用只读短会话读取原任务的最近终态，成功后 pending 缺失仍可核验。
+        """
+        with self._session_factory() as session:
+            return self._read_settlement(session, task_id)
+
+    async def async_get_latest_settlement(self, *, task_id: str) -> Optional[TransferSettlementSnapshot]:
+        """
+        通过异步会话桥接既有 DAO，不新建线程或额外执行器。
+        """
+        if self._async_session is None:
+            raise RuntimeError("整理执行仓储未配置异步 Session 工厂")
+        async with self._async_session() as session:
+            result = await session.run_sync(self._read_settlement, task_id)
+            return cast(Optional[TransferSettlementSnapshot], result)
 
     async def async_get_snapshot(
             self,

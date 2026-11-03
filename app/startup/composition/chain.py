@@ -136,7 +136,7 @@ def build_chain_runtime_context(
         legacy_transfer_command=execute_legacy_transfer_command,
         configuration=configuration(),
         configuration_provider=configuration,
-        durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
+        durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory, async_session_scope),
         stop_state=runtime_stop_state,
         system_service=system_service,
     )

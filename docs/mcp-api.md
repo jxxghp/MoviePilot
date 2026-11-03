@@ -495,6 +495,10 @@ Emby、Jellyfin、Plex、Navidrome 的目录、条目、搜索、季集和活动
 补充规则：
 
 - 设置更新优先回传 `expected_revision`。发生冲突时重新读取并比较，不直接覆盖；`generic_write_allowed=false` 时使用返回的专用操作。
+- 自动整理接管的推送策略使用 `NotificationPolicies`，值如 `{"agent_transfer_takeover":"attention"}`；
+  `all`、`attention`、`off` 分别表示全部、仅需人工处理和关闭该场景主动推送。沿用
+  `config.system.describe` → `config.system.update` → 重新读取核验，不修改 `AI_AGENT_RETRY_TRANSFER`；
+  手动回复和其他智能体任务不受影响，详见[自动整理接管通知](agent-execution.md#自动整理接管通知)。
 - 插件存在分身时，显式选择目标实例或使用已经配置的默认目标。遇到实例歧义、停用目标或插件门禁拒绝时，按错误处理，不猜测另一个实例。
 - 参数省略、空字符串与 `null` 的含义由具体操作决定。例如更新订阅时，省略字段通常保留原值，允许清空的字段可使用空值；不要把整份读取结果不加筛选地回写。
 - `agent_task` 更新的 `enabled:null` 保留原启用状态，仅重命名暂停任务不会恢复调度。MCP 工具发现和 Google 模型发现会读取全部分页；重复游标或超过分页上限时报告失败。
