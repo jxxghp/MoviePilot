@@ -798,7 +798,13 @@ class TorrentHelper:
             self._invalid_torrents[url] = True
 
     @staticmethod
-    def match_torrent(mediainfo: MediaInfo, torrent_meta: MetaBase, torrent: TorrentInfo) -> bool:
+    def match_torrent(
+            mediainfo: MediaInfo,
+            torrent_meta: MetaBase,
+            torrent: TorrentInfo,
+            *,
+            season_episodes: Optional[Dict[int, List[int]]] = None,
+    ) -> bool:
         """
         检查种子是否匹配媒体信息
 
@@ -807,6 +813,8 @@ class TorrentHelper:
         :param mediainfo: 需要匹配的媒体信息
         :param torrent_meta: 种子识别信息
         :param torrent: 种子信息
+        :param season_episodes: 本次明确请求的季集号，可扩展默认季内集数上限；空集列表不扩展
+        :return: 资源按显式媒体身份或名称、年份及季集范围匹配时返回 True
         """
         # 显式标题标签与识别结果使用同一主身份比较。
         torrent_identity = resolve_media_identity(media=torrent_meta)
@@ -850,11 +858,12 @@ class TorrentHelper:
                                                                       str(int(mediainfo.year) + 1)]:
                     logger.debug(f'{torrent.site_name} - {torrent.title} 年份不匹配 {mediainfo.year}')
                     return False
-        # 无年份同名剧仅靠标题无法消歧，先用目标剧已知的季集拓扑排除不可能候选。
+        # 先用目标剧已知的季集拓扑和本轮明确范围排除不可能的同名候选。
         if mediainfo.type == MediaType.TV and not TorrentHelper._match_tv_topology(
                 mediainfo=mediainfo,
                 torrent_meta=torrent_meta,
                 torrent=torrent,
+                season_episodes=season_episodes,
         ):
             return False
         if meta_names.intersection(media_titles):
@@ -886,9 +895,19 @@ class TorrentHelper:
             mediainfo: MediaInfo,
             torrent_meta: MetaBase,
             torrent: TorrentInfo,
+            season_episodes: Optional[Dict[int, List[int]]] = None,
     ) -> bool:
         """
-        用目标剧已知的季集范围排除无年份同名候选。
+        用目标剧已知的季集范围排除不可能的同名候选。
+
+        显式请求的集号与订阅缺集计算使用同一编号体系，允许累计集号扩展默认上限；
+        普通搜索沿用媒体源范围，季号检查仍使用媒体源事实。
+
+        :param mediainfo: 已确定身份的目标媒体，保留其原始季集数据
+        :param torrent_meta: 从资源自身标题解析的季集号
+        :param torrent: 资源信息，用于记录拒绝原因
+        :param season_episodes: 本次明确请求的季集号；未指定或空集列表不扩展上限
+        :return: 资源季集范围未超出媒体源与显式请求的已知上限时返回 True
         """
         begin_season = getattr(torrent_meta, "begin_season", None)
         end_season = getattr(torrent_meta, "end_season", None)
@@ -928,7 +947,38 @@ class TorrentHelper:
         if len(torrent_seasons) != 1:
             return True
         season = next(iter(torrent_seasons))
-        target_episodes = (getattr(mediainfo, "seasons", None) or {}).get(season) or []
+        episode_limit = TorrentHelper._tv_episode_limit(
+            mediainfo, season, known_seasons, (season_episodes or {}).get(season),
+        )
+        torrent_episodes = getattr(torrent_meta, "episode_list", None) or []
+        if episode_limit is not None and torrent_episodes and max(torrent_episodes) > episode_limit:
+            logger.debug(
+                f'{torrent.site_name} - {torrent.title} 最大集数 {max(torrent_episodes)} '
+                f'超出目标媒体第 {season} 季集数上限 {episode_limit}'
+            )
+            return False
+        return True
+
+    @staticmethod
+    def _tv_episode_limit(
+            mediainfo: MediaInfo,
+            season: int,
+            known_seasons: set[int],
+            requested_episodes: Optional[List[int]],
+    ) -> Optional[int]:
+        """
+        从媒体源与显式请求计算目标季的已知集号上限，不修改原始媒体信息。
+
+        未知上限时继续交给后续选集处理；已知上限只能被本轮明确请求的集号扩展，
+        不能因缺集列表较短而缩小正常合集的允许范围。
+
+        :param mediainfo: 目标媒体的默认或剧集组季集信息
+        :param season: 当前资源对应的单个季号
+        :param known_seasons: 已知季号，只有单季媒体可使用全剧总集数作为回退
+        :param requested_episodes: 本次明确请求的当前季集号；空列表不扩展上限
+        :return: 可接受的最大集号；媒体源未提供上限时返回 None
+        """
+        target_episodes: List[int] = (getattr(mediainfo, "seasons", None) or {}).get(season) or []
         if not target_episodes and len(known_seasons) == 1:
             try:
                 episode_count = int(getattr(mediainfo, "number_of_episodes", None) or 0)
@@ -936,14 +986,9 @@ class TorrentHelper:
                 episode_count = 0
             if episode_count:
                 target_episodes = list(range(1, episode_count + 1))
-        torrent_episodes = getattr(torrent_meta, "episode_list", None) or []
-        if target_episodes and torrent_episodes and max(torrent_episodes) > max(target_episodes):
-            logger.debug(
-                f'{torrent.site_name} - {torrent.title} 最大集数 {max(torrent_episodes)} '
-                f'超出目标媒体第 {season} 季总集数 {max(target_episodes)}'
-            )
-            return False
-        return True
+        if not target_episodes:
+            return None
+        return max(target_episodes + (requested_episodes or []))
 
     @staticmethod
     def requires_identity_disambiguation(
