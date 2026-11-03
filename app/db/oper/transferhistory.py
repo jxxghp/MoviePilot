@@ -8,6 +8,8 @@ from typing import Any, List, Optional, cast
 
 from sqlalchemy import delete as sqlalchemy_delete
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,34 @@ class TransferHistoryOper(DbOper):
     """
     转移历史管理
     """
+
+    def stage_insert_if_source_absent(self, values: dict[str, Any]) -> tuple[TransferHistory, bool]:
+        """
+        由源地址唯一约束原子仲裁插入，永不替换已有行且不提交调用方事务。
+
+        :param values: 已由用例投影的完整历史列值
+        :return: 插入或冲突保留的历史行，以及是否新建
+        """
+        if not isinstance(self._db, Session):
+            raise RuntimeError("登记整理历史需要调用方提供同步 Session")
+        dialect = self._db.get_bind().dialect.name
+        if dialect == "sqlite":
+            insert = sqlite_insert
+        elif dialect == "postgresql":
+            insert = postgresql_insert
+        else:
+            raise RuntimeError("当前数据库不支持原子整理历史登记")
+        statement = insert(TransferHistory).values(**values).on_conflict_do_nothing(
+            index_elements=["src", "src_storage"],
+        ).returning(TransferHistory.id)
+        inserted_id = self._db.execute(statement).scalar_one_or_none()
+        record = self._db.execute(
+            select(TransferHistory).where(
+                TransferHistory.src == values["src"],
+                TransferHistory.src_storage == values["src_storage"],
+            )
+        ).scalar_one()
+        return record, inserted_id is not None
 
     def get(self, historyid: int) -> Optional[TransferHistory]:
         """
@@ -167,6 +197,7 @@ class TransferHistoryOper(DbOper):
         count: int = 30,
         status: Optional[bool] = None,
         wildcard: bool = False,
+        origin: Optional[str] = None,
     ) -> List[TransferHistory]:
         """
         异步按标题分页查询转移记录。
@@ -179,6 +210,7 @@ class TransferHistoryOper(DbOper):
                 count=count,
                 status=status,
                 wildcard=wildcard,
+                origin=origin,
             )
         )
 
@@ -187,22 +219,23 @@ class TransferHistoryOper(DbOper):
         page: int = 1,
         count: int = 30,
         status: Optional[bool] = None,
+        origin: Optional[str] = None,
     ) -> List[TransferHistory]:
         """
         异步分页查询转移记录。
         """
         return await self._execute_async_query(
             lambda session: TransferHistory.async_list_by_page(
-                session, page=page, count=count, status=status
+                session, page=page, count=count, status=status, origin=origin
             )
         )
 
-    async def async_count(self, status: Optional[bool] = None) -> Optional[int]:
+    async def async_count(self, status: Optional[bool] = None, origin: Optional[str] = None) -> Optional[int]:
         """
         异步统计转移记录数量。
         """
         return await self._execute_async_query(
-            lambda session: TransferHistory.async_count(session, status=status)
+            lambda session: TransferHistory.async_count(session, status=status, origin=origin)
         )
 
     async def async_count_by_title(
@@ -210,6 +243,7 @@ class TransferHistoryOper(DbOper):
         title: str,
         status: Optional[bool] = None,
         wildcard: bool = False,
+        origin: Optional[str] = None,
     ) -> Optional[int]:
         """
         异步按标题统计转移记录数量。
@@ -220,6 +254,7 @@ class TransferHistoryOper(DbOper):
                 title=title,
                 status=status,
                 wildcard=wildcard,
+                origin=origin,
             )
         )
 

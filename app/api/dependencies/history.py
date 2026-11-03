@@ -22,6 +22,7 @@ from app.application.history.mutation import (
     DownloadHistoryMutationRepository,
     HistoryUnitOfWork,
 )
+from app.application.history.registration import TransferRegistrationCommand
 from app.application.history.retry import clear_transfer_failures
 from app.application.mediaserver import (
     AsyncMediaServerQueryRepository,
@@ -106,6 +107,18 @@ def get_transfer_history_lookup_service(
     """
     return TransferHistoryLookupService(
         runtime.history.transfer_repository
+    )
+
+def get_transfer_registration_command(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> TransferRegistrationCommand:
+    """
+    仅注入只读文件能力和独立短事务，不复用认证请求 Session。
+    """
+    return TransferRegistrationCommand(
+        scope_factory=runtime.history.registration_scope,
+        query_file=StorageChain().get_file_item_strict,
+        local_entry=runtime.history.registration_local_entry,
     )
 
 
