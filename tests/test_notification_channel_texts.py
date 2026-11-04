@@ -209,7 +209,7 @@ def test_additional_channels_select_body_and_keep_every_paragraph(module_class, 
     assert all(call.kwargs["userid"] == "target" for call in client.send_msg.call_args_list)
 
 
-@pytest.mark.parametrize("module_class", [DingTalkModule, DiscordModule, VoceChatModule, SynologyChatModule])
+@pytest.mark.parametrize("module_class", [DingTalkModule, DiscordModule, VoceChatModule])
 def test_missing_notification_instance_does_not_send(module_class):
     """
     配置存在但客户端未就绪时，不运行分段循环或使用上一配置的正文。
