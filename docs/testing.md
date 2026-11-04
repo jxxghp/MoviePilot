@@ -361,6 +361,11 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 
 ## 插件发布快照与并发回归
 
+`tests/test_plugin_startup_sync.py` 保留启动同步线程、同步安装桥接、Gateway、安装命令和
+插件生命周期，验证批量恢复沿用同一启动事务，并按顺序完成安装与加载。市场、下载和
+数据库端口均隔离；安装期间的外部变更仍须在副作用前拒绝，单个恢复失败后其余插件
+继续处理，全部完成后才释放事务执行权。用例同时验证镜像内置实例保持运行。
+
 `tests/test_plugin_publish_snapshot.py` 固定读取快照，并在 package 返回后确定性推进远端引用，
 断言非强推冲突保留并发作者更新；自动初始化新仓后必须重新固定、读取和合并，不能把新主分支
 当空仓库。测试只替换 GitHub I/O，保留真实文件读取、清单合并与 Git Data 请求构造。

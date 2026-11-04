@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Optional
 
 from app.runtime.extensions.plugin.system import PluginSystemServices
@@ -50,7 +49,10 @@ class PluginSyncService:
         online_restore_plugins: set[str] | None = None,
     ) -> list[str]:
         """
-        并发安装缺失或需恢复的插件，单个失败只记状态并继续启动编排。
+        在同一启动事务内依次安装缺失或需恢复的插件，单个失败后继续处理其余插件。
+
+        调用方已在线程中持有完整变更事务。沿用该线程的上下文，避免另建线程丢失
+        事务身份后被误判为竞争请求；顺序执行也防止插件加载和失败补偿互相交叠。
         """
         if self._frozen():
             return []
@@ -179,25 +181,22 @@ class PluginSyncService:
                 )
                 failed.append(plugin.id)
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(install_one, plugin): plugin for plugin in targets}
-            for future in as_completed(futures):
-                plugin = futures[future]
-                try:
-                    future.result()
-                # 单个插件并发初始化失败应记录其恢复状态，不中断其他插件初始化。
-                except Exception as error:  # noqa: BLE001
-                    if plugin.id.lower() in recovery_ids:
-                        failed_recovery.append(plugin.id)
-                    failed.append(plugin.id)
-                    if self._runtime_status_writer:
-                        self._runtime_status_writer(
-                            plugin.id,
-                            PluginRuntimeStatus.SYNC_FAILED,
-                        )
-                    self._logger.error(
-                        f"插件 {plugin.plugin_name} 安装过程中出现异常: {error}"
+        for plugin in targets:
+            try:
+                install_one(plugin)
+            # 单个插件初始化失败应记录其恢复状态，不中断其他插件初始化。
+            except Exception as error:  # noqa: BLE001
+                if plugin.id.lower() in recovery_ids:
+                    failed_recovery.append(plugin.id)
+                failed.append(plugin.id)
+                if self._runtime_status_writer:
+                    self._runtime_status_writer(
+                        plugin.id,
+                        PluginRuntimeStatus.SYNC_FAILED,
                     )
+                self._logger.error(
+                    f"插件 {plugin.plugin_name} 安装过程中出现异常: {error}"
+                )
 
         self._logger.info(
             f"第三方插件安装完成，成功：{len(synced)} 个，失败：{len(failed)} 个"
