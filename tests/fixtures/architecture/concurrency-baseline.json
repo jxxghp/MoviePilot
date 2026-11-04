@@ -584,18 +584,6 @@
     },
     "target": "threading.Thread"
   },
-  "app/runtime/extensions/plugin/sync.py:concurrent.futures.Executor.submit": {
-    "owners": {
-      "PluginSyncService.sync": 1
-    },
-    "target": "concurrent.futures.Executor.submit"
-  },
-  "app/runtime/extensions/plugin/sync.py:concurrent.futures.ThreadPoolExecutor": {
-    "owners": {
-      "PluginSyncService.sync": 1
-    },
-    "target": "concurrent.futures.ThreadPoolExecutor"
-  },
   "app/runtime/extensions/resource.py:asyncio.to_thread": {
     "owners": {
       "AsyncManagedResourceAdapter.materialize": 1
