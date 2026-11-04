@@ -29,6 +29,7 @@ from app.agent.tools.impl.execute_command import ExecuteCommandTool
 from app.agent.tools.impl.persona import PersonaTool
 from app.agent.tools.impl.query_doctor_report import QueryDoctorReportTool
 from app.agent.tools.impl.read_file import ReadFileTool
+from app.agent.tools.impl.read_log import ReadLogTool
 from app.agent.tools.impl.recognize_captcha import RecognizeCaptchaTool
 from app.agent.tools.impl.search_web import SearchWebTool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
@@ -124,6 +125,7 @@ class MoviePilotToolFactory:
         ApplyPatchTool,
         WriteFileTool,
         ReadFileTool,
+        ReadLogTool,
         BrowseWebpageTool,
         ViewImageTool,
         QueryDoctorReportTool,
