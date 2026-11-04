@@ -8,7 +8,7 @@ import inspect
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
-from typing import Any
+from typing import Any, Optional
 
 from app.runtime.correlation import correlation_scope
 from app.runtime.event.binding import EventBindingResolver
@@ -175,11 +175,20 @@ class EventDispatcher:
         self,
         event: Any,
         async_runner: Callable[[Any], Any],
+        *,
+        handler_id: Optional[str] = None,
     ) -> None:
         """
-        串行执行广播处理器并等待完成，任一处理失败时向调用方抛出。
+        等待广播处理器完成；持久投递可限定单个处理器，失败继续向调用方传播。
+
+        :param handler_id: 指定稳定处理器标识；None 保留原有的全体串行派发
+        :raises RuntimeError: 指定处理器未注册，保留消息供重载后重试
         """
         handlers = self._registry.broadcast_snapshot(event.event_type)
+        if handler_id is not None:
+            handlers = tuple(item for item in handlers if item[0] == handler_id)
+            if not handlers:
+                raise RuntimeError(f"事件处理器尚未注册：{handler_id}")
         target_plugin_id = None
         if event.event_type == EventType.MessageAction and isinstance(
             event.event_data,
