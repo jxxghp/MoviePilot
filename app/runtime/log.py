@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import FrameType
-from typing import Any, Callable, Dict, Iterator, NamedTuple, Optional, Protocol, Self, Tuple
+from typing import Any, Callable, Dict, Iterator, NamedTuple, Optional, Protocol, Self, Tuple, cast
 
 import click
 from pydantic import BaseModel, ConfigDict, Field
@@ -162,14 +162,22 @@ class LogEntry:
         message: str,
         file_path: Path,
         timestamp: datetime | None = None,
+        exc_info: Optional[Tuple[Any, Any, Any]] = None,
     ) -> None:
         """
-        记录日志级别、格式化文本和目标文件。
+        记录日志级别、格式化文本、目标文件和异常三元组。
+
+        :param level: 日志等级名称
+        :param message: 已经格式化的日志正文
+        :param file_path: 目标日志文件路径
+        :param timestamp: 日志产生时间，缺省时取当前时间
+        :param exc_info: 已规范化的异常三元组，供文件格式化器输出堆栈
         """
         self.level = level
         self.message = message
         self.file_path = file_path
         self.timestamp = timestamp or datetime.now()
+        self.exc_info = exc_info
         self.correlation_id = _get_log_correlation_id()
 
 
@@ -178,13 +186,20 @@ class LogWriter(Protocol):
     平台日志门面使用的文件写入端口。
     """
 
-    def write_log(self, level: str, message: str, file_path: Path) -> None:
+    def write_log(
+        self,
+        level: str,
+        message: str,
+        file_path: Path,
+        exc_info: Optional[Tuple[Any, Any, Any]] = None,
+    ) -> None:
         """
         将一条日志写入指定文件。
 
         :param level: 日志等级名称
         :param message: 已经格式化的日志正文
         :param file_path: 目标日志文件路径
+        :param exc_info: 已规范化的异常三元组，供文件格式化器输出堆栈
         """
 
     def shutdown(self) -> Optional[bool]:
@@ -223,6 +238,26 @@ def _get_log_correlation_id() -> str:
     读取当前关联 ID；未装配或无请求上下文时返回稳定占位符。
     """
     return _correlation_id_provider() or "-"
+
+
+def _normalize_exc_info(exc_info: Any) -> Optional[Tuple[Any, Any, Any]]:
+    """
+    把日志入口接收的异常信息规范化为可跨线程携带的三元组。
+
+    文件日志由独立写线程统一落盘，写入时已不在异常发生的调用栈中，因此必须在
+    调用方线程先把 ``exc_info=True`` 解析为当前异常、把异常实例展开为三元组，
+    避免 ``sys.exc_info()`` 在写线程取到空值而再次丢失堆栈。
+
+    :param exc_info: 标准库日志语义下的异常信息，可为 True、异常实例或三元组
+    :return: 可直接交给文件格式化器的异常三元组；输入为空时返回 None
+    """
+    if not exc_info:
+        return None
+    if isinstance(exc_info, BaseException):
+        return type(exc_info), exc_info, exc_info.__traceback__
+    if exc_info is True:
+        return sys.exc_info()
+    return cast(Tuple[Any, Any, Any], exc_info)
 
 
 # 插件实例日志等级允许的取值，与标准库 logging 的等级名保持一致。
@@ -589,11 +624,22 @@ class NonBlockingFileHandler:
             self._rotating_handlers[file_path] = handler
             return handler
 
-    def write_log(self, level: str, message: str, file_path: Path) -> None:
+    def write_log(
+        self,
+        level: str,
+        message: str,
+        file_path: Path,
+        exc_info: Optional[Tuple[Any, Any, Any]] = None,
+    ) -> None:
         """
         根据当前线程是否运行事件循环选择异步或同步文件写入。
+
+        :param level: 日志等级名称
+        :param message: 已经格式化的日志正文
+        :param file_path: 目标日志文件路径
+        :param exc_info: 已规范化的异常三元组，供文件格式化器输出堆栈
         """
-        entry = LogEntry(level, message, file_path)
+        entry = LogEntry(level, message, file_path, exc_info=exc_info)
         if self._is_in_event_loop():
             self._write_non_blocking(entry)
             return
@@ -696,7 +742,7 @@ class NonBlockingFileHandler:
             lineno=0,
             msg=entry.message,
             args=(),
-            exc_info=None,
+            exc_info=entry.exc_info,
         )
         created_at = entry.timestamp.timestamp()
         record.created = created_at
@@ -898,7 +944,7 @@ class LoggerManager:
     _lock = threading.RLock()
     _writer: Optional[LogWriter] = None
     _log_path: Optional[Path] = None
-    _pending_file_logs: deque[tuple[str, str, Path]] = deque(maxlen=1000)
+    _pending_file_logs: deque[tuple[str, str, Path, Optional[Tuple[Any, Any, Any]]]] = deque(maxlen=1000)
 
     def get_logger(self, name: str) -> logging.Logger:
         """
@@ -1011,8 +1057,13 @@ class LoggerManager:
             cls._log_path = Path(log_path)
             pending = list(cls._pending_file_logs)
             cls._pending_file_logs.clear()
-        for level, message, logfile in pending:
-            writer.write_log(level, message, Path(log_path) / logfile)
+        for level, message, logfile, exc_info in pending:
+            writer.write_log(
+                level,
+                message,
+                Path(log_path) / logfile,
+                exc_info=exc_info,
+            )
 
     def update_loggers(self) -> None:
         """
@@ -1031,17 +1082,28 @@ class LoggerManager:
                 configured_logger.setLevel(_CONSOLE_PIPELINE_LEVEL)
 
     @classmethod
-    def _write_file_log(cls, level: str, message: str, logfile: Path) -> None:
+    def _write_file_log(
+        cls,
+        level: str,
+        message: str,
+        logfile: Path,
+        exc_info: Optional[Tuple[Any, Any, Any]] = None,
+    ) -> None:
         """
         写入文件，或在启动装配完成前暂存日志。
+
+        :param level: 日志等级名称
+        :param message: 已经格式化的日志正文
+        :param logfile: 目标日志文件路径
+        :param exc_info: 已规范化的异常三元组，供文件格式化器输出堆栈
         """
         with cls._lock:
             writer = cls._writer
             log_path = cls._log_path
             if not writer or not log_path:
-                cls._pending_file_logs.append((level, message, logfile))
+                cls._pending_file_logs.append((level, message, logfile, exc_info))
                 return
-        writer.write_log(level, message, log_path / logfile)
+        writer.write_log(level, message, log_path / logfile, exc_info=exc_info)
 
     def logger(self, method: str, msg: object, *args: Any, **kwargs: Any) -> None:
         """
@@ -1057,6 +1119,7 @@ class LoggerManager:
         会认错来源。
 
         消息可为文本、异常或其它可格式化对象；格式化留在日志分流内部，调用方无需预先转成字符串。
+        传入 ``exc_info`` 时会在调用方线程先规范化为异常三元组，使文件日志和控制台一样保留堆栈。
 
         这里只是一道提前短路，省掉被丢弃日志的栈帧内省与格式化；控制台输出端
         由 `_ContextLevelFilter` 用同一个判据再判一次，两处结论因而一致。
@@ -1076,12 +1139,18 @@ class LoggerManager:
             except (TypeError, ValueError):
                 formatted_msg = f"{formatted_msg} {' '.join(str(arg) for arg in args)}"
 
+        file_exc_info = _normalize_exc_info(kwargs.get("exc_info"))
+
         if scope:
             scoped_message = formatted_msg[:8192]
             if scope.accept(method_level, scoped_message):
                 prefix = f"[来源={scope.source} 轮次={scope.operation_id}]"
-                self._write_file_log(method.upper(), f"{prefix} {scoped_message}",
-                                     Path(scope.category) / f"{scope.resource_id}.log")
+                self._write_file_log(
+                    method.upper(),
+                    f"{prefix} {scoped_message}",
+                    Path(scope.category) / f"{scope.resource_id}.log",
+                    exc_info=file_exc_info,
+                )
         if not ordinary_enabled:
             return
 
@@ -1090,7 +1159,7 @@ class LoggerManager:
             if plugin_name
             else self._default_log_file
         )
-        self._write_file_log(method.upper(), formatted_msg, logfile)
+        self._write_file_log(method.upper(), formatted_msg, logfile, exc_info=file_exc_info)
 
         configured_logger = self._get_console_logger(logfile)
         log_method = getattr(configured_logger, method, configured_logger.info)
@@ -1137,7 +1206,7 @@ class LoggerManager:
         输出 ERROR 日志，控制台默认附带当前异常堆栈。
 
         适用于异常处理分支；调用方可通过 exc_info 显式关闭堆栈或指定异常信息。
-        文件消息和资源日志仍由统一日志路由按 ERROR 等级输出。
+        文件消息和资源日志同样按 ERROR 等级输出，并保留调用方提供的异常堆栈。
         """
         kwargs.setdefault("exc_info", True)
         self.logger("error", msg, *args, **kwargs)

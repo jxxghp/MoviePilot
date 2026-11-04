@@ -431,7 +431,7 @@ def test_deferred_site_cooldown_blocks_other_subscriptions_without_failure_growt
 
     waiting = repository.claim_site(site_id=30, owner="worker-b", lease_seconds=900)
     assert waiting.acquired is False
-    assert waiting.wait_reason == "cooldown"
+    assert waiting.wait_reason == "rate_limit"
     assert waiting.retry_at == future
     with Session(engine) as session:
         record = session.execute(
@@ -924,7 +924,7 @@ def test_retry_provider_only_searches_pending_enabled_sites(monkeypatch):
 
 def test_deferral_reports_cooldown_separately_from_busy():
     """
-    冷却提示不伪装成站点占用，并保留所有未完成站点。
+    请求间隔按正常搜索展示，不伪装成站点占用，并保留所有未完成站点。
     """
     from app.application.subscription.execution import raise_subscription_site_budget_deferral
     from app.application.subscription.sitebudget import SubscriptionSearchDeferred, SubscriptionSiteBudgetDeferral
@@ -933,7 +933,74 @@ def test_deferral_reports_cooldown_separately_from_busy():
         SubscriptionSiteBudgetDeferral(site_id=1, retry_at="2026-09-08T10:00:00+00:00", wait_reason="cooldown"),
         SubscriptionSiteBudgetDeferral(site_id=2, retry_at="2026-09-08T11:00:00+00:00", wait_reason="cooldown"),
     )
-    with pytest.raises(SubscriptionSearchDeferred, match="站点冷却中") as caught:
+    with pytest.raises(SubscriptionSearchDeferred, match="正在搜索") as caught:
         raise_subscription_site_budget_deferral(deferred_sites, None)
     assert caught.value.site_ids == (1, 2)
     assert caught.value.retry_at == deferred_sites[0].retry_at
+
+
+def test_claim_tells_failing_site_from_normal_request_interval(tmp_path):
+    """
+    出错后的暂停报告为 failing 并带上失败原因，正常请求间隔仍报告为 cooldown。
+    """
+    repository, _engine = _repository(tmp_path)
+    future = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(timespec="seconds")
+    claim = repository.claim_site(site_id=40, owner="worker-a", lease_seconds=900)
+    assert repository.finish_site(site_id=40, lease_token=claim.lease_token, outcome="error",
+                                  next_allowed_at=future, error="返回登录或权限提示页") is True
+    failing = repository.claim_site(site_id=40, owner="worker-b", lease_seconds=900)
+    assert failing.acquired is False
+    assert failing.wait_reason == "failing"
+    assert failing.last_error == "返回登录或权限提示页"
+    assert failing.consecutive_failures == 1
+
+    claim = repository.claim_site(site_id=41, owner="worker-a", lease_seconds=900)
+    assert repository.finish_site(site_id=41, lease_token=claim.lease_token, outcome="success",
+                                  next_allowed_at=future) is True
+    paced = repository.claim_site(site_id=41, owner="worker-b", lease_seconds=900, minimum_interval=10)
+    assert paced.acquired is False
+    assert paced.wait_reason == "cooldown"
+
+
+class _FailingSiteRepository(_WaitingRepository):
+    """
+    模拟登录失效、连续出错后暂停访问的站点。
+    """
+
+    def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
+        """
+        返回出错暂停中的预算。
+        """
+        del owner, lease_seconds
+        return SiteBudgetClaim(
+            site_id=site_id, acquired=False,
+            retry_at=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds"),
+            consecutive_failures=30, wait_reason="failing", last_error="返回登录或权限提示页",
+        )
+
+
+def test_failing_site_is_skipped_without_deferring_subscription(monkeypatch):
+    """
+    出错暂停中的站点这一轮直接跳过，不让整个订阅重新排队等它；连续失败多时每天只警告一次。
+    """
+    from app.chain.search import provider as provider_module
+
+    warnings = []
+    monkeypatch.setattr(provider_module.logger, "warning", lambda message, *_args, **_kwargs: warnings.append(message))
+    monkeypatch.setattr(provider_module, "_site_failing_noticed_at", {})
+    budget = SubscriptionSiteBudget(repository=_FailingSiteRepository(), owner="worker", cancelled=lambda: False,
+                                    stop_state=ProcessStopState())
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(budget)
+    chain.search_site_torrents = lambda **_kwargs: ["unexpected"]
+
+    for _ in range(2):
+        # 直接覆盖带预算的站点搜索入口，隔离上层订阅编排。
+        result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+            site={"id": 16, "name": "我堡"}, keyword="show", mtype=None, page=0,
+        )
+        assert result == []
+
+    assert chain.consume_subscription_site_budget_deferrals() == ()
+    assert len(warnings) == 1
+    assert "我堡" in warnings[0] and "连续 30 次" in warnings[0] and "返回登录或权限提示页" in warnings[0]

@@ -16,9 +16,20 @@ class CapturingLogWriter:
     def __init__(self) -> None:
         self.entries: list[tuple[str, str, Path]] = []
 
-    def write_log(self, level: str, message: str, file_path: Path) -> None:
+    def write_log(
+        self,
+        level: str,
+        message: str,
+        file_path: Path,
+        exc_info: tuple | None = None,
+    ) -> None:
         """
         保存单条日志的级别、内容和目标路径。
+
+        :param level: 日志等级名称
+        :param message: 已经格式化的日志正文
+        :param file_path: 目标日志文件路径
+        :param exc_info: 已规范化的异常三元组，本测试写入器忽略该信息
         """
         self.entries.append((level, message, file_path))
 

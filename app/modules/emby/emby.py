@@ -13,7 +13,7 @@ from requests import Response
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
-from app.modules._base.mediaserver import emby_episode_numbers, emby_query_params
+from app.modules._base.mediaserver import emby_episode_numbers, emby_query_params, iter_emby_items
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import Statistic as _SchemaStatistic
@@ -974,8 +974,8 @@ class Emby:
         Folder 展开为成员，只返回电影、电视剧和音乐专辑。
 
         :param parent: 媒体库标识，不接受空值
-        :param start_index: 分页起始索引；不限制数量时不发送此参数
-        :param limit: 本层请求数量；None 或 -1 不限制，递归子目录始终不分页
+        :param start_index: 显式分页时本层原始条目的起始索引，全量枚举忽略此值
+        :param limit: 本层请求数量；None 或 -1 时内部分页读全，递归子目录也分页读全
         :param query: 可选查询内容投影，省略时保留原有请求和返回内容
         :yields: 转换后的统一媒体条目
         :raises ValueError: 媒体库标识为空
@@ -993,25 +993,17 @@ class Emby:
             "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,"
             "UserDataLastPlayedDate,ParentId",
         }
-        if limit is not None and limit != -1:
-            params.update({"StartIndex": start_index, "Limit": limit})
         try:
             params.update(emby_query_params(query))
-            res = RequestUtils().get_res(url, params)
-            if not res or res.status_code != 200:
-                raise ConnectionError(
-                    f"读取 Emby 媒体库 {parent} 失败，状态码：{res.status_code if res is not None else '无响应'}"
-                )
-            items = res.json().get("Items") or []
-            for item in items:
+            for item in iter_emby_items(RequestUtils(), url, params, start_index=start_index, limit=limit):
                 if not item:
                     continue
-                if "Folder" in item.get("Type"):
-                    for items in self.get_items(
-                        parent=item.get("Id"), **MediaServerQueryOptions.as_kwargs(query)
-                    ):
-                        yield items
-                elif item.get("Type") in ["Movie", "Series", "MusicAlbum"]:
+                item_type = item["Type"]
+                if "Folder" in item_type:
+                    yield from self.get_items(
+                        parent=item["Id"], **MediaServerQueryOptions.as_kwargs(query)
+                    )
+                elif item_type in ["Movie", "Series", "MusicAlbum"]:
                     yield self.__format_item_info(item)
         except Exception as e:
             logger.error(f"同步读取 Emby 媒体库 {parent} 出错：{str(e)}")

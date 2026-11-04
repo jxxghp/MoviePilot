@@ -99,6 +99,7 @@ OPERATION_DESCRIPTIONS = {
     "system.versions": "列出 GitHub 中可用的 MoviePilot 发布版本。",
     "transfer.file": "执行手动文件转移与整理流程。",
     "transfer.history": "按条件和分页读取文件整理历史。",
+    "transfer.history.register": "管理员登记已完成的外部复制、原生硬链接或移动；严格核验文件事实并记录审计，不操作文件或下载器，同一声明重试返回原回执。",
     "transfer.history.delete": "删除一条整理历史，并可选择同时删除文件。",
     "workflow.list": "列出已配置工作流及执行状态。",
     "workflow.run": "从起点或恢复点执行一个已配置工作流。",
@@ -247,6 +248,7 @@ OPERATION_DESCRIPTIONS = {
 
 
 FIELD_DESCRIPTIONS = {
+    "origin": "整理历史来源；external 仅返回管理员登记的外部整理记录，省略时保留全部历史。",
     "include_value": "是否在完整设置契约之外返回当前值。",
     "offset": "结果偏移量，从 0 开始。",
     "rule_ids": "要返回的精确规则标识；在查询串中重复传入 rule_ids，省略时列出该操作对应的全部规则。",
@@ -736,6 +738,9 @@ MODEL_DESCRIPTIONS.update(
         "EpisodeFormatRecommendItem": "用于推断集号提取模板的文件样本。",
         "BatchTransferHistoryRedoRequest": "AI 辅助批量重新整理中明确指定的历史记录标识。",
         "TransferHistoryReplanRequest": "对零文件副作用的识别拒绝提交已核实的媒体身份及季集修正。",
+        "TransferHistoryRegisterRequest": "管理员声明已完成的外部整理路径、模式和媒体身份，文件事实由服务器核验。",
+        "TransferRegistrationAudit": "服务器记录的外部登记操作者、UTC 时间和文件核验证据。",
+        "TransferHistoryRegisterResult": "已提交的外部登记回执，重复声明返回原历史和 created=false。",
         "TransferManualReviewRequest": "持久化整理操作的已授权决定和可选结果。",
         "Workflow-Input": "创建或更新操作接受的完整工作流定义。",
         "Action-Input": "工作流中的一个可执行动作节点。",

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Protocol
@@ -33,6 +33,7 @@ from app.domain.plugin import PLUGIN_SYSTEM_VERSION_FIELD
 from app.schemas.exception import PluginMutationRejectedError
 
 InventoryProvider = Callable[[bool], Awaitable[CandidateInventory]]
+MarketRefresh = Callable[[Sequence[str]], Awaitable[None]]
 IdentityReader = Callable[[str], Awaitable[PluginIdentity | None]]
 CandidateCompatibility = Callable[[Candidate], tuple[bool, str]]
 SourcePluginIdResolver = Callable[[str], str]
@@ -97,9 +98,12 @@ class PluginInstallGateway:
         executor: PluginInstallExecutor,
         clock: Callable[[], datetime],
         source_plugin_id: SourcePluginIdResolver,
+        market_refresh: MarketRefresh | None = None,
     ) -> None:
         """
         保存候选事实、身份读取、兼容校验、事务执行、时间和源身份归一端口。
+
+        :param market_refresh: 只重读指定市场索引的端口；未注入时沿用缓存索引
         """
         self.__source_plugin_id = source_plugin_id
         self.__inventory = inventory
@@ -107,6 +111,7 @@ class PluginInstallGateway:
         self.__candidate_compatibility = candidate_compatibility
         self.__executor = executor
         self.__clock = clock
+        self.__market_refresh = market_refresh
 
     async def install(
         self,
@@ -131,6 +136,10 @@ class PluginInstallGateway:
 
         归一必须早于生命周期占位：``hold`` 按 ID 互斥，用分身 ID 占位不会把同源
         分身的并发安装串起来，它们会同时改写同一份源插件载荷。
+
+        ``force`` 且没有点名 Release 版本时，先把该插件出现过的市场索引重读一次：
+        Release tag 由索引里的 version 拼出，沿用缓存索引会把同一个旧版本重装一遍
+        还提示更新成功。重读只覆盖这些仓库，其余市场仍走缓存。
         """
         plugin_id = self.__source_plugin_id(plugin_id)
         try:
@@ -139,6 +148,17 @@ class PluginInstallGateway:
             inventory = await self.__inventory(False)
             async with plugin_lifecycle.hold(plugin_id, startup_token):
                 identity = await self.__identity(plugin_id)
+                markets = _plugin_market_urls(inventory, plugin_id)
+                if (
+                    force
+                    and release_version is None
+                    and markets
+                    and self.__market_refresh is not None
+                ):
+                    await self.__market_refresh(markets)
+                    # 重读一次完整库存：只有限定仓库的缓存被替换，其余仍是缓存命中，
+                    # 且准入必须按配置市场集合判断库存是否完整。
+                    inventory = await self.__inventory(False)
                 admission = admit_plugin_install(
                     inventory,
                     request=PluginInstallAdmissionRequest(
@@ -262,6 +282,25 @@ def reset_plugin_install_service() -> None:
     """
     global _plugin_install_gateway
     _plugin_install_gateway = None
+
+
+def _plugin_market_urls(inventory: CandidateInventory, plugin_id: str) -> tuple[str, ...]:
+    """
+    收集索引里出现该插件的市场，供强制更新只重读这些仓库。
+
+    :param inventory: 本轮已冻结的候选库存
+    :param plugin_id: 已归一的物理插件标识
+    :return: 去重且保持配置顺序的市场标识；该插件不在任何市场索引里时为空
+    """
+    normalized = plugin_id.lower()
+    return tuple(dict.fromkeys(
+        read.market
+        for read in inventory.market_reads
+        if any(
+            candidate.normalized_plugin_id == normalized
+            for candidate in read.candidates
+        )
+    ))
 
 
 def _generation_order(package_version: str | None) -> tuple[str, ...]:

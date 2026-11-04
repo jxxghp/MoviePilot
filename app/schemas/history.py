@@ -2,14 +2,93 @@
 下载和整理历史的接口投影及批量操作结果。
 """
 
+from pathlib import Path as _Path
+from pathlib import PurePosixPath as _PurePosixPath
 from typing import List, Literal, Optional
+from typing import Self as _Self
+from unicodedata import category as _category
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic import field_validator as _field_validator
+from pydantic import model_validator as _model_validator
 
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
 from app.schemas.types import MediaSource
+
+
+class TransferRegistrationAudit(BaseModel):
+    """
+    外部整理登记时由服务器固定的操作者和文件核验说明。
+    """
+
+    actor_id: int = Field(ge=1, description="登记管理员的完整用户主键，身份以此字段为准")
+    actor_name: str = Field(
+        min_length=1, max_length=128,
+        description="管理员名称显示快照，最多 128 字符；超长时取前 127 字符加省略号，空名称显示 #用户ID",
+    )
+    registered_at: str = Field(max_length=40, description="服务器生成的 UTC ISO 登记时间")
+    verification: Literal["matching_sizes", "native_hardlink", "destination_only"] = Field(
+        description="两端大小匹配、本地硬链接或仅目标存在；均不代表内容校验和",
+    )
+    source_state: Literal["present", "absent"] = Field(description="核验时源文件存在或确认不存在")
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class TransferHistoryRegisterRequest(RequiredMediaIdentityMixin, BaseModel):
+    """
+    管理员对已完成的外部整理提交路径和媒体声明，不允许伪造文件快照或审计。
+    """
+
+    src_storage: str = Field(min_length=1, max_length=64, description="源存储配置标识")
+    dest_storage: str = Field(min_length=1, max_length=64, description="目标存储配置标识")
+    src: str = Field(min_length=1, max_length=4096, description="整理前源文件的绝对路径")
+    dest: str = Field(min_length=1, max_length=4096, description="整理后目标文件的绝对路径")
+    mode: Literal["copy", "link", "move"] = Field(description="已完成的复制、本地硬链接或移动")
+    type: Literal["电影", "电视剧"] = Field(description="管理员确认的电影或电视剧类型")
+    title: str = Field(min_length=1, max_length=512, description="管理员确认的媒体标题")
+    year: Optional[str] = Field(default=None, pattern=r"^\d{4}$", description="四位发行年份")
+    media_source: MediaSource = Field(description="管理员确认的媒体数据源")
+    media_id: str = Field(min_length=1, max_length=128, description="来源中的规范原生媒体标识")
+    seasons: Optional[str] = Field(
+        default=None, max_length=32, pattern=r"^S\d{2,4}(?:-S\d{2,4})?$", description="季号或季范围，例如 S01",
+    )
+    episodes: Optional[str] = Field(
+        default=None, max_length=32, pattern=r"^E(?:0[1-9]|[1-9]\d{1,3})(?:-E(?:0[1-9]|[1-9]\d{1,3}))?$",
+        description="集号或集范围，例如 E01 或 E01-E12",
+    )
+    download_hash: Optional[str] = Field(default=None, max_length=128, description="已知下载任务标识，仅作关联声明")
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    @_field_validator("*", mode="before")
+    @classmethod
+    def _reject_control_characters(cls, value: object) -> object:
+        """
+        在去除首尾空白之前拒绝 Unicode 控制字符，避免异常地址被静默改写。
+        """
+        if isinstance(value, str) and any(_category(char) == "Cc" for char in value):
+            raise ValueError("登记字段不能包含控制字符")
+        return value
+
+    @_model_validator(mode="after")
+    def _normalize_addresses(self) -> _Self:
+        """
+        只规范地址拼写，不解析符号链接；拒绝相对路径、父跳转和同地址登记。
+        """
+        for field in ("src", "dest"):
+            value = getattr(self, field)
+            storage = getattr(self, f"{field}_storage")
+            path = _Path(value) if storage == "local" else _PurePosixPath(value)
+            if not path.is_absolute() or ".." in path.parts:
+                raise ValueError("登记路径必须为不含父目录跳转的绝对路径")
+            object.__setattr__(self, field, path.as_posix())
+        if self.src_storage == self.dest_storage and self.src == self.dest:
+            raise ValueError("源文件与目标文件不能是同一地址")
+        if self.type == "电影" and (self.seasons or self.episodes):
+            raise ValueError("电影登记不能包含季集信息")
+        return self
 
 
 class DownloadHistory(OptionalMediaIdentityMixin, BaseModel):
@@ -52,6 +131,8 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
     文件整理历史记录。
     """
     id: int = Field(description="记录标识")
+    origin: Optional[Literal["external"]] = Field(default=None, description="external 为外部登记；旧行未记录来源")
+    registration: Optional[TransferRegistrationAudit] = Field(default=None, description="外部登记审计与核验说明")
     transfer_task_id: Optional[str] = Field(
         default=None,
         exclude=True,
@@ -114,6 +195,15 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
         from app.runtime.errors import public_error_message
 
         return public_error_message(value, context="transfer")
+
+
+class TransferHistoryRegisterResult(BaseModel):
+    """
+    已提交的登记回执，重复请求返回原历史及 created=false。
+    """
+
+    history: TransferHistory = Field(description="已提交或先前登记的历史")
+    created: bool = Field(description="此次请求是否新建历史记录")
 
 
 class BatchTransferHistoryRedoRequest(BaseModel):

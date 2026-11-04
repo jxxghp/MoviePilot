@@ -103,12 +103,12 @@ class SystemLogPort(Protocol):
         disconnected: Callable[[], Awaitable[bool]],
     ) -> AsyncIterator[str]:
         """
-        返回历史尾部及后续新增日志行。
+        返回历史尾部、后续新增日志行及维持空闲连接的心跳。
 
         :param logfile: 受准入规则约束的日志文件标识
         :param length: 首次发送的历史尾部行数
         :param disconnected: 异步判断客户端是否断开，返回 True 时停止继续跟随
-        :return: 先包含历史尾部、随后产生新增日志行的异步迭代器
+        :return: 日志行的异步迭代器；空字符串表示心跳，传输层应编码为不触发消息事件的 SSE 注释
         """
         ...
 

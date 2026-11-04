@@ -206,6 +206,7 @@ API_FIRST_BATCH_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _admin_read("storage.settings"),
     _spec("storage.list", result_sensitivity=ResultSensitivity.PRIVATE),
     _spec("transfer.history", result_sensitivity=ResultSensitivity.PRIVATE),
+    _write("transfer.history.register", sensitivity=ResultSensitivity.PRIVATE),
     _spec(
         "transfer.file",
         effect=ActionEffect.EXTERNAL_SIDE_EFFECT,
@@ -716,6 +717,7 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "storage.settings": ApiOperationRoute("GET", "/api/v1/storage/directories"),
     "storage.list": ApiOperationRoute("POST", "/api/v1/storage/agent/list"),
     "transfer.history": ApiOperationRoute("GET", "/api/v1/history/transfer"),
+    "transfer.history.register": ApiOperationRoute("POST", "/api/v1/history/transfer"),
     "transfer.file": ApiOperationRoute("POST", "/api/v1/transfer/manual"),
     "scheduler.list": ApiOperationRoute("GET", "/api/v1/dashboard/schedule"),
     "scheduler.run": ApiOperationRoute("GET", "/api/v1/system/runscheduler"),

@@ -1843,12 +1843,16 @@ class TransHandler:
 
         if checkpoint.skip_reason:
             logger.info(f"文件 {fileitem.path} 跳过整理：{checkpoint.skip_reason}")
+            # 没有执行文件转移，不能生成成功入库历史或触发成功后的清理。
             return TransferInfo(
-                success=True,
+                success=False,
                 message=checkpoint.skip_reason,
                 fileitem=fileitem,
+                fail_list=[fileitem.path] if fileitem.path else [],
                 transfer_type=transfer_type,
                 need_notify=False,
+                failure_stage="planning",
+                recovery_action="检查源目录；特典请核对季集编号并补充文件名中的 SxxExx 标记后重新整理",
             )
 
         if checkpoint.preview:

@@ -391,7 +391,6 @@ class SystemSettingsService:
             ),
             "source": {
                 "file": spec.source_file,
-                "line": spec.source_line,
             },
         }
         if include_schema:

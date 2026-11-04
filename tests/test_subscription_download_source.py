@@ -160,7 +160,7 @@ def test_manual_notification_and_old_context_keep_no_source(monkeypatch):
 
 def test_batch_reads_persisted_activity_counts_and_safe_items(tmp_path):
     """
-    真实异步数据库投影按 task_id 关联活动，列表和详情计数一致并保留完整权限检查。
+    真实异步数据库投影按 task_id 关联活动，列表、详情和订阅卡片计数一致并保留完整权限检查。
     """
     async def verify():
         """
@@ -179,6 +179,10 @@ def test_batch_reads_persisted_activity_counts_and_safe_items(tmp_path):
                 session.add(SubscriptionSearchTask(task_id=task_id, batch_id=batch_id, subscription_id=17, source="manual",
                                                    priority=1, position=0, state="completed", phase="completed",
                                                    attempt_count=1, cancel_requested=False, created_at="now", updated_at="now"))
+                session.add(SubscriptionSearchTask(task_id=uuid4().hex, batch_id=uuid4().hex, subscription_id=18,
+                                                   source="manual", priority=1, position=0, state="completed",
+                                                   phase="completed", attempt_count=1, cancel_requested=False,
+                                                   created_at="now", updated_at="now"))
                 run = SubscriptionActivityRun(_subscription(note=[1], best_version_full=1), "search", "manual", task_id)
                 context = _context([1, 2])
                 annotate_subscription_download(run.subscribe, context)
@@ -198,6 +202,9 @@ def test_batch_reads_persisted_activity_counts_and_safe_items(tmp_path):
                 assert details.downloads[0]["subscription_download"] == context.subscription_download
                 assert details.downloads_omitted == 0
                 assert "private" not in str(details)
+                statuses = await service.for_subscriptions((17, 18))
+                assert statuses[17].submitted_count == 1
+                assert statuses[18].submitted_count == 0
         finally:
             await engine.dispose()
     asyncio.run(verify())

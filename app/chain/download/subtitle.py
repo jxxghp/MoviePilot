@@ -335,7 +335,11 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             save_path: Optional[str] = None,
     ) -> Tuple[Optional[str], Optional[Path], str]:
         """
-        根据媒体信息解析下载目录。
+        显式路径沿用原有校验与分类规则，默认路径按配置优先级选择可用下载目录。
+
+        :param media_info: 待下载媒体信息
+        :param save_path: 显式保存路径；空白值视为未指定
+        :return: 存储类型、保存目录及错误信息
         """
         storage = 'local'
         save_path = specified_download_save_path(save_path)
@@ -366,7 +370,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
                 )
             return storage, target_dir, ""
 
-        dir_info = DirectoryHelper().get_dir(media_info, include_unsorted=True)
+        dir_info = DirectoryHelper().get_download_dir(media_info)
         storage = (dir_info.storage or storage) if dir_info else storage
         if not dir_info:
             logger.error(f"未找到下载目录：{media_info.type.value if media_info.type else ""} {media_info.title_year}")

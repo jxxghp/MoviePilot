@@ -660,7 +660,11 @@ def test_empty_directory_plan_is_zero_operation_without_intercept_or_cleanup(
         cleanup_media_file=lambda _fileitem: calls.append("cleanup") or True,
     )
 
-    assert result.success is True
+    assert result.success is False
+    assert result.message == "源目录中没有可整理文件"
+    assert result.failure_stage == "planning"
+    assert result.target_item is None
+    assert result.need_notify is False
     assert calls == []
 
 

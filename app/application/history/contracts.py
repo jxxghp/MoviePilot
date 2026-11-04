@@ -74,6 +74,8 @@ class TransferHistorySnapshot:
     脱离数据库会话后供整理、Agent 和历史用例读取的完整历史快照。
 
     :param id: 整理历史记录的数据库主键
+    :param origin: external 为外部登记；旧行未记录来源
+    :param registration: 服务端登记审计与文件核验证据的冻结 JSON
     :param transfer_task_id: 关联的持久整理任务标识；旧历史可能为 None
     :param transfer_settlement_revision: 对应持久任务终态回执的结算版本
     :param src: 整理前的源文件或目录路径
@@ -120,6 +122,8 @@ class TransferHistorySnapshot:
     """
 
     id: int
+    origin: Optional[str] = None
+    registration: Optional[JsonData] = None
     transfer_task_id: Optional[str] = None
     transfer_settlement_revision: Optional[int] = None
     src: Optional[str] = None
@@ -171,6 +175,7 @@ class TransferHistorySnapshot:
         object.__setattr__(self, "src_fileitem", _freeze_json(self.src_fileitem))
         object.__setattr__(self, "dest_fileitem", _freeze_json(self.dest_fileitem))
         object.__setattr__(self, "files", _freeze_json(self.files))
+        object.__setattr__(self, "registration", _freeze_json(self.registration))
 
 
 @dataclass(frozen=True, slots=True)
@@ -457,6 +462,7 @@ class TransferHistoryQueryPort(Protocol):
         count: int = 30,
         status: Optional[bool] = None,
         wildcard: bool = False,
+        origin: Optional[str] = None,
     ) -> list[TransferHistorySnapshot]:
         """
         异步按标题或路径分页返回历史快照。
@@ -466,6 +472,7 @@ class TransferHistoryQueryPort(Protocol):
         :param count: 每页最多返回的记录数
         :param status: 整理成功状态筛选；None 表示不限状态
         :param wildcard: 是否将查询文本按通配规则匹配
+        :param origin: 外部登记来源筛选；None 保留所有历史
         :return: 匹配查询文本与状态的当前页整理历史
         """
         ...
@@ -475,6 +482,7 @@ class TransferHistoryQueryPort(Protocol):
         page: int = 1,
         count: int = 30,
         status: Optional[bool] = None,
+        origin: Optional[str] = None,
     ) -> list[TransferHistorySnapshot]:
         """
         异步按时间倒序分页返回历史快照。
@@ -482,15 +490,17 @@ class TransferHistoryQueryPort(Protocol):
         :param page: 页码，从 1 开始
         :param count: 每页最多返回的记录数
         :param status: 整理成功状态筛选；None 表示不限状态
+        :param origin: 外部登记来源筛选；None 保留所有历史
         :return: 按时间倒序排列且满足状态条件的当前页历史
         """
         ...
 
-    async def async_count(self, status: Optional[bool] = None) -> int:
+    async def async_count(self, status: Optional[bool] = None, origin: Optional[str] = None) -> int:
         """
         异步统计指定状态的整理历史数量。
 
         :param status: 整理成功状态筛选；None 表示不限状态
+        :param origin: 外部登记来源筛选；None 保留所有历史
         :return: 满足成功状态筛选的整理历史数量
         """
         ...
@@ -500,6 +510,7 @@ class TransferHistoryQueryPort(Protocol):
         title: str,
         status: Optional[bool] = None,
         wildcard: bool = False,
+        origin: Optional[str] = None,
     ) -> int:
         """
         异步统计匹配标题或路径的整理历史数量。
@@ -507,6 +518,7 @@ class TransferHistoryQueryPort(Protocol):
         :param title: 用于匹配媒体标题或文件路径的查询文本
         :param status: 整理成功状态筛选；None 表示不限状态
         :param wildcard: 是否将查询文本按通配规则匹配
+        :param origin: 外部登记来源筛选；None 保留所有历史
         :return: 满足查询文本和状态筛选的整理历史数量
         """
         ...

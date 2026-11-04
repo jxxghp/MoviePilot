@@ -101,6 +101,8 @@ def project_transfer_history(record: object) -> TransferHistorySnapshot:
         recovery_action = None
     return TransferHistorySnapshot(
         id=history_id,
+        origin=getattr(record, "origin", None),
+        registration=deepcopy(getattr(record, "registration", None)),
         transfer_task_id=getattr(record, "transfer_task_id", None),
         transfer_settlement_revision=getattr(
             record,
@@ -382,6 +384,7 @@ class TransactionalTransferHistoryRepository:
         count: int = 30,
         status: Optional[bool] = None,
         wildcard: bool = False,
+        origin: Optional[str] = None,
     ) -> list[TransferHistorySnapshot]:
         """
         异步按标题或路径分页返回历史快照。
@@ -393,6 +396,7 @@ class TransactionalTransferHistoryRepository:
                 count,
                 status,
                 wildcard,
+                origin=origin,
             )
             return [project_transfer_history(record) for record in records]
 
@@ -401,6 +405,7 @@ class TransactionalTransferHistoryRepository:
         page: int = 1,
         count: int = 30,
         status: Optional[bool] = None,
+        origin: Optional[str] = None,
     ) -> list[TransferHistorySnapshot]:
         """
         异步按时间倒序分页返回历史快照。
@@ -410,15 +415,16 @@ class TransactionalTransferHistoryRepository:
                 page,
                 count,
                 status,
+                origin=origin,
             )
             return [project_transfer_history(record) for record in records]
 
-    async def async_count(self, status: Optional[bool] = None) -> int:
+    async def async_count(self, status: Optional[bool] = None, origin: Optional[str] = None) -> int:
         """
         异步统计指定状态的整理历史数量。
         """
         async with self._async_session() as session:
-            count = await TransferHistoryOper(session).async_count(status)
+            count = await TransferHistoryOper(session).async_count(status, origin=origin)
             return int(count or 0)
 
     async def async_count_by_title(
@@ -426,6 +432,7 @@ class TransactionalTransferHistoryRepository:
         title: str,
         status: Optional[bool] = None,
         wildcard: bool = False,
+        origin: Optional[str] = None,
     ) -> int:
         """
         异步统计匹配标题或路径的整理历史数量。
@@ -435,6 +442,7 @@ class TransactionalTransferHistoryRepository:
                 title,
                 status,
                 wildcard,
+                origin=origin,
             )
             return int(count or 0)
 

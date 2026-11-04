@@ -5,7 +5,7 @@
 import asyncio
 import threading
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, TypeVar, cast
@@ -637,6 +637,15 @@ def configure_plugin_services() -> None:
             force=force,
         )
 
+    async def refresh_markets(markets: Sequence[str]) -> None:
+        """
+        只重读指定市场的索引并替换进程内缓存，供强制更新取到当前版本。
+
+        强制更新单个插件时不能连带将全部配置市场改为强刷，这里按调用方给出的
+        限定仓库集合重读，其余市场在随后的完整库存读取里仍是缓存命中。
+        """
+        await inventory_reader.async_load(tuple(markets), force=True)
+
     async def reload_plugin_tree(
         plugin_id: str, *, restore_enabled: bool | None = None,
     ) -> PluginRuntimeStatus:
@@ -714,6 +723,8 @@ def configure_plugin_services() -> None:
         clock=lambda: datetime.now(timezone.utc),
         # 分身的安装包只登记在源插件名下，勘察来源候选前必须先归一
         source_plugin_id=plugin_manager.get_plugin_source_id,
+        # 强制更新要按市场当前版本安装，只重读该插件出现过的仓库
+        market_refresh=refresh_markets,
     )
     configure_plugin_install_service(gateway)
     configure_plugin_installation_recovery(

@@ -69,9 +69,14 @@ items = media_chain.items(server="main", library_id="movies", query=query)
 
 | 服务 | 远端或附加请求控制 |
 | --- | --- |
-| Emby/Jellyfin | 按所需组追加 Fields，独立控制 EnableImages/EnableUserData；精简详情改为列表按 Ids 查询；递归保留投影 |
+| Emby/Jellyfin | 按所需组追加 Fields，独立控制 EnableImages/EnableUserData；精简详情改为列表按 Ids 查询；递归保留投影；全量目录枚举每页最多请求 200 条 |
 | Plex | 使用 excludeFields/excludeElements，避免 includeFields 的跨版本语义变化；按需保留 Media 与 Guid，禁止缺失字段触发详情重载；库目录可跳过封面候选与统计 |
 | 极空间、飞牛、绿联、Vyo | 按用户要求暂不修改适配器；模块调度保留旧签名兼容，Agent 原生动作暂不接受 query |
 | Navidrome | Subsonic 返回图片标识而非图片内容；精简调用直接使用 size/offset 分页，不先枚举全库再切片；目录可跳过全量计数 |
 
 上述限制意味着部分服务仍可能在基础响应中返回调用方未使用的属性；完整厂商 schema 和具体版本的能力验证仍需服务端证据。用户请求的投影不会削弱媒体身份匹配、同步范围或失败保护。
+
+Emby/Jellyfin 的 `get_items` 在 `limit=None` 或 `-1` 时内部分页读完整个目录，子目录也使用同样的分页策略。
+显式指定 `limit` 仍只请求当前目录的一页，Folder 与 Jellyfin BoxSet 继续展开为成员。
+翻页使用服务端原始条目数量及可选的 `TotalRecordCount`，不能以过滤后剩余的电影、剧集或专辑数量判断结束。
+每页消费后释放原始列表，HTTP 响应在开始处理条目前关闭并释放；任意页失败仍中止同步，保留尚未枚举的旧缓存。

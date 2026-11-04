@@ -388,6 +388,80 @@ def test_directory_priority_applies_only_within_same_match_rank(
     assert selected is high_priority
 
 
+@pytest.mark.parametrize("save_path", [None, "", "  "])
+@pytest.mark.parametrize("fixed_category", [False, True])
+def test_default_download_respects_priority_before_match_specificity(
+    directory_resolver: ClassificationCategoryResolver,
+    monkeypatch: pytest.MonkeyPatch,
+    save_path: str | None,
+    fixed_category: bool,
+) -> None:
+    """
+    未指定保存路径时，类型或固定分类更精确的目录不得盖过配置优先级。
+    """
+    general = TransferDirectoryConf(
+        name="全部", priority=0, download_path="/downloads/all",
+    )
+    specific = TransferDirectoryConf(
+        name="电视剧", priority=1, media_type="tv", download_path="/downloads/tv",
+        media_category_id="tv.anime.jp" if fixed_category else None,
+    )
+    monkeypatch.setattr(
+        DirectoryHelper, "get_dirs", staticmethod(lambda: [specific, general]),
+    )
+
+    result = DownloadSubtitleOwner._resolve_media_download_dir(_media(), save_path)
+
+    assert result == ("local", Path("/downloads/all"), "")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"download_path": None, "library_path": "/library"},
+        {"media_type": "movie"},
+        {"media_category_id": "tv.deleted"},
+        {"media_category": "其他"},
+    ],
+)
+def test_default_download_skips_unavailable_or_mismatched_directories(
+    directory_resolver: ClassificationCategoryResolver,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+) -> None:
+    """
+    高优先级目录缺少下载路径、类型分类不符或分类失效时，继续选择可用目录。
+    """
+    invalid = TransferDirectoryConf.model_validate({
+        "priority": 0, "download_path": "/downloads/invalid", **overrides,
+    })
+    fallback = TransferDirectoryConf(priority=1, download_path="/downloads/fallback")
+    monkeypatch.setattr(
+        DirectoryHelper, "get_dirs", staticmethod(lambda: [invalid, fallback]),
+    )
+    assert DirectoryHelper(directory_resolver).get_download_dir(_media()) is fallback
+
+    monkeypatch.setattr(DirectoryHelper, "get_dirs", staticmethod(lambda: [invalid]))
+    assert DownloadSubtitleOwner._resolve_media_download_dir(_media()) == (
+        None, None, "未找到下载目录",
+    )
+
+
+def test_default_download_preserves_configuration_order_for_equal_priority(
+    directory_resolver: ClassificationCategoryResolver,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    未设置和显式零优先级相同时，按配置顺序选择而非分类精确度。
+    """
+    first = TransferDirectoryConf(download_path="/downloads/first")
+    second = TransferDirectoryConf(priority=0, media_type="tv", download_path="/downloads/second")
+    monkeypatch.setattr(
+        DirectoryHelper, "get_dirs", staticmethod(lambda: [first, second]),
+    )
+    assert DirectoryHelper(directory_resolver).get_download_dir(_media()) is first
+
+
 def test_directory_media_type_aliases_match_consistently(
     directory_resolver: ClassificationCategoryResolver,
 ) -> None:

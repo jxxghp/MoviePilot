@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 17
+version: 18
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -340,8 +340,8 @@ and pass the flag only for an explicitly authorized repair.
 ### `transferhistory`
 - Purpose: Stores transfer source, destination, mode, media identity, download linkage, and outcome.
 - Useful queries: Reviewing success/failure history, destination paths, media classification, and download linkage.
-- Write boundary: Written by transfer settlement; delete or retry through transfer-history business APIs.
-- Columns: `id`, `transfer_task_id`, `transfer_settlement_revision`, `src`, `src_storage`, `src_fileitem`, `dest`, `dest_storage`, `dest_fileitem`, `mode`, `type`, `media_category_id`, `category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `title`, `year`, `media_source`, `media_id`, `music_type`, `total_tracks`, `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, `bitrate`, `seasons`, `episodes`, `image`, `downloader`, `download_hash`, `status`, `errmsg`, `retry_count`, `auto_paused`, `failure_stage`, `recovery_action`, `cleanup_status`, `cleanup_error`, `date`, `files`, `episode_group`
+- Write boundary: Written by transfer settlement or the external registration API; never insert history rows directly. External rows preserve administrator audit and file verification evidence; actor_id is the authoritative identity and actor_name is a bounded display snapshot. Old rows have unknown origin.
+- Columns: `id`, `transfer_task_id`, `transfer_settlement_revision`, `origin`, `registration`, `src`, `src_storage`, `src_fileitem`, `dest`, `dest_storage`, `dest_fileitem`, `mode`, `type`, `media_category_id`, `category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `title`, `year`, `media_source`, `media_id`, `music_type`, `total_tracks`, `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, `bitrate`, `seasons`, `episodes`, `image`, `downloader`, `download_hash`, `status`, `errmsg`, `retry_count`, `auto_paused`, `failure_stage`, `recovery_action`, `cleanup_status`, `cleanup_error`, `date`, `files`, `episode_group`
 
 ### `transferpending`
 - Purpose: Durably stores pending transfer input, plans, checkpoints, leases, retries, and manual review state.
