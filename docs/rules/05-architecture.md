@@ -996,6 +996,19 @@ Durable post-commit side effects have a separate boundary:
   before plugin, module or database teardown; a timeout preserves ownership and
   fails shutdown rather than resetting bindings. Retry backoff starts when the
   failed handler finishes, not when the message was claimed.
+- Durable broadcast topics first freeze their enabled handler identifiers and
+  persist one delivery per handler in a fenced short transaction. The parent
+  records that expansion in the same transaction; replay after a settlement
+  failure reuses the committed recipients. Parent completion confirms durable
+  expansion, while `event.handler.<sha256>` records track actual consumer
+  completion. Each stable handler has its own serial recovery topic, so a slow
+  plugin cannot serialize the same batch for its peers. All deliveries share the
+  existing 20-worker bound, lease renewal and shutdown ownership; no third-party
+  thread is abandoned or treated as complete on timeout. Child envelopes retain
+  the original event payload, idempotency key and correlation context. The
+  strict event API can select one registered handler; missing handlers retry
+  through reload, disabled handlers retain the existing skip behavior. An
+  individual failure retries only that delivery, never successful peers.
 - `PostCommitResult` distinguishes the committed business value from completed
   and pending effects. This does not provide exactly-once delivery: a process may
   stop after an external sink succeeds but before complete is persisted. Outbox

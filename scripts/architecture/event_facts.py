@@ -1125,19 +1125,24 @@ class _EventFactCollector(ast.NodeVisitor):
         node: ast.Call,
         parameter_names: tuple[str, ...],
         required_names: frozenset[str],
+        *,
+        keyword_only_names: frozenset[str] = frozenset(),
     ) -> dict[str, ast.AST] | None:
         """
         按真实 Python 调用规则绑定有限签名，拒绝未知或重复参数。
+
+        :param keyword_only_names: 仅可通过关键字传递的可选参数名
         """
         if len(node.args) > len(parameter_names) or any(
             isinstance(argument, ast.Starred) for argument in node.args
         ):
             return None
         arguments = dict(zip(parameter_names, node.args))
+        allowed_names = frozenset(parameter_names) | keyword_only_names
         for keyword in node.keywords:
             if (
                 keyword.arg is None
-                or keyword.arg not in parameter_names
+                or keyword.arg not in allowed_names
                 or keyword.arg in arguments
             ):
                 return None
@@ -1205,6 +1210,9 @@ class _EventFactCollector(ast.NodeVisitor):
             node,
             ("etype", "data", "priority"),
             frozenset({"etype"}),
+            keyword_only_names=(
+                frozenset({"handler_id"}) if bound_method.method == "send_event_strict" else frozenset()
+            ),
         )
         if arguments is None:
             return None

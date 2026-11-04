@@ -1194,19 +1194,44 @@ def handler(event):
     assert facts["consumers"][0]["caller"] == "app.host"
 
 
+def test_collect_event_facts_recognizes_targeted_strict_delivery(tmp_path: Path) -> None:
+    """
+    处理器定向严格投递仍进入事件事实，关键字专用参数不能作为第四个位置参数。
+    """
+    facts = _collect_facts(tmp_path, '''
+from app.runtime.events import EventManager
+from app.schemas.types import EventType
+
+def publish(kind):
+    """
+    展示定向投递与非法签名的事件事实解析边界。
+    """
+    manager = EventManager()
+    manager.send_event_strict(EventType.Alpha, {}, handler_id="app.plugins.sample.handle")
+    manager.send_event_strict(kind, {}, handler_id="app.plugins.sample.handle")
+    manager.send_event_strict(EventType.Beta, {}, 10, "invalid")
+    manager.send_event(EventType.Gamma, handler_id="invalid")
+    manager.async_send_event_strict(EventType.Delta, handler_id="invalid")
+''')
+    assert len(facts["producers"]) == 2
+    assert facts["producers"][0]["events"] == ["EventType.Alpha"]
+    assert facts["producers"][1]["dynamic"]
+    assert all(fact["receiver_kind"] == "constructed_manager" for fact in facts["producers"])
+
+
 def test_collect_event_facts_matches_current_host_inventory() -> None:
     """
-    统一事实覆盖当前 86 个 producer 调用与 18 个 consumer 调用。
+    统一事实覆盖当前 76 个 producer 调用与 18 个 consumer 调用。
     """
     facts = current_event_facts()
     producers = facts["producers"]
     consumers = facts["consumers"]
 
-    assert len(producers) == 86
-    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in producers) == 85
-    assert sum(fact["dynamic"] for fact in producers) == 1
+    assert len(producers) == 76
+    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in producers) == 74
+    assert sum(fact["dynamic"] for fact in producers) == 2
     assert sum(fact["invalid"] for fact in producers) == 0
-    assert sum(len(fact["events"]) for fact in producers) == 87
+    assert sum(len(fact["events"]) for fact in producers) == 76
     assert len(consumers) == 18
     assert sum(not fact["dynamic"] and not fact["invalid"] for fact in consumers) == 17
     assert sum(fact["dynamic"] for fact in consumers) == 1

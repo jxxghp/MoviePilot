@@ -612,14 +612,33 @@ class EventManager(metaclass=Singleton):
             logger.error(f"Unknown event type: {etype}")
         return None
 
+    def broadcast_handler_ids(self, etype: EventType) -> tuple[str, ...]:
+        """
+        返回已启用广播处理器的稳定标识快照，供持久投递冻结接收方。
+
+        此处只读取注册表，不解析实例或执行第三方代码。
+        """
+        with self.__lifecycle_lock:
+            if self.__lifecycle_state != "running":
+                raise RuntimeError(f"事件处理处于 {self.__lifecycle_state} 状态")
+        return tuple(
+            handler_id
+            for handler_id, handler in self.__registry.broadcast_snapshot(etype)
+            if self.__registry.is_handler_enabled(handler)
+        )
+
     def send_event_strict(
         self,
         etype: EventType,
         data: Optional[Union[dict[str, object], BaseEventData]] = None,
         priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
+        *,
+        handler_id: Optional[str] = None,
     ) -> Event:
         """
-        同步等待全部广播处理器完成，任一失败时阻止 durable 消息结算。
+        同步等待指定或全部广播处理器完成，失败阻止对应 durable 消息结算。
+
+        :param handler_id: 持久投递的目标处理器；None 保留全体派发的兼容行为
         """
         event = Event(etype, data, priority)
         with self.__lifecycle_lock:
@@ -628,6 +647,7 @@ class EventManager(metaclass=Singleton):
         self.__dispatcher.dispatch_broadcast_strict(
             event,
             self.__wait_strict_async_handler,
+            handler_id=handler_id,
         )
         return event
 
