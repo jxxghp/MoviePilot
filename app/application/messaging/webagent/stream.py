@@ -319,12 +319,9 @@ def _build_web_agent_event_generator(
     message_callback: Callable[[Message], Awaitable[None]],
     protected_output_callback: Callable[[str], bool],
     steering_status_callback: Callable[[SteeringMessage, str], None],
-    diagnostic: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """
     构造后台 Agent 任务并按断线与终态语义消费展示事件。
-
-    :param diagnostic: 是否启用只读诊断会话，启用后仅开放只读工具
     """
     files = _build_web_agent_files(command)
 
@@ -354,7 +351,6 @@ def _build_web_agent_event_generator(
                 message_callback=message_callback,
                 steering_status_callback=steering_status_callback,
                 agent_factory=agent_factory,
-                diagnostic=diagnostic,
                 wait_for_completion=True,
             )
         except asyncio.CancelledError:
@@ -452,12 +448,9 @@ def build_agent_web_agent_stream(
     persistence: Any,
     is_disconnected: Callable[[], Awaitable[bool]],
     dependencies: WebAgentStreamDependencies,
-    diagnostic: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     """
     构造标准 Agent 执行链路的 WebAgent 事件流。
-
-    :param diagnostic: 是否启用只读诊断会话，启用后仅开放只读工具
     """
     dependencies.bind_user_session(str(current_user.id), session_id)
     event_publisher = dependencies.event_publisher_factory()
@@ -529,7 +522,6 @@ def build_agent_web_agent_stream(
         message_callback=message_callback,
         protected_output_callback=protected_output_callback,
         steering_status_callback=steering_status_callback,
-        diagnostic=diagnostic,
     )
 
 

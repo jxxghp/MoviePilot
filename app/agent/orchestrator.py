@@ -482,34 +482,6 @@ class MoviePilotAgent:
     """
 
     TOOL_CATALOG_REFRESH_SECONDS = 30
-    # 只读诊断会话仅装配日志与文件读取工具，修复动作必须由用户在普通会话中确认。
-    DIAGNOSTIC_TOOL_NAMES = frozenset({
-        "read_log",
-        "read_file",
-        "query_doctor_report",
-        "read_tool_result",
-        # 计划工具只更新会话内任务状态，用于组织分步修复建议。
-        "update_plan",
-    })
-    # 白名单方式剔除会注入写工具、执行代码或委派子代理的中间件，未知中间件默认不装配。
-    DIAGNOSTIC_MIDDLEWARE_TYPES = (
-        AgentPolicyMiddleware,
-        SteeringMiddleware,
-        ToolOutputMiddleware,
-        RuntimeConfigMiddleware,
-        ToolGuardrailsMiddleware,
-        PatchToolCallsMiddleware,
-        FinalRequestCompactionMiddleware,
-        VisionMiddleware,
-        UsageMiddleware,
-        PlanMiddleware,
-    )
-    DIAGNOSTIC_PROMPT = (
-        "## 只读诊断会话\n"
-        "当前会话以只读模式运行，只能读取日志与文件，不会修改任何配置，也不会执行修复命令或调用外部写操作。\n"
-        "请先读取相关日志定位问题，再给出根因分析和分步修复建议；建议需说明每一步的作用与风险。\n"
-        "严禁声称已经执行或即将自动执行修复。所有修复动作都需要用户在普通会话中确认后，由助手重新执行。"
-    )
 
     def __init__(
         self,
@@ -523,7 +495,6 @@ class MoviePilotAgent:
         original_chat_id: Optional[str] = None,
         replay_mode: ReplyMode = ReplyMode.DISPATCH,
         allow_message_tools: bool = True,
-        diagnostic: bool = False,
         output_callback: Optional[Callable[[str], None]] = None,
         protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
         data: Optional[AgentDataContext] = None,
@@ -531,8 +502,6 @@ class MoviePilotAgent:
     ):
         """
         创建会话 Agent，并保存组合根注入的数据与记忆能力。
-
-        :param diagnostic: 是否启用只读诊断会话，启用后仅装配只读工具
         """
         self.session_id = session_id
         self.user_id = user_id
@@ -558,7 +527,6 @@ class MoviePilotAgent:
         self.original_chat_id = original_chat_id
         self.reply_mode = replay_mode
         self.allow_message_tools = allow_message_tools
-        self.diagnostic_mode = diagnostic
         self.output_callback = output_callback
         self.protected_output_callback = protected_output_callback
         self._data = data
@@ -1865,7 +1833,6 @@ class MoviePilotAgent:
             self.user_id,
             self.username,
             self.allow_message_tools,
-            self.diagnostic_mode,
             bool(self._tool_context.get("is_admin")),
             self.has_message_context,
             self.is_background,
@@ -2016,32 +1983,6 @@ class MoviePilotAgent:
             enable_discovery=True,
         )
 
-    @staticmethod
-    def _restrict_diagnostic_tools(tools: list[Any]) -> list[Any]:
-        """
-        仅保留只读诊断会话允许的工具，未登记名称一律剔除。
-        以白名单而非黑名单过滤，避免插件或中间件新增写工具时被诊断会话继承。
-
-        :param tools: 待装配的工具实例
-        :return: 按原顺序保留的只读工具
-        """
-        return [tool for tool in tools if getattr(tool, "name", "") in MoviePilotAgent.DIAGNOSTIC_TOOL_NAMES]
-
-    @staticmethod
-    def _restrict_diagnostic_middlewares(
-        middlewares: list[AgentMiddleware[Any, Any, Any]],
-    ) -> list[AgentMiddleware[Any, Any, Any]]:
-        """
-        仅保留诊断必需的中间件，避免技能、记忆、代码执行和子代理再次注入写工具。
-
-        :param middlewares: 普通会话装配的完整中间件列表
-        :return: 按原顺序保留的只读诊断中间件
-        """
-        return [
-            middleware for middleware in middlewares
-            if isinstance(middleware, MoviePilotAgent.DIAGNOSTIC_MIDDLEWARE_TYPES)
-        ]
-
     async def _create_agent(self, streaming: bool = False) -> Any:
         """
         创建 LangGraph Agent（使用 create_agent + SummarizationMiddleware）
@@ -2083,18 +2024,14 @@ class MoviePilotAgent:
                     base_url=runtime_config.get("base_url"),
                 )
                 base_tool_catalog, base_subagent_catalog = self._initialize_local_tool_catalogs()
-                mcp_specs = [] if self.diagnostic_mode else await agent_mcp_manager.list_enabled_tool_specs()
-                filtered_local_tools = self._filter_local_web_search_tools(
+                mcp_specs = await agent_mcp_manager.list_enabled_tool_specs()
+                local_tools = self._filter_local_web_search_tools(
                     base_tool_catalog.tools,
                     enabled=web_search_resolution.use_local_web_search,
                 )
-                local_tools = (
-                    self._restrict_diagnostic_tools(filtered_local_tools)
-                    if self.diagnostic_mode else filtered_local_tools
-                )
                 mcp_tools = await self._initialize_mcp_tools(specs=mcp_specs)
                 tools = [*local_tools, *mcp_tools]
-                local_subagent_tools = [] if self.diagnostic_mode else self._filter_local_web_search_tools(
+                local_subagent_tools = self._filter_local_web_search_tools(
                     base_subagent_catalog.tools,
                     enabled=web_search_resolution.use_local_web_search,
                 )
@@ -2107,16 +2044,13 @@ class MoviePilotAgent:
                 subagent_tools = [*local_subagent_tools, *subagent_mcp_tools]
                 # 系统提示词
                 system_prompt = prompt_manager.get_agent_prompt(channel=self.channel)
-                # 只读诊断会话在通用提示词后追加约束，不改变普通会话的提示词内容。
-                if self.diagnostic_mode:
-                    system_prompt = f"{system_prompt}\n\n{self.DIAGNOSTIC_PROMPT}"
 
                 # LLM 模型（用于 agent 执行）
                 agent_model = await self._initialize_llm(streaming=streaming)
                 resources.own_model(agent_model)
                 self._sync_model_profile(agent_model)
                 # 供应商原生工具不进入本地 ToolNode，宿主策略只覆盖 client-side tools。
-                server_tools = [] if self.diagnostic_mode else LLMHelper.get_server_tools(agent_model)
+                server_tools = LLMHelper.get_server_tools(agent_model)
 
                 # 为内部模型调用准备非流式 LLM，避免与用户流式回复复用同一实例。
                 non_streaming_model = agent_model if not streaming else await self._initialize_llm(streaming=False)
@@ -2165,15 +2099,7 @@ class MoviePilotAgent:
                     *output_middleware.tools,
                     *(tool for middleware in invocation_middlewares for tool in middleware.tools),
                 ]
-                internal_tools = (
-                    self._restrict_diagnostic_tools(internal_tools)
-                    if self.diagnostic_mode else internal_tools
-                )
-                # 只读诊断会话不再按需发现工具，避免选择器把写工具重新加入候选。
-                tool_selector = (
-                    None if self.diagnostic_mode
-                    else self._initialize_tool_selector(tools, internal_tools, non_streaming_model)
-                )
+                tool_selector = self._initialize_tool_selector(tools, internal_tools, non_streaming_model)
                 # 严格目录必须覆盖 LangGraph ToolNode 可执行的全部 client-side 工具。
                 tool_catalog = ToolCatalogSnapshot.from_tools(
                     [
@@ -2265,19 +2191,12 @@ class MoviePilotAgent:
                     )
                 )
 
-                # 只读诊断会话只保留允许的中间件，避免技能、代码执行和子代理重新注入写工具。
-                middlewares = (
-                    self._restrict_diagnostic_middlewares(middlewares)
-                    if self.diagnostic_mode else middlewares
-                )
-
-                # 只读诊断会话不装配技能与记忆工具，仅保留白名单内的读取工具。
-                auxiliary_tools = [] if self.diagnostic_mode else [*skill_tools, *memory_tools]
                 agent = create_agent(
                     model=agent_model,
                     tools=[
                         *tools,
-                        *auxiliary_tools,
+                        *skill_tools,
+                        *memory_tools,
                         *server_tools,
                     ],
                     system_prompt=system_prompt,

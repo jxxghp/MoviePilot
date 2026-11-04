@@ -657,7 +657,6 @@ async def _web_agent_stream_impl(
             original_message_id=payload.original_message_id,
             original_chat_id=payload.original_chat_id,
             echo_user=payload.echo_user,
-            diagnostic=payload.diagnostic,
         ),
         current_user=current_user,
         is_disconnected=is_disconnected,
