@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 
 # 默认全量枚举按 200 条读取，限制单页 JSON 及递归目录同时保留的数据量。
 _EMBY_ITEMS_PAGE_SIZE = 200
+# 单个合并文件可覆盖的最大集数；异常的 IndexNumberEnd 展开为千万级列表会耗尽内存。
+_EMBY_EPISODE_RANGE_MAX_SPAN = 1000
 
 
 def _read_emby_item_page(
@@ -94,7 +96,10 @@ def iter_emby_items(
 
 def emby_episode_numbers(item: Mapping[str, Any]) -> range:
     """
-    展开 Emby 系分集条目的起止集号，缺少结束集号或倒序时按单集处理。
+    展开 Emby 系分集条目的起止集号，缺少结束集号、倒序或跨度异常时按单集处理。
+
+    调用方会把区间物化为集号列表或映射，跨度超过 ``_EMBY_EPISODE_RANGE_MAX_SPAN``
+    时视为服务端元数据异常，只保留起始集号并记录警告，避免同步时耗尽内存。
 
     :param item: 含 IndexNumber 与可空 IndexNumberEnd 的分集响应
     :return: 包含合并文件所覆盖全部集号的区间，未提供起始集号时为空
@@ -104,7 +109,15 @@ def emby_episode_numbers(item: Mapping[str, Any]) -> range:
         return range(0)
     start = int(number)
     end = item.get("IndexNumberEnd")
-    return range(start, max(start, int(end) if end is not None else start) + 1)
+    stop = max(start, int(end) if end is not None else start) + 1
+    if stop - start > _EMBY_EPISODE_RANGE_MAX_SPAN:
+        logger.warning(
+            f"媒体服务器分集 {item.get('Name') or item.get('Id')} 的集号范围异常："
+            f"{start}-{end}，超过单个文件 {_EMBY_EPISODE_RANGE_MAX_SPAN} 集上限，按单集 {start} 处理，"
+            "请检查媒体服务器中该分集的结束集号"
+        )
+        return range(start, start + 1)
+    return range(start, stop)
 
 
 def emby_query_params(query: Optional[MediaServerQueryOptions]) -> dict[str, str]:
