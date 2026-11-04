@@ -25,6 +25,101 @@ def _build_parser() -> NexusPhpSiteUserInfo:
     )
 
 
+def test_nexus_php_cspt_homepage_traffic() -> None:
+    """
+    回放 Issue #7231 的脱敏首页，指标副标题不能阻断上传量、下载量和分享率解析。
+    """
+    homepage = (Path(__file__).parent / "fixtures" / "cspt_homepage.html").read_text(encoding="utf-8")
+    parser = _build_parser()
+
+    parser._parse_site_page(homepage)
+    parser._parse_user_base_info(homepage)
+
+    assert parser.upload == round(105.06 * 1024 ** 3)
+    assert parser.download == 10 * 1024 ** 3
+    assert parser.ratio == 10.506
+    assert parser.userid == "xxxx"
+    assert parser.username == "xxxx"
+
+    parser._parse_user_detail_info(
+        '<table><tr><td>上传量</td><td>1 GB</td></tr>'
+        '<tr><td>下载量</td><td>2 GB</td></tr><tr><td>分享率</td><td>0.5</td></tr></table>'
+    )
+
+    assert parser.upload == round(105.06 * 1024 ** 3)
+    assert parser.download == 10 * 1024 ** 3
+    assert parser.ratio == 10.506
+
+
+@pytest.mark.parametrize("metrics, legacy, expected_upload, expected_download, expected_ratio", [
+    ('<div><dt>上传量 <span>功行</span></dt><dd>8 <span>GB</span></dd></div>'
+     '<div><dt>下载量 <span>所耗资粮</span></dt><dd>2 GB</dd></div>'
+     '<div><dt>分享率 <span>取予有度</span></dt><dd>4.001</dd></div>',
+     "上传量: 1 GB 下载量: 1 GB 分享率: 1", 8 * 1024 ** 3, 2 * 1024 ** 3, 4.001),
+    ('<div><dt>上传量 <span>功行</span></dt><dd>8 GB</dd></div>'
+     '<div><dt>下载量 <span>所耗资粮</span></dt><dd>2 GB</dd></div>',
+     "", 8 * 1024 ** 3, 2 * 1024 ** 3, 4.0),
+    ('<div><dt>上传量 <span>功行</span></dt><dd>8 GB</dd></div>',
+     "下载量: 2 GB", 8 * 1024 ** 3, 2 * 1024 ** 3, 4.0),
+    ('<div><dt>上传量 <span>功行</span></dt><dd>0 B</dd></div>'
+     '<div><dt>下载量 <span>所耗资粮</span></dt><dd>0 B</dd></div>'
+     '<div><dt>分享率 <span>取予有度</span></dt><dd>0</dd></div>',
+     "上传量: 1 GB 下载量: 1 GB 分享率: 1", 0, 0, 0.0),
+    ('<div><dt>上传量 <span>功行</span></dt><dd>8 GB</dd></div>'
+     '<div><dt>下载量 <span>所耗资粮</span></dt><dd>0 B</dd></div>',
+     "", 8 * 1024 ** 3, 0, 0.0),
+    ('<div><dt>上传量 <span>功行</span></dt><dd></dd></div>',
+     "上传量: 1 GB 下载量: 2 GB 分享率: 0.501", 1024 ** 3, 2 * 1024 ** 3, 0.501),
+], ids=["displayed-ratio", "calculated-ratio", "partial-metrics", "zero-values", "zero-download", "empty-value"])
+def test_nexus_php_cspt_metrics_prefer_displayed_values(
+    metrics: str, legacy: str, expected_upload: int, expected_download: int, expected_ratio: float
+) -> None:
+    """
+    概览指标优先取页面显示值，缺失或为空时沿用传统字段及分享率计算。
+    """
+    parser = _build_parser()
+
+    parser._parse_user_traffic_info(
+        f'<html><body>{legacy}<dl class="extra cultivation-metrics">{metrics}</dl></body></html>'
+    )
+
+    assert parser.upload == expected_upload
+    assert parser.download == expected_download
+    assert parser.ratio == expected_ratio
+
+
+@pytest.mark.parametrize("class_name, upload_label", [
+    ("other-metrics", "上传量"),
+    ("cultivation-metrics-other", "上传量"),
+    ("cultivation-metrics", "实际上传量"),
+], ids=["unrelated-list", "class-substring", "actual-upload"])
+def test_nexus_php_cspt_metrics_ignore_unrelated_fields(class_name: str, upload_label: str) -> None:
+    """
+    不把其他列表或实际流量字段识别为账户总流量。
+    """
+    parser = _build_parser()
+
+    parser._parse_user_traffic_info(
+        f'<html><body><dl class="{class_name}">'
+        f'<div><dt>{upload_label} <span>功行</span></dt><dd>8 GB</dd></div>'
+        '</dl></body></html>'
+    )
+
+    assert (parser.upload, parser.download, parser.ratio) == (0, 0, 0.0)
+
+
+@pytest.mark.parametrize("html_text", ["", "<html></html>"])
+def test_nexus_php_empty_traffic_page(html_text: str) -> None:
+    """
+    空响应或空页面没有概览指标时，保持零流量且不抛出异常。
+    """
+    parser = _build_parser()
+
+    parser._parse_user_traffic_info(html_text)
+
+    assert (parser.upload, parser.download, parser.ratio) == (0, 0, 0.0)
+
+
 def test_nexus_php_depthstudio_traffic_falls_back_to_details():
     """
     首页解析失败后从详情表格补齐流量，不依赖卡片类名或实际流量。
