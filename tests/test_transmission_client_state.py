@@ -50,6 +50,53 @@ def test_missing_address_keeps_state_and_reconnect_safe(monkeypatch, host, renam
     factory.assert_not_called()
 
 
+def test_get_torrents_reconnects_after_transient_rpc_failure() -> None:
+    """
+    首次查询短暂断连时重建客户端并重试，避免订阅流程误报无法连接下载器。
+    """
+    client = Transmission.__new__(Transmission)
+    first_sdk = Mock()
+    second_sdk = Mock()
+    torrent = SimpleNamespace(status="downloading", labels=[])
+    first_sdk.get_torrents.side_effect = ConnectionError("RPC 查询失败")
+    second_sdk.get_torrents.return_value = [torrent]
+    client.trc = first_sdk
+    client._host = "transmission.invalid"
+    client._port = 9091
+    client.reconnect = Mock(side_effect=lambda: setattr(client, "trc", second_sdk))
+
+    torrents, error = client.get_torrents()
+
+    assert error is False
+    assert torrents == [torrent]
+    client.reconnect.assert_called_once_with()
+    first_sdk.get_torrents.assert_called_once()
+    second_sdk.get_torrents.assert_called_once()
+
+
+def test_add_torrent_reconnects_after_transient_rpc_failure() -> None:
+    """
+    首次添加短暂断连时重建客户端并重试，避免自动下载被瞬时 RPC 故障中断。
+    """
+    client = Transmission.__new__(Transmission)
+    first_sdk = Mock()
+    second_sdk = Mock()
+    added_torrent = SimpleNamespace(hashString="torrent-hash")
+    first_sdk.add_torrent.side_effect = ConnectionError("RPC 添加失败")
+    second_sdk.add_torrent.return_value = added_torrent
+    client.trc = first_sdk
+    client._host = "transmission.invalid"
+    client._port = 9091
+    client.reconnect = Mock(side_effect=lambda: setattr(client, "trc", second_sdk))
+
+    result = client.add_torrent("magnet:?xt=urn:btih:torrent-hash", download_dir="/downloads")
+
+    assert result is added_torrent
+    client.reconnect.assert_called_once_with()
+    first_sdk.add_torrent.assert_called_once()
+    second_sdk.add_torrent.assert_called_once()
+
+
 @pytest.mark.parametrize("rename_partial_files", [None, False, True])
 def test_configured_partial_file_flag_preserves_raw_value(monkeypatch, rename_partial_files):
     """
