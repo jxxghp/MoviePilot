@@ -25,7 +25,7 @@ def _context(
 ) -> Context:
     meta = MetaInfo(f"{name} S{season:02d}")
     if episodes:
-        meta.set_episodes(begin=min(episodes), end=max(episodes))
+        meta.set_episode_list(list(episodes))
     return Context(
         meta_info=meta,
         media_info=MediaInfo(
@@ -236,9 +236,9 @@ def test_partial_packs_only_settle_successful_allowed_episode_selections(batch):
     assert [
         call.kwargs["episodes"] for call in batch.chain.download_single.call_args_list
     ] == [{1, 2}, {1, 3}, {2}]
-    assert first.meta_info.episode_list == [1, 2, 3, 4]
-    assert second.meta_info.episode_list == [2, 3, 4]
-    assert failed.meta_info.episode_list == [1, 2, 3, 4]
+    assert first.meta_info.episode_list == [1, 3, 4]
+    assert second.meta_info.episode_list == [2, 4]
+    assert failed.meta_info.episode_list == [1, 4]
 
 
 @pytest.mark.parametrize("missing", [None, {}])
@@ -425,4 +425,24 @@ def test_labelled_full_pack_magnet_falls_back_to_episode_pack_phase(batch):
     assert remaining == {}
     batch.chain.download_torrent.assert_called_once()
     assert "torrent_content" not in batch.chain.download_single.call_args.kwargs
+    assert batch.chain.download_single.call_args.kwargs["episodes"] == {1, 2, 3, 4}
     batch.chain._record_download_failure.assert_not_called()
+
+
+def test_gapped_season_pack_keeps_missing_middle_episode(batch):
+    """
+    整季种子文件断档时不得把中间缺失集记入已覆盖范围。
+
+    回归：合集实际只有 E26/E28/E29 时，若按起止集连续填成 E26-E29，
+    订阅会把 E27 记为已下载，后续补搜与 RSS 都不再寻找该集。
+    """
+    candidate = _context("gapped")
+    missing = {"tmdb:1": {1: _missing((26, 27, 28, 29), total=29)}}
+    batch.chain.download_torrent.return_value = (b"torrent", None, [26, 28, 29])
+
+    result, remaining = batch.chain.batch_download([candidate], missing)
+
+    assert result == [candidate]
+    assert remaining["tmdb:1"][1].episodes == [27]
+    assert candidate.meta_info.episode_list == [26, 28, 29]
+    assert batch.chain.download_single.call_args.kwargs["episodes"] == {26, 28, 29}
