@@ -465,11 +465,19 @@ class AgentChatService:
     @classmethod
     def to_detail(cls, record: AgentChatRecord) -> AgentChatSessionDetail:
         """
-        把持久化投影转换为会话详情 DTO。
+        把持久化投影转换为会话详情 DTO，兼容旧消息缺失时间戳。
+
+        只修正响应副本，避免读取接口改写数据库或运行中的内存快照。
+
+        :param record: 已完成授权检查的会话持久化投影
+        :return: 所有展示消息都包含时间戳的会话详情
         """
+        # 仅历史详情需要兼容旧消息，避免在 API 冷启动时加载展示合并规则。
+        from app.domain.chat import normalize_display_timestamps
+
         return AgentChatSessionDetail.model_validate({
                 **cls.to_summary(record).model_dump(),
-                "messages": record.messages,
+                "messages": normalize_display_timestamps(record.messages),
             })
 
     @staticmethod

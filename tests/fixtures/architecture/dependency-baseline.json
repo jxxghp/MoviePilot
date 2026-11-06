@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9963,
-  "edge_sha256": "44cf52b7ca35534e04cf6fa3de8aadcaa7f54ccdeec543b79156f6d7aed3b8a0",
+  "edge_count": 9965,
+  "edge_sha256": "95b80752f6b6f2ab82c79f2c5464b52b74a57bc13aecadb452dcb51e587b400b",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3853,6 +3853,8 @@
     "app.application.messaging.chat -> app.application.database",
     "app.application.messaging.chat -> app.application.messaging",
     "app.application.messaging.chat -> app.application.messaging.recall",
+    "app.application.messaging.chat -> app.domain",
+    "app.application.messaging.chat -> app.domain.chat",
     "app.application.messaging.chat -> app.runtime",
     "app.application.messaging.chat -> app.runtime.observability",
     "app.application.messaging.chat -> app.runtime.priority",
