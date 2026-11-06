@@ -14,7 +14,6 @@ from app.application.database import (
     AsyncDatabaseExecutor,
 )
 from app.application.messaging.recall import RecallService
-from app.domain.chat import normalize_display_timestamps
 from app.runtime.observability import record_metric
 from app.runtime.priority import INTERACTIVE_DATABASE_CAPACITY, is_interactive
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
@@ -473,6 +472,9 @@ class AgentChatService:
         :param record: 已完成授权检查的会话持久化投影
         :return: 所有展示消息都包含时间戳的会话详情
         """
+        # 仅历史详情需要兼容旧消息，避免在 API 冷启动时加载展示合并规则。
+        from app.domain.chat import normalize_display_timestamps
+
         return AgentChatSessionDetail.model_validate({
                 **cls.to_summary(record).model_dump(),
                 "messages": normalize_display_timestamps(record.messages),
