@@ -66,6 +66,9 @@ APScheduler 3 的标准线程池没有任意数值 `priority` 的调度能力。
 
 ## 超时
 
+- `LLMHelper` 为 OpenAI 兼容、DeepSeek、Anthropic 兼容和 Google 模型显式设置 180 秒的
+  网络请求超时，同步插件调用也生效；Bedrock 保留既有的读取超时配置。网络超时限制单次
+  I/O 等待，供应商重试或持续回包可能延长总耗时，不能代替调用方的整次请求预算。
 - `AGENT_LLM_TIMEOUT`：单次根 Agent 模型请求总预算，默认 180 秒，覆盖流式与非流式生成
   以及该请求的供应商重试；`0` 表示不限时。工具执行时间由原 `LLM_TOOL_TIMEOUT` 管理。
 - `SCHEDULER_JOB_TIMEOUT`：协程调度任务的默认执行预算，默认 3600 秒，等待避让不计入执行时间；

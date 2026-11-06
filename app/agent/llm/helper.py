@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 
 
 _TEMPERATURE_UNSET = object()
+# SDK 的请求级 None 会关闭 HTTP 客户端默认超时；非 Agent 的同步调用也必须有网络等待上限。
+_LLM_REQUEST_TIMEOUT = 180.0
 
 
 class LLMTestError(RuntimeError):
@@ -198,23 +200,27 @@ def _build_httpx_client(
         proxy_url: str | None,
         *,
         async_client: bool = False,
-        timeout: float | None = None,
+        timeout: float = _LLM_REQUEST_TIMEOUT,
 ) -> "httpx.Client | httpx.AsyncClient":
     """
     构造显式代理策略的 httpx 客户端。
 
     当关闭 LLM 代理时也返回 trust_env=False 的客户端，避免 httpx 自动读取
-    进程环境变量中的代理配置。
+    进程环境变量中的代理配置。连接、读取、写入和连接池等待均保留有限超时。
+
+    :param proxy_url: 显式代理地址；为空时直连
+    :param async_client: 是否创建异步客户端
+    :param timeout: 各类网络等待的超时秒数，SDK 请求层需同时保留此限制
+    :return: 由模型持有并在不再使用时关闭的独占客户端
     """
     import httpx
 
     client_cls = httpx.AsyncClient if async_client else httpx.Client
     kwargs: dict[str, Any] = {
         "trust_env": False,
+        "timeout": timeout,
         **_build_httpx_proxy_kwargs(proxy_url),
     }
-    if timeout is not None:
-        kwargs["timeout"] = timeout
     return client_cls(**kwargs)
 
 
@@ -1601,6 +1607,10 @@ class LLMHelper:
     ) -> Any:
         """
         获取 LLM 实例；调用方负责在请求或缓存图不再使用模型时调用 close_llm。
+
+        非 Bedrock 模型显式设置 180 秒的网络请求超时，防止 SDK 以 None 关闭超时。
+        此限制针对网络等待；包含重试的总时长由 Agent 或插件调用方控制。
+
         :param streaming: 是否启用流式输出
         :param provider: LLM提供商，默认为配置项LLM_PROVIDER
         :param model: 模型名称，默认为配置项LLM_MODEL
@@ -1727,6 +1737,7 @@ class LLMHelper:
                 model=model_name,
                 api_key=runtime["api_key"],
                 retries=3,
+                timeout=_LLM_REQUEST_TIMEOUT,
                 **({"temperature": temperature_value} if temperature_value is not None else {}),
                 streaming=streaming,
                 client_args=_build_google_client_args(llm_proxy),
@@ -1753,6 +1764,7 @@ class LLMHelper:
                 api_key=runtime["api_key"],
                 api_base=runtime["base_url"],
                 max_retries=3,
+                request_timeout=_LLM_REQUEST_TIMEOUT,
                 temperature=temperature_value,
                 streaming=streaming,
                 stream_usage=True,
@@ -1810,6 +1822,7 @@ class LLMHelper:
                 api_key=runtime["api_key"],
                 base_url=runtime["base_url"],
                 max_retries=3,
+                timeout=_LLM_REQUEST_TIMEOUT,
                 temperature=temperature_value,
                 streaming=streaming,
                 stream_usage=True,
@@ -1834,6 +1847,7 @@ class LLMHelper:
                 model=model_name,
                 api_key=runtime["api_key"],
                 max_retries=3,
+                request_timeout=_LLM_REQUEST_TIMEOUT,
                 base_url=runtime.get("base_url"),
                 temperature=temperature_value,
                 streaming=streaming,
