@@ -22,6 +22,8 @@ TRANSFER_EXECUTION_VERSION = 1
 TRANSFER_STEP_INTENT_VERSION = 1
 # 单步执行结果与探测证据的当前持久格式版本
 TRANSFER_STEP_RESULT_VERSION = 1
+# 需要保留扩展名以兼容 115 重命名接口的内置及插件存储类型
+_115_RENAME_STORAGE_TYPES = frozenset({"u115", "115网盘Plus"})
 
 
 class TransferExecutionState(StrEnum):
@@ -160,7 +162,8 @@ def build_transfer_overwrite_paths(
     从冻结叶操作推导同目录暂存和备份路径，保证执行与账本验证使用相同身份。
 
     115 重命名会分割主文件名与扩展名，不能使用仅含点号前缀的无扩展名临时文件；
-    其临时名保留目标扩展名，其他存储沿用原路径以保持已有步骤的恢复身份。
+    内置 ``u115`` 与 P115Disk 的 ``115网盘Plus`` 临时名保留目标扩展名，其他存储
+    沿用原路径以保持已有步骤的恢复身份。
     """
     identity = _canonical_json({
         "source": dict(source), "storage": target_storage,
@@ -168,8 +171,9 @@ def build_transfer_overwrite_paths(
     })
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
     target = Path(target_path)
-    prefix = "mp" if target_storage == "u115" else ".mp"
-    suffix = target.suffix if target_storage == "u115" else ""
+    is_115_storage = target_storage in _115_RENAME_STORAGE_TYPES
+    prefix = "mp" if is_115_storage else ".mp"
+    suffix = target.suffix if is_115_storage else ""
     return (
         target.with_name(f"{prefix}-stage-{digest}{suffix}").as_posix(),
         target.with_name(f"{prefix}-backup-{digest}{suffix}").as_posix(),

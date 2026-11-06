@@ -262,10 +262,12 @@ def test_u115_partial_native_copy_is_isolated_instead_of_repeated(
 
 
 @pytest.mark.parametrize("filename", ["美人余.S01E23.mkv", "Movie.MP4", "archive.tar.gz", "Movie"])
-@pytest.mark.parametrize("storage", ["u115", "local", "alist", "alipan", "smb", "rclone"])
+@pytest.mark.parametrize(
+    "storage", ["u115", "115网盘Plus", "local", "alist", "alipan", "smb", "rclone"],
+)
 def test_overwrite_paths_preserve_storage_filename_contract(filename: str, storage: str) -> None:
     """
-    115 临时名称保留扩展名且有主文件名，其他存储保持既有路径以兼容恢复。
+    115 内置及插件存储的临时名称保留扩展名且有主文件名，其他存储保持既有路径以兼容恢复。
     """
     arguments = {
         "source": {"storage": "local", "path": "/downloads/source.mkv"},
@@ -278,7 +280,7 @@ def test_overwrite_paths_preserve_storage_filename_contract(filename: str, stora
     for path, kind in zip(paths, ("stage", "backup")):
         item = Path(path)
         assert item.parent == Path("/library")
-        if storage == "u115":
+        if storage in {"u115", "115网盘Plus"}:
             assert item.name.startswith(f"mp-{kind}-")
             assert item.suffix == Path(filename).suffix
         else:
@@ -286,11 +288,12 @@ def test_overwrite_paths_preserve_storage_filename_contract(filename: str, stora
             assert len(item.name) == len(f".mp-{kind}-") + 24
 
 
+@pytest.mark.parametrize("storage", ["u115", "115网盘Plus"])
 @pytest.mark.parametrize("transfer_type", ["copy", "move"])
 @pytest.mark.parametrize("failed_rename", [None, "backup", "promote"])
-def test_u115_overwrite_obeys_rename_protocol(
+def test_115_overwrite_obeys_rename_protocol(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-        transfer_type: str, failed_rename: Optional[str],
+        storage: str, transfer_type: str, failed_rename: Optional[str],
 ) -> None:
     """
     在真实文件上回放 115 重命名协议，验证覆盖成功及失败时保留完整副本。
@@ -313,7 +316,7 @@ def test_u115_overwrite_obeys_rename_protocol(
             return None
         identifier = str(path.stat().st_ino)
         identifiers[int(identifier)] = path
-        return item.model_copy(update={"storage": "u115", "fileid": identifier})
+        return item.model_copy(update={"storage": storage, "fileid": identifier})
 
     def upload(folder: FileItem, path: Path, name: str) -> Optional[FileItem]:
         """
@@ -349,7 +352,7 @@ def test_u115_overwrite_obeys_rename_protocol(
     source_item = local.get_item_strict(source).model_dump(mode="json")
     arguments = {
         "step_runner": _ImmediateStepRunner(), "source_fileitem": source_item,
-        "target_storage": "u115", "source_oper": local, "target_oper": remote,
+        "target_storage": storage, "source_oper": local, "target_oper": remote,
         "target_file": target, "transfer_type": transfer_type,
     }
     execute = TransHandler._TransHandler__replace_target_with_steps
