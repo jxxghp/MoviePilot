@@ -2312,6 +2312,22 @@ class MetaMusic(MetaBase):
             "quality_text": quality_text,
         }
 
+    @staticmethod
+    def _strip_residual_extension(title: str, suffix: str) -> str:
+        """
+        清理曲名末尾残留的文件扩展名。
+
+        「艺人 - 曲名」分支不剥离扩展名，曲名可能带着 `.strm` 等后缀进入命名模板，
+        再次拼接 fileExt 就会写出 `xxx.strm.strm`，因此在回填时统一去掉。
+
+        :param title: 待清理的曲名
+        :param suffix: 当前文件的后缀，含点号
+        :return: 清理后的曲名；不含该后缀时原样返回
+        """
+        if not title or not suffix or not title.lower().endswith(suffix.lower()):
+            return title
+        return title[: -len(suffix)].rstrip()
+
     def apply_path_context(self, path: "str | Path") -> "MetaMusic":
         """
         用文件名和目录线索回填音乐元数据中缺失的字段。
@@ -2332,11 +2348,7 @@ class MetaMusic(MetaBase):
             parse_title=True,
         )
         if title_from_name and filename_meta.title:
-            # 「艺人 - 曲名」分支不剥离扩展名，曲名可能残留 `.strm` 等后缀，
-            # 后续命名模板再拼 fileExt 就会写出 `xxx.strm.strm`，这里统一清理。
-            suffix = file_path.suffix
-            if suffix and filename_meta.title.lower().endswith(suffix.lower()):
-                filename_meta.title = filename_meta.title[: -len(suffix)].rstrip()
+            filename_meta.title = self._strip_residual_extension(filename_meta.title, file_path.suffix)
             self.title = filename_meta.title
             self.field_sources["title"] = "filename"
         for field_name in (

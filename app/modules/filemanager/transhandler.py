@@ -506,24 +506,9 @@ class TransHandler:
                 if str(fileitem.path or "").casefold().endswith(".lyricsfile.yaml")
                 else f".{fileitem.extension}"
             )
-            _naming_dict = self.get_naming_dict(
-                meta=planning_meta,
-                mediainfo=mediainfo,
-                episodes_info=episodes_info,
-                file_ext=file_extension,
+            _naming_dict = self.__build_naming_context(
+                planning_meta, mediainfo, episodes_info, file_extension
             )
-            # 曲名可能来自“文件名已带后缀”的解析结果（如 STRM 外部链接文件，或标签
-            # 缺失时回退到主干名），此时模板追加 fileExt 会得到 `xxx.strm.strm`。
-            # 仅在曲名末尾已经带有当前文件后缀时省略 fileExt，避免重复追加。
-            _rendered_title = str(_naming_dict.get("title") or "")
-            if file_extension and _rendered_title.casefold().endswith(file_extension.casefold()):
-                file_extension = ""
-                _naming_dict = self.get_naming_dict(
-                    meta=planning_meta,
-                    mediainfo=mediainfo,
-                    episodes_info=episodes_info,
-                    file_ext="",
-                )
             final_target = self.get_rename_path(
                 path=target_path,
                 template_string=rename_format,
@@ -2609,6 +2594,44 @@ class TransHandler:
                 )
 
         return library_dir
+
+    @staticmethod
+    def __build_naming_context(
+        meta: MetaBase,
+        mediainfo: Union[MediaInfo, MusicInfo],
+        episodes_info: Optional[List[TmdbEpisode]],
+        file_extension: str,
+    ) -> dict[str, Any]:
+        """
+        构造重命名模板上下文，并在曲名已带当前后缀时省略扩展名变量。
+
+        曲名可能来自「文件名已带后缀」的解析结果（STRM 外部链接文件、标签缺失时
+        回退主干名），此时模板再拼 fileExt 会写出 `xxx.strm.strm`。
+
+        :param meta: 文件名及音视频属性等源元数据
+        :param mediainfo: 已识别的媒体详情
+        :param episodes_info: 当前季全部集详情；可为空
+        :param file_extension: 当前扩展名，含点号
+        :return: 重命名模板上下文字典
+        """
+        naming_dict = TransHandler.get_naming_dict(
+            meta=meta,
+            mediainfo=mediainfo,
+            episodes_info=episodes_info,
+            file_ext=file_extension,
+        )
+        # 仅在音乐整理时处理：视频标题可能保留原文件名，不能据此删掉扩展名
+        if mediainfo.type != MediaType.MUSIC:
+            return naming_dict
+        title = str(naming_dict.get("title") or "")
+        if not file_extension or not title.casefold().endswith(file_extension.casefold()):
+            return naming_dict
+        return TransHandler.get_naming_dict(
+            meta=meta,
+            mediainfo=mediainfo,
+            episodes_info=episodes_info,
+            file_ext="",
+        )
 
     @staticmethod
     def get_naming_dict(
