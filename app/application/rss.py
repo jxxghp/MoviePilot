@@ -237,7 +237,7 @@ class RssHelper:
                 "search_mode": 1,
             }
         },
-        "hdchina.org": {
+        "hdwing.org": {
             "xpath": "//a[@class='faqlink']/@href",
             "url": "getrss.php",
             "params": {
