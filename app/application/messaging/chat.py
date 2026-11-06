@@ -14,6 +14,7 @@ from app.application.database import (
     AsyncDatabaseExecutor,
 )
 from app.application.messaging.recall import RecallService
+from app.domain.chat import normalize_display_timestamps
 from app.runtime.observability import record_metric
 from app.runtime.priority import INTERACTIVE_DATABASE_CAPACITY, is_interactive
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
@@ -465,11 +466,16 @@ class AgentChatService:
     @classmethod
     def to_detail(cls, record: AgentChatRecord) -> AgentChatSessionDetail:
         """
-        把持久化投影转换为会话详情 DTO。
+        把持久化投影转换为会话详情 DTO，兼容旧消息缺失时间戳。
+
+        只修正响应副本，避免读取接口改写数据库或运行中的内存快照。
+
+        :param record: 已完成授权检查的会话持久化投影
+        :return: 所有展示消息都包含时间戳的会话详情
         """
         return AgentChatSessionDetail.model_validate({
                 **cls.to_summary(record).model_dump(),
-                "messages": record.messages,
+                "messages": normalize_display_timestamps(record.messages),
             })
 
     @staticmethod
