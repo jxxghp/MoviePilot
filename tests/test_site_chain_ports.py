@@ -480,6 +480,103 @@ def _scripted_request(monkeypatch, responses: list) -> list[dict]:
     return hops
 
 
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+@pytest.mark.parametrize("source,destination", [
+    ("http://hdwing.org/", "https://hdwing.org/"),
+    ("http://hdwing.org:80/", "https://hdwing.org:443/index.php"),
+    ("http://HDWING.org/index.php", "https://hdwing.org/"),
+    ("http://hdwing.org/", "http://hdwing.org/index.php"),
+    ("https://hdwing.org/", "https://hdwing.org/index.php"),
+])
+def test_site_adapter_keeps_credentials_on_same_origin_or_https_upgrade(
+    monkeypatch, status: int, source: str, destination: str,
+) -> None:
+    """
+    同源跳转与同主机默认端口的 HTTPS 升级应保留 Cookie 和认证头。
+    """
+    final = _FakeResponse(200, text="ok")
+    hops = _scripted_request(monkeypatch, [
+        SimpleNamespace(status_code=status, headers={"Location": destination}), final,
+    ])
+    headers = {"Cookie": "sid=header", "Authorization": "Bearer test", "Referer": source}
+
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url=source, cookie="uid=1", headers=headers,
+    ) as response:
+        assert response is final
+
+    assert [hop["url"] for hop in hops] == [source, destination]
+    assert [hop["cookies"] for hop in hops] == ["uid=1", "uid=1"]
+    assert [hop["headers"] for hop in hops] == [headers, headers]
+    assert all(hop["allow_redirects"] is False for hop in hops)
+
+
+@pytest.mark.parametrize("source,destination", [
+    ("http://hdwing.org/", "https://other.test/"),
+    ("http://hdwing.org/", "https://www.hdwing.org/"),
+    ("http://hdwing.org:8080/", "https://hdwing.org/"),
+    ("http://hdwing.org/", "https://hdwing.org:8443/"),
+    ("http://hdwing.org:443/", "https://hdwing.org/"),
+    ("http://hdwing.org/", "https://hdwing.org:80/"),
+    ("https://hdwing.org/", "http://hdwing.org/"),
+    ("https://hdwing.org/", "https://hdwing.org:8443/"),
+])
+def test_site_adapter_strips_credentials_when_redirect_changes_trust(
+    monkeypatch, source: str, destination: str,
+) -> None:
+    """
+    跨主机、非默认端口升级与 HTTPS 降级仍应清除全部敏感请求头。
+    """
+    hops = _scripted_request(monkeypatch, [_redirect(destination), _FakeResponse(200)])
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url=source, cookie="uid=1",
+        headers={
+            "cOoKiE": "sid=header", "aUtHoRiZaTiOn": "Bearer test",
+            "Proxy-Authorization": "Basic test", "rEfErEr": source, "Accept": "text/html",
+        },
+    ) as response:
+        assert response.status_code == 200
+
+    assert [hop["cookies"] for hop in hops] == ["uid=1", ""]
+    assert hops[1]["headers"] == {"Accept": "text/html"}
+
+
+def test_site_adapter_does_not_restore_credentials_after_downgrade_then_upgrade(monkeypatch) -> None:
+    """
+    HTTPS 降级清除的凭据，在后续同主机升级回 HTTPS 时不能重新出现。
+    """
+    hops = _scripted_request(monkeypatch, [
+        _redirect("http://hdwing.org/next"),
+        _redirect("https://hdwing.org/final"),
+        _FakeResponse(200),
+    ])
+    with site_composition._SiteHttpAdapter().open(
+        method="GET", url="https://hdwing.org/", cookie="uid=1",
+        headers={"Authorization": "Bearer test"},
+    ) as response:
+        assert response.status_code == 200
+
+    assert [hop["cookies"] for hop in hops] == ["uid=1", "", ""]
+    assert [hop["headers"] for hop in hops] == [{"Authorization": "Bearer test"}, {}, {}]
+
+
+def test_site_connection_keeps_cookie_when_hdwing_redirects_to_https(monkeypatch) -> None:
+    """
+    HDWing 的 HTTP 入口升级到 HTTPS 后，连接测试应携带原 Cookie 并识别已登录页面。
+    """
+    hops = _scripted_request(monkeypatch, [
+        _redirect("https://hdwing.org/"),
+        _FakeResponse(200, text='<html><body><a href="logout.php">退出</a></body></html>'),
+    ])
+    _configure(site_composition._SiteHttpAdapter())
+    site = SiteSnapshot(
+        id=1, name="瓷器", domain="hdwing.org", url="http://hdwing.org/", cookie="uid=1",
+    )
+
+    assert _chain()._SiteChain__test(site) == (True, "连接成功")
+    assert [hop["cookies"] for hop in hops] == ["uid=1", "uid=1"]
+
+
 @pytest.mark.parametrize("responses,reason", [
     ([_redirect("/dl/1/auth?X-Amz-Signature=sig")] * 2, "站点请求重定向出现环路"),
     ([_redirect(None)], "站点请求重定向缺少目标地址"),

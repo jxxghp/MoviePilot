@@ -68,6 +68,34 @@ def _redirect_destination(url: str, response: Any) -> tuple[Optional[str], Optio
     return destination, None
 
 
+def _redirect_keeps_credentials(source: str, destination: str) -> bool:
+    """
+    判断站点重定向是否仍可携带原请求的登录凭据。
+
+    除同源跳转外，仅允许同主机从默认 HTTP 端口升级到默认 HTTPS 端口，
+    避免站点强制 HTTPS 时丢失 Cookie；协议降级和其它来源变更均不保留凭据。
+
+    :param source: 当前请求的绝对地址
+    :param destination: 重定向目标的绝对地址
+    :return: 两地址同源或符合默认端口的安全升级条件时返回 True
+    """
+    if UrlUtils.same_origin(source, destination):
+        return True
+    source_url = UrlUtils.normalize_http_url(source)
+    destination_url = UrlUtils.normalize_http_url(destination)
+    if source_url is None or destination_url is None:
+        return False
+    origin, target = urlsplit(source_url), urlsplit(destination_url)
+    return (
+        origin.scheme == "http"
+        and target.scheme == "https"
+        and origin.hostname == target.hostname
+        and origin.port in (None, 80)
+        and target.port in (None, 443)
+        and not (origin.username or origin.password or target.username or target.password)
+    )
+
+
 class _RssHttpAdapter:
     """
     用 RequestUtils 实现 RSS HTTP 窄端口。
@@ -236,8 +264,9 @@ class _SiteHttpAdapter:
         """
         打开响应并在所有返回或异常分支后关闭底层连接。
 
-        GET 请求逐跳跟随重定向，跨域跳转清除 Cookie 与认证头。重定向缺少目标、目标无效、出现环路
-        或超过跳数上限时只记录来源地址的告警并提供 None，与请求失败的语义一致，
+        GET 请求逐跳跟随重定向，同源或同主机默认端口的 HTTP 到 HTTPS 升级保留凭据，
+        其它来源变更清除 Cookie 与认证头。重定向缺少目标、目标无效、出现环路或超过跳数上限时
+        只记录来源地址的告警并提供 None，与请求失败的语义一致，
         由调用方按无法打开站点处理，不能以异常中断 CookieCloud 同步等批量流程。
 
         :param method: HTTP 请求方法
@@ -281,7 +310,7 @@ class _SiteHttpAdapter:
                 if destination is None:
                     failure = invalid_reason or failure
                     break
-                if not UrlUtils.same_origin(url, destination):
+                if not _redirect_keeps_credentials(url, destination):
                     cookie = None
                     request_headers = {
                         key: value for key, value in request_headers.items()
