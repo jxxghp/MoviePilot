@@ -263,11 +263,11 @@ def test_u115_partial_native_copy_is_isolated_instead_of_repeated(
 
 @pytest.mark.parametrize("filename", ["美人余.S01E23.mkv", "Movie.MP4", "archive.tar.gz", "Movie"])
 @pytest.mark.parametrize(
-    "storage", ["u115", "115网盘Plus", "local", "alist", "alipan", "smb", "rclone"],
+    "storage", ["u115", "115网盘Plus", "plugin-storage", "local", "alist", "alipan", "smb", "rclone"],
 )
 def test_overwrite_paths_preserve_storage_filename_contract(filename: str, storage: str) -> None:
     """
-    115 内置及插件存储的临时名称保留扩展名且有主文件名，其他存储保持既有路径以兼容恢复。
+    本地临时名称保持隐藏且无扩展名，其他存储统一保留非空主文件名和目标扩展名。
     """
     arguments = {
         "source": {"storage": "local", "path": "/downloads/source.mkv"},
@@ -280,23 +280,23 @@ def test_overwrite_paths_preserve_storage_filename_contract(filename: str, stora
     for path, kind in zip(paths, ("stage", "backup")):
         item = Path(path)
         assert item.parent == Path("/library")
-        if storage in {"u115", "115网盘Plus"}:
-            assert item.name.startswith(f"mp-{kind}-")
-            assert item.suffix == Path(filename).suffix
-        else:
+        if storage == "local":
             assert item.name.startswith(f".mp-{kind}-")
             assert len(item.name) == len(f".mp-{kind}-") + 24
+        else:
+            assert item.name.startswith(f"mp-{kind}-")
+            assert item.suffix == Path(filename).suffix
 
 
-@pytest.mark.parametrize("storage", ["u115", "115网盘Plus"])
+@pytest.mark.parametrize("storage", ["u115", "115网盘Plus", "plugin-storage"])
 @pytest.mark.parametrize("transfer_type", ["copy", "move"])
 @pytest.mark.parametrize("failed_rename", [None, "backup", "promote"])
-def test_115_overwrite_obeys_rename_protocol(
+def test_remote_overwrite_obeys_rename_protocol(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
         storage: str, transfer_type: str, failed_rename: Optional[str],
 ) -> None:
     """
-    在真实文件上回放 115 重命名协议，验证覆盖成功及失败时保留完整副本。
+    在真实文件上回放按主文件名和扩展名解析的远端重命名协议，验证覆盖成功及失败时保留完整副本。
     """
     source = tmp_path / "download.mkv"
     target = tmp_path / "美人余.S01E23.mkv"
