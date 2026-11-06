@@ -201,9 +201,12 @@ def _match_source(
     torrent_meta: MetaBase,
     mediainfo: MediaInfo,
     cache: DisambiguationCache,
+    season_episodes: Optional[Dict[int, List[int]]] = None,
 ) -> Optional[str]:
     """
     返回资源命中的身份依据，未匹配时返回 None。
+
+    :param season_episodes: 本次明确请求的季集号，仅用于兼容不同于默认季内集号的范围
     """
     torrent_source, torrent_media_id = resolve_media_identity(media=torrent)
     if torrent_source == MediaSource.IMDb and mediainfo.imdb_id and torrent_media_id == str(mediainfo.imdb_id):
@@ -214,6 +217,7 @@ def _match_source(
         mediainfo=mediainfo,
         torrent_meta=torrent_meta,
         torrent=torrent,
+        season_episodes=season_episodes,
     ):
         return None
     if TorrentHelper.requires_identity_disambiguation(
@@ -280,6 +284,7 @@ def _match_torrents(
             torrent_meta=meta,
             mediainfo=mediainfo,
             cache=cache,
+            season_episodes=season_episodes,
         )
         if source:
             diagnostics["matched"] += 1
@@ -376,16 +381,26 @@ class SearchResultOwner(_SearchOwnerBase):
     ) -> tuple[list[SearchResourceEvidence], dict[str, Context]]:
         """
         过滤前识别新增资源；识别未知不会成为缺席证据或永久负缓存。
+
+        :param targets: 本轮已绑定目标媒体的缺集键，显式集号同时用于匹配累计编号资源
         """
         evidence = []
         contexts = {}
+        season_episodes: Dict[int, List[int]] = {}
+        if mediainfo.type == MediaType.TV:
+            for target in targets:
+                season, episode = target.split(":", 1)
+                if episode != "season":
+                    season_episodes.setdefault(int(season), []).append(int(episode))
         for torrent in torrents:
             # 去重键含标题和描述，内容变化即为新资源；识别规则变化由检查点合同触发重搜。
             key = SearchResultOwner._resource_identity(torrent)
             record = cache.get(key)
             if record is None or record["targets"] is None:
                 meta = _torrent_meta(torrent=torrent, custom_words=custom_words, mediainfo=mediainfo)
-                source = _match_source(torrent, meta, mediainfo, disambiguation) if torrent.title else None
+                source = _match_source(
+                    torrent, meta, mediainfo, disambiguation, season_episodes=season_episodes,
+                ) if torrent.title else None
                 unknown = not torrent.title or (_disambiguation_key(meta) in disambiguation
                                                and disambiguation[_disambiguation_key(meta)] is None)
                 matched_targets = _resource_targets(meta, targets, mediainfo.type) if source else set()

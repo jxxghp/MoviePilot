@@ -1089,8 +1089,9 @@ def test_outbox_retries_strict_failure_without_repeating_system_alert(
     """
     from unittest.mock import Mock
 
-    from app.application.outbox import ClaimedOutboxMessage, OutboxDispatcher
+    from app.application.outbox import EVENT_HANDLER_TOPIC_PREFIX, ClaimedOutboxMessage, OutboxDispatcher
     from app.runtime.event.errors import EventErrorPolicy
+    from app.runtime.event.registry import EventRegistry
     from app.startup.composition import outbox
 
     isolated_eventmanager._EventManager__lifecycle_state = "running"
@@ -1111,12 +1112,16 @@ def test_outbox_retries_strict_failure_without_repeating_system_alert(
     store = Mock()
     event_key = f"{event_type.value}:task-1:1"
     store.claim.side_effect = [
-        ClaimedOutboxMessage(1, event_key, event_type.value,
-                             {"idempotency_key": event_key,
-                              "transferinfo": {"success": False, "message": "failed"}}, 1, attempt)
+        ClaimedOutboxMessage(1, "child-key", f"{EVENT_HANDLER_TOPIC_PREFIX}test",
+                             {"event_type": event_type.value,
+                              "event_key": event_key,
+                              "handler_id": EventRegistry.handler_identifier(failed_handler),
+                              "event_payload": {"idempotency_key": event_key,
+                                                "transferinfo": {"success": False, "message": "failed"}}}, 1, attempt)
         for attempt in range(1, 6)
     ] + [None]
-    dispatcher = OutboxDispatcher(store, outbox.build_outbox_handlers())
+    dispatcher = OutboxDispatcher(store, outbox.build_outbox_handlers(),
+                                 fallback_handler=outbox.dispatch_event_handler)
     for _ in range(5):
         assert dispatcher.dispatch_one()
     assert not dispatcher.dispatch_one()

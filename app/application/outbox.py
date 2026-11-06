@@ -34,6 +34,10 @@ SUBTITLE_TRANSFER_COMPLETED_TOPIC = "transfer.subtitle.completed"
 SUBTITLE_TRANSFER_FAILED_TOPIC = "transfer.subtitle.failed"
 AUDIO_TRANSFER_COMPLETED_TOPIC = "transfer.audio.completed"
 AUDIO_TRANSFER_FAILED_TOPIC = "transfer.audio.failed"
+# 每个处理器拥有独立恢复主题，摘要保证主题长度不超过数据库限制。
+EVENT_HANDLER_TOPIC_PREFIX = "event.handler."
+# 父消息与处理器投递记录在同一事务内冻结，重放不得再次展开订阅快照。
+EVENT_FANOUT_COMPLETE_FIELD = "__mp_event_fanout_complete"
 OUTBOX_LEASE_SECONDS = 60
 OUTBOX_MAX_INFLIGHT_TOPICS = 20
 
@@ -524,9 +528,10 @@ class OutboxDispatcher:
         clock: Optional[Callable[[], datetime]] = None,
         close: Optional[Callable[[], None]] = None,
         failure_observer: Optional[Callable[[bool], None]] = None,
+        fallback_handler: Optional[Callable[[ClaimedOutboxMessage], None]] = None,
     ) -> None:
         """
-        注入持久端口、topic handler、有界重试策略与失败观测端口。
+        注入持久端口、主题处理器和有界重试策略；动态主题由可选回调解析。
         """
         self._repository = repository
         self._handlers = handlers
@@ -535,6 +540,7 @@ class OutboxDispatcher:
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._close = close or (lambda: None)
         self._failure_observer = failure_observer or (lambda _dead: None)
+        self._fallback_handler = fallback_handler
 
     def claim_one(
         self, *, topic: Optional[str] = None, exclude_topics: tuple[str, ...] = (),
@@ -572,7 +578,10 @@ class OutboxDispatcher:
         执行已认领效果，完成与重试时间均取真实结算时刻。
         """
         try:
-            self._handlers[message.topic](message)
+            handler = self._handlers.get(message.topic, self._fallback_handler)
+            if handler is None:
+                raise KeyError(message.topic)
+            handler(message)
         except OutboxLeaseLostError:
             raise
         except Exception as error:

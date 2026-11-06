@@ -21,6 +21,7 @@ from app.db.adapters.mediaserver import TransactionalMediaServerRepository
 from app.db.models.mediaserver import MediaServerItem as CachedItem
 from app.domain.context import MediaInfo
 from app.domain.meta.metavideo import MetaVideo
+from app.modules._base.mediaserver import emby_episode_numbers
 from app.modules.emby.emby import Emby
 from app.modules.jellyfin.jellyfin import Jellyfin
 from app.modules.navidrome.navidrome import Navidrome
@@ -104,10 +105,13 @@ def test_emby_family_accepts_iso_playback_dates(played_at):
 
 
 @pytest.mark.parametrize("client_class", [Emby, Jellyfin])
-@pytest.mark.parametrize("end,expected", [(3, [1, 2, 3]), (None, [1]), (0, [1])])
+@pytest.mark.parametrize("end,expected", [
+    (3, [1, 2, 3]), (None, [1]), (0, [1]),
+    (1000, list(range(1, 1001))), (1001, [1]), (20231105, [1]),
+])
 def test_emby_family_combined_episode_includes_end(client_class, end, expected, monkeypatch):
     """
-    合并剧集的每个集号都应存在，并映射到同一个物理条目标识。
+    合并剧集的每个集号都应存在，并映射到同一个物理条目标识；跨度超过上限的异常结束集号按单集处理。
     """
     client = client_class.__new__(client_class)
     client._host, client._apikey, client.user = "https://media.invalid/", "key", "user"
@@ -118,6 +122,17 @@ def test_emby_family_combined_episode_includes_end(client_class, end, expected, 
     }]}))
     assert client.get_tv_episodes(item_id="series")[1] == {1: expected}
     assert client.get_season_episode_ids("series", 1) == {number: "episode" for number in expected}
+
+
+def test_emby_episode_numbers_rejects_abnormal_span_without_expanding(monkeypatch):
+    """
+    异常结束集号不应被展开，只保留起始集号并给出可定位条目的警告。
+    """
+    warnings = []
+    monkeypatch.setattr("app.modules._base.mediaserver.logger.warning", warnings.append)
+    numbers = emby_episode_numbers({"Id": "clip", "Name": "录像", "IndexNumber": 3, "IndexNumberEnd": 2_000_000_000})
+    assert numbers == range(3, 4)
+    assert len(warnings) == 1 and "录像" in warnings[0] and "3-2000000000" in warnings[0]
 
 
 @pytest.mark.parametrize("server_order", [("partial", "complete"), ("complete", "partial"), ("odd", "even")])

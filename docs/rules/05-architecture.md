@@ -439,6 +439,12 @@ canonical `app.db.oper.workflow.WorkflowOper` 只提供显式 Session 的 query/
 API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/tasks.py`；登记器先于其他
 运行资源启动，并在资源释放前停止接收、取消和有限等待。需要崩溃恢复的 E2/E3 副作用仍应
 进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。
+浏览器空闲回收由 `BrowserSessionHelper` 持有，normal/safe 模式均在模块服务和 TaskRegistry
+启动后登记一个扫描任务；每 60 秒向已有会话线程投递条件关闭，不创建额外线程池或浏览器。
+空闲期从末次操作结束起计算 15 分钟，排队和在途操作受同一准入锁保护；关闭前复核会话、
+执行器、owner 和时间，旧关闭不能撤销同名新实例。TaskRegistry 取消扫描后等待已投递关闭，
+超时沿用登记器的 fail-fast 语义；最终全关仍在模块关闭阶段，不提前释放消费者资源。
+启动性能清单仅新增该组件：normal 33 → 34、safe 21 → 22，历史计时样本与三秒上限不变。
 Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新进程承载，不能在同一解释器中重建局部资源域。
 插件需要浏览器时使用 `app.sdk.browser`，由宿主浏览器适配器协调资源，不直接依赖资源实现。
 插件需要飞书事件长连接时使用 `app.sdk.feishu.FeishuLongConnection`，与宿主飞书模块共用同一传输实现，不再各自依赖 lark-oapi。
@@ -996,6 +1002,19 @@ Durable post-commit side effects have a separate boundary:
   before plugin, module or database teardown; a timeout preserves ownership and
   fails shutdown rather than resetting bindings. Retry backoff starts when the
   failed handler finishes, not when the message was claimed.
+- Durable broadcast topics first freeze their enabled handler identifiers and
+  persist one delivery per handler in a fenced short transaction. The parent
+  records that expansion in the same transaction; replay after a settlement
+  failure reuses the committed recipients. Parent completion confirms durable
+  expansion, while `event.handler.<sha256>` records track actual consumer
+  completion. Each stable handler has its own serial recovery topic, so a slow
+  plugin cannot serialize the same batch for its peers. All deliveries share the
+  existing 20-worker bound, lease renewal and shutdown ownership; no third-party
+  thread is abandoned or treated as complete on timeout. Child envelopes retain
+  the original event payload, idempotency key and correlation context. The
+  strict event API can select one registered handler; missing handlers retry
+  through reload, disabled handlers retain the existing skip behavior. An
+  individual failure retries only that delivery, never successful peers.
 - `PostCommitResult` distinguishes the committed business value from completed
   and pending effects. This does not provide exactly-once delivery: a process may
   stop after an external sink succeeds but before complete is persisted. Outbox

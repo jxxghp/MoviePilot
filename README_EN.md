@@ -59,6 +59,7 @@ Before contributing, read the repository rules and local environment guide, keep
 - Rule index: [docs/rules/README.md](docs/rules/README.md)
 - Development setup and local source run: [docs/development-setup.md](docs/development-setup.md)
 - Testing guide: [docs/testing.md](docs/testing.md)
+- Site API integration requirements (Chinese): [docs/site-api-integration.md](docs/site-api-integration.md), covering API capabilities, authentication, fields, and integration acceptance criteria for site developers.
 - New site adapter capture and Feature Request submission: [MoviePilot-Site-Collector](https://github.com/jxxghp/MoviePilot-Site-Collector/blob/main/docs/site-adapter-capture.md)
 - Site collector downloads: [independent repository Release](https://github.com/jxxghp/MoviePilot-Site-Collector/releases/latest), published only when collector inputs change.
 - REST API documentation: https://api.movie-pilot.org

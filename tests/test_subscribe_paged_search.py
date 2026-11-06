@@ -83,6 +83,62 @@ def _missing(scope, item):
         subscribe=item, meta=build_subscribe_meta(item), mediainfo=scope.media, mediakey="tmdb:1")[1]
 
 
+def test_cumulative_episode_subscription_reaches_download_submission(subscription, monkeypatch):
+    """
+    人工累计范围经真实缺集计算、分页识别和下载选集后提交 1180 集，且不提前完成订阅。
+    """
+    scope = subscription
+    subscribe = replace(
+        scope.initial, name="One Piece", year="1999", season=23,
+        start_episode=1156, total_episode=2000, note=list(range(1156, 1180)),
+        custom_words=r"(?i)(One[.\s]Piece.*?)S01E(?=\d{4}) => \1S23E",
+    )
+    scope.current["value"] = subscribe
+    scope.media.title = scope.media.original_title = "One Piece"
+    scope.media.names = ["One Piece"]
+    scope.media.year = "1999"
+    scope.media.season = 23
+    scope.media.season_years = {1: "1999", 23: "2026"}
+    scope.media.seasons = {1: list(range(1, 62)), 23: list(range(1, 26))}
+    scope.download.download_torrent.return_value = (b"torrent", None, [1180])
+    target = SubscriptionSearchTarget(
+        subscribe, build_subscribe_meta(subscribe), scope.media, _missing(scope, subscribe), "tmdb:1",
+    )
+    search = SearchChain()
+    monkeypatch.setattr(search, "_sync_indexers", lambda _sites: [{"id": 1, "name": "A"}])
+    monkeypatch.setattr(search, "get_search_page_size", lambda **_params: 100)
+    monkeypatch.setattr(search, "search_plugin_torrents", lambda **_params: [])
+    monkeypatch.setattr(scope.chain, "get_sub_sites", lambda _subscribe: [1])
+    calls = []
+
+    def request(**params):
+        """
+        仅回放站点原始累计资源，保留真实识别词和所有后续匹配逻辑。
+        """
+        calls.append(params["page"])
+        items = [TorrentInfo(
+            site=1, site_name="A", title="One Piece 1999 S01E1180 2160p WEB-DL H265 AAC-PTerWEB",
+            enclosure="https://site.example/download?id=1180", pri_order=100,
+        )] if params["page"] == 0 else []
+        report_site_search_outcome(attempted=True, outcome="success")
+        report_site_search_page(raw_count=len(items), has_more=False)
+        return items
+
+    monkeypatch.setattr(search, "search_site_torrents", request)
+
+    _process_paged_subscription(
+        scope.chain, subscribe, search, target, SystemConfigKey.SubscribeFilterRuleGroups, None,
+    )
+
+    assert calls == [0]
+    scope.download.download_single.assert_called_once()
+    assert 1180 in scope.current["value"].note
+    assert 1180 not in _missing(scope, scope.current["value"])["tmdb:1"][23].episodes
+    assert 1181 in _missing(scope, scope.current["value"])["tmdb:1"][23].episodes
+    assert scope.media.seasons[23] == list(range(1, 26))
+    scope.finished.assert_not_called()
+
+
 def test_full_pack_candidate_without_torrent_cannot_submit_download(subscription, monkeypatch):
     """
     整包候选缺少种子信息时不比较优先级或提交下载，保留原始缺集范围。

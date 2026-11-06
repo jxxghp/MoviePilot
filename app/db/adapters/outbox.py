@@ -13,7 +13,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.dml import Update
 
-from app.application.outbox import ClaimedOutboxMessage, OutboxIntent
+from app.application.outbox import (
+    EVENT_FANOUT_COMPLETE_FIELD,
+    ClaimedOutboxMessage,
+    OutboxIntent,
+    OutboxLeaseLostError,
+)
 from app.db.base import execute_dml
 from app.db.models.outbox import OutboxMessage
 
@@ -155,6 +160,41 @@ class SqlAlchemyOutboxDispatchStore:
         原子认领最早一条到期消息。
         """
         return self._claim(now, lease_until, topic=topic, exclude_topics=exclude_topics)
+
+    def stage_fanout(
+        self,
+        message: ClaimedOutboxMessage,
+        intents: tuple[OutboxIntent, ...],
+        now: datetime,
+    ) -> None:
+        """
+        在独立短事务内冻结处理器投递记录，父消息重放时复用已提交的快照。
+
+        先锁定并核对父消息的 attempt，阻止失效拥有者展开事件。投递记录和完成
+        标记一起提交；父消息随后结算失败也不会重复展开或增加新订阅者。
+
+        :param message: 当前持有租约的父事件消息
+        :param intents: 从当前启用订阅快照生成的处理器投递意图
+        :param now: 子消息的创建时间及首次重试时间
+        :raises OutboxLeaseLostError: 父消息已由其他 attempt 接管或结算
+        """
+        with self._session_factory() as session:
+            locked = execute_dml(
+                session,
+                update(OutboxMessage).where(
+                    OutboxMessage.id == message.message_id,
+                    OutboxMessage.status == "processing",
+                    OutboxMessage.attempt == message.attempt,
+                ).values(lease_until=OutboxMessage.lease_until),
+            )
+            if not locked:
+                raise OutboxLeaseLostError("Outbox 事件展开凭证已失效")
+            parent = session.scalars(select(OutboxMessage).where(OutboxMessage.id == message.message_id)).one()
+            if parent.payload.get(EVENT_FANOUT_COMPLETE_FIELD):
+                return
+            session.add_all(_outbox_model(intent, now) for intent in intents)
+            parent.payload = {**parent.payload, EVENT_FANOUT_COMPLETE_FIELD: True}
+            session.commit()
 
     def claim_by_event_key(
         self,

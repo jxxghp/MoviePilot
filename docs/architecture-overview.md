@@ -415,9 +415,10 @@ collector 只接受 canonical `eventmanager`、`EventManager()` 及其有限别�
 `register`/`add_event_listener`；当前宿主有 17 个静态注册点，另保留 1 个由工作流配置驱动的
 真实动态注册。`app/plugins/**` 插件副本不进入宿主事实。
 
-生产者与消费者共用 `scripts/architecture/event_facts.py` 这一份逐调用事实源。当前宿主有 86 个
-生产调用，其中 85 个静态解析为 87 个事件引用，只有 `Command.send_plugin_event` 的插件事件类型
-保持动态；18 个消费注册中 17 个静态、1 个动态。生成的
+生产者与消费者共用 `scripts/architecture/event_facts.py` 这一份逐调用事实源。当前宿主有 76 个
+生产调用，其中 74 个静态解析为 76 个事件引用，`Command.send_plugin_event` 的插件事件类型和
+`dispatch_event_handler` 的持久事件恢复类型保持动态；后者只接受 `DURABLE_EVENT_TOPICS`
+登记的事件。18 个消费注册中 17 个静态、1 个动态。生成的
 `runtime-contract-baseline.json` 保存 line-free 事实、数量和枚举索引；人工维护的
 `runtime-contract-policy.json` 只批准 consumer 的精确 fingerprint、owner 和理由，任何新增、替换、
 重复或陈旧项都会失败，`--write-host` 不会改写该 policy。
@@ -488,7 +489,10 @@ flowchart LR
   `sdk/_legacy/subscribe.py` + Compat 门面保留插件 ABI，不进入 canonical `__all__`。
 - **Outbox 可靠副作用**：业务行与 durable intent 在同一 Session/UoW 中提交；提交后由
   Outbox dispatcher 依据 topic、claim/lease、有限重试和 dead-letter 执行。完成通知、事件和统计
-  的 post-commit 逻辑必须保持幂等，不能用普通线程或 TaskRegistry 代替持久 intent。终态历史随统一
+  的 post-commit 逻辑必须保持幂等，不能用普通线程或 TaskRegistry 代替持久 intent。持久广播先
+  冻结接收方并写入逐处理器子消息；父消息完成表示展开已持久化，实际结果由 `event.handler.*`
+  子消息结算。每个处理器独立串行恢复，复用总计最多 20 个 worker、续租与关闭屏障，慢插件
+  只积压自身投递，失败不会重放已成功的其他处理器。终态历史随统一
   数据维护任务分批清理，默认成功记录保留 30 天、dead letter 保留 90 天；总开关和两项保留期由
   高级设置维护，待投递和 lease 中记录不参与清理。
 - **统一历史保留期**：所有可安全按时间回收的追加型数据均受 `DATA_CLEANUP_ENABLE` 控制，包括消息、
@@ -815,19 +819,19 @@ flowchart LR
 
 ### 10.2 当前架构快照
 
-以下是 2026-11-02 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
+以下是 2026-11-06 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
 不代表某个已发布镜像或正在运行的实例已经验证。
 
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1150 |
-| 内部导入边 | 9,970 |
+| 内部导入边 | 9,972 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |
 | Module Contract V2 spec | 224（其中 220 个方法进入 `run_module` 观察面） |
 | Event Contract | 53 |
-| Event producer / consumer | 86（85 静态、1 动态）/ 18（17 静态、1 动态） |
+| Event producer / consumer | 76（74 静态、2 动态）/ 18（17 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 

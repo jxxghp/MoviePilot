@@ -120,7 +120,6 @@
       "app/runtime/tasks.py:TaskRegistry.submit_threadsafe": 25,
       "app/scheduler/bridge.py:SchedulerBridgeOwner._submit_cross_thread": 16,
       "app/scheduler/execution.py:SchedulerExecutionOwner.start": 21,
-      "app/startup/composition/outbox.py:build_outbox_handlers": 16,
       "app/workflow/__init__.py:WorkflowManager._check_complex_condition": 16,
       "app/workflow/actions/fetch_torrents.py:FetchTorrentsAction.execute": 16,
       "app/workflow/actions/transfer_file.py:TransferFileAction.execute": 19

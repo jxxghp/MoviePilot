@@ -3,6 +3,9 @@
 """
 
 from collections.abc import Callable
+from datetime import datetime, timezone
+from functools import partial
+from hashlib import sha256
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.application.chain.events import (
@@ -15,8 +18,11 @@ from app.application.outbox import (
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
+    DURABLE_EVENT_TOPICS,
+    EVENT_HANDLER_TOPIC_PREFIX,
     ClaimedOutboxMessage,
     OutboxDispatcher,
+    OutboxIntent,
     durable_event_topic,
     reset_outbox_dispatcher,
     validate_durable_event_handlers,
@@ -47,20 +53,36 @@ def _dispatch_agent_transfer_notification(message: ClaimedOutboxMessage) -> None
     CommandChain().post_message_strict(restored, event_key=message.event_key)
 
 
+def _stage_event_handlers(event_type: EventType, message: ClaimedOutboxMessage) -> None:
+    """
+    冻结启用订阅并持久化逐处理器投递，避免第三方调用阻塞父主题的恢复。
+    """
+    intents = []
+    for handler_id in EventManager().broadcast_handler_ids(event_type):
+        handler_digest = sha256(handler_id.encode()).hexdigest()
+        delivery_digest = sha256(f"{message.event_key}\0{handler_id}".encode()).hexdigest()
+        intents.append(OutboxIntent(
+            event_key=f"event.handler:{delivery_digest}",
+            topic=f"{EVENT_HANDLER_TOPIC_PREFIX}{handler_digest}",
+            payload={
+                "event_type": event_type.value,
+                "event_key": message.event_key,
+                "handler_id": handler_id,
+                "event_payload": message.payload,
+            },
+        ))
+    SqlAlchemyOutboxDispatchStore(SessionFactory).stage_fanout(
+        message, tuple(intents), datetime.now(timezone.utc),
+    )
+
+
 def build_outbox_handlers() -> dict[
     str,
     Callable[[ClaimedOutboxMessage], None],
 ]:
     """
-    构造等待真实执行边界的 at-least-once 通知、事件和统计 handler。
+    构造持久事件展开、通知和统计 handler，事件处理器由独立消息等待真实结算。
     """
-    event_manager_factory: Callable[[], EventManager] = EventManager
-
-    def discard_event_receipt(_event: object) -> None:
-        """
-        丢弃普通事件 API 的回执，使 outbox handler 仅表达结算成功。
-        """
-
     def dispatch_subscribe_deleted_report(message: ClaimedOutboxMessage) -> None:
         """
         重放订阅删除统计；未确认时抛错以进入有限重试。
@@ -149,84 +171,50 @@ def build_outbox_handlers() -> dict[
             )
 
     handlers: dict[str, Callable[[ClaimedOutboxMessage], None]] = {
-        durable_event_topic(EventType.SubscribeAdded): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.SubscribeAdded,
-                message.payload,
-            )
-        ),
+        durable_event_topic(event_type): partial(_stage_event_handlers, event_type)
+        for event_type in DURABLE_EVENT_TOPICS
+    }
+    handlers.update({
         "subscribe.added.report": dispatch_subscribe_added_report,
         "subscribe.added.notification": dispatch_subscribe_added_notification,
-        durable_event_topic(EventType.SubscribeModified): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.SubscribeModified,
-                message.payload,
-            )
-        ),
-        durable_event_topic(EventType.SubscribeDeleted): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.SubscribeDeleted,
-                message.payload,
-            )
-        ),
         "subscribe.deleted.report": dispatch_subscribe_deleted_report,
-        durable_event_topic(EventType.SubscribeComplete): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.SubscribeComplete,
-                message.payload,
-            )
-        ),
         "subscribe.complete.report": dispatch_subscribe_complete_report,
         "subscribe.complete.notification": dispatch_subscribe_notification,
-        durable_event_topic(EventType.DownloadAdded): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.DownloadAdded,
-                restore_download_added(message.payload),
-            )
-        ),
         DOWNLOAD_NOTIFICATION_TOPIC: dispatch_download_notification,
         AGENT_TRANSFER_NOTIFICATION_TOPIC: _dispatch_agent_transfer_notification,
         DOWNLOAD_MODULE_TOPIC: dispatch_download_module,
         DOWNLOAD_SUBTITLE_TOPIC: dispatch_download_subtitle,
-        durable_event_topic(EventType.TransferComplete): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.TransferComplete,
-                restore_transfer_result(message.payload),
-            )
-        ),
-        durable_event_topic(EventType.TransferFailed): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.TransferFailed,
-                restore_transfer_result(message.payload),
-            )
-        ),
-        durable_event_topic(EventType.SubtitleTransferComplete): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.SubtitleTransferComplete,
-                restore_transfer_result(message.payload),
-            )
-        ),
-        durable_event_topic(EventType.SubtitleTransferFailed): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.SubtitleTransferFailed,
-                restore_transfer_result(message.payload),
-            )
-        ),
-        durable_event_topic(EventType.AudioTransferComplete): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.AudioTransferComplete,
-                restore_transfer_result(message.payload),
-            )
-        ),
-        durable_event_topic(EventType.AudioTransferFailed): lambda message: discard_event_receipt(
-            event_manager_factory().send_event_strict(
-                EventType.AudioTransferFailed,
-                restore_transfer_result(message.payload),
-            )
-        ),
-    }
+    })
     validate_durable_event_handlers(handlers)
     return handlers
+
+
+def dispatch_event_handler(message: ClaimedOutboxMessage) -> None:
+    """
+    恢复一个处理器的事件对象并等待真实完成，失败只重试该处理器的投递记录。
+
+    保留父事件的幂等键与关联上下文，子消息身份仅用于隔离租约及结算。
+    不取消仍在执行的第三方代码，关闭与续租继续由 OutboxRecovery 持有。
+    """
+    if not message.topic.startswith(EVENT_HANDLER_TOPIC_PREFIX):
+        raise ValueError(f"未登记的 Outbox 主题：{message.topic}")
+    event_type = EventType(message.payload["event_type"])
+    if event_type not in DURABLE_EVENT_TOPICS:
+        raise ValueError(f"未登记的持久事件：{event_type.value}")
+    payload = message.payload["event_payload"]
+    if event_type == EventType.DownloadAdded:
+        payload = restore_download_added(payload)
+    elif event_type in {
+        EventType.TransferComplete, EventType.TransferFailed,
+        EventType.SubtitleTransferComplete, EventType.SubtitleTransferFailed,
+        EventType.AudioTransferComplete, EventType.AudioTransferFailed,
+    }:
+        payload = restore_transfer_result(payload)
+    with correlation_scope(message.payload["event_key"]):
+        manager = EventManager()
+        manager.send_event_strict(
+            event_type, payload, handler_id=message.payload["handler_id"],
+        )
 
 
 def build_outbox_dispatcher() -> OutboxDispatcher:
@@ -236,6 +224,7 @@ def build_outbox_dispatcher() -> OutboxDispatcher:
     return OutboxDispatcher(
         repository=SqlAlchemyOutboxDispatchStore(SessionFactory),
         handlers=build_outbox_handlers(),
+        fallback_handler=dispatch_event_handler,
         failure_observer=lambda dead: record_metric(
             "scheduler.job.dead_letter" if dead else "scheduler.job.retry",
             owner="outbox",

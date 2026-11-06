@@ -303,6 +303,9 @@ class _BatchDownloadRun:
     ) -> Optional[Tuple[bytes, bool]]:
         """
         整季不合格也保留识别集数，供后续完整集阶段继续判断该候选。
+
+        必须按种子内真实文件写入离散集号；若用起止集连续填洞，断档中间集会被
+        误记为已覆盖，后续阶段不再补下。
         """
         parsed = self._read_torrent(context)
         if parsed is None:
@@ -312,7 +315,7 @@ class _BatchDownloadRun:
             return None
         meta = context.meta_info
         assert meta is not None
-        meta.set_episodes(begin=min(episodes), end=max(episodes))
+        meta.set_episode_list(list(episodes))
         info = _selection.get_no_exist_media(self.no_exists, media_key, season)
         required = _selection.get_required_episodes(self.no_exists, media_key, season) \
             if _selection.requires_complete_coverage(info) else set()
@@ -391,7 +394,7 @@ class _BatchDownloadRun:
             meta = context.meta_info
             assert meta is not None
             logger.info(f"开始下载 {meta.title} ...")
-            if not self.owner.download_single(context, **self.options):
+            if not self.owner.download_single(context, episodes=episodes, **self.options):
                 self._remember_failure(context)
                 continue
             if _selection.requires_complete_coverage(info):
@@ -512,5 +515,6 @@ class _BatchDownloadRun:
         self.downloaded.append(context)
         meta = context.meta_info
         assert meta is not None
-        meta.set_episodes(begin=min(episodes), end=max(episodes))
+        # 保留种子内真实文件集号，避免断档被连续区间吞掉。
+        meta.set_episode_list(list(episodes))
         return selected

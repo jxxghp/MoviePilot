@@ -145,13 +145,22 @@ class Transmission:
         :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
         :return: 任务列表和错误标志；未连接或查询失败时返回空列表及 True，查询无匹配项时错误标志为 False
         """
+        if not self.trc and getattr(self, "_host", None) and getattr(self, "_port", None):
+            self.reconnect()
         if not self.trc:
             return [], True
-        try:
-            torrents = self.trc.get_torrents(ids=ids, arguments=self._trarg)
-        except Exception as err:
-            logger.error(f"获取种子列表出错：{str(err)}")
-            return [], True
+        for attempt in range(2):
+            if not self.trc:
+                return [], True
+            try:
+                torrents = self.trc.get_torrents(ids=ids, arguments=self._trarg)
+                break
+            except Exception as err:
+                logger.error(f"获取种子列表出错：{str(err)}")
+                if attempt == 0:
+                    self.reconnect()
+                    continue
+                return [], True
         if status and not isinstance(status, list):
             status = [status]
         if tags and not isinstance(tags, list):
@@ -265,17 +274,26 @@ class Transmission:
         :param cookie: 下载种子 URL 使用的站点 Cookie
         :return: 客户端返回的种子对象；未连接或请求失败时返回 None
         """
+        if not self.trc and getattr(self, "_host", None) and getattr(self, "_port", None):
+            self.reconnect()
         if not self.trc:
             return None
-        try:
-            return self.trc.add_torrent(torrent=content,
-                                        download_dir=download_dir,
-                                        paused=is_paused,
-                                        labels=labels,
-                                        cookies=cookie)
-        except Exception as err:
-            logger.error(f"添加种子出错：{str(err)}")
-            return None
+        for attempt in range(2):
+            if not self.trc:
+                return None
+            try:
+                return self.trc.add_torrent(torrent=content,
+                                            download_dir=download_dir,
+                                            paused=is_paused,
+                                            labels=labels,
+                                            cookies=cookie)
+            except Exception as err:
+                logger.error(f"添加种子出错：{str(err)}")
+                if attempt == 0:
+                    self.reconnect()
+                    continue
+                return None
+        return None
 
     def start_torrents(self, ids: TorrentIds) -> bool:
         """
