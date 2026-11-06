@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from unittest.mock import patch
 
 from app.runtime import cache as runtime_cache
 from app.runtime.config import settings
@@ -60,23 +61,23 @@ print(json.dumps({"loaded": loaded, "redis_enabled": get_cache_composition().red
 
 
 def test_redis_cache_composition_registers_owners_and_backends(
-    monkeypatch,
     compose_cache_backend,
 ) -> None:
     """
-    启动时选用 Redis 才接入 Redis 后端与连接 owner。
+    启动时选用 Redis 才接入 Redis 后端与连接 owner，探测不访问真实服务。
     """
     from app.adapters.cache.redis import AsyncRedisHelper, RedisBackend, RedisHelper
 
-    monkeypatch.setattr(RedisHelper, "_connect", lambda _self: None)
+    # 已有单例可能保留实例级方法，直接隔离实际 owner，并由上下文恢复其原始属性。
+    with patch.object(RedisHelper(), "_connect", return_value=None) as connect:
+        compose_cache_backend("redis")
+        composition = cache_composition.get_cache_composition()
 
-    compose_cache_backend("redis")
-    composition = cache_composition.get_cache_composition()
-
-    assert composition.redis_enabled is True
-    assert composition.redis_owners == (RedisHelper, AsyncRedisHelper)
-    assert isinstance(runtime_cache.FileCache(), RedisBackend)
-    assert runtime_cache.probe_redis_cache() is True
+        assert composition.redis_enabled is True
+        assert composition.redis_owners == (RedisHelper, AsyncRedisHelper)
+        assert isinstance(runtime_cache.FileCache(), RedisBackend)
+        assert runtime_cache.probe_redis_cache() is True
+        connect.assert_called_once_with()
 
 
 def test_redis_setting_after_local_startup_waits_for_restart(
