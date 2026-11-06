@@ -174,6 +174,22 @@ Report the result with the final URL, observed status, and any remaining
 uncertainty. If the page failed, include the visible error text and the action
 that failed.
 
+## 会话空闲与主动关闭
+
+浏览器会话不是永久存储。宿主在正常及安全模式下每 60 秒扫描一次，最后一次操作结束后
+空闲满 15 分钟、且没有排队或运行中操作时才可回收。关闭在原会话线程排队并复核条件，
+不会打断正在执行的操作；无需下一次请求触发，也不保证恰在第 15 分钟完成。
+长时间等待用户后，应重新打开目标页面并核验状态，不假定旧页面、登录状态或元素引用仍有效。
+
+完成任务、核验结果并取完必要数据后，建议显式关闭会话，不把后台回收当作及时清理：
+
+```text
+browse_webpage action="close_session"
+```
+
+此前显式使用 `session_key` 时，关闭也传同一个值。宿主关停或启动失败回滚由 TaskRegistry
+取消扫描并等待已投递的关闭；活动会话的最终全关仍在模块关闭阶段，不由扫描任务提前执行。
+
 ## MoviePilot Site Workflows
 
 ### Diagnose A Configured Site

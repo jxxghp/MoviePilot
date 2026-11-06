@@ -45,6 +45,7 @@ from app.startup.initializers.modules import (
     drain_events,
     init_modules,
     settle_events,
+    start_browser_session_reaper,
     stop_modules,
 )
 from app.startup.initializers.monitor import init_monitor, stop_monitor
@@ -558,6 +559,13 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("模块服务",),
             start=configure_plugin_services,
             start_order=72,
+            start_timeout_seconds=30,
+        ),
+        LifecycleComponent(
+            name="浏览器空闲回收",
+            dependencies=("模块服务", "后台任务登记器"),
+            start=lambda: start_browser_session_reaper(app.state.task_registry),
+            start_order=73,
             start_timeout_seconds=30,
         ),
         LifecycleComponent(

@@ -161,7 +161,7 @@
         ],
         "median_startup_ms": 0.694,
         "median_full_lifespan_ms": 1.909,
-        "enabled_component_count": 33,
+        "enabled_component_count": 34,
         "enabled_components": [
           "文件日志",
           "后台任务登记器",
@@ -178,6 +178,7 @@
           "模块服务",
           "社区勋章缓存",
           "插件服务装配",
+          "浏览器空闲回收",
           "插件备份恢复",
           "消息队列",
           "插件",
@@ -296,7 +297,7 @@
         ],
         "median_startup_ms": 0.553,
         "median_full_lifespan_ms": 1.197,
-        "enabled_component_count": 21,
+        "enabled_component_count": 22,
         "enabled_components": [
           "文件日志",
           "后台任务登记器",
@@ -313,6 +314,7 @@
           "模块服务",
           "社区勋章缓存",
           "插件服务装配",
+          "浏览器空闲回收",
           "消息队列",
           "整理后台服务",
           "AI智能体会话",
