@@ -1458,6 +1458,11 @@
       "enum_name": "NotificationClearBefore",
       "source_file": "app/schemas/types.py"
     },
+    "NotificationPolicies": {
+      "description": "后台主动通知策略；独立于通知接收范围和渠道开关",
+      "enum_name": "NotificationPolicies",
+      "source_file": "app/schemas/types.py"
+    },
     "NotificationSendTime": {
       "description": "通知发送时间",
       "enum_name": "NotificationSendTime",

@@ -14,6 +14,7 @@ from app.application.chain.events import (
     restore_transfer_result,
 )
 from app.application.outbox import (
+    AGENT_TRANSFER_NOTIFICATION_TOPIC,
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
@@ -34,6 +35,22 @@ from app.runtime.events import EventManager
 from app.runtime.observability import record_metric
 from app.schemas.message import Message
 from app.schemas.types import EventType
+
+
+def _dispatch_agent_transfer_notification(message: ClaimedOutboxMessage) -> None:
+    """
+    恢复自动接管通知的完整上下文，并在统一出口重新应用当前推送策略。
+    """
+    if message.payload_version != 1:
+        raise ValueError("自动接管通知快照版本不受支持")
+    snapshot = message.payload.get("message")
+    context = message.payload.get("notification_context")
+    if not isinstance(snapshot, dict) or not isinstance(context, dict):
+        raise ValueError("自动接管通知快照缺少消息或策略上下文")
+    restored = Message.model_validate({**snapshot, "notification_context": context})
+    if restored.notification_context is None or restored.notification_context.trigger != "automatic":
+        raise ValueError("自动接管通知快照缺少自动任务身份")
+    CommandChain().post_message_strict(restored, event_key=message.event_key)
 
 
 def _stage_event_handlers(event_type: EventType, message: ClaimedOutboxMessage) -> None:
@@ -164,6 +181,7 @@ def build_outbox_handlers() -> dict[
         "subscribe.complete.report": dispatch_subscribe_complete_report,
         "subscribe.complete.notification": dispatch_subscribe_notification,
         DOWNLOAD_NOTIFICATION_TOPIC: dispatch_download_notification,
+        AGENT_TRANSFER_NOTIFICATION_TOPIC: _dispatch_agent_transfer_notification,
         DOWNLOAD_MODULE_TOPIC: dispatch_download_module,
         DOWNLOAD_SUBTITLE_TOPIC: dispatch_download_subtitle,
     })

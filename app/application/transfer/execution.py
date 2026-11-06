@@ -586,6 +586,27 @@ class TransferSettlementIntent:
 
 
 @dataclass(frozen=True, slots=True)
+class TransferSettlementSnapshot:
+    """
+    独立于可变历史映射的不可变终态结算证据。
+
+    :param task_id: 已结算的原始持久任务标识
+    :param history_id: 结算时关联的历史主键
+    :param settlement_revision: 任务的单调递增结算版本
+    :param outcome: 已提交的真实成功或失败终态
+    :param src: 结算时的源路径；旧回执可能缺失
+    :param src_storage: 结算时的源存储；旧回执可能缺失
+    """
+
+    task_id: str
+    history_id: int
+    settlement_revision: int
+    outcome: TransferTerminalState
+    src: Optional[str]
+    src_storage: Optional[str]
+
+
+@dataclass(frozen=True, slots=True)
 class TransferSettlementResult:
     """
     描述终态历史是否新提交以及待处理记录是否已删除。
@@ -750,6 +771,22 @@ class TransferExecutionRepository(Protocol):
 
         :param task_id: 目标持久整理任务的稳定标识
         :return: 当前执行快照；任务不存在时为 None
+        """
+
+    def get_latest_settlement(self, *, task_id: str) -> Optional[TransferSettlementSnapshot]:
+        """
+        读取不依赖 pending 和历史任务映射的最近终态回执。
+
+        :param task_id: 原始持久整理任务标识
+        :return: 独立终态证据；从未结算时为 None
+        """
+
+    async def async_get_latest_settlement(self, *, task_id: str) -> Optional[TransferSettlementSnapshot]:
+        """
+        异步读取独立终态证据，不在事件循环中执行同步数据库 I/O。
+
+        :param task_id: 原始持久整理任务标识
+        :return: 独立终态证据；从未结算时为 None
         """
 
     def isolate_unhandled_failure(

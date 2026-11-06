@@ -26,6 +26,8 @@ DOWNLOAD_ADDED_TOPIC = "download.added"
 DOWNLOAD_NOTIFICATION_TOPIC = "download.added.notification"
 DOWNLOAD_MODULE_TOPIC = "download.added.module"
 DOWNLOAD_SUBTITLE_TOPIC = "download.added.subtitle"
+# 自动整理接管回执的独立投递主题，与整理业务事件分开重试。
+AGENT_TRANSFER_NOTIFICATION_TOPIC = "agent.transfer.notification"
 TRANSFER_COMPLETED_TOPIC = "transfer.completed"
 TRANSFER_FAILED_TOPIC = "transfer.failed"
 SUBTITLE_TRANSFER_COMPLETED_TOPIC = "transfer.subtitle.completed"
@@ -56,6 +58,7 @@ REQUIRED_OUTBOX_TOPICS = frozenset(DURABLE_EVENT_TOPICS.values()) | {
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
+    AGENT_TRANSFER_NOTIFICATION_TOPIC,
 }
 
 

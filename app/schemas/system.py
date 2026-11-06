@@ -106,6 +106,17 @@ class NotificationSwitchConf(BaseModel):
     action: Optional[str] = Field(default="all", description="通知范围 all/user/admin")
 
 
+class NotificationPoliciesConf(BaseModel):
+    """
+    后台主动通知策略，与业务功能开关、接收人范围及渠道筛选分开保存。
+    """
+
+    agent_transfer_takeover: Literal["all", "attention", "off"] = Field(
+        default="all",
+        description="自动整理接管通知：all 全部通知，attention 仅需人工处理或状态待核实，off 关闭主动通知；不影响手动回复及普通整理通知",
+    )
+
+
 class PluginMarketSyncRequest(BaseModel):
     """
     插件市场仓库同步请求。

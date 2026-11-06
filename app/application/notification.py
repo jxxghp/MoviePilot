@@ -4,8 +4,10 @@
 
 from typing import Optional
 
+from app.application.configuration import get_configured_system_config
 from app.application.service import ServiceBaseHelper, get_service_configs
-from app.schemas.system import NotificationConf, NotificationSwitchConf, ServiceInfo
+from app.schemas.message import Message, MessageNotificationContext
+from app.schemas.system import NotificationConf, NotificationPoliciesConf, NotificationSwitchConf, ServiceInfo
 from app.schemas.types import MessageType, ModuleType, SystemConfigKey
 
 
@@ -64,3 +66,34 @@ def get_notification_switch(mtype: MessageType) -> str:
         if switch.type == mtype.value:
             return switch.action or "admin"
     return "admin"
+
+
+def apply_notification_policy(message: Message) -> Optional[Message]:
+    """
+    在宿主渠道及插件分流前应用主动通知策略，不过滤明确的手动回复。
+
+    :param message: 已完成历史保存且尚未分配接收人的消息
+    :return: 允许投递的原消息或简短副本；被策略关闭时为 None
+    """
+    context = message.notification_context
+    if context is None or context.trigger != "automatic":
+        return message
+    value = get_configured_system_config().get(SystemConfigKey.NotificationPolicies)
+    policy = NotificationPoliciesConf.model_validate(value or {}).agent_transfer_takeover
+    if policy == "off":
+        return None
+    if policy == "attention":
+        if context.stage not in {"attention", "unknown"}:
+            return None
+        return message.model_copy(update={"text": context.summary or "任务状态待核实，请查看整理历史。"})
+    return message
+
+
+def agent_transfer_notification_key(context: MessageNotificationContext) -> str:
+    """
+    由原始任务、结算版本和通知阶段构造可跨重启复用的幂等键。
+
+    :param context: 宿主生成并校验过的自动整理接管身份
+    :return: 不包含标题、文件路径或通知目标的稳定事件键
+    """
+    return f"agent.transfer.notification:{context.task_id}:{context.settlement_revision}:{context.stage}:v1"

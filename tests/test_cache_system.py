@@ -1207,7 +1207,8 @@ def test_redis_helper_failure_logs_mask_cache_key_credentials(monkeypatch, redis
     """
     helper = RedisHelper()
     monkeypatch.setattr(helper, "client", None)
-    monkeypatch.setattr(helper, "_connect", lambda: _failing_sync_client())
+    # 替换类方法，避免回滚时把绑定方法永久留在进程级单例上。
+    monkeypatch.setattr(RedisHelper, "_connect", lambda _self: _failing_sync_client())
 
     helper.set(CREDENTIAL_CACHE_KEY, {"result": 1}, region="TMDb:request")
     assert helper.get(CREDENTIAL_CACHE_KEY, region="TMDb:request") is None
@@ -1215,6 +1216,7 @@ def test_redis_helper_failure_logs_mask_cache_key_credentials(monkeypatch, redis
     helper.delete(CREDENTIAL_CACHE_KEY, region="TMDb:request")
 
     assert len(redis_failure_logs) == 4
+    assert "_connect" not in vars(helper)
     for message in redis_failure_logs:
         assert "SUPERSECRET" not in message
         assert "api_key=<REDACTED>" in message
@@ -1228,14 +1230,16 @@ def test_async_redis_helper_failure_logs_mask_cache_key_credentials(monkeypatch,
     """
     helper = AsyncRedisHelper()
 
-    async def _fake_connect():
+    async def _fake_connect(_self):
         """
         返回命令必然失败的异步客户端替身。
+
+        :param _self: 类方法绑定的助手实例，不在单例上保存方法替身
         """
         return _FailingAsyncClient()
 
     monkeypatch.setattr(helper, "client", None)
-    monkeypatch.setattr(helper, "_connect", _fake_connect)
+    monkeypatch.setattr(AsyncRedisHelper, "_connect", _fake_connect)
 
     async def exercise():
         """
@@ -1249,6 +1253,7 @@ def test_async_redis_helper_failure_logs_mask_cache_key_credentials(monkeypatch,
     asyncio.run(exercise())
 
     assert len(redis_failure_logs) == 4
+    assert "_connect" not in vars(helper)
     for message in redis_failure_logs:
         assert "SUPERSECRET" not in message
         assert "api_key=<REDACTED>" in message

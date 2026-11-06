@@ -346,6 +346,7 @@ def test_automatic_takeover_only_submits_safe_new_failures(replan_store, tmp_pat
     if blocker is None:
         chain._take_over_transfer_history_by_ai.assert_called_once_with(
             history_id=receipt.history_id, channel=None, source=None, userid=None, username='tester',
+            automatic=True,
         )
     else:
         chain._take_over_transfer_history_by_ai.assert_not_called()

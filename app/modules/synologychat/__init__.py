@@ -26,6 +26,12 @@ register_channel_admin_resolver(
 )
 
 
+class SynologyChatDeliveryError(RuntimeError):
+    """
+    已选中的 SynologyChat 通知未获成功确认，严格投递入口应保留重试。
+    """
+
+
 class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
     """
     负责 Synology Chat 消息收发、附件解析和管理员命令校验。
@@ -377,24 +383,32 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
         """
         向通过渠道范围筛选的 SynologyChat 配置发送普通通知。
 
-        不汇总客户端发送结果；客户端负责记录发送失败。
+        尝试全部已选配置和正文分段后汇总失败，成功或未选中配置时仍返回 None。
+        严格投递会传播失败以保留 Outbox 重试；部分成功时采用至少一次投递语义。
 
         :param message: 提供渠道范围、接收人和标题等信息的通知消息
         :param kwargs: 兼容统一通知入口的扩展参数，当前不使用
+        :raises SynologyChatDeliveryError: 已选客户端未就绪或任一分段未获成功确认
         """
+        failures = 0
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
             client = self.get_instance(conf.name)
-            if client:
-                texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.SynologyChat) or [message.text]
-                for text in texts:
-                    client.send_msg(title=message.title, text=text,
-                                    image=message.image,
-                                    userid=self.get_notification_userid(
-                                        message, "synologychat_userid"
-                                    ),
-                                    link=message.link)
+            if client is None:
+                failures += 1
+                continue
+            texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.SynologyChat) or [message.text]
+            for text in texts:
+                if client.send_msg(title=message.title, text=text,
+                                   image=message.image,
+                                   userid=self.get_notification_userid(
+                                       message, "synologychat_userid"
+                                   ),
+                                   link=message.link) is not True:
+                    failures += 1
+        if failures:
+            raise SynologyChatDeliveryError(f"SynologyChat 通知有 {failures} 次发送未成功确认")
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """

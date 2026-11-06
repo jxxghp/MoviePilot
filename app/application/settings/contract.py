@@ -28,6 +28,7 @@ from app.schemas.system import (
     DownloaderConf,
     MediaServerConf,
     NotificationConf,
+    NotificationPoliciesConf,
     NotificationSwitchConf,
     StorageConf,
     TransferDirectoryConf,
@@ -305,6 +306,11 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
         Optional[list[NotificationSwitchConf]],
         operations=_LIST_OBJECT_OPERATIONS,
         match_field="type",
+    ),
+    SystemConfigKey.NotificationPolicies: _contract(
+        "notifications", Optional[NotificationPoliciesConf],
+        operations=("replace", "merge_dict"),
+        examples=({"agent_transfer_takeover": "attention"},),
     ),
     SystemConfigKey.Directories: _contract(
         "directories",
