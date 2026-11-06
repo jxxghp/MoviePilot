@@ -63,7 +63,7 @@ from app.runtime.log import logger
 from app.runtime.settings import (
     get_runtime_setting,
 )
-from app.runtime.tasks import get_task_registry
+from app.runtime.tasks import TaskRegistry, get_task_registry
 from app.runtime.thread import ThreadHelper
 from app.schemas.category import ClassificationFactValue, ClassificationFieldDefinition
 from app.schemas.message import Message
@@ -556,6 +556,17 @@ def update_resources() -> None:
     保留旧入口但不在启动后检查、下载或重启，资源由启动器预先应用。
     """
     return
+
+
+def start_browser_session_reaper(tasks: TaskRegistry) -> None:
+    """
+    启动空闲浏览器回收，任务取消由当前宿主登记器负责。
+
+    :param tasks: 当前应用生命周期的后台任务登记器
+    """
+    from app.adapters.network.browser import BrowserSessionHelper
+
+    BrowserSessionHelper.start_idle_reaper(tasks)
 
 
 def close_browser_sessions() -> None:

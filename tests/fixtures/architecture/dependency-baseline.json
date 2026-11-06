@@ -959,8 +959,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9961,
-  "edge_sha256": "9df270930880d2f8cbe39f55eb842d884b1b7e19294a71e2269b5b2e4def83bb",
+  "edge_count": 9963,
+  "edge_sha256": "44cf52b7ca35534e04cf6fa3de8aadcaa7f54ccdeec543b79156f6d7aed3b8a0",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1063,9 +1063,11 @@
     "app.adapters.network.browser -> app.adapters.network",
     "app.adapters.network.browser -> app.adapters.network.http",
     "app.adapters.network.browser -> app.runtime",
+    "app.adapters.network.browser -> app.runtime.execution",
     "app.adapters.network.browser -> app.runtime.log",
     "app.adapters.network.browser -> app.runtime.resources",
     "app.adapters.network.browser -> app.runtime.settings",
+    "app.adapters.network.browser -> app.runtime.tasks",
     "app.adapters.network.cloudflare -> app.runtime",
     "app.adapters.network.cloudflare -> app.runtime.log",
     "app.adapters.network.doh -> app.foundation",

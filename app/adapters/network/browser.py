@@ -2,6 +2,7 @@
 浏览器启动、可复用会话和站点页面访问适配，负责关闭所持有的页面与上下文。
 """
 
+import asyncio
 import ipaddress
 import threading
 import time
@@ -9,16 +10,19 @@ import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextvars import Context, copy_context
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Callable, Optional, Protocol, cast
 from urllib.parse import urlparse
 
 from app.adapters.network.http import RequestUtils, cookie_parse
+from app.runtime.execution import await_task_to_terminal
 from app.runtime.log import logger
 from app.runtime.resources import (
     acquire_managed_resource,
     acquire_managed_resource_async,
 )
 from app.runtime.settings import get_runtime_setting
+from app.runtime.tasks import TaskRegistry
 
 
 class BrowserElement(Protocol):
@@ -291,7 +295,7 @@ class _BrowserSessionState:
     :param cookies: 用于会话的 Cookie 请求头文本；None 表示未额外指定
     :param owner: 持有会话资源的运行时登记对象；None 表示未登记
     :param created_at: 创建时间，使用单调时钟的秒值
-    :param last_used_at: 最近使用时间，使用单调时钟的秒值，供空闲过期判断
+    :param last_used_at: 最近操作完成时间，使用单调时钟的秒值，失败操作同样更新时间
     :param lock: 保护会话状态和页面操作的可重入锁，默认每个会话独立创建
     """
 
@@ -322,6 +326,8 @@ class BrowserSessionHelper:
     """
 
     SESSION_TTL_SECONDS = 15 * 60
+    # 每分钟扫描一次，不依赖下一次浏览器请求触发空闲回收。
+    REAP_INTERVAL_SECONDS = 60
     MAX_SESSIONS = 8
     DEFAULT_VIEWPORT = {"width": 1280, "height": 720}
     PRIVATE_HOST_SUFFIXES = (".localhost", ".local", ".lan", ".home", ".internal")
@@ -334,6 +340,45 @@ class BrowserSessionHelper:
     _session_executor_owners: dict[str, Any] = {}
     _session_thread_ids: dict[str, int] = {}
     _sessions_lock = threading.RLock()
+    # 按执行器身份统计已接受的排队及在途操作，不能把排队时间误认为空闲。
+    _pending_operations: dict[ThreadPoolExecutor, int] = {}
+    _idle_closures: dict[ThreadPoolExecutor, Future[bool]] = {}
+    _idle_close_owners: dict[ThreadPoolExecutor, Any] = {}
+    # 显式关闭撤销准入后仍保留真实终态，供 owner 和全量关闭共同等待。
+    _explicit_closures: dict[ThreadPoolExecutor, tuple[Any, Future[bool]]] = {}
+    _reaper_task: Optional[asyncio.Task[None]] = None
+
+    @classmethod
+    def start_idle_reaper(cls, tasks: TaskRegistry) -> None:
+        """
+        在宿主事件循环中启动唯一的周期回收任务，不预先创建浏览器或工作线程。
+
+        :param tasks: 当前应用生命周期持有的后台任务登记器
+        """
+        if cls._reaper_task is None or cls._reaper_task.done():
+            cls._reaper_task = tasks.create(
+                cls._reap_loop(), owner="browser.sessions.idle_reaper",
+            )
+
+    @classmethod
+    async def _reap_loop(cls) -> None:
+        """
+        周期投递空闲检查；取消只停止扫描，并等待已经投递的关闭达到终态。
+
+        全量关闭仍由模块关闭阶段负责，不能在消费者停止前关闭活动会话。
+        """
+        try:
+            while True:
+                await asyncio.sleep(cls.REAP_INTERVAL_SECONDS)
+                cls._prune_sessions()
+        finally:
+            with cls._sessions_lock:
+                closures = tuple(cls._idle_closures.values())
+            for future in closures:
+                try:
+                    await await_task_to_terminal(asyncio.wrap_future(future))
+                except Exception as err:
+                    logger.warning(f"等待空闲浏览器关闭失败：{err}")
 
     def __init__(self, headless: bool = True, viewport: Optional[dict[str, int]] = None):
         """
@@ -404,6 +449,12 @@ class BrowserSessionHelper:
                 session = cls._sessions.get(session_key)
                 owner = session.owner if session else cls._session_executor_owners.get(session_key)
             cls.close_session(session_key, owner=owner)
+        with cls._sessions_lock:
+            closures = tuple(cls._idle_closures.values()) + tuple(
+                future for _owner, future in cls._explicit_closures.values()
+            )
+        for future in closures:
+            future.result()
 
     @classmethod
     def close_session(cls, session_key: str, owner: Optional[Any] = None) -> bool:
@@ -415,32 +466,34 @@ class BrowserSessionHelper:
         :return: 找到并关闭会话时返回 True
         """
         if cls._is_current_session_thread(session_key):
-            closed = cls._close_session_in_thread(session_key, owner=owner)
-            cls._shutdown_session_executor(session_key, wait=False)
-            return closed
+            return cls._close_session_in_thread(session_key, owner=owner)
 
-        executor = cls._get_existing_session_executor(session_key, owner=owner)
-        if executor:
+        with cls._sessions_lock:
+            executor = cls._get_existing_session_executor(session_key, owner=owner)
+            if executor is None:
+                return False
             context = copy_context()
-            # 会话线程保持空底层上下文，每次操作只使用当前调用快照。
+
             def close_in_context() -> bool:
                 """
-                在调用方上下文中关闭会话，保持会话线程底层上下文为空。
+                在原会话线程执行关闭，完成后释放准入计数。
                 """
                 return bool(context.run(
                     cls._run_session_task, session_key, cls._close_session_in_thread,
                     session_key, owner=owner,
                 ))
 
-            future: Future[bool] = Context().run(executor.submit, close_in_context)
+            cls._pending_operations[executor] = cls._pending_operations.get(executor, 0) + 1
             try:
-                return future.result()
-            finally:
-                cls._shutdown_session_executor(session_key)
-
-        closed = cls._close_session_in_thread(session_key, owner=owner)
-        cls._shutdown_session_executor(session_key)
-        return closed
+                future: Future[bool] = Context().run(executor.submit, close_in_context)
+                future.add_done_callback(partial(cls._release_operation, executor))
+            except RuntimeError:
+                cls._release_operation(executor)
+                raise
+        try:
+            return future.result()
+        finally:
+            cls._shutdown_session_executor(session_key, expected_executor=executor)
 
     @classmethod
     def close_owner(cls, owner: Any) -> bool:
@@ -457,6 +510,16 @@ class BrowserSessionHelper:
             )
         for session_key in session_keys:
             cls.close_session(session_key, owner=owner)
+        with cls._sessions_lock:
+            closures = tuple(
+                future for executor, future in cls._idle_closures.items()
+                if cls._idle_close_owners.get(executor) is owner
+            ) + tuple(
+                future for closing_owner, future in cls._explicit_closures.values()
+                if closing_owner is owner
+            )
+        for future in closures:
+            future.result()
         with cls._sessions_lock:
             return not any(
                 session.owner is owner
@@ -489,8 +552,6 @@ class BrowserSessionHelper:
         # 会话线程只能执行自己的浏览器任务；不能在其中同步等待其他会话关闭。
         with self._sessions_lock:
             in_session_thread = threading.get_ident() in self._session_thread_ids.values()
-        if not in_session_thread:
-            self._prune_sessions()
         try:
             return self._run_in_session_thread(
                 session_key,
@@ -532,13 +593,16 @@ class BrowserSessionHelper:
             owner=owner,
         )
         with session.lock:
-            session.last_used_at = time.monotonic()
-            if timeout and hasattr(session.active_page, "set_default_timeout"):
-                session.active_page.set_default_timeout(int(timeout) * 1000)
-            if cookies:
-                session.cookies = cookies
-                session.active_page.set_extra_http_headers({"cookie": cookies})
-            return callback(session)
+            try:
+                if timeout and hasattr(session.active_page, "set_default_timeout"):
+                    session.active_page.set_default_timeout(int(timeout) * 1000)
+                if cookies:
+                    session.cookies = cookies
+                    session.active_page.set_extra_http_headers({"cookie": cookies})
+                return callback(session)
+            finally:
+                with self._sessions_lock:
+                    session.last_used_at = time.monotonic()
 
     @classmethod
     def _run_in_session_thread(
@@ -562,33 +626,54 @@ class BrowserSessionHelper:
             return callback(*args, owner=owner, **kwargs)
 
         for _ in range(2):
-            executor = cls._get_session_executor(session_key, owner=owner)
-            try:
+            with cls._sessions_lock:
+                executor = cls._get_session_executor(session_key, owner=owner)
                 context = copy_context()
-                # 会话线程保持空底层上下文，每次操作只使用当前调用快照。
+
                 def invoke_in_context() -> Any:
                     """
-                    在当前调用方快照中执行会话操作，避免上下文在会话线程间泄漏。
+                    在独立请求上下文中执行，并在真实结束后释放准入计数。
                     """
                     return context.run(
                         cls._run_session_task, session_key, callback,
                         *args, owner=owner, **kwargs,
                     )
 
-                future: Future[Any] = Context().run(executor.submit, invoke_in_context)
-            except RuntimeError:
-                cls._discard_session_executor(session_key, executor)
-                continue
+                cls._pending_operations[executor] = cls._pending_operations.get(executor, 0) + 1
+                try:
+                    future: Future[Any] = Context().run(executor.submit, invoke_in_context)
+                    future.add_done_callback(partial(cls._release_operation, executor))
+                except RuntimeError:
+                    cls._release_operation(executor)
+                    cls._discard_session_executor(session_key, executor)
+                    continue
             try:
                 return future.result()
             except Exception:
                 with cls._sessions_lock:
                     has_session = session_key in cls._sessions
                 if not has_session:
-                    cls._shutdown_session_executor(session_key)
+                    cls._shutdown_session_executor(session_key, expected_executor=executor)
                 raise
 
         raise RuntimeError("浏览器会话线程已关闭")
+
+    @classmethod
+    def _release_operation(
+        cls, executor: ThreadPoolExecutor, _future: Optional[Future[Any]] = None,
+    ) -> None:
+        """
+        在任务终态或提交失败后释放计数，包含未执行就取消的排队任务。
+
+        :param executor: 接受操作的执行器身份
+        :param _future: 完成回调传入的终态句柄，提交失败时为空
+        """
+        with cls._sessions_lock:
+            remaining = cls._pending_operations[executor] - 1
+            if remaining:
+                cls._pending_operations[executor] = remaining
+            else:
+                cls._pending_operations.pop(executor)
 
     @classmethod
     def _run_session_task(
@@ -678,23 +763,26 @@ class BrowserSessionHelper:
             if cls._session_executors.get(session_key) is executor:
                 cls._session_executors.pop(session_key, None)
                 cls._session_executor_owners.pop(session_key, None)
+                cls._session_thread_ids.pop(session_key, None)
 
     @classmethod
     def _shutdown_session_executor(
         cls,
         session_key: str,
         wait: bool = True,
+        expected_executor: Optional[ThreadPoolExecutor] = None,
     ) -> None:
         """
-        关闭并移除指定会话的执行器。
+        关闭并移除指定会话的执行器，不移除已经替换的同名执行器。
 
         :param session_key: 会话标识
         :param wait: 是否等待工作线程退出
+        :param expected_executor: 调用方持有的执行器身份；None 表示取当前执行器
         """
         with cls._sessions_lock:
-            executor = cls._session_executors.pop(session_key, None)
-            cls._session_executor_owners.pop(session_key, None)
-            cls._session_thread_ids.pop(session_key, None)
+            executor = expected_executor or cls._session_executors.get(session_key)
+            if executor:
+                cls._discard_session_executor(session_key, executor)
         if executor:
             executor.shutdown(wait=wait, cancel_futures=True)
 
@@ -707,15 +795,30 @@ class BrowserSessionHelper:
         :param owner: 可选宿主作用域；提供时校验会话归属
         :return: 找到并关闭会话时返回 True
         """
+        completion: Future[bool] = Future()
         with cls._sessions_lock:
             session = cls._sessions.get(session_key)
             if session and session.owner is not owner:
                 raise PermissionError("浏览器会话不属于当前任务")
             session = cls._sessions.pop(session_key, None)
-        if not session:
-            return False
-        cls._close_session_state(session)
-        return True
+            executor = cls._session_executors.get(session_key)
+            if executor:
+                cls._explicit_closures[executor] = (owner, completion)
+                cls._discard_session_executor(session_key, executor)
+        try:
+            if executor:
+                executor.shutdown(wait=False, cancel_futures=True)
+            if session:
+                cls._close_session_state(session)
+            completion.set_result(session is not None)
+            return session is not None
+        except BaseException as err:
+            completion.set_exception(err)
+            raise
+        finally:
+            with cls._sessions_lock:
+                if executor:
+                    cls._explicit_closures.pop(executor, None)
 
     def open_tab(
         self,
@@ -983,16 +1086,18 @@ class BrowserSessionHelper:
         复用匹配会话，或为新的会话键创建上下文。
         """
         self._validate_owner(owner)
+        retired_session = None
         with self._sessions_lock:
             session = self._sessions.get(session_key)
             if session and session.owner is not owner:
                 raise PermissionError("浏览器会话不属于当前任务")
             if session and user_agent and session.user_agent != user_agent:
-                self._sessions.pop(session_key, None)
-                self._close_session_state(session)
+                retired_session = self._sessions.pop(session_key)
                 session = None
             if session:
                 return session
+        if retired_session is not None:
+            self._close_session_state(retired_session)
 
         context = self._launch_context(
             headless=self.headless,
@@ -1012,14 +1117,13 @@ class BrowserSessionHelper:
         )
         with self._sessions_lock:
             existing_session = self._sessions.get(session_key)
-            if existing_session:
-                if existing_session.owner is not owner:
-                    self._close_session_state(session)
-                    raise PermissionError("浏览器会话不属于当前任务")
-                self._close_session_state(session)
-                return existing_session
-            self._sessions[session_key] = session
-        return session
+            if existing_session is None:
+                self._sessions[session_key] = session
+                return session
+        self._close_session_state(session)
+        if existing_session.owner is not owner:
+            raise PermissionError("浏览器会话不属于当前任务")
+        return existing_session
 
     @staticmethod
     def _validate_owner(owner: Optional[Any]) -> None:
@@ -1032,20 +1136,76 @@ class BrowserSessionHelper:
     @classmethod
     def _prune_sessions(cls) -> None:
         """
-        关闭超过空闲时限的浏览器会话。
+        向已有会话线程投递条件关闭，不等待浏览器 I/O，不创建新的执行器。
         """
-        now = time.monotonic()
         with cls._sessions_lock:
-            expired_keys = [
-                session_key
-                for session_key, session in cls._sessions.items()
-                if now - session.last_used_at > cls.SESSION_TTL_SECONDS
-            ]
-        for session_key in expired_keys:
-            with cls._sessions_lock:
-                session = cls._sessions.get(session_key)
-                owner = session.owner if session else None
-            cls.close_session(session_key, owner=owner)
+            for session_key, session in tuple(cls._sessions.items()):
+                executor = cls._session_executors.get(session_key)
+                if (
+                    executor is None
+                    or executor in cls._idle_closures
+                    or cls._pending_operations.get(executor, 0)
+                    or time.monotonic() - session.last_used_at <= cls.SESSION_TTL_SECONDS
+                ):
+                    continue
+                try:
+                    future = Context().run(
+                        executor.submit, cls._close_idle_session,
+                        session_key, session, executor, session.owner,
+                    )
+                except RuntimeError as err:
+                    logger.warning(f"投递空闲浏览器关闭失败：{err}")
+                    continue
+                cls._idle_closures[executor] = future
+                cls._idle_close_owners[executor] = session.owner
+                future.add_done_callback(cls._idle_close_done)
+
+    @classmethod
+    def _close_idle_session(
+        cls,
+        session_key: str,
+        session: _BrowserSessionState,
+        executor: ThreadPoolExecutor,
+        owner: Optional[Any],
+    ) -> bool:
+        """
+        在原线程复核候选，并原子撤销旧会话和执行器的准入后关闭浏览器。
+
+        :param session_key: 扫描时的会话标识
+        :param session: 扫描时的会话实例，替换后的实例不能被旧任务关闭
+        :param executor: 扫描时持有该会话的执行器
+        :param owner: 扫描时的宿主作用域身份
+        :return: 候选仍空闲且已关闭时返回 True
+        """
+        with cls._sessions_lock:
+            if (
+                cls._sessions.get(session_key) is not session
+                or cls._session_executors.get(session_key) is not executor
+                or cls._session_executor_owners.get(session_key) is not owner
+                or session.owner is not owner
+                or cls._pending_operations.get(executor, 0)
+                or time.monotonic() - session.last_used_at <= cls.SESSION_TTL_SECONDS
+            ):
+                return False
+            cls._sessions.pop(session_key)
+            cls._discard_session_executor(session_key, executor)
+        # 新操作只能创建新的上下文；旧关闭不能移除同名的新执行器。
+        executor.shutdown(wait=False)
+        cls._close_session_state(session)
+        return True
+
+    @classmethod
+    def _idle_close_done(cls, future: Future[bool]) -> None:
+        """
+        观察关闭结果并释放已终止的回收句柄，防止重复投递或静默丢失异常。
+        """
+        with cls._sessions_lock:
+            for executor, current in tuple(cls._idle_closures.items()):
+                if current is future:
+                    cls._idle_closures.pop(executor)
+                    cls._idle_close_owners.pop(executor, None)
+        if not future.cancelled() and future.exception() is not None:
+            logger.warning(f"关闭空闲浏览器失败：{future.exception()}")
 
     @classmethod
     def _enforce_session_limit(cls, protect_session_key: Optional[str] = None) -> None:
