@@ -39,6 +39,7 @@ from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.storages.u115 import U115Pan
 from app.modules.filemanager.transhandler import TransHandler
+from app.schemas.exception import StorageQueryError
 from app.schemas.file import FileItem
 from app.schemas.types import MediaType
 
@@ -499,6 +500,185 @@ def test_safe_overwrite_preserves_transfer_modes(tmp_path, monkeypatch, transfer
     if transfer_type == "link":
         assert source.samefile(target)
     assert target.is_symlink() is (transfer_type == "softlink")
+
+
+@pytest.mark.parametrize("transfer_type", ["copy", "move", "link", "softlink"])
+@pytest.mark.parametrize("durable", [False, True])
+def test_overwrite_existing_hardlink_finishes_without_temporary_files(
+        tmp_path, monkeypatch, repository_factory, transfer_type, durable,
+):
+    """
+    已有目标与下载源为硬链接时，正常重整也须完成并清理暂存和备份。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.hardlink_to(source)
+    checkpoint = _checkpoint(source, target, transfer_type=transfer_type)
+    runner = _durable_runner(repository_factory(checkpoint), checkpoint) if durable else None
+
+    result = _execute(checkpoint, monkeypatch, runner)
+
+    assert result.success
+    assert target.read_bytes() == b"new-version"
+    assert source.exists() is (transfer_type != "move")
+    assert target.is_symlink() is (transfer_type == "softlink")
+    if transfer_type == "link":
+        assert source.samefile(target)
+    assert not list(tmp_path.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("transfer_type", ["copy", "move", "link", "softlink"])
+@pytest.mark.parametrize("stop_before", ["backup_overwrite_target", "promote_overwrite_target", "delete_overwrite_backup"])
+def test_existing_hardlink_overwrite_resumes_committed_steps(
+        tmp_path, monkeypatch, repository_factory, transfer_type, stop_before,
+):
+    """
+    共享 inode 的前一步已落账时，恢复须继承该回执并最终清理全部临时文件。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.hardlink_to(source)
+    checkpoint = _checkpoint(source, target, transfer_type=transfer_type)
+    repository = repository_factory(checkpoint)
+    runner = _durable_runner(repository, checkpoint)
+    real_run = runner.run
+
+    class ProcessStopped(BaseException):
+        """
+        保留前驱步骤的真实成功回执，模拟下一步开始前停止。
+        """
+
+    def stop(**kwargs):
+        """
+        只在指定的持久步骤边界停止，不改写文件和已有账本。
+        """
+        if kwargs["kind"] == stop_before:
+            raise ProcessStopped()
+        return real_run(**kwargs)
+
+    monkeypatch.setattr(runner, "run", stop)
+    with pytest.raises(ProcessStopped):
+        _execute(checkpoint, monkeypatch, runner)
+
+    result = _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    assert result.success
+    assert target.read_bytes() == b"new-version"
+    assert source.exists() is (transfer_type != "move")
+    assert target.is_symlink() is (transfer_type == "softlink")
+    if transfer_type == "link":
+        assert target.samefile(source)
+    assert not list(tmp_path.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("stop_before", ["backup_overwrite_target", "promote_overwrite_target", "delete_overwrite_backup"])
+def test_existing_hardlink_overwrite_rejects_restored_mtime_mutation(
+        tmp_path, monkeypatch, repository_factory, stop_before,
+):
+    """
+    合法链接操作的回执不能掩盖落账之后等长改写并还原修改时间的外部变更。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.hardlink_to(source)
+    checkpoint = _checkpoint(source, target, transfer_type="link")
+    repository = repository_factory(checkpoint)
+    runner = _durable_runner(repository, checkpoint)
+    real_run = runner.run
+
+    class ProcessStopped(BaseException):
+        """
+        让外部改写发生在两个已明确分开的步骤之间。
+        """
+
+    def stop(**kwargs):
+        """
+        在已知状态时间的下一次操作之前停止。
+        """
+        if kwargs["kind"] == stop_before:
+            raise ProcessStopped()
+        return real_run(**kwargs)
+
+    monkeypatch.setattr(runner, "run", stop)
+    with pytest.raises(ProcessStopped):
+        _execute(checkpoint, monkeypatch, runner)
+    before = source.stat()
+    source.write_bytes(b"CORRUPTION!")
+    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    artifacts = {path: path.read_bytes() for path in tmp_path.iterdir()}
+
+    with pytest.raises(execution_module._TransferManualReviewRequired):
+        _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    assert repository.get_snapshot(task_id="safe-overwrite").state is TransferExecutionState.MANUAL_REVIEW
+    assert {path: path.read_bytes() for path in tmp_path.iterdir()} == artifacts
+
+
+@pytest.mark.parametrize("boundary", ["backup", "source_delete"])
+def test_uncommitted_shared_inode_change_keeps_copies_for_manual_review(
+        tmp_path, monkeypatch, repository_factory, boundary,
+):
+    """
+    改名或删源已经生效但回执未落账时，不能猜测共享 inode 的新状态时间。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"new-version")
+    target.hardlink_to(source)
+    checkpoint = _checkpoint(source, target, transfer_type="link" if boundary == "backup" else "move")
+    repository = repository_factory(checkpoint)
+    real_rename, real_delete = LocalStorage.rename, LocalStorage.delete
+
+    class ProcessStopped(BaseException):
+        """
+        在文件系统副作用与持久回执之间模拟退出。
+        """
+
+    def rename(self, item, name):
+        """
+        保留实际改名，只在备份操作后停止。
+        """
+        result = real_rename(self, item, name)
+        if boundary == "backup" and name.startswith(".mp-backup-"):
+            raise ProcessStopped()
+        return result
+
+    def delete(self, item):
+        """
+        保留实际源删除，随后在备份身份落账前停止。
+        """
+        result = real_delete(self, item)
+        if boundary == "source_delete" and Path(item.path) == source:
+            raise ProcessStopped()
+        return result
+
+    monkeypatch.setattr(LocalStorage, "rename", rename)
+    monkeypatch.setattr(LocalStorage, "delete", delete)
+    with pytest.raises(ProcessStopped):
+        _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+    artifacts = {path: path.read_bytes() for path in tmp_path.iterdir()}
+
+    with pytest.raises(execution_module._TransferManualReviewRequired):
+        _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    assert repository.get_snapshot(task_id="safe-overwrite").state is TransferExecutionState.MANUAL_REVIEW
+    assert {path: path.read_bytes() for path in tmp_path.iterdir()} == artifacts
+
+
+def test_shared_inode_receipt_without_change_time_cannot_weaken_identity(tmp_path):
+    """
+    旧操作回执缺少状态时间时，不能清空冻结身份中的有效校验凭据。
+    """
+    source, target = tmp_path / "source.mkv", tmp_path / "target.mkv"
+    source.write_bytes(b"movie")
+    target.hardlink_to(source)
+    storage = object.__new__(LocalStorage)
+    expected = storage.get_item_strict(source)
+    receipt = storage.get_item_strict(target).model_copy(update={"change_time_ns": None})
+
+    with pytest.raises(StorageQueryError, match="缺少状态时间身份凭据"):
+        TransHandler._TransHandler__inherit_shared_local_identity(expected, receipt)
+
+    assert source.read_bytes() == target.read_bytes() == b"movie"
 
 
 def test_overwrite_promotes_new_target_when_old_target_disappears_before_backup(
@@ -1072,7 +1252,7 @@ def test_overwrite_preserves_all_copies_when_cleanup_identity_evidence_is_missin
         tmp_path, monkeypatch, repository_factory, missing_evidence,
 ):
     """
-    旧快照或适配器缺少大小时，禁止把当前查询结果当作原文件凭据。
+    旧快照缺少源大小时在暂存前拒绝，目标缺少大小时隔离并保留所有副本。
     """
     source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
@@ -1095,8 +1275,16 @@ def test_overwrite_preserves_all_copies_when_cleanup_identity_evidence_is_missin
 
         monkeypatch.setattr(LocalStorage, "get_item_strict", query_without_size)
     repository = repository_factory(checkpoint)
-    with pytest.raises(execution_module._TransferManualReviewRequired):
+    expected_error = (execution_module._TransferRetryDeferred if missing_evidence == "source"
+                      else execution_module._TransferManualReviewRequired)
+    with pytest.raises(expected_error):
         _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+    if missing_evidence == "source":
+        assert repository.get_snapshot(task_id="safe-overwrite").state is TransferExecutionState.RETRY_WAIT
+        assert source.read_bytes() == b"new-version"
+        assert target.read_bytes() == b"old-version"
+        assert not list(tmp_path.glob(".mp-*"))
+        return
     assert repository.get_snapshot(task_id="safe-overwrite").state is TransferExecutionState.MANUAL_REVIEW
     assert source.read_bytes() == target.read_bytes() == b"new-version"
     assert next(tmp_path.glob(".mp-backup-*")).read_bytes() == b"old-version"
