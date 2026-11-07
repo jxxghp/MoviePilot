@@ -460,11 +460,24 @@ class PluginLoader:
     ) -> None:
         """
         修正被旧绝对路径加载对象的模块身份，避免事件与诊断键冲突。
+
+        包名只按完整包名（点号边界）匹配源命名空间，并排除已处于实例命名空间的
+        包：旧式绝对导入兼容会把实例模块自身也临时登记到源插件名下，此时它的
+        ``__package__`` 已经是实例命名空间，裸前缀匹配会把残余后缀再拼接一次
+        （如 ``app.plugins.demo`` 分身变成 ``app.plugins.demowork2``），插件内的
+        延迟相对导入随之中断。
         """
         if getattr(module, "__name__", None) == source_name:
             module.__name__ = instance_name
         package_name = getattr(module, "__package__", None)
-        if isinstance(package_name, str) and package_name.startswith(source_name):
+        if (
+            isinstance(package_name, str)
+            and (package_name == source_name or package_name.startswith(f"{source_name}."))
+            and not (
+                package_name == instance_name
+                or package_name.startswith(f"{instance_name}.")
+            )
+        ):
             module.__package__ = instance_name + package_name[len(source_name):]
         spec = getattr(module, "__spec__", None)
         if spec and getattr(spec, "name", None) == source_name:
