@@ -150,3 +150,67 @@ def test_plugin_rating_service_reset_isolates_lifespans(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="尚未完成初始化"):
         rating_module.get_plugin_rating_service()
+
+
+@pytest.mark.asyncio
+async def test_metrics_cache_expires_and_isolates_identity_and_callers(monkeypatch) -> None:
+    """
+    五分钟内同集合查询复用副本，缓存到期或中心端身份变化后重新读取。
+    """
+    clock = [0.0]
+    scope = ["instance-one"]
+    monkeypatch.setattr(rating_module, "monotonic", lambda: clock[0])
+    ratings = AsyncMock(return_value={"Demo": {"average_rating": 4.0}})
+    statistic = AsyncMock(return_value={"Demo": 20})
+    service = PluginRatingService(
+        installed_plugins=lambda: ["Demo"], statistic=statistic, ratings=ratings,
+        rating=AsyncMock(), submit=AsyncMock(), cache_scope=lambda: scope[0],
+    )
+    first = await service.ratings(["Demo", "Other"])
+    first["Demo"]["average_rating"] = 1
+    assert (await service.ratings(["Other", "Demo", "Demo"]))["Demo"]["average_rating"] == 4
+    ratings.assert_awaited_once()
+    assert await service.statistic() == await service.statistic() == {"Demo": 20}
+    statistic.assert_awaited_once()
+    clock[0] = 301
+    await service.ratings(["Demo", "Other"])
+    await service.statistic()
+    assert ratings.await_count == statistic.await_count == 2
+    scope[0] = "instance-two"
+    await service.ratings(["Demo", "Other"])
+    await service.statistic()
+    assert ratings.await_count == statistic.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_failed_metrics_are_not_cached_and_submit_invalidates_inflight_reads() -> None:
+    """
+    空失败结果立即允许重试，成功评分后在途旧结果不能再次写入缓存。
+    """
+    old_result = asyncio.Future()
+    ratings = AsyncMock(side_effect=[{}, {"Demo": {"average_rating": 1.0}}])
+    service = PluginRatingService(
+        installed_plugins=lambda: ["Demo"], statistic=AsyncMock(return_value={}),
+        ratings=ratings, rating=AsyncMock(), submit=AsyncMock(return_value={"average_rating": 5.0}),
+    )
+    assert await service.ratings(["Demo"]) == {}
+    assert await service.ratings(["Demo"]) == {"Demo": {"average_rating": 1.0}}
+    assert ratings.await_count == 2
+    await service.submit("Demo", 5.0)
+
+    async def pending_query(_ids):
+        """
+        保留一个评分提交前发出的查询，模拟中心端迟到的旧响应。
+        """
+        return await old_result
+
+    ratings.side_effect = pending_query
+    pending = asyncio.create_task(service.ratings(["Demo"]))
+    await asyncio.sleep(0)
+    await service.submit("Demo", 5.0)
+    old_result.set_result({"Demo": {"average_rating": 1.0}})
+    await pending
+    ratings.side_effect = None
+    ratings.return_value = {"Demo": {"average_rating": 5.0}}
+    assert await service.ratings(["Demo"]) == ratings.return_value
+    assert ratings.await_count == 4

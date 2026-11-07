@@ -4,8 +4,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Hashable, Mapping, Sequence
+from copy import deepcopy
+from time import monotonic
 from typing import Any
+
+from cachetools import TTLCache
 
 StatisticLoader = Callable[[], Awaitable[Mapping[str, Any]]]
 RatingsLoader = Callable[[list[str] | None], Awaitable[Mapping[str, Any]]]
@@ -32,29 +36,55 @@ class PluginRatingService:
         ratings: RatingsLoader,
         rating: RatingLoader,
         submit: RatingSubmitter,
+        cache_scope: Callable[[], Hashable] = lambda: None,
     ) -> None:
         """
-        保存安装状态读取和远程评分窄端口。
+        保存安装状态读取和远程评分窄端口，创建当前 lifespan 的有界缓存。
+
+        :param cache_scope: 当前中心端、实例身份和统计开关组成的缓存隔离标识
         """
         self._installed_plugins = installed_plugins
         self._statistic = statistic
         self._ratings = ratings
         self._rating = rating
         self._submit = submit
+        self._cache_scope = cache_scope
+        # 仅由主事件循环访问；随 lifespan 释放，不把实例评分持久化到共享缓存。
+        self._metrics: TTLCache[tuple[Hashable, str, tuple[str, ...] | None], Mapping[str, Any]] = TTLCache(
+            maxsize=128, ttl=300, timer=monotonic
+        )
+        self._revision = 0
+
+    async def _cached_query(
+        self, kind: str, plugin_ids: tuple[str, ...] | None, loader: StatisticLoader
+    ) -> Mapping[str, Any]:
+        """
+        复用五分钟内的指标结果，按中心端与实例身份隔离，失败空结果不缓存。
+
+        评分提交期间发出的旧查询不得覆盖提交后的缓存；向调用方返回独立副本。
+        """
+        key = (self._cache_scope(), kind, plugin_ids)
+        cached = self._metrics.get(key)
+        if cached is not None:
+            return deepcopy(cached)
+        revision = self._revision
+        result = await loader()
+        if result and revision == self._revision:
+            self._metrics[key] = deepcopy(result)
+        return deepcopy(result)
 
     async def statistic(self) -> Mapping[str, Any]:
         """
-        返回插件安装统计。
+        返回插件安装统计，复用当前实例最近五分钟的非空结果。
         """
-        return await self._statistic()
+        return await self._cached_query("statistic", None, self._statistic)
 
-    async def ratings(
-        self, plugin_ids: list[str] | None
-    ) -> Mapping[str, Any]:
+    async def ratings(self, plugin_ids: list[str] | None) -> Mapping[str, Any]:
         """
-        批量返回插件评分快照。
+        批量返回插件评分快照，同一 ID 集合五分钟内不重复外呼。
         """
-        return await self._ratings(plugin_ids)
+        ids = tuple(sorted(set(plugin_ids))) if plugin_ids is not None else None
+        return await self._cached_query("ratings", ids, lambda: self._ratings(plugin_ids))
 
     async def rating(self, plugin_id: str) -> Mapping[str, Any]:
         """
@@ -68,7 +98,11 @@ class PluginRatingService:
         """
         if plugin_id not in self._installed_plugins():
             raise PluginNotInstalledError(f"插件 {plugin_id} 未安装，无法评分")
-        return await self._submit(plugin_id, rating)
+        result = await self._submit(plugin_id, rating)
+        if result is not None:
+            self._revision += 1
+            self._metrics.clear()
+        return result
 
 
 _rating_service: PluginRatingService | None = None

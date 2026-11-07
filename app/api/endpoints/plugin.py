@@ -4,15 +4,14 @@
 
 import asyncio
 import mimetypes
-from collections.abc import AsyncIterator
 from typing import Annotated, Any, Dict, List, Mapping, Optional, cast
 from urllib.parse import urlsplit
 
-import aiofiles
 from anyio import Path as AsyncPath
-from fastapi import Depends, Header, HTTPException, Query, Response, Security
+from fastapi import Depends, Header, HTTPException, Query, Request, Response, Security
 from starlette import status
-from starlette.responses import StreamingResponse
+from starlette.responses import FileResponse
+from starlette.staticfiles import StaticFiles
 
 from app.adapters.web.security.access import (
     resource_token_cookie,
@@ -761,7 +760,7 @@ def reset_plugin(
     "/file/{plugin_id}/{filepath:path}",
     summary="获取插件静态文件",
     response_model=None,
-    response_class=StreamingResponse,
+    response_class=FileResponse,
     responses={
         200: {
             "description": "插件静态资源",
@@ -770,23 +769,31 @@ def reset_plugin(
                 "application/javascript": {"schema": {"type": "string"}},
                 "text/css": {"schema": {"type": "string"}},
             },
-        }
+        },
+        304: {"description": "插件静态资源未修改，复用浏览器缓存"},
     },
 )
 async def plugin_static_file(
     plugin_id: str,
     filepath: str,
+    request: Request,
     _: None = Depends(_verify_plugin_static_file_access),
-) -> StreamingResponse:
+) -> Response:
     """
-    获取插件静态文件
+    在访问校验后返回插件文件，支持私有缓存及 ETag、修改时间条件请求。
+
+    当前插件版本的入口可长期复用；其余文件每次校验，
+    避免无版本入口或同名文件更新后继续使用旧内容。
     """
     # 基础安全检查
     if ".." in filepath or ".." in plugin_id:
         logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    source_plugin_id = get_plugin_manager().get_plugin_source_id(plugin_id)
+    manager = get_plugin_manager()
+    # 联邦入口使用小写 URL，运行时注册表保留插件 ID 原有大小写。
+    runtime_id = next((pid for pid in manager.get_plugin_ids() if pid.lower() == plugin_id.lower()), plugin_id)
+    source_plugin_id = manager.get_plugin_source_id(runtime_id)
     plugin_base_dir = (
         AsyncPath(get_api_runtime_config_snapshot().root_path) / "app" / "plugins" / source_plugin_id.lower()
     )
@@ -818,31 +825,23 @@ async def plugin_static_file(
     elif suffix == ".css" and not guessed_response_type:
         response_type = "text/css"
 
-    try:
-        # 异步生成器函数，用于流式读取文件
-        async def file_generator() -> AsyncIterator[bytes]:
-            """
-            分块异步读取插件文件供下载响应使用。
-            """
-            async with aiofiles.open(plugin_file_path, mode="rb") as file:
-                # 8KB 块大小
-                while chunk := await file.read(8192):
-                    yield chunk
-
-        return StreamingResponse(
-            file_generator(),
-            media_type=response_type,
-            headers={
-                "Content-Disposition": f"inline; filename={plugin_file_path.name}",
-                "Cache-Control": "no-cache, must-revalidate",
-            },
-        )
-    except Exception as e:
-        logger.error(
-            f"Error creating/sending StreamingResponse for {plugin_file_path}: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+    version = request.query_params.get("v")
+    current_version = manager.get_plugin_attr(runtime_id, "plugin_version")
+    versioned = bool(version and current_version and version == str(current_version))
+    cache_control = "private, max-age=31536000, immutable" if versioned else "private, no-cache"
+    response = FileResponse(
+        str(plugin_file_path),
+        stat_result=await plugin_file_path.stat(),
+        media_type=response_type,
+        headers={"Cache-Control": cache_control},
+        filename=plugin_file_path.name,
+        content_disposition_type="inline",
+    )
+    if StaticFiles().is_not_modified(response.headers, request.headers):
+        return Response(status_code=304, headers={
+            key: response.headers[key] for key in ("cache-control", "etag", "last-modified")
+        })
+    return response
 
 
 @router.get(

@@ -11,7 +11,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import Request
 from starlette.responses import Response
+from starlette.testclient import TestClient
 
 from app import schemas
 from app.api.endpoints import plugin as plugin_endpoint
@@ -1363,17 +1365,12 @@ def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monk
         lambda: MagicMock(root_path=tmp_path),
     )
 
-    response = asyncio.run(plugin_static_file("DemoPluginwork", "dist/remoteEntry.js", None))
+    request = Request({"type": "http", "headers": [], "query_string": b""})
+    response = asyncio.run(plugin_static_file("DemoPluginwork", "dist/remoteEntry.js", request, None))
 
-    async def read_body() -> bytes:
-        """
-        读取流式响应的全部测试内容。
-        """
-        return b"".join([chunk async for chunk in response.body_iterator])
-
-    assert asyncio.run(read_body()) == b"export default 'shared'"
+    assert TestClient(response).get("/").content == b"export default 'shared'"
     assert response.media_type == "application/javascript"
-    assert response.headers["cache-control"] == "no-cache, must-revalidate"
+    assert response.headers["cache-control"] == "private, no-cache"
     plugin_manager.get_plugin_source_id.assert_called_once_with("DemoPluginwork")
 
 
