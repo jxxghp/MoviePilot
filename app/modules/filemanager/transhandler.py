@@ -852,6 +852,26 @@ class TransHandler:
                 if expected.change_time_ns != current.change_time_ns:
                     raise TransferExecutionConflictError(f"文件 {expected.path} 的状态时间已变化，禁止清理")
 
+    @classmethod
+    def __inherit_shared_local_identity(cls, expected: FileItem, receipt: Optional[FileItem]) -> FileItem:
+        """
+        从本次已完成操作的回执继承共享 inode 的状态时间，保留原路径和内容身份。
+
+        硬链接及跟随源文件的软链接共享 stat 身份。创建链接、改名和删除链接均可能
+        改变同一 inode 的状态时间；只有操作回执的本地文件 ID 相同且内容身份一致时才能继承。
+
+        :param expected: 操作前冻结的文件身份
+        :param receipt: 本次操作后取得的另一条路径回执；为空或不共享 inode 时不更新
+        :return: 继承已知状态时间的身份；大小、类型、文件 ID 和修改时间仍沿用原证据
+        """
+        if (receipt is None or expected.storage != "local" or receipt.storage != "local"
+                or not expected.fileid or expected.fileid != receipt.fileid):
+            return expected
+        cls.__assert_file_identity(expected, receipt)
+        if expected.change_time_ns is not None and receipt.change_time_ns is None:
+            raise StorageQueryError(f"文件 {receipt.path} 缺少状态时间身份凭据，需人工复核")
+        return expected.model_copy(update={"change_time_ns": receipt.change_time_ns})
+
     @staticmethod
     def __restore_move_target_identity(source: FileItem, target: FileItem) -> FileItem:
         """
@@ -874,6 +894,7 @@ class TransHandler:
     def __observe_safe_delete(
             cls, storage_oper: StorageBase, path: Path, *,
             frozen_item: Optional[FileItem], before_delete: Optional[Callable[[], None]],
+            retained_item: Optional[FileItem] = None,
     ) -> TransferOperationObservation:
         """
         只在删除对象和保留副本的身份都可确认时，允许未执行删除步骤重试。
@@ -882,10 +903,15 @@ class TransHandler:
         :param path: 待删除文件路径
         :param frozen_item: 可选的待删除文件冻结身份
         :param before_delete: 删除前核验保留副本的回调；可为空
+        :param retained_item: 与待删除项共享 inode 的保留副本；无删除回执时仍须核对原状态时间
         :return: 可恢复删除状态和证据；身份冲突或查询未知时拒绝猜测
         """
         try:
             current = storage_oper.get_item_strict(path)
+            retained = None
+            if retained_item is not None:
+                retained = storage_oper.get_item_strict(Path(cast(str, retained_item.path)))
+                cls.__assert_file_identity(retained_item, retained)
             if current is None:
                 state = TransferOperationObservationState.APPLIED
             else:
@@ -905,7 +931,10 @@ class TransHandler:
                 evidence=TransferStepResult(payload={"query_error": str(error)}),
             )
         return TransferOperationObservation(
-            state=state, evidence=TransferStepResult(payload={"path": path.as_posix(), "deleted": current is None}),
+            state=state, evidence=TransferStepResult(payload={
+                "path": path.as_posix(), "deleted": current is None,
+                "item": cls.__serialize_step_item(retained),
+            }),
         )
 
     @staticmethod
@@ -1151,6 +1180,9 @@ class TransHandler:
             """
             if require_target_absent and target_oper.get_item_strict(target_file) is not None:
                 raise RuntimeError(f"暂存目标已存在，需确认上次整理结果：{target_file}")
+            if require_target_absent and fileitem.storage == "local":
+                # 创建硬链接也会改变源 inode 的状态时间，必须在副作用前验证冻结源。
+                cls.__assert_file_identity(fileitem, source_oper.get_item_strict(source_path))
             new_item, error = cls.__transfer_command(
                 fileitem=fileitem,
                 target_storage=target_storage,
@@ -1234,6 +1266,57 @@ class TransHandler:
         return new_item, str(materialized.payload.get("message") or "")
 
     @classmethod
+    def __observe_rename(
+            cls, storage_oper: StorageBase, source: Path, target: Path, *,
+            expected_source: Optional[FileItem], before_rename: Optional[Callable[[], None]],
+    ) -> TransferOperationObservation:
+        """
+        严格查询改名两端及关联文件，只接纳身份一致且仅一端存在的结果。
+
+        无回执的改名若同时改变了共享 inode 的状态时间，关联文件无法沿用旧身份，
+        此时保留所有副本并转人工复核，不能用当前查询结果覆盖旧凭据。
+
+        :param storage_oper: 提供严格文件查询的存储适配器
+        :param source: 改名前的路径
+        :param target: 改名后的路径
+        :param expected_source: 冻结的改名对象身份；为空时只校验两端存在性
+        :param before_rename: 关联文件身份的只读核验；为空时不额外核验
+        :return: 已执行、未执行、冲突或未知的观察结论及文件证据
+        """
+        try:
+            source_item = storage_oper.get_item_strict(source)
+            target_item = storage_oper.get_item_strict(target)
+            if (source_item is None) != (target_item is None):
+                if expected_source is not None:
+                    cls.__assert_file_identity(expected_source, source_item or target_item)
+                if before_rename:
+                    before_rename()
+        except TransferExecutionConflictError as error:
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.CONFLICT,
+                evidence=TransferStepResult(payload={"identity_error": str(error)}),
+            )
+        except Exception as error:
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.UNKNOWN,
+                evidence=TransferStepResult(payload={"query_error": str(error)}),
+            )
+        if source_item is None and target_item is not None:
+            state = TransferOperationObservationState.APPLIED
+        elif source_item is not None and target_item is None:
+            state = TransferOperationObservationState.NOT_APPLIED
+        else:
+            state = TransferOperationObservationState.CONFLICT
+        return TransferOperationObservation(
+            state=state,
+            evidence=TransferStepResult(payload={
+                "source_exists": source_item is not None,
+                "target_exists": target_item is not None,
+                "item": cls.__serialize_step_item(target_item),
+            }),
+        )
+
+    @classmethod
     def __rename_with_step(
             cls,
             *,
@@ -1245,6 +1328,7 @@ class TransHandler:
             kind: str,
             expected_source: Optional[FileItem] = None,
             allow_missing_source: bool = False,
+            before_rename: Optional[Callable[[], None]] = None,
     ) -> Optional[FileItem]:
         """
         执行同目录无覆盖重命名，并用两端严格查询恢复中断操作。
@@ -1260,6 +1344,7 @@ class TransHandler:
         :param kind: 步骤操作类别
         :param expected_source: 可选的冻结源身份；提供时在操作前后核对
         :param allow_missing_source: 旧目标已被外部删除时是否将重命名记录为跳过
+        :param before_rename: 操作或无回执恢复时核验关联文件身份的只读回调
         :return: 重命名后的文件项；允许旧目标缺失并跳过时返回 None
         """
         def execute() -> TransferStepResult:
@@ -1274,6 +1359,8 @@ class TransHandler:
                 raise RuntimeError(f"重命名路径状态冲突：{source} -> {target}")
             if expected_source is not None:
                 cls.__assert_file_identity(expected_source, source_item)
+            if before_rename:
+                before_rename()
             if not storage_oper.rename(source_item, target.name):
                 raise RuntimeError(f"【{storage}】{source} 重命名失败")
             target_item = storage_oper.get_item_strict(target)
@@ -1283,45 +1370,15 @@ class TransHandler:
                 cls.__assert_file_identity(expected_source, target_item)
             return TransferStepResult(payload={"item": cls.__serialize_step_item(target_item)})
 
-        def observe() -> TransferOperationObservation:
-            """
-            只接受一端存在的明确结果，两端同时存在或消失均禁止重放。
-            """
-            try:
-                source_item = storage_oper.get_item_strict(source)
-                target_item = storage_oper.get_item_strict(target)
-                if source_item is None and target_item is not None and expected_source is not None:
-                    cls.__assert_file_identity(expected_source, target_item)
-            except TransferExecutionConflictError as error:
-                return TransferOperationObservation(
-                    state=TransferOperationObservationState.CONFLICT,
-                    evidence=TransferStepResult(payload={"identity_error": str(error)}),
-                )
-            except Exception as error:
-                return TransferOperationObservation(
-                    state=TransferOperationObservationState.UNKNOWN,
-                    evidence=TransferStepResult(payload={"query_error": str(error)}),
-                )
-            if source_item is None and target_item is not None:
-                state = TransferOperationObservationState.APPLIED
-            elif source_item is not None and target_item is None:
-                state = TransferOperationObservationState.NOT_APPLIED
-            else:
-                state = TransferOperationObservationState.CONFLICT
-            return TransferOperationObservation(
-                state=state,
-                evidence=TransferStepResult(payload={
-                    "source_exists": source_item is not None,
-                    "target_exists": target_item is not None,
-                    "item": cls.__serialize_step_item(target_item),
-                }),
-            )
-
         renamed = cls.__run_persisted_step(
             step_runner, phase="transfer", kind=kind,
             payload={"storage": storage, "source_path": source.as_posix(),
                      "target_path": target.as_posix()},
-            execute=execute, observe=observe,
+            execute=execute,
+            observe=lambda: cls.__observe_rename(
+                storage_oper, source, target,
+                expected_source=expected_source, before_rename=before_rename,
+            ),
         )
         item = cls.__restore_step_item(renamed)
         if item is None and not (
@@ -1376,17 +1433,36 @@ class TransHandler:
         )
         if new_item is None:
             return None, message
+        staged_item = new_item
+        source_identity = cls.__inherit_shared_local_identity(FileItem(**source_fileitem), new_item)
+
+        def confirm_staged_source() -> None:
+            """
+            备份前核对暂存和本地源，避免把外部改写误记为本次改名的状态时间变化。
+            """
+            cls.__assert_file_identity(staged_item, target_oper.get_item_strict(stage))
+            if source_identity.storage == "local":
+                cls.__assert_file_identity(
+                    source_identity, source_oper.get_item_strict(Path(cast(str, source_identity.path))),
+                )
+
         backup_item = cls.__rename_with_step(
             step_runner=step_runner, storage_oper=target_oper,
             storage=target_storage, source=target_file, target=backup,
             kind="backup_overwrite_target",
             allow_missing_source=True,
+            before_rename=confirm_staged_source,
         )
+        new_item = cls.__inherit_shared_local_identity(new_item, backup_item)
+        source_identity = cls.__inherit_shared_local_identity(source_identity, backup_item)
         new_item = cast(FileItem, cls.__rename_with_step(
             step_runner=step_runner, storage_oper=target_oper,
             storage=target_storage, source=stage, target=target_file,
             kind="promote_overwrite_target", expected_source=new_item,
         ))
+        source_identity = cls.__inherit_shared_local_identity(source_identity, new_item)
+        if backup_item is not None:
+            backup_item = cls.__inherit_shared_local_identity(backup_item, new_item)
 
         def confirm_replacement() -> None:
             """
@@ -1395,12 +1471,20 @@ class TransHandler:
             cls.__assert_file_identity(new_item, target_oper.get_item_strict(target_file))
 
         if transfer_type == "move":
-            cls.__delete_target_with_step(
+            retained_backup = (
+                backup_item if backup_item is not None and source_identity.storage == "local"
+                and backup_item.storage == "local" and source_identity.fileid
+                and source_identity.fileid == backup_item.fileid else None
+            )
+            refreshed_backup = cls.__delete_target_with_step(
                 step_runner=step_runner, target_oper=source_oper,
                 target_storage=str(source_fileitem["storage"]),
                 target_file=Path(source_fileitem["path"]), kind="delete_overwrite_source",
-                before_delete=confirm_replacement, frozen_item=FileItem(**source_fileitem),
+                before_delete=confirm_replacement, frozen_item=source_identity,
+                retained_item=retained_backup,
             )
+            if refreshed_backup is not None:
+                backup_item = refreshed_backup
         cls.__delete_target_with_step(
             step_runner=step_runner, target_oper=target_oper,
             target_storage=target_storage, target_file=backup,
@@ -1530,7 +1614,8 @@ class TransHandler:
             kind: str,
             before_delete: Optional[Callable[[], None]] = None,
             frozen_item: Optional[FileItem] = None,
-    ) -> None:
+            retained_item: Optional[FileItem] = None,
+    ) -> Optional[FileItem]:
         """
         在身份核验通过后删除目标，并记录可恢复的清理证据。
 
@@ -1543,6 +1628,8 @@ class TransHandler:
         :param kind: 清理操作类别
         :param before_delete: 删除前核对保留副本的回调；为空时不作此项核对
         :param frozen_item: 可选的待删除文件身份；提供时必须与当前文件一致
+        :param retained_item: 与待删除项共享本地 inode 的保留副本；删除前校验，删除后记录新身份
+        :return: 删除回执中保留副本的新身份；未指定保留副本时返回 None
         """
         def execute() -> TransferStepResult:
             """
@@ -1553,11 +1640,20 @@ class TransHandler:
             current = target_oper.get_item_strict(target_file)
             if current is not None and frozen_item is not None:
                 cls.__assert_file_identity(frozen_item, current)
+            if retained_item is not None:
+                cls.__assert_file_identity(
+                    retained_item, target_oper.get_item_strict(Path(cast(str, retained_item.path))),
+                )
             if current is not None and not target_oper.delete(current):
                 raise RuntimeError(f"【{target_storage}】{target_file} 删除失败")
-            return TransferStepResult(payload={"deleted": True})
+            payload: dict[str, Any] = {"deleted": True}
+            if retained_item is not None:
+                retained = target_oper.get_item_strict(Path(cast(str, retained_item.path)))
+                cls.__assert_file_identity(current or retained_item, retained)
+                payload["item"] = cls.__serialize_step_item(retained)
+            return TransferStepResult(payload=payload)
 
-        cls.__run_persisted_step(
+        result = cls.__run_persisted_step(
             step_runner,
             phase="cleanup",
             kind=kind,
@@ -1565,8 +1661,10 @@ class TransHandler:
             execute=execute,
             observe=lambda: cls.__observe_safe_delete(
                 target_oper, target_file, frozen_item=frozen_item, before_delete=before_delete,
+                retained_item=retained_item,
             ),
         )
+        return cls.__restore_step_item(result)
 
     def __resolve_leaf_overwrite_with_step(
             self,
