@@ -3,6 +3,7 @@
 """
 
 import io
+import re
 import threading
 from collections.abc import Awaitable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -12,7 +13,7 @@ from http.cookiejar import CookieJar
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Protocol, TypeVar, cast
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from PIL import Image
 
@@ -850,6 +851,35 @@ class ImageHelper(metaclass=Singleton):
             if not ImageHelper._is_retryable_image_response(response):
                 break
         return response
+
+    @staticmethod
+    def thumbnail_url(url: str, max_width: Optional[int] = None, quality: Optional[int] = None) -> str:
+        """
+        为 Emby、Jellyfin 的图片接口补充上游缩略参数，保留标签、鉴权和子路径。
+
+        调用方先校验原始签名和访问目标；此处只改同一 URL 的图片参数，已有更小尺寸或
+        更低质量时继续沿用。不识别的图片协议保留原地址，不假设任意站点支持缩略参数。
+
+        :param url: 已通过安全检查并去除宿主签名的远端图片地址
+        :param max_width: 请求的最大宽度，单位为像素；None 表示不改变宽度
+        :param quality: 上游编码质量；None 表示不改变质量
+        :return: 同一主机下的缩略图地址，或未修改的原地址
+        """
+        parts = urlsplit(url)
+        if (max_width is None and quality is None) or not re.search(
+            r"/Items/[^/]+/Images/(?:Primary|Backdrop|Thumb)(?:/\d+)?$", parts.path, re.IGNORECASE
+        ):
+            return url
+        params = parse_qsl(parts.query, keep_blank_values=True)
+        for name, limit in (("maxWidth", max_width), ("quality", quality)):
+            if limit is None:
+                continue
+            existing = [int(value) for key, value in params if key.lower() == name.lower() and value.isdecimal()]
+            positive = [value for value in existing if value > 0 or name == "quality"]
+            value = min([limit, *positive])
+            params = [(key, raw) for key, raw in params if key.lower() != name.lower()]
+            params.append((name, str(value)))
+        return urlunsplit(parts._replace(query=urlencode(params)))
 
     def fetch_image(
             self,

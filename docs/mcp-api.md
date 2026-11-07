@@ -46,6 +46,19 @@
 插件批量评分和安装统计的非空结果在当前进程缓存五分钟，按中心端、实例身份和统计开关
 隔离；提交评分成功会使指标缓存失效。单插件详情仍实时查询，中心端失败的空结果不缓存。
 
+### 媒体服务器图片缩略
+
+`GET /api/v1/system/img/{proxy}` 可选 `maxWidth`（1 至 2048 像素）与 `quality`（0 至 100）。
+原始图片 URL 的签名与访问目标先按原有规则校验，随后仅对 Emby、Jellyfin 的
+`Items/{id}/Images/Primary`、`Backdrop`、`Thumb` 地址添加上游缩略参数；媒体标签、鉴权字段、
+子路径及原有更小的尺寸保持有效。原图和各个缩略版本使用不同的磁盘缓存键。
+未传参数或其它图片协议仍按原图获取，不承诺任意外站都支持上游缩略。
+
+图片与插件静态文件使用浏览器 HTTP 缓存；Service Worker 不对这些资源强制 `no-store`，
+也不把它们写入按 URL 共享的 Cache Storage。图片代理响应使用私有缓存，按资源 Cookie
+和 Authorization 区分缓存变体；切换身份后重新校验访问。其它业务 API
+继续按 `no-store` 读取。
+
 ### 插件生命周期忙碌与超时
 
 `plugin.runtime.status`（`GET /api/v1/plugin/runtime`）的可选 `active_operation` 返回当前

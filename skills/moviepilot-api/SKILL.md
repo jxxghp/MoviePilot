@@ -285,6 +285,10 @@ must be one of the following before the Agent may use its capability:
 - explicitly unapproved until a role, effect, confirmation, recovery, result,
   and English parameter contract is added.
 
+The Web image proxy's `maxWidth` and `quality` parameters remain within this
+binary UI transport boundary and add no Agent business operation. See the
+[image proxy contract](../../docs/mcp-api.md) for URL validation and caching rules.
+
 The maintained route-by-route inventory is the fixed registry in
 `app/agent/policy/api.py`. The drift test fails when OpenAPI changes without an
 explicit ownership decision.
