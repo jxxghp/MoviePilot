@@ -625,6 +625,11 @@ def configure_plugin_services() -> None:
             ratings=MoviePilotServerHelper.async_get_plugin_ratings,
             rating=MoviePilotServerHelper.async_get_plugin_rating,
             submit=MoviePilotServerHelper.async_submit_plugin_rating,
+            cache_scope=lambda: (
+                get_runtime_setting("MP_SERVER_HOST"),
+                MoviePilotServerHelper.get_user_uid(),
+                bool(get_runtime_setting("PLUGIN_STATISTIC_SHARE")),
+            ),
         )
     )
 
