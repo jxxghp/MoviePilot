@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.application.mediaserver import MediaServerQueryService, MediaServerSyncItem
+from app.application.mediaserver import MediaServerItemRef, MediaServerQueryService, MediaServerSyncItem
 from app.db.adapters.mediaserver import TransactionalMediaServerRepository
 from app.db.base import Base
 from app.db.models.mediaserver import MediaServerItem
@@ -198,4 +198,39 @@ async def test_query_service_consumes_scalar_repository_result() -> None:
         media_source=MediaSource.TMDB,
         media_id="1001",
         season=None,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("found", "expected"),
+    [
+        (("Emby 4K", "item-1"), MediaServerItemRef(server="Emby 4K", item_id="item-1")),
+        (None, None),
+    ],
+)
+async def test_query_service_names_item_ref_fields(found, expected) -> None:
+    """
+    查询服务把端口返回的同一行服务器名称与条目标识转换为具名结果，未命中时保持为空。
+    """
+    repository = MagicMock()
+    repository.async_get_item_ref = AsyncMock(return_value=found)
+    service = MediaServerQueryService(repository)
+
+    result = await service.find_item(
+        title="剧集",
+        media_source=MediaSource.TMDB,
+        media_id="1001",
+        mtype="电视剧",
+        season=2,
+    )
+
+    assert result == expected
+    repository.async_get_item_ref.assert_awaited_once_with(
+        title="剧集",
+        year=None,
+        mtype="电视剧",
+        media_source=MediaSource.TMDB,
+        media_id="1001",
+        season=2,
     )

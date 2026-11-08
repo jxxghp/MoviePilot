@@ -127,7 +127,10 @@ class MediaServerExistsData(BaseModel):
     本地媒体存在性查询结果。
     """
 
-    item: Dict[str, str] = Field(default_factory=dict, description="命中的媒体项目")
+    item: Dict[str, str] = Field(
+        default_factory=dict,
+        description="命中的媒体项目：id 为条目标识，server 为其所属媒体服务器配置名称（旧缓存缺失时省略）；未命中时为空",
+    )
 
 
 class MediaServerExistingEpisodes(RootModel[Dict[int, List[int]]]):

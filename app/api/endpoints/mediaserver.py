@@ -130,7 +130,7 @@ async def exists_local(
     # 返回对象
     ret_info = {}
     # 本地数据库是否存在
-    item_id = await service.find_item_id(
+    found = await service.find_item(
         title=meta.name if meta else None,
         year=year,
         mtype=mtype,
@@ -138,8 +138,11 @@ async def exists_local(
         media_id=media_id,
         season=season,
     )
-    if item_id:
-        ret_info = {"id": item_id}
+    if found and found.item_id:
+        ret_info = {"id": found.item_id}
+        # 条目标识只在所属服务器内唯一；旧缓存缺少服务器名称时省略该键，不输出空值
+        if found.server:
+            ret_info["server"] = found.server
     return _SchemaResponse(success=True, data={"item": ret_info})
 
 
