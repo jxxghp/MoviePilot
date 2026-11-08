@@ -12,6 +12,7 @@ from app import schemas
 from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import mediaserver as mediaserver_endpoint
 from app.api.response import ResponseAPIRouter
+from app.application.mediaserver import MediaServerItemRef
 from app.domain.context import MediaInfo as CoreMediaInfo
 from app.domain.context import MusicArtistInfo as CoreMusicArtistInfo
 from app.domain.context import MusicInfo as CoreMusicInfo
@@ -299,7 +300,7 @@ async def test_media_exists_not_found_is_a_successful_query() -> None:
         返回未命中的媒体库查询桩。
         """
 
-        async def find_item_id(self, **_kwargs):
+        async def find_item(self, **_kwargs):
             """
             模拟媒体库中不存在目标媒体。
             """
@@ -326,7 +327,7 @@ async def test_media_exists_normalizes_chinese_season_suffix_before_query() -> N
     豆瓣标题带第 x 季时，应拆成基础标题和季号再查询媒体库。
     """
     service = Mock()
-    service.find_item_id = AsyncMock(return_value="tv-item-2")
+    service.find_item = AsyncMock(return_value=MediaServerItemRef(server="Emby", item_id="tv-item-2"))
 
     response = await mediaserver_endpoint.exists_local(
         title="跨来源剧集第二季",
@@ -340,8 +341,8 @@ async def test_media_exists_normalizes_chinese_season_suffix_before_query() -> N
     )
 
     assert response.success is True
-    assert response.data == {"item": {"id": "tv-item-2"}}
-    service.find_item_id.assert_awaited_once_with(
+    assert response.data == {"item": {"id": "tv-item-2", "server": "Emby"}}
+    service.find_item.assert_awaited_once_with(
         title="跨来源剧集",
         year="2023",
         mtype="电视剧",
@@ -349,3 +350,35 @@ async def test_media_exists_normalizes_chinese_season_suffix_before_query() -> N
         media_id="douban-tv-2",
         season=2,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("server", "expected_item"),
+    [
+        ("Emby 4K", {"id": "100", "server": "Emby 4K"}),
+        ("", {"id": "100"}),
+    ],
+)
+async def test_media_exists_response_carries_item_server(server, expected_item) -> None:
+    """
+    入库查询响应应带上条目所属服务器；旧缓存缺少服务器名称时省略该键，响应仍是字符串字典。
+    """
+    service = Mock()
+    service.find_item = AsyncMock(return_value=MediaServerItemRef(server=server, item_id="100"))
+    app = FastAPI()
+    app.dependency_overrides[mediaserver_endpoint.get_mediaserver_query_service] = lambda: service
+    app.dependency_overrides[mediaserver_endpoint.verify_token] = lambda: None
+    app.include_router(mediaserver_endpoint.router, prefix="/api/v1/mediaserver")
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            "/api/v1/mediaserver/exists",
+            params={"media_source": MediaSource.TMDB.value, "media_id": "1399", "mtype": "电视剧"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {"item": expected_item}
