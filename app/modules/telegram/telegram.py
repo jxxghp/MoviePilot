@@ -33,6 +33,7 @@ from app.modules.telegram.botapi import (
     JsonDict,
     TelegramApiError,
     TelegramBotApi,
+    TelegramNetworkError,
 )
 from app.runtime.execution import retry
 from app.runtime.log import logger
@@ -2177,15 +2178,37 @@ class Telegram:
                 ) from err
             raise RetryException(f"发送{'图片' if image else '文本'}消息失败：{err}") from err
 
+    @retry(TelegramNetworkError, logger=logger)
+    def __send_photo(self, *, photo: Any, caption: Optional[str], **kwargs: Any) -> JsonDict:
+        """
+        海报上传遇到网络异常时最多尝试三次，沿用 3 秒、6 秒的退避间隔。
+
+        仅重试当前图片，成功后不补发文本；API 明确拒绝或限流时直接交给调用方处理。
+
+        :param photo: 已获取的图片字节或文件名与字节组成的二元组，重试时复用
+        :param caption: 已按目标格式处理的图片说明，可为空
+        :param kwargs: 目标会话、解析格式、话题、回复和键盘参数
+        :return: Telegram 确认发送的消息
+        :raises TelegramNetworkError: 三次上传均未获得响应
+        :raises TelegramApiError: Telegram 拒绝上传，不在此处重试
+        """
+        return self._api.send_photo(photo=photo, caption=caption, **kwargs)
+
     def __send_photo_or_text(
             self, *, photo: Any, caption: Optional[str],
             disable_web_page_preview: Optional[bool] = None, **kwargs: Any,
     ) -> Optional[JsonDict]:
         """
-        海报上传失败立即降级为同一正文，保留会话、话题和按钮；429 不追加请求。
+        海报网络重试耗尽或被拒绝时降级为同一正文；429 不追加请求。
+
+        :param photo: 可复用的图片字节或文件名与字节组成的二元组
+        :param caption: 图片说明，降级时作为正文；为空时上传失败直接向上抛出
+        :param disable_web_page_preview: 文本兜底时是否禁用链接预览
+        :param kwargs: 原样保留的目标会话、解析格式、话题、回复和键盘参数
+        :return: 成功上传图片或文本兜底的消息
         """
         try:
-            return self._api.send_photo(photo=photo, caption=caption, **kwargs)
+            return self.__send_photo(photo=photo, caption=caption, **kwargs)
         except Exception as error:
             if self._is_rate_limit_error(error) or not caption:
                 raise
