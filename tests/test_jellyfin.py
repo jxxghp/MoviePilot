@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from app.modules.jellyfin import jellyfin as jellyfin_module
 from app.modules.jellyfin.jellyfin import Jellyfin
+from app.schemas.mediaserver import MediaServerField, MediaServerQueryOptions
+from app.schemas.types import MediaType
 
 
 class _FakeResponse:
@@ -179,3 +181,86 @@ def test_get_jellyfin_librarys_uses_normalized_views_url() -> None:
         "http://jellyfin.local:8096/Users/user-id/Views",
         {"api_key": "api-key"},
     )
+
+
+def _get_librarys_with_mocked_views(client: Jellyfin, views: list) -> list:
+    """
+    用预设视图数据调用媒体库查询，仅取跳转链接，不触发数量与图片查询。
+
+    :param client: 待测试的 Jellyfin 客户端
+    :param views: 模拟 Users/Views 接口返回的媒体库字典列表
+    :return: 转换后的统一媒体库模型列表
+    """
+    client._host = "http://jellyfin.local:8096/"
+    with patch.object(client, "_Jellyfin__get_jellyfin_librarys", return_value=views):
+        libraries = client.get_librarys(
+            query=MediaServerQueryOptions(fields=frozenset({MediaServerField.LINK}))
+        )
+    assert libraries is not None
+    return libraries
+
+
+def test_get_librarys_mixed_library_uses_mixed_route() -> None:
+    """
+    混合内容库（CollectionType 为空）使用 Jellyfin 自身的 mixed 路由。
+
+    Jellyfin 12 前端路由表没有 library 路由，旧链接会落到通配路由显示未找到页面；
+    Jellyfin 自身对 CollectionType 为空且类型为 CollectionFolder 的库生成 mixed 链接。
+    """
+    client = _build_client()
+    libraries = _get_librarys_with_mocked_views(
+        client,
+        [{"Id": "abc", "Name": "混合", "CollectionType": None, "Type": "CollectionFolder"}],
+    )
+
+    assert len(libraries) == 1
+    assert libraries[0].type == MediaType.UNKNOWN.value
+    assert (
+        libraries[0].link
+        == "http://jellyfin.local:8096/web/index.html#!/mixed?topParentId=abc&collectionType=mixed"
+    )
+
+
+def test_get_librarys_keeps_typed_library_routes() -> None:
+    """
+    电影、电视剧、音乐及音乐视频库的跳转链接保持不变。
+    """
+    client = _build_client()
+    libraries = _get_librarys_with_mocked_views(
+        client,
+        [
+            {"Id": "m1", "Name": "电影", "CollectionType": "movies", "Type": "CollectionFolder"},
+            {"Id": "t1", "Name": "电视剧", "CollectionType": "tvshows", "Type": "CollectionFolder"},
+            {"Id": "mu1", "Name": "音乐", "CollectionType": "music", "Type": "CollectionFolder"},
+            {"Id": "mv1", "Name": "MV", "CollectionType": "musicvideos", "Type": "CollectionFolder"},
+        ],
+    )
+
+    assert [library.link for library in libraries] == [
+        "http://jellyfin.local:8096/web/index.html#!/movies.html?topParentId=m1",
+        "http://jellyfin.local:8096/web/index.html#!/tv.html?topParentId=t1",
+        "http://jellyfin.local:8096/web/index.html#!/music.html?topParentId=mu1",
+        "http://jellyfin.local:8096/web/index.html#!/music.html?topParentId=mv1",
+    ]
+
+
+def test_get_librarys_other_unknown_types_keep_library_route() -> None:
+    """
+    非混合的其他未知类型库不改走 mixed 路由，保持原有链接。
+
+    Jellyfin 只对 CollectionType 为空且类型为 CollectionFolder 的库使用 mixed 路由；
+    书籍等有专属路由的类型不在本次修复范围，仍走原有分支。
+    """
+    client = _build_client()
+    libraries = _get_librarys_with_mocked_views(
+        client,
+        [
+            {"Id": "b1", "Name": "书籍", "CollectionType": "books", "Type": "CollectionFolder"},
+            {"Id": "u1", "Name": "视图", "CollectionType": None, "Type": "UserView"},
+        ],
+    )
+
+    assert [library.link for library in libraries] == [
+        "http://jellyfin.local:8096/web/index.html#!/library.html?topParentId=b1",
+        "http://jellyfin.local:8096/web/index.html#!/library.html?topParentId=u1",
+    ]

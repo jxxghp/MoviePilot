@@ -248,6 +248,13 @@ class Jellyfin:
             elif library.get("CollectionType") in ("music", "musicvideos"):
                 library_type = MediaType.MUSIC.value
                 link = f"{self._playhost or self._host}web/index.html#!/music.html?topParentId={library.get('Id')}"
+            elif library.get("CollectionType") is None and library.get("Type") == "CollectionFolder":
+                # 混合内容库：Jellyfin 前端没有 library 路由，自身对该类库使用 mixed 路由。
+                library_type = MediaType.UNKNOWN.value
+                link = (
+                    f"{self._playhost or self._host}web/index.html#!/mixed"
+                    f"?topParentId={library.get('Id')}&collectionType=mixed"
+                )
             else:
                 library_type = MediaType.UNKNOWN.value
                 link = f"{self._playhost or self._host}web/index.html#!/library.html?topParentId={library.get('Id')}"
