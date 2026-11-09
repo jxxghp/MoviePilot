@@ -621,6 +621,7 @@ def _load_subscribe_chain_class():
     import app.chain.subscribe.completion as completion_owner
     import app.chain.subscribe.create as create_owner
     import app.chain.subscribe.match as match_owner
+    import app.chain.subscribe.metadata as metadata_owner
     import app.chain.subscribe.notify as notification_owner
     import app.chain.subscribe.policy as policy_owner
     import app.chain.subscribe.query as query_owner
@@ -699,6 +700,7 @@ def _load_subscribe_chain_class():
                         create_owner,
                         completion_owner,
                         match_owner,
+                        metadata_owner,
                         query_owner,
                         refresh_owner,
                         search_owner,
@@ -4526,11 +4528,23 @@ class TestSubscribeProgressConsolidation:
         mediainfo.seasons = {number: [object() for _ in range(total_episode)] for number in seasons}
         return mediainfo
 
-    def _conversion_media_chain(self, module, tmdbinfo, *, allow_convert=True, tmdb_available=True):
+    def _conversion_media_chain(
+        self,
+        module,
+        tmdbinfo,
+        *,
+        allow_convert=True,
+        tmdb_available=True,
+        source_id="35932853",
+        source_title="绝望写手 第三季",
+        source_year="2024",
+    ):
         """
         按请求来源分发识别结果，并记录身份转换调用，供订阅创建的转换用例复用。
         """
-        douban = self._identity_mediainfo("douban", "35932853", "绝望写手 第三季", "2024", seasons=(1,))
+        douban = self._identity_mediainfo(
+            "douban", source_id, source_title, source_year, seasons=(1,)
+        )
         tmdb = self._identity_mediainfo("themoviedb", "124101", "绝望写手", "2021", seasons=(1, 2, 3, 4, 5))
         calls = {"convert": [], "recognize": []}
 
@@ -4772,6 +4786,142 @@ class TestSubscribeProgressConsolidation:
         assert context.mediainfo.media_id == "124101"
         assert context.season == 3
         assert calls["convert"][0]["season"] is None
+
+    def test_check_retries_failed_creation_conversion_and_persists_tmdb_identity(self):
+        """
+        元数据巡检重试创建时失败的豆瓣身份，并将成功结果写回 TMDB 身份。
+        """
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.SubscriptionSnapshot(
+            id=71,
+            name="绝望写手 第三季",
+            year="2024",
+            type=MediaType.TV.value,
+            season=3,
+            total_episode=9,
+            start_episode=1,
+            lack_episode=9,
+            state="R",
+            best_version=0,
+            best_version_full=0,
+            note=[],
+            manual_total_episode=0,
+            media_source="douban",
+            media_id="35932853",
+        )
+        current = subscribe
+        updates = []
+
+        class _SubscribeOper:
+            def list(self):
+                """
+                返回待巡检的豆瓣订阅。
+                """
+                return [current]
+
+            def update(self, subscribe_id, payload):
+                """
+                记录巡检写入并返回合并后的订阅快照。
+
+                :param subscribe_id: 被更新的订阅标识
+                :param payload: 待写入的订阅字段
+                :return: 合并后的订阅快照
+                """
+                nonlocal current
+                assert subscribe_id == subscribe.id
+                updates.append(payload.to_payload())
+                current = replace(current, **payload.to_payload())
+                return current
+
+        media_patch, calls = self._conversion_media_chain(
+            module,
+            {"id": 124101, "season": 3},
+        )
+        chain = SubscribeChain()
+        chain.subscription_repository = _SubscribeOper()
+        with (
+            media_patch,
+            patch.object(module, "get_runtime_setting", lambda _key, _default=None: "themoviedb"),
+        ):
+            chain.check()
+
+        assert calls["convert"] == [
+            {
+                "target_source": MediaSource.TMDB,
+                "media_source": MediaSource.Douban,
+                "media_id": "35932853",
+                "mtype": MediaType.TV,
+                "season": 3,
+            }
+        ]
+        assert updates[0]["media_source"] == MediaSource.TMDB
+        assert updates[0]["media_id"] == "124101"
+        assert current.media_source == MediaSource.TMDB
+        assert current.media_id == "124101"
+
+    def test_check_keeps_original_identity_when_conversion_still_fails(self):
+        """
+        元数据巡检暂时找不到 TMDB 条目时保留原豆瓣身份并继续刷新。
+        """
+        module, SubscribeChain = _load_subscribe_chain_class()
+        subscribe = module.SubscriptionSnapshot(
+            id=72,
+            name="洛水知何年",
+            year="2028",
+            type=MediaType.TV.value,
+            season=1,
+            total_episode=12,
+            start_episode=1,
+            lack_episode=12,
+            state="R",
+            best_version=0,
+            best_version_full=0,
+            note=[],
+            manual_total_episode=0,
+            media_source="douban",
+            media_id="37333131",
+        )
+        updates = []
+
+        class _SubscribeOper:
+            def list(self):
+                """
+                返回待巡检的豆瓣订阅。
+                """
+                return [subscribe]
+
+            def update(self, subscribe_id, payload):
+                """
+                记录元数据刷新写入并保留原媒体身份。
+
+                :param subscribe_id: 被更新的订阅标识
+                :param payload: 待写入的订阅字段
+                :return: 合并后的订阅快照
+                """
+                assert subscribe_id == subscribe.id
+                updates.append(payload.to_payload())
+                return replace(subscribe, **payload.to_payload())
+
+        media_patch, calls = self._conversion_media_chain(
+            module,
+            None,
+            source_id="37333131",
+            source_title="洛水知何年",
+            source_year="2028",
+        )
+        chain = SubscribeChain()
+        chain.subscription_repository = _SubscribeOper()
+        with (
+            media_patch,
+            patch.object(module, "get_runtime_setting", lambda _key, _default=None: "themoviedb"),
+        ):
+            chain.check()
+
+        assert len(calls["convert"]) == 1
+        assert all(call.get("media_source") != MediaSource.TMDB for call in calls["recognize"])
+        assert updates
+        assert updates[-1]["media_source"] == MediaSource.Douban
+        assert updates[-1]["media_id"] == "37333131"
 
     def test_completed_episode_uses_schema_function_directly_for_best_version(self):
         """

@@ -23,7 +23,7 @@ from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
 from app.schemas.mediaserver import NotExistMediaInfo
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
 
 SubscriptionMediaT = TypeVar("SubscriptionMediaT", MediaInfo, MusicInfo)
 
@@ -106,6 +106,108 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
     刷新一条订阅的新鲜媒体事实、持久字段与可选完成状态。
     """
 
+    def _retry_subscribe_media_identity(
+        self,
+        subscribe: SubscriptionSnapshot,
+        meta: MetaBase,
+        media_chain_factory: Callable[[], Any],
+    ) -> Optional[SubscriptionSnapshot]:
+        """
+        在元数据巡检中重试豆瓣或 Bangumi 到 TMDB 的订阅身份转换。
+
+        该补偿复用既有的 TMDB 元数据巡检周期。没有匹配结果、外部识别失败或目标身份
+        已被其他订阅占用时保留原订阅，避免转换失败影响当前订阅的后续搜索。
+
+        :param subscribe: 当前订阅快照
+        :param meta: 当前订阅的媒体类型和标题元数据
+        :param media_chain_factory: 媒体链构造入口
+        :return: 转换成功并完成持久化后的订阅快照；不适用或失败时返回 None
+        """
+        if meta.type not in (MediaType.MOVIE, MediaType.TV):
+            return None
+        is_tmdb_recognize_source = getattr(self, "_SubscribeChain__is_tmdb_recognize_source", None)
+        if is_tmdb_recognize_source is None or not is_tmdb_recognize_source():
+            return None
+        source, media_id = resolve_media_identity(media=subscribe)
+        if source not in (MediaSource.Douban, MediaSource.Bangumi) or not media_id:
+            return None
+
+        media_chain = media_chain_factory()
+        try:
+            tmdb_info = media_chain.convert_media_identity(
+                target_source=MediaSource.TMDB,
+                media_source=source,
+                media_id=media_id,
+                mtype=meta.type,
+                season=subscribe.season,
+            )
+            tmdb_id = tmdb_info.get("id") if isinstance(tmdb_info, dict) else None
+            if not tmdb_id:
+                logger.info(
+                    f"订阅身份巡检未找到 TMDB 对应条目：{source}:{media_id}，"
+                    f"暂时沿用原身份：{subscribe.name}"
+                )
+                return None
+            converted = media_chain.recognize_media(
+                meta=meta,
+                mtype=meta.type,
+                media_source=MediaSource.TMDB,
+                media_id=str(tmdb_id),
+                episode_group=subscribe.episode_group,
+                cache=False,
+            )
+        except Exception as err:
+            logger.warning(
+                f"订阅身份巡检将 {source}:{media_id} 转换为 TMDB 失败，"
+                f"暂时沿用原身份：{subscribe.name}，原因：{err}"
+            )
+            return None
+
+        if not converted:
+            logger.info(
+                f"订阅身份巡检未识别到 TMDB 媒体：{source}:{media_id}，"
+                f"暂时沿用原身份：{subscribe.name}"
+            )
+            return None
+
+        target_season = subscribe.season
+        projected_season = tmdb_info.get("season") if isinstance(tmdb_info, dict) else None
+        if target_season is None and isinstance(projected_season, int) and projected_season > 0:
+            target_season = projected_season
+        update_data: dict[str, Any] = {
+            "name": converted.title,
+            "year": str(converted.year) if converted.year is not None else None,
+            "vote": converted.vote_average,
+            "poster": converted.get_poster_image(),
+            "backdrop": converted.get_backdrop_image(),
+            "description": converted.overview,
+            "media_source": MediaSource.TMDB,
+            "media_id": str(tmdb_id),
+        }
+        if target_season != subscribe.season:
+            update_data["season"] = target_season
+        if meta.type == MediaType.TV and target_season is not None:
+            episodes = (converted.seasons or {}).get(target_season) or []
+            if episodes:
+                update_data["total_episode"] = len(episodes)
+
+        try:
+            updated = self._SubscribeChain__apply_subscribe_update(
+                subscribe,
+                update_data,
+                scene="identity_refresh",
+            )
+        except Exception as err:
+            logger.warning(
+                f"订阅身份巡检写入 TMDB 身份失败：{subscribe.name}，"
+                f"暂时沿用原身份，原因：{err}"
+            )
+            return None
+        logger.info(
+            f"订阅身份巡检已将 {source}:{media_id} 转换为 TMDB {tmdb_id}：{converted.title_year}"
+        )
+        return cast(SubscriptionSnapshot, updated)
+
     def _check_subscription(
         self,
         subscribe: SubscriptionSnapshot,
@@ -122,6 +224,18 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
         except ValueError:
             logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
             return None
+        converted_subscribe = self._retry_subscribe_media_identity(
+            subscribe,
+            meta,
+            media_chain_factory,
+        )
+        if converted_subscribe is not None:
+            subscribe = converted_subscribe
+            try:
+                meta = build_subscribe_meta(subscribe)
+            except ValueError:
+                logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
+                return None
         if meta.type == MediaType.MUSIC:
             mediainfo = self._recognize_music_subscribe(subscribe)
         else:

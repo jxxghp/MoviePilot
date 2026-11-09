@@ -225,9 +225,18 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         source, media_id = resolve_media_identity(media=mediainfo)
         if not source or not media_id or source == MediaSource.TMDB:
             return None
-        if normalize_media_source(get_runtime_setting("RECOGNIZE_SOURCE", None)) != MediaSource.TMDB:
+        if not SubscribeCreateOwner._SubscribeChain__is_tmdb_recognize_source():
             return None
         return source, media_id
+
+    @staticmethod
+    def _SubscribeChain__is_tmdb_recognize_source() -> bool:
+        """
+        判断当前影视识别源是否为 TMDB，供订阅创建和定期巡检共用。
+
+        :return: 当前识别源规范化后为 TMDB 时返回 True，否则返回 False
+        """
+        return normalize_media_source(get_runtime_setting("RECOGNIZE_SOURCE", None)) == MediaSource.TMDB
 
     @staticmethod
     def _SubscribeChain__apply_converted_subscribe_media(

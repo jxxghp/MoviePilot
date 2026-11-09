@@ -55,6 +55,7 @@ if TYPE_CHECKING:
         _SubscribeChain__get_episode_priority: Callable[..., Any]
         _SubscribeChain__get_subscribe_no_exits: Callable[..., Any]
         _SubscribeChain__is_best_version_complete: Callable[..., Any]
+        _SubscribeChain__is_tmdb_recognize_source: Callable[[], bool]
         _SubscribeChain__is_full_best_version_enabled: Callable[..., Any]
         _SubscribeChain__is_full_season_best_version_resource: Callable[..., Any]
         _SubscribeChain__notify_subscribe_create_failure: Callable[..., Any]
