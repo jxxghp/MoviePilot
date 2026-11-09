@@ -2461,14 +2461,14 @@ class WechatClawBot:
         **kwargs: object,
     ) -> Optional[bool]:
         """
-        优先发送组合文字，只有无文字时才尝试发送图片。
+        优先发送组合文字，只有无文字或仅有标题（无正文、链接）时才尝试发送图片。
 
         各目标独立发送，已发出的分块不会撤回。当前无文字且无可用图片时，
         只要存在目标也会返回 True，此结果不表示实际发出消息。
 
         :param title: 可选标题
         :param text: 可选正文
-        :param image: 可选远程图片或图片数据地址；标题、正文或链接产生文字时忽略
+        :param image: 可选远程图片或图片数据地址；有正文或链接时忽略；仅有标题时与标题一同发送
         :param userid: 显式接收用户；为空时使用默认目标，再回退到近期活跃或全部已知用户
         :param link: 追加为详情文字的链接
         :param kwargs: 兼容发送接口的附加参数，当前忽略
@@ -2481,12 +2481,26 @@ class WechatClawBot:
         content = self._compose_text(title=title, text=text, link=link)
         # 当前 iLink 发送实现会把图文拆成两条消息发送。
         # 为避免用户看到“同一条通知被拆成文本 + 图片”两次触达，这里约定：
-        # 只要通知里已经有文本内容，就优先只发文本；只有纯图片通知才发送图片。
-        image_bytes = self._load_remote_image(image) if image and not content else None
+        # 只要通知里已有正文或链接，就优先只发文本；纯图片通知才发送图片。
+        # 仅有标题（如 send_message 为纯图片通知补的“图片”占位标题）视为纯图片，
+        # 图片带标题一并发送；图片加载失败时退回只发标题文字。
+        title_only = not text and not link
+        image_bytes = (
+            self._load_remote_image(image)
+            if image and (not content or title_only)
+            else None
+        )
         ok = False
         for target in targets:
             context_token = self._get_context_token(target)
-            if content:
+            if content and image_bytes:
+                sent = self._build_client().send_image_text_png(
+                    to_user=target,
+                    image_bytes=image_bytes,
+                    text=content,
+                    context_token=context_token,
+                )
+            elif content:
                 client = self._build_client()
                 sent = True
                 for chunk in self._split_content(content):
