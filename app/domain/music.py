@@ -915,12 +915,30 @@ def _music_title_key(value: Optional[str], *, preserve_editions: bool = False) -
     return re.sub(r"\s+", "", base).casefold()
 
 
+def _music_album_main_title(value: Optional[str], *, preserve_editions: bool = False) -> str:
+    """
+    提取带冒号说明的专辑主标题，兼容资源名省略说明性副标题的常见命名。
+    """
+    text = normalize("NFKC", str(value or "")).strip()
+    if not re.search(r"\s*[：:]\s*", text):
+        return ""
+    main = re.split(r"\s*[：:]\s*", text, maxsplit=1)[0]
+    key = _music_title_key(main, preserve_editions=preserve_editions)
+    return key if key != _music_title_key(text, preserve_editions=preserve_editions) else ""
+
+
 def music_title_matches(music: MusicInfo, title: Optional[str], *, preserve_editions: bool = False) -> bool:
     """
-    比较完整名称及可信双语别名，保留纯符号名称、未知括号和发行版的身份约束。
+    比较完整名称、可信别名及专辑主标题，保留纯符号名称和发行版的身份约束。
     """
     key = partial(_music_title_key, preserve_editions=preserve_editions)
     names = {key(name) for name in music_titles(music)}
+    if music.music_type == MUSIC_ENTITY_ALBUM:
+        names.update(
+            main
+            for name in music_titles(music, album=True)
+            if (main := _music_album_main_title(name, preserve_editions=preserve_editions))
+        )
     expected = _music_name_key(title, names, key)
     return bool(expected and expected in names)
 

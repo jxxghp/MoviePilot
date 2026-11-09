@@ -321,8 +321,14 @@ _MUSIC_RIP_METHOD_RE = re.compile(r"(?:分轨|分軌|整轨|整軌|原抓|自抓
 _MUSIC_AUDIO_RELEASE_TAIL_RE = re.compile(
     rf"(?<!\d)(?P<year>(?:19|20)\d{{2}})\s*[-–—−－]\s*"
     rf"(?:{_MUSIC_FORMAT_TOKEN_ALT})(?:\s*(?:分[轨軌]|整[轨軌]|原抓|自抓|自扫|自掃))*"
+    r"(?:\s+multi[\s_-]*file)?"
     r"(?:\s*[-–—−－]\s*[^\s\-–—−－]+){0,4}\s*$",
     re.IGNORECASE,
+)
+# OpenCD 等站点用 ``格式 Multi File`` 表示分轨资源；保留格式词，去掉文件形态尾标。
+_MUSIC_MULTI_FILE_SUFFIX_RE = re.compile(
+    rf"\s+(?P<format>{_MUSIC_FORMAT_TOKEN_ALT})\s+multi[\s_-]*file"
+    r"(?:\s*[-–—−－]\s*[A-Za-z0-9][A-Za-z0-9@._-]{1,20})?\s*$", re.IGNORECASE,
 )
 # 圆括号中的联合位深声明（24/48bit）及规格剔除后留下的空括号。
 _MUSIC_PAREN_SPEC_RE = re.compile(
@@ -1499,7 +1505,8 @@ class MetaMusic(MetaBase):
         为两种解析引擎统一清理有格式证据的发行尾标与音频文件曲序。
 
         点分发行类型只在音频规格前生效；版本括号保留语义，介质和目录编号
-        不进入检索。斜杠规格尾链整段剥离并保留年份，正文中的斜杠仍保留。
+        不进入检索。斜杠规格尾链和 ``FLAC Multi File`` 分轨尾标整段剥离并保留年份，
+        正文中的斜杠仍保留。
         文件曲序先于艺人拆分，避免 ``01. Artist`` 成为艺人名。
 
         :param value: 原始音乐资源标题或文件名
@@ -1507,6 +1514,8 @@ class MetaMusic(MetaBase):
         """
         text, file_title = self._prepare_filename_input(value)
         text = _MUSIC_SLASH_SPEC_TAIL_RE.sub(r" \g<year>", text)
+        text = _MUSIC_AUDIO_RELEASE_TAIL_RE.sub(r" \g<year>", text)
+        text = _MUSIC_MULTI_FILE_SUFFIX_RE.sub(r" \g<format>", text)
         text = _MUSIC_EDITION_BRACKET_RE.sub(r"(\1)", text)
         text = _MUSIC_CATALOG_SPEC_RE.sub("", text)
         if re.search(r"(?:19|20)\d{2}", text) and len(_SCENE_DOT_RE.findall(value)) >= 3:

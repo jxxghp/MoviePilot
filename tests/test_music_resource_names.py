@@ -129,6 +129,26 @@ def test_release_names_without_group_or_cjk_credit(title, artists):
 
 
 @pytest.mark.usefixtures("music_engine")
+def test_multi_file_release_suffix_matches_album_main_title():
+    """
+    分轨资源常用的 ``FLAC Multi File`` 尾标不应进入专辑标题，专辑副标题省略时仍应命中主标题。
+    """
+    resource = "Various Artists - The Secret Life Of Walter Mitty 2013 - FLAC Multi File"
+    meta = MetaMusic.parse_resource(resource)
+    target = MusicInfo(
+        music_type="album",
+        title="The Secret Life of Walter Mitty: Music From and Inspired by the Motion Picture",
+        artists=["Various Artists"],
+        year=2013,
+    )
+
+    assert (meta.title, meta.year, meta.artists) == (
+        "The Secret Life Of Walter Mitty", 2013, ["Various Artists"],
+    )
+    assert match_music_resource(target, resource).status == "exact"
+
+
+@pytest.mark.usefixtures("music_engine")
 @pytest.mark.parametrize("title,expected,year", [
     (
         "程响 (Cheng Xiang) - 江南多雨时 [2020] [单曲专辑] FLAC / Lossless / WEB / 2020",
