@@ -73,3 +73,36 @@ def test_selected_episode_file_resolves_its_own_hash(db, offset, durable):
     )
     assert resolved.download_hash == "episode-10-hash"
     assert resolved.downloader == "qb"
+
+
+@pytest.mark.parametrize("durable", [False, True])
+def test_single_raw_episode_file_is_recorded_for_selected_episode(durable):
+    """
+    唯一视频文件的原始累计集号与目标季集不一致时，成功结算仍须写入文件明细。
+    """
+    selected_file = "Show.S03E54.mp4"
+    meta = MetaInfo("Show.S03E06.mp4")
+    media = MediaInfo(type=MediaType.TV, title="示例剧", tmdb_id=107371)
+    torrent = TorrentInfo(title="Show.S03E54")
+    context = Context(meta_info=meta, media_info=media, torrent_info=torrent)
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = MagicMock()
+    chain.durable_event_writer = MagicMock() if durable else None
+    chain._build_download_notification = MagicMock(return_value=None)
+    chain._submit_download_added_task = MagicMock()
+    chain.eventmanager = MagicMock()
+
+    chain._settle_download_success(
+        context=context, media=media, meta=meta, torrent=torrent,
+        folder_name="show", file_list=[selected_file],
+        download_dir=Path("/downloads"), layout="Original", downloader="qb",
+        download_hash="episode-6-hash", download_episodes="E06",
+        episodes={6}, channel=None, source="subscribe", userid=None,
+        username=None, torrent_content=b"torrent", custom_words=None,
+    )
+
+    if durable:
+        files = chain.durable_event_writer.download_added.call_args.kwargs["files"]
+    else:
+        files = chain.download_history_repository.add.call_args.args[1]
+    assert [file.filepath for file in files] == [selected_file]

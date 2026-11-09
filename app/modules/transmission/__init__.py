@@ -256,6 +256,9 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         """
         先确认任务暂停再按来源集数映射选集，确认启动状态后才返回成功。
 
+        本次只请求一集且种子只有一个视频文件时，即使文件名保留累计集号，也按
+        唯一视频文件兜底选中，避免识别后的季集与物理文件集号不一致导致误报缺集。
+
         :param server: 已配置的 Transmission 客户端
         :param torrent_hash: 需要暂停、选集并恢复的任务哈希
         :param episodes: 需要完整匹配的目标集数；空集合不启动任务
@@ -271,17 +274,36 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         wanted: list[int] = []
         unwanted: list[int] = []
         matched: set[int] = set()
+        media_extensions = {
+            str(extension).lower()
+            for extension in get_runtime_setting("RMT_MEDIAEXT", [])
+        }
+        media_files: list[tuple[int, set[int]]] = []
         try:
             for item in torrent_files:
-                meta = MetaInfo(Path(item.name).name, custom_words=custom_words.splitlines() if custom_words else [])
+                file_id = item.id
+                file_name = Path(item.name).name
+                file_path = Path(file_name)
+                meta = MetaInfo(file_name, custom_words=custom_words.splitlines() if custom_words else [])
                 file_episodes = set(meta.episode_list)
+                if file_path.suffix.lower() in media_extensions:
+                    media_files.append((file_id, file_episodes))
                 if file_episodes and file_episodes.issubset(episodes):
-                    wanted.append(item.id)
+                    wanted.append(file_id)
                     matched.update(file_episodes)
                 else:
-                    unwanted.append(item.id)
+                    unwanted.append(file_id)
         finally:
             torrent_files.clear()
+        if not set(episodes).issubset(matched) and len(episodes) == 1 and len(media_files) == 1:
+            file_id, file_episodes = media_files[0]
+            # 多集视频不能当作单集兜底，否则会把合集误选为目标单集。
+            if len(file_episodes) <= 1:
+                if file_id in unwanted:
+                    unwanted.remove(file_id)
+                if file_id not in wanted:
+                    wanted.append(file_id)
+                matched.update(episodes)
         if not wanted or not set(episodes).issubset(matched):
             return False, f"{failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
         if not server.set_files(torrent_hash, wanted) or not server.set_unwanted_files(torrent_hash, unwanted):
