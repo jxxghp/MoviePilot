@@ -36,6 +36,10 @@ from app.schemas.media import resolve_media_identity
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 _SIZE_UNIT = 1024 * 1024
+# NexusPHP 首次下载提示会随站点会话语言返回简体或繁体文案。
+_FIRST_DOWNLOAD_MARKERS = tuple(
+    marker.encode("utf-8") for marker in ("下载种子文件", "下載種子檔案")
+)
 
 
 def _is_transient_torrent_status(status: int) -> bool:
@@ -457,7 +461,7 @@ class TorrentHelper:
             return False
         if self.get_fileinfo_from_torrent_content(content)[1]:
             return False
-        return "下载种子文件".encode("utf-8") not in content
+        return not any(marker in content for marker in _FIRST_DOWNLOAD_MARKERS)
 
     def _cached_torrent_content(self, cache_backend: Any, cache_path: Path) -> Optional[tuple[
         Union[str, bytes], str, list[str],
@@ -532,7 +536,7 @@ class TorrentHelper:
             )
             if file_list:
                 return cache_path, req.content, folder_name, file_list, ""
-            if "下载种子文件".encode("utf-8") in req.content:
+            if any(marker in req.content for marker in _FIRST_DOWNLOAD_MARKERS):
                 confirmation = _first_download_form(req.text, url)
                 if confirmation is None:
                     logger.warning("触发首次种子下载，但未找到可安全提交的确认表单")

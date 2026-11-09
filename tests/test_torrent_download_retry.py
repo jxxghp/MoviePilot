@@ -417,6 +417,7 @@ def test_magnet_body_on_error_does_not_bypass_status_check(boundary):
     cache.set.assert_not_called()
 
 
+@pytest.mark.parametrize("marker", ["下载种子文件", "下載種子檔案"])
 @pytest.mark.parametrize("form", [
     '<form action="?"><input value="yes" name="confirm"></form>',
     "<form method='POST' action='?'><input value='a&amp;b' name='token'></form>",
@@ -424,12 +425,12 @@ def test_magnet_body_on_error_does_not_bypass_status_check(boundary):
     '<form action="download.php?id=39" method="post"><input name="confirm" value="yes"></form>',
     '<form action="?"><input name="token" value="a&amp;b"><button name="confirm" value="yes">下载</button></form>',
 ])
-def test_first_download_form_variants_are_confirmed(boundary, form):
+def test_first_download_form_variants_are_confirmed(boundary, form, marker):
     """
     按 HTML 表单语义提交确认，兼容属性顺序、引号、实体和提交按钮。
     """
     helper, port, cache, sleep = boundary
-    page = ("下载种子文件" + form).encode()
+    page = (marker + form).encode()
     port.request.side_effect = [_response(content=page), _response()]
 
     assert helper.download_torrent(URL, cookie="session=test")[1] == CONTENT
