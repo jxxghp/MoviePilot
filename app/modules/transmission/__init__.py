@@ -5,7 +5,7 @@ Transmission 下载模块，负责实例路由、任务投影与下载文件选�
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union, overload
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union, overload
 
 from app.domain import torrent as torrent_rules
 from app.domain.metainfo import MetaInfo
@@ -44,6 +44,10 @@ _TRANSMISSION_DOWNLOADING_STATES = {
 _TRANSMISSION_PAUSED_STATES = {
     "stopped",
 }
+# 暂停磁力取元数据时最多等待 10 秒（每秒查询一次），仍无文件列表则恢复暂停并报错。
+_TORRENT_METADATA_RETRY_TIMES = 10
+# 取元数据时文件索引查询之间的等待秒数。
+_TORRENT_METADATA_RETRY_INTERVAL = 1
 
 
 @overload
@@ -250,6 +254,38 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
 
     @staticmethod
+    def _fetch_files_with_metadata(
+            server: Transmission, torrent_hash: str, failure: str,
+    ) -> Tuple[List[Any], bool, Optional[str]]:
+        """
+        暂停磁力取元数据：先启动任务再轮询文件列表，拿到后重新暂停。
+
+        暂停的磁力不建立 peer/DHT 连接，文件列表恒为空；先启动取元数据，
+        拿到后再重新暂停选集，超时仍恢复暂停，避免任务永久留在暂停状态。
+
+        :param server: 已配置的 Transmission 客户端
+        :param torrent_hash: 需要取元数据的任务哈希
+        :param failure: 任务保持暂停时的失败前缀
+        :return: 文件列表、取元数据后是否确认暂停、失败说明；失败说明非空时
+            文件列表为空列表，暂停状态无效
+        """
+        if not server.ensure_torrent_state(torrent_hash, paused=False):
+            return [], True, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+        torrent_files = server.get_files(
+            torrent_hash,
+            retry=_TORRENT_METADATA_RETRY_TIMES,
+            interval=_TORRENT_METADATA_RETRY_INTERVAL,
+        )
+        if not torrent_files:
+            if not server.ensure_torrent_state(torrent_hash, paused=True):
+                return [], False, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+            return [], True, f"{failure}：获取种子文件失败"
+        paused = server.ensure_torrent_state(torrent_hash, paused=True)
+        if not paused:
+            logger.warning(f"种子 {torrent_hash} 获取元数据后无法确认暂停，继续选集")
+        return torrent_files, paused, None
+
+    @staticmethod
     def _select_download_files(
             server: Transmission, torrent_hash: str, episodes: Set[int], custom_words: Optional[str],
     ) -> Tuple[bool, str]:
@@ -268,9 +304,18 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         if not server.ensure_torrent_state(torrent_hash, paused=True):
             return False, f"选集失败，任务 {torrent_hash} 无法确认暂停，未执行选集，请在下载器核实"
         failure = f"选集失败，任务 {torrent_hash} 保持暂停，请在下载器检查"
+        paused = True
         torrent_files = server.get_files(torrent_hash)
         if not torrent_files:
-            return False, f"{failure}：获取种子文件失败"
+            torrent_files, paused, error = TransmissionModule._fetch_files_with_metadata(
+                server, torrent_hash, failure,
+            )
+            if error:
+                return False, error
+        # 取元数据后无法确认暂停时任务仍在运行，后续失败不得再称“保持暂停”。
+        state_failure = failure if paused else (
+            f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+        )
         wanted: list[int] = []
         unwanted: list[int] = []
         matched: set[int] = set()
@@ -305,9 +350,9 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                     wanted.append(file_id)
                 matched.update(episodes)
         if not wanted or not set(episodes).issubset(matched):
-            return False, f"{failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
+            return False, f"{state_failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
         if not server.set_files(torrent_hash, wanted) or not server.set_unwanted_files(torrent_hash, unwanted):
-            return False, f"{failure}：文件选择设置未确认"
+            return False, f"{state_failure}：文件选择设置未确认"
         if not server.ensure_torrent_state(torrent_hash, paused=False):
             if server.ensure_torrent_state(torrent_hash, paused=True):
                 return False, f"{failure}：启动任务未确认，未记录成功"

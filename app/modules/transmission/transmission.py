@@ -383,34 +383,48 @@ class Transmission:
             logger.error(f"删除种子出错：{str(err)}")
             return False
 
-    def get_files(self, tid: str) -> Optional[List[File]]:
+    def get_files(self, tid: str, retry: int = 1, interval: float = 0) -> Optional[List[File]]:
         """
         读取种子文件列表，兼容新旧 transmission-rpc 文件接口。
 
+        暂停的磁力在取到元数据前文件列表为空，调用方可多查几次等待元数据到达；
+        默认只查一次，与旧行为一致。
+
         :param tid: 种子哈希
-        :return: 文件列表；哈希为空、任务不存在、未连接或查询失败时返回 None
+        :param retry: 最多查询次数，最少执行 1 次
+        :param interval: 查询间隔，单位秒；0 表示立即重试
+        :return: 文件列表；哈希为空、任务不存在、未连接、查询失败或始终无文件时返回 None
         """
         if not self.trc:
             return None
         if not tid:
             return None
-        try:
-            torrent = self.trc.get_torrent(tid)
-        except Exception as err:
-            logger.error(f"获取种子文件列表出错：{str(err)}")
-            return None
-        if not torrent:
-            return None
-        try:
-            get_files = getattr(torrent, "get_files", None)
-            if callable(get_files):
-                files: List[File] = get_files()
-                return files
-            legacy_files: List[File] = torrent.files()
-            return legacy_files
-        except Exception as err:
-            logger.error(f"获取种子文件列表出错：{str(err)}")
-            return None
+        retry_times = max(retry, 1)
+        last_error: Optional[Exception] = None
+        for index in range(retry_times):
+            try:
+                torrent = self.trc.get_torrent(tid)
+            except Exception as err:
+                last_error = err
+                torrent = None
+            if torrent:
+                try:
+                    get_files = getattr(torrent, "get_files", None)
+                    if callable(get_files):
+                        files: List[File] = get_files()
+                        if files:
+                            return files
+                    else:
+                        legacy_files: List[File] = torrent.files()
+                        if legacy_files:
+                            return legacy_files
+                except Exception as err:
+                    last_error = err
+            if index < retry_times - 1 and interval:
+                time.sleep(interval)
+        if last_error:
+            logger.error(f"获取种子文件列表出错：{str(last_error)}")
+        return None
 
     def set_files(self, tid: str, file_ids: list[int]) -> bool:
         """

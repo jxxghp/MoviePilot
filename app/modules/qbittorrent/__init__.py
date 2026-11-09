@@ -5,7 +5,7 @@ Qbittorrent 下载模块，负责实例路由、任务投影与下载文件选�
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from app.domain import torrent as torrent_rules
 from app.domain.metainfo import MetaInfo
@@ -50,6 +50,10 @@ _QBITTORRENT_PAUSED_STATES = {
 _TORRENT_FILES_RETRY_TIMES = 5
 # 文件索引查询之间的等待秒数。
 _TORRENT_FILES_RETRY_INTERVAL = 1
+# 暂停磁力取元数据时最多等待 10 秒（每秒查询一次），仍无文件列表则恢复暂停并报错。
+_TORRENT_METADATA_RETRY_TIMES = 10
+# 取元数据时文件索引查询之间的等待秒数。
+_TORRENT_METADATA_RETRY_INTERVAL = 1
 
 
 class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
@@ -241,6 +245,40 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
         return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, message
 
     @staticmethod
+    def _fetch_files_with_metadata(
+            server: Qbittorrent, torrent_hash: str, failure: str,
+    ) -> Tuple[List[Any], bool, Optional[str]]:
+        """
+        暂停磁力取元数据：先启动任务再轮询文件列表，拿到后重新暂停。
+
+        暂停的磁力不建立 peer/DHT 连接，文件列表恒为空；先启动取元数据，
+        拿到后再重新暂停选集，超时仍恢复暂停，避免任务永久留在暂停状态。
+
+        :param server: 已配置的 qBittorrent 客户端
+        :param torrent_hash: 需要取元数据的任务哈希
+        :param failure: 任务保持暂停时的失败前缀
+        :return: 文件列表、取元数据后是否确认暂停、失败说明；失败说明非空时
+            文件列表为空列表，暂停状态无效
+        """
+        if not server.start_torrents(torrent_hash):
+            return [], True, f"{failure}：获取种子文件失败"
+        torrent_files = server.get_files(
+            torrent_hash,
+            retry=_TORRENT_METADATA_RETRY_TIMES,
+            interval=_TORRENT_METADATA_RETRY_INTERVAL,
+        )
+        if not torrent_files:
+            if not server.stop_torrents(torrent_hash):
+                return [], False, (
+                    f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+                )
+            return [], True, f"{failure}：获取种子文件失败"
+        paused = server.stop_torrents(torrent_hash)
+        if not paused:
+            logger.warning(f"种子 {torrent_hash} 获取元数据后无法重新暂停，继续选集")
+        return torrent_files, paused, None
+
+    @staticmethod
     def _select_download_files(
             server: Qbittorrent, torrent_hash: str, episodes: Set[int], custom_words: Optional[str],
     ) -> Tuple[bool, str]:
@@ -251,11 +289,20 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
         唯一视频文件兜底选中，避免识别后的季集与物理文件集号不一致导致误报缺集。
         """
         failure = f"选集失败，任务 {torrent_hash} 保持暂停，请在下载器检查"
+        paused = True
         torrent_files = server.get_files(
             torrent_hash, retry=_TORRENT_FILES_RETRY_TIMES, interval=_TORRENT_FILES_RETRY_INTERVAL,
         )
         if not torrent_files:
-            return False, f"{failure}：获取种子文件失败"
+            torrent_files, paused, error = QbittorrentModule._fetch_files_with_metadata(
+                server, torrent_hash, failure,
+            )
+            if error:
+                return False, error
+        # 取元数据后无法重新暂停时任务仍在运行，后续失败不得再称“保持暂停”。
+        state_failure = failure if paused else (
+            f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+        )
         wanted: list[int] = []
         unwanted: list[int] = []
         matched: set[int] = set()
@@ -290,11 +337,11 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                     wanted.append(file_id)
                 matched.update(episodes)
         if not set(episodes).issubset(matched):
-            return False, f"{failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
+            return False, f"{state_failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
         if unwanted and not server.set_files(torrent_hash=torrent_hash, file_ids=unwanted, priority=0):
-            return False, f"{failure}：文件优先级设置未确认"
+            return False, f"{state_failure}：文件优先级设置未确认"
         if not server.set_files(torrent_hash=torrent_hash, file_ids=wanted, priority=1):
-            return False, f"{failure}：目标文件优先级设置未确认"
+            return False, f"{state_failure}：目标文件优先级设置未确认"
         started = (
             server.torrents_set_force_start(torrent_hash)
             if server.is_force_resume() else server.start_torrents(torrent_hash)
