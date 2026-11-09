@@ -276,6 +276,11 @@
       "group": "cache",
       "source_file": "app/runtime/config.py"
     },
+    "CLOAKBROWSER_CLOSE_TIMEOUT": {
+      "description": "CloakBrowser 关闭宽限秒数，超时强制回收本次进程树，默认 5 秒",
+      "group": "sites",
+      "source_file": "app/runtime/config.py"
+    },
     "CLOAKBROWSER_HUMANIZE": {
       "description": "CloakBrowser 是否启用拟人化输入",
       "group": "sites",
@@ -283,6 +288,21 @@
     },
     "CLOAKBROWSER_HUMAN_PRESET": {
       "description": "CloakBrowser 拟人化输入预设：default 或 careful",
+      "group": "sites",
+      "source_file": "app/runtime/config.py"
+    },
+    "CLOAKBROWSER_MAX_CONCURRENCY": {
+      "description": "同时存活的 CloakBrowser 实例上限，默认 1；提高前需确认授权并发额度",
+      "group": "sites",
+      "source_file": "app/runtime/config.py"
+    },
+    "CLOAKBROWSER_OPERATION_TIMEOUT": {
+      "description": "CloakBrowser 启动及单次原生操作的最长秒数，超时回收实例，默认 120 秒",
+      "group": "sites",
+      "source_file": "app/runtime/config.py"
+    },
+    "CLOAKBROWSER_QUEUE_TIMEOUT": {
+      "description": "等待 CloakBrowser 实例名额的最长秒数，默认 60 秒",
       "group": "sites",
       "source_file": "app/runtime/config.py"
     },

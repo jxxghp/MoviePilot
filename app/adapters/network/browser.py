@@ -3,18 +3,30 @@
 """
 
 import asyncio
+import inspect
 import ipaddress
+import os
+import sys
 import threading
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextvars import Context, copy_context
+from contextvars import Context, ContextVar, copy_context
 from dataclasses import dataclass, field
-from functools import partial
+from functools import partial, wraps
 from typing import Any, Callable, Optional, Protocol, cast
 from urllib.parse import urlparse
 
 from app.adapters.network.http import RequestUtils, cookie_parse
+from app.adapters.system.host import OwnedProcessTree
+from app.runtime.browser import (
+    BrowserLease,
+    BrowserOperationTimeoutError,
+    browser_cancel_check,
+    browser_capacity,
+    browser_request,
+    check_browser_request,
+)
 from app.runtime.execution import await_task_to_terminal
 from app.runtime.log import logger
 from app.runtime.resources import (
@@ -23,6 +35,768 @@ from app.runtime.resources import (
 )
 from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import TaskRegistry
+
+_provider_queue_lock = threading.Lock()
+_launch_owner: ContextVar[Optional["_BrowserLaunchOwner"]] = ContextVar("browser_launch_owner", default=None)
+_browser_owners_lock = threading.RLock()
+_browser_owners: set["_BrowserLaunchOwner"] = set()
+_connection_owners: dict[Any, "_BrowserLaunchOwner"] = {}
+_CLOAKBROWSER_ENTRYPOINTS = (
+    "launch", "launch_async", "launch_context", "launch_context_async",
+    "launch_persistent_context", "launch_persistent_context_async",
+)
+
+
+class _BrowserLaunchOwner:
+    """
+    把一次顶层启动及 SDK 内部嵌套启动绑定到同一个浏览器名额。
+    """
+
+    def __init__(self, lease: BrowserLease) -> None:
+        """
+        保存实例名额和启动期间已经取得的浏览器句柄。
+
+        :param lease: 仅在浏览器关闭或无实例的启动失败后归还的名额
+        """
+        self._lease = lease
+        self._resources: list[Any] = []
+        self._starting = True
+        self._lock = threading.RLock()
+        self._wake = threading.Event()
+        self._stopped = threading.Event()
+        self._expired = False
+        self._reason = ""
+        self._tree: Optional[OwnedProcessTree] = None
+        self._connections: set[Any] = set()
+        self._marker = f"--moviepilot-browser-owner={uuid.uuid4().hex}"
+        self._operation_timeout = float(get_runtime_setting("CLOAKBROWSER_OPERATION_TIMEOUT", 120))
+        self._close_timeout = float(get_runtime_setting("CLOAKBROWSER_CLOSE_TIMEOUT", 5))
+        self._startup_deadline = time.monotonic() + self._operation_timeout
+        self._startup_cancelled = browser_cancel_check()
+        self._close_deadline: Optional[float] = None
+        self._operations: dict[object, tuple[float, Callable[[], bool]]] = {}
+        self._owned_tasks: set[asyncio.Task[Any]] = set()
+        self._last_used = time.monotonic()
+        # 每个真实实例只有一个监控线程；正常关闭与全局停机均显式收口。
+        self._watcher = threading.Thread(target=self._watch, name="browser-watchdog", daemon=True)
+        with _browser_owners_lock:
+            _browser_owners.add(self)
+        try:
+            self._watcher.start()
+        except BaseException:
+            self._release()
+            raise
+
+    @property
+    def starting(self) -> bool:
+        """
+        仅真实启动尚未结束时允许 SDK 内部嵌套调用复用名额。
+        """
+        return self._starting
+
+    @property
+    def expired(self) -> bool:
+        """
+        超时后的实例永久失效，不能通过迟到的 SDK 返回值重新启用。
+        """
+        return self._expired
+
+    def check(self) -> None:
+        """
+        拒绝向已回收的实例派发新动作，保留动作结果可能未知的错误语义。
+        """
+        if self._expired:
+            raise BrowserOperationTimeoutError(self._reason)
+
+    def attach(self, browser_type: Any, kwargs: dict[str, Any]) -> None:
+        """
+        在内核出生前接管本次专属驱动，并给浏览器加入唯一进程标记。
+
+        Playwright 的 PipeTransport 私有 PID 只在此边界读取；无法核实归属则拒绝启动。
+        """
+        connection = browser_type._impl_obj._connection
+        pid = connection._transport._proc.pid
+        release_after = False
+        expired_error: Optional[BrowserOperationTimeoutError] = None
+        with self._lock:
+            known_connection = connection in self._connections
+            if known_connection:
+                assert self._tree is not None
+                candidate_tree = self._tree
+            else:
+                candidate_tree = OwnedProcessTree(pid, self._marker)
+            self._connections.add(connection)
+            if self._tree is None or (self._expired and self._tree.stopped):
+                self._tree = candidate_tree
+            elif not known_connection and not self._expired:
+                candidate_tree.terminate(self._close_timeout)
+                raise RuntimeError("同一浏览器 owner 不能启动第二个原生驱动")
+            with _browser_owners_lock:
+                _connection_owners[connection] = self
+            if self._expired:
+                # 下载等步骤迟到后才创建驱动，也必须收掉，不能重新占用已归还的名额。
+                if candidate_tree.terminate(self._close_timeout):
+                    if candidate_tree is self._tree:
+                        release_after = True
+                expired_error = BrowserOperationTimeoutError(self._reason)
+            if expired_error is None:
+                kwargs["args"] = [*(kwargs.get("args") or []), self._marker]
+                remaining_ms = max(1.0, (self._startup_deadline - time.monotonic()) * 1000)
+                requested = kwargs.get("timeout") or remaining_ms
+                kwargs["timeout"] = min(requested, remaining_ms)
+        if release_after:
+            self._release()
+        if expired_error is not None:
+            raise expired_error
+
+    def begin_operation(self) -> object:
+        """
+        从当前请求捕获取消状态，给包括无原生超时的 evaluate 在内的 API 加硬期限。
+        """
+        with self._lock:
+            if self._close_deadline is None:
+                self.check()
+            ticket = object()
+            self._operations[ticket] = (
+                time.monotonic() + self._operation_timeout, browser_cancel_check(),
+            )
+        self._wake.set()
+        return ticket
+
+    def end_operation(self, ticket: object) -> None:
+        """
+        只撤销本次 API 的期限，更新空闲时间而不延长其它在途操作。
+        """
+        with self._lock:
+            self._operations.pop(ticket, None)
+            self._last_used = time.monotonic()
+        self._wake.set()
+
+    def begin_close(self) -> None:
+        """
+        关闭只给一次宽限，嵌套 Browser/Context 关闭不能反复延长期限。
+        """
+        with self._lock:
+            if self._close_deadline is None:
+                self._close_deadline = time.monotonic() + self._close_timeout
+        self._wake.set()
+
+    def request_stop(self, reason: str = "浏览器操作被中断，实例已撤销") -> None:
+        """
+        由取消或停机边界要求监控线程回收，调用者不直接跨线程操作 Playwright。
+        """
+        with self._lock:
+            self._expired = True
+            self._reason = self._reason or reason
+        self._wake.set()
+
+    def _release(self) -> None:
+        """
+        已确认没有原生实例后归还容量，并保留到监控线程退出的有界 join。
+        """
+        self._stopped.set()
+        self._wake.set()
+        self._lease.release()
+        with _browser_owners_lock:
+            _browser_owners.discard(self)
+            for connection, owner in tuple(_connection_owners.items()):
+                if owner is self:
+                    _connection_owners.pop(connection, None)
+        if self._watcher.ident is not None and threading.current_thread() is not self._watcher:
+            self._watcher.join(timeout=self._close_timeout)
+
+    def _notify_connections(self) -> None:
+        """
+        把驱动强制退出传播到 Playwright 事件循环，唤醒正在等待的同步或异步 RPC。
+        """
+        with _browser_owners_lock:
+            connections = tuple(
+                connection for connection, owner in _connection_owners.items() if owner is self
+            )
+        for connection in connections:
+            try:
+                loop = connection._loop
+                if not loop.is_closed():
+                    loop.call_soon_threadsafe(self._cleanup_connection, connection, self._reason)
+            except (AttributeError, RuntimeError, OSError) as error:
+                logger.debug(f"通知浏览器连接退出失败：{error}")
+
+    @staticmethod
+    def _cleanup_connection(connection: Any, reason: str) -> None:
+        """
+        在 Playwright 所属事件循环收口连接，并读取无人等待的回调异常。
+
+        被强制回收时可能同时存在初始化和业务 RPC；逐一读取已完成 Future
+        只消除未处理告警，不改变仍在等待调用收到的异常。
+        """
+        callbacks = tuple(getattr(connection, "_callbacks", {}).values())
+        try:
+            connection.cleanup(reason)
+        finally:
+            futures = [callback.future for callback in callbacks]
+            transport_error = getattr(getattr(connection, "_transport", None), "on_error_future", None)
+            if transport_error is not None:
+                futures.append(transport_error)
+            for future in futures:
+                if future.done():
+                    try:
+                        future.exception()
+                    except BaseException:
+                        pass
+                else:
+                    future.add_done_callback(_consume_future_exception)
+
+    def stop_sync_connections(self) -> None:
+        """
+        在原生驱动已被回收后，从所属同步调用线程收口 Playwright dispatcher。
+
+        强杀驱动不会安全地结束 Python greenlet；同步 close 需要显式 stop 以清理其事件循环。
+        """
+        for connection in tuple(self._connections):
+            try:
+                connection.stop_sync()
+            except (AttributeError, RuntimeError, OSError, AssertionError) as error:
+                logger.debug(f"收口同步浏览器连接失败：{error}")
+
+    async def stop_async_connections(self) -> None:
+        """
+        在异步调用方收口已强制结束的 Playwright 连接，避免遗留协议任务。
+        """
+        for connection in tuple(self._connections):
+            try:
+                await asyncio.wait_for(connection.stop_async(), timeout=self._close_timeout)
+            except (AttributeError, RuntimeError, OSError, AssertionError, asyncio.TimeoutError) as error:
+                logger.debug(f"收口异步浏览器连接失败：{error}")
+
+    def track_task(self, task: asyncio.Task[Any]) -> asyncio.Task[Any]:
+        """
+        登记需要由当前 owner 观察的异步启动或关闭任务，避免超时后变成无主任务。
+        """
+        with self._lock:
+            self._owned_tasks.add(task)
+
+        def forget(done: asyncio.Task[Any]) -> None:
+            """
+            任务进入终态后从 owner 的生命周期账本移除。
+            """
+            with self._lock:
+                self._owned_tasks.discard(done)
+
+        task.add_done_callback(forget)
+        return task
+
+    async def wait_task(self, task: asyncio.Task[Any], timeout: float) -> tuple[bool, bool]:
+        """
+        有界等待 owner 任务；重复取消只记录并在任务终态后交回调用方。
+
+        :param task: 已由 :meth:`track_task` 登记的任务
+        :param timeout: 最长等待秒数
+        :return: ``(是否取得终态, 调用方是否收到取消)``
+        """
+        deadline = time.monotonic() + timeout
+        cancelled = False
+        while not task.done():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False, cancelled
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=remaining)
+            except asyncio.CancelledError:
+                cancelled = True
+            except asyncio.TimeoutError:
+                return False, cancelled
+        return True, cancelled
+
+    def closed(self) -> None:
+        """
+        正常关闭后核对原生终态；驱动仍在时交回监控线程继续确认。
+        """
+        if self._tree is None or self._tree.stopped:
+            self._release()
+        else:
+            self.begin_close()
+
+    def wait_stopped(self, timeout: float) -> bool:
+        """
+        停机只有限等待；未收敛的 owner 和容量继续保留以供重试。
+        """
+        self._watcher.join(timeout=timeout)
+        return not self._watcher.is_alive() and self._stopped.is_set()
+
+    def _expiry_reason(self) -> str:
+        """
+        在锁内计算最早失效原因，空闲会话也有最终回收期限。
+        """
+        now = time.monotonic()
+        if self._starting and (self._startup_cancelled() or now >= self._startup_deadline):
+            return "浏览器启动超时或被中断，实例已撤销"
+        if self._close_deadline is not None and now >= self._close_deadline:
+            return "浏览器关闭超时，正在强制回收本次实例"
+        for deadline, cancelled in self._operations.values():
+            if cancelled() or now >= deadline:
+                return "浏览器操作超时或被中断，实际执行结果未知，实例已撤销"
+        if not self._starting and not self._operations and now - self._last_used >= 15 * 60:
+            return "浏览器空闲超过 15 分钟，实例已回收"
+        return ""
+
+    def _watch(self) -> None:
+        """
+        独立于卡住的 RPC 和事件循环回收专属进程，确认退出后才放行下一实例。
+        """
+        while not self._stopped.is_set():
+            self._wake.wait(0.05)
+            self._wake.clear()
+            with self._lock:
+                reason = self._reason or self._expiry_reason()
+                if not reason:
+                    continue
+                self._expired = True
+                self._reason = reason
+                tree = self._tree
+                has_resource = bool(self._resources)
+            if tree is not None:
+                if not tree.terminate(self._close_timeout):
+                    # 权限/内核异常不能假报名额空闲；保留 owner 供停机重试。
+                    self._wake.wait(self._close_timeout)
+                    continue
+                self._notify_connections()
+                self._release()
+                continue
+            elif has_resource:
+                continue
+            else:
+                # 启动尚未拿到驱动时，先保留名额到硬启动期限；原生 guard
+                # 会拒绝期限后的迟到启动，避免空档期间产生无主浏览器。
+                with self._lock:
+                    if self._starting and time.monotonic() < self._startup_deadline:
+                        continue
+                self._release()
+
+    def finish(self) -> None:
+        """
+        撤销嵌套启动资格，防止 SDK 子任务继承的上下文日后绕过队列。
+        """
+        self._starting = False
+        self._wake.set()
+
+    async def _close_async_resource(
+        self, original_close: Callable[..., Any], *args: Any, **kwargs: Any,
+    ) -> Any:
+        """
+        在关闭宽限内等待异步句柄，超时后交给 owner 监控线程回收。
+        """
+        if self.expired and self._stopped.is_set():
+            await self.stop_async_connections()
+            return None
+        self.begin_close()
+        task = self.track_task(asyncio.create_task(original_close(*args, **kwargs)))
+        try:
+            completed, cancelled = await self.wait_task(task, self._close_timeout)
+        except Exception:
+            if not (self.expired and self._stopped.is_set()):
+                raise
+            completed, cancelled = True, False
+        if not completed:
+            self.request_stop("浏览器关闭超时，实际状态未知，实例已撤销")
+            self.closed()
+            if cancelled:
+                raise asyncio.CancelledError
+            raise BrowserOperationTimeoutError("浏览器关闭超时，实际状态未知")
+        try:
+            result = task.result()
+        except Exception:
+            if not (self.expired and self._stopped.is_set()):
+                raise
+            result = None
+        self.closed()
+        if cancelled:
+            raise asyncio.CancelledError
+        return result
+
+    def _close_sync_resource(
+        self, original_close: Callable[..., Any], *args: Any, **kwargs: Any,
+    ) -> Any:
+        """
+        在所属同步线程关闭句柄；失败时保留 owner 供监控和后续收口重试。
+        """
+        if self.expired and self._stopped.is_set():
+            self.stop_sync_connections()
+            return None
+        self.begin_close()
+        try:
+            result = original_close(*args, **kwargs)
+        except Exception:
+            if not (self.expired and self._stopped.is_set()):
+                raise
+            result = None
+        self.closed()
+        return result
+
+    def bind(self, resource: Any, asynchronous: bool) -> Any:
+        """
+        保留原对象身份和关闭参数，在关闭成功或进程断开后幂等归还名额。
+
+        :param resource: SDK 返回的 Browser 或 BrowserContext
+        :param asynchronous: 该对象是否使用异步关闭方法
+        :return: 原浏览器对象
+        """
+        self._resources.append(resource)
+        setattr(resource, "_moviepilot_browser_owner", self)
+        original_close = resource.close
+        if asynchronous:
+            @wraps(original_close)
+            async def close_async(*args: Any, **kwargs: Any) -> Any:
+                """
+                调用 owner 的有界异步关闭实现。
+                """
+                return await self._close_async_resource(original_close, *args, **kwargs)
+
+            resource.close = close_async
+        else:
+            @wraps(original_close)
+            def close_sync(*args: Any, **kwargs: Any) -> Any:
+                """
+                调用 owner 的同步关闭实现。
+                """
+                return self._close_sync_resource(original_close, *args, **kwargs)
+
+            resource.close = close_sync
+
+        # 普通 Context 的 close 事件可能早于其 Browser 真正退出，不能据此归还。
+        target = getattr(resource, "browser", None) or resource
+        if callable(getattr(target, "is_connected", None)):
+            target.on("disconnected", lambda *_args: self.closed())
+        return resource
+
+    def abort(self) -> None:
+        """
+        启动失败或取消后关闭已取得的同步句柄；关闭失败保留真实占用。
+        """
+        if not self._resources:
+            self.closed()
+        for resource in reversed(self._resources):
+            try:
+                resource.close()
+            except Exception as error:
+                logger.warning(f"回收未完成启动的浏览器失败：{error}")
+
+    async def abort_async(self) -> None:
+        """
+        等待异步启动清理取得终态，即使调用方再次取消也不遗留新实例。
+        """
+        if not self._resources:
+            self.closed()
+        for resource in reversed(self._resources):
+            task = self.track_task(asyncio.create_task(resource.close()))
+            try:
+                completed, _cancelled = await self.wait_task(task, self._close_timeout)
+                if not completed:
+                    self.request_stop("浏览器启动清理超时，实例已撤销")
+                    self.closed()
+                    raise BrowserOperationTimeoutError("浏览器启动清理超时，实际状态未知")
+                task.result()
+            except Exception as error:
+                logger.warning(f"回收未完成启动的浏览器失败：{error}")
+
+
+def _consume_future_exception(future: asyncio.Future[Any]) -> None:
+    """
+    读取驱动 EOF 之后才完成的内部 Future，避免强制回收制造告警。
+    """
+    try:
+        future.exception()
+    except BaseException:
+        pass
+
+
+def _browser_queue_timeout() -> float:
+    """
+    读取部署侧浏览器容量和排队秒数，降容不会中断正在使用的实例。
+    """
+    browser_capacity.configure(int(get_runtime_setting("CLOAKBROWSER_MAX_CONCURRENCY", 1)))
+    return float(get_runtime_setting("CLOAKBROWSER_QUEUE_TIMEOUT", 60))
+
+
+def _require_browser_license(license_key: Optional[str] = None) -> None:
+    """
+    后台缺少 key 时明确报错，禁止 SDK 自动申请账号并在日志输出临时领取链接。
+
+    :param license_key: SDK 调用者显式传入的 key，优先于 SDK 的环境变量和本地文件
+    """
+    from cloakbrowser.license import resolve_license_key
+
+    if not os.environ.get("CLOAKBROWSER_BINARY_PATH") and not resolve_license_key(license_key):
+        raise RuntimeError(
+            "CloakBrowser 需要授权 key；请通过 cloakbrowser login 或 https://cloakbrowser.dev/free "
+            "申请免费 key，并在运行环境设置 CLOAKBROWSER_LICENSE_KEY"
+        )
+
+
+def _explicit_browser_key(
+    original: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any],
+) -> Optional[str]:
+    """
+    读取 SDK 显式 key，兼容旧插件的位置参数调用且不修改原始参数。
+    """
+    if "license_key" in kwargs:
+        return cast(Optional[str], kwargs["license_key"])
+    parameters = tuple(inspect.signature(original).parameters)
+    if "license_key" in parameters:
+        position = parameters.index("license_key")
+        if len(args) > position:
+            return cast(Optional[str], args[position])
+    return None
+
+
+def _guard_native_launch(original: Callable[..., Any], asynchronous: bool) -> Callable[..., Any]:
+    """
+    仅在 CloakBrowser 启动上下文中接管专属驱动，普通 Playwright 调用保持原样。
+    """
+    @wraps(original)
+    def launch(browser_type: Any, *args: Any, **kwargs: Any) -> Any:
+        """
+        在向原生驱动发送启动指令前登记归属、标记和剩余启动期限。
+        """
+        owner = _launch_owner.get()
+        if owner is not None and (owner.starting or owner.expired):
+            owner.attach(browser_type, kwargs)
+        return original(browser_type, *args, **kwargs)
+
+    @wraps(original)
+    async def launch_async(browser_type: Any, *args: Any, **kwargs: Any) -> Any:
+        """
+        异步内核启动也经过同一归属检查，不允许取消后的迟到启动。
+        """
+        owner = _launch_owner.get()
+        if owner is not None and (owner.starting or owner.expired):
+            owner.attach(browser_type, kwargs)
+        return await original(browser_type, *args, **kwargs)
+
+    wrapped = launch_async if asynchronous else launch
+    setattr(wrapped, "_moviepilot_guarded", True)
+    return wrapped
+
+
+def _guard_native_calls(original: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    在 Playwright 连接边界监控所有外层 API，覆盖没有原生 timeout 的脚本操作。
+    """
+    @wraps(original)
+    async def call(connection: Any, *args: Any, **kwargs: Any) -> Any:
+        """
+        无论同步 greenlet 还是异步 Task，都按连接身份找到实例 owner。
+        """
+        with _browser_owners_lock:
+            owner = _connection_owners.get(connection)
+        if owner is None or connection._api_zone.get():
+            return await original(connection, *args, **kwargs)
+        ticket = owner.begin_operation()
+        try:
+            return await original(connection, *args, **kwargs)
+        except Exception:
+            owner.check()
+            raise
+        finally:
+            owner.end_operation(ticket)
+
+    setattr(call, "_moviepilot_guarded", True)
+    return call
+
+
+def _guard_native_calls_sync(original: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    同步 Playwright 通过 greenlet 进入同一监控边界，覆盖 evaluate 等无限等待调用。
+    """
+    @wraps(original)
+    def call(connection: Any, *args: Any, **kwargs: Any) -> Any:
+        """
+        按连接身份登记同步 API 期限，保留未被 MoviePilot 接管的连接原行为。
+        """
+        with _browser_owners_lock:
+            owner = _connection_owners.get(connection)
+        if owner is None or connection._api_zone.get():
+            return original(connection, *args, **kwargs)
+        ticket = owner.begin_operation()
+        try:
+            return original(connection, *args, **kwargs)
+        except BaseException:
+            owner.check()
+            raise
+        finally:
+            owner.end_operation(ticket)
+
+    setattr(call, "_moviepilot_guarded", True)
+    return call
+
+
+def _configure_native_browser_guard() -> None:
+    """
+    惰性安装固定 Playwright 版本的原生边界钩子；不创建浏览器或驱动。
+    """
+    from playwright._impl._connection import Connection
+    from playwright.async_api import BrowserType as AsyncBrowserType
+    from playwright.sync_api import BrowserType as SyncBrowserType
+
+    for browser_type, asynchronous in ((SyncBrowserType, False), (AsyncBrowserType, True)):
+        for name in ("launch", "launch_persistent_context"):
+            original = getattr(browser_type, name)
+            if getattr(original, "_moviepilot_guarded", False) is not True:
+                setattr(browser_type, name, _guard_native_launch(original, asynchronous))
+    original_call = Connection.wrap_api_call
+    if getattr(original_call, "_moviepilot_guarded", False) is not True:
+        Connection.wrap_api_call = _guard_native_calls(original_call)
+    original_sync_call = Connection.wrap_api_call_sync
+    if getattr(original_sync_call, "_moviepilot_guarded", False) is not True:
+        Connection.wrap_api_call_sync = _guard_native_calls_sync(original_sync_call)
+
+
+def close_browser_instances() -> bool:
+    """
+    停机时收口包含旧插件在内的所有实例监控线程，未退出的 owner 保留并返回失败。
+    """
+    with _browser_owners_lock:
+        owners = tuple(_browser_owners)
+    for owner in owners:
+        owner.request_stop("系统正在停止，浏览器实例已撤销")
+    deadline = time.monotonic() + float(get_runtime_setting("CLOAKBROWSER_CLOSE_TIMEOUT", 5)) + 1
+    results = [owner.wait_stopped(max(0, deadline - time.monotonic())) for owner in owners]
+    return all(results)
+
+
+def _browser_close_budget() -> float:
+    """
+    给原生强制回收和 RPC 终态传播保留少量余量，关闭等待始终有界。
+    """
+    return float(get_runtime_setting("CLOAKBROWSER_CLOSE_TIMEOUT", 5)) + 1
+
+
+def _browser_action_budget() -> float:
+    """
+    限制整个宿主回调等待，无法中止的第三方 Python 代码仍保留原执行 owner。
+    """
+    return (
+        float(get_runtime_setting("CLOAKBROWSER_QUEUE_TIMEOUT", 60))
+        + float(get_runtime_setting("CLOAKBROWSER_OPERATION_TIMEOUT", 120))
+        + _browser_close_budget()
+    )
+
+
+def _context_browser_owner(context: Any) -> Optional[_BrowserLaunchOwner]:
+    """
+    只识别本适配器绑定的真实 owner，避免旧插件替身动态属性造成误判。
+    """
+    owner = getattr(context, "_moviepilot_browser_owner", None)
+    return owner if isinstance(owner, _BrowserLaunchOwner) else None
+
+
+def _queued_browser_launch(original: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    包装同步入口，名额跨越 SDK 返回后的完整实例存活期。
+    """
+    @wraps(original)
+    def launch(*args: Any, **kwargs: Any) -> Any:
+        """
+        嵌套 SDK 启动共享顶层名额，外部独立启动按同一队列等待。
+        """
+        owner = _launch_owner.get()
+        if owner is not None and owner.starting:
+            return owner.bind(original(*args, **kwargs), asynchronous=False)
+        _require_browser_license(_explicit_browser_key(original, args, kwargs))
+        owner = _BrowserLaunchOwner(browser_capacity.acquire(_browser_queue_timeout()))
+        token = _launch_owner.set(owner)
+        try:
+            check_browser_request()
+            result = owner.bind(original(*args, **kwargs), asynchronous=False)
+            owner.check()
+            check_browser_request()
+            return result
+        except BaseException:
+            owner.finish()
+            owner.abort()
+            raise
+        finally:
+            owner.finish()
+            _launch_owner.reset(token)
+
+    return launch
+
+
+def _queued_browser_launch_async(original: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    包装异步入口，取消已经开始的启动时先等到终态并关闭结果。
+    """
+    @wraps(original)
+    async def launch(*args: Any, **kwargs: Any) -> Any:
+        """
+        异步等待不占同步线程，SDK 内部启动仍复用同一个名额。
+        """
+        owner = _launch_owner.get()
+        if owner is not None and owner.starting:
+            return owner.bind(await original(*args, **kwargs), asynchronous=True)
+        _require_browser_license(_explicit_browser_key(original, args, kwargs))
+        lease = await browser_capacity.acquire_async(_browser_queue_timeout())
+        owner = _BrowserLaunchOwner(lease)
+        token = _launch_owner.set(owner)
+
+        async def invoke() -> Any:
+            """
+            启动前复核取消，成功后登记句柄以支持取消路径回收。
+            """
+            check_browser_request()
+            return owner.bind(await original(*args, **kwargs), asynchronous=True)
+
+        task = owner.track_task(asyncio.create_task(invoke()))
+        try:
+            result = await asyncio.shield(task)
+            owner.check()
+            check_browser_request()
+            return result
+        except BaseException:
+            owner.request_stop("浏览器启动失败或被取消，实例已撤销")
+            try:
+                completed, _cancelled = await owner.wait_task(
+                    task, owner._operation_timeout + owner._close_timeout,
+                )
+                if completed:
+                    task.result()
+            except BaseException:
+                pass
+            owner.finish()
+            await owner.abort_async()
+            raise
+        finally:
+            owner.finish()
+            _launch_owner.reset(token)
+
+    return launch
+
+
+def configure_browser_queue() -> None:
+    """
+    在首次宿主启动或旧插件导入前统一包装 CloakBrowser 六类公开入口。
+
+    包根和 browser 子模块共享包装对象；SDK 内部的 launch 嵌套不会重复取号。
+    """
+    import cloakbrowser
+
+    modules = (cloakbrowser, sys.modules.get("cloakbrowser.browser"))
+    with _provider_queue_lock:
+        _configure_native_browser_guard()
+        wrappers: dict[int, Callable[..., Any]] = {}
+        for module in modules:
+            if module is None:
+                continue
+            for name in _CLOAKBROWSER_ENTRYPOINTS:
+                original = getattr(module, name, None)
+                if original is None or getattr(original, "_moviepilot_queued", False) is True:
+                    continue
+                wrapped = wrappers.get(id(original))
+                if wrapped is None:
+                    factory = _queued_browser_launch_async if name.endswith("_async") else _queued_browser_launch
+                    wrapped = factory(original)
+                    setattr(wrapped, "_moviepilot_queued", True)
+                    wrappers[id(original)] = wrapped
+                setattr(module, name, wrapped)
 
 
 class BrowserElement(Protocol):
@@ -243,7 +1017,7 @@ class BrowserPage(Protocol):
 
 def launch_browser_context(headless: bool = True, **kwargs: Any) -> BrowserContext:
     """
-    启动同步浏览器上下文；有界面模式先显式获取宿主显示资源。
+    排队启动同步浏览器上下文；关闭上下文后才归还实例名额。
 
     :param headless: 是否使用无头模式
     :param kwargs: 浏览器实现接受的其余启动参数
@@ -255,6 +1029,7 @@ def launch_browser_context(headless: bool = True, **kwargs: Any) -> BrowserConte
             reason="headed_browser_launch",
             retry=True,
         )
+    configure_browser_queue()
     from cloakbrowser import launch_context
 
     return cast(BrowserContext, launch_context(headless=headless, **kwargs))
@@ -265,7 +1040,7 @@ async def launch_browser_context_async(
     **kwargs: Any,
 ) -> Any:
     """
-    启动异步浏览器上下文；有界面模式等待宿主显示资源就绪。
+    排队启动异步浏览器上下文；取消启动时回收已经创建的实例。
 
     :param headless: 是否使用无头模式
     :param kwargs: 浏览器实现接受的其余启动参数
@@ -277,6 +1052,7 @@ async def launch_browser_context_async(
             reason="headed_browser_launch",
             retry=True,
         )
+    configure_browser_queue()
     from cloakbrowser import launch_context_async
 
     return await launch_context_async(headless=headless, **kwargs)
@@ -346,6 +1122,8 @@ class BrowserSessionHelper:
     _idle_close_owners: dict[ThreadPoolExecutor, Any] = {}
     # 显式关闭撤销准入后仍保留真实终态，供 owner 和全量关闭共同等待。
     _explicit_closures: dict[ThreadPoolExecutor, tuple[Any, Future[bool]]] = {}
+    # 关闭失败必须保留原线程和句柄，不能丢弃真实占用或在其它线程重试 Playwright。
+    _failed_closures: dict[ThreadPoolExecutor, _BrowserSessionState] = {}
     _reaper_task: Optional[asyncio.Task[None]] = None
 
     @classmethod
@@ -448,13 +1226,18 @@ class BrowserSessionHelper:
             with cls._sessions_lock:
                 session = cls._sessions.get(session_key)
                 owner = session.owner if session else cls._session_executor_owners.get(session_key)
-            cls.close_session(session_key, owner=owner)
+            try:
+                cls.close_session(session_key, owner=owner)
+            except Exception as error:
+                logger.warning(f"关闭浏览器会话失败，保留原线程重试：{error}")
         with cls._sessions_lock:
             closures = tuple(cls._idle_closures.values()) + tuple(
                 future for _owner, future in cls._explicit_closures.values()
             )
         for future in closures:
-            future.result()
+            future.result(timeout=_browser_close_budget())
+        if not cls._retry_failed_sessions(all_owners=True):
+            raise RuntimeError("部分浏览器尚未关闭，不能释放其运行资源")
 
     @classmethod
     def close_session(cls, session_key: str, owner: Optional[Any] = None) -> bool:
@@ -470,8 +1253,20 @@ class BrowserSessionHelper:
 
         with cls._sessions_lock:
             executor = cls._get_existing_session_executor(session_key, owner=owner)
+            session = cls._sessions.get(session_key)
+            browser_owner = _context_browser_owner(session.context) if session else None
+            if browser_owner is not None:
+                browser_owner.begin_close()
             if executor is None:
-                return False
+                failed = any(
+                    session.session_key == session_key and session.owner is owner
+                    for session in cls._failed_closures.values()
+                )
+                if not failed:
+                    return False
+        if executor is None:
+            return cls._retry_failed_sessions(owner=owner, session_key=session_key)
+        with cls._sessions_lock:
             context = copy_context()
 
             def close_in_context() -> bool:
@@ -490,10 +1285,9 @@ class BrowserSessionHelper:
             except RuntimeError:
                 cls._release_operation(executor)
                 raise
-        try:
-            return future.result()
-        finally:
-            cls._shutdown_session_executor(session_key, expected_executor=executor)
+        result = future.result(timeout=_browser_close_budget())
+        cls._shutdown_session_executor(session_key, expected_executor=executor)
+        return result
 
     @classmethod
     def close_owner(cls, owner: Any) -> bool:
@@ -508,8 +1302,13 @@ class BrowserSessionHelper:
                 key for key, session_owner in cls._session_executor_owners.items()
                 if session_owner is owner
             )
+        converged = True
         for session_key in session_keys:
-            cls.close_session(session_key, owner=owner)
+            try:
+                cls.close_session(session_key, owner=owner)
+            except Exception as error:
+                logger.warning(f"关闭任务浏览器失败，保留原线程重试：{error}")
+                converged = False
         with cls._sessions_lock:
             closures = tuple(
                 future for executor, future in cls._idle_closures.items()
@@ -519,9 +1318,13 @@ class BrowserSessionHelper:
                 if closing_owner is owner
             )
         for future in closures:
-            future.result()
+            try:
+                future.result(timeout=_browser_close_budget())
+            except Exception:
+                converged = False
+        converged = cls._retry_failed_sessions(owner=owner) and converged
         with cls._sessions_lock:
-            return not any(
+            return converged and not any(
                 session.owner is owner
                 for session in cls._sessions.values()
             ) and not any(
@@ -566,6 +1369,94 @@ class BrowserSessionHelper:
         finally:
             if not in_session_thread:
                 self._enforce_session_limit(protect_session_key=session_key)
+
+    @classmethod
+    async def run_action_async(
+        cls, session_key: str, callback: Callable[[], Any], owner: Optional[Any] = None,
+    ) -> Any:
+        """
+        直接异步等待会话专属执行器，排队取实例时不占 Agent 公共工具线程。
+
+        :param session_key: 动作所属的浏览器会话标识
+        :param callback: 在该会话原线程执行的同步动作
+        :param owner: 用于校验会话归属的宿主任务
+        :return: 动作原始结果；取消只撤销当前调用的后续启动资格
+        """
+        cancelled = threading.Event()
+        started = threading.Event()
+
+        def invoke() -> Any:
+            """
+            标记已进入会话线程；等待队列中的调用取消时不影响当前使用者。
+            """
+            started.set()
+            return callback()
+
+        with browser_request(cancelled.is_set):
+            executor, future = cls._submit_session_task(session_key, invoke, owner=owner)
+            future.add_done_callback(partial(
+                cls._finish_async_action, session_key, executor, cancelled, started, owner,
+            ))
+            try:
+                async with asyncio.timeout(_browser_action_budget()):
+                    result = await asyncio.shield(asyncio.wrap_future(future))
+            except asyncio.CancelledError:
+                cancelled.set()
+                if not started.is_set():
+                    future.cancel()
+                else:
+                    cls._cancel_session_browser(session_key, owner)
+                raise
+            except TimeoutError as error:
+                cancelled.set()
+                if not started.is_set():
+                    future.cancel()
+                else:
+                    cls._cancel_session_browser(session_key, owner)
+                raise BrowserOperationTimeoutError("浏览器动作等待超时，实际执行结果未知") from error
+        await asyncio.to_thread(cls._enforce_session_limit, session_key)
+        return result
+
+    @classmethod
+    def _finish_async_action(
+        cls, session_key: str, executor: ThreadPoolExecutor, cancelled: threading.Event,
+        started: threading.Event, owner: Optional[Any], future: Future[Any],
+    ) -> None:
+        """
+        观察被取消调用的真实终态，清理没有创建会话的空执行器。
+        """
+        if not future.cancelled():
+            future.exception()
+        if cancelled.is_set() and started.is_set():
+            # 回调可能在取消检查后才发布实例；仍在原工作线程收口，补齐这个竞态。
+            cls._cancel_session_browser(session_key, owner)
+            try:
+                cls._close_session_in_thread(session_key, owner=owner)
+            except Exception as error:
+                logger.warning(f"回收已中断的浏览器会话失败：{error}")
+        with cls._sessions_lock:
+            unused = (
+                session_key not in cls._sessions
+                and not cls._pending_operations.get(executor)
+                and executor not in cls._failed_closures
+            )
+            if unused:
+                cls._discard_session_executor(session_key, executor)
+        if unused:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    @classmethod
+    def _cancel_session_browser(cls, session_key: str, owner: Optional[Any]) -> None:
+        """
+        只撤销当前任务持有的原生实例，不因同名会话或等待者取消误伤其它任务。
+        """
+        with cls._sessions_lock:
+            session = cls._sessions.get(session_key)
+            browser_owner = (
+                _context_browser_owner(session.context) if session and session.owner is owner else None
+            )
+        if browser_owner is not None:
+            browser_owner.request_stop()
 
     def _with_session_in_thread(
         self,
@@ -626,37 +1517,63 @@ class BrowserSessionHelper:
             return callback(*args, owner=owner, **kwargs)
 
         for _ in range(2):
-            with cls._sessions_lock:
-                executor = cls._get_session_executor(session_key, owner=owner)
-                context = copy_context()
-
-                def invoke_in_context() -> Any:
-                    """
-                    在独立请求上下文中执行，并在真实结束后释放准入计数。
-                    """
-                    return context.run(
-                        cls._run_session_task, session_key, callback,
-                        *args, owner=owner, **kwargs,
-                    )
-
-                cls._pending_operations[executor] = cls._pending_operations.get(executor, 0) + 1
-                try:
-                    future: Future[Any] = Context().run(executor.submit, invoke_in_context)
-                    future.add_done_callback(partial(cls._release_operation, executor))
-                except RuntimeError:
-                    cls._release_operation(executor)
-                    cls._discard_session_executor(session_key, executor)
-                    continue
             try:
-                return future.result()
+                executor, future = cls._submit_session_task(
+                    session_key, partial(callback, *args, owner=owner, **kwargs), owner=owner,
+                )
+            except RuntimeError:
+                continue
+            try:
+                return future.result(timeout=_browser_action_budget())
+            except TimeoutError as error:
+                cls._cancel_session_browser(session_key, owner)
+                raise BrowserOperationTimeoutError("浏览器动作等待超时，实际执行结果未知") from error
             except Exception:
                 with cls._sessions_lock:
                     has_session = session_key in cls._sessions
                 if not has_session:
-                    cls._shutdown_session_executor(session_key, expected_executor=executor)
+                    with cls._sessions_lock:
+                        failed_close = executor in cls._failed_closures
+                    if not failed_close and future.done():
+                        cls._shutdown_session_executor(session_key, expected_executor=executor)
                 raise
 
         raise RuntimeError("浏览器会话线程已关闭")
+
+    @classmethod
+    def _submit_session_task(
+        cls, session_key: str, callback: Callable[..., Any], *args: Any,
+        owner: Optional[Any] = None, **kwargs: Any,
+    ) -> tuple[ThreadPoolExecutor, Future[Any]]:
+        """
+        原子提交带独立上下文的会话动作，并登记排队和在途计数。
+
+        :param session_key: 会话标识
+        :param callback: 在会话专属线程执行的同步回调
+        :param args: 回调位置参数
+        :param owner: 准入时校验的宿主任务
+        :param kwargs: 回调关键字参数
+        :return: 本次真实执行器和已登记的 Future
+        """
+        with cls._sessions_lock:
+            executor = cls._get_session_executor(session_key, owner=owner)
+            context = copy_context()
+
+            def invoke_in_context() -> Any:
+                """
+                在请求快照中执行，避免后续动作继承先前请求的取消状态。
+                """
+                return context.run(cls._run_session_task, session_key, callback, *args, **kwargs)
+
+            cls._pending_operations[executor] = cls._pending_operations.get(executor, 0) + 1
+            try:
+                future: Future[Any] = Context().run(executor.submit, invoke_in_context)
+                future.add_done_callback(partial(cls._release_operation, executor))
+            except RuntimeError:
+                cls._release_operation(executor)
+                cls._discard_session_executor(session_key, executor)
+                raise
+            return executor, future
 
     @classmethod
     def _release_operation(
@@ -806,10 +1723,10 @@ class BrowserSessionHelper:
                 cls._explicit_closures[executor] = (owner, completion)
                 cls._discard_session_executor(session_key, executor)
         try:
-            if executor:
-                executor.shutdown(wait=False, cancel_futures=True)
             if session:
-                cls._close_session_state(session)
+                cls._close_retired_session(session, executor)
+            elif executor:
+                executor.shutdown(wait=False, cancel_futures=True)
             completion.set_result(session is not None)
             return session is not None
         except BaseException as err:
@@ -1091,22 +2008,30 @@ class BrowserSessionHelper:
             session = self._sessions.get(session_key)
             if session and session.owner is not owner:
                 raise PermissionError("浏览器会话不属于当前任务")
-            if session and user_agent and session.user_agent != user_agent:
+            browser_owner = _context_browser_owner(session.context) if session else None
+            if session and (
+                (user_agent and session.user_agent != user_agent)
+                or (browser_owner is not None and browser_owner.expired)
+            ):
                 retired_session = self._sessions.pop(session_key)
                 session = None
             if session:
                 return session
         if retired_session is not None:
-            self._close_session_state(retired_session)
+            try:
+                self._close_session_state(retired_session)
+            except Exception:
+                with self._sessions_lock:
+                    self._sessions[session_key] = retired_session
+                raise
 
-        context = self._launch_context(
-            headless=self.headless,
-            user_agent=user_agent,
-            viewport=self.viewport,
-        )
-        page = context.new_page()
-        if cookies:
-            page.set_extra_http_headers({"cookie": cookies})
+        with browser_request(lambda: owner is not None and bool(getattr(owner, "closed", False))):
+            context = self._launch_context(
+                headless=self.headless,
+                user_agent=user_agent,
+                viewport=self.viewport,
+            )
+            page = self._create_session_page(context, session_key, cookies, owner)
         session = _BrowserSessionState(
             session_key=session_key,
             context=context,
@@ -1124,6 +2049,39 @@ class BrowserSessionHelper:
         if existing_session.owner is not owner:
             raise PermissionError("浏览器会话不属于当前任务")
         return existing_session
+
+    @classmethod
+    def _create_session_page(
+        cls, context: BrowserContext, session_key: str, cookies: Optional[str], owner: Optional[Any],
+    ) -> BrowserPage:
+        """
+        初始化首个页面；失败后仍无法关闭实例时保留原线程，以便任务收口重试。
+
+        :param context: 已经取得名额并启动的上下文
+        :param session_key: 新会话的索引标识
+        :param cookies: 可选的初始 Cookie 请求头
+        :param owner: 持有本次实例的宿主任务
+        :return: 完成初始化的第一个页面
+        """
+        try:
+            check_browser_request()
+            page = context.new_page()
+            if cookies:
+                page.set_extra_http_headers({"cookie": cookies})
+            return page
+        except BaseException:
+            try:
+                context.close()
+            except Exception:
+                with cls._sessions_lock:
+                    executor = cls._session_executors.get(session_key)
+                    if executor is not None:
+                        cls._failed_closures[executor] = _BrowserSessionState(
+                            session_key=session_key, context=context, pages=[], owner=owner,
+                        )
+                        cls._discard_session_executor(session_key, executor)
+                raise
+            raise
 
     @staticmethod
     def _validate_owner(owner: Optional[Any]) -> None:
@@ -1190,8 +2148,7 @@ class BrowserSessionHelper:
             cls._sessions.pop(session_key)
             cls._discard_session_executor(session_key, executor)
         # 新操作只能创建新的上下文；旧关闭不能移除同名的新执行器。
-        executor.shutdown(wait=False)
-        cls._close_session_state(session)
+        cls._close_retired_session(session, executor)
         return True
 
     @classmethod
@@ -1236,9 +2193,12 @@ class BrowserSessionHelper:
     @staticmethod
     def _close_session_state(session: _BrowserSessionState) -> None:
         """
-        尽力关闭会话中的全部页面和浏览器上下文。
+        逐个关闭页面并尝试关闭实例；实例关闭失败向生命周期 owner 报告。
         """
         with session.lock:
+            browser_owner = _context_browser_owner(session.context)
+            if browser_owner is not None:
+                browser_owner.begin_close()
             for page in list(session.pages):
                 try:
                     page.close()
@@ -1248,6 +2208,57 @@ class BrowserSessionHelper:
                 session.context.close()
             except Exception as err:
                 logger.warning(f"关闭浏览器上下文失败: {str(err)}")
+                raise
+
+    @classmethod
+    def _close_retired_session(
+        cls, session: _BrowserSessionState, executor: Optional[ThreadPoolExecutor],
+    ) -> None:
+        """
+        在原线程收敛已撤销准入的实例，失败时保留句柄和可重试执行器。
+
+        :param session: 需要终止的旧会话
+        :param executor: 该会话的原工作线程；无执行器时由当前调用者继续负责
+        """
+        try:
+            cls._close_session_state(session)
+        except BaseException:
+            if executor is not None:
+                with cls._sessions_lock:
+                    cls._failed_closures[executor] = session
+            raise
+        if executor is not None:
+            with cls._sessions_lock:
+                cls._failed_closures.pop(executor, None)
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    @classmethod
+    def _retry_failed_sessions(
+        cls, owner: Optional[Any] = None, session_key: Optional[str] = None, all_owners: bool = False,
+    ) -> bool:
+        """
+        在关闭失败的原执行器上重试，不重建线程或假报已经释放名额。
+
+        :param owner: 只重试该任务持有的旧实例
+        :param session_key: 可选的单个会话标识
+        :param all_owners: 全局关闭时忽略任务筛选
+        :return: 所有选中实例均已成功关闭时返回 True
+        """
+        with cls._sessions_lock:
+            failed = tuple(
+                (executor, session) for executor, session in cls._failed_closures.items()
+                if (all_owners or session.owner is owner)
+                and (session_key is None or session.session_key == session_key)
+            )
+        converged = True
+        for executor, session in failed:
+            try:
+                future = Context().run(executor.submit, cls._close_retired_session, session, executor)
+                future.result(timeout=_browser_close_budget())
+            except Exception as error:
+                logger.warning(f"重试关闭浏览器失败：{error}")
+                converged = False
+        return converged
 
     @staticmethod
     def _safe_page_title(page: BrowserPage) -> str:
@@ -1556,10 +2567,12 @@ class PlaywrightHelper:
             except Exception as e:
                 logger.error(f"网页操作失败: {str(e)}")
             finally:
-                if page:
-                    page.close()
-                if context:
-                    context.close()
+                try:
+                    if page:
+                        page.close()
+                finally:
+                    if context:
+                        context.close()
         except Exception as e:
             logger.error(f"CloakBrowser初始化失败: {str(e)}")
 
@@ -1637,11 +2650,13 @@ class PlaywrightHelper:
                 logger.error(f"获取网页源码失败: {str(e)}")
                 source = None
             finally:
-                # 确保资源被正确清理
-                if page:
-                    page.close()
-                if context:
-                    context.close()
+                # 页面关闭失败也必须尝试终止整个实例，避免一直占用唯一名额。
+                try:
+                    if page:
+                        page.close()
+                finally:
+                    if context:
+                        context.close()
         except Exception as e:
             logger.error(f"CloakBrowser初始化失败: {str(e)}")
 

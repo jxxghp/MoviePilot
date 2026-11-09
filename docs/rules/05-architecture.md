@@ -158,6 +158,7 @@ upload/domain failures to HTTP responses, and frames Application events as SSE.
 | `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
 | `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
 | `app/runtime/resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
+| `app/runtime/browser.py` | 进程内浏览器实例的同步/异步共享队列、完整存活期名额和跨线程取消检查；不创建或关闭具体浏览器 |
 | `app/runtime/tasks.py` | Lifespan-scoped ownership, cancellation and bounded shutdown waiting for in-process background tasks |
 | `app/runtime/execution.py` | Shared sync/async execution and cross-thread submission boundary with correlation propagation |
 | `app/runtime/priority.py` | 交互执行作用域、有限后台避让及每个事件循环共享的交互 anyio 配额；仅传播临时执行归属，不替代身份鉴权 |
@@ -447,6 +448,20 @@ API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/ta
 启动性能清单仅新增该组件：normal 33 → 34、safe 21 → 22，历史计时样本与三秒上限不变。
 Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新进程承载，不能在同一解释器中重建局部资源域。
 插件需要浏览器时使用 `app.sdk.browser`，由宿主浏览器适配器协调资源，不直接依赖资源实现。
+浏览器适配器在首次宿主调用或旧插件导入前包装 CloakBrowser 的六类启动入口，包根与
+`cloakbrowser.browser` 共享包装对象。SDK 内部嵌套启动沿用同一名额，名额在实例关闭成功
+或底层 Browser 断开时归还；Context 单独关闭事件不证明浏览器进程已经退出。
+`CLOAKBROWSER_MAX_CONCURRENCY` 默认 1，`CLOAKBROWSER_QUEUE_TIMEOUT` 默认 60 秒，
+`CLOAKBROWSER_OPERATION_TIMEOUT` 默认 120 秒，`CLOAKBROWSER_CLOSE_TIMEOUT` 默认 5 秒。
+所有入口共用进程内 FIFO 队列，超时和取消只撤销等待者，不关闭其它任务持有的实例。
+Agent 异步动作直接等待既有会话专属线程，不能让排队取名额的调用占满公共工具线程，
+以免持有实例的会话无法继续操作或关闭。会话关闭失败保留原线程与句柄，在任务或全局
+收口时重试；真实关闭前不得归还容量或报告资源已经收敛。
+每个 owner 只登记一个生命周期监控线程；它通过 Playwright 连接身份和唯一启动标记追踪
+本次驱动及后代，操作或关闭超时后强制回收并在确认进程退出后才归还容量。操作结果可能未知时
+向 Agent 返回未知结果，禁止无依据地重放提交类动作。适配器的异步子任务仅用于启动/关闭取得
+终态，调用取消后仍由当前 owner 等待或有限收口，不作为无人负责的后台任务脱离；并发事实表
+精确登记这些入口及生命周期线程边界。
 插件需要飞书事件长连接时使用 `app.sdk.feishu.FeishuLongConnection`，与宿主飞书模块共用同一传输实现，不再各自依赖 lark-oapi。
 旧插件若直接导入有资源前置条件的第三方包，compat 在插件 import 前递归扫描源码并保守准备资源；
 无法精确解析的文件按全部已登记资源降级，最终可导入性仍由 Python loader 判断。

@@ -573,9 +573,13 @@ def close_browser_sessions() -> None:
     """
     在托管资源关闭前释放所有浏览器上下文及其工作线程。
     """
-    from app.adapters.network.browser import BrowserSessionHelper
+    from app.adapters.network.browser import BrowserSessionHelper, close_browser_instances
 
-    BrowserSessionHelper.close_all_sessions()
+    try:
+        BrowserSessionHelper.close_all_sessions()
+    finally:
+        if not close_browser_instances():
+            raise RuntimeError("部分浏览器进程或监控线程尚未退出")
 
 
 async def drain_events() -> bool:

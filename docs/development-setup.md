@@ -70,6 +70,28 @@ UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
 尚未声明无 GIL 支持，不能直接替换 free-threaded 的源码依赖。
 发布审计脚本会将这个已核实修复提交按 1.2.1 版本匹配漏洞公告，安装仍使用锁文件中的源码地址。
 
+#### CloakBrowser 内核、授权与排队
+
+项目使用 `cloakbrowser 0.7.1`。最新版浏览器内核需要授权 key，免费 key 可运行一个并发实例。
+请先通过 [官方免费申请页](https://cloakbrowser.dev/free) 或 `python -m cloakbrowser login`
+领取，并通过运行进程的 `CLOAKBROWSER_LICENSE_KEY` 环境变量或 SDK 管理的本地 key 文件提供。
+Docker/CI 应在启动容器前配置该环境变量；key 不应提交到仓库或写入公开日志。
+未配置时，宿主浏览器入口会明确报错，不会在后台自动申请账号或输出临时领取链接。
+
+宿主 Agent、站点浏览器仿真、`app.sdk.browser` 与宿主加载的旧 CloakBrowser 插件共用实例队列：
+
+- `CLOAKBROWSER_MAX_CONCURRENCY` 默认 `1`，表示同时存活的独立浏览器实例数；拥有更高授权额度时可提高。
+- `CLOAKBROWSER_QUEUE_TIMEOUT` 默认 `60` 秒，超过等待上限会返回明确错误，不会终止其它任务。
+- `CLOAKBROWSER_OPERATION_TIMEOUT` 默认 `120` 秒，限制启动和单次原生浏览器操作；`CLOAKBROWSER_CLOSE_TIMEOUT` 默认 `5` 秒，限制关闭宽限。
+- 同一 Agent 浏览器会话的页面、标签及登录状态继续复用；实例未关闭时，包括等待模型响应期间，仍占用名额。
+  网页任务完成后应调用 `close_session`；确需跨轮保留页面时，可等待用户继续操作，连续空闲 15 分钟后兜底回收。
+- 插件使用完成后必须在 `finally` 中关闭返回对象。关闭成功或底层 Browser 断开后归还名额；
+  关闭失败继续保留真实占用，Agent 会保留原线程与句柄供任务回收或全局关闭重试。
+- 原生操作或关闭无响应时，owner 监控线程只回收本次 Playwright 驱动及带有本次唯一标记的后代进程；
+  确认进程树退出后才归还名额。点击、提交或脚本在超时前可能已经执行时，工具返回 `execution_outcome=unknown`，应先核验页面再决定是否继续。
+- 队列协调当前宿主进程内的调用。多个独立 MoviePilot 进程或外部程序共用同一个 key 时，
+  各进程队列不能合并计算授权额度，应另行协调浏览器服务和授权容量。
+
 ### 2.1 本地启动脚本
 
 不需要打开 IDE 时，可以直接使用仓库内的启动脚本。脚本会自动定位项目根目录和虚拟环境，并以模块方式启动后端，避免 `ModuleNotFoundError: No module named 'app'`。

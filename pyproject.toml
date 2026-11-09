@@ -21,7 +21,7 @@ dependencies = [
     "cachetools~=7.1.4",
     "chardet~=7.6.0",
     "click~=8.4.1",
-    "cloakbrowser~=0.5.3",
+    "cloakbrowser~=0.7.1",
     "cn2an~=0.5.24",
     "crcmod-plus==2.3.1",
     "cryptography~=50.0.0",

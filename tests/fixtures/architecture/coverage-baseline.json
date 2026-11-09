@@ -771,9 +771,9 @@
       "statements": 0
     },
     "app/agent/terminal/manager.py": {
-      "covered_lines": 448,
-      "percent": 88.02,
-      "statements": 509
+      "covered_lines": 469,
+      "percent": 87.99,
+      "statements": 533
     },
     "app/agent/terminal/output.py": {
       "covered_lines": 128,
@@ -3276,9 +3276,9 @@
       "statements": 13
     },
     "app/doctor/checks.py": {
-      "covered_lines": 336,
-      "percent": 70.29,
-      "statements": 478
+      "covered_lines": 339,
+      "percent": 69.9,
+      "statements": 485
     },
     "app/doctor/dependencies.py": {
       "covered_lines": 33,
@@ -4436,8 +4436,8 @@
       "statements": 108
     },
     "app/monitor/syslimits.py": {
-      "covered_lines": 37,
-      "percent": 62.71,
+      "covered_lines": 31,
+      "percent": 52.54,
       "statements": 59
     },
     "app/monitor/watcher.py": {
@@ -4701,8 +4701,8 @@
       "statements": 285
     },
     "app/runtime/extensions/plugin/loader.py": {
-      "covered_lines": 224,
-      "percent": 88.54,
+      "covered_lines": 223,
+      "percent": 88.14,
       "statements": 253
     },
     "app/runtime/extensions/plugin/loglevel.py": {
@@ -5623,9 +5623,9 @@
       "statements": 10728
     },
     "agent": {
-      "covered_lines": 16681,
-      "percent": 82.87,
-      "statements": 20128
+      "covered_lines": 16702,
+      "percent": 82.88,
+      "statements": 20152
     },
     "api": {
       "covered_lines": 5270,
@@ -5648,9 +5648,9 @@
       "statements": 9360
     },
     "doctor": {
-      "covered_lines": 503,
-      "percent": 75.98,
-      "statements": 662
+      "covered_lines": 506,
+      "percent": 75.64,
+      "statements": 669
     },
     "domain": {
       "covered_lines": 6270,
@@ -5668,13 +5668,13 @@
       "statements": 37298
     },
     "monitor": {
-      "covered_lines": 1247,
-      "percent": 73.53,
+      "covered_lines": 1241,
+      "percent": 73.17,
       "statements": 1696
     },
     "runtime": {
-      "covered_lines": 9436,
-      "percent": 85.3,
+      "covered_lines": 9435,
+      "percent": 85.29,
       "statements": 11062
     },
     "scheduler": {
@@ -5716,8 +5716,8 @@
     "root": "app"
   },
   "total": {
-    "covered_lines": 126886,
-    "percent": 77.68,
-    "statements": 163347
+    "covered_lines": 126903,
+    "percent": 77.67,
+    "statements": 163378
   }
 }

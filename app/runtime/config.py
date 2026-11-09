@@ -511,6 +511,18 @@ class ConfigModel(BaseModel):
     )
     CLOAKBROWSER_HUMANIZE: bool = Field(default=True, description='CloakBrowser 是否启用拟人化输入')
     CLOAKBROWSER_HUMAN_PRESET: str = Field(default="default", description='CloakBrowser 拟人化输入预设：default 或 careful')
+    CLOAKBROWSER_MAX_CONCURRENCY: int = Field(
+        default=1, ge=1, description="同时存活的 CloakBrowser 实例上限，默认 1；提高前需确认授权并发额度",
+    )
+    CLOAKBROWSER_QUEUE_TIMEOUT: int = Field(
+        default=60, ge=1, description="等待 CloakBrowser 实例名额的最长秒数，默认 60 秒",
+    )
+    CLOAKBROWSER_OPERATION_TIMEOUT: int = Field(
+        default=120, ge=1, description="CloakBrowser 启动及单次原生操作的最长秒数，超时回收实例，默认 120 秒",
+    )
+    CLOAKBROWSER_CLOSE_TIMEOUT: int = Field(
+        default=5, ge=1, description="CloakBrowser 关闭宽限秒数，超时强制回收本次进程树，默认 5 秒",
+    )
     FLARESOLVERR_URL: Optional[str] = Field(default=None, description='FlareSolverr 服务地址，例如 http://127.0.0.1:8191')
 
     # 搜索配置

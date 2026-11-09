@@ -465,7 +465,12 @@ def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
     """
     在执行旧插件顶层代码前准备其静态导入所需的宿主资源。
     """
-    for capability_id in scan_plugin_resource_imports(plugin_id, plugin_dir):
+    capabilities = scan_plugin_resource_imports(plugin_id, plugin_dir)
+    if "host.display" in capabilities:
+        from app.adapters.network.browser import configure_browser_queue
+
+        configure_browser_queue()
+    for capability_id in capabilities:
         acquire_managed_resource(
             capability_id,
             reason="legacy_plugin_import",

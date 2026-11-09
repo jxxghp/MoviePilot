@@ -12,11 +12,31 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/adapters/network/browser.py:asyncio.create_task": {
+    "owners": {
+      "_BrowserLaunchOwner._close_async_resource": 1,
+      "_BrowserLaunchOwner.abort_async": 1,
+      "_queued_browser_launch_async.launch": 1
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/adapters/network/browser.py:asyncio.to_thread": {
+    "owners": {
+      "BrowserSessionHelper.run_action_async": 1
+    },
+    "target": "asyncio.to_thread"
+  },
   "app/adapters/network/browser.py:concurrent.futures.ThreadPoolExecutor": {
     "owners": {
       "BrowserSessionHelper._get_session_executor": 1
     },
     "target": "concurrent.futures.ThreadPoolExecutor"
+  },
+  "app/adapters/network/browser.py:threading.Thread": {
+    "owners": {
+      "_BrowserLaunchOwner.__init__": 1
+    },
+    "target": "threading.Thread"
   },
   "app/adapters/network/http.py:asyncio.AbstractEventLoop.create_task": {
     "owners": {
