@@ -5,7 +5,7 @@ Transmission 下载模块，负责实例路由、任务投影与下载文件选�
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union, overload
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union, overload
 
 from app.domain import torrent as torrent_rules
 from app.domain.metainfo import MetaInfo
@@ -256,7 +256,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
     @staticmethod
     def _fetch_files_with_metadata(
             server: Transmission, torrent_hash: str, failure: str,
-    ) -> Tuple[Optional[list], bool, Optional[str]]:
+    ) -> Tuple[List[Any], bool, Optional[str]]:
         """
         暂停磁力取元数据：先启动任务再轮询文件列表，拿到后重新暂停。
 
@@ -267,10 +267,10 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :param torrent_hash: 需要取元数据的任务哈希
         :param failure: 任务保持暂停时的失败前缀
         :return: 文件列表、取元数据后是否确认暂停、失败说明；失败说明非空时
-            文件列表为空，暂停状态无效
+            文件列表为空列表，暂停状态无效
         """
         if not server.ensure_torrent_state(torrent_hash, paused=False):
-            return None, True, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+            return [], True, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
         torrent_files = server.get_files(
             torrent_hash,
             retry=_TORRENT_METADATA_RETRY_TIMES,
@@ -278,8 +278,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         )
         if not torrent_files:
             if not server.ensure_torrent_state(torrent_hash, paused=True):
-                return None, False, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
-            return None, True, f"{failure}：获取种子文件失败"
+                return [], False, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+            return [], True, f"{failure}：获取种子文件失败"
         paused = server.ensure_torrent_state(torrent_hash, paused=True)
         if not paused:
             logger.warning(f"种子 {torrent_hash} 获取元数据后无法确认暂停，继续选集")
