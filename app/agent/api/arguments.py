@@ -236,6 +236,11 @@ def _normalize_union(value: Any, schema: dict[str, Any], definitions: dict[str, 
     exact = [item for item in alternatives if item.get("type") == _value_type(value)]
     if len(exact) == 1:
         return _normalize_value(value, exact[0], definitions, depth + 1)
+    # 空字符串表示模型未提供该值；仅在没有精确类型分支且联合含 null 时归一为 None，
+    # 保留 anyOf[string, null] 等以空字符串为合法值的语义。
+    if not exact and isinstance(value, str) and not value.strip():
+        if any(item.get("type") == "null" for item in alternatives):
+            return None
     candidates = []
     for option in exact or alternatives:
         try:
