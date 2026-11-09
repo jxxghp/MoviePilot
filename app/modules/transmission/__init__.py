@@ -44,6 +44,10 @@ _TRANSMISSION_DOWNLOADING_STATES = {
 _TRANSMISSION_PAUSED_STATES = {
     "stopped",
 }
+# 暂停磁力取元数据时最多等待 10 秒（每秒查询一次），仍无文件列表则恢复暂停并报错。
+_TORRENT_METADATA_RETRY_TIMES = 10
+# 取元数据时文件索引查询之间的等待秒数。
+_TORRENT_METADATA_RETRY_INTERVAL = 1
 
 
 @overload
@@ -268,9 +272,29 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         if not server.ensure_torrent_state(torrent_hash, paused=True):
             return False, f"选集失败，任务 {torrent_hash} 无法确认暂停，未执行选集，请在下载器核实"
         failure = f"选集失败，任务 {torrent_hash} 保持暂停，请在下载器检查"
+        paused = True
         torrent_files = server.get_files(torrent_hash)
         if not torrent_files:
-            return False, f"{failure}：获取种子文件失败"
+            # 暂停的磁力不建立 peer/DHT 连接，文件列表恒为空；先启动取元数据，
+            # 拿到后再重新暂停选集，超时仍恢复暂停，避免任务永久留在暂停状态。
+            if not server.ensure_torrent_state(torrent_hash, paused=False):
+                return False, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+            torrent_files = server.get_files(
+                torrent_hash,
+                retry=_TORRENT_METADATA_RETRY_TIMES,
+                interval=_TORRENT_METADATA_RETRY_INTERVAL,
+            )
+            if not torrent_files:
+                if not server.ensure_torrent_state(torrent_hash, paused=True):
+                    return False, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+                return False, f"{failure}：获取种子文件失败"
+            paused = server.ensure_torrent_state(torrent_hash, paused=True)
+            if not paused:
+                logger.warning(f"种子 {torrent_hash} 获取元数据后无法确认暂停，继续选集")
+        # 取元数据后无法确认暂停时任务仍在运行，后续失败不得再称“保持暂停”。
+        state_failure = failure if paused else (
+            f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+        )
         wanted: list[int] = []
         unwanted: list[int] = []
         matched: set[int] = set()
@@ -305,9 +329,9 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                     wanted.append(file_id)
                 matched.update(episodes)
         if not wanted or not set(episodes).issubset(matched):
-            return False, f"{failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
+            return False, f"{state_failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
         if not server.set_files(torrent_hash, wanted) or not server.set_unwanted_files(torrent_hash, unwanted):
-            return False, f"{failure}：文件选择设置未确认"
+            return False, f"{state_failure}：文件选择设置未确认"
         if not server.ensure_torrent_state(torrent_hash, paused=False):
             if server.ensure_torrent_state(torrent_hash, paused=True):
                 return False, f"{failure}：启动任务未确认，未记录成功"
