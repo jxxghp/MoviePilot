@@ -121,6 +121,39 @@ def test_subscription_mapping_reaches_real_downloader_selection(downloader):
     chain._record_rejected_download.assert_not_called()
 
 
+def test_single_video_file_selection_accepts_episode_label_mismatch(downloader):
+    """
+    单集种子只有一个视频文件时，累计集号与目标季集不一致也应选中该文件。
+    """
+    module, server, _content, torrent_hash = downloader
+    server.get_files.side_effect = None
+    if isinstance(module, QbittorrentModule):
+        server.get_files.return_value = [
+            {"id": 0, "name": "Show.S03E54.mp4"},
+            {"id": 1, "name": "Show.S03E54.ass"},
+        ]
+    else:
+        server.get_files.return_value = [
+            SimpleNamespace(id=0, name="Show.S03E54.mp4"),
+            SimpleNamespace(id=1, name="Show.S03E54.ass"),
+        ]
+
+    selected, message = module._select_download_files(server, torrent_hash, {6}, None)
+
+    assert selected is True
+    assert "未找到目标集数" not in message
+    if isinstance(module, QbittorrentModule):
+        assert server.set_files.call_args_list[0].kwargs == {
+            "torrent_hash": torrent_hash, "file_ids": [1], "priority": 0,
+        }
+        assert server.set_files.call_args_list[1].kwargs == {
+            "torrent_hash": torrent_hash, "file_ids": [0], "priority": 1,
+        }
+    else:
+        server.set_files.assert_called_once_with(torrent_hash, [0])
+        server.set_unwanted_files.assert_called_once_with(torrent_hash, [1])
+
+
 @pytest.mark.parametrize("file_count", [1, 2])
 def test_transmission_all_files_wanted_starts_without_unwanted_rpc(downloader, file_count) -> None:
     """

@@ -140,6 +140,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
                     torrentname=meta.org_string,
                 )
             )
+        media_file_count = len(files_to_add)
         if already_exists:
             retained_files = self._filter_unrecorded_download_files(files_to_add, download_hash)
             if files_to_add and not retained_files:
@@ -153,11 +154,19 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             files_to_add = retained_files
         if episodes:
             selected_files = []
+            unmatched_single_files = []
             for item in files_to_add:
                 # 与订阅选集使用相同识别词，避免偏移前的文件集数被目标集数过滤。
                 file_meta = MetaInfo(Path(cast(str, item.filepath)).stem, custom_words=custom_word_list)
+                file_episodes = set(file_meta.episode_list)
                 if file_meta.begin_episode and file_meta.begin_episode in episodes:
                     selected_files.append(item)
+                elif len(file_episodes) <= 1:
+                    unmatched_single_files.append(item)
+            if (not selected_files and len(episodes) == 1 and media_file_count == 1
+                    and len(unmatched_single_files) == 1):
+                # 下载器已按唯一视频文件兜底选集，历史也要保留该文件，避免留下空记录。
+                selected_files = unmatched_single_files
             files_to_add = selected_files
         frozen_files = tuple(files_to_add)
         event_payload = {
