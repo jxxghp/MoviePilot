@@ -490,6 +490,89 @@ def test_wechatclawbot_send_msg_prefers_text_when_text_and_image_coexist():
     mock_client.send_image_text_png.assert_not_called()
 
 
+def test_wechatclawbot_send_msg_sends_image_with_title_when_only_title_and_image():
+    """
+    仅有标题和配图（纯图片通知的占位标题）时，图片应连同标题发送。
+    """
+    bot = _create_bot()
+    mock_client = MagicMock()
+    mock_client.send_text.return_value = True
+    mock_client.send_image_text_png.return_value = True
+
+    with (
+        patch.object(bot, "_build_client", return_value=mock_client),
+        patch.object(bot, "_load_remote_image", return_value=b"image-bytes") as mock_load_image,
+    ):
+        result = bot.send_msg(
+            title="图片",
+            image="https://example.com/test.png",
+            userid="wxid_user_1",
+        )
+
+    assert result
+    mock_load_image.assert_called_once_with("https://example.com/test.png")
+    mock_client.send_image_text_png.assert_called_once_with(
+        to_user="wxid_user_1",
+        image_bytes=b"image-bytes",
+        text="图片",
+        context_token=None,
+    )
+    mock_client.send_text.assert_not_called()
+
+
+def test_wechatclawbot_send_msg_falls_back_to_title_when_image_load_fails():
+    """
+    仅有标题和配图但图片加载失败时，退回只发送标题文字。
+    """
+    bot = _create_bot()
+    mock_client = MagicMock()
+    mock_client.send_text.return_value = True
+
+    with (
+        patch.object(bot, "_build_client", return_value=mock_client),
+        patch.object(bot, "_load_remote_image", return_value=None),
+        patch("app.modules.wechatclawbot.wechatclawbot.logger") as mock_logger,
+    ):
+        result = bot.send_msg(
+            title="图片",
+            image="https://example.com/test.png",
+            userid="wxid_user_1",
+        )
+
+    assert result
+    mock_client.send_text.assert_called_once_with(
+        to_user="wxid_user_1",
+        text="图片",
+        context_token=None,
+    )
+    mock_client.send_image_text_png.assert_not_called()
+    mock_logger.warning.assert_called_once()
+
+
+def test_wechatclawbot_send_msg_warns_when_title_image_upload_fails():
+    """
+    标题加图片上传失败时记录警告，且不补发文字以免重复通知。
+    """
+    bot = _create_bot()
+    mock_client = MagicMock()
+    mock_client.send_image_text_png.return_value = False
+
+    with (
+        patch.object(bot, "_build_client", return_value=mock_client),
+        patch.object(bot, "_load_remote_image", return_value=b"png"),
+        patch("app.modules.wechatclawbot.wechatclawbot.logger") as mock_logger,
+    ):
+        result = bot.send_msg(
+            title="图片",
+            image="https://example.com/test.png",
+            userid="wxid_user_1",
+        )
+
+    assert not result
+    mock_client.send_text.assert_not_called()
+    mock_logger.warning.assert_called_once()
+
+
 def test_wechatclawbot_send_file_prefers_image_when_image_file_has_caption():
     """
     图片文件带说明时仍按图片发送，避免退化为纯文本消息。
