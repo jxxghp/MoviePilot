@@ -2490,6 +2490,8 @@ class WechatClawBot:
             if image and (not content or title_only)
             else None
         )
+        if image and (not content or title_only) and not image_bytes:
+            logger.warning("微信 ClawBot 图片加载失败，已跳过图片")
         ok = False
         for target in targets:
             context_token = self._get_context_token(target)
@@ -2500,6 +2502,9 @@ class WechatClawBot:
                     text=content,
                     context_token=context_token,
                 )
+                if not sent:
+                    # 图文上传失败时不再补发文字，避免重复通知
+                    logger.warning(f"微信 ClawBot 图文发送失败：{target}")
             elif content:
                 client = self._build_client()
                 sent = True
