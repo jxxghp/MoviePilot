@@ -619,17 +619,16 @@ def test_failed_page_initialization_and_close_retains_cleanup_owner(provider, mo
     assert not helper._failed_closures
 
 
-def test_missing_key_does_not_start_sdk_or_create_signup_link(monkeypatch):
+def test_missing_key_keeps_keyless_free_binary_path(monkeypatch):
     """
-    后台缺少 key 时只报告配置要求，不调用 SDK 的自动领取流程。
+    回退版本缺少 key 时继续使用旧版免费内核，不触发自动领取流程。
     """
     from cloakbrowser import license as provider_license
 
     monkeypatch.delenv("CLOAKBROWSER_BINARY_PATH", raising=False)
     resolve = MagicMock(return_value=None)
     monkeypatch.setattr(provider_license, "resolve_license_key", resolve)
-    with pytest.raises(RuntimeError, match="CLOAKBROWSER_LICENSE_KEY"):
-        browser._require_browser_license()
+    browser._require_browser_license()
     resolve.assert_called_once_with(None)
 
 
@@ -644,6 +643,18 @@ def test_explicit_key_is_preserved_for_sdk_resolution(monkeypatch):
     monkeypatch.delenv("CLOAKBROWSER_BINARY_PATH", raising=False)
     browser._require_browser_license("test-key")
     resolve.assert_called_once_with("test-key")
+
+
+def test_browser_queue_defaults_to_three_instances(monkeypatch):
+    """
+    未声明部署配置时，浏览器队列默认允许三个独立实例同时存活。
+    """
+    configured = MagicMock()
+    monkeypatch.setattr(browser.browser_capacity, "configure", configured)
+    monkeypatch.setattr(browser, "get_runtime_setting", lambda _key, default=None: default)
+
+    assert browser._browser_queue_timeout() == 60
+    configured.assert_called_once_with(3)
 
 
 def test_legacy_positional_key_and_arguments_are_preserved(provider, monkeypatch):

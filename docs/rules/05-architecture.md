@@ -451,7 +451,8 @@ Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新
 浏览器适配器在首次宿主调用或旧插件导入前包装 CloakBrowser 的六类启动入口，包根与
 `cloakbrowser.browser` 共享包装对象。SDK 内部嵌套启动沿用同一名额，名额在实例关闭成功
 或底层 Browser 断开时归还；Context 单独关闭事件不证明浏览器进程已经退出。
-`CLOAKBROWSER_MAX_CONCURRENCY` 默认 1，`CLOAKBROWSER_QUEUE_TIMEOUT` 默认 60 秒，
+项目固定使用 `cloakbrowser==0.6.5`，保留上游开始要求 key 前的无 key 免费内核。
+`CLOAKBROWSER_MAX_CONCURRENCY` 默认 3，`CLOAKBROWSER_QUEUE_TIMEOUT` 默认 60 秒，
 `CLOAKBROWSER_OPERATION_TIMEOUT` 默认 120 秒，`CLOAKBROWSER_CLOSE_TIMEOUT` 默认 5 秒。
 所有入口共用进程内 FIFO 队列，超时和取消只撤销等待者，不关闭其它任务持有的实例。
 Agent 异步动作直接等待既有会话专属线程，不能让排队取名额的调用占满公共工具线程，

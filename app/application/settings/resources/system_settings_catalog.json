@@ -292,7 +292,7 @@
       "source_file": "app/runtime/config.py"
     },
     "CLOAKBROWSER_MAX_CONCURRENCY": {
-      "description": "同时存活的 CloakBrowser 实例上限，默认 1；提高前需确认授权并发额度",
+      "description": "同时存活的 CloakBrowser 实例上限，默认 3；提高前需确认授权并发额度",
       "group": "sites",
       "source_file": "app/runtime/config.py"
     },

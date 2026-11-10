@@ -95,7 +95,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.adapters.external.server", "requests"): "e8c747a7a4e96c3b1dc102bf49a37881cc674bcfb17b98693cac966afc3c3037",
     ("app.adapters.external.plugin.client", "httpx2"): "2d249b0906bc7f8fa29f569d6bcc5667d4290a551b1a06bcdf85e09ec50a793d",
     ("app.adapters.external.plugin.client", "requests"): "b5239e7eee9c23569b7fec66791e56bcc226db86a8d09ee7fc58d3ba8bc14f09",
-    # 同一浏览器 Adapter 增加授权存在性检查及六入口包装，未向上层扩展 SDK 直连。
+    # 同一浏览器 Adapter 保留 key 解析与六入口包装，未向上层扩展 SDK 直连。
     ("app.adapters.network.browser", "cloakbrowser"): "42efc4434e0c8c55b6527356bc1f712efd6905fcb8c80b856a893745377f1f81",
     ("app.adapters.network.doh", "socket.getaddrinfo"): "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71",
     ("app.adapters.network.doh", "urllib.request"): "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b",

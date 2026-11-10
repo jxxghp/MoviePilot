@@ -513,23 +513,22 @@ def _browser_queue_timeout() -> float:
     """
     读取部署侧浏览器容量和排队秒数，降容不会中断正在使用的实例。
     """
-    browser_capacity.configure(int(get_runtime_setting("CLOAKBROWSER_MAX_CONCURRENCY", 1)))
+    browser_capacity.configure(int(get_runtime_setting("CLOAKBROWSER_MAX_CONCURRENCY", 3)))
     return float(get_runtime_setting("CLOAKBROWSER_QUEUE_TIMEOUT", 60))
 
 
 def _require_browser_license(license_key: Optional[str] = None) -> None:
     """
-    后台缺少 key 时明确报错，禁止 SDK 自动申请账号并在日志输出临时领取链接。
+    兼容显式 key 解析，但保留 0.6.5 无 key 也可运行的免费内核路径。
 
     :param license_key: SDK 调用者显式传入的 key，优先于 SDK 的环境变量和本地文件
     """
+    if os.environ.get("CLOAKBROWSER_BINARY_PATH"):
+        return
     from cloakbrowser.license import resolve_license_key
 
-    if not os.environ.get("CLOAKBROWSER_BINARY_PATH") and not resolve_license_key(license_key):
-        raise RuntimeError(
-            "CloakBrowser 需要授权 key；请通过 cloakbrowser login 或 https://cloakbrowser.dev/free "
-            "申请免费 key，并在运行环境设置 CLOAKBROWSER_LICENSE_KEY"
-        )
+    # 0.6.5 的 key 只用于选择最新或 Pro 内核，缺少 key 时由 SDK 回退到旧版免费内核。
+    resolve_license_key(license_key)
 
 
 def _explicit_browser_key(

@@ -72,15 +72,13 @@ UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
 
 #### CloakBrowser 内核、授权与排队
 
-项目使用 `cloakbrowser 0.7.1`。最新版浏览器内核需要授权 key，免费 key 可运行一个并发实例。
-请先通过 [官方免费申请页](https://cloakbrowser.dev/free) 或 `python -m cloakbrowser login`
-领取，并通过运行进程的 `CLOAKBROWSER_LICENSE_KEY` 环境变量或 SDK 管理的本地 key 文件提供。
-Docker/CI 应在启动容器前配置该环境变量；key 不应提交到仓库或写入公开日志。
-未配置时，宿主浏览器入口会明确报错，不会在后台自动申请账号或输出临时领取链接。
+项目固定使用 `cloakbrowser==0.6.5`，这是上游从 `0.7.0` 开始要求授权 key 之前的最后一个版本。
+未配置 key 时，SDK 会使用旧版免费内核；配置 `CLOAKBROWSER_LICENSE_KEY` 或显式传入 key
+时，仍可按上游规则选择最新或 Pro 内核。key 不应提交到仓库或写入公开日志。
 
 宿主 Agent、站点浏览器仿真、`app.sdk.browser` 与宿主加载的旧 CloakBrowser 插件共用实例队列：
 
-- `CLOAKBROWSER_MAX_CONCURRENCY` 默认 `1`，表示同时存活的独立浏览器实例数；拥有更高授权额度时可提高。
+- `CLOAKBROWSER_MAX_CONCURRENCY` 默认 `3`，表示同时存活的独立浏览器实例数；多个独立进程仍需自行协调。
 - `CLOAKBROWSER_QUEUE_TIMEOUT` 默认 `60` 秒，超过等待上限会返回明确错误，不会终止其它任务。
 - `CLOAKBROWSER_OPERATION_TIMEOUT` 默认 `120` 秒，限制启动和单次原生浏览器操作；`CLOAKBROWSER_CLOSE_TIMEOUT` 默认 `5` 秒，限制关闭宽限。
 - 同一 Agent 浏览器会话的页面、标签及登录状态继续复用；实例未关闭时，包括等待模型响应期间，仍占用名额。
