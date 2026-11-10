@@ -11,9 +11,9 @@ import pytest
 import app.modules.indexer as indexer_module
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser import SiteSchema
-from app.modules.indexer.parser.flux_torrent import FluxTorrentSiteUserInfo
-from app.modules.indexer.spider import flux_torrent as flux_torrent_module
-from app.modules.indexer.spider.flux_torrent import FluxTorrentSpider
+from app.modules.indexer.parser.fluxtorrent import FluxTorrentSiteUserInfo
+from app.modules.indexer.spider import fluxtorrent as flux_torrent_module
+from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.schemas.types import MediaType
 
 _SITE_URL = "https://flux.example/"
@@ -141,7 +141,7 @@ def test_flux_torrent_spider_maps_compat_items(monkeypatch):
         captured["headers"] = request._headers
         return _FakeResponse(_envelope({"items": _torrent_items()}))
 
-    monkeypatch.setattr("app.modules.indexer.spider.flux_torrent.RequestUtils.get_res", fake_get_res)
+    monkeypatch.setattr("app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res", fake_get_res)
     error, torrents = FluxTorrentSpider(_build_indexer()).search(keyword="Example", page=0)
 
     assert not error
@@ -207,7 +207,7 @@ def test_flux_torrent_spider_requires_api_token(monkeypatch):
         """
         raise AssertionError("未配置令牌时不应发起请求")
 
-    monkeypatch.setattr("app.modules.indexer.spider.flux_torrent.RequestUtils.get_res", fake_get_res)
+    monkeypatch.setattr("app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res", fake_get_res)
     error, torrents = FluxTorrentSpider(_build_indexer(apikey="")).search(keyword="Example")
 
     assert error
@@ -219,7 +219,7 @@ def test_flux_torrent_spider_reports_business_error(monkeypatch):
     兼容层返回业务错误码时应判定搜索失败。
     """
     monkeypatch.setattr(
-        "app.modules.indexer.spider.flux_torrent.RequestUtils.get_res",
+        "app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res",
         lambda *_args, **_kwargs: _FakeResponse(
             _envelope(None, code=2001, message="令牌无效"), status_code=401
         ),
@@ -246,9 +246,9 @@ def test_flux_torrent_spider_sync_async_parity(monkeypatch):
         """
         return _FakeResponse(_envelope({"items": _torrent_items()}))
 
-    monkeypatch.setattr("app.modules.indexer.spider.flux_torrent.RequestUtils.get_res", sync_get_res)
+    monkeypatch.setattr("app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res", sync_get_res)
     monkeypatch.setattr(
-        "app.modules.indexer.spider.flux_torrent.AsyncRequestUtils.get_res", async_get_res
+        "app.modules.indexer.spider.fluxtorrent.AsyncRequestUtils.get_res", async_get_res
     )
     spider = FluxTorrentSpider(_build_indexer())
 
@@ -384,7 +384,7 @@ def test_flux_torrent_detection_caches_result(monkeypatch):
         probes.append(url)
         return _FakeResponse(_envelope({"id": 1, "username": "tester"}))
 
-    monkeypatch.setattr("app.modules.indexer.spider.flux_torrent.RequestUtils.get_res", fake_get_res)
+    monkeypatch.setattr("app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res", fake_get_res)
     site = _build_indexer()
 
     assert flux_torrent_module.detect_flux_torrent(site) is True
@@ -403,7 +403,7 @@ def test_flux_torrent_detection_skips_site_without_token(monkeypatch):
         """
         raise AssertionError("没有令牌时不应发起探测")
 
-    monkeypatch.setattr("app.modules.indexer.spider.flux_torrent.RequestUtils.get_res", fake_get_res)
+    monkeypatch.setattr("app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res", fake_get_res)
     site = _build_indexer(apikey="", token="")
 
     assert flux_torrent_module.detect_flux_torrent(site) is False

@@ -22,7 +22,7 @@ from app.foundation.reflection import ModuleHelper
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.spider import SiteSpider
-from app.modules.indexer.spider.flux_torrent import (
+from app.modules.indexer.spider.fluxtorrent import (
     FluxTorrentSpider,
     async_detect_flux_torrent,
     cached_flux_torrent_detection,
