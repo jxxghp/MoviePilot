@@ -129,7 +129,8 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
         """
         检查模块配置或外部服务是否可用。
 
-        :return: 是否通过及失败说明；模块未启用或不提供检查时返回 None
+        :return: 是否通过及失败说明；模块未启用时返回 None；不提供独立检查的
+            已运行模块应返回成功结果并说明无需探测，而不是返回 None
         """
         pass
 

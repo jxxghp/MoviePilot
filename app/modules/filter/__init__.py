@@ -147,11 +147,13 @@ class FilterModule(_ModuleBase):
         """
         clear_rust_parse_options_cache()
 
-    def test(self) -> None:
+    def test(self) -> Tuple[bool, str]:
         """
-        保留模块自检入口；过滤器不依赖外部服务，无需执行探测。
+        过滤器不依赖外部服务，无需执行探测；模块运行即表示可用。
+
+        :return: 成功结果与无需探测的说明
         """
-        return None
+        return True, "模块无需探测"
 
     def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """
