@@ -116,6 +116,22 @@ _COMMON_SITE_USERDATA_FALLBACK_SCHEMAS = frozenset({
 _FLUX_TORRENT_PARSER = "FluxTorrent"
 
 
+def _resolve_userdata_schema(site: dict[str, Any]) -> str:
+    """
+    解析用户数据模型名。
+
+    站点资源未登记 FluxTorrent 协议时，按站点能力探测识别已迁移到 FluxTorrent
+    的站点，避免沿用旧站点的页面模型解析失败。
+
+    :param site: 站点索引配置
+    :return: 解析用户数据应使用的站点模型名
+    """
+    if detect_flux_torrent(site):
+        return SiteSchema.FluxTorrent.value
+    return str(site.get("schema") or "")
+
+
+
 @dataclass(frozen=True)
 class _IndexerSearchRequest:
     """
@@ -1000,13 +1016,8 @@ class IndexerModule(_ModuleBase):
                         api_url=site.get("api_url"))
             return None
 
-        # 站点资源未登记 FluxTorrent 协议时，按站点能力探测识别已迁移到
-        # FluxTorrent 的站点，避免沿用旧站点的页面模型解析失败。
-        schema_value = str(site.get("schema") or "")
-        if detect_flux_torrent(site):
-            schema_value = SiteSchema.FluxTorrent.value
         # 按站点声明的 schema 获取解析器
-        site_obj = __get_site_obj(schema_value)
+        site_obj = __get_site_obj(_resolve_userdata_schema(site))
         if not site_obj:
             if not site.get("public"):
                 logger.warn(f"站点  {site.get('name')} 未找到站点解析器，schema：{site.get('schema')}")
