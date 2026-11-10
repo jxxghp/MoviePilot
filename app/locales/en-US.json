@@ -184,6 +184,7 @@
     "分类策略转换失败": "Classification policy conversion failed",
     "不支持的分类策略模板": "Unsupported classification policy template",
     "模块不支持测试": "Module does not support testing",
+    "模块无需探测": "Module does not require probing",
     "网络请求失败": "Network request failed",
     "TMDB请求失败": "TMDB request failed",
     "无效的媒体类型": "Invalid media type",

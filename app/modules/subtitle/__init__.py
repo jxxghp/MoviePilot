@@ -91,11 +91,13 @@ class SubtitleModule(_ModuleBase):
         """
         pass
 
-    def test(self) -> Optional[Tuple[bool, str]]:
+    def test(self) -> Tuple[bool, str]:
         """
-        字幕能力依赖具体资源详情页，不提供独立连接测试。
+        字幕能力依赖具体资源详情页，不提供独立连接测试；模块运行即表示可用。
+
+        :return: 成功结果与无需探测的说明
         """
-        pass
+        return True, "模块无需探测"
 
     @classmethod
     def __normalize_subtitle_link(cls, page_url: str, sublink: str) -> Optional[str]:
