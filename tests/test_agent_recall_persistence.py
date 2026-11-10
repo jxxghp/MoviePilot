@@ -226,6 +226,33 @@ def test_invalid_query_rejected(kwargs):
         SearchHistoryInput(**kwargs)
 
 
+def test_session_search_sort_schema_has_no_empty_enum_member():
+    """
+    session_search 的排序枚举不得包含 Gemini FunctionDeclaration 拒绝的空字符串。
+    """
+    sort_schema = SearchHistoryInput.model_json_schema()['properties']['sort']
+    assert sort_schema['enum'] == ['relevance', 'newest', 'oldest']
+    assert sort_schema['default'] == 'relevance'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('requested, expected', [(None, ''), ('relevance', ''), ('newest', 'newest'), ('oldest', 'oldest')])
+async def test_session_search_maps_public_sort_to_recall_query(requested, expected):
+    """
+    对模型暴露的 relevance 选项映射回存储层的空值默认排序。
+    """
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    service = SimpleNamespace(search=AsyncMock(return_value={}))
+    middleware = RecallMiddleware(service, 'alice', RecallSession('current'))
+
+    await middleware.session_search(**({} if requested is None else {'sort': requested}))
+
+    query = service.search.await_args.args[1]
+    assert query.sort == expected
+
+
 @pytest.fixture(scope='session')
 def cjk_extension(tmp_path_factory):
     """
