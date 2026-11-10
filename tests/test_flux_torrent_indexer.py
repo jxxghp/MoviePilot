@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 import app.modules.indexer as indexer_module
+from app.foundation import temporal as time_tools
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser import SiteSchema
 from app.modules.indexer.parser.fluxtorrent import FluxTorrentSiteUserInfo
@@ -155,7 +156,8 @@ def test_flux_torrent_spider_maps_compat_items(monkeypatch):
             "https://flux.example/api/v1/compat/nexusphp/download.php"
             f"?id=123&apikey={_API_TOKEN}"
         ),
-        "pubdate": "2025-07-21 16:00:00",
+        # 兼容层给的是 Unix 时间戳，发布时间按运行环境时区渲染，这里对同一转换取期望值。
+        "pubdate": time_tools.format_timestamp(1753084800),
         "size": 21474836480,
         "seeders": 15,
         "peers": 2,
