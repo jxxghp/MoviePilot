@@ -518,3 +518,132 @@ def test_refresh_userdata_prefers_detected_flux_torrent_protocol(monkeypatch):
     assert result.username == "tester"
     assert result.user_level == "VIP"
     assert result.ratio == 2.0
+
+
+class _BrokenResponse:
+    """
+    提供响应体不是 JSON 时的最小 HTTP 响应契约。
+    """
+
+    status_code = 200
+
+    def __bool__(self) -> bool:
+        """
+        按 requests.Response 的成功状态布尔语义返回结果。
+        """
+        return True
+
+    def json(self):
+        """
+        模拟响应体解析失败。
+        """
+        raise ValueError("not json")
+
+
+def test_flux_torrent_site_base_url_normalizes_address():
+    """
+    站点地址缺少协议时补 https，末尾斜杠应去掉，空地址返回空串。
+    """
+    assert flux_torrent_module.site_base_url({"url": "https://flux.example/"}) == "https://flux.example"
+    assert flux_torrent_module.site_base_url({"url": "flux.example/"}) == "https://flux.example"
+    assert flux_torrent_module.site_base_url({"url": "  "}) == ""
+    assert flux_torrent_module.site_api_token({"apikey": " fxo_a "}) == "fxo_a"
+
+
+def test_flux_torrent_spider_tolerates_unusable_responses(monkeypatch):
+    """
+    站点无响应或响应不是 JSON 时应判定为失败而不是抛异常。
+    """
+    spider = FluxTorrentSpider(_build_indexer())
+
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res",
+        lambda *_args, **_kwargs: None,
+    )
+    assert spider.search(keyword="Example", page=0) == (True, [])
+
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res",
+        lambda *_args, **_kwargs: _BrokenResponse(),
+    )
+    assert spider.search(keyword="Example", page=0) == (True, [])
+
+
+def test_flux_torrent_async_search_requires_api_token():
+    """
+    异步搜索在没有开放 API 令牌时应直接判定失败。
+    """
+    spider = FluxTorrentSpider(_build_indexer(apikey="", token=""))
+
+    assert asyncio.run(spider.async_search(keyword="Example", page=0)) == (True, [])
+
+
+def test_flux_torrent_async_detection_matches_sync(monkeypatch):
+    """
+    异步能力探测应识别兼容层信封并写入命中缓存。
+    """
+    async def async_get_res(*_args, **_kwargs):
+        """
+        回放兼容层用户接口响应。
+        """
+        return _FakeResponse(_envelope({"id": 42}))
+
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.fluxtorrent.AsyncRequestUtils.get_res", async_get_res
+    )
+    site = _build_indexer()
+
+    assert asyncio.run(flux_torrent_module.async_detect_flux_torrent(site)) is True
+    # 命中后同步入口直接复用缓存结论，不再发请求。
+    assert flux_torrent_module.cached_flux_torrent_detection(site) is True
+
+
+def test_flux_torrent_detection_ignores_request_failure(monkeypatch):
+    """
+    同步与异步探测在请求异常时应判定为非 FluxTorrent 站点。
+    """
+    def failing_get_res(*_args, **_kwargs):
+        """
+        模拟网络异常。
+        """
+        raise OSError("connection reset")
+
+    async def failing_async_get_res(*_args, **_kwargs):
+        """
+        模拟网络异常。
+        """
+        raise OSError("connection reset")
+
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res", failing_get_res
+    )
+    monkeypatch.setattr(
+        "app.modules.indexer.spider.fluxtorrent.AsyncRequestUtils.get_res", failing_async_get_res
+    )
+
+    assert flux_torrent_module.detect_flux_torrent(_build_indexer()) is False
+    assert asyncio.run(flux_torrent_module.async_detect_flux_torrent(_build_indexer())) is False
+
+
+def test_flux_torrent_parser_rejects_unusable_payloads():
+    """
+    用户接口返回空响应、非 JSON、结构异常或业务错误码时都应给出错误信息。
+    """
+    parser = FluxTorrentSiteUserInfo(
+        site_name="FluxTorrent",
+        url=_SITE_URL,
+        site_cookie=None,
+        apikey=_API_TOKEN,
+        token=None,
+        ua="",
+    )
+
+    assert parser._load_api_payload("", "获取用户信息") is None
+    assert "未收到接口响应" in parser.err_msg
+    assert parser._load_api_payload("not-json", "获取用户信息") is None
+    assert "不是有效 JSON" in parser.err_msg
+    assert parser._load_api_payload("[1, 2]", "获取用户信息") is None
+    assert "结构无效" in parser.err_msg
+    payload = _envelope(None, code=2001, message="invalid token")
+    assert parser._load_api_payload(json.dumps(payload), "获取用户信息") is None
+    assert parser.err_msg == "invalid token"
