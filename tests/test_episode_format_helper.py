@@ -33,9 +33,17 @@ def _patch_media_exts(monkeypatch):
         lambda: SimpleNamespace(
             video_extensions=(".mkv", ".mp4"),
             subtitle_extensions=(".srt", ".ass"),
+            lyrics_extensions=(".lrc",),
             audio_extensions=(".flac", ".mp3", ".mka"),
         ),
     )
+
+
+def test_configured_lyrics_extension_is_treated_as_subtitle():
+    """
+    配置中的歌词后缀应参与剧集样本筛选，并沿用字幕分类。
+    """
+    assert EpisodeFormatRuleHelper._get_file_kind(_make_file("Show.lrc")) == "subtitle"
 
 
 @pytest.mark.parametrize(
@@ -599,7 +607,6 @@ def test_auto_recommend_rejects_when_native_episode_conflicts(monkeypatch):
         _make_file("Show - 02.mkv"),
     ]
 
-    native_values = iter(["02", "02"])
     monkeypatch.setattr(
         helper,
         "_extract_native_episode",
