@@ -76,6 +76,27 @@ class NetworkFilesystemPort(Protocol):
 _network_filesystem_lock = threading.RLock()
 _network_filesystem_port: Optional[NetworkFilesystemPort] = None
 
+# 影视与音乐目录中可直接随主媒体迁移的标准封面文件名。
+_MEDIA_COVER_STEMS = frozenset({
+    "art",
+    "back",
+    "backdrop",
+    "background",
+    "banner",
+    "clearart",
+    "cover",
+    "fanart",
+    "folder",
+    "front",
+    "landscape",
+    "logo",
+    "poster",
+    "season",
+    "thumb",
+    "thumbnail",
+})
+_MEDIA_IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".webp"})
+
 
 def configure_network_filesystem_port(
         port: NetworkFilesystemPort,
@@ -156,12 +177,15 @@ class _MusicFileFilterBase(_TransferOwnerBase):
 
     def _is_subtitle_file(self, fileitem: FileItem) -> bool:
         """
-        判断是否为字幕文件
+        判断是否为字幕或 LRC 歌词文件。
+
+        LRC 与字幕一样按同名主媒体继承识别结果，避免歌词文件单独进入媒体识别。
         """
         if not fileitem.extension:
             return False
         return (
-            True if f".{fileitem.extension.lower()}" in self._subtitle_exts else False
+            f".{fileitem.extension.lower()}" in self._subtitle_exts
+            or f".{fileitem.extension.lower()}" == ".lrc"
         )
 
     def _is_audio_file(self, fileitem: FileItem) -> bool:
@@ -188,6 +212,19 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         return get_runtime_setting("MUSIC_LOCAL_COVER_ENABLE") and fileitem.type == "file" and music_cover_priority(
             str(fileitem.path or fileitem.name or ""), get_runtime_setting("MUSIC_COVER_FILE_PATTERNS")
         ) is not None
+
+    @staticmethod
+    def _is_media_cover_file(fileitem: FileItem) -> bool:
+        """
+        判断是否为影视或音乐目录中的标准封面图片。
+
+        :param fileitem: 待判断的文件项
+        :return: 文件是标准封面名且使用受支持图片格式时返回 True
+        """
+        if fileitem.type != "file" or not fileitem.path:
+            return False
+        path = Path(fileitem.path)
+        return path.suffix.casefold() in _MEDIA_IMAGE_SUFFIXES and path.stem.casefold() in _MEDIA_COVER_STEMS
 
     def _is_media_file(
             self,
@@ -411,6 +448,7 @@ class FileFilterMixin(_TransferOwnerBase):
         Any, staticmethod(_MusicFileFilterBase._is_music_lyrics_file)
     )
     _is_music_cover_file = cast(Any, staticmethod(_MusicFileFilterBase._is_music_cover_file))
+    _is_media_cover_file = cast(Any, staticmethod(_MusicFileFilterBase._is_media_cover_file))
     _is_media_file = cast(Any, _MusicFileFilterBase._is_media_file)
     _is_primary_media_file = cast(Any, _MusicFileFilterBase._is_primary_media_file)
     _music_info_from_meta = cast(

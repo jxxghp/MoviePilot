@@ -153,7 +153,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         self._subtitle_exts = self.runtime_config.subtitle_extensions
         self._audio_exts = self.runtime_config.audio_extensions
         self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + (
-            ".lrc", ".txt", ".yaml",
+            ".lrc", ".txt", ".yaml", ".jpg", ".jpeg", ".png", ".webp",
         )
 
     def _TransferChain__init(self) -> bool:

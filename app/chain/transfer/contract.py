@@ -88,6 +88,7 @@ if TYPE_CHECKING:
         _is_blocked_by_exclude_words: Callable[..., Any]
         _is_hidden_or_recycle_path: Callable[..., Any]
         _is_media_file: Callable[..., Any]
+        _is_media_cover_file: Callable[..., Any]
         _is_movie_year_conflict: Callable[..., Any]
         _is_music_lyrics_file: Callable[..., Any]
         _is_music_cover_file: Callable[..., Any]

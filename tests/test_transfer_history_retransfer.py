@@ -12,6 +12,7 @@ from app.api.endpoints.transfer import (
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import EpisodeFormatRecommendItem, ManualTransferItem
+from app.schemas.types import MediaType
 
 
 def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):
@@ -678,6 +679,80 @@ def test_manual_transfer_music_companions_share_one_batch(monkeypatch):
     assert resp.data["summary"] == {"total": 5, "success": 5, "failed": 0}
     assert len(captured) == 1
     assert captured[0]["music_type"] == "album"
+    assert captured[0]["sync_extra_files"] is True
+    assert [item.path for item in captured[0]["selected_fileitems"]] == [
+        item["path"] for item in selected_fileitems
+    ]
+
+
+def test_manual_transfer_video_companions_share_one_batch(monkeypatch):
+    """
+    影视主文件、字幕、歌词和标准封面显式选择时应共享同一整理批次。
+    """
+    selected_fileitems = [
+        {
+            "storage": "local",
+            "path": f"/downloads/Test Show/{name}",
+            "name": name,
+            "extension": name.rsplit(".", 1)[-1],
+            "type": "file",
+        }
+        for name in ("Test.Show.S01E01.mkv", "Test.Show.S01E01.srt", "Test.Show.S01E01.lrc", "folder.jpg")
+    ]
+    captured = []
+
+    class FakeTransferChain:
+        """
+        记录带影视旁挂文件的批量整理调用。
+        """
+
+        def manual_transfer(self, **kwargs):
+            """
+            返回当前批次中每个文件的成功预览项。
+            """
+            captured.append(kwargs)
+            selected = kwargs["selected_fileitems"]
+            return True, {
+                "summary": {"total": len(selected), "success": len(selected), "failed": 0},
+                "items": [
+                    {
+                        "source": item.path,
+                        "source_storage": item.storage,
+                        "target": f"/library/Test Show/{item.name}",
+                        "target_dir": "/library/Test Show",
+                        "success": True,
+                        "message": "",
+                    }
+                    for item in selected
+                ],
+                "message": "",
+            }
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+    monkeypatch.setattr(
+        "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
+        lambda: SimpleNamespace(
+            video_extensions=(".mkv",),
+            subtitle_extensions=(".srt",),
+            audio_extensions=(".flac",),
+        ),
+    )
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitems=selected_fileitems,
+            preview=True,
+            type_name="电视剧",
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is True
+    assert response.data["summary"] == {"total": 4, "success": 4, "failed": 0}
+    assert len(captured) == 1
+    assert captured[0]["mtype"] is MediaType.TV
     assert captured[0]["sync_extra_files"] is True
     assert [item.path for item in captured[0]["selected_fileitems"]] == [
         item["path"] for item in selected_fileitems

@@ -379,8 +379,14 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
                     return False
-            elif (not is_bluray_dir and not self._is_subtitle_file(item) and not self._is_audio_file(item)
-                  and not (batch_mtype is None and self._is_music_cover_file(item))):
+            elif (
+                    not is_bluray_dir
+                    and not self._is_subtitle_file(item)
+                    and not self._is_audio_file(item)
+                    and not self._is_music_lyrics_file(item)
+                    and not self._is_media_cover_file(item)
+                    and not (batch_mtype is None and self._is_music_cover_file(item))
+            ):
                 if not self._is_media_file(item, batch_mtype):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
@@ -808,7 +814,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 "notification_debounce": notification_debounce,
             }
         try:
-            for file_item, bluray_dir in self._music_transfer_items(file_items, music_batch_context):
+            for file_item, bluray_dir in self._music_transfer_items(
+                    file_items, music_batch_context, batch_mtype
+            ):
                 if runtime_stop_state.is_system_stopped:
                     raise OperationInterrupted()
                 if continue_callback and not continue_callback():
@@ -1034,13 +1042,25 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         )
 
     def _music_transfer_items(
-            self, items: List[Tuple[FileItem, bool]], context: Any,
+            self,
+            items: List[Tuple[FileItem, bool]],
+            context: Any,
+            batch_mtype: Optional[MediaType],
     ) -> Generator[Tuple[FileItem, bool], None, None]:
         """
-        随主音轨逐项解析再放行封面，无法证明唯一音乐归属时不生成图片任务。
+        音乐批次随主音轨逐项解析再放行封面，影视批次直接保留标准媒体封面。
+
+        :param batch_mtype: 当前批次媒体类型，用于隔离音乐封面归属校验。
         """
+        has_video_batch = any(
+            item.type == "file" and self._is_media_file(item, None)
+            for item, _ in items
+        )
+        is_music_batch = batch_mtype == MediaType.MUSIC or (
+            batch_mtype is None and not has_video_batch
+        )
         for item, bluray in items:
-            if self._is_music_cover_file(item):
+            if is_music_batch and self._is_music_cover_file(item):
                 related = context.related_main_keys.get(self._get_file_key(item))
                 if related not in context.resolved_contexts:
                     logger.info(f"{item.name} 没有唯一且已识别的同目录音乐归属，跳过封面整理")

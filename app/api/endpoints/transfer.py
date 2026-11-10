@@ -237,6 +237,7 @@ _MUSIC_COMPANION_SUFFIXES = (
     ".png",
     ".webp",
 )
+_MEDIA_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
 
 
 def _is_music_companion_file(fileitem: FileItem) -> bool:
@@ -248,6 +249,45 @@ def _is_music_companion_file(fileitem: FileItem) -> bool:
     """
     name = str(fileitem.path or fileitem.name or "").casefold()
     return name.endswith(_MUSIC_COMPANION_SUFFIXES)
+
+
+def _is_media_companion_file(fileitem: FileItem, media_type: MediaType) -> bool:
+    """
+    判断显式影视批次中的文件是否为可随主媒体迁移的附属文件。
+
+    :param fileitem: 用户选中的文件项
+    :param media_type: 当前批次的影视类型
+    :return: 文件属于字幕、歌词、外挂音轨或标准图片后缀时返回 True
+    """
+    config = get_api_runtime_config_snapshot()
+    suffix = Path(fileitem.path or fileitem.name or "").suffix.lower()
+    if suffix in getattr(config, "subtitle_extensions", ()) or suffix == ".lrc":
+        return True
+    if suffix in getattr(config, "audio_extensions", ()):
+        return True
+    return suffix in _MEDIA_IMAGE_SUFFIXES and media_type in (MediaType.MOVIE, MediaType.TV)
+
+
+def _is_media_file_batch(fileitems: List[FileItem], media_type: MediaType) -> bool:
+    """
+    判断显式影视选择是否包含主视频及其附属文件。
+
+    :param fileitems: 用户在整理界面显式选中的文件项
+    :param media_type: 当前批次的影视类型
+    :return: 至少包含一个视频且其他文件均为支持的附属文件时返回 True
+    """
+    if len(fileitems) < 2 or any(fileitem.type != "file" for fileitem in fileitems):
+        return False
+    video_extensions = set(getattr(get_api_runtime_config_snapshot(), "video_extensions", ()))
+    video_count = 0
+    for fileitem in fileitems:
+        suffix = Path(fileitem.path or fileitem.name or "").suffix.lower()
+        if suffix in video_extensions:
+            video_count += 1
+            continue
+        if not _is_media_companion_file(fileitem, media_type):
+            return False
+    return video_count > 0
 
 
 def _is_music_file_batch(fileitems: List[FileItem]) -> bool:
@@ -343,6 +383,27 @@ def _selected_music_fileitems(
             len(fileitems) - len(filtered),
         )
         return filtered
+    return fileitems
+
+
+def _selected_media_fileitems(
+    fileitems: List[FileItem],
+    *,
+    explicitly_selected: bool,
+    media_type: Optional[MediaType],
+) -> Optional[List[FileItem]]:
+    """
+    将显式影视主文件与字幕、歌词和封面作为一个批次交给整理链。
+
+    :param fileitems: 用户显式选中的文件项
+    :param explicitly_selected: 是否来自前端多选或历史恢复
+    :param media_type: 请求指定的媒体类型
+    :return: 可批次整理的文件列表；不满足条件时返回 None
+    """
+    if not explicitly_selected or media_type not in (MediaType.MOVIE, MediaType.TV):
+        return None
+    if not _is_media_file_batch(fileitems, media_type):
+        return None
     return fileitems
 
 
@@ -997,8 +1058,11 @@ def _execute_manual_transfer(
     selected_music_fileitems = _selected_music_fileitems(
         src_fileitems, explicitly_selected=explicit_selected_files, media_type=mtype
     )
+    selected_media_fileitems = selected_music_fileitems or _selected_media_fileitems(
+        src_fileitems, explicitly_selected=explicit_selected_files, media_type=mtype,
+    )
     mtype = MediaType.MUSIC if selected_music_fileitems is not None else mtype
-    explicit_selected_files = explicit_selected_files and selected_music_fileitems is None
+    explicit_selected_files = explicit_selected_files and selected_media_fileitems is None
     selected_music_type = _resolve_music_batch_entity_type(
         selected_music_fileitems, transer_item.music_type,
     )
@@ -1140,10 +1204,10 @@ def _execute_manual_transfer(
         preview=transer_item.preview,
         reorganize=transer_item.reorganize,
         skip_success=transer_item.skip_success,
-        # 单文件/目录入口沿用原有附属文件同步，显式音乐批次也必须保留旁挂文件。
+        # 单文件/目录入口和显式媒体批次都必须保留可识别的旁挂文件。
         sync_extra_files=True,
         cleanup_dest_fileitem=cleanup_dest_fileitem,
-        selected_fileitems=selected_music_fileitems,
+        selected_fileitems=selected_media_fileitems,
         report_results=not transer_item.preview,
     )
     if not transer_item.preview:

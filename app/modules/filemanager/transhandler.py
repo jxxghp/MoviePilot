@@ -56,6 +56,8 @@ from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import ChainEventType, MediaType
 
+_MEDIA_IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".webp"})
+
 
 class TransHandler:
     """
@@ -250,24 +252,39 @@ class TransHandler:
     @staticmethod
     def __is_subtitle_file(fileitem: FileItem) -> bool:
         """
-        按运行配置检查文件是否为字幕附件。
+        按运行配置检查文件是否为字幕或 LRC 歌词附件。
 
         :param fileitem: 带扩展名的文件项
         :return: 扩展名属于字幕配置时为 True
         """
         return bool(
             fileitem.extension
-            and f".{fileitem.extension.lower()}" in get_runtime_setting("RMT_SUBEXT")
+            and (
+                f".{fileitem.extension.lower()}" in get_runtime_setting("RMT_SUBEXT")
+                or f".{fileitem.extension.lower()}" == ".lrc"
+            )
         )
 
     @staticmethod
-    def __is_extra_file(fileitem: FileItem, mediainfo: MediaInfo | MusicInfo) -> bool:
+    def __is_media_image_file(fileitem: FileItem) -> bool:
+        """
+        判断文件是否为整理链支持的媒体图片附件。
+
+        :param fileitem: 待判断的源文件
+        :return: 图片后缀受支持时返回 True
+        """
+        return bool(
+            fileitem.extension
+            and f".{fileitem.extension.lower()}" in _MEDIA_IMAGE_SUFFIXES
+        )
+
+    def __is_extra_file(self, fileitem: FileItem, mediainfo: MediaInfo | MusicInfo) -> bool:
         """
         识别不参与主媒体质量比较的附属文件。
 
         :param fileitem: 待判断的文件项
         :param mediainfo: 决定音频或歌词附件规则的主媒体信息
-        :return: 字幕、音乐歌词或影视外置音轨时为 True
+        :return: 字幕、歌词或影视外置音轨时为 True
         """
         if not fileitem.extension:
             return False
@@ -275,8 +292,9 @@ class TransHandler:
         path = str(fileitem.path or fileitem.name or "").casefold()
         if extension in get_runtime_setting("RMT_SUBEXT"):
             return True
-        if mediainfo.type == MediaType.MUSIC and path.endswith(
-            (".lrc", ".txt", ".lyricsfile.yaml")
+        if extension == ".lrc" or (
+            mediainfo.type == MediaType.MUSIC
+            and path.endswith((".txt", ".lyricsfile.yaml"))
         ):
             return True
         return (
@@ -527,9 +545,8 @@ class TransHandler:
             )
             if not target_directory_path:
                 raise ValueError("重命名格式无效")
-            if (mediainfo.type == MediaType.MUSIC
-                    and Path(str(fileitem.path)).suffix.casefold() in {".jpg", ".jpeg", ".png", ".webp"}):
-                # 封面保持原名并放到专辑根，不套用曲序/曲名模板或进入 Disc 子目录。
+            if self.__is_media_image_file(fileitem):
+                # 封面保持原名并放到媒体根，不套用曲序/曲名模板或进入 Disc 子目录。
                 final_target = target_directory_path / Path(str(fileitem.path)).name
             if getattr(planning_meta, "music_layout", None) == "image_cue":
                 # 整轨与索引只调整专辑目录，保留原名才能让 CUE FILE 引用继续有效。

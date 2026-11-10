@@ -132,6 +132,8 @@ class _TransferCandidatePlanner:
         self._sync_extra_files = sync_extra_files
         self._sync_music_covers = sync_extra_files or sync_music_covers
         self._fileitem = fileitem
+        # 自动类型请求在候选收集后补充可靠的视频上下文，供目录封面和附属音轨判断。
+        self._has_video_batch_source = False
 
     def _build_file_meta(
             self,
@@ -188,7 +190,10 @@ class _TransferCandidatePlanner:
         if self._batch_mtype is not None:
             return self._batch_mtype != MediaType.MUSIC
         # 预载媒体信息为非音乐时，整批整理视为影视上下文
-        return self._mediainfo is not None and not isinstance(self._mediainfo, MusicInfo)
+        return (
+            self._has_video_batch_source
+            or (self._mediainfo is not None and not isinstance(self._mediainfo, MusicInfo))
+        )
 
     def _build_path_meta(
             self,
@@ -321,7 +326,7 @@ class _TransferCandidatePlanner:
                     self._chain._is_subtitle_file(item)
                     or self._chain._is_audio_file(item)
                     or self._chain._is_music_lyrics_file(item)
-                    or self._is_music_cover_candidate(item)
+                    or self._is_media_cover_candidate(item)
             ):
                 extra_items_by_dir.setdefault(dir_key, []).append((item, is_bluray_dir))
         return main_items_by_dir, extra_items_by_dir
@@ -353,7 +358,7 @@ class _TransferCandidatePlanner:
                     self._chain._is_subtitle_file(item)
                     or self._chain._is_audio_file(item)
                     or self._chain._is_music_lyrics_file(item)
-                    or self._is_music_cover_candidate(item)
+                    or self._is_media_cover_candidate(item)
             ):
                 continue
             if not self._is_allowed_transfer_item(item, False):
@@ -361,12 +366,29 @@ class _TransferCandidatePlanner:
             extra_items.append((item, False))
         return main_fileitems, extra_items
 
+    def _is_media_cover_candidate(self, item: FileItem) -> bool:
+        """
+        判断当前批次是否接纳同目录封面。
+
+        音乐封面继续遵循本地封面开关和文件名匹配；影视封面沿用附属文件同步开关，
+        仅在目录或显式媒体批次中随主媒体规划。
+        """
+        if self._has_reliable_video_source():
+            return self._sync_extra_files and self._chain._is_media_cover_file(item)
+        return self._sync_music_covers and self._chain._is_music_cover_file(item)
+
     def _is_music_cover_candidate(self, item: FileItem) -> bool:
         """
-        封面随音乐主文件同步；自动请求可单独启用，影视批次仍不接纳图片。
+        保留音乐封面候选判断接口，供既有调用方检查纯音乐封面语义。
+
+        :param item: 待判断的目录文件
+        :return: 当前批次按音乐封面规则接纳时返回 True
         """
-        return (self._sync_music_covers and not self._has_reliable_video_source()
-                and self._chain._is_music_cover_file(item))
+        return (
+            self._sync_music_covers
+            and not self._has_reliable_video_source()
+            and self._chain._is_music_cover_file(item)
+        )
 
     def _infer_music_batch_type(self, items: List[Tuple[FileItem, bool]]) -> None:
         """
@@ -385,7 +407,10 @@ class _TransferCandidatePlanner:
         保留未匹配的普通附件，音乐歌词和封面必须已获得主文件归属。
         """
         for item, is_bluray_dir in items:
-            if self._chain._is_music_cover_file(item) and self._chain._get_file_key(item) not in inherited:
+            if (
+                    self._chain._is_media_cover_file(item)
+                    or self._chain._is_music_cover_file(item)
+            ) and self._chain._get_file_key(item) not in inherited:
                 continue
             if (self._batch_mtype == MediaType.MUSIC and self._chain._is_music_lyrics_file(item)
                     and self._chain._get_file_key(item) not in inherited):
@@ -402,6 +427,10 @@ class _TransferCandidatePlanner:
         if not items:
             return [], {}
 
+        self._has_video_batch_source = any(
+            item.type == "file" and self._chain._is_media_file(item, None)
+            for item, _ in items
+        )
         self._infer_music_batch_type(items)
 
         download_history_repository = self._chain.download_history_repository
@@ -465,7 +494,10 @@ class _TransferCandidatePlanner:
             remaining = [
                 item
                 for item in items
-                if not self._chain._is_music_cover_file(item[0]) and not (
+                if not (
+                        self._chain._is_media_cover_file(item[0])
+                        or self._chain._is_music_cover_file(item[0])
+                ) and not (
                     self._batch_mtype == MediaType.MUSIC
                     and self._chain._is_music_lyrics_file(item[0])
                 )
@@ -525,9 +557,14 @@ class _TransferCandidatePlanner:
             for extra_item, extra_bluray_dir in extra_items_by_dir.get(dir_key, []):
                 if self._chain._get_file_key(extra_item) in seen_file_keys:
                     continue
-                if self._is_music_cover_candidate(extra_item):
-                    # 图片没有曲名，先继承主音轨标签；批次分组再确认唯一发行归属。
-                    if self._chain._is_audio_file(main_item) and self._append_item(
+                if self._is_media_cover_candidate(extra_item):
+                    # 图片没有可识别标题：音乐沿用主音轨上下文，影视每个源目录只挂一张。
+                    main_key = self._chain._get_file_key(main_item)
+                    first_main_key = self._chain._get_file_key(main_fileitems[0])
+                    if (
+                            self._chain._is_audio_file(main_item)
+                            or (self._has_reliable_video_source() and main_key == first_main_key)
+                    ) and self._append_item(
                             planned_items, seen_file_keys, extra_item, extra_bluray_dir):
                         inherited_map[self._chain._get_file_key(extra_item)] = deepcopy(main_meta)
                     continue
