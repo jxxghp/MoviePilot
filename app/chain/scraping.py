@@ -391,7 +391,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         "landscape": ["thumb"],
     }
 
-    MUSIC_LYRICS_EXTENSIONS = (".lyricsfile.yaml", ".lrc", ".txt")
+    MUSIC_LEGACY_LYRICS_EXTENSIONS = (".lyricsfile.yaml", ".txt")
     IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
     _music_track_prefix_pattern = re.compile(
         r"^\s*(?:(?:cd|disc)\s*\d+\s*[-_. ]+)?(?:\d+\s*[-_. ]+)+",
@@ -411,6 +411,16 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         重新读取刮削策略，供后续任务采用最新配置。
         """
         self.scraping_policies = ScrapingConfig.from_system_config()
+
+    def _music_lyrics_extensions(self) -> tuple[str, ...]:
+        """
+        返回音乐旁挂歌词使用的配置后缀，并保留历史兼容格式。
+
+        :return: 去重后的歌词文件后缀集合
+        """
+        runtime_config = get_chain_runtime_config_snapshot()
+        configured = getattr(runtime_config, "lyrics_extensions", ())
+        return tuple(dict.fromkeys((*configured, *self.MUSIC_LEGACY_LYRICS_EXTENSIONS)))
 
     @staticmethod
     def _cleanup_temp_file(path: Optional[Path]) -> None:
@@ -2115,7 +2125,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if not fileitem.path or not fileitem.storage:
             return None
         audio_path = Path(fileitem.path)
-        for extension in self.MUSIC_LYRICS_EXTENSIONS:
+        for extension in self._music_lyrics_extensions():
             target_path = self._music_lyrics_path(audio_path, extension)
             item = self.storagechain.get_file_item(
                 storage=fileitem.storage,
@@ -2132,20 +2142,22 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         return audio_path.with_suffix(extension)
 
-    @staticmethod
-    def _music_lyrics_sidecar_quality(fileitem: Optional[_SchemaFileItem]) -> int:
+    def _music_lyrics_sidecar_quality(self, fileitem: Optional[_SchemaFileItem]) -> int:
         """
         按旁挂扩展名估算质量，用于写入前执行防降级保护。
+
+        :param fileitem: 已存在的歌词旁挂文件
+        :return: 歌词格式质量等级
         """
         if not fileitem:
             return 0
         path = str(fileitem.path or "").casefold()
         if path.endswith(".lyricsfile.yaml"):
             return 4
-        if path.endswith(".lrc"):
-            return 3
         if path.endswith(".txt"):
             return 1
+        if any(path.endswith(extension) for extension in self._music_lyrics_extensions()):
+            return 3
         return 0
 
     def _write_music_lyrics_sidecar(
@@ -2277,7 +2289,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         if not fileitem.path or not fileitem.storage:
             return
         audio_path = Path(fileitem.path)
-        for extension in self.MUSIC_LYRICS_EXTENSIONS:
+        for extension in self._music_lyrics_extensions():
             if extension in (keep_extension, ".lyricsfile.yaml"):
                 continue
             target_path = self._music_lyrics_path(audio_path, extension)

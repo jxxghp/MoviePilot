@@ -1111,6 +1111,11 @@
       "group": "media_formats",
       "source_file": "app/runtime/config.py"
     },
+    "RMT_LYRICSEXT": {
+      "description": "支持的歌词文件后缀格式",
+      "group": "media_formats",
+      "source_file": "app/runtime/config.py"
+    },
     "RMT_MEDIAEXT": {
       "description": "支持的视频文件后缀格式",
       "group": "media_formats",

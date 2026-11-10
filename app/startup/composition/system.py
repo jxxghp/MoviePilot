@@ -56,6 +56,7 @@ _RUST_METAINFO_OPTION_SETTING_KEYS = frozenset({
     SystemConfigKey.Customization.value,
     "RMT_MEDIAEXT",
     "RMT_SUBEXT",
+    "RMT_LYRICSEXT",
     "RMT_AUDIOEXT",
 })
 

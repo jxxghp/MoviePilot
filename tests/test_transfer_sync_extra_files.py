@@ -257,6 +257,22 @@ def test_sync_extra_lrc_and_cover_follow_video_directory(monkeypatch):
     ]
 
 
+def test_transfer_chain_uses_configured_lyrics_extension():
+    """
+    整理链应按运行时歌词后缀配置识别自定义歌词文件。
+    """
+    chain = make_transfer_chain()
+    chain._lyrics_exts = (".lyrics",)
+    lyrics_fileitem = make_fileitem(
+        "/downloads/Test Show (2026)/Test.Show.S01E01.2026.lyrics"
+    )
+
+    assert chain._is_configured_lyrics_file(lyrics_fileitem)
+    assert chain._is_subtitle_file(lyrics_fileitem)
+    assert chain._is_music_lyrics_file(lyrics_fileitem)
+    assert chain._is_allowed_file(lyrics_fileitem)
+
+
 def test_single_subtitle_transfer_reuses_same_name_video_episode(monkeypatch):
     """
     单独整理同名字幕时应复用主视频识别结果，不受 sync_extra_files 开关影响。

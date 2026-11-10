@@ -28,6 +28,7 @@ def _runtime_config(**overrides):
     values = {
         "media_extensions": (".mkv",),
         "subtitle_extensions": (".srt",),
+        "lyrics_extensions": (".lrc",),
         "audio_extensions": (".flac",),
         "superuser": "snapshot-admin",
         "proxy": {"https": "http://snapshot-proxy:7890"},
@@ -98,10 +99,11 @@ def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
 
         def list_files(self, fileitem, recursion=True):
             """
-            返回视频、文本和字幕文件，供工作流扩展名过滤检查。
+            返回视频、歌词、文本和字幕文件，供工作流扩展名过滤检查。
             """
             return [
                 SimpleNamespace(extension="mkv"),
+                SimpleNamespace(extension="lrc"),
                 SimpleNamespace(extension="txt"),
                 SimpleNamespace(extension="srt"),
             ]
@@ -120,7 +122,7 @@ def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
         context=ActionContext(),
     )
 
-    assert [item.extension for item in context.fileitems] == ["mkv", "srt"]
+    assert [item.extension for item in context.fileitems] == ["mkv", "lrc", "srt"]
 
 
 def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):

@@ -591,7 +591,7 @@ def test_manual_transfer_music_files_share_one_album_batch(monkeypatch):
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
     monkeypatch.setattr(
         "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
-        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+        lambda: SimpleNamespace(audio_extensions=(".flac",), lyrics_extensions=(".lrc",)),
     )
 
     resp = manual_transfer(
@@ -661,7 +661,7 @@ def test_manual_transfer_music_companions_share_one_batch(monkeypatch):
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
     monkeypatch.setattr(
         "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
-        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+        lambda: SimpleNamespace(audio_extensions=(".flac",), lyrics_extensions=(".lrc",)),
     )
 
     resp = manual_transfer(
@@ -734,6 +734,7 @@ def test_manual_transfer_video_companions_share_one_batch(monkeypatch):
         lambda: SimpleNamespace(
             video_extensions=(".mkv",),
             subtitle_extensions=(".srt",),
+            lyrics_extensions=(".lrc",),
             audio_extensions=(".flac",),
         ),
     )
@@ -800,7 +801,7 @@ def test_manual_transfer_auto_audio_selection_uses_single_file_flow(monkeypatch)
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
     monkeypatch.setattr(
         "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
-        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+        lambda: SimpleNamespace(audio_extensions=(".flac",), lyrics_extensions=(".lrc",)),
     )
 
     response = manual_transfer(
@@ -864,7 +865,7 @@ def test_manual_transfer_music_batch_ignores_non_disc_alternate_directory(monkey
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
     monkeypatch.setattr(
         "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
-        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+        lambda: SimpleNamespace(audio_extensions=(".flac",), lyrics_extensions=(".lrc",)),
     )
 
     response = manual_transfer(
@@ -932,7 +933,7 @@ def test_manual_transfer_history_ids_share_one_music_album_batch(monkeypatch):
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
     monkeypatch.setattr(
         "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
-        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+        lambda: SimpleNamespace(audio_extensions=(".flac",), lyrics_extensions=(".lrc",)),
     )
 
     response = manual_transfer(

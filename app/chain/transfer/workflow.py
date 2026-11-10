@@ -383,7 +383,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     not is_bluray_dir
                     and not self._is_subtitle_file(item)
                     and not self._is_audio_file(item)
-                    and not self._is_music_lyrics_file(item)
                     and not self._is_media_cover_file(item)
                     and not (batch_mtype is None and self._is_music_cover_file(item))
             ):

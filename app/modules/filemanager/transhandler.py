@@ -252,17 +252,31 @@ class TransHandler:
     @staticmethod
     def __is_subtitle_file(fileitem: FileItem) -> bool:
         """
-        按运行配置检查文件是否为字幕或 LRC 歌词附件。
+        按运行配置检查文件是否为字幕或歌词附件。
 
         :param fileitem: 带扩展名的文件项
-        :return: 扩展名属于字幕配置时为 True
+        :return: 扩展名属于字幕或歌词配置时为 True
         """
         return bool(
             fileitem.extension
             and (
                 f".{fileitem.extension.lower()}" in get_runtime_setting("RMT_SUBEXT")
-                or f".{fileitem.extension.lower()}" == ".lrc"
+                or TransHandler.__is_configured_lyrics_file(fileitem)
             )
+        )
+
+    @staticmethod
+    def __is_configured_lyrics_file(fileitem: FileItem) -> bool:
+        """
+        按运行时歌词后缀配置判断文件是否为歌词附件。
+
+        :param fileitem: 待判断的文件项
+        :return: 文件名以配置的歌词后缀结尾时返回 True
+        """
+        path = str(fileitem.path or fileitem.name or "").casefold()
+        return any(
+            path.endswith(str(extension).casefold())
+            for extension in get_runtime_setting("RMT_LYRICSEXT")
         )
 
     @staticmethod
@@ -292,7 +306,7 @@ class TransHandler:
         path = str(fileitem.path or fileitem.name or "").casefold()
         if extension in get_runtime_setting("RMT_SUBEXT"):
             return True
-        if extension == ".lrc" or (
+        if TransHandler.__is_configured_lyrics_file(fileitem) or (
             mediainfo.type == MediaType.MUSIC
             and path.endswith((".txt", ".lyricsfile.yaml"))
         ):

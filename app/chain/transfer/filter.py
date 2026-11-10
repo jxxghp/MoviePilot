@@ -177,17 +177,32 @@ class _MusicFileFilterBase(_TransferOwnerBase):
 
     def _is_subtitle_file(self, fileitem: FileItem) -> bool:
         """
-        判断是否为字幕或 LRC 歌词文件。
+        判断是否为字幕或配置中声明的歌词文件。
 
-        LRC 与字幕一样按同名主媒体继承识别结果，避免歌词文件单独进入媒体识别。
+        歌词与字幕一样按同名主媒体继承识别结果，避免旁挂文件单独进入媒体识别。
+
+        :param fileitem: 待判断的文件项
+        :return: 文件后缀属于字幕或歌词配置时返回 True
         """
         if not fileitem.extension:
             return False
         return (
             f".{fileitem.extension.lower()}" in self._subtitle_exts
-            or f".{fileitem.extension.lower()}" == ".lrc"
+            or self._is_configured_lyrics_file(fileitem)
         )
 
+    def _is_configured_lyrics_file(self, fileitem: FileItem) -> bool:
+        """
+        按运行时歌词后缀配置判断文件是否为歌词旁挂文件。
+
+        :param fileitem: 待判断的文件项
+        :return: 文件名以配置的歌词后缀结尾时返回 True
+        """
+        path = str(fileitem.path or fileitem.name or "").casefold()
+        return any(
+            path.endswith(str(extension).casefold())
+            for extension in getattr(self, "_lyrics_exts", ())
+        )
     def _is_audio_file(self, fileitem: FileItem) -> bool:
         """
         判断是否为音频文件
@@ -196,13 +211,18 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             return False
         return True if f".{fileitem.extension.lower()}" in self._audio_exts else False
 
-    @staticmethod
-    def _is_music_lyrics_file(fileitem: FileItem) -> bool:
+    def _is_music_lyrics_file(self, fileitem: FileItem) -> bool:
         """
         判断文件是否为可随同名音乐音轨迁移的歌词旁挂文件。
+
+        配置中的歌词后缀供所有媒体类型使用；TXT 和 Lyricsfile YAML 保留为
+        音乐专用的历史兼容格式，避免改变既有音乐目录整理行为。
+
+        :param fileitem: 待判断的文件项
+        :return: 文件属于配置歌词后缀或音乐历史歌词格式时返回 True
         """
         path = str(fileitem.path or fileitem.name or "").casefold()
-        return path.endswith((".lrc", ".txt", ".lyricsfile.yaml"))
+        return self._is_configured_lyrics_file(fileitem) or path.endswith((".txt", ".lyricsfile.yaml"))
 
     @staticmethod
     def _is_music_cover_file(fileitem: FileItem) -> bool:
@@ -443,10 +463,9 @@ class FileFilterMixin(_TransferOwnerBase):
         _MusicFileFilterBase._requires_automatic_category
     ))
     _is_subtitle_file = cast(Any, _MusicFileFilterBase._is_subtitle_file)
+    _is_configured_lyrics_file = cast(Any, _MusicFileFilterBase._is_configured_lyrics_file)
     _is_audio_file = cast(Any, _MusicFileFilterBase._is_audio_file)
-    _is_music_lyrics_file = cast(
-        Any, staticmethod(_MusicFileFilterBase._is_music_lyrics_file)
-    )
+    _is_music_lyrics_file = cast(Any, _MusicFileFilterBase._is_music_lyrics_file)
     _is_music_cover_file = cast(Any, staticmethod(_MusicFileFilterBase._is_music_cover_file))
     _is_media_cover_file = cast(Any, staticmethod(_MusicFileFilterBase._is_media_cover_file))
     _is_media_file = cast(Any, _MusicFileFilterBase._is_media_file)
@@ -728,11 +747,20 @@ class FileFilterMixin(_TransferOwnerBase):
 
     def _is_allowed_file(self, fileitem: FileItem) -> bool:
         """
-        判断是否允许的扩展名
+        判断文件是否使用允许的扩展名。
+
+        配置项允许使用多段后缀时，以完整路径结尾匹配歌词文件，避免
+        ``Path.suffix`` 只保留最后一段造成误判。
+
+        :param fileitem: 待判断的文件项
+        :return: 文件扩展名受支持时返回 True
         """
         if not fileitem.extension:
             return False
-        return True if f".{fileitem.extension.lower()}" in self._allowed_exts else False
+        return (
+            self._is_configured_lyrics_file(fileitem)
+            or f".{fileitem.extension.lower()}" in self._allowed_exts
+        )
 
     @staticmethod
     def _is_allow_filesize(fileitem: FileItem, min_filesize: int) -> bool:

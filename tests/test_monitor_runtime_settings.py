@@ -20,6 +20,7 @@ def test_transfer_dispatcher_reads_runtime_extensions_at_use_time() -> None:
         "DOWNLOAD_TMPEXT": [".part"],
         "RMT_MEDIAEXT": [".mkv"],
         "RMT_SUBEXT": [".srt"],
+        "RMT_LYRICSEXT": [".lrc"],
         "RMT_AUDIOEXT": [".flac"],
     }
 
@@ -30,11 +31,15 @@ def test_transfer_dispatcher_reads_runtime_extensions_at_use_time() -> None:
         dispatcher = TransferDispatcher(cache={})
 
         assert dispatcher.is_transfer_candidate_path(Path("movie.mkv"))
+        assert dispatcher.is_transfer_candidate_path(Path("movie.lrc"))
 
         runtime_settings["RMT_MEDIAEXT"] = [".mp4"]
+        runtime_settings["RMT_LYRICSEXT"] = [".lyrics"]
 
         assert not dispatcher.is_transfer_candidate_path(Path("movie.mkv"))
         assert dispatcher.is_transfer_candidate_path(Path("movie.mp4"))
+        assert not dispatcher.is_transfer_candidate_path(Path("movie.lrc"))
+        assert dispatcher.is_transfer_candidate_path(Path("movie.lyrics"))
 
 
 @pytest.mark.parametrize("configured", [False, True])

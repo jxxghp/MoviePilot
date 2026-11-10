@@ -165,6 +165,7 @@ def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
         search_source=settings.SEARCH_SOURCE,
         media_extensions=tuple(settings.RMT_MEDIAEXT),
         subtitle_extensions=tuple(settings.RMT_SUBEXT),
+        lyrics_extensions=tuple(settings.RMT_LYRICSEXT),
         audio_extensions=tuple(settings.RMT_AUDIOEXT),
         movie_rename_format=settings.RENAME_FORMAT(MediaType.MOVIE),
         television_rename_format=settings.RENAME_FORMAT(MediaType.TV),
@@ -246,12 +247,14 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
             settings.RMT_MEDIAEXT
             + settings.DOWNLOAD_TMPEXT
             + settings.RMT_SUBEXT
+            + settings.RMT_LYRICSEXT
             + settings.RMT_AUDIOEXT
         ),
         api_port=settings.PORT,
         api_token=settings.API_TOKEN,
         video_extensions=tuple(settings.RMT_MEDIAEXT),
         subtitle_extensions=tuple(settings.RMT_SUBEXT),
+        lyrics_extensions=tuple(settings.RMT_LYRICSEXT),
         audio_extensions=tuple(settings.RMT_AUDIOEXT),
         lyrics_batch_timeout=settings.LYRICS_BATCH_TIMEOUT,
         temporary_path=settings.TEMP_PATH,

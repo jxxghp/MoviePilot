@@ -602,7 +602,10 @@ def rename(
         transferchain = TransferChain()
         runtime_config = get_api_runtime_config_snapshot()
         media_exts = (
-            runtime_config.media_extensions + runtime_config.subtitle_extensions + runtime_config.audio_extensions
+            tuple(runtime_config.media_extensions)
+            + tuple(runtime_config.subtitle_extensions)
+            + tuple(getattr(runtime_config, "lyrics_extensions", ()))
+            + tuple(runtime_config.audio_extensions)
         )
         # 递归修改目录内文件（智能识别命名）
         sub_files: List[_SchemaFileItem] = StorageChain().list_files(fileitem, recursion=True) or []

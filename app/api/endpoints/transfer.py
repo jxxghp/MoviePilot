@@ -229,14 +229,12 @@ def _manual_submission_response(
 # 显式音乐批次允许一并提交的旁挂扩展名，实际归属仍由整理链按同名音轨确认。
 _MUSIC_COMPANION_SUFFIXES = (
     ".cue",
-    ".lrc",
-    ".txt",
-    ".lyricsfile.yaml",
     ".jpg",
     ".jpeg",
     ".png",
     ".webp",
 )
+_MUSIC_LEGACY_LYRICS_SUFFIXES = (".txt", ".lyricsfile.yaml")
 _MEDIA_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
 
 
@@ -248,7 +246,14 @@ def _is_music_companion_file(fileitem: FileItem) -> bool:
     :return: 文件名以支持的歌词、CUE 或封面扩展名结尾时返回 True
     """
     name = str(fileitem.path or fileitem.name or "").casefold()
-    return name.endswith(_MUSIC_COMPANION_SUFFIXES)
+    config = get_api_runtime_config_snapshot()
+    lyrics_extensions = tuple(
+        str(extension).casefold()
+        for extension in getattr(config, "lyrics_extensions", ())
+    )
+    return name.endswith(_MUSIC_COMPANION_SUFFIXES + _MUSIC_LEGACY_LYRICS_SUFFIXES) or any(
+        name.endswith(extension) for extension in lyrics_extensions
+    )
 
 
 def _is_media_companion_file(fileitem: FileItem, media_type: MediaType) -> bool:
@@ -260,8 +265,15 @@ def _is_media_companion_file(fileitem: FileItem, media_type: MediaType) -> bool:
     :return: 文件属于字幕、歌词、外挂音轨或标准图片后缀时返回 True
     """
     config = get_api_runtime_config_snapshot()
+    name = str(fileitem.path or fileitem.name or "").casefold()
     suffix = Path(fileitem.path or fileitem.name or "").suffix.lower()
-    if suffix in getattr(config, "subtitle_extensions", ()) or suffix == ".lrc":
+    lyrics_extensions = tuple(
+        str(extension).casefold()
+        for extension in getattr(config, "lyrics_extensions", ())
+    )
+    if suffix in getattr(config, "subtitle_extensions", ()) or any(
+        name.endswith(extension) for extension in lyrics_extensions
+    ):
         return True
     if suffix in getattr(config, "audio_extensions", ()):
         return True

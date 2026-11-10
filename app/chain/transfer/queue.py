@@ -147,13 +147,14 @@ class TransferQueueOwner(_TransferOwnerBase):
 
     def _refresh_file_extensions(self) -> None:
         """
-        按最新运行配置更新整理允许的媒体、字幕和音频后缀。
+        按最新运行配置更新整理允许的媒体、字幕、歌词和音频后缀。
         """
         self._media_exts = self.runtime_config.video_extensions
         self._subtitle_exts = self.runtime_config.subtitle_extensions
+        self._lyrics_exts = getattr(self.runtime_config, "lyrics_extensions", ())
         self._audio_exts = self.runtime_config.audio_extensions
-        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + (
-            ".lrc", ".txt", ".yaml", ".jpg", ".jpeg", ".png", ".webp",
+        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + self._lyrics_exts + (
+            ".txt", ".yaml", ".jpg", ".jpeg", ".png", ".webp",
         )
 
     def _TransferChain__init(self) -> bool:

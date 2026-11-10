@@ -225,7 +225,7 @@ def _metainfo_options(custom_words=None):
     )
     return {
         "custom_words": custom_words or [],
-        "media_exts": settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_AUDIOEXT,
+        "media_exts": settings.RMT_MEDIAEXT + settings.RMT_SUBEXT + settings.RMT_LYRICSEXT + settings.RMT_AUDIOEXT,
         "release_groups": release_groups,
         "customization": customization,
         "streaming_platforms": StreamingPlatforms().get_lookup_cache(),

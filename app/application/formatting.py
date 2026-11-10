@@ -635,6 +635,8 @@ class EpisodeFormatRuleHelper:
             return "media"
         if extension in config.subtitle_extensions:
             return "subtitle"
+        if extension in getattr(config, "lyrics_extensions", ()):
+            return "subtitle"
         if extension in config.audio_extensions:
             return "audio"
         return "other"

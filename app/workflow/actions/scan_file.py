@@ -73,9 +73,10 @@ class ScanFileAction(BaseAction):
             return context
         runtime_config = get_chain_runtime_config_snapshot()
         media_exts = (
-            runtime_config.media_extensions
-            + runtime_config.subtitle_extensions
-            + runtime_config.audio_extensions
+            tuple(runtime_config.media_extensions)
+            + tuple(runtime_config.subtitle_extensions)
+            + tuple(getattr(runtime_config, "lyrics_extensions", ()))
+            + tuple(runtime_config.audio_extensions)
         )
         for file in files:
             if runtime_stop_state.is_workflow_stopped(workflow_id):

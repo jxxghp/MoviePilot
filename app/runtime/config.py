@@ -447,6 +447,7 @@ class ConfigModel(BaseModel):
                 ".f4v",
             ], description='支持的视频文件后缀格式')
     RMT_SUBEXT: list[str] = Field(default_factory=lambda: [".srt", ".ass", ".ssa", ".sup"], description='支持的字幕文件后缀格式')
+    RMT_LYRICSEXT: list[str] = Field(default_factory=lambda: [".lrc"], description='支持的歌词文件后缀格式')
     RMT_AUDIOEXT: list[str] = Field(
             default_factory=lambda: [
                 ".aac",

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         _WORKER_LEASE_SECONDS: float
         _allowed_exts: Any
         _audio_exts: Any
+        _lyrics_exts: Any
         _media_exts: Any
         _module_dispatcher: Any
         _scrape_batches: Any
@@ -87,6 +88,7 @@ if TYPE_CHECKING:
         _is_audio_file: Callable[..., Any]
         _is_blocked_by_exclude_words: Callable[..., Any]
         _is_hidden_or_recycle_path: Callable[..., Any]
+        _is_configured_lyrics_file: Callable[..., Any]
         _is_media_file: Callable[..., Any]
         _is_media_cover_file: Callable[..., Any]
         _is_movie_year_conflict: Callable[..., Any]
