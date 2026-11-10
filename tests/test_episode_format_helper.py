@@ -607,6 +607,7 @@ def test_auto_recommend_rejects_when_native_episode_conflicts(monkeypatch):
         _make_file("Show - 02.mkv"),
     ]
 
+    native_values = iter(["02", "02"])
     monkeypatch.setattr(
         helper,
         "_extract_native_episode",
