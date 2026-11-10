@@ -520,6 +520,19 @@ def test_refresh_userdata_prefers_detected_flux_torrent_protocol(monkeypatch):
     assert result.ratio == 2.0
 
 
+def _async_detection(predicate):
+    """
+    把同步判定包装为异步探测函数，供协议解析用例注入。
+    """
+    async def detect(site):
+        """
+        返回注入的判定结果。
+        """
+        return predicate(site)
+
+    return detect
+
+
 class _BrokenResponse:
     """
     提供响应体不是 JSON 时的最小 HTTP 响应契约。
@@ -647,3 +660,49 @@ def test_flux_torrent_parser_rejects_unusable_payloads():
     payload = _envelope(None, code=2001, message="invalid token")
     assert parser._load_api_payload(json.dumps(payload), "获取用户信息") is None
     assert parser.err_msg == "invalid token"
+
+
+def test_flux_torrent_protocol_resolution_paths(monkeypatch):
+    """
+    协议解析应覆盖已登记协议、探测命中与未识别三种情况，同步与异步一致。
+    """
+    resolve = IndexerModule._IndexerModule__resolve_parser_name
+    async_resolve = IndexerModule._IndexerModule__async_resolve_parser_name
+    detected = _build_indexer()
+    undetected = _build_indexer(apikey="", token="")
+
+    monkeypatch.setattr(
+        indexer_module, "detect_flux_torrent", lambda site: site.get("apikey") == _API_TOKEN
+    )
+    monkeypatch.setattr(
+        indexer_module,
+        "async_detect_flux_torrent",
+        _async_detection(lambda site: site.get("apikey") == _API_TOKEN),
+    )
+
+    assert resolve({"parser": "NexusPhp"}) == "NexusPhp"
+    assert resolve(detected) == "FluxTorrent"
+    assert resolve(undetected) == ""
+    assert asyncio.run(async_resolve({"parser": "NexusPhp"})) == "NexusPhp"
+    assert asyncio.run(async_resolve(detected)) == "FluxTorrent"
+    assert asyncio.run(async_resolve(undetected)) == ""
+
+
+def test_userdata_schema_resolution(monkeypatch):
+    """
+    用户数据模型名应优先采用探测结论，未命中时沿用站点声明的模型。
+    """
+    monkeypatch.setattr(
+        indexer_module, "detect_flux_torrent", lambda site: site.get("apikey") == _API_TOKEN
+    )
+
+    assert (
+        indexer_module._resolve_userdata_schema(_build_indexer())
+        == SiteSchema.FluxTorrent.value
+    )
+    assert (
+        indexer_module._resolve_userdata_schema(
+            _build_indexer(apikey="", token="", schema=SiteSchema.NexusPhp.value)
+        )
+        == SiteSchema.NexusPhp.value
+    )
