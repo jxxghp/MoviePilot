@@ -226,17 +226,81 @@ def _manual_submission_response(
     )
 
 
+# 显式音乐批次允许一并提交的旁挂扩展名，实际归属仍由整理链按同名音轨确认。
+_MUSIC_COMPANION_SUFFIXES = (
+    ".cue",
+    ".lrc",
+    ".txt",
+    ".lyricsfile.yaml",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+)
+
+
+def _is_music_companion_file(fileitem: FileItem) -> bool:
+    """
+    判断显式多选项是否属于音乐音轨可携带的旁挂文件。
+
+    :param fileitem: 待判断的文件项
+    :return: 文件名以支持的歌词、CUE 或封面扩展名结尾时返回 True
+    """
+    name = str(fileitem.path or fileitem.name or "").casefold()
+    return name.endswith(_MUSIC_COMPANION_SUFFIXES)
+
+
 def _is_music_file_batch(fileitems: List[FileItem]) -> bool:
     """
-    判断显式选中项是否为可按专辑识别的多音轨批次。
+    判断显式选中项是否为可按音乐批次识别的音轨与旁挂文件。
+
+    显式列表可以包含单个或多个音轨，只要其余项是歌词、CUE 或封面；
+    这些项必须一起进入整理链，才能复用对应音轨的媒体上下文。
+
+    :param fileitems: 用户在整理界面显式选中的文件项
+    :return: 列表包含至少一个音轨且其余项均为音乐旁挂文件时返回 True
     """
     if len(fileitems) < 2 or any(fileitem.type != "file" for fileitem in fileitems):
         return False
     audio_extensions = set(get_api_runtime_config_snapshot().audio_extensions)
-    return all(
+    audio_count = 0
+    for fileitem in fileitems:
+        if Path(fileitem.path or fileitem.name or "").suffix.lower() in audio_extensions:
+            audio_count += 1
+            continue
+        if not _is_music_companion_file(fileitem):
+            return False
+    return audio_count > 0
+
+
+def _music_batch_entity_type(fileitems: List[FileItem]) -> str:
+    """
+    根据显式批次中的音轨数量选择默认音乐实体类型。
+
+    :param fileitems: 已确认属于同一音乐批次的文件项
+    :return: 多音轨时返回专辑实体，单音轨时返回录音实体
+    """
+    audio_extensions = set(get_api_runtime_config_snapshot().audio_extensions)
+    audio_count = sum(
         Path(fileitem.path or fileitem.name or "").suffix.lower() in audio_extensions
         for fileitem in fileitems
     )
+    return MUSIC_ENTITY_ALBUM if audio_count > 1 else MUSIC_ENTITY_RECORDING
+
+
+def _resolve_music_batch_entity_type(
+    fileitems: Optional[List[FileItem]], requested: Optional[str],
+) -> Optional[str]:
+    """
+    合并请求指定的音乐实体类型与显式批次的默认类型。
+
+    :param fileitems: 已识别的音乐批次；未成批时为 None
+    :param requested: 请求明确指定的音乐实体类型
+    :return: 批次实体类型；未成批时返回 None
+    """
+    if fileitems is None:
+        return None
+    return requested or _music_batch_entity_type(fileitems)
 
 
 def _selected_music_fileitems(
@@ -935,6 +999,9 @@ def _execute_manual_transfer(
     )
     mtype = MediaType.MUSIC if selected_music_fileitems is not None else mtype
     explicit_selected_files = explicit_selected_files and selected_music_fileitems is None
+    selected_music_type = _resolve_music_batch_entity_type(
+        selected_music_fileitems, transer_item.music_type,
+    )
 
     release_kwargs: dict[str, Any] = (
         {"musicbrainz_release_id": transer_item.musicbrainz_release_id}
@@ -1049,7 +1116,7 @@ def _execute_manual_transfer(
         media_source=transer_item.media_source,
         media_id=transer_item.media_id,
         music_type=(
-            MUSIC_ENTITY_ALBUM
+            selected_music_type
             if selected_music_fileitems is not None
             else _resolve_music_type(src_fileitem)
         ),
@@ -1073,7 +1140,8 @@ def _execute_manual_transfer(
         preview=transer_item.preview,
         reorganize=transer_item.reorganize,
         skip_success=transer_item.skip_success,
-        sync_extra_files=selected_music_fileitems is None,
+        # 单文件/目录入口沿用原有附属文件同步，显式音乐批次也必须保留旁挂文件。
+        sync_extra_files=True,
         cleanup_dest_fileitem=cleanup_dest_fileitem,
         selected_fileitems=selected_music_fileitems,
         report_results=not transer_item.preview,
