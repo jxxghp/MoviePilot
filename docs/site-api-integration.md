@@ -432,3 +432,28 @@ MP 已有 API Key 搜索及临时下载地址的实现案例，但不会自动�
 - 搜索、用户资料、换票和种子请求共用至少三秒访问间隔；更严格的用户流控仍生效，远端限流使用既有冷却机制。
 - 仅在执行下载时签发短时 URL；最终 GET 不携带 Bearer 或 Cookie，也不把站点返回的下载主机改为 API 主机。
 - 必读公告必须由用户在网页端阅读，不自动确认公告或回退访问旧 PHP 页面。实验室未提供的促销、字幕、站内信接口不作推断。
+
+### 高清视界 REST API 适配
+
+高清视界使用[官方 API 文档](https://hdarea.club/api_docs.php)中的 `https://hdarea.club/api/v1`。
+需同时更新包含 `HDArea` 适配器的后端及 `3.0.31` 或更高的站点索引资源。
+在网页「控制面板 → 安全设定 → API Key 存取令牌管理」获取 API Key，填入 MoviePilot 站点 **API Key**。
+读取和搜索需 `read` 权限，下载需 `download` 权限，自动签到需额外的 `user` 权限；有 IP 白名单时须允许实例出口 IP。
+
+- 连接检测和用户统计使用 `GET /user/profile`，不使用 Cookie、网页会话或浏览器仿真。
+  用户等级取 `class_name`，流量取字节字段 `uploaded` / `downloaded`，分享率取 `share_ratio`，魔力取 `seedbonus`，
+  做种汇总取 `seeding_count` / `seeding_size`，未读数量取 `unread_messages_count`；不自动读取或标记私人消息。
+- 搜索和最新列表使用 `GET /torrents`，页码从 0 开始，每页 100 条，按 `added` 降序排列。
+  普通关键词使用 `keyword`，完整 IMDb ID 使用 `imdb`；分类以 `cat` 多选，显式分类优先于媒体类型。
+  末页依据 `pagination.has_more`，不把列表的估算 `total` 当成完整总数。
+- 直接读取服务端当前有效的 `download_volume_factor` / `upload_volume_factor` 和 `promotion_until`，
+  不用旧促销枚举覆盖实时倍率。缺失倍率保持未知；纪录片、动漫等共享分类保持未知，由后续媒体识别确定作品类型。
+- 搜索结果只保留下载配方，真正下载时才 `POST /torrents/genDlToken` 签发短效 URL。
+  换票携带 API Key 和 JSON 种子 ID，最终种子 GET 不携带 API Key 或 Cookie。
+  接口失败、权限不足、非 JSON 和 HTTP 429 不视为成功，限流沿用同站点共享冷却。
+- V3「站点自动签到」插件从 `3.0.8` 起使用 `POST /user/signin`；只配置 Cookie 的旧签到方式继续可用。
+  未配置 API Key 的搜索和用户统计不自动回退到 Cookie。
+- 既有字幕页面规则未删除，本次未接入字幕 REST API，字幕搜索仍使用 Cookie。
+  批量辅种接口接收的是 `info_hash`，不能将青蛙辅种插件的 `pieces_hash` 当成同一种指纹。
+
+离线回归只使用合成凭据并替换网络边界；实际 API 验收结果需另外记录，HTTP 200 本身不能证明种子文件有效。

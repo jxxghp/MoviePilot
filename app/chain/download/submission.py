@@ -10,7 +10,7 @@ from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
-from urllib.parse import urlencode, urljoin, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import (
@@ -175,7 +175,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         :param site_id: 原始资源的站点 ID，用于共享流控额度
         :return: 临时下载地址；换票失败时返回 None
         :raises RateLimitExceededException: 站点限流，保留原始提示供通知和冷却记录使用
-        :raises ValueError: 猪猪换票失败、公告未读或下载地址无效
+        :raises ValueError: 专用 API 换票失败、公告未读或下载地址无效
         """
         match = re.search(r"\[(.*)](.*)", url)
         if not match:
@@ -231,6 +231,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         if response is None:
             if request_params.get("protocol") == "Piggo":
                 raise ValueError("无法连接猪猪实验室 API")
+            if request_params.get("protocol") == "HDArea":
+                raise ValueError("无法连接 HDArea API")
             return None
         try:
             return self._indirect_download_response(response, request_params, site)
@@ -240,17 +242,20 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
     def _indirect_download_response(self, response: DownloadResponsePort, request_params: Dict[str, Any],
                                     site: dict[str, object]) -> Optional[str]:
         """
-        在响应关闭前处理换票失败，猪猪公告错误保留原意，限流交给共享冷却。
+        在响应关闭前处理专用 API 换票失败，公告和权限错误保留原意，限流交给共享冷却。
 
         :param response: 尚未关闭的原始换票响应
         :param request_params: 索引器编码的换票协议及结果字段
         :param site: 原始站点的不含凭据流控配置
         :return: 已校验的下载地址；其他协议沿用空结果语义
-        :raises ValueError: 猪猪公告、鉴权、响应或地址失败
+        :raises ValueError: 专用 API 公告、鉴权、响应或地址失败
         :raises RateLimitExceededException: 任一协议返回明确限流
         """
-        if request_params.get("protocol") == "Piggo":
+        protocol = request_params.get("protocol")
+        if protocol in ("Piggo", "HDArea"):
             try:
+                if protocol == "HDArea":
+                    return self._hdarea_download_result(response, request_params)
                 return self._piggo_download_result(response, request_params)
             except ValueError as err:
                 if torrent_rules.rate_limit_cooldown(str(err)) is not None:
@@ -287,6 +292,40 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         parts = urlparse(url)
         if parts.username is not None or parts.password is not None:
             raise ValueError("猪猪 API 返回的下载地址含无效认证信息")
+        logger.info("已获取到站点临时下载地址")
+        return url
+
+    @staticmethod
+    def _hdarea_download_result(response: DownloadResponsePort, request_params: Dict[str, Any]) -> str:
+        """
+        校验高清视界换票结果，兼容完整 download_url 或独立 dl_token，最终 GET 不携带 API Key。
+
+        :param response: 原始 genDlToken 响应
+        :param request_params: 当前站点来源、种子 ID 和认证配方
+        :return: 本站同来源且匹配所选 ID 的临时下载地址
+        :raises ValueError: 换票失败、地址无效或返回了其他种子
+        """
+        apikey = str((request_params.get("header") or {}).get("X-API-Key") or "")
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        data = site_rules.hdarea_response_data(response.status_code, payload, apikey)
+        base_url = str(request_params.get("result_base_url") or "")
+        torrent_id = str((request_params.get("json") or {}).get("id") or "")
+        url = data.get("download_url")
+        if not url and isinstance(data.get("dl_token"), str) and data["dl_token"]:
+            download_page = urljoin(f"{base_url.rstrip('/')}/", "download.php")
+            query = urlencode({"id": torrent_id, "dl_token": data["dl_token"]})
+            url = f"{download_page}?{query}"
+        if isinstance(url, str):
+            url = urljoin(f"{base_url.rstrip('/')}/", url)
+        url = UrlUtils.normalize_http_url(url)
+        if url is None or len(url) > 2048 or not UrlUtils.same_origin(base_url, url):
+            raise ValueError("HDArea API 未返回有效的本站下载地址")
+        parts = urlparse(url)
+        if parts.username is not None or parts.password is not None or parse_qs(parts.query).get("id") != [torrent_id]:
+            raise ValueError("HDArea API 返回的下载地址与所选种子不符")
         logger.info("已获取到站点临时下载地址")
         return url
 

@@ -299,6 +299,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "m-team.cc": self.__mteam_test,
             "yemapt.org": self.__yema_test,
             "hddolby.com": self.__hddolby_test,
+            "hdarea.club": self.__hdarea_test,
             "rousi.pro": self.__rousi_test,
             "sunnypt.top": self.__sunnypt_test,
             "piggo.me": self.__piggo_test,
@@ -309,6 +310,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "MTorrent": self.__mteam_test,
             "mTorrent": self.__mteam_test,
             "HDDolby": self.__hddolby_test,
+            "HDArea": self.__hdarea_test,
             "RousiPro": self.__rousi_test,
             "SunnyPT": self.__sunnypt_test,
             "Piggo": self.__piggo_test,
@@ -742,6 +744,44 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     return True, "连接成功"
                 return False, "APIKEY已过期"
             return False, f"HDDolby API 主机 {api_host} 返回 HTTP {res.status_code} {res.reason}"
+
+    def __hdarea_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
+        """
+        通过高清视界用户 API 验证 API Key，不依赖浏览器、Cookie 或首页标记。
+
+        :param site: 高清视界站点配置
+        :return: 是否连接成功及可展示的认证、权限或接口失败原因
+        """
+        apikey = str(site.apikey or "").strip()
+        if not apikey:
+            return False, site_rules.HDAREA_KEY_REQUIRED
+        domain = site.domain or site_rules.extract_domain(site.url)
+        indexer = SitesHelper().get_indexer(domain) or {}
+        api_url = str(indexer.get("api_url") or f"{site.url.rstrip('/')}/api/v1").rstrip("/")
+        rate_site = site_request_config(site.url, site.id)
+        try:
+            wait_for_site_request(rate_site)
+            with _open_site_response(
+                method="GET", url=f"{api_url}/user/profile",
+                headers={"X-API-Key": apikey, "Accept": "application/json",
+                         "User-Agent": site.ua or self.runtime_config.user_agent},
+                proxies=(self.runtime_config.proxy or {}) if site.proxy else {}, timeout=site.timeout or 15,
+            ) as response:
+                if response is None:
+                    return False, "无法连接 HDArea API"
+                try:
+                    payload = response.json()
+                except ValueError:
+                    payload = None
+                data = site_rules.hdarea_response_data(response.status_code, payload, apikey)
+                site_rules.hdarea_integer(data.get("id"), minimum=1)
+                if data.get("enabled") is False:
+                    return False, "HDArea 账号已被禁用"
+                return True, "连接成功"
+        except (ValueError, RateLimitExceededException) as err:
+            if torrent_rules.rate_limit_cooldown(str(err)) is not None:
+                defer_site_request(rate_site, str(err))
+            return False, str(err)
 
     def __rousi_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
