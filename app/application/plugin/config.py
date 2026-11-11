@@ -98,6 +98,8 @@ class PluginConfigCommand:
     ) -> None:
         """
         保存插件管理 Facade 和运行时注册刷新端口。
+
+        :param read_config: 读取当前实例配置，用于在空覆盖前保护已有设置
         """
         self._read_config = read_config
         self._save_config = save_config

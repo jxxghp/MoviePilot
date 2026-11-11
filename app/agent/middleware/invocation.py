@@ -210,6 +210,10 @@ class InvocationMiddleware(AgentMiddleware[InvocationState, Any, Any]):
     async def _existing(self, request: ToolCallRequest, record: InvocationSnapshot) -> ToolMessage:
         """
         区分旧回执和本次执行；未知结果仅在宿主只读核验成功后收口。
+
+        :param request: 当前未取得执行权的工具请求
+        :param record: 同一调用或未决写入的历史回执
+        :return: 标明历史状态及未重复执行的工具消息
         """
         if record.status == "unknown" and await self._verify_setting(request):
             if await self._finish(record, "succeeded"):

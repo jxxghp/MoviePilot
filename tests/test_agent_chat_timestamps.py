@@ -25,6 +25,8 @@ from app.schemas.agent import AgentChatMessage
 def history_session_id():
     """
     为持久化路由测试分配唯一会话，并在结束后精确清理本次提交的记录。
+
+    :yields: 仅供当前测试使用的临时会话标识
     """
     session_id = f"web-agent:timestamps-{uuid4().hex}"
     yield session_id

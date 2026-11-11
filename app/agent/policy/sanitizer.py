@@ -1063,6 +1063,10 @@ def _redacted_text(value: str, *, secret_field: bool) -> bool:
     区分凭据脱敏标识和普通文本中有意义的星号。
 
     用无敏感内容的探针复用同一脱敏规则，识别 URL 或赋值中的局部遮蔽。
+
+    :param value: 待检查的文本
+    :param secret_field: 是否位于凭据字段或其子结构中
+    :return: 文本包含不可写回的脱敏占位时为 True
     """
     if REDACTED_VALUE not in value:
         return False
