@@ -21,10 +21,11 @@ from app.foundation import text as text_tools
 from app.foundation.reflection import ModuleHelper
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.modules.indexer.spider import SiteSpider
+from app.modules.indexer.spider import JsonList, SiteSpider
 from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
+from app.modules.indexer.spider.hdwing import HDWinGPromotionMixin, is_hdwing_domain
 from app.modules.indexer.spider.milkie import MilkieSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.modules.indexer.spider.rousi import RousiSpider
@@ -106,6 +107,23 @@ _COMMON_SITE_USERDATA_FALLBACK_SCHEMAS = frozenset({
     SiteSchema.NexusPhp.value,
     SiteSchema.Unit3d.value,
 })
+
+
+class HDWinGSpider(HDWinGPromotionMixin, SiteSpider):
+    """
+    在通用解析前通过促销接口补全 HDWinG 优惠标识的站点爬虫。
+
+    具体类在宿主包内组合，避免爬虫模块反向导入形成未审查的静态依赖环。
+    """
+
+    def parse(self, html_text: str) -> JsonList:
+        """
+        先注入促销状态再执行通用选择器解析。
+
+        :param html_text: 已解码的站点响应正文
+        :return: 当前页的种子或字幕记录；空正文或解析失败时为空列表
+        """
+        return super().parse(self.inject_promotions(html_text))
 
 
 @dataclass(frozen=True)
@@ -809,6 +827,18 @@ class IndexerModule(_ModuleBase):
         )
 
     @staticmethod
+    def __select_spider_class(indexer: dict[str, Any]) -> type[SiteSpider]:
+        """
+        按站点域名选择通用爬虫或需要页面补全的专站爬虫。
+
+        :param indexer: 站点配置
+        :return: 当前站点使用的爬虫类
+        """
+        if is_hdwing_domain(indexer.get("domain")):
+            return HDWinGSpider
+        return SiteSpider
+
+    @staticmethod
     def __spider_search(indexer: dict[str, Any],
                         search_word: Optional[str] = None,
                         mtype: Optional[MediaType] = None,
@@ -825,12 +855,12 @@ class IndexerModule(_ModuleBase):
         :param mtype: 媒体类型
         :return: 是否发生错误, 种子列表, 失败原因
         """
-        _spider = SiteSpider(indexer=indexer,
-                             keyword=search_word,
-                             mtype=mtype,
-                             cat=cat,
-                             page=page,
-                             search_type=search_type)
+        _spider = IndexerModule.__select_spider_class(indexer)(indexer=indexer,
+                                                               keyword=search_word,
+                                                               mtype=mtype,
+                                                               cat=cat,
+                                                               page=page,
+                                                               search_type=search_type)
 
         try:
             result = _spider.get_torrents()
@@ -855,12 +885,12 @@ class IndexerModule(_ModuleBase):
         :param mtype: 媒体类型
         :return: 是否发生错误, 种子列表, 失败原因
         """
-        _spider = SiteSpider(indexer=indexer,
-                             keyword=search_word,
-                             mtype=mtype,
-                             cat=cat,
-                             page=page,
-                             search_type=search_type)
+        _spider = IndexerModule.__select_spider_class(indexer)(indexer=indexer,
+                                                               keyword=search_word,
+                                                               mtype=mtype,
+                                                               cat=cat,
+                                                               page=page,
+                                                               search_type=search_type)
 
         try:
             result = await _spider.async_get_torrents()
