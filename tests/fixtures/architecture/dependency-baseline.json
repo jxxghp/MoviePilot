@@ -962,8 +962,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9989,
-  "edge_sha256": "49d778c3ba091205a2f6d3ed7de6dac11ff3dc112e06e16e48b50279b220f366",
+  "edge_count": 9998,
+  "edge_sha256": "8cb8153efde498e93ea98858b9e7d15b5606dab4bd1341dee73c1b62c5baea22",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7842,6 +7842,7 @@
     "app.modules.indexer -> app.modules.indexer.spider.fluxtorrent",
     "app.modules.indexer -> app.modules.indexer.spider.haidan",
     "app.modules.indexer -> app.modules.indexer.spider.hddolby",
+    "app.modules.indexer -> app.modules.indexer.spider.hdwing",
     "app.modules.indexer -> app.modules.indexer.spider.milkie",
     "app.modules.indexer -> app.modules.indexer.spider.mtorrent",
     "app.modules.indexer -> app.modules.indexer.spider.rousi",
@@ -8084,6 +8085,14 @@
     "app.modules.indexer.spider.hddolby -> app.runtime.settings",
     "app.modules.indexer.spider.hddolby -> app.schemas",
     "app.modules.indexer.spider.hddolby -> app.schemas.types",
+    "app.modules.indexer.spider.hdwing -> app.adapters",
+    "app.modules.indexer.spider.hdwing -> app.adapters.network",
+    "app.modules.indexer.spider.hdwing -> app.adapters.network.http",
+    "app.modules.indexer.spider.hdwing -> app.application",
+    "app.modules.indexer.spider.hdwing -> app.application.site",
+    "app.modules.indexer.spider.hdwing -> app.application.site.throttle",
+    "app.modules.indexer.spider.hdwing -> app.runtime",
+    "app.modules.indexer.spider.hdwing -> app.runtime.log",
     "app.modules.indexer.spider.milkie -> app.adapters",
     "app.modules.indexer.spider.milkie -> app.adapters.network",
     "app.modules.indexer.spider.milkie -> app.adapters.network.http",
@@ -10955,7 +10964,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1153,
+  "module_count": 1154,
   "modules": [
     "app",
     "app.adapters",
@@ -11761,6 +11770,7 @@
     "app.modules.indexer.spider.fluxtorrent",
     "app.modules.indexer.spider.haidan",
     "app.modules.indexer.spider.hddolby",
+    "app.modules.indexer.spider.hdwing",
     "app.modules.indexer.spider.milkie",
     "app.modules.indexer.spider.mtorrent",
     "app.modules.indexer.spider.rousi",

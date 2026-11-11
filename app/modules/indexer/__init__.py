@@ -21,10 +21,11 @@ from app.foundation import text as text_tools
 from app.foundation.reflection import ModuleHelper
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.modules.indexer.spider import SiteSpider
+from app.modules.indexer.spider import JsonList, SiteSpider
 from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
+from app.modules.indexer.spider.hdwing import HDWingPromotionMixin
 from app.modules.indexer.spider.milkie import MilkieSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.modules.indexer.spider.rousi import RousiSpider
@@ -37,6 +38,125 @@ from app.runtime.settings import get_runtime_setting
 from app.schemas.media import resolve_media_identity
 from app.schemas.site import SiteUserData
 from app.schemas.types import MediaSource, MediaType, ModuleType, OtherModulesType
+
+
+class HDWingPageSpider(HDWingPromotionMixin, SiteSpider):
+    """
+    在通用页面解析前补全 HDWinG 促销状态。
+    """
+
+    def __init__(
+        self,
+        indexer: dict[str, Any],
+        keyword: Optional[str] = None,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> None:
+        """
+        为本次搜索构造页面爬虫并保存不含凭据的流控配置。
+
+        :param indexer: 站点索引配置与认证上下文
+        :param keyword: 搜索关键词，为空时使用浏览配置
+        :param mtype: 媒体类型
+        :param cat: 指定站点分类
+        :param page: 从零开始的页码
+        """
+        self._promotion_site = {
+            key: indexer.get(key)
+            for key in ("id", "domain", "limit_seconds", "limit_interval", "limit_count")
+        }
+        super().__init__(indexer=indexer, keyword=keyword, mtype=mtype, cat=cat, page=page)
+
+    def parse(self, html_text: str) -> JsonList:
+        """
+        补全促销标识后复用通用的 Rust 或 Python 选择器解析。
+
+        :param html_text: 已解码的列表页；空响应沿用通用爬虫的失败语义
+        :return: 当前页种子记录；页面不可用或解析失败时为空列表
+        """
+        if html_text:
+            html_text = self.inject_promotions(html_text)
+        return super().parse(html_text)
+
+
+class HDWingSpider:
+    """
+    将 HDWinG 的同步与异步搜索接入通用站点爬虫。
+    """
+
+    # 站点列表默认每页 100 条。
+    _size = 100
+
+    def __init__(self, indexer: dict[str, Any]) -> None:
+        """
+        保存站点配置；每次搜索使用独立的页面爬虫。
+
+        :param indexer: 站点索引配置与认证上下文
+        """
+        self._indexer = indexer
+        self._spider: Optional[HDWingPageSpider] = None
+
+    @property
+    def error_detail(self) -> Optional[str]:
+        """
+        返回最近一次页面爬虫记录的失败原因。
+
+        :return: 搜索尚未执行或没有失败原因时为 None
+        """
+        return self._spider.error_detail if self._spider else None
+
+    @classmethod
+    def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
+        """
+        返回站点列表页的默认容量。
+
+        :param keyword: 保留统一入口参数，搜索与浏览分页容量一致
+        :return: 每页种子数量
+        """
+        return cls._size
+
+    def search(
+        self,
+        keyword: Optional[str] = None,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, JsonList]:
+        """
+        同步搜索站点种子。
+
+        :param keyword: 搜索关键词
+        :param mtype: 媒体类型
+        :param cat: 指定站点分类
+        :param page: 从零开始的页码
+        :return: 页面解析是否失败及种子记录
+        """
+        spider = HDWingPageSpider(self._indexer, keyword=keyword, mtype=mtype, cat=cat, page=page)
+        self._spider = spider
+        result = spider.get_torrents()
+        return spider.is_error, result
+
+    async def async_search(
+        self,
+        keyword: Optional[str] = None,
+        mtype: Optional[MediaType] = None,
+        cat: Optional[str] = None,
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, JsonList]:
+        """
+        异步搜索站点种子；促销补全随页面解析在线程池中执行。
+
+        :param keyword: 搜索关键词
+        :param mtype: 媒体类型
+        :param cat: 指定站点分类
+        :param page: 从零开始的页码
+        :return: 页面解析是否失败及种子记录
+        """
+        spider = HDWingPageSpider(self._indexer, keyword=keyword, mtype=mtype, cat=cat, page=page)
+        self._spider = spider
+        result = await spider.async_get_torrents()
+        return spider.is_error, result
 
 
 class _PagedSpider(Protocol):
@@ -72,6 +192,7 @@ SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
     "Yema": YemaSpider,
     "Haidan": HaiDanSpider,
     "HDDolby": HddolbySpider,
+    "HDWing": HDWingSpider,
     "RousiPro": RousiSpider,
     "SunnyPT": SunnyPTSpider,
     "Milkie": MilkieSpider,
@@ -87,6 +208,7 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "Yema": ("keyword", "mtype", "cat", "page"),
     "Haidan": ("keyword", "mtype"),
     "HDDolby": ("keyword", "mtype", "cat", "page"),
+    "HDWing": ("keyword", "mtype", "cat", "page"),
     "RousiPro": ("keyword", "mtype", "cat", "page"),
     "Milkie": ("keyword", "mtype", "page"),
     "FluxTorrent": ("keyword", "page"),
