@@ -431,6 +431,14 @@ class _ProviderCatalog:
                 api_key_hint="填写 Obscurify.ai API Key（sk-obs1_ 开头），在 https://obscurify.ai/?utm_source=moviepilot 创建账户后，于 Account 页面点击 Show API Key 获取。",
                 description="Obscurify.ai 注重隐私的 OpenAI-compatible 聚合模型平台：账户为随机 16 位账号，无需邮箱，服务端不保存提示词与回复。",
             ),
+            openai_provider(
+                provider_id="cheapaimodel",
+                name="cheapaimodel",
+                default_base_url="https://api.cheapaimodel.ai/v1",
+                sort_order=60,
+                api_key_hint="填写 cheapaimodel API Key（sk- 开头），可在 https://console.cheapaimodel.ai/keys 创建。",
+                description="cheapaimodel OpenAI-compatible 模型网关，提供 DeepSeek、GLM、Kimi 与 Grok 等模型，按 token 从预充值美元余额扣费。kimi-k3 仅接受 temperature 1 或 0.6。",
+            ),
             ProviderSpec(
                 id="github-copilot",
                 name="GitHub Copilot",
@@ -448,7 +456,7 @@ class _ProviderCatalog:
                 ),
                 model_list_strategy="github_copilot",
                 description="通过 GitHub Copilot 订阅接入。",
-                sort_order=60,
+                sort_order=61,
             ),
             catalog_openai_provider(
                 provider_id="github-models",
