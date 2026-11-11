@@ -67,6 +67,8 @@ class SiteSchema(Enum):
     RousiPro = "RousiPro"
     # SunnyPT 的 MoviePilot API。
     SunnyPT = "SunnyPT"
+    # FluxTorrent 兼容层站点。
+    FluxTorrent = "FluxTorrent"
 
 
 class SiteParserBase(metaclass=ABCMeta):

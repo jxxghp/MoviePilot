@@ -22,6 +22,7 @@ from app.foundation.reflection import ModuleHelper
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.spider import SiteSpider
+from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
 from app.modules.indexer.spider.milkie import MilkieSpider
@@ -74,6 +75,7 @@ SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
     "RousiPro": RousiSpider,
     "SunnyPT": SunnyPTSpider,
     "Milkie": MilkieSpider,
+    "FluxTorrent": FluxTorrentSpider,
 }
 
 # 仅传递各专站搜索入口支持的参数，避免同步与异步调用契约分叉。
@@ -87,6 +89,7 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "HDDolby": ("keyword", "mtype", "cat", "page"),
     "RousiPro": ("keyword", "mtype", "cat", "page"),
     "Milkie": ("keyword", "mtype", "page"),
+    "FluxTorrent": ("keyword", "page"),
 }
 
 # 专站字幕入口支持的参数顺序，其余站点使用通用页面解析。

@@ -1,0 +1,328 @@
+"""
+通过 FluxTorrent 兼容层搜索种子并转换为通用索引结果。
+"""
+
+from typing import Any, Dict, List, Optional, Tuple
+
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.foundation import temporal as time_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
+
+# FluxTorrent 兼容层的只读接口前缀。
+_COMPAT_PREFIX = "/api/v1/compat/nexusphp"
+
+# 兼容层促销档位到下载、上传量系数的映射，与站点计费口径一致：
+# free 下载 0 / x2 上传 2 / x2free 0+2 / half 下载 0.5 / x2half 0.5+2 / p30 下载 0.3。
+_PROMOTION_FACTORS: Dict[str, Tuple[float, float]] = {
+    "free": (0.0, 1.0),
+    "x2free": (0.0, 2.0),
+    "half": (0.5, 1.0),
+    "x2half": (0.5, 2.0),
+    "x2": (1.0, 2.0),
+    "p30": (0.3, 1.0),
+}
+
+# Newznab 标准分类号到 MoviePilot 媒体类型的映射。站点按标准号登记分类，
+# 因此同一套映射对所有 FluxTorrent 站点都成立；软件与游戏没有对应媒体类型，
+# 有声书与电子书归入系列。
+_NEWZNAB_MEDIA_TYPES: Dict[int, MediaType] = {
+    2000: MediaType.MOVIE,
+    2010: MediaType.MOVIE,
+    2030: MediaType.MOVIE,
+    2040: MediaType.MOVIE,
+    2045: MediaType.MOVIE,
+    3000: MediaType.MUSIC,
+    3030: MediaType.MUSIC,
+    3040: MediaType.MUSIC,
+    5000: MediaType.TV,
+    5030: MediaType.TV,
+    5040: MediaType.TV,
+    5060: MediaType.TV,
+    5070: MediaType.TV,
+    5080: MediaType.TV,
+    5090: MediaType.TV,
+    7000: MediaType.COLLECTION,
+    7010: MediaType.COLLECTION,
+    7020: MediaType.COLLECTION,
+    7030: MediaType.COLLECTION,
+}
+
+# 站点分类名到 MoviePilot 媒体类型的兜底映射，标准号缺失时使用。
+_CATEGORY_NAME_MEDIA_TYPES: Dict[str, MediaType] = {
+    "电影": MediaType.MOVIE,
+    "电视剧": MediaType.TV,
+    "短剧": MediaType.TV,
+    "综艺": MediaType.TV,
+    "动漫": MediaType.TV,
+    "纪录片": MediaType.TV,
+    "教育影音": MediaType.TV,
+    "音乐": MediaType.MUSIC,
+    "有声书": MediaType.COLLECTION,
+    "电子书": MediaType.COLLECTION,
+}
+
+
+def site_base_url(site: Dict[str, Any]) -> str:
+    """
+    返回站点根地址。
+
+    :param site: 站点索引配置
+    :return: 去掉末尾斜杠的站点根地址；没有可用地址时为空字符串
+    """
+    raw = str(site.get("url") or site.get("domain") or "").strip()
+    if not raw:
+        return ""
+    if not raw.startswith(("http://", "https://")):
+        raw = f"https://{raw.lstrip('/')}"
+    return raw.rstrip("/")
+
+
+def site_api_token(site: Dict[str, Any]) -> str:
+    """
+    返回站点配置的开放 API 令牌。
+
+    :param site: 站点索引配置
+    :return: 开放 API 令牌；未配置时为空字符串
+    """
+    return str(site.get("apikey") or site.get("token") or "").strip()
+
+
+class FluxTorrentSpider:
+    """
+    FluxTorrent 兼容层索引器。
+
+    FluxTorrent 是通用 PT 建站系统，其兼容层按 NexusPHP 字段口径暴露只读 JSON，
+    因此本索引器不解析站点页面，只调用兼容层接口。
+    """
+
+    # 兼容层单页容量上限为 50。
+    _size = 50
+
+    def __init__(self, indexer: dict[str, Any]):
+        """
+        初始化 FluxTorrent 兼容层索引器。
+
+        :param indexer: 合并站点认证信息后的索引配置
+        """
+        indexer = indexer or {}
+        self._name = indexer.get("name") or "FluxTorrent"
+        self._site_url = site_base_url(indexer)
+        self._api_token = site_api_token(indexer)
+        self._proxy = get_runtime_setting("PROXY") if indexer.get("proxy") else None
+        self._user_agent = indexer.get("ua") or get_runtime_setting("USER_AGENT")
+        self._timeout = indexer.get("timeout") or 15
+
+    @classmethod
+    def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
+        """
+        获取搜索接口单页容量。
+
+        :param keyword: 搜索关键字，兼容层不按关键字改变分页容量
+        :return: 搜索接口单页容量
+        """
+        return cls._size
+
+    @property
+    def _base_url(self) -> str:
+        """
+        返回兼容层接口基址。
+
+        :return: 站点根路径拼接兼容层前缀后的地址
+        """
+        return f"{self._site_url}{_COMPAT_PREFIX}"
+
+    def _request_headers(self) -> Dict[str, Any]:
+        """
+        构造兼容层请求头。
+
+        :return: 带开放 API 令牌的请求头
+        """
+        return {
+            "Authorization": f"Token {self._api_token}",
+            "Accept": "application/json",
+            "User-Agent": self._user_agent,
+        }
+
+    def _response_data(self, response: Any, operation: str) -> Any:
+        """
+        解析兼容层统一响应信封并返回业务数据。
+
+        :param response: 请求返回的响应对象
+        :param operation: 错误信息中的操作名称
+        :return: 成功时返回响应 data，失败时返回 None
+        """
+        if response is None:
+            logger.warning(f"{self._name} {operation}失败：站点无响应")
+            return None
+        status_code = getattr(response, "status_code", 0)
+        try:
+            body = response.json()
+        except Exception:
+            logger.warning(f"{self._name} {operation}失败：响应不是 JSON（状态码 {status_code}）")
+            return None
+        if not isinstance(body, dict):
+            logger.warning(f"{self._name} {operation}失败：响应结构异常")
+            return None
+        code = body.get("code")
+        if code != 0:
+            logger.warning(f"{self._name} {operation}失败：接口返回 {code} {body.get('message') or ''}")
+            return None
+        return body.get("data")
+
+    def _build_params(
+        self,
+        keyword: Optional[str],
+        page: Optional[int],
+    ) -> Dict[str, Any]:
+        """
+        构造兼容层搜索参数。
+
+        兼容层的分类筛选只接受单个站内分类 ID，而 MoviePilot 的媒体类型与分类
+        筛选都是站点自定义口径，因此这里只按关键字与分页检索，分类交由结果的
+        分类字段表达，避免用错口径的分类 ID 把结果筛空。
+
+        :param keyword: 搜索关键字
+        :param page: MoviePilot 从 0 开始的页码
+        :return: 兼容层查询参数
+        """
+        params: Dict[str, Any] = {
+            "page": (page or 0) + 1,
+            "pagesize": self._size,
+        }
+        if keyword:
+            params["keyword"] = keyword
+        return params
+
+    @staticmethod
+    def _media_type(item: Dict[str, Any]) -> str:
+        """
+        将兼容层种子分类映射为 MoviePilot 媒体类型。
+
+        :param item: 兼容层返回的种子记录
+        :return: MoviePilot 媒体类型，未识别时为未知类型
+        """
+        newznab_id = item.get("category_newznab")
+        media_type = None
+        if isinstance(newznab_id, int):
+            media_type = _NEWZNAB_MEDIA_TYPES.get(newznab_id)
+        if media_type is None:
+            media_type = _CATEGORY_NAME_MEDIA_TYPES.get(str(item.get("category_name") or "").strip())
+        return (media_type or MediaType.UNKNOWN).value
+
+    @staticmethod
+    def _volume_factors(promotion: Optional[str]) -> Tuple[float, float]:
+        """
+        将兼容层促销档位换算为下载、上传量系数。
+
+        :param promotion: 兼容层返回的促销档位
+        :return: 下载量系数与上传量系数
+        """
+        return _PROMOTION_FACTORS.get(str(promotion or "").strip(), (1.0, 1.0))
+
+    def _build_download_url(self, torrent_id: object) -> str:
+        """
+        构造种子文件下载地址。
+
+        兼容层下载端点接受开放 API 令牌作为查询参数，下载器取种子时不会携带
+        请求头，因此令牌必须落在地址里。
+
+        :param torrent_id: 兼容层返回的种子 ID
+        :return: 兼容层下载接口地址
+        """
+        return f"{self._base_url}/download.php?id={torrent_id}&apikey={self._api_token}"
+
+    def _parse_result(self, items: List[Any]) -> List[Dict[str, Any]]:
+        """
+        将兼容层种子数据转换为 MoviePilot 标准字段。
+
+        :param items: 兼容层 data.items 数组
+        :return: MoviePilot 标准种子字典列表
+        """
+        torrents: List[Dict[str, Any]] = []
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            torrent_id = item.get("id")
+            download_factor, upload_factor = self._volume_factors(item.get("promotion"))
+            labels: List[str] = []
+            promotion_name = str(item.get("promotion_name") or "").strip()
+            if promotion_name:
+                labels.append(promotion_name)
+            if item.get("official") is True:
+                labels.append("官方")
+            torrents.append({
+                "title": item.get("name"),
+                "description": item.get("small_descr"),
+                "enclosure": self._build_download_url(torrent_id),
+                "pubdate": time_tools.format_timestamp(item.get("added")),
+                "size": int(item.get("size") or 0),
+                "seeders": int(item.get("seeders") or 0),
+                "peers": int(item.get("leechers") or 0),
+                "grabs": int(item.get("completed") or 0),
+                "downloadvolumefactor": download_factor,
+                "uploadvolumefactor": upload_factor,
+                "page_url": f"{self._site_url}/torrent/{torrent_id}",
+                "labels": labels,
+                "category": self._media_type(item),
+            })
+        return torrents
+
+    def _process_search_response(self, response: Any) -> Tuple[bool, List[Dict[str, Any]]]:
+        """
+        处理兼容层种子搜索响应。
+
+        :param response: 请求返回的响应对象
+        :return: 是否失败及标准种子列表
+        """
+        data = self._response_data(response, "搜索")
+        if not isinstance(data, dict):
+            return True, []
+        return False, self._parse_result(data.get("items") or [])
+
+    def search(
+        self,
+        keyword: Optional[str],
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
+        """
+        同步搜索 FluxTorrent 站点种子。
+
+        :param keyword: 搜索关键字
+        :param page: MoviePilot 从 0 开始的页码
+        :return: 是否失败及标准种子列表
+        """
+        if not self._api_token:
+            logger.warning(f"{self._name} 未配置开放 API 令牌")
+            return True, []
+        params = self._build_params(keyword, page)
+        response = RequestUtils(
+            headers=self._request_headers(),
+            proxies=self._proxy,
+            timeout=self._timeout,
+        ).get_res(url=f"{self._base_url}/torrents.json", params=params)
+        return self._process_search_response(response)
+
+    async def async_search(
+        self,
+        keyword: Optional[str],
+        page: Optional[int] = 0,
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
+        """
+        异步搜索 FluxTorrent 站点种子。
+
+        :param keyword: 搜索关键字
+        :param page: MoviePilot 从 0 开始的页码
+        :return: 是否失败及标准种子列表
+        """
+        if not self._api_token:
+            logger.warning(f"{self._name} 未配置开放 API 令牌")
+            return True, []
+        params = self._build_params(keyword, page)
+        response = await AsyncRequestUtils(
+            headers=self._request_headers(),
+            proxies=self._proxy,
+            timeout=self._timeout,
+        ).get_res(url=f"{self._base_url}/torrents.json", params=params)
+        return self._process_search_response(response)
