@@ -962,8 +962,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9990,
-  "edge_sha256": "cc25675664386c6394015d007e875f63dfcb4d3cf199dc5c0c1dc07f5b27c9b7",
+  "edge_count": 9989,
+  "edge_sha256": "49d778c3ba091205a2f6d3ed7de6dac11ff3dc112e06e16e48b50279b220f366",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8054,7 +8054,6 @@
     "app.modules.indexer.spider.fluxtorrent -> app.foundation",
     "app.modules.indexer.spider.fluxtorrent -> app.foundation.temporal",
     "app.modules.indexer.spider.fluxtorrent -> app.runtime",
-    "app.modules.indexer.spider.fluxtorrent -> app.runtime.cache",
     "app.modules.indexer.spider.fluxtorrent -> app.runtime.log",
     "app.modules.indexer.spider.fluxtorrent -> app.runtime.settings",
     "app.modules.indexer.spider.fluxtorrent -> app.schemas",

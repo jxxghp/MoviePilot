@@ -22,12 +22,7 @@ from app.foundation.reflection import ModuleHelper
 from app.modules import _ModuleBase
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.spider import SiteSpider
-from app.modules.indexer.spider.fluxtorrent import (
-    FluxTorrentSpider,
-    async_detect_flux_torrent,
-    cached_flux_torrent_detection,
-    detect_flux_torrent,
-)
+from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
 from app.modules.indexer.spider.milkie import MilkieSpider
@@ -111,25 +106,6 @@ _COMMON_SITE_USERDATA_FALLBACK_SCHEMAS = frozenset({
     SiteSchema.NexusPhp.value,
     SiteSchema.Unit3d.value,
 })
-
-# FluxTorrent 兼容层站点在站点资源中登记的搜索协议名。
-_FLUX_TORRENT_PARSER = "FluxTorrent"
-
-
-def _resolve_userdata_schema(site: dict[str, Any]) -> str:
-    """
-    解析用户数据模型名。
-
-    站点资源未登记 FluxTorrent 协议时，按站点能力探测识别已迁移到 FluxTorrent
-    的站点，避免沿用旧站点的页面模型解析失败。
-
-    :param site: 站点索引配置
-    :return: 解析用户数据应使用的站点模型名
-    """
-    if detect_flux_torrent(site):
-        return SiteSchema.FluxTorrent.value
-    return str(site.get("schema") or "")
-
 
 
 @dataclass(frozen=True)
@@ -423,46 +399,11 @@ class IndexerModule(_ModuleBase):
         site_parser = site.get("parser")
         if site_parser in SPIDER_PARSER_CLASSES:
             return SPIDER_PARSER_CLASSES[site_parser].get_search_page_size(keyword=keyword)
-        if site_parser == _FLUX_TORRENT_PARSER or cached_flux_torrent_detection(site):
-            return SPIDER_PARSER_CLASSES[_FLUX_TORRENT_PARSER].get_search_page_size(keyword=keyword)
         try:
             page_size = int(site.get("result_num") or SiteSpider.default_result_num())
         except (TypeError, ValueError):
             page_size = SiteSpider.default_result_num()
         return page_size if page_size > 0 else SiteSpider.default_result_num()
-
-    @staticmethod
-    def __resolve_parser_name(site: dict[str, Any]) -> str:
-        """
-        解析站点实际使用的搜索协议名。
-
-        站点资源未登记专站搜索协议时，按站点能力探测一次识别 FluxTorrent
-        兼容层站点，避免站点迁移到 FluxTorrent 后失去搜索能力。
-
-        :param site: 站点索引配置
-        :return: 搜索协议名；没有可用协议时为空字符串
-        """
-        parser_name = str(site.get("parser") or "")
-        if parser_name in SPIDER_PARSER_CLASSES:
-            return parser_name
-        if detect_flux_torrent(site):
-            return _FLUX_TORRENT_PARSER
-        return parser_name
-
-    @staticmethod
-    async def __async_resolve_parser_name(site: dict[str, Any]) -> str:
-        """
-        异步解析站点实际使用的搜索协议名。
-
-        :param site: 站点索引配置
-        :return: 搜索协议名；没有可用协议时为空字符串
-        """
-        parser_name = str(site.get("parser") or "")
-        if parser_name in SPIDER_PARSER_CLASSES:
-            return parser_name
-        if await async_detect_flux_torrent(site):
-            return _FLUX_TORRENT_PARSER
-        return parser_name
 
     @staticmethod
     def restore_search_torrent(site: dict[str, Any], record: dict[str, Any], allow_missing: bool = False) -> Optional[TorrentInfo]:
@@ -498,19 +439,9 @@ class IndexerModule(_ModuleBase):
         cat: Optional[str] = None,
         page: Optional[int] = 0,
         search_type: str = "torrents",
-        parser_name: Optional[str] = None,
     ) -> Optional[_IndexerSearchRequest]:
         """
         校验搜索条件并生成同步、异步共用的解析器调用请求。
-
-        :param site: 站点索引配置
-        :param keyword: 搜索关键字
-        :param mtype: 媒体类型
-        :param cat: 用户显式选择的站点分类
-        :param page: MoviePilot 从 0 开始的页码
-        :param search_type: 搜索类型，区分种子与字幕
-        :param parser_name: 已解析的搜索协议名；未指定时取站点资源声明的协议
-        :return: 搜索请求；不满足搜索条件时为 None
         """
         if search_type == "subtitles" and not site.get("subtitles"):
             return None
@@ -518,8 +449,7 @@ class IndexerModule(_ModuleBase):
             return None
 
         search_word = IndexerModule.__clear_search_text(keyword)
-        if parser_name is None:
-            parser_name = str(site.get("parser") or "")
+        parser_name = str(site.get("parser") or "")
         parser_class = SPIDER_PARSER_CLASSES.get(parser_name)
         if search_type == "subtitles":
             subtitle_argument_names = _SPECIALIZED_SUBTITLE_SEARCH_ARGUMENTS.get(parser_name)
@@ -660,7 +590,6 @@ class IndexerModule(_ModuleBase):
             mtype=mtype,
             cat=cat,
             page=page,
-            parser_name=self.__resolve_parser_name(site),
         )
         if not request:
             report_site_search_outcome(attempted=False, outcome="skipped")
@@ -783,7 +712,6 @@ class IndexerModule(_ModuleBase):
             mtype=mtype,
             cat=cat,
             page=page,
-            parser_name=await self.__async_resolve_parser_name(site),
         )
         if not request:
             report_site_search_outcome(attempted=False, outcome="skipped")
@@ -1017,7 +945,7 @@ class IndexerModule(_ModuleBase):
             return None
 
         # 按站点声明的 schema 获取解析器
-        site_obj = __get_site_obj(_resolve_userdata_schema(site))
+        site_obj = __get_site_obj()
         if not site_obj:
             if not site.get("public"):
                 logger.warn(f"站点  {site.get('name')} 未找到站点解析器，schema：{site.get('schema')}")

@@ -1,12 +1,9 @@
 """
-验证 FluxTorrent 兼容层站点的搜索、用户数据解析与协议自动识别。
+验证 FluxTorrent 兼容层站点的搜索、用户数据解析与站点资源协议路由。
 """
 
 import asyncio
 import json
-from types import SimpleNamespace
-
-import pytest
 
 import app.modules.indexer as indexer_module
 from app.foundation import temporal as time_tools
@@ -100,31 +97,6 @@ def _torrent_items() -> list:
             "sticky": False,
         }
     ]
-
-
-def _clear_detection_cache() -> None:
-    """
-    清空能力探测缓存，避免用例之间互相污染。
-    """
-    for cache in (
-        flux_torrent_module._detection_hit_cache,
-        flux_torrent_module._detection_miss_cache,
-    ):
-        for key in list(cache):
-            try:
-                del cache[key]
-            except KeyError:
-                pass
-
-
-@pytest.fixture(autouse=True)
-def clear_detection_cache():
-    """
-    在用例前后清理能力探测缓存。
-    """
-    _clear_detection_cache()
-    yield
-    _clear_detection_cache()
 
 
 def test_flux_torrent_spider_maps_compat_items(monkeypatch):
@@ -359,59 +331,6 @@ def test_flux_torrent_parser_reports_business_error(monkeypatch):
     assert parser.err_msg == "令牌无效或已撤销"
 
 
-def test_flux_torrent_payload_detection():
-    """
-    只有符合统一响应信封的响应体才应判定为 FluxTorrent 站点。
-    """
-    assert flux_torrent_module.is_flux_torrent_payload(_envelope({"id": 1}))
-    assert flux_torrent_module.is_flux_torrent_payload(
-        _envelope(None, code=1004, message="接口不存在")
-    )
-    assert not flux_torrent_module.is_flux_torrent_payload({"code": 0, "message": "ok"})
-    assert not flux_torrent_module.is_flux_torrent_payload({"code": "0", "message": "ok"})
-    assert not flux_torrent_module.is_flux_torrent_payload("not a dict")
-    assert not flux_torrent_module.is_flux_torrent_payload(None)
-
-
-def test_flux_torrent_detection_caches_result(monkeypatch):
-    """
-    能力探测结果应按站点与凭据缓存，避免每次搜索重复探测。
-    """
-    probes = []
-
-    def fake_get_res(_request, url: str, **_kwargs):
-        """
-        记录探测请求并回放兼容层用户接口响应。
-        """
-        probes.append(url)
-        return _FakeResponse(_envelope({"id": 1, "username": "tester"}))
-
-    monkeypatch.setattr("app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res", fake_get_res)
-    site = _build_indexer()
-
-    assert flux_torrent_module.detect_flux_torrent(site) is True
-    assert flux_torrent_module.detect_flux_torrent(site) is True
-    assert probes == ["https://flux.example/api/v1/compat/nexusphp/user.json"]
-    assert flux_torrent_module.cached_flux_torrent_detection(site) is True
-
-
-def test_flux_torrent_detection_skips_site_without_token(monkeypatch):
-    """
-    未配置开放 API 令牌的站点不需要探测。
-    """
-    def fake_get_res(*_args, **_kwargs):
-        """
-        记录不应发生的探测请求。
-        """
-        raise AssertionError("没有令牌时不应发起探测")
-
-    monkeypatch.setattr("app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res", fake_get_res)
-    site = _build_indexer(apikey="", token="")
-
-    assert flux_torrent_module.detect_flux_torrent(site) is False
-    assert flux_torrent_module.cached_flux_torrent_detection(site) is False
-
-
 def test_flux_torrent_registrations():
     """
     FluxTorrent 应登记为专站搜索协议并声明支持的搜索参数。
@@ -422,63 +341,27 @@ def test_flux_torrent_registrations():
     assert FluxTorrentSpider.get_search_page_size() == 50
 
 
-def test_flux_torrent_page_size_uses_detected_protocol(monkeypatch):
+def test_flux_torrent_routes_by_declared_parser():
     """
-    已探测为 FluxTorrent 的站点应使用兼容层的单页容量。
+    站点资源声明 FluxTorrent 后，搜索应直接路由到兼容层索引器。
     """
-    monkeypatch.setattr(
-        "app.modules.indexer.cached_flux_torrent_detection", lambda site: True
+    assert IndexerModule.get_search_page_size(_build_indexer(parser="FluxTorrent")) == 50
+    request = IndexerModule._IndexerModule__create_search_request(
+        site=_build_indexer(parser="FluxTorrent"),
+        keyword="Example",
+        mtype=MediaType.MOVIE,
+        page=1,
     )
 
-    assert IndexerModule.get_search_page_size(_build_indexer()) == 50
+    assert request is not None
+    assert request.parser_class is FluxTorrentSpider
+    assert dict(request.arguments) == {"keyword": "Example", "page": 1}
 
 
-def test_refresh_userdata_prefers_detected_flux_torrent_protocol(monkeypatch):
+def test_refresh_userdata_uses_declared_flux_torrent_schema(monkeypatch):
     """
-    探测命中 FluxTorrent 时，用户数据解析应改用兼容层解析器。
+    站点资源声明 FluxTorrent 用户数据模型后，刷新应直接使用兼容层解析器。
     """
-    used = []
-
-    class _NexusPhpParser:
-        """
-        记录被使用的旧站点页面模型解析器。
-        """
-
-        schema = SimpleNamespace(value=SiteSchema.NexusPhp.value)
-
-        def __init__(self, **_kwargs):
-            """
-            记录解析器构造。
-            """
-            used.append("NexusPhp")
-            self.userid = None
-            self.username = None
-            self.user_level = None
-            self.join_at = None
-            self.upload = 0
-            self.download = 0
-            self.ratio = 0.0
-            self.bonus = 0.0
-            self.seeding = 0
-            self.seeding_size = 0
-            self.seeding_info = []
-            self.leeching = 0
-            self.leeching_size = 0
-            self.message_unread = 0
-            self.message_unread_contents = []
-            self.err_msg = None
-
-        def parse(self):
-            """
-            模拟旧页面模型解析失败。
-            """
-            self.err_msg = "未获取到站点用户信息"
-
-        def clear(self):
-            """
-            清理解析缓存。
-            """
-
     payload = _envelope({
         "id": 42,
         "username": "tester",
@@ -491,46 +374,25 @@ def test_refresh_userdata_prefers_detected_flux_torrent_protocol(monkeypatch):
         "ratio_infinite": False,
     })
     monkeypatch.setattr(
-        "app.modules.indexer.detect_flux_torrent", lambda site: True
-    )
-    monkeypatch.setattr(
         FluxTorrentSiteUserInfo,
         "_get_page_content",
         lambda self, url, **_kwargs: json.dumps(payload),
     )
-    monkeypatch.setattr(
-        IndexerModule,
-        "_site_schemas",
-        [_NexusPhpParser, FluxTorrentSiteUserInfo],
-    )
+    monkeypatch.setattr(IndexerModule, "_site_schemas", [FluxTorrentSiteUserInfo])
 
     module = object.__new__(IndexerModule)
     result = module.refresh_userdata({
         "name": "FluxTorrent",
         "url": _SITE_URL,
-        "schema": SiteSchema.NexusPhp.value,
+        "schema": SiteSchema.FluxTorrent.value,
         "apikey": _API_TOKEN,
         "public": False,
     })
 
-    assert used == []
     assert result.userid == 42
     assert result.username == "tester"
     assert result.user_level == "VIP"
     assert result.ratio == 2.0
-
-
-def _async_detection(predicate):
-    """
-    把同步判定包装为异步探测函数，供协议解析用例注入。
-    """
-    async def detect(site):
-        """
-        返回注入的判定结果。
-        """
-        return predicate(site)
-
-    return detect
 
 
 class _BrokenResponse:
@@ -591,53 +453,6 @@ def test_flux_torrent_async_search_requires_api_token():
     assert asyncio.run(spider.async_search(keyword="Example", page=0)) == (True, [])
 
 
-def test_flux_torrent_async_detection_matches_sync(monkeypatch):
-    """
-    异步能力探测应识别兼容层信封并写入命中缓存。
-    """
-    async def async_get_res(*_args, **_kwargs):
-        """
-        回放兼容层用户接口响应。
-        """
-        return _FakeResponse(_envelope({"id": 42}))
-
-    monkeypatch.setattr(
-        "app.modules.indexer.spider.fluxtorrent.AsyncRequestUtils.get_res", async_get_res
-    )
-    site = _build_indexer()
-
-    assert asyncio.run(flux_torrent_module.async_detect_flux_torrent(site)) is True
-    # 命中后同步入口直接复用缓存结论，不再发请求。
-    assert flux_torrent_module.cached_flux_torrent_detection(site) is True
-
-
-def test_flux_torrent_detection_ignores_request_failure(monkeypatch):
-    """
-    同步与异步探测在请求异常时应判定为非 FluxTorrent 站点。
-    """
-    def failing_get_res(*_args, **_kwargs):
-        """
-        模拟网络异常。
-        """
-        raise OSError("connection reset")
-
-    async def failing_async_get_res(*_args, **_kwargs):
-        """
-        模拟网络异常。
-        """
-        raise OSError("connection reset")
-
-    monkeypatch.setattr(
-        "app.modules.indexer.spider.fluxtorrent.RequestUtils.get_res", failing_get_res
-    )
-    monkeypatch.setattr(
-        "app.modules.indexer.spider.fluxtorrent.AsyncRequestUtils.get_res", failing_async_get_res
-    )
-
-    assert flux_torrent_module.detect_flux_torrent(_build_indexer()) is False
-    assert asyncio.run(flux_torrent_module.async_detect_flux_torrent(_build_indexer())) is False
-
-
 def test_flux_torrent_parser_rejects_unusable_payloads():
     """
     用户接口返回空响应、非 JSON、结构异常或业务错误码时都应给出错误信息。
@@ -660,49 +475,3 @@ def test_flux_torrent_parser_rejects_unusable_payloads():
     payload = _envelope(None, code=2001, message="invalid token")
     assert parser._load_api_payload(json.dumps(payload), "获取用户信息") is None
     assert parser.err_msg == "invalid token"
-
-
-def test_flux_torrent_protocol_resolution_paths(monkeypatch):
-    """
-    协议解析应覆盖已登记协议、探测命中与未识别三种情况，同步与异步一致。
-    """
-    resolve = IndexerModule._IndexerModule__resolve_parser_name
-    async_resolve = IndexerModule._IndexerModule__async_resolve_parser_name
-    detected = _build_indexer()
-    undetected = _build_indexer(apikey="", token="")
-
-    monkeypatch.setattr(
-        indexer_module, "detect_flux_torrent", lambda site: site.get("apikey") == _API_TOKEN
-    )
-    monkeypatch.setattr(
-        indexer_module,
-        "async_detect_flux_torrent",
-        _async_detection(lambda site: site.get("apikey") == _API_TOKEN),
-    )
-
-    assert resolve({"parser": "NexusPhp"}) == "NexusPhp"
-    assert resolve(detected) == "FluxTorrent"
-    assert resolve(undetected) == ""
-    assert asyncio.run(async_resolve({"parser": "NexusPhp"})) == "NexusPhp"
-    assert asyncio.run(async_resolve(detected)) == "FluxTorrent"
-    assert asyncio.run(async_resolve(undetected)) == ""
-
-
-def test_userdata_schema_resolution(monkeypatch):
-    """
-    用户数据模型名应优先采用探测结论，未命中时沿用站点声明的模型。
-    """
-    monkeypatch.setattr(
-        indexer_module, "detect_flux_torrent", lambda site: site.get("apikey") == _API_TOKEN
-    )
-
-    assert (
-        indexer_module._resolve_userdata_schema(_build_indexer())
-        == SiteSchema.FluxTorrent.value
-    )
-    assert (
-        indexer_module._resolve_userdata_schema(
-            _build_indexer(apikey="", token="", schema=SiteSchema.NexusPhp.value)
-        )
-        == SiteSchema.NexusPhp.value
-    )
