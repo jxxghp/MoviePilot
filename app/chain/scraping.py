@@ -1639,25 +1639,34 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def _request_music_cover(url: str) -> Optional[tuple[Optional[bytes], str]]:
         """
         下载并缓存音乐封面；仅稳定 404 与成功响应进入有界缓存。
+
+        front-500 缩略图 404 时回退请求 /front 原图：Cover Art Archive
+        元数据报告有封面时缩略图派生文件仍可能缺失，而原图可用。
         """
-        response = _scraping_http_snapshot().get(
-            url,
-            proxies=get_chain_runtime_config_snapshot().proxy,
-            ua=get_chain_runtime_config_snapshot().normal_user_agent,
-            timeout=20,
-        )
-        if response is None:
-            return None
-        try:
-            if response.status_code == 404:
-                return None, "image/jpeg"
-            if response.status_code != 200:
-                logger.warning(f"音乐封面下载失败：{response.status_code} {url}")
+        candidates = [url]
+        if url.endswith("/front-500"):
+            candidates.append(f"{url[: -len('/front-500')]}/front")
+        for candidate in candidates:
+            response = _scraping_http_snapshot().get(
+                candidate,
+                proxies=get_chain_runtime_config_snapshot().proxy,
+                ua=get_chain_runtime_config_snapshot().normal_user_agent,
+                timeout=20,
+            )
+            if response is None:
                 return None
-            mime = (response.headers.get("Content-Type") or "image/jpeg").split(";", 1)[0]
-            return response.content, mime
-        finally:
-            response.close()
+            try:
+                if response.status_code == 404:
+                    logger.info(f"音乐封面下载 404：{candidate}")
+                    continue
+                if response.status_code != 200:
+                    logger.warning(f"音乐封面下载失败：{response.status_code} {candidate}")
+                    return None
+                mime = (response.headers.get("Content-Type") or "image/jpeg").split(";", 1)[0]
+                return response.content, mime
+            finally:
+                response.close()
+        return None, "image/jpeg"
 
     @staticmethod
     def _download_music_cover(url: Optional[str]) -> tuple[Optional[bytes], str]:
