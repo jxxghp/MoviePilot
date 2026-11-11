@@ -757,9 +757,12 @@ def test_ready_batch_cannot_expand_existing_candidate_episode_restriction(subscr
     assert lefts["tmdb:1"][1].total_episode == 2
 
 
-def test_all_ready_season_pack_with_extra_episode_downloads_whole_pack_like_original(subscription):
+def test_all_ready_season_pack_with_extra_episode_selects_subscribed_range(subscription):
     """
-    整季缺集全部就绪时不加本批集数限制，与原 MP 一致：整季包多出一集仍整包下载、不做选集。
+    整季缺集全部就绪时不加本批集数限制，含范围外剧集的整季包仍被接受。
+
+    若误加本批限制，整季包会因多出的集被整体拒绝；接受后只选择订阅范围内的集，
+    不下载订阅范围外的剧集。
     """
     scope = subscription
     current = replace(scope.initial, total_episode=2)
@@ -771,7 +774,37 @@ def test_all_ready_season_pack_with_extra_episode_downloads_whole_pack_like_orig
         contexts=[pack], no_exists=_missing(scope, current), subscribe=current,
         mediakey="tmdb:1", eligible_targets={"1:1", "1:2"})
     assert downloads == [pack]
-    assert "episodes" not in scope.download.download_single.call_args.kwargs
+    assert scope.download.download_single.call_args.kwargs["episodes"] == {1, 2}
+    assert not lefts
+
+
+@pytest.mark.parametrize("pack_first", [True, False], ids=["pack-first", "single-first"])
+def test_single_episode_subscription_never_downloads_other_episodes(subscription, pack_first):
+    """
+    只订阅第 5 集时，无论整季包还是单集胜出，提交的剧集都只有第 5 集。
+
+    回归：首次整包优先把单集订阅视为完整目标，整季包胜出后不做选集，
+    整季全部下载。
+    """
+    scope = subscription
+    scope.media.seasons = {1: list(range(1, 11))}
+    current = replace(scope.initial, start_episode=5, total_episode=5)
+    scope.current["value"] = current
+    pack = Context(meta_info=MetaInfo("Example Show S01"), media_info=scope.media,
+                   torrent_info=TorrentInfo(site=1, title="Example Show S01", pri_order=100))
+    single = Context(meta_info=MetaInfo("Example Show S01E05"), media_info=scope.media,
+                     torrent_info=TorrentInfo(site=1, title="Example Show S01E05", pri_order=100))
+    files = {"Example Show S01": list(range(1, 11)), "Example Show S01E05": [5]}
+    scope.download.download_torrent.side_effect = lambda torrent, **_params: (b"torrent", None, files[torrent.title])
+    missing = _missing(scope, current)
+    assert missing["tmdb:1"][1].episodes == [5]
+    downloads, lefts = scope.chain._SubscribeChain__download_best_version_with_full_pack_first(
+        contexts=[pack, single] if pack_first else [single, pack], no_exists=missing,
+        subscribe=current, mediakey="tmdb:1")
+    assert downloads == [pack if pack_first else single]
+    scope.download.download_single.assert_called_once()
+    call = scope.download.download_single.call_args
+    assert (call.kwargs.get("episodes") or set(files[call.kwargs["context"].torrent_info.title])) == {5}
     assert not lefts
 
 
@@ -791,7 +824,7 @@ def test_all_ready_missing_season_keeps_original_whole_pack_priority(subscriptio
         mediakey="tmdb:1", eligible_targets={"1:1", "1:2"})
     assert downloads == [pack]
     scope.download.download_single.assert_called_once()
-    assert "episodes" not in scope.download.download_single.call_args.kwargs
+    assert scope.download.download_single.call_args.kwargs.get("episodes") is None
     assert not lefts
 
 

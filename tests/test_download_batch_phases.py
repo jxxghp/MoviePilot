@@ -446,3 +446,65 @@ def test_gapped_season_pack_keeps_missing_middle_episode(batch):
     assert remaining["tmdb:1"][1].episodes == [27]
     assert candidate.meta_info.episode_list == [26, 28, 29]
     assert batch.chain.download_single.call_args.kwargs["episodes"] == {26, 28, 29}
+
+
+def _target_missing(start: int, total: int) -> NotExistMediaInfo:
+    """
+    构造订阅起止集限定的完整覆盖缺失范围，与首次整包优先和洗版入口一致。
+    """
+    return NotExistMediaInfo(
+        season=1, episodes=[], total_episode=total, start_episode=start,
+        require_complete_coverage=True,
+    )
+
+
+def test_whole_season_pack_only_selects_subscribed_episodes(batch):
+    """
+    只订阅单集时，整季包覆盖目标也只选择目标集，不下载订阅范围外的剧集。
+    """
+    pack = _context("pack")
+    single = _context("single", episodes=(5,))
+    missing = {"tmdb:1": {1: _target_missing(5, 5)}}
+    batch.chain.download_torrent.return_value = (b"torrent", None, list(range(1, 11)))
+
+    result, remaining = batch.chain.batch_download([pack, single], missing)
+
+    assert result == [pack]
+    assert remaining == {}
+    batch.chain.download_single.assert_called_once()
+    call = batch.chain.download_single.call_args
+    assert call.kwargs["context"] is pack
+    assert call.kwargs["torrent_content"] == b"torrent"
+    assert call.kwargs["episodes"] == {5}
+    assert pack.confirmed_full_coverage is True
+
+
+def test_whole_season_pack_matching_target_keeps_whole_submission(batch):
+    """
+    种子集数与目标范围一致时仍整包提交，保留字幕、花絮等无集号文件。
+    """
+    pack = _context("pack")
+    missing = {"tmdb:1": {1: _target_missing(1, 4)}}
+
+    result, remaining = batch.chain.batch_download([pack], missing)
+
+    assert result == [pack]
+    assert remaining == {}
+    assert batch.chain.download_single.call_args.kwargs.get("episodes") is None
+    assert pack.confirmed_full_coverage is True
+
+
+def test_labelled_pack_magnet_only_selects_subscribed_episodes(batch):
+    """
+    无法读取文件的带集数完整包回退分集包阶段时，同样只提交订阅范围内的集。
+    """
+    labelled = _context("labelled", episodes=tuple(range(1, 11)))
+    missing = {"tmdb:1": {1: _target_missing(5, 6)}}
+    batch.chain.download_torrent.return_value = ("magnet:?xt=test", None, [])
+
+    result, remaining = batch.chain.batch_download([labelled], missing)
+
+    assert result == [labelled]
+    assert remaining == {}
+    assert batch.chain.download_single.call_args.kwargs["episodes"] == {5, 6}
+    assert labelled.confirmed_full_coverage is True
