@@ -14,7 +14,7 @@ HDWinG 的种子列表不在 HTML 中渲染 Free/2xFree 等促销标识，仅输
 
 import re
 from typing import Any, Optional
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin
 
 from app.adapters.network.http import RequestUtils
 from app.runtime.log import logger
@@ -32,9 +32,6 @@ _CSRF_LINK_PATTERN = re.compile(r'logout\.php\?csrf=([0-9a-zA-Z]+)')
 _PROMOTION_PAGE = "ajax_promotion.php"
 _TORRENTS_PAGE = "torrents.php"
 
-# 支持促销状态补全的站点域名。
-SUPPORTED_DOMAINS = frozenset({"hdwing.org"})
-
 
 def _extract_csrf(html_text: str) -> Optional[str]:
     """
@@ -47,20 +44,7 @@ def _extract_csrf(html_text: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
-def is_hdwing_domain(domain: Optional[str]) -> bool:
-    """
-    判断站点地址是否属于支持促销状态补全的域名。
-
-    :param domain: 站点索引配置中的前端地址
-    :return: 域名命中支持清单或其子域时为 True
-    """
-    if not domain:
-        return False
-    netloc = urlsplit(str(domain)).netloc.lower().rsplit(":", 1)[0]
-    return netloc in SUPPORTED_DOMAINS or netloc.endswith(".hdwing.org")
-
-
-class HDWinGPromotionMixin:
+class HDWingPromotionMixin:
     """
     为站点爬虫提供解析前补全 HDWinG 促销标识的能力。
 

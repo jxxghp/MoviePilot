@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-验证 HDWinG 促销标识补全爬虫的注入行为与域名路由。
+验证 HDWinG 促销标识补全爬虫的注入行为与专站解析器注册。
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.modules.indexer import HDWinGSpider, IndexerModule
-from app.modules.indexer.spider import SiteSpider
-from app.modules.indexer.spider.hdwing import is_hdwing_domain
+import pytest
+
+from app.modules.indexer import (
+    _SPECIALIZED_SEARCH_ARGUMENTS,
+    SPIDER_PARSER_CLASSES,
+    HDWingPageSpider,
+    HDWingSpider,
+)
 
 # 模拟 HDWinG 列表页：占位符只保留种子 ID，促销标识由接口返回。
 _PAGE_HTML = """
@@ -79,6 +84,8 @@ _INDEXER = {
     },
 }
 
+_FAKE_TORRENTS = [{"title": "Fake.Torrent", "size": 1}]
+
 
 def _mock_response(json_data=None, status_code=200) -> MagicMock:
     """
@@ -107,17 +114,54 @@ def _patched_promotion(response: MagicMock):
     return patcher, mocked_utils.return_value.post_res
 
 
-def test_is_hdwing_domain_matches_supported_hosts():
+def test_parser_registry_declares_hdwing():
     """
-    域名判定应命中主域及其子域，其余域名与空值一律不命中。
+    站点资源以 parser: HDWing 声明后应命中注册表并按标准参数集合调用。
     """
-    assert is_hdwing_domain("https://hdwing.org/")
-    assert is_hdwing_domain("https://hdwing.org/torrents.php")
-    assert is_hdwing_domain("https://www.hdwing.org/")
-    assert not is_hdwing_domain("https://hdwing.org.evil.example/")
-    assert not is_hdwing_domain("https://hddolby.com/")
-    assert not is_hdwing_domain(None)
-    assert not is_hdwing_domain("")
+    assert SPIDER_PARSER_CLASSES["HDWing"] is HDWingSpider
+    assert _SPECIALIZED_SEARCH_ARGUMENTS["HDWing"] == ("keyword", "mtype", "cat", "page")
+
+
+def test_get_search_page_size_returns_fixed_capacity():
+    """
+    HDWinG 列表页分页容量固定为 100，与浏览和关键字搜索无关。
+    """
+    assert HDWingSpider.get_search_page_size() == 100
+    assert HDWingSpider.get_search_page_size(keyword="tron") == 100
+
+
+def test_search_applies_arguments_and_returns_contract():
+    """
+    专站搜索入口应把参数转发给页面爬虫并返回 (错误标志, 种子列表) 契约。
+    """
+    spider = HDWingSpider(indexer=_INDEXER)
+    spider._spider.get_torrents = MagicMock(return_value=_FAKE_TORRENTS)
+    spider._spider.is_error = False
+
+    error_flag, result = spider.search(keyword="Tron", mtype=None, cat="401", page=2)
+
+    assert (error_flag, result) == (False, _FAKE_TORRENTS)
+    assert spider.error_detail is None
+    assert spider._spider.keyword == "Tron"
+    assert spider._spider.cat == "401"
+    assert spider._spider.page == 2
+
+
+@pytest.mark.asyncio
+async def test_async_search_applies_arguments_and_returns_contract():
+    """
+    异步专站搜索入口应复用同一参数上下文并返回相同契约。
+    """
+    spider = HDWingSpider(indexer=_INDEXER)
+    spider._spider.async_get_torrents = AsyncMock(return_value=_FAKE_TORRENTS)
+    spider._spider.is_error = True
+
+    error_flag, result = await spider.async_search(keyword="Tron", page=1)
+
+    assert (error_flag, result) == (True, _FAKE_TORRENTS)
+    assert spider._spider.keyword == "Tron"
+    assert spider._spider.page == 1
+    spider._spider.async_get_torrents.assert_awaited_once()
 
 
 def test_parse_injects_promotion_and_recognizes_free():
@@ -126,7 +170,7 @@ def test_parse_injects_promotion_and_recognizes_free():
     """
     patcher, post_res = _patched_promotion(_mock_response(_PROMOTION_RESPONSE))
     try:
-        spider = HDWinGSpider(indexer=_INDEXER, keyword=None)
+        spider = HDWingPageSpider(indexer=_INDEXER)
         torrents = spider.parse(_PAGE_HTML)
     finally:
         patcher.stop()
@@ -151,7 +195,7 @@ def test_parse_uses_logout_link_csrf_fallback():
     """
     patcher, post_res = _patched_promotion(_mock_response(_PROMOTION_RESPONSE))
     try:
-        spider = HDWinGSpider(indexer=_INDEXER, keyword=None)
+        spider = HDWingPageSpider(indexer=_INDEXER)
         torrents = spider.parse(_LOGOUT_CSRF_PAGE_HTML)
     finally:
         patcher.stop()
@@ -167,7 +211,7 @@ def test_parse_skips_promotion_request_without_placeholder():
     """
     patcher, post_res = _patched_promotion(_mock_response(_PROMOTION_RESPONSE))
     try:
-        spider = HDWinGSpider(indexer=_INDEXER, keyword=None)
+        spider = HDWingPageSpider(indexer=_INDEXER)
         torrents = spider.parse(_PLAIN_PAGE_HTML)
     finally:
         patcher.stop()
@@ -188,7 +232,7 @@ def test_parse_keeps_page_usable_when_promotion_request_fails():
     ):
         patcher, post_res = _patched_promotion(response)
         try:
-            spider = HDWinGSpider(indexer=_INDEXER, keyword=None)
+            spider = HDWingPageSpider(indexer=_INDEXER)
             torrents = spider.parse(_PAGE_HTML)
         finally:
             patcher.stop()
@@ -197,13 +241,3 @@ def test_parse_keeps_page_usable_when_promotion_request_fails():
         assert len(torrents) == 2
         assert all(t["downloadvolumefactor"] == 1 for t in torrents)
         assert post_res.call_count == 1
-
-
-def test_select_spider_class_routes_by_domain():
-    """
-    HDWinG 域名使用促销补全爬虫，其余站点保持通用爬虫。
-    """
-    select = IndexerModule._IndexerModule__select_spider_class
-    assert select(dict(_INDEXER)) is HDWinGSpider
-    other = dict(_INDEXER, domain="https://example.com/")
-    assert select(other) is SiteSpider
