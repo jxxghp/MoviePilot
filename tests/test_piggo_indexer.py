@@ -6,7 +6,7 @@ import base64
 import json
 from copy import deepcopy
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from requests import Response
@@ -17,7 +17,6 @@ import app.modules.indexer.spider.piggo as piggo
 from app.application.site.contract import SiteSnapshot
 from app.application.site.observation import capture_site_search_observation
 from app.chain.site import SiteChain
-from app.domain import site as site_rules
 from app.domain.context import TorrentInfo
 from app.modules.indexer import _SPECIALIZED_SEARCH_ARGUMENTS, SPIDER_PARSER_CLASSES, IndexerModule
 from app.modules.indexer.parser import SiteSchema
@@ -132,6 +131,86 @@ async def test_search_uses_post_json_and_official_fields(boundary, asynchronous)
         (response.aclose if asynchronous else response.close).assert_called_once()
 
 
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.asyncio
+async def test_true_tags_use_section_catalog_not_taxonomies_or_title(boundary, asynchronous):
+    """
+    新增 tag_ids 按实际分区字典解释，国语、双语是真实标签，不从标题或二级分类猜测。
+    """
+    item = dict(ITEM, tag_ids=[4, "5", 4, 999], taxonomy_ids=[4])
+    catalog = dict(CATALOG, tags=[{"id": 4, "name": "全站标签"}],
+                   taxonomies=[{"id": 1, "name": "来源", "items": [{"id": 4, "name": "WEB-DL"}]}])
+    section_tags = {"tags": [{"id": 4, "name": "国语", "color": "#ff0000", "font_color": "#ffffff"},
+                              {"id": 5, "name": "双语", "description": "双音轨"}]}
+    request = boundary.async_request if asynchronous else boundary.request
+    request.post_res.side_effect = [_response(catalog), _response(_list([item])), _response(section_tags)]
+    spider = piggo.PiggoSpider(INDEXER)
+    result = await spider.async_search(None) if asynchronous else spider.search(None)
+    assert result[0] is False and result[1][0]["labels"] == ["国语", "双语"]
+    assert result[1][0]["category"] == MediaType.TV.value
+    assert request.post_res.call_args_list[-1].kwargs == {
+        "url": "https://api.piggo.me/v1/api/catalog", "json": {"section_id": 22}, "allow_redirects": False,
+    }
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.asyncio
+async def test_section_tag_catalog_is_cached_without_reusing_other_section_names(boundary, asynchronous):
+    """
+    不同分区标签字典独立，同凭据后续翻页复用字典而不为每个种子重复请求目录。
+    """
+    items = [dict(ITEM, tag_ids=[4]), dict(ITEM, id=56355, section_id=11, category_ids=[101], tag_ids=[4])]
+    responses = [_response(dict(CATALOG, tags=[])), _response(_list(items)),
+                 _response({"tags": [{"id": 4, "name": "国语"}]}),
+                 _response({"tags": [{"id": 4, "name": "原创"}]}), _response(_list(items))]
+    request = boundary.async_request if asynchronous else boundary.request
+    request.post_res.side_effect = responses
+    spider = piggo.PiggoSpider(INDEXER)
+    for _ in range(2):
+        result = await spider.async_search(None) if asynchronous else spider.search(None)
+        assert result[0] is False
+        assert [row["labels"] for row in result[1]] == [["国语"], ["原创"]]
+    assert request.post_res.call_count == 5
+    for response in responses:
+        (response.aclose if asynchronous else response.close).assert_called_once()
+
+
+@pytest.mark.parametrize("tag_ids", [None, [], [999]])
+def test_missing_or_unresolved_true_tags_are_not_fabricated(boundary, tag_ids):
+    """
+    兼容未返回标签的旧接口，无法解析的 ID 不显示成标签，也不把标题中的国语当作标签。
+    """
+    item = dict(ITEM, name="国语 双语 Series", taxonomy_ids=[4])
+    if tag_ids is not None:
+        item["tag_ids"] = tag_ids
+    responses = [_response(CATALOG), _response(_list([item]))]
+    if tag_ids:
+        responses.append(_response({"tags": []}))
+    boundary.request.post_res.side_effect = responses
+    failed, result = piggo.PiggoSpider(INDEXER).search(None)
+    assert not failed and result[0]["labels"] == []
+    assert boundary.request.post_res.call_count == len(responses)
+
+
+@pytest.mark.parametrize("tags", [[{"id": 4, "name": ""}], [{"id": True, "name": "国语"}],
+                                 [{"id": 4, "name": "国语"}, {"id": 4, "name": "双语"}], {}])
+def test_invalid_true_tag_dictionary_does_not_publish_partial_results(boundary, tags):
+    """
+    无效标签字典是接口结构失败，不发布带有猜测或半份标签的搜索结果。
+    """
+    boundary.request.post_res.side_effect = [_response(dict(CATALOG, tags=tags)), _response(_list())]
+    assert piggo.PiggoSpider(INDEXER).search(None) == (True, [])
+
+
+@pytest.mark.parametrize("tag_ids", ["4", [False], [-1], [4.5], [{}]])
+def test_invalid_true_tag_ids_do_not_publish_partial_results(boundary, tag_ids):
+    """
+    标签 ID 保持严格整数校验，坏条目不能被静默跳过形成半页成功。
+    """
+    boundary.request.post_res.side_effect = [_response(dict(CATALOG, tags=[])), _response(_list([dict(ITEM, tag_ids=tag_ids)]))]
+    assert piggo.PiggoSpider(INDEXER).search(None) == (True, [])
+
+
 @pytest.mark.parametrize("keyword", [None, "", "  "])
 def test_latest_torrents_omit_search_terms(boundary, keyword):
     """
@@ -201,7 +280,7 @@ async def test_missing_token_never_uses_cookie_or_network(boundary, asynchronous
     spider = piggo.PiggoSpider(dict(INDEXER, apikey="  ", token=None))
     result = await spider.async_search(None) if asynchronous else spider.search(None)
     assert result == (True, [])
-    assert spider.error_detail == site_rules.PIGGO_TOKEN_REQUIRED
+    assert spider.error_detail == piggo.TOKEN_REQUIRED
     boundary.request.post_res.assert_not_called()
     boundary.async_request.post_res.assert_not_called()
     assert spider.get_download_url(56354) == ""
@@ -239,9 +318,9 @@ async def test_indexer_module_dispatches_piggo_and_preserves_identity(boundary, 
     ({"message": "请稍后重试"}, 429, 429, "限流"),
     ({}, 200, 422, "失败"),
 ])
-def test_connectivity_routes_by_domain_or_resource_protocol(monkeypatch, domain, resource_key, data, status, code, expected):
+def test_connectivity_registration_uses_resource_adapter(monkeypatch, domain, resource_key, data, status, code, expected):
     """
-    域名路由与资源协议路由都只验证实验室，Token 兼容、下载权限及公告语义一致。
+    既有域名及协议注册均调用实验室适配器，Token、下载权限和公告语义一致。
     """
     chain = SiteChain()
     site = SiteSnapshot(id=7274, name="猪猪", domain=domain, url=f"https://{domain}/", apikey="  ",
@@ -250,30 +329,31 @@ def test_connectivity_routes_by_domain_or_resource_protocol(monkeypatch, domain,
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={
         resource_key: "Piggo", "api_url": "https://api.custom.test/v1/api/",
     }))))
-    monkeypatch.setattr(site_chain, "site_request_config", lambda _url, _id: {"id": 7274, "domain": domain})
+    module = object.__new__(IndexerModule)
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
+    monkeypatch.setattr(piggo, "get_runtime_setting", lambda key: {"PROXY": {"https": "synthetic-proxy"}, "USER_AGENT": "Default-UA"}[key])
     wait = Mock()
     defer = Mock()
-    monkeypatch.setattr(site_chain, "wait_for_site_request", wait)
-    monkeypatch.setattr(site_chain, "defer_site_request", defer)
+    monkeypatch.setattr(piggo, "wait_for_site_request", wait)
+    monkeypatch.setattr(piggo, "defer_site_request", defer)
     response = _response(data, status, code)
-    context = MagicMock()
-    context.__enter__.return_value = response
-    open_response = Mock(return_value=context)
-    monkeypatch.setattr(site_chain, "_open_site_response", open_response)
+    request = Mock(post_res=Mock(return_value=response))
+    constructor = Mock(return_value=request)
+    monkeypatch.setattr(piggo, "RequestUtils", constructor)
     generic = Mock(side_effect=AssertionError("猪猪不应请求首页或浏览器"))
     monkeypatch.setattr(SiteChain, "_SiteChain__test", generic)
     state, message = chain.test(site.url)
     assert state is (expected == "连接成功")
     assert expected in message
-    request = open_response.call_args.kwargs
-    assert request["method"] == "POST" and request["json_body"] == {}
-    assert request["url"] == "https://api.custom.test/v1/api/me"
-    assert request["headers"]["Authorization"] == "Bearer synthetic-token"
-    assert "cookie" not in request and request["timeout"] == 25
-    assert request["proxies"] == (chain.runtime_config.proxy or {})
+    request.post_res.assert_called_once_with(url="https://api.custom.test/v1/api/me", json={}, allow_redirects=False)
+    options = constructor.call_args.kwargs
+    assert options["headers"]["Authorization"] == "Bearer synthetic-token"
+    assert options["headers"]["User-Agent"] == "Piggo-Test"
+    assert "cookies" not in options and options["timeout"] == 25
+    assert options["proxies"] == {"https": "synthetic-proxy"}
     generic.assert_not_called()
     wait.assert_called_once()
-    context.__exit__.assert_called_once_with(None, None, None)
+    response.close.assert_called_once()
     assert defer.called is (status == 429)
 
 
@@ -376,7 +456,7 @@ def test_token_selection(apikey, token, expected):
     """
     非空 API Key 优先，只有空白时兼容 Token。
     """
-    assert site_rules.piggo_access_token(apikey, token) == expected
+    assert piggo.access_token(apikey, token) == expected
 
 
 def test_checkpoint_restores_recipe_using_current_token(boundary):
@@ -405,7 +485,7 @@ def test_envelope_errors_are_safe_and_keep_protocol_semantics(status, payload, e
     HTTP、内层业务码和坏结构都能明确失败，错误文本不回显令牌。
     """
     with pytest.raises(ValueError) as error:
-        site_rules.piggo_response_data(status, payload, "synthetic-key")
+        piggo.response_data(status, payload, "synthetic-key")
     assert expected in str(error.value)
     assert "synthetic-key" not in str(error.value)
 
@@ -418,20 +498,20 @@ def test_connectivity_failures_do_not_open_web_pages(monkeypatch, case):
     chain = SiteChain()
     site = SiteSnapshot(id=7274, name="猪猪", domain="piggo.me", url="https://piggo.me/", cookie="unused-cookie",
                         apikey=None if case == "no-token" else "synthetic-key")
-    monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
-    monkeypatch.setattr(site_chain, "site_request_config", lambda _url, _id: {"id": 7274, "domain": "piggo.me"})
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={"parser": "Piggo"}))))
+    module = object.__new__(IndexerModule)
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
     wait = Mock(side_effect=RateLimitExceededException("站点限流") if case == "cooldown" else None)
-    monkeypatch.setattr(site_chain, "wait_for_site_request", wait)
+    monkeypatch.setattr(piggo, "wait_for_site_request", wait)
     response = _response({})
     response._content = b"<html>WAF</html>"
-    context = MagicMock()
-    context.__enter__.return_value = None if case == "no-response" else response
-    open_response = Mock(return_value=context)
-    monkeypatch.setattr(site_chain, "_open_site_response", open_response)
-    state, message = chain._SiteChain__piggo_test(site)
+    request = Mock(post_res=Mock(return_value=None if case == "no-response" else response))
+    monkeypatch.setattr(piggo, "RequestUtils", Mock(return_value=request))
+    state, message = chain.test(site.url)
     assert not state
     assert {"no-token": "长期存取令牌", "no-response": "无法连接", "bad-json": "结构无效", "cooldown": "限流"}[case] in message
-    assert open_response.call_count == (0 if case in ("no-token", "cooldown") else 1)
+    assert request.post_res.call_count == (0 if case in ("no-token", "cooldown") else 1)
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])

@@ -7195,6 +7195,29 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "parse_torrent_download_response": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentDownloadResponseRequest",
+      "optional_parameters": [
+        "raise_exception"
+      ],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "payload",
+        "request_params",
+        "status_code"
+      ],
+      "result_contract": "str",
+      "result_shape": "string",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "plan_transfer": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -7709,6 +7732,25 @@
       "result_contract": "StorageProviderResult",
       "result_shape": "any",
       "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "test_site": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteConnectionTestRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "site"
+      ],
+      "result_contract": "tuple[bool, str] | None",
+      "result_shape": "any",
+      "supports_async": false,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
       "version": 1
@@ -8367,10 +8409,10 @@
     }
   },
   "run_module": {
-    "call_count": 273,
+    "call_count": 275,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 221,
+    "method_count": 223,
     "methods": {
       "anilist_credits": [
         {
@@ -9676,6 +9718,13 @@
           "mode": "sync"
         }
       ],
+      "parse_torrent_download_response": [
+        {
+          "caller": "app.chain.download.submission",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "recognize_media": [
         {
           "caller": "app.chain._recognition",
@@ -9858,6 +9907,13 @@
       "storage_manage": [
         {
           "caller": "app.chain.storage",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "test_site": [
+        {
+          "caller": "app.chain.site",
           "count": 1,
           "mode": "sync"
         }

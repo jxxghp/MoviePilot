@@ -497,6 +497,27 @@ _METHOD_CONTRACTS = {
         required_parameters=("site", "record"),
         public_to_plugins=False,
     ),
+    "test_site": ModuleMethodContract(
+        family="site",
+        input_contract="SiteConnectionTestRequest",
+        result_contract="tuple[bool, str] | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("site",),
+        public_to_plugins=False,
+        supports_async=False,
+    ),
+    "parse_torrent_download_response": ModuleMethodContract(
+        family="site",
+        input_contract="TorrentDownloadResponseRequest",
+        result_contract="str",
+        result_shape=ModuleResultShape.STRING,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("request_params", "status_code", "payload"),
+        # 错误策略读取此控制参数；不接受它的响应解析器由兼容调用层移除，避免业务拒绝触发系统告警。
+        optional_parameters=("raise_exception",),
+        public_to_plugins=False,
+        supports_async=False,
+    ),
     "refresh_userdata": ModuleMethodContract(
         family="site",
         input_contract="SiteUserDataRequest",

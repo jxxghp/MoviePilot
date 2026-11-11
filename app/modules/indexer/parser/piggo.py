@@ -7,9 +7,9 @@ import math
 import re
 from typing import Any, Optional
 
+import app.modules.indexer.spider.piggo as piggo_rules
 from app.adapters.network.http import RequestUtils
 from app.application.site.throttle import defer_site_request, site_request_config, wait_for_site_request
-from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 from app.runtime.log import logger
@@ -57,7 +57,7 @@ class PiggoSiteUserInfo(SiteParserBase):
         try:
             self._parse_site_page({})
             if not self._access_token:
-                raise ValueError(site_rules.PIGGO_TOKEN_REQUIRED)
+                raise ValueError(piggo_rules.TOKEN_REQUIRED)
             self._parse_user_base_info(self._get_page_content(f"{self._base_url}/me"))
             self._parse_seeding_pages()
         except (ValueError, RateLimitExceededException) as err:
@@ -72,8 +72,8 @@ class PiggoSiteUserInfo(SiteParserBase):
 
         :param html_text: 保留基类签名，不读取 HTML
         """
-        self._base_url = str(self._api_url or site_rules.PIGGO_API_URL).rstrip("/")
-        self._access_token = site_rules.piggo_access_token(self.apikey, self.token)
+        self._base_url = str(self._api_url or piggo_rules.API_URL).rstrip("/")
+        self._access_token = piggo_rules.access_token(self.apikey, self.token)
         self._rate_site = site_request_config(self._site_url)
         self._profile: dict[str, Any] = {}
 
@@ -106,7 +106,7 @@ class PiggoSiteUserInfo(SiteParserBase):
             except ValueError:
                 payload = None
             try:
-                data = site_rules.piggo_response_data(response.status_code, payload, self._access_token)
+                data = piggo_rules.response_data(response.status_code, payload, self._access_token)
             except ValueError as err:
                 if torrent_rules.rate_limit_cooldown(str(err)) is not None:
                     defer_site_request(self._rate_site, str(err))
@@ -138,7 +138,7 @@ class PiggoSiteUserInfo(SiteParserBase):
             raise ValueError("猪猪用户资料缺少流量或等级信息")
         if not isinstance(user["username"], str) or not user["username"].strip():
             raise ValueError("猪猪 API 未返回有效用户名")
-        user_id = site_rules.piggo_integer(user["id"], minimum=1)
+        user_id = piggo_rules.integer(user["id"], minimum=1)
         upload = self._traffic_size(stats.get("uploaded"))
         download = self._traffic_size(stats.get("downloaded"))
         try:
@@ -179,10 +179,10 @@ class PiggoSiteUserInfo(SiteParserBase):
         """
         if not isinstance(data, dict) or data.get("kind") != kind:
             raise ValueError("猪猪种子分页类型无效")
-        pages = site_rules.piggo_integer(data.get("pages"))
-        total = site_rules.piggo_integer(data.get("total"))
-        per_page = site_rules.piggo_integer(data.get("per_page"), minimum=1)
-        if per_page > cls._size or site_rules.piggo_integer(data.get("page"), minimum=1) != page:
+        pages = piggo_rules.integer(data.get("pages"))
+        total = piggo_rules.integer(data.get("total"))
+        per_page = piggo_rules.integer(data.get("per_page"), minimum=1)
+        if per_page > cls._size or piggo_rules.integer(data.get("page"), minimum=1) != page:
             raise ValueError("猪猪种子分页容量或页码无效")
         expected_pages = max(1, (total + per_page - 1) // per_page)
         if pages != expected_pages and not (total == 0 and pages == 0):
@@ -194,9 +194,9 @@ class PiggoSiteUserInfo(SiteParserBase):
         for item in page_items:
             if not isinstance(item, dict):
                 raise ValueError("猪猪种子分页条目无效")
-            items.append({"id": site_rules.piggo_integer(item.get("id"), minimum=1),
-                          "size": site_rules.piggo_integer(item.get("size")),
-                          "seeders": site_rules.piggo_integer(item.get("seeders", 0))})
+            items.append({"id": piggo_rules.integer(item.get("id"), minimum=1),
+                          "size": piggo_rules.integer(item.get("size")),
+                          "seeders": piggo_rules.integer(item.get("seeders", 0))})
         return items, (pages, total, per_page)
 
     def _read_torrents(self, kind: str) -> list[dict[str, Any]]:

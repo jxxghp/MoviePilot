@@ -2,6 +2,7 @@
 猪猪实验室资料完整性、分页失败与禁止页面回退的离线回归。
 """
 
+import asyncio
 import json
 from copy import deepcopy
 from unittest.mock import Mock
@@ -10,7 +11,12 @@ import pytest
 from requests import Response
 
 import app.modules.indexer.parser.piggo as piggo
+from app.application.site.query import SiteQueryService
 from app.chain.site import SiteChain
+from app.db.adapters.site import TransactionalSiteRepository
+from app.db.models.site import Site
+from app.db.models.siteuserdata import SiteUserData as SiteUserDataRecord
+from app.db.session import SessionFactory, async_session_scope
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 
@@ -219,3 +225,36 @@ def test_malformed_torrent_page_discards_profile(boundary, change):
     request.post_res.side_effect = [_response(PROFILE), _response(data)]
     parser.parse()
     assert parser.userid is None and "分页" in parser.err_msg
+
+
+def test_piggo_userdata_refresh_persists_and_history_can_read_it(boundary, db):
+    """
+    猪猪解析结果必须经过真实站点写入事务，并可由弹窗使用的历史查询读回。
+
+    :param boundary: 仅替换站点 HTTP 传输的资料解析器
+    :param db: 隔离临时数据库，完成后还原本例创建的记录
+    """
+    db.watermark(Site, SiteUserDataRecord)
+    site = Site(name="猪猪", domain="piggo.me", url="https://piggo.me/", is_active=True)
+    db.add(site)
+    parser, _request = boundary
+    constructor = Mock(return_value=parser)
+    constructor.schema = piggo.SiteSchema.Piggo
+    module = object.__new__(IndexerModule)
+    module._site_schemas = [constructor]
+    repository = TransactionalSiteRepository(sync_session=SessionFactory, async_session=async_session_scope)
+    chain = object.__new__(SiteChain)
+    chain.site_repository = repository
+    chain.eventmanager = Mock()
+    chain.post_message = Mock()
+    chain.run_module = lambda _method, **kwargs: module.refresh_userdata(kwargs["site"])
+    indexer = {"id": site.id, "name": "猪猪", "domain": "https://piggo.me/", "url": "https://piggo.me/",
+               "schema": "Piggo", "public": False}
+    data = chain.refresh_userdata(indexer)
+    assert data is not None and data.userid == 42 and data.err_msg is None
+    rows = asyncio.run(SiteQueryService(repository).userdata("piggo.me", page=1, count=90))
+    assert len(rows) == 1
+    assert str(rows[0].userid) == str(data.userid)
+    assert rows[0].upload == data.upload == 2684354560
+    assert rows[0].download == data.download == 1073741824
+    assert rows[0].user_level == "主管"

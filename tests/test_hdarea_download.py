@@ -3,7 +3,6 @@
 """
 
 import json
-from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -20,8 +19,8 @@ from app.adapters.cache.backends import FileBackend
 from app.application.site.contract import SiteSnapshot
 from app.chain.download import DownloadChain
 from app.chain.site import SiteChain
-from app.domain import site as site_rules
 from app.domain.context import TorrentInfo
+from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.hdarea import HDAreaSiteUserInfo
 from app.runtime.rate import RequestRateLimiter
 from app.schemas.site import Site
@@ -66,10 +65,13 @@ def boundary(monkeypatch, tmp_path):
     monkeypatch.setattr(torrent_download, "_require_torrent_port", lambda: port)
     chain = object.__new__(DownloadChain)
     chain.post_message = Mock()
+    module = object.__new__(IndexerModule)
+    chain.run_module = lambda method, **kwargs: getattr(module, method)(
+        **{key: value for key, value in kwargs.items() if key != "raise_exception"})
     torrent = TorrentInfo(
         site=7370, site_name="高清视界", title="Example", site_cookie="unused-cookie", site_ua="HDArea-Test",
         page_url="https://hdarea.club/details.php?id=42",
-        enclosure=site_rules.hdarea_download_enclosure("https://hdarea.club/api/v1", "https://hdarea.club/", 42,
+        enclosure=hdarea_spider.download_enclosure("https://hdarea.club/api/v1", "https://hdarea.club/", 42,
                                                       "synthetic-key", ua="HDArea-Test"),
     )
     return SimpleNamespace(chain=chain, torrent=torrent, ticket=ticket, ticket_response=ticket_response,
@@ -180,10 +182,10 @@ def test_recipe_rejects_invalid_torrent_id(value):
     配方不接受非法站内 ID，缺少密钥时也不生成需要 Cookie 的下载链接。
     """
     with pytest.raises(ValueError, match="整数字段"):
-        site_rules.hdarea_download_enclosure(
+        hdarea_spider.download_enclosure(
             "https://hdarea.club/api/v1", "https://hdarea.club/", value, "synthetic-key",
         )
-    assert site_rules.hdarea_download_enclosure("https://hdarea.club/api/v1", "https://hdarea.club/", value, "") == ""
+    assert hdarea_spider.download_enclosure("https://hdarea.club/api/v1", "https://hdarea.club/", value, "") == ""
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
@@ -222,7 +224,6 @@ async def test_every_actual_hdarea_request_charges_one_shared_slot(boundary, mon
                "ua": "HDArea-Test", "limit_seconds": 3}
     spider = hdarea_spider.HDAreaSpider(indexer)
     if asynchronous:
-        assert await provider._async_wait_for_site_request(indexer) is None
         assert await spider.async_search(None) == (False, [])
     else:
         owner = Mock(search_site_torrents=Mock(side_effect=lambda **kwargs: spider.search(kwargs["keyword"])[1]))
@@ -240,16 +241,20 @@ async def test_every_actual_hdarea_request_charges_one_shared_slot(boundary, mon
     parser.parse()
     assert parser.userid == 42
 
-    @contextmanager
     def probe(**_kwargs):
+        """
+        在连接适配器的 HTTP 出口记录请求开始时间。
+        """
         starts.append(clock.now)
-        yield _response({"id": 42})
+        return _response({"id": 42})
 
-    monkeypatch.setattr(site_chain, "_open_site_response", probe)
+    monkeypatch.setattr(hdarea_spider, "RequestUtils", Mock(return_value=Mock(get_res=Mock(side_effect=probe))))
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
     chain = SiteChain()
-    site = SiteSnapshot(id=7370, name="高清视界", domain="hdarea.club", url="https://hdarea.club/", apikey="synthetic-key")
-    assert chain._SiteChain__hdarea_test(site) == (True, "连接成功")
+    module = object.__new__(IndexerModule)
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
+    site = SiteSnapshot(id=7370, name="高清视界", domain="hdarea.club", url="https://hdarea.club/", apikey="synthetic-key", limit_seconds=3)
+    assert chain.special_site_test["hdarea.club"](site) == (True, "连接成功")
     boundary.ticket.post.side_effect = lambda *_args, **_kwargs: starts.append(clock.now) or boundary.ticket_response
     boundary.port.request.side_effect = lambda **_kwargs: starts.append(clock.now) or boundary.content_response
     assert boundary.chain.download_torrent(boundary.torrent)[0] == CONTENT

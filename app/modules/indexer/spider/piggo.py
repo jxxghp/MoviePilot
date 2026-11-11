@@ -2,24 +2,133 @@
 通过猪猪实验室 API 搜索和浏览种子，使用账号可见目录解释分类。
 """
 
+import base64
 import hashlib
+import json
 import re
 from typing import Any, Optional, TypeAlias, cast
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.site.throttle import async_wait_for_site_request, defer_site_request, wait_for_site_request
 from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.foundation import temporal as time_tools
+from app.foundation.url import UrlUtils
 from app.runtime.cache import MemoryBackend
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.types import MediaSource, MediaType
 
-# 分类 ID 可在不同分区复用，以（分区 ID、分类 ID）保存成员关系；不保存账号或令牌。
-_Catalog: TypeAlias = tuple[dict[int, MediaType], dict[tuple[int, int], MediaType]]
+# 实验室公开文档指定的独立 API，不使用网页会话接口。
+API_URL = "https://api.piggo.me/v1/api"
+TOKEN_REQUIRED = "请在猪猪网页端「实验室」生成长期存取令牌，并填入站点 API Key 或 Token"
+
+# 分类 ID 可跨分区复用；标签字典按实际分区保存，0 表示不限定分区的全站字典。
+_Catalog: TypeAlias = tuple[dict[int, MediaType], dict[tuple[int, int], MediaType], dict[int, dict[int, str]]]
+
+
+def access_token(apikey: Optional[str], token: Optional[str]) -> str:
+    """
+    选择长期存取令牌，优先使用非空 API Key，兼容 Token 配置。
+
+    :param apikey: API Key 输入框中的实验室存取令牌
+    :param token: 未填写 API Key 时使用的实验室存取令牌
+    :return: 去掉首尾空白的令牌；两者都未配置时为空字符串
+    """
+    return str(apikey or "").strip() or str(token or "").strip()
+
+
+def response_data(status_code: int, payload: object, token: str = "") -> dict[str, Any]:
+    """
+    校验 HTTP 和业务状态，阻止外层成功码掩盖必读公告。
+
+    :param status_code: 原始 HTTP 响应状态码，非 200 不视为读取成功
+    :param payload: 已解析的 JSON 响应
+    :param token: 本次凭据，仅用于从站点错误文本中移除可能的回显
+    :return: 成功响应的 data 对象
+    :raises ValueError: 鉴权、必读公告、限流、其他业务失败或响应结构无效
+    """
+    # WAF 可能返回非 JSON 的鉴权或限流页，仍需保留 HTTP 失败语义。
+    payload = payload if isinstance(payload, dict) else {}
+    data = payload.get("data")
+    details = data if isinstance(data, dict) else {}
+    code = str(payload.get("code"))
+    inner_code = str(details.get("code", "0"))
+    message = str(details.get("message") or payload.get("msg") or payload.get("message") or "").strip()
+    if code == "notice_unread" or inner_code == "notice_unread":
+        gate = details.get("notice_gate") or {}
+        title = str(gate.get("title") or "") if isinstance(gate, dict) else ""
+        message = f"有未读必读公告，请到猪猪网页端阅读后重试{f'：{title}' if title else ''}"
+    elif status_code == 401 or code == "401" or inner_code == "401":
+        message = "猪猪存取令牌已过期或无效，请重新生成长期存取令牌"
+    elif status_code == 429 or code == "429" or inner_code == "429":
+        message = f"站点限流：{message or 'HTTP 429，请稍后重试'}"
+    elif not payload and status_code == 200:
+        message = "猪猪 API 响应结构无效"
+    elif status_code != 200 or code != "0" or inner_code != "0":
+        failure_code = inner_code if inner_code != "0" else code
+        message = f"猪猪 API 请求失败，HTTP {status_code}，业务码 {failure_code}{f'：{message}' if message else ''}"
+    elif isinstance(data, dict):
+        return data
+    else:
+        message = "猪猪 API 响应缺少有效 data"
+    if token:
+        message = message.replace(token, "[已隐藏]")
+    raise ValueError(" ".join(message.split())[:300])
+
+
+def integer(value: object, minimum: int = 0) -> int:
+    """
+    校验整数 ID、计数和字节字段，不截断浮点数或接受布尔值。
+
+    :param value: API 返回的整数或十进制整数字符串
+    :param minimum: 字段下限，ID 和页码使用 1，计数及字节使用 0
+    :return: 已校验的整数
+    :raises ValueError: 字段缺失、格式错误或小于下限；错误不回显原值
+    """
+    if not isinstance(value, (str, int)) or isinstance(value, bool) or not re.fullmatch(r"0|[1-9][0-9]*", str(value)):
+        raise ValueError("猪猪 API 整数字段无效")
+    number = int(value)
+    if number < minimum:
+        raise ValueError("猪猪 API 整数字段无效")
+    return number
+
+
+def download_enclosure(api_url: str, torrent_id: object, token: str, proxy: bool = False,
+                       ua: Optional[str] = None) -> str:
+    """
+    构造取种子时才签发 URL 的两段式配方，不预先消耗下载次数。
+
+    :param api_url: 实验室 API 基础地址
+    :param torrent_id: 正整数站内种子 ID
+    :param token: 当前长期存取令牌，缺失时不生成配方
+    :param proxy: 换票是否使用系统代理
+    :param ua: 换票请求的浏览器 User-Agent，避免被前置 WAF 当作默认 Python 客户端
+    :return: Base64 请求配置和 download-link 地址；ID 或凭据缺失时为空字符串
+    """
+    if not token or not re.fullmatch(r"[1-9][0-9]*", str(torrent_id or "")):
+        return ""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    if ua:
+        headers["User-Agent"] = ua
+    config = {
+        "method": "post",
+        "cookie": False,
+        "header": headers,
+        "json": {},
+        "allow_redirects": False,
+        "proxy": proxy,
+        "protocol": "Piggo",
+        "result": "data.url",
+    }
+    encoded = base64.b64encode(json.dumps(config).encode("utf-8")).decode("ascii")
+    return f"[{encoded}]{api_url.rstrip('/')}/torrents/{torrent_id}/download-link"
 
 
 class PiggoSpider:
@@ -31,6 +140,8 @@ class PiggoSpider:
     _size = 100
     _catalog_cache = MemoryBackend(maxsize=128, ttl=3600)
     _catalog_region = "piggo-catalog"
+    # 一次搜索可能查询目录、列表和分区标签，每次实际 HTTP 请求自行申请共享额度。
+    manages_request_throttle = True
 
     def __init__(self, indexer: dict[str, Any]) -> None:
         """
@@ -40,8 +151,8 @@ class PiggoSpider:
         """
         self._name = indexer.get("name") or "猪猪"
         self._site_url = str(indexer.get("domain") or "https://piggo.me/")
-        self._api_url = str(indexer.get("api_url") or site_rules.PIGGO_API_URL).rstrip("/")
-        self._token = site_rules.piggo_access_token(indexer.get("apikey"), indexer.get("token"))
+        self._api_url = str(indexer.get("api_url") or API_URL).rstrip("/")
+        self._token = access_token(indexer.get("apikey"), indexer.get("token"))
         self._proxy = get_runtime_setting("PROXY") if indexer.get("proxy") else None
         self._use_proxy = bool(indexer.get("proxy"))
         self._ua = indexer.get("ua") or get_runtime_setting("USER_AGENT")
@@ -87,7 +198,7 @@ class PiggoSpider:
         except ValueError:
             payload = None
         try:
-            data = site_rules.piggo_response_data(response.status_code, payload, self._token)
+            data = response_data(response.status_code, payload, self._token)
         except ValueError as err:
             self._catalog_cache.delete(self._cache_key, region=self._catalog_region)
             if torrent_rules.rate_limit_cooldown(str(err)) is not None:
@@ -133,6 +244,71 @@ class PiggoSpider:
                 await response.aclose()
 
     @staticmethod
+    def _parse_tags(value: object) -> dict[int, str]:
+        """
+        校验真实标签字典，只保留站点声明的 ID 与名称，不解释二级分类。
+
+        :param value: catalog 的 tags 列表，旧接口未提供时使用空列表
+        :return: 去除名称首尾空白的标签映射
+        :raises ValueError: 列表、名称或正整数 ID 无效，或同字典中有重复 ID
+        """
+        if not isinstance(value, list):
+            raise ValueError("猪猪标签字典无效")
+        tags: dict[int, str] = {}
+        try:
+            for tag in value:
+                tag_id = integer(tag["id"], minimum=1)
+                name = tag["name"]
+                if tag_id in tags or not isinstance(name, str) or not name.strip():
+                    raise ValueError("猪猪标签数据无效")
+                tags[tag_id] = name.strip()
+        except (KeyError, TypeError, ValueError) as err:
+            raise ValueError("猪猪标签字典无效") from err
+        return tags
+
+    @staticmethod
+    def _tag_ids(item: dict[str, Any]) -> list[int]:
+        """
+        校验种子的独立标签 ID，重复 ID 保留首次顺序，缺失字段兼容旧接口。
+
+        :param item: 实验室返回的种子条目
+        :return: 独立标签 ID 列表，不读取 taxonomy_ids 或标题
+        :raises ValueError: 标签列表或正整数 ID 无效
+        """
+        values = item.get("tag_ids", [])
+        if not isinstance(values, list):
+            raise ValueError("猪猪种子标签数据无效")
+        return list(dict.fromkeys(integer(value, minimum=1) for value in values))
+
+    @classmethod
+    def _tag_labels(cls, item: dict[str, Any], catalogs: dict[int, dict[int, str]]) -> list[str]:
+        """
+        用实际分区字典解释标签，无法解析的 ID 不伪造名称或显示数值占位。
+        """
+        section_id = integer(item.get("section_id", 0))
+        tags = catalogs.get(section_id, catalogs.get(0, {}))
+        return list(dict.fromkeys(tags[tag_id] for tag_id in cls._tag_ids(item) if tag_id in tags))
+
+    @staticmethod
+    def _tag_sections(data: dict[str, Any], catalog: _Catalog) -> list[int]:
+        """
+        从已经验证的整页提取尚未缓存且确有标签的分区，避免逐种子请求目录。
+        """
+        return list(dict.fromkeys(
+            integer(item["section_id"], minimum=1)
+            for item in data["items"]
+            if item.get("tag_ids") and item.get("section_id") and int(item["section_id"]) not in catalog[2]
+        ))
+
+    @classmethod
+    def _apply_tag_labels(cls, torrents: list[dict[str, Any]], data: dict[str, Any], catalog: _Catalog) -> None:
+        """
+        分区目录全部读取成功后更新当前页标签，不改变资源顺序或分类事实。
+        """
+        for torrent, item in zip(torrents, data["items"], strict=True):
+            torrent["labels"] = cls._tag_labels(item, catalog[2])
+
+    @staticmethod
     def _name_media_type(name: str) -> MediaType:
         """
         根据当前目录名称识别媒体类型，动漫和纪录片等歧义名称不强行归类。
@@ -156,7 +332,7 @@ class PiggoSpider:
         校验并转换当前账号可见目录，不使用旧版固定分类 ID。
 
         :param data: 正式 catalog 响应的 sections 和 categories
-        :return: 分区类型映射，以及分区与分类成员关系的类型映射
+        :return: 分区类型、分类成员关系及按分区隔离的标签字典；字典不包含账号或令牌
         :raises ValueError: 目录缺字段、整数无效、重复成员关系或分类引用未知分区
         """
         sections, categories = data.get("sections"), data.get("categories")
@@ -166,13 +342,13 @@ class PiggoSpider:
         category_map: dict[tuple[int, int], MediaType] = {}
         try:
             for section in sections:
-                section_id = site_rules.piggo_integer(section["id"], minimum=1)
+                section_id = integer(section["id"], minimum=1)
                 if section_id in section_map or not isinstance(section["name"], str):
                     raise ValueError("猪猪分区数据无效")
                 section_map[section_id] = cls._name_media_type(section["name"])
             for category in categories:
-                category_id = site_rules.piggo_integer(category["id"], minimum=1)
-                section_id = site_rules.piggo_integer(category["section_id"], minimum=1)
+                category_id = integer(category["id"], minimum=1)
+                section_id = integer(category["section_id"], minimum=1)
                 membership = section_id, category_id
                 if membership in category_map or section_id not in section_map or not isinstance(category["name"], str):
                     raise ValueError("猪猪分类数据无效")
@@ -180,7 +356,7 @@ class PiggoSpider:
                 category_map[membership] = media_type if media_type != MediaType.UNKNOWN else section_map[section_id]
         except (KeyError, TypeError, ValueError) as err:
             raise ValueError("猪猪目录响应结构无效") from err
-        return section_map, category_map
+        return section_map, category_map, {0: cls._parse_tags(data.get("tags", []))}
 
     def _load_catalog(self) -> _Catalog:
         """
@@ -235,7 +411,7 @@ class PiggoSpider:
             return params
         if mtype is None or mtype == MediaType.UNKNOWN:
             return params
-        sections, categories = catalog
+        sections, categories, _tags = catalog
         # 纪录片、动漫、少儿等分区可同时含电影和剧集，未能判型时不排除这些可见资源。
         if MediaType.UNKNOWN in sections.values():
             return params
@@ -265,14 +441,14 @@ class PiggoSpider:
         media_type = {"movie": MediaType.MOVIE, "tv": MediaType.TV}.get(str(media.get("tmdb_kind") or ""))
         if media_type is not None:
             return media_type
-        sections, categories = catalog
+        sections, categories, _tags = catalog
         category_ids = item.get("category_ids", [])
         if not isinstance(category_ids, list):
             raise ValueError("猪猪种子分类数据无效")
-        section_id = site_rules.piggo_integer(item.get("section_id", 0))
+        section_id = integer(item.get("section_id", 0))
         known = set()
         for cid in category_ids:
-            category = categories.get((section_id, site_rules.piggo_integer(cid, minimum=1)))
+            category = categories.get((section_id, integer(cid, minimum=1)))
             if category is not None and category != MediaType.UNKNOWN:
                 known.add(category)
         if len(known) == 1:
@@ -312,7 +488,7 @@ class PiggoSpider:
         :return: 可直接构造 TorrentInfo 的字段
         :raises ValueError: 必要字段、整数或媒体对象无效
         """
-        torrent_id = site_rules.piggo_integer(item["id"], minimum=1)
+        torrent_id = integer(item["id"], minimum=1)
         if not isinstance(item["name"], str) or not item["name"].strip():
             raise ValueError("猪猪种子名称无效")
         for field in ("small_descr", "page_url", "added_at"):
@@ -330,11 +506,12 @@ class PiggoSpider:
             "enclosure": self.get_download_url(torrent_id),
             "page_url": item.get("page_url") or urljoin(self._site_url, f"detail/{torrent_id}"),
             "pubdate": time_tools.normalize_datetime(item.get("added_at")),
-            "size": site_rules.piggo_integer(item["size"]),
-            "seeders": site_rules.piggo_integer(item.get("seeders", 0)),
-            "peers": site_rules.piggo_integer(item.get("leechers", 0)),
-            "grabs": site_rules.piggo_integer(item.get("times_completed", 0)),
+            "size": integer(item["size"]),
+            "seeders": integer(item.get("seeders", 0)),
+            "peers": integer(item.get("leechers", 0)),
+            "grabs": integer(item.get("times_completed", 0)),
             "media_source": media_source, "media_id": media_id, "category": media_type.value,
+            "labels": self._tag_labels(item, catalog[2]),
         }
 
     def _parse_result(self, data: dict[str, Any], catalog: _Catalog) -> list[dict[str, Any]]:
@@ -355,7 +532,7 @@ class PiggoSpider:
             for item in items:
                 if not isinstance(item, dict):
                     raise ValueError("猪猪种子条目无效")
-                torrent_id = site_rules.piggo_integer(item["id"], minimum=1)
+                torrent_id = integer(item["id"], minimum=1)
                 if torrent_id in ids:
                     raise ValueError("猪猪种子 ID 重复")
                 ids.add(torrent_id)
@@ -379,10 +556,15 @@ class PiggoSpider:
         self.error_detail = None
         try:
             if not self._token:
-                raise ValueError(site_rules.PIGGO_TOKEN_REQUIRED)
+                raise ValueError(TOKEN_REQUIRED)
             catalog = self._load_catalog()
             data = self._request("torrents", self._params(keyword, mtype, cat, page, catalog))
-            return False, self._parse_result(data, catalog)
+            torrents = self._parse_result(data, catalog)
+            for section_id in self._tag_sections(data, catalog):
+                tags = self._request("catalog", {"section_id": section_id})
+                catalog[2][section_id] = self._parse_tags(tags.get("tags", []))
+            self._apply_tag_labels(torrents, data, catalog)
+            return False, torrents
         except ValueError as err:
             self.error_detail = str(err)
             logger.warning(f"{self._name} 搜索失败：{self.error_detail}")
@@ -403,10 +585,15 @@ class PiggoSpider:
         self.error_detail = None
         try:
             if not self._token:
-                raise ValueError(site_rules.PIGGO_TOKEN_REQUIRED)
+                raise ValueError(TOKEN_REQUIRED)
             catalog = await self._async_load_catalog()
             data = await self._async_request("torrents", self._params(keyword, mtype, cat, page, catalog))
-            return False, self._parse_result(data, catalog)
+            torrents = self._parse_result(data, catalog)
+            for section_id in self._tag_sections(data, catalog):
+                tags = await self._async_request("catalog", {"section_id": section_id})
+                catalog[2][section_id] = self._parse_tags(tags.get("tags", []))
+            self._apply_tag_labels(torrents, data, catalog)
+            return False, torrents
         except ValueError as err:
             self.error_detail = str(err)
             logger.warning(f"{self._name} 搜索失败：{self.error_detail}")
@@ -419,4 +606,51 @@ class PiggoSpider:
         :param torrent_id: 正整数站内种子 ID
         :return: 编码的 download-link 请求；ID 或令牌缺失时为空字符串
         """
-        return site_rules.piggo_download_enclosure(self._api_url, torrent_id, self._token, self._use_proxy, ua=self._ua)
+        return download_enclosure(self._api_url, torrent_id, self._token, self._use_proxy, ua=self._ua)
+
+    def test_connection(self) -> tuple[bool, str]:
+        """
+        使用同一实验室认证、流控和响应校验检查账号及下载权限，不访问网页。
+
+        :return: 鉴权和下载权限是否有效，以及可展示的失败原因
+        """
+        if not self._token:
+            return False, TOKEN_REQUIRED
+        try:
+            data = self._request("me", {})
+            user = data.get("user")
+            if not isinstance(user, dict):
+                return False, "猪猪 API 未返回有效用户资料"
+            integer(user.get("id"), minimum=1)
+            if user.get("enabled") is False:
+                return False, "猪猪账号已被禁用"
+            if user.get("download_allowed") is False:
+                return False, "当前猪猪账号没有下载权限"
+            return True, "连接成功"
+        except (ValueError, RateLimitExceededException) as err:
+            return False, str(err)
+
+    @staticmethod
+    def parse_download_response(status_code: Optional[int], payload: object, request_params: dict[str, Any]) -> str:
+        """
+        解释实验室换票响应，不将网页下载主机替换为 API 主机。
+
+        :param status_code: 原始 HTTP 状态，None 表示未取得响应
+        :param payload: 响应 JSON，格式无效时为 None
+        :param request_params: 当前认证配方，仅用 Bearer 从错误文本中移除凭据回显
+        :return: 已校验的完整 HTTP 下载地址
+        :raises ValueError: 连接、公告、鉴权、限流、响应或下载地址无效
+        """
+        if status_code is None:
+            raise ValueError("无法连接猪猪实验室 API")
+        headers = request_params.get("header") or {}
+        token = str(headers.get("Authorization") or "").removeprefix("Bearer ")
+        data = response_data(status_code, payload, token)
+        url = UrlUtils.normalize_http_url(data.get("url"))
+        if url is None or len(url) > 2048:
+            raise ValueError("猪猪 API 未返回有效种子下载地址")
+        parts = urlparse(url)
+        if parts.username is not None or parts.password is not None:
+            raise ValueError("猪猪 API 返回的下载地址含无效认证信息")
+        logger.info("已获取到站点临时下载地址")
+        return url

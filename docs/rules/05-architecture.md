@@ -486,6 +486,14 @@ mentions media, site or torrent:
 | Site | `site.py` owns site-domain exceptions and interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
 | Torrent | `domain/torrent.py` owns magnet-link semantics, site-scoped resource identity and timestamp/signature URL recognition; configured download/file behavior stays in `application/torrent/download.py`, while cache recognition stays in `application/torrent/cache.py` |
 
+专站 API 的认证、信封校验和换票响应解释由 `app/modules/indexer/spider/` 的对应适配器拥有；
+资料解析器可复用同一索引模块内部的协议实现，不把这些细节放回通用 `domain/site.py` 或业务 Chain。
+连通性沿用站点链的域名和协议键值注册，登记到索引适配器的测试通过 `test_site` 分发。
+`parse_torrent_download_response` 通过 `run_module(raise_exception=True)` 保留失败原因，
+预期的 API 拒绝不派生模块系统告警；这两项是宿主内部能力，
+不向插件开放。普通搜索在索引模块申请共享额度，多请求适配器通过
+`manages_request_throttle` 声明自行逐 HTTP 请求申请，搜索 Chain 不识别具体站点名称。
+
 `app/domain` may depend only on schemas and foundation. It must not read global
 settings, access DB/network/filesystem adapters, import Rust, discover services
 or initialize process runtime state.
