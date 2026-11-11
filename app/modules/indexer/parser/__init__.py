@@ -59,6 +59,8 @@ class SiteSchema(Enum):
     Yema = "Yema"
     # HDDolby API 与兼容消息页面。
     HDDolby = "HDDolby"
+    # 高清视界的 REST API。
+    HDArea = "HDArea"
     # 知行站点的页面结构。
     Zhixing = "Zhixing"
     # 极速之星站点的页面结构。

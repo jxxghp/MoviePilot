@@ -4,6 +4,7 @@
 
 import base64
 import json
+import math
 import re
 from typing import Any, Optional
 from urllib.parse import urljoin
@@ -23,6 +24,107 @@ _SPECIAL_SITE_DOMAINS = (
 # 猪猪实验室公开文档指定的独立 API，不使用网页会话接口。
 PIGGO_API_URL = "https://api.piggo.me/v1/api"
 PIGGO_TOKEN_REQUIRED = "请在猪猪网页端「实验室」生成长期存取令牌，并填入站点 API Key 或 Token"
+
+# 高清视界的读取、下载和签到分别需要 read、download 和 user 权限。
+HDAREA_KEY_REQUIRED = "请在高清视界「控制面板 → 安全设定」获取 API Key，并填入站点 API Key"
+
+
+def hdarea_response_data(status_code: int, payload: object, apikey: str = "") -> dict[str, Any]:
+    """
+    校验高清视界 API 信封，HTTP、success 和业务码必须同时成功。
+
+    :param status_code: 原始 HTTP 状态码
+    :param payload: 已解码的 JSON；非 JSON 响应可以传入 None
+    :param apikey: 本次密钥，仅用于移除错误消息中可能的凭据回显
+    :return: 成功响应中的 data 对象
+    :raises ValueError: 鉴权、权限、限流、业务失败或信封结构无效
+    """
+    envelope = payload if isinstance(payload, dict) else {}
+    data = envelope.get("data")
+    message = str(envelope.get("message") or "").strip()
+    code = str(envelope.get("code"))
+    if status_code == 401 or code == "401":
+        message = "HDArea API Key 已过期或无效"
+    elif status_code == 403 or code == "403":
+        message = f"HDArea API Key 权限不足或 IP 不在白名单{f'：{message}' if message else ''}"
+    elif status_code == 429 or code == "429":
+        message = f"HDArea 站点限流：{message or 'HTTP 429，请稍后重试'}"
+    elif status_code != 200:
+        message = f"HDArea API 请求失败，HTTP {status_code}{f'：{message}' if message else ''}"
+    elif envelope.get("success") is not True or code != "0":
+        message = f"HDArea API 请求失败：{message or '响应结构或业务状态无效'}"
+    elif isinstance(data, dict):
+        return data
+    else:
+        message = "HDArea API 响应缺少有效 data"
+    if apikey:
+        message = message.replace(apikey, "[已隐藏]")
+    raise ValueError(" ".join(message.split())[:300])
+
+
+def hdarea_integer(value: object, minimum: int = 0) -> int:
+    """
+    校验高清视界的整数 ID、计数和字节字段，拒绝布尔值与浮点截断。
+
+    :param value: JSON 整数或十进制整数字符串
+    :param minimum: 允许的最小值，种子和用户 ID 使用 1
+    :return: 已校验的整数
+    :raises ValueError: 格式或范围无效；错误不回显账户字段
+    """
+    if isinstance(value, bool) or not isinstance(value, (str, int)) or not re.fullmatch(r"0|[1-9][0-9]*", str(value)):
+        raise ValueError("HDArea API 整数字段无效")
+    number = int(value)
+    if number < minimum:
+        raise ValueError("HDArea API 整数字段无效")
+    return number
+
+
+def hdarea_number(value: object) -> float:
+    """
+    校验分享率、魔力和促销倍率，不接受负数或非有限值。
+
+    :param value: JSON 数值或数值字符串
+    :return: 有限的非负数值
+    :raises ValueError: 类型或范围无效；错误不回显原值
+    """
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        raise ValueError("HDArea API 数值字段无效")
+    try:
+        number = float(value)
+    except (ValueError, OverflowError) as err:
+        raise ValueError("HDArea API 数值字段无效") from err
+    if not math.isfinite(number) or number < 0:
+        raise ValueError("HDArea API 数值字段无效")
+    return number
+
+
+def hdarea_download_enclosure(api_url: str, site_url: str, torrent_id: object, apikey: str,
+                              proxy: bool = False, ua: Optional[str] = None) -> str:
+    """
+    构造高清视界下载时才签发短效 URL 的配方，不复用搜索时的过期票据。
+
+    :param api_url: REST API 基础地址
+    :param site_url: 网页来源，用于校验下载地址或拼接 dl_token
+    :param torrent_id: 正整数站内种子 ID
+    :param apikey: 具备 download 权限的 API Key
+    :param proxy: 换票是否使用站点代理
+    :param ua: 换票请求的 User-Agent
+    :return: Base64 请求配置与 genDlToken 地址；缺少密钥时为空字符串
+    :raises ValueError: 种子 ID 无效
+    """
+    if not apikey:
+        return ""
+    headers = {"X-API-Key": apikey, "Accept": "application/json", "Content-Type": "application/json"}
+    if ua:
+        headers["User-Agent"] = ua
+    config = {
+        "method": "post", "cookie": False, "header": headers,
+        "json": {"id": hdarea_integer(torrent_id, minimum=1)},
+        "allow_redirects": False, "proxy": proxy, "protocol": "HDArea",
+        "result": "data.download_url", "result_base_url": site_url,
+    }
+    encoded = base64.b64encode(json.dumps(config).encode("utf-8")).decode("ascii")
+    return f"[{encoded}]{api_url.rstrip('/')}/torrents/genDlToken"
 
 
 def piggo_access_token(apikey: Optional[str], token: Optional[str]) -> str:

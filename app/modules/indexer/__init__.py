@@ -24,6 +24,7 @@ from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.spider import JsonList, SiteSpider
 from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
+from app.modules.indexer.spider.hdarea import HDAreaSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
 from app.modules.indexer.spider.hdwing import HDWingPromotionMixin
 from app.modules.indexer.spider.milkie import MilkieSpider
@@ -194,6 +195,7 @@ SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
     "Yema": YemaSpider,
     "Haidan": HaiDanSpider,
     "HDDolby": HddolbySpider,
+    "HDArea": HDAreaSpider,
     "HDWing": HDWingSpider,
     "RousiPro": RousiSpider,
     "SunnyPT": SunnyPTSpider,
@@ -212,6 +214,7 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "Yema": ("keyword", "mtype", "cat", "page"),
     "Haidan": ("keyword", "mtype"),
     "HDDolby": ("keyword", "mtype", "cat", "page"),
+    "HDArea": ("keyword", "mtype", "cat", "page"),
     "HDWing": ("keyword", "mtype", "cat", "page"),
     "RousiPro": ("keyword", "mtype", "cat", "page"),
     "Milkie": ("keyword", "mtype", "page"),
@@ -536,7 +539,7 @@ class IndexerModule(_ModuleBase):
         """
         用当前站点凭据恢复候选下载信息。
 
-        M-Team 和猪猪可从详情页中的站内 ID 重建下载配方；其他临时票据需重新查询。
+        M-Team、猪猪和高清视界可从详情页中的站内 ID 重建下载配方；其他临时票据需重新查询。
 
         :param site: 当前站点配置及有效凭据
         :param record: 检查点保存的种子记录
@@ -551,6 +554,8 @@ class IndexerModule(_ModuleBase):
             torrent.enclosure = MTorrentSpider(site).get_download_url(identity[1][3:])
         elif site.get("parser") == "Piggo" and identity and identity[1].startswith("id="):
             torrent.enclosure = PiggoSpider(site).get_download_url(identity[1][3:])
+        elif site.get("parser") == "HDArea" and identity and identity[1].startswith("id="):
+            torrent.enclosure = HDAreaSpider(site).get_download_url(identity[1][3:])
         if not torrent.enclosure and not allow_missing:
             return None
         torrent.site_cookie = site.get("cookie") or ""

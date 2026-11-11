@@ -548,6 +548,18 @@ def test_site_application_owners_use_single_word_module_names() -> None:
     assert not (APP_ROOT / "application" / "site_throttle.py").exists()
 
 
+def test_hdarea_protocol_adapters_stay_in_indexer_packages() -> None:
+    """
+    高清视界协议在索引器的搜索和资料包内使用单词文件名，不创建新的顶层能力或平级复合文件。
+    """
+    indexer = APP_ROOT / "modules" / "indexer"
+    assert (indexer / "spider" / "hdarea.py").is_file()
+    assert (indexer / "parser" / "hdarea.py").is_file()
+    assert not (APP_ROOT / "modules" / "hdarea.py").exists()
+    assert not (indexer / "hdarea_spider.py").exists()
+    assert not (indexer / "hdarea_parser.py").exists()
+
+
 def test_application_torrent_uses_same_named_single_word_package() -> None:
     """
     种子应用能力必须归入同名包，包根不得重复导出内部实现。
