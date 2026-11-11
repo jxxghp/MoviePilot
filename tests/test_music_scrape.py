@@ -2,8 +2,11 @@
 验证音乐批量刮削的曲目字段、专辑信息及封面复用。
 """
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+import pytest
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.chain.scraping import ScrapingChain, ScrapingConfig, _MusicScrapeFileResult
@@ -206,7 +209,7 @@ def test_music_cover_download_uses_bounded_external_response_cache() -> None:
     )
     request = Mock()
     request.get_res.return_value = response
-    ScrapingChain._request_music_cover.cache_clear()
+    _clear_music_cover_cache()
 
     with patch("app.chain.scraping._scraping_http_snapshot") as snapshot:
         snapshot.return_value.get.return_value = response
@@ -221,7 +224,153 @@ def test_music_cover_download_uses_bounded_external_response_cache() -> None:
         timeout=20,
     )
     response.close.assert_called_once()
-    ScrapingChain._request_music_cover.cache_clear()
+    _clear_music_cover_cache()
+
+
+def _clear_music_cover_cache() -> None:
+    """
+    清空音乐封面有界缓存，保证各用例相互隔离。
+
+    缓存装饰器经 staticmethod 包装后 mypy 无法识别 cache_clear，
+    集中在此处忽略一次，避免每个用例重复出现同类诊断。
+    """
+    ScrapingChain._request_music_cover.cache_clear()  # type: ignore[attr-defined]
+
+
+def _music_cover_response(status_code: int, content: bytes = b"", content_type: str = "image/jpeg") -> SimpleNamespace:
+    """
+    构造音乐封面下载的模拟 HTTP 响应。
+    """
+    return SimpleNamespace(
+        status_code=status_code,
+        headers={"Content-Type": content_type},
+        content=content,
+        close=Mock(),
+    )
+
+
+def test_music_cover_front500_404_falls_back_to_front() -> None:
+    """
+    front-500 缩略图 404 时应回退请求 /front 原图，且重刮应命中已回退的缓存。
+    """
+    release_group_id = "ac2b0f62-9139-351c-8639-c5bac2a31a30"
+    front500_url = f"https://coverartarchive.org/release-group/{release_group_id}/front-500"
+    front_url = f"https://coverartarchive.org/release-group/{release_group_id}/front"
+    not_found = _music_cover_response(404)
+    original = _music_cover_response(200, b"front-cover")
+    _clear_music_cover_cache()
+
+    with patch("app.chain.scraping._scraping_http_snapshot") as snapshot:
+        snapshot.return_value.get.side_effect = lambda url, **kwargs: not_found if url == front500_url else original
+        first = ScrapingChain._download_music_cover(front500_url)
+        second = ScrapingChain._download_music_cover(front500_url)
+
+    assert first == second == (b"front-cover", "image/jpeg")
+    assert [call.args[0] for call in snapshot.return_value.get.call_args_list] == [
+        front500_url,
+        front_url,
+    ]
+    not_found.close.assert_called_once()
+    original.close.assert_called_once()
+    _clear_music_cover_cache()
+
+
+def test_music_cover_front500_200_does_not_request_front() -> None:
+    """
+    front-500 正常返回时不应多请求 /front 原图。
+    """
+    release_group_id = "ac2b0f62-9139-351c-8639-c5bac2a31a30"
+    front500_url = f"https://coverartarchive.org/release-group/{release_group_id}/front-500"
+    thumbnail = _music_cover_response(200, b"thumb500")
+    _clear_music_cover_cache()
+
+    with patch("app.chain.scraping._scraping_http_snapshot") as snapshot:
+        snapshot.return_value.get.return_value = thumbnail
+        result = ScrapingChain._download_music_cover(front500_url)
+
+    assert result == (b"thumb500", "image/jpeg")
+    snapshot.return_value.get.assert_called_once()
+    assert snapshot.return_value.get.call_args.args[0] == front500_url
+    thumbnail.close.assert_called_once()
+    _clear_music_cover_cache()
+
+
+def test_music_cover_front500_and_front_both_404_returns_none_and_logs(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    front-500 与 /front 均 404 时应返回空封面，且 404 分支应写日志便于定位。
+
+    模块日志器是 propagate=False 的 LoggerManager，caplog 无法直接捕获，
+    因此测试内替换为标准日志器断言日志内容；真实日志器实际输出已在
+    本地运行中通过 stderr 核对（两条 404 info 均出现）。
+    """
+    release_group_id = "ac2b0f62-9139-351c-8639-c5bac2a31a30"
+    front500_url = f"https://coverartarchive.org/release-group/{release_group_id}/front-500"
+    not_found = _music_cover_response(404)
+    _clear_music_cover_cache()
+    monkeypatch.setattr("app.chain.scraping.logger", logging.getLogger("test.music.cover.404"))
+
+    with (
+        caplog.at_level(logging.INFO, logger="test.music.cover.404"),
+        patch("app.chain.scraping._scraping_http_snapshot") as snapshot,
+    ):
+        snapshot.return_value.get.return_value = not_found
+        result = ScrapingChain._download_music_cover(front500_url)
+
+    assert result == (None, "image/jpeg")
+    assert snapshot.return_value.get.call_count == 2
+    assert "404" in caplog.text
+    assert front500_url in caplog.text
+    _clear_music_cover_cache()
+
+
+def test_music_cover_front500_404_then_front_500_returns_none_and_warns(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    front-500 404 回退到 /front 后 /front 500 时应返回空封面并写 warning。
+
+    与主链路行为一致：非 404 的失败不进入缓存，直接返回 None。
+    """
+    release_group_id = "ac2b0f62-9139-351c-8639-c5bac2a31a30"
+    front500_url = f"https://coverartarchive.org/release-group/{release_group_id}/front-500"
+    front_url = f"https://coverartarchive.org/release-group/{release_group_id}/front"
+    not_found = _music_cover_response(404)
+    server_error = _music_cover_response(500)
+    _clear_music_cover_cache()
+    monkeypatch.setattr("app.chain.scraping.logger", logging.getLogger("test.music.cover.500"))
+
+    with (
+        caplog.at_level(logging.WARNING, logger="test.music.cover.500"),
+        patch("app.chain.scraping._scraping_http_snapshot") as snapshot,
+    ):
+        snapshot.return_value.get.side_effect = lambda url, **kwargs: not_found if url == front500_url else server_error
+        result = ScrapingChain._download_music_cover(front500_url)
+
+    assert result == (None, "image/jpeg")
+    assert snapshot.return_value.get.call_count == 2
+    assert "500" in caplog.text
+    assert front_url in caplog.text
+    _clear_music_cover_cache()
+
+
+def test_music_cover_non_front500_404_does_not_fallback() -> None:
+    """
+    非 front-500 封面地址 404 时不应猜测回退地址，只返回空封面。
+    """
+    cover_url = "https://example.com/album.webp"
+    not_found = _music_cover_response(404)
+    _clear_music_cover_cache()
+
+    with patch("app.chain.scraping._scraping_http_snapshot") as snapshot:
+        snapshot.return_value.get.return_value = not_found
+        result = ScrapingChain._download_music_cover(cover_url)
+
+    assert result == (None, "image/jpeg")
+    snapshot.return_value.get.assert_called_once()
+    assert snapshot.return_value.get.call_args.args[0] == cover_url
+    _clear_music_cover_cache()
 
 
 def test_recording_identity_rejects_multi_track_directory_scrape() -> None:
