@@ -25,6 +25,7 @@ from app.modules.musicbrainz import MusicBrainzModule
 from app.schemas.music import MusicInfo as MusicInfoSchema
 from app.schemas.music import MusicMeta as MusicMetaSchema
 from tests.test_audio_containers import _write_dsf, _write_wave
+from tests.test_music_album_match import _release_detail
 from tests.test_transfer_sync_extra_files import make_fileitem
 
 RECORDING = "11111111-1111-4111-8111-111111111111"
@@ -301,6 +302,110 @@ def test_new_identity_fields_preserve_legacy_positional_constructors():
     assert (track.title, track.album_type, track.year) == ("Song", "Album", 2003)
     assert album.title == "Record"
     assert album.artists == ["Artist"]
+
+
+def test_selected_release_overwrites_dirty_disc_structure(tmp_path):
+    """
+    手选发行版时线上碟数与曲序覆盖本地错标，单碟专辑不再多出 Disc 层。
+    """
+    path = tmp_path / "01.flac"
+    item = make_fileitem(str(path))
+    local = MetaMusic(title="Song", artists=["Artist"], album="Record",
+                      disc_number=2, track_number=5, total_tracks=9, total_discs=2)
+    selected = MusicInfo(media_source="musicbrainz", media_id=RECORDING, title="Song",
+                         artists=["Artist"], album="Record",
+                         disc_number=1, track_number=1, total_tracks=10, total_discs=1,
+                         **IDENTITIES)
+
+    meta, info = TransferChain()._selected_music_task_context(
+        item, path, local, {str(path.resolve()): selected}, None,
+    )
+
+    assert (meta.disc_number, meta.track_number, meta.total_tracks, meta.total_discs) == (1, 1, 10, 1)
+    assert (info.disc_number, info.track_number, info.total_tracks, info.total_discs) == (1, 1, 10, 1)
+    for key in ("disc_number", "track_number", "total_tracks", "total_discs"):
+        assert meta.field_sources[key] == "manual"
+
+
+def test_auto_match_keeps_local_disc_structure():
+    """
+    自动识别仍只在本地缺失时补位碟数与曲序，录音可能属于多个发行版。
+    """
+    local = MetaMusic(title="Song", artists=["Artist"], album="Record",
+                      disc_number=2, track_number=5, total_tracks=9, total_discs=2)
+    recognized = MusicInfo(media_source="musicbrainz", media_id=RECORDING, title="Song",
+                           artists=["Artist"], album="Record",
+                           disc_number=1, track_number=1, total_tracks=10, total_discs=1,
+                           **IDENTITIES)
+
+    meta, info = TransferChain()._merge_music_track_context(local, recognized)
+
+    assert (meta.disc_number, meta.track_number, meta.total_tracks, meta.total_discs) == (2, 5, 9, 2)
+    assert (info.disc_number, info.track_number, info.total_tracks, info.total_discs) == (2, 5, 9, 2)
+
+
+def test_selected_release_keeps_local_when_online_disc_fields_missing(tmp_path):
+    """
+    手选发行线上缺失碟数字段时只回填已有的曲序，本地值继续保留，不静默清零。
+    """
+    path = tmp_path / "01.flac"
+    item = make_fileitem(str(path))
+    local = MetaMusic(title="Song", artists=["Artist"], album="Record",
+                      disc_number=2, track_number=5, total_tracks=9, total_discs=2)
+    selected = MusicInfo(media_source="musicbrainz", media_id=RECORDING, title="Song",
+                         artists=["Artist"], album="Record",
+                         track_number=1, total_tracks=10,
+                         **IDENTITIES)
+
+    meta, info = TransferChain()._selected_music_task_context(
+        item, path, local, {str(path.resolve()): selected}, None,
+    )
+
+    assert (meta.disc_number, meta.track_number, meta.total_tracks, meta.total_discs) == (2, 1, 10, 2)
+    assert (info.disc_number, info.track_number, info.total_tracks, info.total_discs) == (2, 1, 10, 2)
+    assert meta.field_sources["track_number"] == "manual"
+    assert meta.field_sources.get("disc_number") != "manual"
+
+
+def test_selected_release_uses_per_medium_track_count(tmp_path):
+    """
+    多碟专辑的手选曲目曲数按所在碟计，本地按整专合计的曲数应被线上单碟曲数覆盖。
+    """
+    path = tmp_path / "01.flac"
+    item = make_fileitem(str(path))
+    local = MetaMusic(title="Song", artists=["Artist"], album="Record",
+                      disc_number=2, track_number=5, total_tracks=18, total_discs=2)
+    selected = MusicInfo(media_source="musicbrainz", media_id=RECORDING, title="Song",
+                         artists=["Artist"], album="Record",
+                         disc_number=2, track_number=1, total_tracks=8, total_discs=2,
+                         **IDENTITIES)
+
+    meta, info = TransferChain()._selected_music_task_context(
+        item, path, local, {str(path.resolve()): selected}, None,
+    )
+
+    assert (meta.disc_number, meta.track_number, meta.total_tracks, meta.total_discs) == (2, 1, 8, 2)
+    assert (info.disc_number, info.track_number, info.total_tracks, info.total_discs) == (2, 1, 8, 2)
+
+
+def test_selected_track_map_weak_title_dirty_position_misaligns(tmp_path, monkeypatch):
+    """
+    已知局限：弱曲名 + 无时长 + 错标曲序时，手选对位可能按位置误配另一曲。
+    该失败模式在 title/artists/album 覆盖上早已存在，本用例只锁定当前行为。
+    """
+    path = tmp_path / "01.flac"
+    item = make_fileitem(str(path))
+    local = MetaMusic(title="Track 1", track_number=2)
+    album = MusicBrainzModule._release_to_album(
+        _release_detail("release-weak", "Weak Album", "Artist", [("Alpha", 200), ("Beta", 200)])
+    )
+    monkeypatch.setattr(AudioMetadataHelper, "read_many", Mock(return_value=[local]))
+
+    selected, error = TransferChain()._selected_music_track_map([(item, True)], album)
+
+    assert error is None
+    assert list(selected) == [str(path.resolve())]
+    assert selected[str(path.resolve())].title == "Beta"
 
 
 def test_explicit_release_selection_replaces_stale_local_ids(tmp_path):

@@ -408,18 +408,18 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         # Recording 可能同时属于多个发行版，候选 release 的曲序并不一定对应
         # 用户手里的这一版；只有本地没有这些字段时才用远端值补齐，避免同一
         # 专辑的多首歌被错误写到相同目标文件名并相互覆盖。
-        if not merged_meta.disc_number and info.disc_number:
-            merged_meta.disc_number = info.disc_number
-            merged_meta.field_sources["disc_number"] = info.field_sources.get("disc_number", "remote")
-        if not merged_meta.track_number and info.track_number:
-            merged_meta.track_number = info.track_number
-            merged_meta.field_sources["track_number"] = info.field_sources.get("track_number", "remote")
-        if not merged_meta.total_tracks and info.total_tracks:
-            merged_meta.total_tracks = info.total_tracks
-            merged_meta.field_sources["total_tracks"] = info.field_sources.get("total_tracks", "remote")
-        if not merged_meta.total_discs and info.total_discs:
-            merged_meta.total_discs = info.total_discs
-            merged_meta.field_sources["total_discs"] = info.field_sources.get("total_discs", "remote")
+        # 用户显式选定发行版时除外：曲目已逐一对齐到该发行版，线上碟数与曲序
+        # 就是该发行版的结构，本地错标（如单碟专辑 total_discs=2）不能再盖过
+        # 线上值，否则会多出 Disc 层或写错曲序。
+        for key in ("disc_number", "track_number", "total_tracks", "total_discs"):
+            value = getattr(info, key)
+            if not value:
+                continue
+            if selected_release or not getattr(merged_meta, key):
+                setattr(merged_meta, key, value)
+                merged_meta.field_sources[key] = (
+                    "manual" if selected_release else info.field_sources.get(key, "remote")
+                )
         merged_meta.media_source = info.media_source
         merged_meta.media_id = info.media_id
         merged_meta.music_type = info.music_type

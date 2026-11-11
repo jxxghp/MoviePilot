@@ -1883,6 +1883,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     def _merge_music_album_metadata(local_meta: MetaMusic, album: MusicInfo) -> MetaMusic:
         """
         把专辑级字段合并到单个音轨标签，同时保留该文件自己的标题、艺术家和曲序。
+        单碟专辑除外：线上碟数已确认为 1 时碟号必为 1，本地错标的碟号不能
+        再与 total_discs=1 配成 "2/1" 写进标签。
         """
         merged = deepcopy(local_meta)
         merged.artists = list(local_meta.artists or album.artists)
@@ -1890,6 +1892,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         merged.album_artist = album.album_artist or album.artist or local_meta.album_artist
         merged.year = album.year or local_meta.year
         merged.total_tracks = album.total_tracks or local_meta.total_tracks
+        merged.total_discs = album.total_discs or local_meta.total_discs
+        if album.total_discs == 1:
+            merged.disc_number = 1
         # MetaMusic 的身份代表音轨；保留已有单曲 ID，不能用专辑 ID 补位，
         # 否则会误写 musicbrainz_trackid，使下次拿 release-group 查询 recording。
         return merged
