@@ -66,6 +66,77 @@ def test_album_scrape_merge_preserves_track_fields_and_applies_album_metadata() 
     assert merged.media_id is None
 
 
+def test_album_scrape_merge_prefers_online_total_discs() -> None:
+    """
+    专辑级合并应以线上碟数为准，线上缺失时才保留本地值。
+    """
+    album = MusicInfo(
+        media_source="musicbrainz",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        artists=["周杰伦"],
+        album="叶惠美",
+        album_artist="周杰伦",
+        year=2003,
+        total_tracks=11,
+        total_discs=1,
+    )
+    local = MetaMusic(title="晴天", artists=["周杰伦"], album="错误专辑", total_discs=2)
+
+    merged = ScrapingChain._merge_music_album_metadata(local, album)
+
+    assert merged.total_discs == 1
+    assert merged.album == "叶惠美"
+    assert merged.title == "晴天"
+
+    album_without_discs = MusicInfo(
+        media_source="musicbrainz",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        album="叶惠美",
+        year=2003,
+    )
+    fallback = ScrapingChain._merge_music_album_metadata(local, album_without_discs)
+    assert fallback.total_discs == 2
+
+
+def test_album_scrape_merge_single_disc_forces_disc_number_one() -> None:
+    """
+    线上确认为单碟专辑时，本地错标的碟号不能与 total_discs=1 配成 "2/1"。
+    """
+    album = MusicInfo(
+        media_source="musicbrainz",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        album="叶惠美",
+        year=2003,
+        total_tracks=11,
+        total_discs=1,
+    )
+    local = MetaMusic(title="晴天", artists=["周杰伦"], disc_number=2, total_discs=2)
+
+    merged = ScrapingChain._merge_music_album_metadata(local, album)
+
+    assert (merged.disc_number, merged.total_discs) == (1, 1)
+
+    multi_disc = MusicInfo(
+        media_source="musicbrainz",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        album="叶惠美",
+        year=2003,
+        total_tracks=22,
+        total_discs=2,
+    )
+    kept = ScrapingChain._merge_music_album_metadata(local, multi_disc)
+
+    assert (kept.disc_number, kept.total_discs) == (2, 2)
+
+
 def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
     """
     显式选择专辑刮削目录时应逐曲写标签，并让整批文件共用一次封面下载。
