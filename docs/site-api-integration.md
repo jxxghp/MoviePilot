@@ -436,7 +436,7 @@ MP 已有 API Key 搜索及临时下载地址的实现案例，但不会自动�
 ### 高清视界 REST API 适配
 
 高清视界使用[官方 API 文档](https://hdarea.club/api_docs.php)中的 `https://hdarea.club/api/v1`。
-需同时更新包含 `HDArea` 适配器的后端及 `3.0.31` 或更高的站点索引资源。
+需同时更新包含 `HDArea` 适配器的后端及 `3.0.32` 或更高的站点索引资源。
 在网页「控制面板 → 安全设定 → API Key 存取令牌管理」获取 API Key，填入 MoviePilot 站点 **API Key**。
 读取和搜索需 `read` 权限，下载需 `download` 权限，自动签到需额外的 `user` 权限；有 IP 白名单时须允许实例出口 IP。
 
