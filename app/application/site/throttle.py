@@ -59,9 +59,6 @@ def _request_delay(site: Mapping[str, object]) -> float:
     原子申请一次站点请求，远端冷却期间直接返回原始原因。
     """
     interval = _positive_number(site.get("limit_seconds"))
-    # 猪猪实验室最严格的换票接口每分钟 20 次，所有用途共用至少三秒间隔。
-    if site_rules.extract_domain(str(site.get("domain") or site.get("url") or "")) == "piggo.me":
-        interval = max(interval, 3.0)
     delay, reason = _site_requests.acquire(
         _site_key(site), interval=interval,
         window=_positive_number(site.get("limit_interval")), count=int(_positive_number(site.get("limit_count"))),

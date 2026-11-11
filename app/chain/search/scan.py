@@ -34,7 +34,6 @@ from app.chain.search.provider import (
     _site_keyword,
     _site_rate_limit_backoff,
     _site_request_interval,
-    _wait_for_site_request,
     log_site_skipped,
 )
 from app.chain.search.result import DisambiguationCache, SearchResultOwner, _resource_targets, stored_meta
@@ -193,9 +192,8 @@ class SearchSources:
         with capture_site_search_observation() as observation:
             deferral_seconds = 0.0
             try:
-                items = ([] if _wait_for_site_request(site) else
-                         self.owner.search_site_torrents(site=site, keyword=query["keyword"],
-                                                         mtype=media_type, page=page) or [])
+                items = self.owner.search_site_torrents(site=site, keyword=query["keyword"],
+                                                       mtype=media_type, page=page) or []
                 if self.activity:
                     self.activity.site(int(query["site"]), name=str(site.get("name") or ""), candidates=len(items), status=observation.outcome, attempted=observation.attempted)
                 if observation.outcome == "deferred":

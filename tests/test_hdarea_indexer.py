@@ -6,7 +6,7 @@ import base64
 import json
 from copy import deepcopy
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from requests import Response
@@ -18,7 +18,6 @@ from app.application.search.session import torrent_snapshot
 from app.application.site.contract import SiteSnapshot
 from app.application.site.observation import capture_site_search_observation
 from app.chain.site import SiteChain
-from app.domain import site as site_rules
 from app.domain.context import TorrentInfo
 from app.modules.indexer import _SPECIALIZED_SEARCH_ARGUMENTS, SPIDER_PARSER_CLASSES, IndexerModule
 from app.modules.indexer.parser import SiteSchema
@@ -66,6 +65,24 @@ def _list(items=None, page=0, has_more=False):
 def _recipe(enclosure):
     encoded, url = enclosure[1:].split("]", 1)
     return json.loads(base64.b64decode(encoded)), url
+
+
+def _connectivity_adapter(monkeypatch, chain, response=None):
+    """
+    保留注册表和真实索引分发，仅替换适配器 HTTP、等待与代理配置边界。
+    """
+    module = object.__new__(IndexerModule)
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
+    monkeypatch.setattr(hdarea, "get_runtime_setting", lambda key: {
+        "PROXY": chain.runtime_config.proxy or {}, "USER_AGENT": chain.runtime_config.user_agent,
+    }[key])
+    wait, defer = Mock(), Mock()
+    monkeypatch.setattr(hdarea, "wait_for_site_request", wait)
+    monkeypatch.setattr(hdarea, "defer_site_request", defer)
+    request = Mock(get_res=Mock(return_value=response))
+    constructor = Mock(return_value=request)
+    monkeypatch.setattr(hdarea, "RequestUtils", constructor)
+    return wait, defer, request, constructor
 
 
 @pytest.fixture
@@ -288,7 +305,7 @@ async def test_missing_key_never_uses_cookie(boundary, asynchronous):
     """
     spider = hdarea.HDAreaSpider(dict(INDEXER, apikey=" ", token="unused-token"))
     result = await spider.async_search(None) if asynchronous else spider.search(None)
-    assert result == (True, []) and spider.error_detail == site_rules.HDAREA_KEY_REQUIRED
+    assert result == (True, []) and spider.error_detail == hdarea.KEY_REQUIRED
     assert spider.get_download_url(42) == ""
     boundary.factory.assert_not_called()
     boundary.async_factory.assert_not_called()
@@ -344,23 +361,19 @@ def test_connectivity_uses_profile_by_domain_or_protocol(monkeypatch, domain, re
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={
         resource_key: "HDArea", "api_url": "https://api.custom.test/v1/",
     }))))
-    monkeypatch.setattr(site_chain, "site_request_config", lambda _url, _id: {"id": 7370})
-    wait = Mock()
-    monkeypatch.setattr(site_chain, "wait_for_site_request", wait)
-    context = MagicMock()
-    context.__enter__.return_value = _response({"id": 42, "enabled": True})
-    opener = Mock(return_value=context)
-    monkeypatch.setattr(site_chain, "_open_site_response", opener)
+    response = _response({"id": 42, "enabled": True})
+    wait, _defer, request, constructor = _connectivity_adapter(monkeypatch, chain, response)
     generic = Mock(side_effect=AssertionError("不能访问 Cookie 页面"))
     monkeypatch.setattr(SiteChain, "_SiteChain__test", generic)
     assert chain.test(site.url) == (True, "连接成功")
-    request = opener.call_args.kwargs
-    assert request["url"] == "https://api.custom.test/v1/user/profile" and request["method"] == "GET"
-    assert request["headers"]["X-API-Key"] == "synthetic-key" and "cookie" not in request
-    assert request["timeout"] == 25 and request["proxies"] == (chain.runtime_config.proxy or {})
+    request.get_res.assert_called_once_with(url="https://api.custom.test/v1/user/profile", allow_redirects=False)
+    options = constructor.call_args.kwargs
+    assert options["headers"]["X-API-Key"] == "synthetic-key" and "cookies" not in options
+    assert options["headers"]["User-Agent"] == "HDArea-Test"
+    assert options["timeout"] == 25 and options["proxies"] == (chain.runtime_config.proxy or {})
     wait.assert_called_once()
     generic.assert_not_called()
-    context.__exit__.assert_called_once_with(None, None, None)
+    response.close.assert_called_once()
 
 
 @pytest.mark.parametrize("status,data,code,expected", [(401, {}, 401, "API Key"), (403, {}, 403, "白名单"),
@@ -373,13 +386,7 @@ def test_connectivity_rejects_api_errors_and_invalid_identity(monkeypatch, statu
     """
     chain = SiteChain()
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
-    monkeypatch.setattr(site_chain, "site_request_config", lambda _url, _id: {"id": 7370})
-    monkeypatch.setattr(site_chain, "wait_for_site_request", Mock())
-    defer = Mock()
-    monkeypatch.setattr(site_chain, "defer_site_request", defer)
-    context = MagicMock()
-    context.__enter__.return_value = _response(data, status, code)
-    monkeypatch.setattr(site_chain, "_open_site_response", Mock(return_value=context))
+    _wait, defer, _request, _constructor = _connectivity_adapter(monkeypatch, chain, _response(data, status, code))
     state, message = chain.special_site_test["hdarea.club"](SiteSnapshot(
         id=7370, name="高清视界", url="https://hdarea.club/", apikey="synthetic-key",
     ))
@@ -392,19 +399,14 @@ def test_connectivity_without_key_or_response_has_clear_failure(monkeypatch):
     缺少配置与网络无响应保留不同提示，缺少密钥时不调用网络端口。
     """
     chain = SiteChain()
-    opener = Mock()
-    monkeypatch.setattr(site_chain, "_open_site_response", opener)
-    site = SiteSnapshot(id=7370, name="高清视界", url="https://hdarea.club/", cookie="unused-cookie")
-    assert chain.special_site_test["hdarea.club"](site) == (False, site_rules.HDAREA_KEY_REQUIRED)
-    opener.assert_not_called()
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
-    monkeypatch.setattr(site_chain, "site_request_config", lambda _url, _id: {"id": 7370})
-    monkeypatch.setattr(site_chain, "wait_for_site_request", Mock())
-    context = MagicMock()
-    context.__enter__.return_value = None
-    opener.return_value = context
+    _wait, _defer, request, constructor = _connectivity_adapter(monkeypatch, chain)
+    site = SiteSnapshot(id=7370, name="高清视界", url="https://hdarea.club/", cookie="unused-cookie")
+    assert chain.special_site_test["hdarea.club"](site) == (False, hdarea.KEY_REQUIRED)
+    constructor.assert_not_called()
     site = SiteSnapshot(id=7370, name="高清视界", url="https://hdarea.club/", apikey="synthetic-key")
     assert chain.special_site_test["hdarea.club"](site) == (False, "无法连接 HDArea API")
+    request.get_res.assert_called_once()
 
 
 def test_connectivity_rejects_non_json_profile(monkeypatch):
@@ -413,13 +415,9 @@ def test_connectivity_rejects_non_json_profile(monkeypatch):
     """
     chain = SiteChain()
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
-    monkeypatch.setattr(site_chain, "site_request_config", lambda _url, _id: {"id": 7370})
-    monkeypatch.setattr(site_chain, "wait_for_site_request", Mock())
     response = _response({})
     response._content = b"<html>private-body</html>"
-    context = MagicMock()
-    context.__enter__.return_value = response
-    monkeypatch.setattr(site_chain, "_open_site_response", Mock(return_value=context))
+    _connectivity_adapter(monkeypatch, chain, response)
     state, message = chain.special_site_test["hdarea.club"](SiteSnapshot(
         id=7370, name="高清视界", url="https://hdarea.club/", apikey="synthetic-key",
     ))
@@ -432,4 +430,4 @@ def test_invalid_api_number_does_not_echo_input(value):
     非数值、负数、布尔值和溢出均转换为固定错误，不回显私人统计字段。
     """
     with pytest.raises(ValueError, match="HDArea API 数值字段无效"):
-        site_rules.hdarea_number(value)
+        hdarea.number(value)

@@ -14,6 +14,7 @@ from app.application.site.query import get_configured_site_query_service
 
 # 站点目录由外部资源在运行时提供，静态检查环境不包含其实体模块。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.site.throttle import async_wait_for_site_request, wait_for_site_request
 from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.domain.context import Context, SubtitleInfo, TorrentInfo
@@ -539,7 +540,7 @@ class IndexerModule(_ModuleBase):
         """
         用当前站点凭据恢复候选下载信息。
 
-        M-Team、猪猪和高清视界可从详情页中的站内 ID 重建下载配方；其他临时票据需重新查询。
+        声明下载配方能力的适配器可按稳定种子 ID 重建地址；其他临时票据需重新查询。
 
         :param site: 当前站点配置及有效凭据
         :param record: 检查点保存的种子记录
@@ -548,14 +549,12 @@ class IndexerModule(_ModuleBase):
         """
         torrent = TorrentInfo()
         torrent.from_dict(record)
-        # M-Team 下载链接含 API Key 不入检查点，按详情页链接中的站内 ID 用当前凭据重建。
         identity = torrent_rules.resource_identity(torrent)
-        if site.get("parser") == "mTorrent" and identity and identity[1].startswith("id="):
-            torrent.enclosure = MTorrentSpider(site).get_download_url(identity[1][3:])
-        elif site.get("parser") == "Piggo" and identity and identity[1].startswith("id="):
-            torrent.enclosure = PiggoSpider(site).get_download_url(identity[1][3:])
-        elif site.get("parser") == "HDArea" and identity and identity[1].startswith("id="):
-            torrent.enclosure = HDAreaSpider(site).get_download_url(identity[1][3:])
+        parser_class = SPIDER_PARSER_CLASSES.get(str(site.get("parser") or ""))
+        if parser_class is not None and identity and identity[1].startswith("id=") \
+                and callable(getattr(parser_class, "get_download_url", None)):
+            get_download_url = getattr(parser_class(site), "get_download_url")
+            torrent.enclosure = get_download_url(identity[1][3:])
         if not torrent.enclosure and not allow_missing:
             return None
         torrent.site_cookie = site.get("cookie") or ""
@@ -563,6 +562,70 @@ class IndexerModule(_ModuleBase):
         torrent.site_proxy = bool(site.get("proxy"))
         torrent.site_downloader = site.get("downloader") or ""
         return torrent
+
+    @staticmethod
+    def test_site(site: dict[str, Any]) -> Optional[Tuple[bool, str]]:
+        """
+        按资源声明调用适配器连接检测，不支持时交还站点链的既有检测路径。
+
+        :param site: 已合并当前用户配置的站点资源及认证上下文
+        :return: 适配器检测结果；没有连接检测能力时为 None，失败结果不得视为不支持
+        """
+        for key in ("schema", "parser"):
+            parser_class = SPIDER_PARSER_CLASSES.get(str(site.get(key) or ""))
+            if parser_class is not None and callable(getattr(parser_class, "test_connection", None)):
+                test_connection = getattr(parser_class(site), "test_connection")
+                return cast(Tuple[bool, str], test_connection())
+        return None
+
+    @staticmethod
+    def parse_torrent_download_response(request_params: dict[str, Any], status_code: Optional[int], payload: object) -> str:
+        """
+        将标注协议的换票响应交给已注册适配器解析，通用下载链不解释专站业务码。
+
+        :param request_params: 索引器编码的换票配方，protocol 选择响应解析适配器
+        :param status_code: 原始 HTTP 状态，None 表示连接失败
+        :param payload: 已解析的 JSON，格式无效时为 None
+        :return: 适配器校验后的临时下载地址
+        :raises ValueError: 解析器不可用或适配器拒绝该响应，不能回退使用错误载荷中的地址
+        """
+        parser_class = SPIDER_PARSER_CLASSES.get(str(request_params.get("protocol") or ""))
+        parse_response = getattr(parser_class, "parse_download_response", None)
+        if not callable(parse_response):
+            raise ValueError("站点换票响应解析器不可用")
+        return cast(str, parse_response(status_code=status_code, payload=payload, request_params=request_params))
+
+    @staticmethod
+    def __wait_for_search_request(site: dict[str, Any], request: _IndexerSearchRequest) -> bool:
+        """
+        普通爬虫在模块入口申请共享额度，多请求适配器自行在实际 HTTP 请求前申请。
+
+        :return: 已获准执行或由适配器管理额度时为 True；远端冷却时发布未请求事实并返回 False
+        """
+        if getattr(request.parser_class, "manages_request_throttle", False):
+            return True
+        try:
+            wait_for_site_request(site)
+        except RateLimitExceededException as err:
+            report_site_search_outcome(attempted=False, outcome="deferred", error=str(err))
+            return False
+        return True
+
+    @staticmethod
+    async def __async_wait_for_search_request(site: dict[str, Any], request: _IndexerSearchRequest) -> bool:
+        """
+        异步等待普通爬虫的共享额度，取消等待不会占用请求，其他站点可继续执行。
+
+        :return: 已获准执行或由适配器管理额度时为 True；远端冷却时发布未请求事实并返回 False
+        """
+        if getattr(request.parser_class, "manages_request_throttle", False):
+            return True
+        try:
+            await async_wait_for_site_request(site)
+        except RateLimitExceededException as err:
+            report_site_search_outcome(attempted=False, outcome="deferred", error=str(err))
+            return False
+        return True
 
     @staticmethod
     def __create_search_request(
@@ -729,6 +792,8 @@ class IndexerModule(_ModuleBase):
         if not request:
             report_site_search_outcome(attempted=False, outcome="skipped")
             return []
+        if not self.__wait_for_search_request(site, request):
+            return []
 
         error: Optional[Exception] = None
         failure_detail: Optional[str] = None
@@ -786,6 +851,8 @@ class IndexerModule(_ModuleBase):
             search_type="subtitles",
         )
         if not request:
+            return []
+        if not self.__wait_for_search_request(site, request):
             return []
 
         try:
@@ -851,6 +918,8 @@ class IndexerModule(_ModuleBase):
         if not request:
             report_site_search_outcome(attempted=False, outcome="skipped")
             return []
+        if not await self.__async_wait_for_search_request(site, request):
+            return []
 
         error: Optional[Exception] = None
         failure_detail: Optional[str] = None
@@ -908,6 +977,8 @@ class IndexerModule(_ModuleBase):
             search_type="subtitles",
         )
         if not request:
+            return []
+        if not await self.__async_wait_for_search_request(site, request):
             return []
 
         try:

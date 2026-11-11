@@ -6,8 +6,9 @@ import base64
 import re
 import threading
 from contextlib import AbstractContextManager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from datetime import datetime
+from functools import partial
 from typing import Any, Callable, Dict, Mapping, Optional, Protocol, Tuple, Union
 from urllib.parse import urljoin, urlparse
 
@@ -27,11 +28,9 @@ from app.application.site.contract import (
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.application.site.throttle import defer_site_request, site_request_config, wait_for_site_request
 from app.chain._interaction import InteractionChainMixin
 from app.chain.base import ChainBase
 from app.domain import site as site_rules
-from app.domain import torrent as torrent_rules
 from app.domain.site import SiteUtils
 from app.foundation import size as size_tools
 from app.foundation import url as url_tools
@@ -39,7 +38,6 @@ from app.foundation.dom import DomUtils
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
-from app.schemas.exception import RateLimitExceededException
 from app.schemas.message import Message
 from app.schemas.site import SiteUserData
 from app.schemas.types import EventType, MessageType, NotificationChannel
@@ -293,27 +291,27 @@ class SiteChain(InteractionChainMixin, ChainBase):
         super().__init__()
 
         # 特殊站点登录验证
-        self.special_site_test = {
+        self.special_site_test: dict[str, Callable[[SiteSnapshot], Tuple[bool, str]]] = {
             "zhuque.in": self.__zhuque_test,
             "m-team.io": self.__mteam_test,
             "m-team.cc": self.__mteam_test,
             "yemapt.org": self.__yema_test,
             "hddolby.com": self.__hddolby_test,
-            "hdarea.club": self.__hdarea_test,
+            "hdarea.club": partial(self.__indexer_test, parser="HDArea"),
             "rousi.pro": self.__rousi_test,
             "sunnypt.top": self.__sunnypt_test,
-            "piggo.me": self.__piggo_test,
+            "piggo.me": partial(self.__indexer_test, parser="Piggo"),
             "milkie.cc": self.__milkie_test,
         }
         # 资源的 schema 描述资料协议，parser 描述搜索协议；二者均可识别 API 站点。
-        self.protocol_site_test = {
+        self.protocol_site_test: dict[str, Callable[[SiteSnapshot], Tuple[bool, str]]] = {
             "MTorrent": self.__mteam_test,
             "mTorrent": self.__mteam_test,
             "HDDolby": self.__hddolby_test,
-            "HDArea": self.__hdarea_test,
+            "HDArea": partial(self.__indexer_test, parser="HDArea"),
             "RousiPro": self.__rousi_test,
             "SunnyPT": self.__sunnypt_test,
-            "Piggo": self.__piggo_test,
+            "Piggo": partial(self.__indexer_test, parser="Piggo"),
             "Yema": self.__yema_api_test,
             "Milkie": self.__milkie_test,
             "TNode": self.__zhuque_test,
@@ -600,51 +598,21 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 return False, "当前账号没有下载权限"
             return True, "连接成功"
 
-    def __piggo_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
+    def __indexer_test(self, site: SiteSnapshot, parser: Optional[str] = None) -> Tuple[bool, str]:
         """
-        用长期存取令牌检测猪猪实验室，不使用旧 PHP 首页、Cookie 或网页登录。
+        将已登记的连接测试交给索引适配器，不在站点链解释专用 API 协议。
 
-        :param site: 猪猪站点配置及 API Key 或 Token
-        :return: 鉴权和下载权限是否有效，以及可展示的失败说明
+        :param site: 当前站点配置快照，凭据和流控优先于资源中的旧配置
+        :param parser: 注册表绑定的适配器名称，兼容缺少或仍使用旧 schema 的站点资源
+        :return: 适配器检测结果；缺少所需能力时明确失败，不回退网页检测
         """
-        access_token = site_rules.piggo_access_token(site.apikey, site.token)
-        if not access_token:
-            return False, site_rules.PIGGO_TOKEN_REQUIRED
         domain = site.domain or site_rules.extract_domain(site.url)
         indexer = SitesHelper().get_indexer(domain) or {}
-        api_url = str(indexer.get("api_url") or site_rules.PIGGO_API_URL).rstrip("/")
-        rate_site = site_request_config(site.url, site.id)
-        try:
-            wait_for_site_request(rate_site)
-        except RateLimitExceededException as err:
-            return False, str(err)
-        with _open_site_response(
-            method="POST", url=f"{api_url}/me", json_body={},
-            headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json",
-                     "Content-Type": "application/json", "User-Agent": site.ua or self.runtime_config.user_agent},
-            proxies=(self.runtime_config.proxy or {}) if site.proxy else {}, timeout=site.timeout or 15,
-        ) as response:
-            if response is None:
-                return False, "无法连接猪猪实验室 API"
-            try:
-                payload = response.json()
-            except ValueError:
-                payload = None
-            try:
-                data = site_rules.piggo_response_data(response.status_code, payload, access_token)
-                user = data.get("user")
-                if not isinstance(user, dict):
-                    return False, "猪猪 API 未返回有效用户资料"
-                site_rules.piggo_integer(user.get("id"), minimum=1)
-            except ValueError as err:
-                if torrent_rules.rate_limit_cooldown(str(err)) is not None:
-                    defer_site_request(rate_site, str(err))
-                return False, str(err)
-            if user.get("enabled") is False:
-                return False, "猪猪账号已被禁用"
-            if user.get("download_allowed") is False:
-                return False, "当前猪猪账号没有下载权限"
-            return True, "连接成功"
+        if parser:
+            indexer = {**indexer, "schema": parser, "parser": parser}
+        current_site = {field.name: getattr(site, field.name) for field in fields(site)}
+        result: Optional[Tuple[bool, str]] = self.run_module("test_site", site={**indexer, **current_site, "domain": site.url})
+        return result if result is not None else (False, "站点适配器未提供连接检测能力")
 
     def __yema_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
@@ -744,44 +712,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     return True, "连接成功"
                 return False, "APIKEY已过期"
             return False, f"HDDolby API 主机 {api_host} 返回 HTTP {res.status_code} {res.reason}"
-
-    def __hdarea_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
-        """
-        通过高清视界用户 API 验证 API Key，不依赖浏览器、Cookie 或首页标记。
-
-        :param site: 高清视界站点配置
-        :return: 是否连接成功及可展示的认证、权限或接口失败原因
-        """
-        apikey = str(site.apikey or "").strip()
-        if not apikey:
-            return False, site_rules.HDAREA_KEY_REQUIRED
-        domain = site.domain or site_rules.extract_domain(site.url)
-        indexer = SitesHelper().get_indexer(domain) or {}
-        api_url = str(indexer.get("api_url") or f"{site.url.rstrip('/')}/api/v1").rstrip("/")
-        rate_site = site_request_config(site.url, site.id)
-        try:
-            wait_for_site_request(rate_site)
-            with _open_site_response(
-                method="GET", url=f"{api_url}/user/profile",
-                headers={"X-API-Key": apikey, "Accept": "application/json",
-                         "User-Agent": site.ua or self.runtime_config.user_agent},
-                proxies=(self.runtime_config.proxy or {}) if site.proxy else {}, timeout=site.timeout or 15,
-            ) as response:
-                if response is None:
-                    return False, "无法连接 HDArea API"
-                try:
-                    payload = response.json()
-                except ValueError:
-                    payload = None
-                data = site_rules.hdarea_response_data(response.status_code, payload, apikey)
-                site_rules.hdarea_integer(data.get("id"), minimum=1)
-                if data.get("enabled") is False:
-                    return False, "HDArea 账号已被禁用"
-                return True, "连接成功"
-        except (ValueError, RateLimitExceededException) as err:
-            if torrent_rules.rate_limit_cooldown(str(err)) is not None:
-                defer_site_request(rate_site, str(err))
-            return False, str(err)
 
     def __rousi_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """

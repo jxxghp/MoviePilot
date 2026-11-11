@@ -5,9 +5,9 @@
 import json
 from typing import Any, Optional
 
+import app.modules.indexer.spider.hdarea as hdarea_rules
 from app.adapters.network.http import RequestUtils
 from app.application.site.throttle import defer_site_request, site_request_config, wait_for_site_request
-from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.foundation import temporal as time_tools
 from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
@@ -57,7 +57,7 @@ class HDAreaSiteUserInfo(SiteParserBase):
         apikey = str(self.apikey or "").strip()
         try:
             if not apikey:
-                raise ValueError(site_rules.HDAREA_KEY_REQUIRED)
+                raise ValueError(hdarea_rules.KEY_REQUIRED)
             self._parse_site_page({})
             wait_for_site_request(rate_site)
             response = self._request_utils.get_res(
@@ -70,7 +70,7 @@ class HDAreaSiteUserInfo(SiteParserBase):
                 payload = response.json()
             except ValueError:
                 payload = None
-            data = site_rules.hdarea_response_data(response.status_code, payload, apikey)
+            data = hdarea_rules.response_data(response.status_code, payload, apikey)
             self._parse_user_base_info(data)
         except (TypeError, ValueError, RateLimitExceededException) as err:
             self.err_msg = str(err).replace(apikey, "[已隐藏]") if apikey else str(err)
@@ -106,27 +106,27 @@ class HDAreaSiteUserInfo(SiteParserBase):
             raise ValueError("HDArea 账号已被禁用")
         if not isinstance(data.get("username"), str) or not data["username"].strip():
             raise ValueError("HDArea API 用户名无效")
-        user_id = site_rules.hdarea_integer(data.get("id"), minimum=1)
-        upload = site_rules.hdarea_integer(data.get("uploaded"))
-        download = site_rules.hdarea_integer(data.get("downloaded"))
+        user_id = hdarea_rules.integer(data.get("id"), minimum=1)
+        upload = hdarea_rules.integer(data.get("uploaded"))
+        download = hdarea_rules.integer(data.get("downloaded"))
         user_level = data.get("class_name") or str(data.get("class") or "")
         if not isinstance(user_level, str):
             raise ValueError("HDArea API 用户等级无效")
         ratio = (
-            site_rules.hdarea_number(data["share_ratio"])
+            hdarea_rules.number(data["share_ratio"])
             if data.get("share_ratio") is not None else (upload / download if download else 0.0)
         )
         values = {
             "username": data["username"], "user_level": user_level,
             "join_at": time_tools.normalize_datetime(data.get("added")), "upload": upload, "download": download,
             "ratio": ratio,
-            "bonus": site_rules.hdarea_number(data.get("seedbonus", 0)),
-            "seeding": site_rules.hdarea_integer(data.get("seeding_count")),
-            "seeding_size": site_rules.hdarea_integer(data.get("seeding_size")),
-            "leeching": site_rules.hdarea_integer(data.get("leeching_count", 0)),
-            "uploaded": site_rules.hdarea_integer(data.get("uploaded_torrents_count", 0)),
-            "completed": site_rules.hdarea_integer(data.get("completed_torrents_count", 0)),
-            "message_unread": site_rules.hdarea_integer(data.get("unread_messages_count", 0)),
+            "bonus": hdarea_rules.number(data.get("seedbonus", 0)),
+            "seeding": hdarea_rules.integer(data.get("seeding_count")),
+            "seeding_size": hdarea_rules.integer(data.get("seeding_size")),
+            "leeching": hdarea_rules.integer(data.get("leeching_count", 0)),
+            "uploaded": hdarea_rules.integer(data.get("uploaded_torrents_count", 0)),
+            "completed": hdarea_rules.integer(data.get("completed_torrents_count", 0)),
+            "message_unread": hdarea_rules.integer(data.get("unread_messages_count", 0)),
         }
         for name, value in values.items():
             setattr(self, name, value)

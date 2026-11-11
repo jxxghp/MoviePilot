@@ -19,11 +19,7 @@ from app.application.site.observation import (
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.application.site.throttle import (
-    async_wait_for_site_request,
-    site_request_cooldown,
-    wait_for_site_request,
-)
+from app.application.site.throttle import site_request_cooldown
 from app.application.subscription.activity import current_activity_run
 from app.application.subscription.sitebudget import (
     SubscriptionSiteBudget,
@@ -37,7 +33,6 @@ from app.runtime.log import logger
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.runtime.stop import runtime_stop_state
 from app.runtime.thread import ThreadHelper
-from app.schemas.exception import RateLimitExceededException
 from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
 
 SiteIndexer = Dict[str, Any]
@@ -160,42 +155,6 @@ def _site_rate_limit_backoff(site: SiteIndexer, error: Optional[str] = None) -> 
     return max(0.0, wait - elapsed) + 1.0
 
 
-def _wait_for_site_request(site: SiteIndexer) -> Optional[str]:
-    """
-    等待站点共享额度；远端冷却不发出请求，并交回订阅调度处理。
-
-    猪猪和高清视界适配器在每次实际 HTTP 请求前自行申请额度，此处不能再预占一次。
-
-    :param site: 搜索站点的流控配置
-    :return: 远端冷却原因，已获准请求时为 None
-    """
-    try:
-        if site.get("parser") not in ("Piggo", "HDArea"):
-            wait_for_site_request(site)
-    except RateLimitExceededException as error:
-        report_site_search_outcome(attempted=False, outcome="deferred", error=str(error))
-        return str(error)
-    return None
-
-
-async def _async_wait_for_site_request(site: SiteIndexer) -> Optional[str]:
-    """
-    异步等待同一站点额度；冷却期间保留原因，其他站点继续运行。
-
-    猪猪和高清视界由适配器在实际 HTTP 请求前等待，不让编排层与请求层重复计费。
-
-    :param site: 搜索站点的流控配置
-    :return: 远端冷却原因，已获准请求时为 None
-    """
-    try:
-        if site.get("parser") not in ("Piggo", "HDArea"):
-            await async_wait_for_site_request(site)
-    except RateLimitExceededException as error:
-        report_site_search_outcome(attempted=False, outcome="deferred", error=str(error))
-        return str(error)
-    return None
-
-
 def _search_site_page(
     owner: "_SearchProviderSyncOwner",
     *,
@@ -205,10 +164,8 @@ def _search_site_page(
     page: int,
 ) -> List[TorrentInfo]:
     """
-    获得站点共享请求许可后执行一页同步搜索。
+    通过索引模块执行一页同步搜索；请求流控由模块与适配器负责。
     """
-    if _wait_for_site_request(site):
-        return []
     return owner.search_site_torrents(
         site=site,
         keyword=keyword,
@@ -972,8 +929,6 @@ class SearchProviderOwner(_SearchProviderSyncOwner):
             """
             在统一分页器调度下请求一页站点资源。
             """
-            if await _async_wait_for_site_request(site):
-                return []
             return await self.async_search_site_torrents(
                 site=site,
                 keyword=_site_keyword(site, search_keyword, mediainfo),

@@ -10,9 +10,9 @@ from requests import Response
 
 import app.modules.indexer.parser.hdarea as hdarea
 from app.chain.site import SiteChain
-from app.domain import site as site_rules
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
+from app.modules.indexer.spider.hdarea import KEY_REQUIRED
 
 # 账号和统计均为合成值，不从真实用户资料生成测试夹具。
 PROFILE = {
@@ -167,7 +167,7 @@ def test_missing_key_disables_fallback_and_persistence(boundary, monkeypatch):
     monkeypatch.setattr(NexusPhpSiteUserInfo, "parse", fallback)
     site = {"name": "高清视界", "url": "https://hdarea.club/", "schema": "HDArea", "public": False}
     userdata = module.refresh_userdata(site)
-    assert userdata.userid is None and userdata.err_msg == site_rules.HDAREA_KEY_REQUIRED
+    assert userdata.userid is None and userdata.err_msg == KEY_REQUIRED
     fallback.assert_not_called()
     request.get_res.assert_not_called()
     chain = object.__new__(SiteChain)

@@ -4,7 +4,6 @@
 
 import asyncio
 import json
-from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -22,8 +21,8 @@ from app.adapters.cache.backends import FileBackend
 from app.application.site.contract import SiteSnapshot
 from app.chain.download import DownloadChain
 from app.chain.site import SiteChain
-from app.domain import site as site_rules
 from app.domain.context import TorrentInfo
+from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser.piggo import PiggoSiteUserInfo
 from app.runtime.cache import MemoryBackend
 from app.runtime.rate import RequestRateLimiter
@@ -58,7 +57,7 @@ def boundary(monkeypatch, tmp_path):
     monkeypatch.setattr(throttle.time, "sleep", advance)
     monkeypatch.setattr(throttle, "_site_requests", RequestRateLimiter())
     query = Mock()
-    query.get_sync.return_value = Site(id=7274, domain="piggo.me")
+    query.get_sync.return_value = Site(id=7274, domain="piggo.me", limit_seconds=3)
     query.get_by_domain_sync.return_value = query.get_sync.return_value
     monkeypatch.setattr(throttle, "get_configured_site_query_service", lambda: query)
     cache = FileBackend(tmp_path)
@@ -72,9 +71,12 @@ def boundary(monkeypatch, tmp_path):
     monkeypatch.setattr(torrent_download, "_require_torrent_port", lambda: port)
     chain = object.__new__(DownloadChain)
     chain.post_message = Mock()
+    module = object.__new__(IndexerModule)
+    chain.run_module = lambda method, **kwargs: getattr(module, method)(
+        **{key: value for key, value in kwargs.items() if key != "raise_exception"})
     torrent = TorrentInfo(site=7274, site_name="猪猪", title="Series", site_cookie="unused-cookie", site_ua="Piggo-Test",
                           page_url="https://piggo.me/detail/56354",
-                          enclosure=site_rules.piggo_download_enclosure(site_rules.PIGGO_API_URL, 56354, "synthetic-key"))
+                          enclosure=piggo_spider.download_enclosure(piggo_spider.API_URL, 56354, "synthetic-key"))
     return SimpleNamespace(chain=chain, torrent=torrent, ticket=ticket, ticket_response=ticket_response,
                            port=port, content_response=content_response, clock=clock, cache=cache)
 
@@ -219,7 +221,7 @@ def test_every_actual_piggo_request_shares_one_slot(boundary, monkeypatch):
 
     request = Mock(post_res=Mock(side_effect=search_request))
     monkeypatch.setattr(piggo_spider, "RequestUtils", Mock(return_value=request))
-    indexer = {"id": 7274, "domain": "https://piggo.me/", "parser": "Piggo", "apikey": "synthetic-key", "ua": "Piggo-Test"}
+    indexer = {"id": 7274, "domain": "https://piggo.me/", "parser": "Piggo", "apikey": "synthetic-key", "ua": "Piggo-Test", "limit_seconds": 3}
     spider = piggo_spider.PiggoSpider(indexer)
     owner = Mock(search_site_torrents=Mock(side_effect=lambda **kwargs: spider.search(kwargs["keyword"])[1]))
     assert provider._search_site_page(owner, site=indexer, keyword="Series", media_type=None, page=0) == []
@@ -240,16 +242,21 @@ def test_every_actual_piggo_request_shares_one_slot(boundary, monkeypatch):
     parser.parse()
     assert parser.userid == 42
 
-    @contextmanager
     def probe(**_kwargs):
+        """
+        在适配器的真实 HTTP 出口记录连接检测起点。
+        """
         starts.append(boundary.clock.now)
-        yield _response({"code": 0, "data": {"user": {"id": 42}}})
+        return _response({"code": 0, "data": {"user": {"id": 42}}})
 
-    monkeypatch.setattr(site_chain, "_open_site_response", probe)
-    monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
+    monkeypatch.setattr(piggo_spider, "RequestUtils", Mock(return_value=Mock(post_res=Mock(side_effect=probe))))
+    monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={"parser": "Piggo"}))))
     chain = SiteChain()
-    site = SiteSnapshot(id=7274, name="猪猪", domain="piggo.me", url="https://piggo.me/", apikey="synthetic-key")
-    assert chain._SiteChain__piggo_test(site) == (True, "连接成功")
+    site = SiteSnapshot(id=7274, name="猪猪", domain="piggo.me", url="https://piggo.me/", apikey="synthetic-key", limit_seconds=3)
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    module = object.__new__(IndexerModule)
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
+    assert chain.test(site.url) == (True, "连接成功")
     boundary.ticket.post.side_effect = lambda *_args, **_kwargs: starts.append(boundary.clock.now) or boundary.ticket_response
     boundary.port.request.side_effect = lambda **_kwargs: starts.append(boundary.clock.now) or boundary.content_response
     assert boundary.chain.download_torrent(boundary.torrent)[0] == CONTENT
@@ -274,8 +281,7 @@ async def test_async_search_cancellation_does_not_send_next_request(boundary, mo
         await asyncio.Event().wait()
 
     monkeypatch.setattr(throttle.asyncio, "sleep", blocked_sleep)
-    indexer = {"id": 7274, "domain": "https://piggo.me/", "parser": "Piggo", "apikey": "synthetic-key", "ua": "Piggo-Test"}
-    assert await provider._async_wait_for_site_request(indexer) is None
+    indexer = {"id": 7274, "domain": "https://piggo.me/", "parser": "Piggo", "apikey": "synthetic-key", "ua": "Piggo-Test", "limit_seconds": 3}
     task = asyncio.create_task(piggo_spider.PiggoSpider(indexer).async_search(None))
     try:
         await sleeping.wait()

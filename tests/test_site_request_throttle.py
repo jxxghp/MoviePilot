@@ -7,7 +7,7 @@ import base64
 import json
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from requests import Response
@@ -20,6 +20,7 @@ from app.application.site.observation import capture_site_search_observation
 from app.chain.download import DownloadChain
 from app.chain.search import provider
 from app.domain.context import TorrentInfo
+from app.modules.indexer import IndexerModule
 from app.runtime.rate import RequestRateLimiter
 from app.schemas.exception import RateLimitExceededException
 from app.schemas.site import Site
@@ -83,7 +84,15 @@ def boundary(monkeypatch, tmp_path):
     monkeypatch.setattr(submission, "_download_ports_snapshot", lambda: (ticket_port, Mock()))
     chain = object.__new__(DownloadChain)
     chain.post_message = Mock()
-    return SimpleNamespace(clock=clock, port=port, ticket=ticket_port, chain=chain, query=query)
+    module = object.__new__(IndexerModule)
+    monkeypatch.setattr(IndexerModule, "_IndexerModule__search_check", staticmethod(lambda *_args: True))
+    monkeypatch.setattr(IndexerModule, "_IndexerModule__indexer_statistic", Mock())
+    monkeypatch.setattr(IndexerModule, "_IndexerModule__async_indexer_statistic", AsyncMock())
+    search_request = Mock(return_value=(False, [], None))
+    monkeypatch.setattr(IndexerModule, "_IndexerModule__spider_search", staticmethod(search_request))
+    owner = Mock(search_site_torrents=Mock(side_effect=module.search_torrents))
+    return SimpleNamespace(clock=clock, port=port, ticket=ticket_port, chain=chain, query=query,
+                           module=module, owner=owner, search_request=search_request)
 
 
 def test_search_ticket_and_content_share_interval_and_window(boundary):
@@ -91,8 +100,8 @@ def test_search_ticket_and_content_share_interval_and_window(boundary):
     同站不同网页与 API 主机按十秒间隔、六十秒两次共用额度，缓存命中不消耗额度。
     """
     starts = []
-    owner = Mock()
-    owner.search_site_torrents.side_effect = lambda **_kwargs: starts.append(boundary.clock.now) or []
+    owner = boundary.owner
+    boundary.search_request.side_effect = lambda **_kwargs: starts.append(boundary.clock.now) or (False, [], None)
     boundary.ticket.post.side_effect = lambda *_args, **_kwargs: (
         starts.append(boundary.clock.now) or _response(json.dumps({"data": URL}).encode())
     )
@@ -157,13 +166,13 @@ def test_remote_cooldown_blocks_other_resources_and_search_until_expiry(boundary
 
     assert helper.download_torrent(URL, site_id=42)[4] == error
     assert helper.download_torrent(URL + "0", site_id=42)[4] == error
-    owner = Mock()
+    owner = boundary.owner
     with capture_site_search_observation() as observation:
         assert provider._search_site_page(owner, site={"id": 42}, keyword="Series", media_type=None, page=0) == []
     assert not observation.attempted
     assert observation.outcome == "deferred"
     assert observation.error == error
-    owner.search_site_torrents.assert_not_called()
+    boundary.search_request.assert_not_called()
     assert provider._site_rate_limit_backoff({"id": 42}, error) == 601
     boundary.port.request.assert_called_once()
     boundary.port.request.return_value = _response()
@@ -294,8 +303,9 @@ async def test_cancelled_async_wait_does_not_consume_request(boundary, monkeypat
     await throttle.async_wait_for_site_request(site)
     throttle.defer_site_request(site, f"站点限流：{MESSAGE}")
     with capture_site_search_observation() as observation:
-        assert await provider._async_wait_for_site_request(site) == f"站点限流：{MESSAGE}"
+        assert await boundary.module.async_search_torrents(site, "Series") == []
     assert observation.outcome == "deferred"
+    assert observation.error == f"站点限流：{MESSAGE}"
 
 
 def test_remote_cooldown_cannot_be_shortened(boundary):

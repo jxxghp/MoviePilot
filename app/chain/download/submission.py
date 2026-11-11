@@ -10,7 +10,7 @@ from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import (
@@ -31,7 +31,6 @@ from app.chain.download.ports import (
 )
 from app.chain.media import MediaChain
 from app.domain import episode as episode_rules
-from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
@@ -40,7 +39,6 @@ from app.domain.context import (
     TorrentInfo,
 )
 from app.domain.meta.metabase import MetaBase
-from app.foundation.url import UrlUtils
 from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
@@ -175,7 +173,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         :param site_id: 原始资源的站点 ID，用于共享流控额度
         :return: 临时下载地址；换票失败时返回 None
         :raises RateLimitExceededException: 站点限流，保留原始提示供通知和冷却记录使用
-        :raises ValueError: 专用 API 换票失败、公告未读或下载地址无效
+        :raises ValueError: 适配器拒绝换票响应或下载地址无效
         """
         match = re.search(r"\[(.*)](.*)", url)
         if not match:
@@ -228,35 +226,36 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 params=params,
                 **post_options,
             )
-        if response is None:
-            if request_params.get("protocol") == "Piggo":
-                raise ValueError("无法连接猪猪实验室 API")
-            if request_params.get("protocol") == "HDArea":
-                raise ValueError("无法连接 HDArea API")
-            return None
         try:
             return self._indirect_download_response(response, request_params, site)
         finally:
-            _close_download_response(response)
+            if response is not None:
+                _close_download_response(response)
 
-    def _indirect_download_response(self, response: DownloadResponsePort, request_params: Dict[str, Any],
+    def _indirect_download_response(self, response: Optional[DownloadResponsePort], request_params: Dict[str, Any],
                                     site: dict[str, object]) -> Optional[str]:
         """
-        在响应关闭前处理专用 API 换票失败，公告和权限错误保留原意，限流交给共享冷却。
+        在响应关闭前交给声明的适配器解析，或沿用通用配方；限流统一交给共享冷却。
 
-        :param response: 尚未关闭的原始换票响应
+        :param response: 尚未关闭的原始换票响应，None 表示连接失败
         :param request_params: 索引器编码的换票协议及结果字段
         :param site: 原始站点的不含凭据流控配置
-        :return: 已校验的下载地址；其他协议沿用空结果语义
-        :raises ValueError: 专用 API 公告、鉴权、响应或地址失败
+        :return: 适配器校验的下载地址；未声明专用解析器的配方沿用空结果语义
+        :raises ValueError: 适配器拒绝该响应或响应解析能力不可用
         :raises RateLimitExceededException: 任一协议返回明确限流
         """
-        protocol = request_params.get("protocol")
-        if protocol in ("Piggo", "HDArea"):
+        if request_params.get("protocol"):
             try:
-                if protocol == "HDArea":
-                    return self._hdarea_download_result(response, request_params)
-                return self._piggo_download_result(response, request_params)
+                payload = response.json() if response is not None else None
+            except ValueError:
+                payload = None
+            try:
+                url = self.run_module("parse_torrent_download_response", request_params=request_params,
+                                      status_code=response.status_code if response is not None else None,
+                                      payload=payload, raise_exception=True)
+                if not isinstance(url, str) or not url:
+                    raise ValueError("站点换票响应解析器不可用")
+                return url
             except ValueError as err:
                 if torrent_rules.rate_limit_cooldown(str(err)) is not None:
                     defer_site_request(site, str(err))
@@ -268,66 +267,6 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         if not response:
             return None
         return self._indirect_download_result(response, request_params)
-
-    @staticmethod
-    def _piggo_download_result(response: DownloadResponsePort, request_params: Dict[str, Any]) -> str:
-        """
-        校验猪猪签发结果，不把前端下载主机替换为 API 主机。
-
-        :param response: 原始换票响应，包含 HTTP 403 公告等错误
-        :param request_params: 仅在 API 请求中使用的认证配方
-        :return: 站点返回的完整 HTTP 下载地址
-        :raises ValueError: 公告、鉴权、业务失败或下载地址无效
-        """
-        headers = request_params.get("header") or {}
-        access_token = str(headers.get("Authorization") or "").removeprefix("Bearer ")
-        try:
-            payload = response.json()
-        except ValueError:
-            payload = None
-        data = site_rules.piggo_response_data(response.status_code, payload, access_token)
-        url = UrlUtils.normalize_http_url(data.get("url"))
-        if url is None or len(url) > 2048:
-            raise ValueError("猪猪 API 未返回有效种子下载地址")
-        parts = urlparse(url)
-        if parts.username is not None or parts.password is not None:
-            raise ValueError("猪猪 API 返回的下载地址含无效认证信息")
-        logger.info("已获取到站点临时下载地址")
-        return url
-
-    @staticmethod
-    def _hdarea_download_result(response: DownloadResponsePort, request_params: Dict[str, Any]) -> str:
-        """
-        校验高清视界换票结果，兼容完整 download_url 或独立 dl_token，最终 GET 不携带 API Key。
-
-        :param response: 原始 genDlToken 响应
-        :param request_params: 当前站点来源、种子 ID 和认证配方
-        :return: 本站同来源且匹配所选 ID 的临时下载地址
-        :raises ValueError: 换票失败、地址无效或返回了其他种子
-        """
-        apikey = str((request_params.get("header") or {}).get("X-API-Key") or "")
-        try:
-            payload = response.json()
-        except ValueError:
-            payload = None
-        data = site_rules.hdarea_response_data(response.status_code, payload, apikey)
-        base_url = str(request_params.get("result_base_url") or "")
-        torrent_id = str((request_params.get("json") or {}).get("id") or "")
-        url = data.get("download_url")
-        if not url and isinstance(data.get("dl_token"), str) and data["dl_token"]:
-            download_page = urljoin(f"{base_url.rstrip('/')}/", "download.php")
-            query = urlencode({"id": torrent_id, "dl_token": data["dl_token"]})
-            url = f"{download_page}?{query}"
-        if isinstance(url, str):
-            url = urljoin(f"{base_url.rstrip('/')}/", url)
-        url = UrlUtils.normalize_http_url(url)
-        if url is None or len(url) > 2048 or not UrlUtils.same_origin(base_url, url):
-            raise ValueError("HDArea API 未返回有效的本站下载地址")
-        parts = urlparse(url)
-        if parts.username is not None or parts.password is not None or parse_qs(parts.query).get("id") != [torrent_id]:
-            raise ValueError("HDArea API 返回的下载地址与所选种子不符")
-        logger.info("已获取到站点临时下载地址")
-        return url
 
     def _indirect_download_result(self, response: DownloadResponsePort,
                                   request_params: Dict[str, Any]) -> Optional[str]:
@@ -518,7 +457,6 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             site = next((item for item in SitesHelper().get_indexers() if item.get("id") == torrent.site), None)
             if not site:
                 return False
-            wait_for_site_request(site)
             for candidate in self.search_site_torrents(site=site, keyword=torrent.title):
                 if (torrent_rules.resource_identity(candidate) != identity
                         or not candidate.enclosure
