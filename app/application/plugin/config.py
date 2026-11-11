@@ -79,6 +79,7 @@ class PluginConfigCommand:
     def __init__(
         self,
         *,
+        read_config: Callable[[str], dict[str, object]],
         save_config: Callable[[str, dict[str, object], bool], bool],
         initialize: Callable[[str, dict[str, object]], Any],
         stop: Callable[[str], Any],
@@ -97,7 +98,10 @@ class PluginConfigCommand:
     ) -> None:
         """
         保存插件管理 Facade 和运行时注册刷新端口。
+
+        :param read_config: 读取当前实例配置，用于在空覆盖前保护已有设置
         """
+        self._read_config = read_config
         self._save_config = save_config
         self._initialize = initialize
         self._stop = stop
@@ -117,9 +121,18 @@ class PluginConfigCommand:
     def update(self, plugin_id: str, config: dict[str, object]) -> PluginConfigResult:
         """
         保存配置并按既有顺序重新初始化实例及运行时注册。
+
+        已有配置不能被空表单清空；原本没有配置项的插件仍可保存空表单。
+        检查和写入处于同一个插件变更执行权内，沿用本进程的变更准入。
+
+        :param plugin_id: 待更新的插件实例标识
+        :param config: 调用方提交的完整配置对象
+        :return: 保存结果；拒绝空覆盖时不触发初始化或注册刷新
         """
         try:
             with self._mutation(f"更新插件 {plugin_id} 配置"):
+                if not config and self._read_config(plugin_id):
+                    return PluginConfigResult(False, "不能用空对象覆盖已有插件配置，请提交完整配置")
                 if not self._save_config(plugin_id, config, False):
                     return PluginConfigResult(False, "插件配置保存失败")
                 self._initialize(plugin_id, config)

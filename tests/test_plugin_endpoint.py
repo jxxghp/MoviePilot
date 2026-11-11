@@ -1300,6 +1300,7 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
         )
 
     command = PluginConfigCommand(
+        read_config=plugin_manager.get_plugin_config,
         save_config=plugin_manager.save_plugin_config,
         initialize=plugin_manager.init_plugin,
         stop=plugin_manager.stop,

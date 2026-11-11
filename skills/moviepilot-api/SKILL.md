@@ -72,6 +72,11 @@ before retrying. `active_operation` identifies the running plugin, operation, ho
 elapsed time. A caller timeout or cancellation does not stop the hook and must never
 trigger automatic replay of the same mutation.
 
+`plugin.config.update` replaces the complete configuration. Preserve every field
+not intentionally removed. The gateway rejects an empty object or redacted
+credential placeholders such as `***`; do not guess their original values. If the
+available configuration contains placeholders, use the plugin configuration UI.
+
 For a historical invalid plugin instance ID reported in logs, `plugin.instance.purge`
 accepts the exact ID with only `config: true` (all other scope flags false). It deletes
 only an empty disabled host record: no saved configuration, display overrides, default
@@ -372,8 +377,9 @@ token exchange downloads retain their existing credential rules.
   including failures within a directory. For concurrent custom-filter changes,
   re-read the rules and confirm the intended change before retrying a conflict.
 - Respect an explicit `execution_outcome`: `pending` is accepted but unfinished,
-  while `unknown` means a write may have happened. Do not repeat an unknown write
-  or change defaults merely to evade duplicate protection. In the built-in Agent,
+  `unknown` means a write may have happened, and `replayed` means this call did
+  not execute; `previous_status` describes the earlier receipt. Do not repeat an
+  unknown write or change defaults merely to evade duplicate protection. In the built-in Agent,
   use `get_tool_execution` with the returned invocation ID; the host can reconcile
   supported non-sensitive setting replacements through a read-only check.
 - When a built-in Agent preview contains `result_id` and `next_offset`, use

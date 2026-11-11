@@ -317,7 +317,7 @@ class ToolGuardrailsMiddleware(AgentMiddleware):
             item.content = message.content if isinstance(message.content, str) else None
             item.outcome = inspect_tool_result(message)
         self.outcomes.add(item.outcome)
-        failed = item.outcome in {ExecutionOutcome.FAILED, ExecutionOutcome.UNKNOWN}
+        failed = item.outcome in {ExecutionOutcome.FAILED, ExecutionOutcome.UNKNOWN, ExecutionOutcome.REPLAYED}
         decision = self.controller.after_call(item.name, item.arguments, item.content, failed=failed)
         observation = self.controller.observe_call(item.name, item.arguments, item.content,
                                                   tool_call_id=message.tool_call_id, failed=failed)

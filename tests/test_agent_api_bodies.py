@@ -172,3 +172,69 @@ async def test_gateway_preserves_exact_dev_literal(
     assert json.loads(result)["success"] is True
     request.assert_awaited_once()
     assert request.call_args.kwargs["json"] == "dev"
+
+
+@pytest.mark.parametrize("entrypoint", ["direct", "langchain", "manager"])
+@pytest.mark.parametrize("json_encoded", [False, True], ids=["native", "encoded"])
+@pytest.mark.parametrize("body", [
+    {},
+    {"enabled": True, "taobao_cookie": "***"},
+    {"enabled": True, "nested": [{"cookie": "session=***; user=demo"}]},
+    {"enabled": True, "endpoint": "https://***@example.invalid/path"},
+    {"enabled": True, "note": "_tb_token_=***; status=ok"},
+    {"enabled": True, "items": ["***"]},
+])
+@pytest.mark.asyncio
+async def test_plugin_gateway_rejects_empty_or_redacted_replacements(
+    api_transport: tuple[MoviePilotApiTool, AsyncMock],
+    entrypoint: str,
+    json_encoded: bool,
+    body: dict[str, Any],
+) -> None:
+    """
+    空对象和脱敏占位不能作为整份插件配置送入真实写入入口。
+
+    :param api_transport: 使用真实网关和内存 HTTP 传输的测试夹具
+    :param entrypoint: 网关的直接、LangChain 或管理器调用入口
+    :param json_encoded: 是否将请求体编码为 JSON 字符串
+    :param body: 待拒绝的不安全配置对象
+    """
+    gateway, request = api_transport
+    result = await _invoke_gateway(entrypoint, gateway, {
+        "operation_id": "plugin.config.update",
+        "path_params": {"plugin_id": "DemoPlugin"},
+        "body": json.dumps(body) if json_encoded else body,
+    })
+
+    failure = json.loads(result)
+    assert failure["error"] == "invalid_input"
+    assert failure["input_contract"]["body"]["minProperties"] == 1
+    request.assert_not_awaited()
+
+
+@pytest.mark.parametrize("entrypoint", ["direct", "langchain", "manager"])
+@pytest.mark.asyncio
+async def test_plugin_gateway_preserves_complete_unmasked_configuration(
+    api_transport: tuple[MoviePilotApiTool, AsyncMock], entrypoint: str,
+) -> None:
+    """
+    安全完整配置按原样发送，普通文本中的星号不是脱敏占位。
+
+    :param api_transport: 使用真实网关和内存 HTTP 传输的测试夹具
+    :param entrypoint: 网关的直接、LangChain 或管理器调用入口
+    """
+    gateway, request = api_transport
+    body = {
+        "enabled": True,
+        "taobao_cookie": "session=synthetic-cookie; user=demo",
+        "note": "__moviepilot_redaction_probe__ 这是 ***强调文本***，不是凭据",
+        "keywords": ["第一条", "第二条"],
+    }
+    result = await _invoke_gateway(entrypoint, gateway, {
+        "operation_id": "plugin.config.update",
+        "path_params": {"plugin_id": "DemoPlugin"},
+        "body": body,
+    })
+
+    assert json.loads(result)["success"] is True
+    assert request.call_args.kwargs["json"] == body

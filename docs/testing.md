@@ -33,6 +33,11 @@ uv run --locked --no-sync python tests/run.py --shard 1/4
 本地默认全量仍包含它们。
 这些估算仅用于调度，不构成性能或覆盖率基线。
 
+插件配置安全回归由 `tests/test_agent_api_bodies.py`、`tests/test_agent_invocation_middleware.py`
+和 `tests/test_plugin_config_table.py` 覆盖：空配置与脱敏占位不能经 Agent 网关写入，
+REST 空覆盖不会改动已有实例配置或刷新服务，真实成功回执的重放与本次写入区分。
+回执指纹仍区分不同凭据，测试仅使用合成值与临时数据库，不代表报告者的 Docker 实例验收。
+
 - 不再使用 `python -m unittest discover`：它不导入 `tests` 包、收不到纯函数用例，且绕过 `conftest.py` 的隔离。
 - 不再依赖 `python tests/test_xxx.py` 直跑：所有 `if __name__ == "__main__": unittest.main()` 尾巴已移除。
 - **复现 CI 用干净环境**：使用 `uv sync --locked` 从 `uv.lock` 创建环境，再以

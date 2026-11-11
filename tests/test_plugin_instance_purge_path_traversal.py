@@ -97,6 +97,7 @@ def _purge_command(calls: list[tuple]) -> PluginConfigCommand:
     任何删除动作」，把真实存储接进来只会让失败原因变糊。
     """
     return PluginConfigCommand(
+        read_config=lambda _plugin_id: {},
         save_config=lambda *a: True,
         initialize=lambda *a: None,
         stop=lambda plugin_id: calls.append(("stop", plugin_id)),
