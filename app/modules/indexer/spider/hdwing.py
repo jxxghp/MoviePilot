@@ -8,16 +8,18 @@ HDWinG 的种子列表不在 HTML 中渲染 Free/2xFree 等促销标识，仅输
 的促销标识注入占位符位置的混入，使标准 NexusPHP 选择器模板（img.pro_free 等）
 可以正常识别优惠信息。
 
-模块不得导入 ``app.modules.indexer`` 子树内的任何模块：宿主包会加载本模块，
-反向导入会形成未审查的静态依赖环。
+本模块不导入 ``app.modules.indexer`` 子树内的任何模块：宿主 facade 负责加载本
+模块，任何反向静态导入都会与其构成架构门禁禁止的 SCC 依赖环。因此 SiteSpider
+的派生组合与专站入口绑定声明在宿主 facade，行为逻辑全部收敛在本模块。
 """
 
 import re
-from typing import Any, Optional
+from typing import Any, ClassVar, List, Optional, Tuple
 from urllib.parse import urljoin
 
 from app.adapters.network.http import RequestUtils
 from app.runtime.log import logger
+from app.schemas.types import MediaType
 
 # 等待促销状态的占位符，例如 <span class="sp_state_placeholder" id="838806"></span>。
 _PLACEHOLDER_PATTERN = re.compile(
@@ -48,8 +50,8 @@ class HDWingPromotionMixin:
     """
     为站点爬虫提供解析前补全 HDWinG 促销标识的能力。
 
-    依赖组合方（SiteSpider 子类）提供的请求上下文属性，组合方在覆盖 ``parse``
-    时先调用 ``inject_promotions`` 再执行通用解析。
+    依赖组合方（SiteSpider 子类）提供的请求上下文与通用解析能力，混入在
+    ``parse`` 中先注入促销标识再委托基类执行选择器解析。
 
     :ivar domain: 站点根地址，以斜杠结尾
     :ivar ua: 请求 User-Agent
@@ -58,6 +60,15 @@ class HDWingPromotionMixin:
     :ivar _timeout: 单次请求超时秒数
     :ivar indexername: 站点名称，用于日志标识
     """
+
+    def parse(self, html_text: str) -> list[dict[str, Any]]:
+        """
+        先注入促销状态再执行通用选择器解析。
+
+        :param html_text: 已解码的站点响应正文
+        :return: 当前页的种子或字幕记录；空正文或解析失败时为空列表
+        """
+        return super().parse(self.inject_promotions(html_text))
 
     # 组合方必须提供的请求上下文，仅作类型声明，不持有状态。
     domain: Optional[str]
@@ -137,3 +148,91 @@ class HDWingPromotionMixin:
                 # 与站点前端脚本一致，用段落包裹标识并追加限时文本。
                 promotion_html[str(torrent_id)] = f"<p>{sp_state}</p>{timeout}"
         return promotion_html
+
+
+class HDWingSpiderBase:
+    """
+    HDWinG 专站搜索入口的行为基类。
+
+    组合页面爬虫完成取页与促销补全，自身仅负责参数转发与结果契约；
+    页面爬虫类由宿主 facade 绑定声明，本基类不导入 SiteSpider 体系，
+    避免与宿主 facade 构成架构门禁禁止的静态依赖环。
+    """
+
+    # 宿主 facade 绑定的页面爬虫类，须为 SiteSpider 与本模块混入的派生类。
+    _page_spider_class: ClassVar[Any] = None
+
+    # HDWinG 列表页固定每页 100 条记录。
+    _size = 100
+
+    def __init__(self, indexer: dict[str, Any]) -> None:
+        """
+        根据站点配置构造内部页面爬虫。
+
+        :param indexer: 站点索引配置
+        :return: 无返回值
+        """
+        self._spider = self._page_spider_class(indexer=indexer)
+
+    @property
+    def error_detail(self) -> Optional[str]:
+        """
+        返回内部页面爬虫记录的失败原因。
+
+        :return: 失败原因；未失败时为 None
+        """
+        return self._spider.error_detail
+
+    @classmethod
+    def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
+        """
+        获取列表页单页容量。
+
+        :param keyword: 保留统一入口参数，本站搜索与浏览分页容量一致
+        :return: 列表页单页记录数
+        """
+        return cls._size
+
+    def search(self,
+               keyword: Optional[str] = None,
+               mtype: Optional[MediaType] = None,
+               cat: Optional[str] = None,
+               page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
+        """
+        根据关键字搜索站点种子。
+
+        :param keyword: 关键字
+        :param mtype: 媒体类型
+        :param cat: 分类
+        :param page: 页码
+        :return: 是否发生错误, 种子列表
+        """
+        spider = self._spider
+        spider.keyword = keyword
+        spider.mtype = mtype
+        spider.cat = cat
+        spider.page = page
+        result = spider.get_torrents()
+        return spider.is_error, result
+
+    async def async_search(self,
+                           keyword: Optional[str] = None,
+                           mtype: Optional[MediaType] = None,
+                           cat: Optional[str] = None,
+                           page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
+        """
+        异步根据关键字搜索站点种子。
+
+        :param keyword: 关键字
+        :param mtype: 媒体类型
+        :param cat: 分类
+        :param page: 页码
+        :return: 是否发生错误, 种子列表
+        """
+        spider = self._spider
+        spider.keyword = keyword
+        spider.mtype = mtype
+        spider.cat = cat
+        spider.page = page
+        result = await spider.async_get_torrents()
+        return spider.is_error, result

@@ -25,7 +25,7 @@ from app.modules.indexer.spider import JsonList, SiteSpider
 from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
-from app.modules.indexer.spider.hdwing import HDWingPromotionMixin
+from app.modules.indexer.spider.hdwing import HDWingSpider
 from app.modules.indexer.spider.milkie import MilkieSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.modules.indexer.spider.rousi import RousiSpider
@@ -38,108 +38,6 @@ from app.runtime.settings import get_runtime_setting
 from app.schemas.media import resolve_media_identity
 from app.schemas.site import SiteUserData
 from app.schemas.types import MediaSource, MediaType, ModuleType, OtherModulesType
-
-
-class HDWingPageSpider(HDWingPromotionMixin, SiteSpider):
-    """
-    在通用解析前通过促销接口补全 HDWinG 页面优惠标识的页面爬虫。
-
-    单独定义以保留 SiteSpider 的 ``self.search`` 搜索配置语义，
-    专站搜索入口再委托本类完成取页与解析。
-    """
-
-    def parse(self, html_text: str) -> JsonList:
-        """
-        先注入促销状态再执行通用选择器解析。
-
-        :param html_text: 已解码的站点响应正文
-        :return: 当前页的种子或字幕记录；空正文或解析失败时为空列表
-        """
-        return super().parse(self.inject_promotions(html_text))
-
-
-class HDWingSpider:
-    """
-    HDWinG 专站搜索入口。
-
-    组合页面爬虫完成取页与促销补全，自身仅负责参数转发与结果契约；
-    不能继承 SiteSpider，否则搜索入口方法会与基类的搜索配置属性冲突。
-    """
-
-    # HDWinG 列表页固定每页 100 条记录。
-    _size = 100
-
-    def __init__(self, indexer: dict[str, Any]) -> None:
-        """
-        根据站点配置构造内部页面爬虫。
-
-        :param indexer: 站点索引配置
-        :return: 无返回值
-        """
-        self._spider = HDWingPageSpider(indexer=indexer)
-
-    @property
-    def error_detail(self) -> Optional[str]:
-        """
-        返回内部页面爬虫记录的失败原因。
-
-        :return: 失败原因；未失败时为 None
-        """
-        return self._spider.error_detail
-
-    @classmethod
-    def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
-        """
-        获取列表页单页容量。
-
-        :param keyword: 保留统一入口参数，本站搜索与浏览分页容量一致
-        :return: 列表页单页记录数
-        """
-        return cls._size
-
-    def search(self,
-               keyword: Optional[str] = None,
-               mtype: Optional[MediaType] = None,
-               cat: Optional[str] = None,
-               page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
-        """
-        根据关键字搜索站点种子。
-
-        :param keyword: 关键字
-        :param mtype: 媒体类型
-        :param cat: 分类
-        :param page: 页码
-        :return: 是否发生错误, 种子列表
-        """
-        spider = self._spider
-        spider.keyword = keyword
-        spider.mtype = mtype
-        spider.cat = cat
-        spider.page = page
-        result = spider.get_torrents()
-        return spider.is_error, result
-
-    async def async_search(self,
-                           keyword: Optional[str] = None,
-                           mtype: Optional[MediaType] = None,
-                           cat: Optional[str] = None,
-                           page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
-        """
-        异步根据关键字搜索站点种子。
-
-        :param keyword: 关键字
-        :param mtype: 媒体类型
-        :param cat: 分类
-        :param page: 页码
-        :return: 是否发生错误, 种子列表
-        """
-        spider = self._spider
-        spider.keyword = keyword
-        spider.mtype = mtype
-        spider.cat = cat
-        spider.page = page
-        result = await spider.async_get_torrents()
-        return spider.is_error, result
 
 
 class _PagedSpider(Protocol):

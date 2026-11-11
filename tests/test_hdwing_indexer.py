@@ -10,9 +10,8 @@ import pytest
 from app.modules.indexer import (
     _SPECIALIZED_SEARCH_ARGUMENTS,
     SPIDER_PARSER_CLASSES,
-    HDWingPageSpider,
-    HDWingSpider,
 )
+from app.modules.indexer.spider.hdwing import HDWingPageSpider, HDWingSpider
 
 # 模拟 HDWinG 列表页：占位符只保留种子 ID，促销标识由接口返回。
 _PAGE_HTML = """
