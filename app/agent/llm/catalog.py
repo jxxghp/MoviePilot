@@ -454,7 +454,7 @@ class _ProviderCatalog:
                 provider_id="uberllm",
                 name="UberLLM",
                 default_base_url="https://api.uberllm.dev/v1",
-                sort_order=61,
+                sort_order=62,
                 api_key_hint="填写 UberLLM API Key（ull_ 开头），注册后在 https://uberllm.dev/dashboard/keys 创建。需预充值，无免费额度。",
                 description="UberLLM 按量付费的 OpenAI-compatible 聚合模型平台，一个 Key 覆盖 GPT、Claude、Gemini、DeepSeek、Qwen、Kimi 等模型。",
             ),
