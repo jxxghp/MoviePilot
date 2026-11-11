@@ -383,11 +383,16 @@ class _DownloadHttpAdapter:
     ) -> RequestUtils:
         """
         按下载链传入的代理、认证与超时参数构造一次请求。
+
+        自定义头部不能让 RequestUtils 忽略独立传入的 UA；显式 User-Agent 头仍优先。
         """
+        request_headers = dict(headers) if headers is not None else None
+        if request_headers is not None and ua and not any(key.lower() == "user-agent" for key in request_headers):
+            request_headers["User-Agent"] = ua
         options: dict[str, Any] = {
             "cookies": cookies,
             "ua": ua,
-            "headers": headers,
+            "headers": request_headers,
             "proxies": proxies,
             "timeout": timeout,
         }
@@ -470,14 +475,20 @@ class _DownloadHttpAdapter:
         proxies: Optional[dict[str, str]] = None,
         timeout: Optional[int] = None,
         params: Optional[dict[str, Any]] = None,
+        json_body: Optional[dict[str, Any]] = None,
+        allow_redirects: bool = True,
     ) -> Optional[DownloadResponsePort]:
         """
-        发送下载链 POST 请求并原样保留响应三态。
+        发送下载链 POST，区分 URL 查询和 JSON 正文，并保留响应三态。
         """
         request = self._request(cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout)
         kwargs: dict[str, Any] = {}
         if params is not None:
             kwargs["params"] = params
+        if json_body is not None:
+            kwargs["json"] = json_body
+        if not allow_redirects:
+            kwargs["allow_redirects"] = False
         response = request.post_res(url, **kwargs)
         return cast(Optional[DownloadResponsePort], response)
 

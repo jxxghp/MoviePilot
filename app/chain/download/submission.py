@@ -31,6 +31,7 @@ from app.chain.download.ports import (
 )
 from app.chain.media import MediaChain
 from app.domain import episode as episode_rules
+from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
@@ -39,6 +40,7 @@ from app.domain.context import (
     TorrentInfo,
 )
 from app.domain.meta.metabase import MetaBase
+from app.foundation.url import UrlUtils
 from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
@@ -173,6 +175,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         :param site_id: 原始资源的站点 ID，用于共享流控额度
         :return: 临时下载地址；换票失败时返回 None
         :raises RateLimitExceededException: 站点限流，保留原始提示供通知和冷却记录使用
+        :raises ValueError: 猪猪换票失败、公告未读或下载地址无效
         """
         match = re.search(r"\[(.*)](.*)", url)
         if not match:
@@ -214,6 +217,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 params=params,
             )
         else:
+            post_options = {key: request_params[name] for name, key in
+                            (("json", "json_body"), ("allow_redirects", "allow_redirects")) if name in request_params}
             response = http.post(
                 request_url,
                 ua=ua,
@@ -221,18 +226,69 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 headers=headers,
                 proxies=proxies,
                 params=params,
+                **post_options,
             )
         if response is None:
+            if request_params.get("protocol") == "Piggo":
+                raise ValueError("无法连接猪猪实验室 API")
             return None
         try:
-            if error := torrent_rate_limit_error(response):
-                defer_site_request(site, error)
-                raise RateLimitExceededException(error)
-            if not response:
-                return None
-            return self._indirect_download_result(response, request_params)
+            return self._indirect_download_response(response, request_params, site)
         finally:
             _close_download_response(response)
+
+    def _indirect_download_response(self, response: DownloadResponsePort, request_params: Dict[str, Any],
+                                    site: dict[str, object]) -> Optional[str]:
+        """
+        在响应关闭前处理换票失败，猪猪公告错误保留原意，限流交给共享冷却。
+
+        :param response: 尚未关闭的原始换票响应
+        :param request_params: 索引器编码的换票协议及结果字段
+        :param site: 原始站点的不含凭据流控配置
+        :return: 已校验的下载地址；其他协议沿用空结果语义
+        :raises ValueError: 猪猪公告、鉴权、响应或地址失败
+        :raises RateLimitExceededException: 任一协议返回明确限流
+        """
+        if request_params.get("protocol") == "Piggo":
+            try:
+                return self._piggo_download_result(response, request_params)
+            except ValueError as err:
+                if torrent_rules.rate_limit_cooldown(str(err)) is not None:
+                    defer_site_request(site, str(err))
+                    raise RateLimitExceededException(str(err)) from err
+                raise
+        if error := torrent_rate_limit_error(response):
+            defer_site_request(site, error)
+            raise RateLimitExceededException(error)
+        if not response:
+            return None
+        return self._indirect_download_result(response, request_params)
+
+    @staticmethod
+    def _piggo_download_result(response: DownloadResponsePort, request_params: Dict[str, Any]) -> str:
+        """
+        校验猪猪签发结果，不把前端下载主机替换为 API 主机。
+
+        :param response: 原始换票响应，包含 HTTP 403 公告等错误
+        :param request_params: 仅在 API 请求中使用的认证配方
+        :return: 站点返回的完整 HTTP 下载地址
+        :raises ValueError: 公告、鉴权、业务失败或下载地址无效
+        """
+        headers = request_params.get("header") or {}
+        access_token = str(headers.get("Authorization") or "").removeprefix("Bearer ")
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        data = site_rules.piggo_response_data(response.status_code, payload, access_token)
+        url = UrlUtils.normalize_http_url(data.get("url"))
+        if url is None or len(url) > 2048:
+            raise ValueError("猪猪 API 未返回有效种子下载地址")
+        parts = urlparse(url)
+        if parts.username is not None or parts.password is not None:
+            raise ValueError("猪猪 API 返回的下载地址含无效认证信息")
+        logger.info("已获取到站点临时下载地址")
+        return url
 
     def _indirect_download_result(self, response: DownloadResponsePort,
                                   request_params: Dict[str, Any]) -> Optional[str]:
@@ -363,7 +419,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                     cookie=site_cookie,
                     site_id=torrent.site,
                 )
-            except RateLimitExceededException as err:
+            except (RateLimitExceededException, ValueError) as err:
                 return None, "", [], str(err)
             # 涉及解析地址的不使用Cookie下载种子，否则MT会出错
             site_cookie = None

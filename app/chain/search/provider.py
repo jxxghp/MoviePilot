@@ -164,11 +164,14 @@ def _wait_for_site_request(site: SiteIndexer) -> Optional[str]:
     """
     等待站点共享额度；远端冷却不发出请求，并交回订阅调度处理。
 
+    猪猪适配器在每次目录和列表 HTTP 请求前自行申请额度，此处不能再预占一次。
+
     :param site: 搜索站点的流控配置
     :return: 远端冷却原因，已获准请求时为 None
     """
     try:
-        wait_for_site_request(site)
+        if site.get("parser") != "Piggo":
+            wait_for_site_request(site)
     except RateLimitExceededException as error:
         report_site_search_outcome(attempted=False, outcome="deferred", error=str(error))
         return str(error)
@@ -179,11 +182,14 @@ async def _async_wait_for_site_request(site: SiteIndexer) -> Optional[str]:
     """
     异步等待同一站点额度；冷却期间保留原因，其他站点继续运行。
 
+    猪猪由适配器在实际 HTTP 请求前等待，不让编排层与请求层重复计费。
+
     :param site: 搜索站点的流控配置
     :return: 远端冷却原因，已获准请求时为 None
     """
     try:
-        await async_wait_for_site_request(site)
+        if site.get("parser") != "Piggo":
+            await async_wait_for_site_request(site)
     except RateLimitExceededException as error:
         report_site_search_outcome(attempted=False, outcome="deferred", error=str(error))
         return str(error)

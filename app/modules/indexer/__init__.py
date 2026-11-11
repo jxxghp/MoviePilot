@@ -28,6 +28,7 @@ from app.modules.indexer.spider.hddolby import HddolbySpider
 from app.modules.indexer.spider.hdwing import HDWingPromotionMixin
 from app.modules.indexer.spider.milkie import MilkieSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
+from app.modules.indexer.spider.piggo import PiggoSpider
 from app.modules.indexer.spider.rousi import RousiSpider
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
 from app.modules.indexer.spider.tnode import TNodeSpider
@@ -35,6 +36,7 @@ from app.modules.indexer.spider.torrentleech import TorrentLeech
 from app.modules.indexer.spider.yema import YemaSpider
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.schemas.exception import RateLimitExceededException
 from app.schemas.media import resolve_media_identity
 from app.schemas.site import SiteUserData
 from app.schemas.types import MediaSource, MediaType, ModuleType, OtherModulesType
@@ -195,6 +197,7 @@ SPIDER_PARSER_CLASSES: dict[str, type[_PagedSpider]] = {
     "HDWing": HDWingSpider,
     "RousiPro": RousiSpider,
     "SunnyPT": SunnyPTSpider,
+    "Piggo": PiggoSpider,
     "Milkie": MilkieSpider,
     "FluxTorrent": FluxTorrentSpider,
 }
@@ -205,6 +208,7 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "TorrentLeech": ("keyword", "mtype", "page"),
     "mTorrent": ("keyword", "mtype", "cat", "page"),
     "SunnyPT": ("keyword", "mtype", "cat", "page"),
+    "Piggo": ("keyword", "mtype", "cat", "page"),
     "Yema": ("keyword", "mtype", "cat", "page"),
     "Haidan": ("keyword", "mtype"),
     "HDDolby": ("keyword", "mtype", "cat", "page"),
@@ -270,7 +274,7 @@ def _classify_search_failure(error: Optional[Exception]) -> str:
         return "error"
     status_code = getattr(error, "status_code", None)
     text = f"{type(error).__name__}: {error}".lower()
-    if status_code == 429 or "429" in text or "rate limit" in text:
+    if isinstance(error, RateLimitExceededException) or status_code == 429 or "429" in text or "rate limit" in text:
         return "rate_limited"
     if status_code == 403 or "403" in text or "forbidden" in text:
         return "forbidden"
@@ -532,7 +536,7 @@ class IndexerModule(_ModuleBase):
         """
         用当前站点凭据恢复候选下载信息。
 
-        M-Team 可从详情页中的站内 ID 重建下载配方；其他无法重建的临时票据需重新查询。
+        M-Team 和猪猪可从详情页中的站内 ID 重建下载配方；其他临时票据需重新查询。
 
         :param site: 当前站点配置及有效凭据
         :param record: 检查点保存的种子记录
@@ -545,6 +549,8 @@ class IndexerModule(_ModuleBase):
         identity = torrent_rules.resource_identity(torrent)
         if site.get("parser") == "mTorrent" and identity and identity[1].startswith("id="):
             torrent.enclosure = MTorrentSpider(site).get_download_url(identity[1][3:])
+        elif site.get("parser") == "Piggo" and identity and identity[1].startswith("id="):
+            torrent.enclosure = PiggoSpider(site).get_download_url(identity[1][3:])
         if not torrent.enclosure and not allow_missing:
             return None
         torrent.site_cookie = site.get("cookie") or ""
@@ -669,9 +675,11 @@ class IndexerModule(_ModuleBase):
     ) -> _IndexerSearchOutcome:
         """
         把同步、异步 I/O 结果整理为共用的搜索完成状态。
+
+        捕获的异常同样代表失败，不能把空结果计为一次成功搜索。
         """
         return _IndexerSearchOutcome(
-            error_flag=error_flag,
+            error_flag=error_flag or error is not None,
             result=result,
             seconds=(datetime.now() - start_time).seconds,
             failure_detail=failure_detail,
@@ -1079,7 +1087,7 @@ class IndexerModule(_ModuleBase):
             logger.debug(f"站点 {site.get('name')} 数据解析完成")
             # 站点声明的 schema 解析失败(userid 为空)时, 自动尝试其他解析器,
             # 兼容资源文件 schema 标注错误/变种站点的场景
-            if not site_obj.userid and not site.get("public"):
+            if not site_obj.userid and not site.get("public") and getattr(site_obj, "allow_schema_fallback", True):
                 tried = {site.get("schema")}
                 for site_schema in self._site_schemas:
                     if (
