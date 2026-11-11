@@ -4,10 +4,15 @@
 
 import asyncio
 import json
+from contextlib import nullcontext
+from copy import deepcopy
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -17,14 +22,21 @@ from pydantic import Field
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
+from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
 from app.agent.mcp import AgentMcpToolSpec
 from app.agent.middleware.invocation import GET_TOOL_EXECUTION_NAME, InvocationMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.policy.contracts import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
+from app.agent.policy.sanitizer import sanitize_for_host
 from app.agent.tools.base import ToolExecutionTimeoutError
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.mcp import McpExternalTool, create_external_mcp_tools
+from app.agent.tools.result import inspect_tool_result
+from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.plugin import get_plugin_config_command
+from app.api.endpoints.plugin import set_plugin_config
 from app.application.invocation import InvocationIdentity
+from app.application.plugin.config import PluginConfigCommand
 from app.db.adapters.invocation import TransactionalInvocationRepository
 from app.db.models.agentinvocation import AgentInvocation
 from app.schemas.agent import AgentMcpServerConfig
@@ -277,6 +289,9 @@ async def test_setting_unknown_is_reconciled_only_by_safe_matching_read(
     assert records()[0]["status"] == ("succeeded" if reconciled else "unknown")
     payload = json.loads(_tool_messages(result)[-1].content)
     assert payload.get("reconciled", False) is reconciled
+    if reconciled:
+        assert payload["execution_outcome"] == "replayed"
+        assert payload["previous_status"] == "succeeded"
 
 
 @pytest.mark.asyncio
@@ -617,3 +632,201 @@ async def test_mcp_read_tag_does_not_bypass_persistent_identity(invocation_runti
     assert len(records()) == 2
     assert replies[0]["data"] == replies[2]["data"] == "remote-result"
     assert replies[1]["replayed"] is True
+
+
+@pytest.mark.asyncio
+async def test_successful_write_replay_is_not_a_new_success(invocation_runtime, monkeypatch):
+    """
+    同一轮命中成功回执时明确区分旧状态，本次调用没有再次执行。
+    """
+    repository, records = invocation_runtime
+    run = AsyncMock(return_value=json.dumps({"success": True}))
+    monkeypatch.setattr(MoviePilotApiTool, "run", run)
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("original")]),
+        AIMessage(content="", tool_calls=[_call("duplicate")]),
+        AIMessage(content="查看既有回执"),
+    ])
+
+    messages = _tool_messages(await _invoke(graph))
+    replay = json.loads(messages[-1].content)
+    assert run.await_count == 1
+    assert len(records()) == 1
+    assert replay["execution_outcome"] == "replayed"
+    assert replay["previous_status"] == "succeeded"
+    assert replay["replayed"] is True
+    assert replay["invocation_id"] == records()[0]["invocation_id"]
+    assert messages[-1].status == "error"
+    assert inspect_tool_result(messages[-1]).value == "replayed"
+
+
+@pytest.mark.asyncio
+async def test_distinct_secret_values_do_not_share_write_receipts(invocation_runtime, monkeypatch):
+    """
+    不同凭据的规范参数必须区分，持久回执仅保存摘要而不保存输入。
+    """
+    repository, records = invocation_runtime
+    first = {"enabled": True, "taobao_cookie": "session=synthetic-first"}
+    second = {"enabled": True, "taobao_cookie": "session=synthetic-second"}
+    assert sanitize_for_host(first) == sanitize_for_host(second)
+    run = AsyncMock(return_value=json.dumps({"execution_outcome": "unknown"}))
+    monkeypatch.setattr(MoviePilotApiTool, "run", run)
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("first", {
+            "operation_id": "plugin.config.update", "path_params": {"plugin_id": "DemoPlugin"}, "body": first,
+        })]),
+        AIMessage(content="等待核验"),
+        AIMessage(content="", tool_calls=[_call("second", {
+            "operation_id": "plugin.config.update", "path_params": {"plugin_id": "DemoPlugin"}, "body": second,
+        })]),
+        AIMessage(content="等待核验"),
+    ])
+
+    await _invoke(graph)
+    await _invoke(graph, "执行不同配置")
+    persisted = records()
+    assert run.await_count == 2
+    assert len({record["arguments_digest"] for record in persisted}) == 2
+    assert all(len(record["arguments_digest"]) == 64 for record in persisted)
+    assert "synthetic-first" not in str(persisted)
+    assert "synthetic-second" not in str(persisted)
+
+
+@pytest.mark.asyncio
+async def test_failed_write_replay_retains_previous_failure_without_reexecuting(invocation_runtime, monkeypatch):
+    """
+    失败回执同样只描述旧调用，不能变成第二次调用的执行结果。
+    """
+    repository, records = invocation_runtime
+    run = AsyncMock(return_value=json.dumps({"success": False, "message": "操作被拒绝"}))
+    monkeypatch.setattr(MoviePilotApiTool, "run", run)
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("original")]),
+        AIMessage(content="", tool_calls=[_call("duplicate")]),
+        AIMessage(content="查看既有回执"),
+    ])
+
+    replay = json.loads(_tool_messages(await _invoke(graph))[-1].content)
+    assert run.await_count == 1
+    assert records()[0]["status"] == "failed"
+    assert replay["execution_outcome"] == "replayed"
+    assert replay["previous_status"] == "failed"
+    assert replay["replayed"] is True
+
+
+@pytest.mark.asyncio
+async def test_lower_level_replay_does_not_settle_current_write_as_success(invocation_runtime, monkeypatch):
+    """
+    下层只返回历史回执时保留未知认领，后续请求不得据此重复副作用。
+    """
+    repository, records = invocation_runtime
+    run = AsyncMock(return_value=json.dumps({
+        "execution_outcome": "replayed", "previous_status": "succeeded", "replayed": True,
+    }))
+    monkeypatch.setattr(MoviePilotApiTool, "run", run)
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("original")]), AIMessage(content="先核验"),
+        AIMessage(content="", tool_calls=[_call("retry")]), AIMessage(content="仍需核验"),
+    ])
+
+    first = _tool_messages(await _invoke(graph))[-1]
+    assert inspect_tool_result(first).value == "replayed"
+    assert records()[0]["status"] == "unknown"
+    retry = json.loads(_tool_messages(await _invoke(graph, "再次检查"))[-1].content)
+    assert retry["execution_outcome"] == "unknown"
+    assert retry["replayed"] is True
+    assert run.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_real_agent_to_plugin_endpoint_preserves_configuration_and_services(invocation_runtime, monkeypatch):
+    """
+    真实图经 API 网关与 HTTP 路由写配置，回放和无效写入不影响插件数据及服务。
+    """
+    repository, records = invocation_runtime
+    stored = {"enabled": True, "cookie": "session=synthetic-cookie", "keywords": list(range(60))}
+    plugin_data = {"tracked": ["synthetic-item"]}
+    services = list(range(8))
+    initializations: list[dict[str, Any]] = []
+
+    def save(_plugin_id: str, config: dict[str, Any], _force: bool) -> bool:
+        """
+        模拟配置端口的整份持久化替换。
+        """
+        stored.clear()
+        stored.update(deepcopy(config))
+        return True
+
+    def refresh(_plugin_id: str) -> None:
+        """
+        模拟按最新配置重新协调定时服务。
+        """
+        services[:] = list(range(8)) if stored.get("enabled") else []
+
+    def delete_data(_plugin_id: str, _force: bool) -> bool:
+        """
+        如果错误进入删除路径，让测试观察到独立插件数据的变化。
+        """
+        plugin_data.clear()
+        return True
+
+    command = PluginConfigCommand(
+        read_config=lambda _plugin_id: deepcopy(stored),
+        save_config=save,
+        initialize=lambda _plugin_id, config: initializations.append(deepcopy(config)),
+        stop=lambda _plugin_id: None,
+        delete_config=lambda _plugin_id, _force: True,
+        delete_data=delete_data,
+        reload_runtime=lambda _plugin_id: None,
+        publish_reset=lambda _plugin_id: None,
+        refresh_registrations=refresh,
+        mutation=lambda _operation: nullcontext(),
+        delete_plugin_data_rows=lambda _plugin_id: None,
+        destroy_own_database=lambda _plugin_id: None,
+        delete_data_directory=lambda _plugin_id: True,
+        purge_instance=lambda _plugin_id: True,
+        is_clone=lambda _plugin_id: False,
+    )
+    app = FastAPI()
+    app.add_api_route("/api/v1/plugin/{plugin_id}", set_plugin_config, methods=["PUT"])
+    app.dependency_overrides[get_current_active_superuser] = lambda: None
+    app.dependency_overrides[get_plugin_config_command] = lambda: command
+    calls = []
+    with TestClient(app) as client:
+        async def send(**kwargs):
+            """
+            仅把实际 HTTP 传输换成内存 ASGI，保留真实路由与应用命令。
+            """
+            calls.append(kwargs)
+            response = client.request(kwargs["method"], kwargs["url"], json=kwargs["json"])
+            return SimpleNamespace(status_code=response.status_code, headers=response.headers,
+                                   json=response.json, aclose=AsyncMock())
+
+        executor = MoviePilotApiExecutor(
+            context=ApiExecutionContext(user_id="1", username="admin", is_admin=True),
+            request_factory=Mock(return_value=SimpleNamespace(request=send)),
+        )
+        monkeypatch.setattr(executor, "_build_headers", lambda: {})
+        monkeypatch.setattr(executor, "_resolve_base_url", lambda: "http://testserver")
+        tool = MoviePilotApiTool(session_id="invocation-chat", user_id="owner", executor=executor)
+        tool.set_agent_context({"is_admin": True})
+        body = {**stored, "keywords": [*stored["keywords"], "new"]}
+        arguments = {"operation_id": "plugin.config.update", "path_params": {"plugin_id": "DemoPlugin"}, "body": body}
+        graph, _model, _middleware = _graph(repository, [
+            AIMessage(content="", tool_calls=[_call("original", arguments)]),
+            AIMessage(content="", tool_calls=[_call("duplicate", arguments)]),
+            AIMessage(content="", tool_calls=[_call("empty", {**arguments, "body": {}})]),
+            AIMessage(content="", tool_calls=[_call("masked", {**arguments, "body": {**body, "cookie": "***"}})]),
+            AIMessage(content="已检查回执"),
+        ], tools=[tool])
+        messages = [json.loads(message.content) for message in _tool_messages(await _invoke(graph))]
+
+    assert messages[0]["success"] is True
+    assert messages[1]["execution_outcome"] == "replayed"
+    assert messages[1]["previous_status"] == "succeeded"
+    assert messages[2]["execution_outcome"] == "failed"
+    assert messages[3]["execution_outcome"] == "failed"
+    assert len(calls) == len(records()) == len(initializations) == 1
+    assert stored == body
+    assert plugin_data == {"tracked": ["synthetic-item"]}
+    assert services == list(range(8))

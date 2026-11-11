@@ -67,7 +67,7 @@ def test_explicit_protocol_outcomes_preserve_business_data(payload, expected):
 @pytest.mark.parametrize("outcome", list(ExecutionOutcome))
 def test_receipt_retains_each_explicit_outcome(outcome):
     """
-    回执必须区分所有四类结果，未知状态明确要求核验。
+    回执必须区分所有结果，未知状态明确要求核验。
     """
     orchestrator = AgentToolPolicyOrchestrator()
     tool = SimpleNamespace(name="plugin_write", args_schema=None)
@@ -184,6 +184,22 @@ async def test_command_receipt_and_direct_manager_keep_original_payload():
     manager = MoviePilotToolsManager(is_admin=True)
     manager.tools = [tool]
     assert json.loads(await manager.call_tool(tool.name, {})) == {"success": False, "message": "目标记录不存在"}
+
+
+def test_command_aggregate_does_not_turn_replayed_receipt_into_success():
+    """
+    聚合消息时历史回执不能被旁边的成功消息覆盖成新操作成功。
+    """
+    success = ToolMessage(content='{"success":true}', tool_call_id="first")
+    replay = ToolMessage(
+        content='{"execution_outcome":"replayed","previous_status":"succeeded"}',
+        tool_call_id="second",
+        status="error",
+    )
+    command = Command(update={"messages": [success, replay]})
+    assert inspect_tool_result(command) is ExecutionOutcome.REPLAYED
+    error_with_success_body = ToolMessage(content='{"success":true}', tool_call_id="third", status="error")
+    assert inspect_tool_result(error_with_success_body) is ExecutionOutcome.FAILED
 
 
 @pytest.mark.asyncio

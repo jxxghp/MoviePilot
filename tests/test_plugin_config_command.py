@@ -16,11 +16,15 @@ def _command(
     directory_existed: bool = True,
     is_clone: bool = False,
     purge_invalid_empty_host=None,
+    existing_config: dict[str, object] | None = None,
 ) -> PluginConfigCommand:
     """
     构造记录端口调用顺序的插件配置用例。
     """
     return PluginConfigCommand(
+        read_config=lambda plugin_id: (
+            calls.append(("read", plugin_id)) or (existing_config or {})
+        ),
         save_config=lambda plugin_id, config, force: (
             calls.append(("save", plugin_id, config, force)) or save_result
         ),
@@ -78,6 +82,36 @@ def test_update_refreshes_runtime_only_after_config_is_saved() -> None:
     assert calls == [
         ("save", "DemoPlugin", {"enabled": True}, False),
         ("initialize", "DemoPlugin", {"enabled": True}),
+        ("registrations", "DemoPlugin"),
+    ]
+
+
+def test_empty_update_cannot_erase_existing_plugin_configuration() -> None:
+    """
+    已有配置时空替换必须在保存、初始化和刷新注册前失败。
+    """
+    calls: list[tuple] = []
+    stored = {"enabled": True, "keywords": ["one", "two"]}
+    result = _command(calls, existing_config=stored).update("DemoPlugin", {})
+
+    assert result.success is False
+    assert "空" in result.message
+    assert stored == {"enabled": True, "keywords": ["one", "two"]}
+    assert calls == [("read", "DemoPlugin")]
+
+
+def test_empty_update_remains_compatible_with_unconfigured_plugins() -> None:
+    """
+    没有配置项的插件仍可保存空表单，不会因保护已有数据而失去兼容性。
+    """
+    calls: list[tuple] = []
+    result = _command(calls).update("DemoPlugin", {})
+
+    assert result.success is True
+    assert calls == [
+        ("read", "DemoPlugin"),
+        ("save", "DemoPlugin", {}, False),
+        ("initialize", "DemoPlugin", {}),
         ("registrations", "DemoPlugin"),
     ]
 

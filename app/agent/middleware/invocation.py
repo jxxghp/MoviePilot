@@ -58,7 +58,10 @@ def _canonical_arguments(request: ToolCallRequest) -> dict[str, Any]:
 
 def _fingerprint(value: Any) -> str:
     """
-    只存储规范 JSON 的单向摘要，不把写入参数或凭据写入回执。
+    只存储规范 JSON 的单向摘要，不把写入参数或凭据原文写入回执。
+
+    完整参数参与比对以区分不同写入；脱敏后再计算会把不同凭据折叠为同一操作。
+    摘要不是加密结果，不能代替对回执数据库的访问保护。
     """
     serialized = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -129,6 +132,8 @@ class InvocationMiddleware(AgentMiddleware[InvocationState, Any, Any]):
             recovery = "根据错误信息修正输入或改用正确工具后重试；不要重复提交未确认的写入。"
         elif recovery is None and outcome == "unknown":
             recovery = "结果未知时先调用只读查询或 get_tool_execution 核验实际状态，不要直接重试写入。"
+        elif recovery is None and outcome == "replayed":
+            recovery = "这是旧调用的回执，本次没有执行；如需再次写入，请先核验状态并由新的用户请求明确发起。"
         payload = {"execution_outcome": outcome, "message": message, **extra}
         if recovery is not None:
             payload["recovery"] = recovery
@@ -204,17 +209,23 @@ class InvocationMiddleware(AgentMiddleware[InvocationState, Any, Any]):
 
     async def _existing(self, request: ToolCallRequest, record: InvocationSnapshot) -> ToolMessage:
         """
-        已完成直接返回回执，未知结果仅在宿主只读核验成功后收口。
+        区分旧回执和本次执行；未知结果仅在宿主只读核验成功后收口。
         """
         if record.status == "unknown" and await self._verify_setting(request):
             if await self._finish(record, "succeeded"):
-                return self._message(request, "succeeded", "已只读核验目标设置生效，没有重复写入。",
-                                     invocation_id=record.identity.invocation_id, reconciled=True)
+                return self._message(request, "replayed", "已只读核验目标设置生效，本次没有执行写入。",
+                                     invocation_id=record.identity.invocation_id, reconciled=True,
+                                     replayed=True, previous_status="succeeded")
+        if record.status in {"succeeded", "failed"}:
+            return self._message(
+                request, "replayed", f"已有执行记录：{record.summary}。本次没有执行写入。",
+                invocation_id=record.identity.invocation_id, replayed=True, previous_status=record.status,
+            )
         outcome = "pending" if record.status == "running" else record.status
         return self._message(
             request, outcome,
             f"已有执行记录：{record.summary}。本次未重复执行；结果未知时请先核验实际状态。",
-            invocation_id=record.identity.invocation_id, replayed=True,
+            invocation_id=record.identity.invocation_id, replayed=True, previous_status=record.status,
         )
 
     @staticmethod
@@ -294,7 +305,8 @@ class InvocationMiddleware(AgentMiddleware[InvocationState, Any, Any]):
             return self._message(request, "unknown", "工具执行异常，写入结果未知，请先核验实际状态。",
                                  invocation_id=claim.record.identity.invocation_id)
         outcome = inspect_tool_result(result)
-        status: InvocationFinalStatus = outcome.value
+        # 下层只返回历史回执时，不能把本次认领结算为已执行成功。
+        status: InvocationFinalStatus = "unknown" if outcome is ExecutionOutcome.REPLAYED else outcome.value
         settled = await self._finish(claim.record, status)
         if not settled:
             return self._message(request, "unknown", "工具已经返回，但持久回执未确认；请先核验，勿直接重试。",

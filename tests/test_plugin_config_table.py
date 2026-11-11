@@ -5,15 +5,22 @@
 from __future__ import annotations
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import get_current_active_superuser
+from app.api.dependencies.plugin import get_plugin_config_command
+from app.api.endpoints.plugin import set_plugin_config
+from app.application.plugin.config import PluginConfigCommand
 from app.db.models.plugininstance import PluginInstance
 from app.db.models.systemconfig import SystemConfig
 from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.session import SessionFactory
 from app.db.uow import run_sync_transaction
+from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.extensions.plugin.storage import PluginConfigStore, PluginStorage
 from app.startup.initializers.plugins import (
@@ -93,6 +100,69 @@ def test_plugin_config_reads_back_through_the_config_store(config_store: PluginC
     config_store.write(PLUGIN_ID, {"enable": False, "token": "probe"})
 
     assert config_store.read(PLUGIN_ID) == {"enable": False, "token": "probe"}
+
+
+def test_http_empty_config_keeps_real_instance_row_and_registered_services(config_store: PluginConfigStore):
+    """
+    真实 HTTP 与实例表边界拒绝空覆盖，合法完整配置仍按既有顺序生效。
+    """
+    original = {
+        "enabled": True,
+        "cookie": "session=synthetic-cookie",
+        "keywords": [f"keyword-{index}" for index in range(60)],
+    }
+    assert config_store.write(PLUGIN_ID, original)
+    services = list(range(8))
+    initialized: list[dict[str, object]] = []
+    admission = PluginMutationAdmission()
+
+    def initialize(_plugin_id: str, config: dict[str, object]) -> None:
+        """
+        模拟插件消费配置，只有真实进入初始化才记录调用。
+        """
+        initialized.append(config)
+
+    def refresh(_plugin_id: str) -> None:
+        """
+        模拟按最新初始化状态重建服务集合。
+        """
+        services[:] = list(range(8)) if initialized[-1].get("enabled") else []
+
+    command = PluginConfigCommand(
+        read_config=config_store.read,
+        save_config=config_store.write,
+        initialize=initialize,
+        stop=lambda _plugin_id: None,
+        delete_config=lambda _plugin_id, _force: True,
+        delete_data=lambda _plugin_id, _force: True,
+        reload_runtime=lambda _plugin_id: None,
+        publish_reset=lambda _plugin_id: None,
+        refresh_registrations=refresh,
+        mutation=admission.hold,
+        delete_plugin_data_rows=lambda _plugin_id: None,
+        destroy_own_database=lambda _plugin_id: None,
+        delete_data_directory=lambda _plugin_id: True,
+        purge_instance=lambda _plugin_id: True,
+        is_clone=lambda _plugin_id: False,
+    )
+    app = FastAPI()
+    app.add_api_route("/api/v1/plugin/{plugin_id}", set_plugin_config, methods=["PUT"])
+    app.dependency_overrides[get_current_active_superuser] = lambda: None
+    app.dependency_overrides[get_plugin_config_command] = lambda: command
+    with TestClient(app) as client:
+        rejected = client.put(f"/api/v1/plugin/{PLUGIN_ID}", json={})
+        assert rejected.json()["success"] is False
+        assert "空" in rejected.json()["message"]
+        assert PluginInstanceOper().get(PLUGIN_ID).config_data == original
+        assert initialized == []
+        assert services == list(range(8))
+
+        updated = {**original, "keywords": [*original["keywords"], "new-keyword"]}
+        accepted = client.put(f"/api/v1/plugin/{PLUGIN_ID}", json=updated)
+        assert accepted.json()["success"] is True
+        assert PluginInstanceOper().get(PLUGIN_ID).config_data == updated
+        assert initialized == [updated]
+        assert services == list(range(8))
 
 
 def test_reading_config_filters_out_historical_empty_keys(config_store: PluginConfigStore):

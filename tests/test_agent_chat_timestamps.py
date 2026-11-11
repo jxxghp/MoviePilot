@@ -10,6 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import delete
 
 from app.api.endpoints import agent as agent_endpoint
 from app.application.messaging.chat import get_configured_agent_chat_service
@@ -18,6 +19,18 @@ from app.db.oper.agentchat import AgentChatOper
 from app.db.session import SessionFactory
 from app.domain.chat import merge_choice_state, normalize_display_timestamps
 from app.schemas.agent import AgentChatMessage
+
+
+@pytest.fixture
+def history_session_id():
+    """
+    为持久化路由测试分配唯一会话，并在结束后精确清理本次提交的记录。
+    """
+    session_id = f"web-agent:timestamps-{uuid4().hex}"
+    yield session_id
+    with SessionFactory() as db:
+        db.execute(delete(AgentChat).where(AgentChat.session_id == session_id))
+        db.commit()
 
 
 def _receipt(**fields: object) -> dict[str, object]:
@@ -107,15 +120,16 @@ def test_timestamp_compatibility_preserves_explicit_invalid_values(timestamp: ob
 
 @pytest.mark.parametrize("replace_snapshot", [False, True])
 def test_history_endpoint_reads_legacy_receipt_and_survives_old_snapshot_save(
-    monkeypatch: pytest.MonkeyPatch, replace_snapshot: bool,
+    monkeypatch: pytest.MonkeyPatch, replace_snapshot: bool, history_session_id: str,
 ) -> None:
     """
     实际详情路由能读取脏历史，且旧内存快照或缺少回执的快照再次写回后仍返回 200。
 
     :param monkeypatch: 隔离运行中 Agent 管理器的 pytest 替换工具
     :param replace_snapshot: 后续保存完整旧快照或省略回执的快照
+    :param history_session_id: 测试结束后会精确清理的独立会话标识
     """
-    session_id = f"web-agent:timestamps-{uuid4().hex}"
+    session_id = history_session_id
     legacy = [
         {"id": "first", "role": "user", "content": "选择电影", "createdAt": 1000},
         _receipt(),

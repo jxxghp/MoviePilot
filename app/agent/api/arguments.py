@@ -151,7 +151,7 @@ def _contract_node(
         result["default"] = deepcopy(resolved["default"])
     if isinstance(resolved.get("type"), str):
         result["type"] = resolved["type"]
-    for key in ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength"):
+    for key in ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength", "minProperties"):
         if key in resolved:
             result[key] = resolved[key]
 
@@ -298,7 +298,12 @@ def _normalize_value(value: Any, declaration: dict[str, Any], definitions: dict[
     if kind == "object":
         if not isinstance(value, dict):
             raise ValueError("API 参数必须是对象")
-        return _normalize_object(value, schema, definitions, depth)
+        normalized = _normalize_object(value, schema, definitions, depth)
+        # 约束最终写入对象，避免空配置绕过公开的 minProperties 合同。
+        minimum = schema.get("minProperties")
+        if isinstance(minimum, int) and len(normalized) < minimum:
+            raise ValueError(f"API 对象至少需要 {minimum} 个字段")
+        return normalized
     if kind == "array":
         if not isinstance(value, list):
             raise ValueError("API 参数必须是数组")

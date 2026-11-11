@@ -40,6 +40,7 @@ def get_plugin_config_command() -> PluginConfigCommand:
         register_plugin_api(plugin_id)
 
     return PluginConfigCommand(
+        read_config=manager.get_plugin_config,
         save_config=manager.save_plugin_config,
         initialize=manager.init_plugin,
         stop=manager.stop,
