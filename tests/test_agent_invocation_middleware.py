@@ -635,9 +635,14 @@ async def test_mcp_read_tag_does_not_bypass_persistent_identity(invocation_runti
 
 
 @pytest.mark.asyncio
-async def test_successful_write_replay_is_not_a_new_success(invocation_runtime, monkeypatch):
+async def test_successful_write_replay_is_not_a_new_success(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     同一轮命中成功回执时明确区分旧状态，本次调用没有再次执行。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实 API 传输的测试夹具
     """
     repository, records = invocation_runtime
     run = AsyncMock(return_value=json.dumps({"success": True}))
@@ -661,9 +666,14 @@ async def test_successful_write_replay_is_not_a_new_success(invocation_runtime, 
 
 
 @pytest.mark.asyncio
-async def test_distinct_secret_values_do_not_share_write_receipts(invocation_runtime, monkeypatch):
+async def test_distinct_secret_values_do_not_share_write_receipts(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     不同凭据的规范参数必须区分，持久回执仅保存摘要而不保存输入。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实 API 传输的测试夹具
     """
     repository, records = invocation_runtime
     first = {"enabled": True, "taobao_cookie": "session=synthetic-first"}
@@ -693,9 +703,14 @@ async def test_distinct_secret_values_do_not_share_write_receipts(invocation_run
 
 
 @pytest.mark.asyncio
-async def test_failed_write_replay_retains_previous_failure_without_reexecuting(invocation_runtime, monkeypatch):
+async def test_failed_write_replay_retains_previous_failure_without_reexecuting(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     失败回执同样只描述旧调用，不能变成第二次调用的执行结果。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实 API 传输的测试夹具
     """
     repository, records = invocation_runtime
     run = AsyncMock(return_value=json.dumps({"success": False, "message": "操作被拒绝"}))
@@ -715,9 +730,14 @@ async def test_failed_write_replay_retains_previous_failure_without_reexecuting(
 
 
 @pytest.mark.asyncio
-async def test_lower_level_replay_does_not_settle_current_write_as_success(invocation_runtime, monkeypatch):
+async def test_lower_level_replay_does_not_settle_current_write_as_success(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     下层只返回历史回执时保留未知认领，后续请求不得据此重复副作用。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实 API 传输的测试夹具
     """
     repository, records = invocation_runtime
     run = AsyncMock(return_value=json.dumps({
@@ -739,9 +759,14 @@ async def test_lower_level_replay_does_not_settle_current_write_as_success(invoc
 
 
 @pytest.mark.asyncio
-async def test_real_agent_to_plugin_endpoint_preserves_configuration_and_services(invocation_runtime, monkeypatch):
+async def test_real_agent_to_plugin_endpoint_preserves_configuration_and_services(
+    invocation_runtime: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     真实图经 API 网关与 HTTP 路由写配置，回放和无效写入不影响插件数据及服务。
+
+    :param invocation_runtime: 提供临时回执数据库的测试环境
+    :param monkeypatch: 隔离真实认证和网络传输的测试夹具
     """
     repository, records = invocation_runtime
     stored = {"enabled": True, "cookie": "session=synthetic-cookie", "keywords": list(range(60))}
@@ -793,9 +818,12 @@ async def test_real_agent_to_plugin_endpoint_preserves_configuration_and_service
     app.dependency_overrides[get_plugin_config_command] = lambda: command
     calls = []
     with TestClient(app) as client:
-        async def send(**kwargs):
+        async def send(**kwargs: Any) -> SimpleNamespace:
             """
             仅把实际 HTTP 传输换成内存 ASGI，保留真实路由与应用命令。
+
+            :param kwargs: API 执行器传入的请求方法、地址和 JSON 内容
+            :return: 可由执行器消费的内存响应
             """
             calls.append(kwargs)
             response = client.request(kwargs["method"], kwargs["url"], json=kwargs["json"])

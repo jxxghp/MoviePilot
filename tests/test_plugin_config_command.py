@@ -3,6 +3,7 @@
 """
 
 from contextlib import nullcontext
+from typing import Optional
 
 from app.application.plugin.config import PluginConfigCommand, PluginPurgeScope
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
@@ -16,7 +17,7 @@ def _command(
     directory_existed: bool = True,
     is_clone: bool = False,
     purge_invalid_empty_host=None,
-    existing_config: dict[str, object] | None = None,
+    existing_config: Optional[dict[str, object]] = None,
 ) -> PluginConfigCommand:
     """
     构造记录端口调用顺序的插件配置用例。

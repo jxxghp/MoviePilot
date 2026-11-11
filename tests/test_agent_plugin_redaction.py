@@ -2,6 +2,8 @@
 验证插件配置写入前对脱敏占位的识别边界。
 """
 
+from typing import Any
+
 import pytest
 
 from app.agent.policy.sanitizer import contains_redacted_placeholder
@@ -19,14 +21,17 @@ from app.agent.policy.sanitizer import contains_redacted_placeholder
     ({"cookie": "session=synthetic-cookie"}, False),
     ({"count": 0, "enabled": False, "empty": None}, False),
 ])
-def test_redacted_placeholder_detection_preserves_nonsecret_text(value, expected):
+def test_redacted_placeholder_detection_preserves_nonsecret_text(value: Any, expected: bool) -> None:
     """
     已遮蔽凭据不能写回，普通文本中的星号仍可作为业务内容。
+
+    :param value: 包含凭据或普通星号文本的配置
+    :param expected: 是否应拒绝写回
     """
     assert contains_redacted_placeholder(value) is expected
 
 
-def test_redacted_placeholder_detection_handles_cycles_and_shared_values():
+def test_redacted_placeholder_detection_handles_cycles_and_shared_values() -> None:
     """
     循环结构不阻塞检查，共享对象进入敏感字段时仍须重新检查。
     """

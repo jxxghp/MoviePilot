@@ -2,6 +2,7 @@
 选择回执的时间戳保留及历史会话读取兼容回归。
 """
 
+from collections.abc import Iterator
 from copy import deepcopy
 from types import SimpleNamespace
 from uuid import uuid4
@@ -22,7 +23,7 @@ from app.schemas.agent import AgentChatMessage
 
 
 @pytest.fixture
-def history_session_id():
+def history_session_id() -> Iterator[str]:
     """
     为持久化路由测试分配唯一会话，并在结束后精确清理本次提交的记录。
 

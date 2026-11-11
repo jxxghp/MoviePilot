@@ -186,7 +186,7 @@ async def test_command_receipt_and_direct_manager_keep_original_payload():
     assert json.loads(await manager.call_tool(tool.name, {})) == {"success": False, "message": "目标记录不存在"}
 
 
-def test_command_aggregate_does_not_turn_replayed_receipt_into_success():
+def test_command_aggregate_does_not_turn_replayed_receipt_into_success() -> None:
     """
     聚合消息时历史回执不能被旁边的成功消息覆盖成新操作成功。
     """

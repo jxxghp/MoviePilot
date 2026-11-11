@@ -193,6 +193,11 @@ async def test_plugin_gateway_rejects_empty_or_redacted_replacements(
 ) -> None:
     """
     空对象和脱敏占位不能作为整份插件配置送入真实写入入口。
+
+    :param api_transport: 使用真实网关和内存 HTTP 传输的测试夹具
+    :param entrypoint: 网关的直接、LangChain 或管理器调用入口
+    :param json_encoded: 是否将请求体编码为 JSON 字符串
+    :param body: 待拒绝的不安全配置对象
     """
     gateway, request = api_transport
     result = await _invoke_gateway(entrypoint, gateway, {
@@ -214,6 +219,9 @@ async def test_plugin_gateway_preserves_complete_unmasked_configuration(
 ) -> None:
     """
     安全完整配置按原样发送，普通文本中的星号不是脱敏占位。
+
+    :param api_transport: 使用真实网关和内存 HTTP 传输的测试夹具
+    :param entrypoint: 网关的直接、LangChain 或管理器调用入口
     """
     gateway, request = api_transport
     body = {

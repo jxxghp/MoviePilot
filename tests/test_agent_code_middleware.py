@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -179,9 +180,11 @@ async def test_code_cannot_bypass_unloaded_skill(environment):
 
 
 @pytest.mark.asyncio
-async def test_python_rpc_rejects_plugin_config_writes(environment):
+async def test_python_rpc_rejects_plugin_config_writes(environment: Any) -> None:
     """
     Python 内的 API 助手仍是只读入口，不能提交插件配置写操作。
+
+    :param environment: 包含真实 Agent 图和内存 API 端口的测试环境
     """
     scope, executor, api, tool, _, _, _, middlewares = environment
     program = (

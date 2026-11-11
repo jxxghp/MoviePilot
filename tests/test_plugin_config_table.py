@@ -102,9 +102,11 @@ def test_plugin_config_reads_back_through_the_config_store(config_store: PluginC
     assert config_store.read(PLUGIN_ID) == {"enable": False, "token": "probe"}
 
 
-def test_http_empty_config_keeps_real_instance_row_and_registered_services(config_store: PluginConfigStore):
+def test_http_empty_config_keeps_real_instance_row_and_registered_services(config_store: PluginConfigStore) -> None:
     """
     真实 HTTP 与实例表边界拒绝空覆盖，合法完整配置仍按既有顺序生效。
+
+    :param config_store: 使用隔离实例表的真实配置存储
     """
     original = {
         "enabled": True,
