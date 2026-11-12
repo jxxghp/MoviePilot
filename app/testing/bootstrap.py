@@ -273,6 +273,14 @@ def prepare_backend() -> None:
             chain=lambda: build_chain_runtime_config(settings),
         )
     )
+    # 插件 SDK 的站点域名与协议入口依赖站点协议端口与惰性模块运行时，统一经启动组合层按需装配。
+    from app.runtime.settings import configure_runtime_setting_provider
+    from app.startup.composition.chain import configure_module_runtime_provider
+    from app.startup.composition.site import configure_site_protocol_composition
+
+    configure_runtime_setting_provider(lambda key: getattr(settings, key))
+    configure_module_runtime_provider()
+    configure_site_protocol_composition()
 
 
 def prepare_v2_backend(plugins_repo: Path) -> None:
