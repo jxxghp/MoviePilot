@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 72
+version: 73
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -420,6 +420,12 @@ token exchange downloads retain their existing credential rules.
 - Recent `search.results` snapshots belong to the authenticated user; search again after
   upgrading to populate them. Optional Web `done.diagnostics` uses `scope=page` for the current
   page. Skipped rule groups do not increase the resource rejection count.
+- Page diagnostics `rule_id_invalid`, `rule_id_missing`, and `rule_syntax_invalid`
+  describe configuration errors in selected applicable rule groups, not ordinary
+  resource mismatches. Optional `warnings.rule_ids` preserves complete IDs and
+  surrounding whitespace. Use rule APIs to rename IDs and references together;
+  do not edit the database. Upgrade migration handles unambiguous legacy IDs;
+  confirm ambiguous references manually instead of relaxing parsing or skipping rules.
 - For list inspection, explicitly send the operation's documented pagination
   fields instead of requesting an unbounded legacy result. For optional legacy
   pagination, start with `query={"page":1,"count":20}`.
