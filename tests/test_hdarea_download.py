@@ -252,9 +252,12 @@ async def test_every_actual_hdarea_request_charges_one_shared_slot(boundary, mon
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
     chain = SiteChain()
     module = object.__new__(IndexerModule)
-    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(
+        **{key: value for key, value in kwargs.items() if key != "raise_exception"},
+    ))
     site = SiteSnapshot(id=7370, name="高清视界", domain="hdarea.club", url="https://hdarea.club/", apikey="synthetic-key", limit_seconds=3)
-    assert chain.special_site_test["hdarea.club"](site) == (True, "连接成功")
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    assert chain.test(site.url) == (True, "连接成功")
     boundary.ticket.post.side_effect = lambda *_args, **_kwargs: starts.append(clock.now) or boundary.ticket_response
     boundary.port.request.side_effect = lambda **_kwargs: starts.append(clock.now) or boundary.content_response
     assert boundary.chain.download_torrent(boundary.torrent)[0] == CONTENT

@@ -255,7 +255,9 @@ def test_every_actual_piggo_request_shares_one_slot(boundary, monkeypatch):
     site = SiteSnapshot(id=7274, name="猪猪", domain="piggo.me", url="https://piggo.me/", apikey="synthetic-key", limit_seconds=3)
     chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
     module = object.__new__(IndexerModule)
-    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(
+        **{key: value for key, value in kwargs.items() if key != "raise_exception"},
+    ))
     assert chain.test(site.url) == (True, "连接成功")
     boundary.ticket.post.side_effect = lambda *_args, **_kwargs: starts.append(boundary.clock.now) or boundary.ticket_response
     boundary.port.request.side_effect = lambda **_kwargs: starts.append(boundary.clock.now) or boundary.content_response

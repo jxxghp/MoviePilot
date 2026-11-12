@@ -330,7 +330,9 @@ def test_connectivity_registration_uses_resource_adapter(monkeypatch, domain, re
         resource_key: "Piggo", "api_url": "https://api.custom.test/v1/api/",
     }))))
     module = object.__new__(IndexerModule)
-    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(
+        **{key: value for key, value in kwargs.items() if key != "raise_exception"},
+    ))
     monkeypatch.setattr(piggo, "get_runtime_setting", lambda key: {"PROXY": {"https": "synthetic-proxy"}, "USER_AGENT": "Default-UA"}[key])
     wait = Mock()
     defer = Mock()
@@ -501,7 +503,9 @@ def test_connectivity_failures_do_not_open_web_pages(monkeypatch, case):
     chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
     monkeypatch.setattr(site_chain, "SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={"parser": "Piggo"}))))
     module = object.__new__(IndexerModule)
-    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(**kwargs))
+    monkeypatch.setattr(chain, "run_module", lambda method, **kwargs: getattr(module, method)(
+        **{key: value for key, value in kwargs.items() if key != "raise_exception"},
+    ))
     wait = Mock(side_effect=RateLimitExceededException("站点限流") if case == "cooldown" else None)
     monkeypatch.setattr(piggo, "wait_for_site_request", wait)
     response = _response({})

@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Union, cast
 
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
+from app.application.site.protocol import site_domain, torrent_resource_identity
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -16,8 +17,6 @@ from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
-from app.domain import site as site_rules
-from app.domain import torrent as torrent_rules
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -469,7 +468,7 @@ class TorrentsChain(ChainBase):
         """
         抓取并写入单个站点的影视、音乐资源缓存。
         """
-        domain = site_rules.extract_domain(indexer.get("domain"))
+        domain = site_domain(indexer.get("domain"))
         if stype == "spider":
             torrents: List[TorrentInfo] = []
             for page in range(2):
@@ -522,7 +521,7 @@ class TorrentsChain(ChainBase):
         """
         优先使用站点和种子 ID；缺少稳定身份的旧资源沿用标题、副标题去重。
         """
-        identity = torrent_rules.resource_identity(torrent)
+        identity = torrent_resource_identity(torrent)
         if identity:
             return ("resource", *identity)
         return "title", torrent.site, torrent.title, torrent.description

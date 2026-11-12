@@ -624,6 +624,38 @@ class MTorrentSpider:
         """
         return self.__get_download_url(torrent_id)
 
+    @staticmethod
+    def torrent_id_from_url(url: str) -> Optional[str]:
+        """
+        从既有详情页地址提取稳定种子 ID，换票参数不参与身份。
+
+        :param url: 搜索结果或旧缓存中的详情页地址
+        :return: /detail/{id} 中的种子 ID；其他路径为 None
+        """
+        match = re.fullmatch(r"/detail/(\d+)/?", urlparse(url).path)
+        return match[1] if match else None
+
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        用搜索同源的用户资料接口验证 API Key，不依赖首页或浏览器登录标记。
+
+        :return: 认证是否有效及接口失败原因
+        """
+        user_agent = self._ua or get_runtime_setting("USER_AGENT")
+        with RequestUtils(headers={
+            "User-Agent": user_agent, "Accept": "application/json, text/plain, */*", "x-api-key": self._apikey,
+        }, ua=user_agent, proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="POST", url=f"https://{self._api_domain}/api/member/profile", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            payload = response.json() or {}
+            if isinstance(payload, dict) and str(payload.get("code")) == "0" and payload.get("data"):
+                return True, "连接成功"
+            return False, payload.get("message", "鉴权已过期或无效") if isinstance(payload, dict) else "鉴权已过期或无效"
+
     def get_subtitle_links(self, page_url: str) -> List[str]:
         """
         获取指定页面的字幕下载链接。

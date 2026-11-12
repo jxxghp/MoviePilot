@@ -63,6 +63,29 @@ class MilkieSpider:
         """
         return cls._size
 
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        通过最小种子查询验证 Milkie API Key，空列表也是有效响应。
+
+        :return: 认证是否有效及连接或响应失败原因
+        """
+        user_agent = self._ua or get_runtime_setting("USER_AGENT")
+        with RequestUtils(headers={
+            "Accept": "application/json", "User-Agent": user_agent, "x-milkie-auth": self._apikey,
+        }, ua=user_agent, proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="GET", url=f"{str(self._domain).rstrip('/')}/api/v1/torrents?ps=1", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法打开网站！"
+            if response.status_code == 200:
+                payload = response.json()
+                if isinstance(payload, dict) and isinstance(payload.get("torrents"), list):
+                    return True, "连接成功"
+                return False, "站点返回了无效的种子数据"
+            if response.status_code in (401, 403):
+                return False, "API Key 无效或已过期"
+            return False, f"错误：{response.status_code} {response.reason}"
+
     def __get_params(self, keyword: Optional[str] = None, mtype: Optional[MediaType] = None,
                      page: Optional[int] = 0) -> dict[str, Any]:
         """

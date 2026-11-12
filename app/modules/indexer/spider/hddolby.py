@@ -15,7 +15,7 @@ from app.schemas.types import MediaType
 
 class HddolbySpider:
     """
-    通过 HDDolby API 搜索种子并生成带认证信息的下载配方。
+    通过 HDDolby API 搜索种子并生成带 downhash 的直接下载地址。
     """
     _indexerid = None
     _domain = None
@@ -96,6 +96,7 @@ class HddolbySpider:
             api_url = str(
                 indexer.get('api_url') or f"https://api.{self._domain_host}/api/v1"
             ).rstrip('/')
+            self._api_url = api_url
             self._searchurl = f"{api_url}/torrent/search"
             self._pageurl = f"{self._domain}details.php?id=%s&hit=1"
 
@@ -309,6 +310,32 @@ class HddolbySpider:
 
     def __get_download_url(self, torrent_id: object, downhash: object) -> str:
         """
-        获取下载链接，返回base64编码的json字符串及URL。
+        生成直接下载地址，不将本站转换为两段式换票协议。
+
+        :param torrent_id: 站点返回的种子 ID
+        :param downhash: 当前种子的下载凭证
+        :return: 包含种子 ID 和 downhash 的下载地址
         """
         return f"{self._domain}download.php?id={torrent_id}&downhash={downhash}"
+
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        用资源声明的用户 API 验证认证，失败提示只展示接口主机而不泄露 URL 凭据。
+
+        :return: 账号是否可用及实际 API 主机的失败原因
+        """
+        api_host = urlparse(self._api_url).hostname
+        with RequestUtils(headers={
+            "Content-Type": "application/json", "Accept": "application/json, text/plain, */*", "x-api-key": self._apikey,
+        }, ua=self._ua or get_runtime_setting("USER_AGENT"), proxies=self._proxy or {},
+            timeout=self._timeout).response_manager(
+            method="GET", url=f"{self._api_url}/user/data", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, f"HDDolby API 主机 {api_host} 无法连接，请检查 API 地址及网络代理"
+            if response.status_code == 200:
+                payload = response.json()
+                if isinstance(payload, dict) and payload.get("status") == 0:
+                    return True, "连接成功"
+                return False, "APIKEY已过期"
+            return False, f"HDDolby API 主机 {api_host} 返回 HTTP {response.status_code} {response.reason}"

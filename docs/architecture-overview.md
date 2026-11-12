@@ -7,7 +7,7 @@
 > [`docs/rules/04-design-patterns.md`](rules/04-design-patterns.md) 为准，本文与其保持一致；
 > 如出现差异，以规则文档为准。
 >
-> *最后更新：2026-11-03*
+> *最后更新：2026-11-12*
 
 ---
 
@@ -618,6 +618,18 @@ flowchart LR
   `chain/transfer/music.py` 负责批次准入与目录共识，`chain/subscribe/music.py` 使用下载/整理历史
   对账专辑入库事实；匹配不到唯一身份时保留歧义保护。
 
+### 6.6 站点协议分发
+
+- **连接检测**：`SiteChain` 通过 `run_module("test_site", ...)` 委托索引 Module。域名绑定、
+  协议别名、认证和下载权限由站点适配器解释；公共链不保留专站方法或路由表。
+  `SiteConnectionResult` 只有明确“不支持”时才允许通用网页检测，真实失败与模块缺失不会回退误报成功。
+- **RSS 和下载**：Application 持有 `RssSitePort` / `SiteProtocolPort`，启动组合根通过
+  `ModuleInvocationDispatcher` 注入实现。专站 RSS 页面、表单和过期响应归 `modules/indexer/rss.py`，
+  新旧换票配方、首次下载确认及旧站点加密包装归索引 Module；公共用例保留传输、限流、重试和来源安全策略。
+- **身份和兼容**：Domain 只解释通用身份字段与查询签名；专站路径和短时票据由 Module 解释，
+  缺少公开资源 ID 的旧检查点继续重取原页。旧站点地址、CookieCloud 和 DB Oper 使用独立的精确 Legacy SDK 门面，
+  不把一种兼容入口的符号混入另一种导出面。
+
 ---
 
 ## 七、AI Agent 子系统
@@ -819,17 +831,17 @@ flowchart LR
 
 ### 10.2 当前架构快照
 
-以下是 2026-11-11 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
+以下是 2026-11-12 核对的 `tests/fixtures/architecture/` 数据；这是源码合同快照，
 不代表某个已发布镜像或正在运行的实例已经验证。
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1158 |
-| 内部导入边 | 10,076 |
+| Python 模块 | 1164 |
+| 内部导入边 | 10,115 |
 | 非平凡 SCC | 1（29 个模块的 TMDB vendor 精确 containment） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 51（精确 policy 准入，Application / Chain 均为 0） |
-| Module Contract V2 spec | 224（其中 220 个方法进入 `run_module` 观察面） |
+| Module Contract V2 spec | 237（其中 223 个方法进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Event producer / consumer | 76（74 静态、2 动态）/ 18（17 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |

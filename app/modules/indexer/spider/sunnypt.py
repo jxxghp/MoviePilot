@@ -8,6 +8,7 @@ import time
 from typing import Any, List, Optional, Tuple
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -34,7 +35,7 @@ class SunnyPTSpider:
         self._name = indexer.get("name") or "SunnyPT"
         self._site_url = indexer.get("domain") or "https://sunnypt.top/"
         self._api_url = str(
-            indexer.get("api_url") or "https://api.sunnypt.top/api/v1/mp"
+            indexer.get("api_url") or f"https://api.{site_rules.extract_domain(self._site_url)}/api/v1/mp"
         ).rstrip("/")
         self._proxy = get_runtime_setting('PROXY') if indexer.get("proxy") else None
         self._use_proxy = bool(indexer.get("proxy"))
@@ -395,3 +396,29 @@ class SunnyPTSpider:
         ).decode("ascii")
         token_url = f"{self._api_url}/torrents/{torrent_id}/download-token"
         return f"[{encoded_config}]{token_url}"
+
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        通过与搜索相同的 profile 协议检测 API Key 和下载权限。
+
+        :return: 账号是否可用及认证、权限或连接失败原因
+        """
+        with RequestUtils(headers=self._request_headers(), ua=self._user_agent,
+                          proxies=self._proxy or {}, timeout=self._timeout).response_manager(
+            method="GET", url=f"{self._api_url}/profile", allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法连接 SunnyPT API 服务"
+            if response.status_code != 200:
+                return False, f"错误：{response.status_code} {response.reason}"
+            try:
+                payload = response.json() or {}
+            except (TypeError, ValueError):
+                return False, "SunnyPT API 响应不是有效 JSON"
+            if not isinstance(payload, dict):
+                return False, "SunnyPT API 响应不是有效 JSON"
+            if str(payload.get("code")) != "0" or not isinstance(payload.get("data"), dict):
+                return False, payload.get("msg") or "API Key 已过期或无效"
+            if payload["data"].get("download_allowed") is False:
+                return False, "当前账号没有下载权限"
+            return True, "连接成功"

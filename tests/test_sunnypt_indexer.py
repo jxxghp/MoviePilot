@@ -448,23 +448,10 @@ def test_sunnypt_site_test_uses_profile_api(monkeypatch):
     """
     captured = {}
 
-    def fake_get_indexer(domain: str):
-        """
-        返回包含独立 API 地址的 SunnyPT 索引配置。
-        """
-        assert domain == "sunnypt.top"
-        return {"api_url": "https://api.sunnypt.top/api/v1/mp"}
-
-    def fake_sites_helper():
-        """
-        构造不触发动态资源保护元类的站点帮助器替身。
-        """
-        return SimpleNamespace(get_indexer=fake_get_indexer)
-
     @contextmanager
     def fake_open_response(*, url: str, headers: dict, **_kwargs):
         """
-        在 Site HTTP Port 边界回放有效用户资料。
+        在适配器 HTTP 边界回放有效用户资料。
         """
         captured.update({"url": url, "headers": headers})
         yield _FakeResponse({
@@ -473,19 +460,13 @@ def test_sunnypt_site_test_uses_profile_api(monkeypatch):
             "data": {"download_allowed": True},
         })
 
-    monkeypatch.setattr("app.chain.site.SitesHelper", fake_sites_helper)
-    monkeypatch.setattr("app.chain.site._open_site_response", fake_open_response)
-    site = SimpleNamespace(
-        domain="sunnypt.top",
-        ua="MoviePilot-Test",
-        apikey="sunny-secret",
-        proxy=0,
-        timeout=15,
-    )
-
-    chain = object.__new__(SiteChain)
-    chain.runtime_config = SimpleNamespace(proxy=None, user_agent="MoviePilot-Test")
-    state, message = chain._SiteChain__sunnypt_test(site)
+    monkeypatch.setattr("app.modules.indexer.spider.sunnypt.RequestUtils", lambda **kwargs: SimpleNamespace(
+        response_manager=lambda **request: fake_open_response(headers=kwargs["headers"], **request),
+    ))
+    state, message = SunnyPTSpider({
+        "domain": "https://sunnypt.top/", "api_url": "https://api.sunnypt.top/api/v1/mp",
+        "ua": "MoviePilot-Test", "apikey": "sunny-secret", "proxy": 0, "timeout": 15,
+    }).test_connection()
 
     assert state
     assert message == "连接成功"
@@ -548,7 +529,7 @@ def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
         site_proxy=False,
     )
 
-    content, folder, files = object.__new__(DownloadChain).download_torrent(torrent)
+    content, folder, files = DownloadChain().download_torrent(torrent)
 
     assert content == b"torrent-content"
     assert folder == "Movie"

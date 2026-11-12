@@ -36,13 +36,13 @@ from app.application.plugin.runtime import get_plugin_manager
 from app.application.scheduling import get_scheduler
 from app.application.site.auth import normalize_site_auth_params
 from app.application.site.mutation import SiteMutationCommand
+from app.application.site.protocol import site_domain
 from app.application.site.query import SiteQueryService
 
 # 站点目录由外部资源加载，静态检查无法解析其动态导出。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
-from app.domain import site as site_rules
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import JsonData
@@ -267,7 +267,7 @@ async def read_sites_by_media_type(
             continue
         if indexer.get("id") is not None:
             supported_ids.update(_normalize_site_ids([indexer.get("id")]))
-        domain = site_rules.extract_domain(indexer.get("domain"))
+        domain = site_domain(indexer.get("domain"))
         if domain:
             supported_domains.add(domain)
 
@@ -752,7 +752,7 @@ async def read_site_by_domain(
     """
     通过域名获取站点信息
     """
-    domain = site_rules.extract_domain(site_url)
+    domain = site_domain(site_url)
     site = await query.get_by_domain(domain)
     if not site:
         raise HTTPException(
@@ -775,7 +775,7 @@ async def read_statistic_by_domain(
     """
     通过域名获取站点统计信息
     """
-    domain = site_rules.extract_domain(site_url)
+    domain = site_domain(site_url)
     return await query.statistic(domain)
 
 

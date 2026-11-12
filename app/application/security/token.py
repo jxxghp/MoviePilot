@@ -5,10 +5,7 @@
 import base64
 import datetime
 import hashlib
-import hmac
 import importlib
-import json
-import os
 import traceback
 from datetime import timedelta
 from typing import Any, Optional, Union
@@ -249,26 +246,3 @@ def aes_encrypt(data: str, key: str) -> str:
     encoded = data.encode("utf-8")
     result = cipher.encrypt(pad(encoded, AES.block_size))
     return base64.b64encode(bytes(cipher.iv) + result).decode("utf-8")
-
-
-def nexusphp_encrypt(data_str: str, key: bytes) -> str:
-    """
-    生成 NexusPHP 兼容的 AES-CBC 加密载荷。
-    """
-    iv = os.urandom(16)
-    iv_base64 = base64.b64encode(iv)
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    ciphertext = cipher.encrypt(pad(data_str.encode(), AES.block_size))
-    ciphertext_base64 = base64.b64encode(ciphertext)
-    mac = hmac.new(
-        key,
-        msg=iv_base64 + ciphertext_base64,
-        digestmod=hashlib.sha256,
-    ).hexdigest()
-    payload = json.dumps({
-        "iv": iv_base64.decode(),
-        "value": ciphertext_base64.decode(),
-        "mac": mac,
-        "tag": "",
-    })
-    return base64.b64encode(payload.encode()).decode()

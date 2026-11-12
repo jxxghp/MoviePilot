@@ -3,9 +3,9 @@ RSS 订阅获取、站点链接生成、浏览器回退与资源解析。
 """
 
 import traceback
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, List, Optional, Protocol, Tuple, Union
-from urllib.parse import urljoin, urlparse
 
 import dateutil.parser
 from lxml import etree
@@ -109,9 +109,78 @@ class RssParserPort(Protocol):
         """
 
 
+@dataclass(frozen=True, slots=True)
+class RssLinkRecipe:
+    """
+    站点 Module 提供的 RSS 链接获取配方，公共用例只负责执行。
+
+    :param url: RSS 配置页面的完整地址
+    :param xpath: 获取生成链接的页面选择器
+    :param params: 获取链接时提交的表单字段
+    :param render: 是否使用已注入的浏览器端口
+    """
+
+    url: str
+    xpath: str
+    params: dict[str, Any]
+    render: bool = False
+
+
+class RssSitePort(Protocol):
+    """
+    RSS 用例消费的站点协议端口，由启动组合根接到 Module 分发。
+    """
+
+    def get_site_rss_recipe(self, url: str) -> RssLinkRecipe:
+        """
+        获取适配器选择的 RSS 获取配方，不执行 I/O。
+
+        :param url: 站点根地址
+        :return: 专站或通用站点配方
+        """
+        ...
+
+    def is_site_rss_expired(self, text: str) -> bool:
+        """
+        解释站点返回的 RSS 过期响应。
+
+        :param text: RSS 响应正文
+        :return: 适配器确认需要重建 RSS 地址时为 True
+        """
+        ...
+
+
 _rss_http_port: Optional[RssHttpPort] = None
 _rss_browser_port: Optional[RssBrowserPort] = None
 _rss_parser_port: Optional[RssParserPort] = None
+_rss_site_port: Optional[RssSitePort] = None
+
+
+def configure_rss_site_port(port: RssSitePort) -> None:
+    """
+    注入由 Module 分发执行的 RSS 协议解释端口。
+
+    :param port: 本生命周期的 RSS 站点协议端口
+    """
+    global _rss_site_port
+    _rss_site_port = port
+
+
+def reset_rss_site_port() -> None:
+    """
+    撤销 RSS 协议端口，不影响独立的传输端口。
+    """
+    global _rss_site_port
+    _rss_site_port = None
+
+
+def _require_rss_site_port() -> RssSitePort:
+    """
+    返回已装配的站点协议端口，未装配时明确失败。
+    """
+    if _rss_site_port is None:
+        raise RuntimeError("RSS 站点协议端口尚未由启动组合根装配")
+    return _rss_site_port
 
 
 def configure_rss_ports(*, http: RssHttpPort, browser: RssBrowserPort,
@@ -154,225 +223,6 @@ class RssHelper:
     MAX_RSS_SIZE = 50 * 1024 * 1024
     # 最大解析条目数
     MAX_RSS_ITEMS = 1000
-
-    # 各站点RSS链接获取配置
-    rss_link_conf: dict[str, dict[str, Any]] = {
-        "default": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-            }
-        },
-        "hares.top": {
-            "xpath": "//*[@id='layui-layer100001']/div[2]/div/p[4]/a/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-            }
-        },
-        "et8.org": {
-            "xpath": "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/a[2]/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-            }
-        },
-        "pttime.org": {
-            "xpath": "//*[@id='outer']/table/tbody/tr/td/table/tbody/tr/td/text()[5]",
-            "url": "getrss.php",
-            "params": {
-                "showrows": 10,
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1
-            }
-        },
-        "ourbits.club": {
-            "xpath": "//a[@class='gen_rsslink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-            }
-        },
-        "totheglory.im": {
-            "xpath": "//textarea/text()",
-            "url": "rsstools.php?c51=51&c52=52&c53=53&c54=54&c108=108&c109=109&c62=62&c63=63&c67=67&c69=69&c70=70&c73=73&c76=76&c75=75&c74=74&c87=87&c88=88&c99=99&c90=90&c58=58&c103=103&c101=101&c60=60",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-            }
-        },
-        "monikadesign.uk": {
-            "xpath": "//a/@href",
-            "url": "rss",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-            }
-        },
-        "zhuque.in": {
-            "xpath": "//a/@href",
-            "url": "user/rss",
-            "render": True,
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-            }
-        },
-        "hdwing.org": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-                "rsscart": 0
-            }
-        },
-        "audiences.me": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-                "torrent_type": 1,
-                "exp": 180
-            }
-        },
-        "shadowflow.org": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "paid": 0,
-                "search_mode": 0,
-                "showrows": 30
-            }
-        },
-        "hddolby.com": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-                "exp": 180
-            }
-        },
-        "hdhome.org": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-                "exp": 180
-            }
-        },
-        "pthome.net": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-                "exp": 180
-            }
-        },
-        "ptsbao.club": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-                "size": 0
-            }
-        },
-        "leaves.red": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 0,
-                "paid": 2
-            }
-        },
-        "hdtime.org": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 0,
-            }
-        },
-        "m-team.io": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "showrows": 50,
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "https": 1
-            }
-        },
-        "u2.dmhy.org": {
-            "xpath": "//a[@class='faqlink']/@href",
-            "url": "getrss.php",
-            "params": {
-                "inclbookmarked": 0,
-                "itemsmalldescr": 1,
-                "showrows": 50,
-                "search_mode": 1,
-                "inclautochecked": 1,
-                "trackerssl": 1
-            }
-        },
-    }
-
-    @classmethod
-    def _get_site_domain(cls, url: str) -> str:
-        """
-        按 RSS 站点配置匹配域名，未命中时回退到最后两级域名。
-        """
-        hostname = (urlparse(url).hostname or "").lower()
-        for domain in cls.rss_link_conf:
-            if domain == "default":
-                continue
-            if hostname == domain or hostname.endswith(f".{domain}"):
-                return domain
-        parts = hostname.split(".")
-        return ".".join(parts[-2:]) if len(parts) >= 2 else hostname
 
     @staticmethod
     def _parse_publish_time(value: str) -> Optional[datetime]:
@@ -454,12 +304,7 @@ class RssHelper:
                     logger.warning(f"RSS文件过大: {len(raw_data) / 1024 / 1024:.1f}MB，跳过解析")
                     return False
 
-                expired_messages = {
-                    "RSS 链接已过期, 您需要获得一个新的!",
-                    "RSS Link has expired, You need to get a new one!",
-                    "RSS Link has expired, You need to get new!",
-                }
-                if ret.text.strip() in expired_messages:
+                if _require_rss_site_port().is_site_rss_expired(ret.text):
                     return None
 
                 if raw_data:
@@ -630,15 +475,10 @@ class RssHelper:
         """
         try:
             http_port, browser_port, _ = _require_rss_ports()
-            domain = self._get_site_domain(url)
-            site_conf = self.rss_link_conf.get(domain) or self.rss_link_conf.get("default")
-            if site_conf is None:
-                return "", f"获取RSS链接失败：未找到站点配置 {url}"
-            rss_url = urljoin(url, site_conf.get("url"))
-            rss_params = site_conf.get("params")
-            if site_conf.get("render"):
+            recipe = _require_rss_site_port().get_site_rss_recipe(url)
+            if recipe.render:
                 html_text = browser_port.render(
-                    url=rss_url,
+                    url=recipe.url,
                     cookie=cookie,
                     ua=ua,
                     proxies=get_chain_runtime_config_snapshot().proxy_server if proxy else None,
@@ -646,8 +486,8 @@ class RssHelper:
                 )
             else:
                 res = http_port.post(
-                    url=rss_url,
-                    data=rss_params if isinstance(rss_params, dict) else {},
+                    url=recipe.url,
+                    data=recipe.params,
                     cookie=cookie,
                     ua=ua,
                     proxies=get_chain_runtime_config_snapshot().proxy if proxy else None,
@@ -665,7 +505,7 @@ class RssHelper:
                 try:
                     html = etree.HTML(html_text)
                     if html is not None and len(html) > 0:
-                        rss_link = html.xpath(site_conf.get("xpath"))
+                        rss_link = html.xpath(recipe.xpath)
                         if rss_link:
                             return str(rss_link[-1]), ""
                 finally:
