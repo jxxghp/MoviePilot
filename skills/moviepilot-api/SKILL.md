@@ -374,8 +374,11 @@ token exchange downloads retain their existing credential rules.
 - Treat `success=false`, HTTP error data, empty results, and validation errors as
   real outcomes. Do not claim success without checking the response.
 - `media.scrape` reports rejected media and failed NFO writes as business failures,
-  including failures within a directory. For concurrent custom-filter changes,
-  re-read the rules and confirm the intended change before retrying a conflict.
+  including failures within a directory. For music albums, report its `message`:
+  track titles, artists and numbers are retained by default; the music tag
+  overwrite policy only updates reliably aligned tracks. An aligned count does
+  not prove every tag changed. For concurrent custom-filter changes, re-read
+  the rules and confirm the intended change before retrying a conflict.
 - Respect an explicit `execution_outcome`: `pending` is accepted but unfinished,
   `unknown` means a write may have happened, and `replayed` means this call did
   not execute; `previous_status` describes the earlier receipt. Do not repeat an
