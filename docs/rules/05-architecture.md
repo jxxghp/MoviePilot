@@ -64,6 +64,7 @@ to make the directory tree look symmetrical.
 | `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity and search stay in their single-word modules |
 | `app/application/search/` | Search state and later search-plan use cases |
 | `app/application/site/throttle.py` | 站点搜索、换票与种子 HTTP 请求共享的间隔、次数窗口及远端冷却策略；使用 `runtime.rate.RequestRateLimiter` 原子记录实际请求起点，缓存命中不计费，等待与取消不提前占用额度 |
+| `app/application/site/protocol.py` | 站点协议的窄端口与冻结连接回执；通过启动注入的模块调度器解释域名、资源身份、短时票据、下载确认和独立字幕能力，不静态依赖 Module，不执行网络或数据库 I/O |
 | `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
 | `app/application/history/` | History use cases and persistence contracts; DownloadHistory and TransferHistory own deeply frozen DTOs plus typed query/write/staging ports |
 | `app/application/music/` | 多来源音乐目录编排；`observation.py` 沿用站点搜索的调用观察模式，隔离一次音乐识别的结果、候选摘要与请求/等待预算，不持有来源客户端、不改变旧模块返回合同；`recognition.py` 通过注入来源回调串行回退、汇总诊断，并按领域候选计划有界补充真实Artist身份别名，子来源共享祖先预算，`catalog.py` 声明目录查询所需的最小来源 Port |
@@ -376,10 +377,11 @@ must not import application services, `runtime/extensions`, `runtime/compat` or
 the plugin SDK.
 
 RSS is not classified as a transport adapter merely because it uses HTTP. The
-current `RssHelper` combines feed parsing, torrent item semantics, configured
-site-specific URL discovery and browser fallback, so it belongs to
-`app/application/rss.py`. The target design gives it ownership of the required
-technical Ports, and startup injects the network/system Adapter implementations;
+current `RssHelper` combines feed parsing, torrent item semantics and execution of
+RSS link recipes with browser fallback, so it belongs to `app/application/rss.py`.
+Site-specific pages, selectors, form parameters and expiration responses belong to
+`app/modules/indexer/rss.py`; Application owns the frozen `RssLinkRecipe` and
+`RssSitePort`, and startup injects module dispatch and network/system Adapter implementations;
 no concrete Adapter import remains in the Application module. Likewise, the generated
 site extension owns the configured catalog/authentication/index capability and
 lives in `app/application/site/`; only its download and file installation
@@ -483,15 +485,28 @@ mentions media, site or torrent:
 | Media | `context.py` owns canonical `Context`, `MediaInfo` and `TorrentInfo` construction; `projection/` owns the pure, input-immutable TMDB/Douban/Bangumi/AniList field mappings and TMDB image-builder port; `media.py` owns source selection policy; identity representation/normalization stays in `schemas/media.py`; `title.py` owns title-candidate and search-keyword rules; `episode.py` owns episode-range display; `scraper.py` owns Kodi-style NFO reading and metadata document generation |
 | Classification | `classification/fields.py` owns the standard field and operator catalog; `classification/sources.py` owns fixture-verified built-in source capability levels; `classification/facts.py` owns canonical fact construction and cross-source country/genre normalization; `classification/evaluator.py` owns deterministic condition and policy evaluation; `classification/validation.py` owns publish-time structural and semantic validation. The package consumes only normalized classification schemas and facts, never concrete media-source modules or persisted configuration |
 | Recognition | `metainfo.py`, `meta/` and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video and music metadata |
-| Site | `site.py` owns site-domain exceptions and interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
-| Torrent | `domain/torrent.py` owns magnet-link semantics, site-scoped resource identity and timestamp/signature URL recognition; configured download/file behavior stays in `application/torrent/download.py`, while cache recognition stays in `application/torrent/cache.py` |
+| Site | `site.py` owns generic domain parsing and interprets HTML into business states such as logged-in and checked-in; named domain exceptions belong to the indexer Module, configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
+| Torrent | `domain/torrent.py` owns magnet-link semantics, explicit/query-field resource identity and generic timestamp/signature recognition; named-site path identity and ticket rules belong to the indexer Module, configured download/file behavior stays in `application/torrent/download.py`, while cache recognition stays in `application/torrent/cache.py` |
 
 专站 API 的认证、信封校验和换票响应解释由 `app/modules/indexer/spider/` 的对应适配器拥有；
 资料解析器可复用同一索引模块内部的协议实现，不把这些细节放回通用 `domain/site.py` 或业务 Chain。
-连通性沿用站点链的域名和协议键值注册，登记到索引适配器的测试通过 `test_site` 分发。
+域名优先绑定、资料/搜索协议别名及旧认证兼容全部归索引 Module；站点链只通过 `test_site` 分发。
+`SiteConnectionResult` 明确区分适配器接管和不支持；只有不支持时才能执行通用网页检测，
+缺少模块回执、能力缺失和真实 API 失败不能被网页成功掩盖。公共链不保留专站路由表或旧检测方法。
 `parse_torrent_download_response` 通过 `run_module(raise_exception=True)` 保留失败原因，
-预期的 API 拒绝不派生模块系统告警；这两项是宿主内部能力，
-不向插件开放。普通搜索在索引模块申请共享额度，多请求适配器通过
+新协议交给对应适配器，未声明协议的旧配方由 `modules/indexer/download.py` 解释，不在 Chain 重复实现。
+下载确认页控件和旧 SDK 的站点加密包装也由该 owner 解释；传输、限流、重试与来源安全边界仍由公共用例负责。
+预期的 API 拒绝不派生模块系统告警；站点协议能力都是宿主内部合同，不向插件开放。
+Application 通过 `SiteProtocolPort` / `RssSitePort` 消费启动注入的 `ModuleInvocationDispatcher`，
+Domain 不读取这些端口，不导入 Application、Module 或 Runtime。
+冷导入只增加 `application/site/protocol.py` 的声明模块：lifecycle/factory/main 的模块计数
+分别为 602/616/618；历史计时样本、三秒预算和生命周期组件清单均不变。
+TTG 旧路径和换票旧缓存仍经 Module 解释；检查点不保存 Cookie、API Key、fragment 或换票配方，
+无法按公开身份恢复下载的候选继续使用原页重取，不能因为新增下载能力而假定存量检查点具备 ID。
+旧 `app.utils.site` 和 `app.helper.cookiecloud` 通过精确 Legacy SDK 门面接入同一域名端口；
+地址/页面门面位于 `sdk/_legacy/domain.py`，不扩展 `sdk/_legacy/site.py` 的 DB Oper 导出面。
+CookieCloud 技术 Adapter 只接受注入的域名回调，不反向依赖 Module 或 Application。
+普通搜索在索引模块申请共享额度，多请求适配器通过
 `manages_request_throttle` 声明自行逐 HTTP 请求申请，搜索 Chain 不识别具体站点名称。
 
 `app/domain` may depend only on schemas and foundation. It must not read global

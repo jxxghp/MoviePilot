@@ -12,13 +12,18 @@ from app.adapters.network.browser import PlaywrightHelper
 from app.adapters.network.cloudflare import under_challenge
 from app.adapters.network.http import RequestUtils
 from app.adapters.system import rust as rust_accel
+from app.application.module import get_module_manager
 from app.application.rss import (
     RssBrowserPort,
     RssHttpPort,
+    RssLinkRecipe,
     RssParserPort,
     RssResponsePort,
+    RssSitePort,
     configure_rss_ports,
+    configure_rss_site_port,
     reset_rss_ports,
+    reset_rss_site_port,
 )
 from app.application.security.cookie import (
     CaptchaHttpPort,
@@ -27,6 +32,12 @@ from app.application.security.cookie import (
     CookieResult,
     configure_cookie_ports,
     reset_cookie_ports,
+)
+from app.application.site.protocol import (
+    SiteProtocolPort,
+    configure_site_protocol_port,
+    reset_site_protocol_port,
+    site_domain,
 )
 from app.application.torrent.download import (
     TorrentHttpPort,
@@ -43,8 +54,197 @@ from app.chain.site import (
     configure_site_ports,
     reset_site_ports,
 )
+from app.domain.context import TorrentInfo
 from app.foundation.url import UrlUtils, url_origin_for_log
+from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.log import logger
+
+
+class _SiteModuleCatalog:
+    """
+    按需读取当前模块目录；站点内部协议不访问插件目录或触发插件物化。
+    """
+
+    @staticmethod
+    def get_running_modules(method: str) -> Any:
+        """
+        返回本次调用实现指定能力的活动宿主模块。
+
+        :param method: 宿主内部的站点能力名称
+        :return: 当前活动模块快照
+        """
+        return get_module_manager().get_running_modules(method)
+
+    @staticmethod
+    def get_plugin_modules() -> Mapping[tuple[str, str], Mapping[str, Callable[..., Any]]]:
+        """
+        提供不物化插件的空目录，站点内部能力不向插件开放。
+
+        :return: 空插件目录
+        """
+        return {}
+
+
+def _raise_site_module_error(error: Exception, *_args: Any, **_kwargs: Any) -> None:
+    """
+    保留站点协议失败给用例判断，不发布模块系统告警。
+
+    :param error: 模块分发或协议实现抛出的失败
+    :param _args: 调度器提供的调用位置，仅供兼容统一回调
+    :param _kwargs: 调度器提供的原始调用参数，不输出凭据
+    :raises Exception: 原始协议失败
+    """
+    raise error
+
+
+class _SiteModuleAdapter:
+    """
+    将 Application 的站点和 RSS 窄端口接到同一宿主模块分发算法。
+    """
+
+    def __init__(self, dispatcher: ModuleInvocationDispatcher) -> None:
+        """
+        保存无资源所有权的调度器，构造时不发现站点或活动模块。
+
+        :param dispatcher: 由组合根创建的宿主模块调度器
+        """
+        self._dispatcher = dispatcher
+
+    def get_site_domain(self, url: Optional[str]) -> str:
+        """
+        分发站点域名规则，缺失模块不能被误报为通用站点。
+
+        :param url: 站点地址或 Cookie Domain
+        :return: 模块解释的站点匹配域名
+        :raises RuntimeError: 模块没有提供域名结果
+        """
+        result = self._dispatcher.dispatch_strict("get_site_domain", url=url)
+        if not isinstance(result, str):
+            raise RuntimeError("站点协议 Module 不可用")
+        return result
+
+    def torrent_resource_identity(self, torrent: TorrentInfo) -> Optional[tuple[str, str]]:
+        """
+        分发资源身份解释，保留无法确定身份的空结果。
+
+        :param torrent: 旧缓存或当前候选，不修改输入
+        :return: 站点及稳定资源标识；无法确定时为 None
+        """
+        return cast(Optional[tuple[str, str]], self._dispatcher.dispatch_strict("torrent_resource_identity", torrent=torrent))
+
+    def is_expiring_download_url(self, url: Optional[str]) -> bool:
+        """
+        分发短时票据识别。
+
+        :param url: 原始或重定向后的下载地址
+        :return: 是否属于已支持的短时票据
+        :raises RuntimeError: 模块没有提供明确判断
+        """
+        result = self._dispatcher.dispatch_strict("is_expiring_download_url", url=url)
+        if not isinstance(result, bool):
+            raise RuntimeError("站点下载协议 Module 不可用")
+        return result
+
+    def is_torrent_download_confirmation(self, content: bytes) -> bool:
+        """
+        分发首次下载确认响应识别。
+
+        :param content: 尚未成功解析为种子的原始响应
+        :return: 是否需要按站点协议提交确认
+        :raises RuntimeError: 模块没有提供明确判断
+        """
+        result = self._dispatcher.dispatch_strict("is_torrent_download_confirmation", content=content)
+        if not isinstance(result, bool):
+            raise RuntimeError("站点下载协议 Module 不可用")
+        return result
+
+    def parse_torrent_download_confirmation(self, text: str, url: str) -> Optional[tuple[str, dict[str, object]]]:
+        """
+        分发确认表单解释，只向调用方交还安全的地址和字段。
+
+        :param text: 确认页面 HTML 文本
+        :param url: 确认页的最终请求地址，作为提交的来源边界
+        :return: 安全的地址及控件；没有合法表单时为 None
+        """
+        return cast(Optional[tuple[str, dict[str, object]]], self._dispatcher.dispatch_strict(
+            "parse_torrent_download_confirmation", text=text, url=url,
+        ))
+
+    def has_site_subtitle_api(self, site: Mapping[str, object]) -> bool:
+        """
+        按模块声明判断独立字幕协议，不识别站点名称。
+
+        :param site: 站点资源声明
+        :return: 是否由独立接口提供字幕
+        :raises RuntimeError: 模块没有提供明确判断
+        """
+        result = self._dispatcher.dispatch_strict("has_site_subtitle_api", site=dict(site))
+        if not isinstance(result, bool):
+            raise RuntimeError("站点字幕协议 Module 不可用")
+        return result
+
+    def get_site_rss_recipe(self, url: str) -> RssLinkRecipe:
+        """
+        分发 RSS 获取配方；模块缺失时明确失败，不使用旧站点表回退。
+
+        :param url: 站点根地址
+        :return: 站点或通用 RSS 获取配方
+        :raises RuntimeError: 模块没有提供配方
+        """
+        result = self._dispatcher.dispatch_strict("get_site_rss_recipe", url=url)
+        if not isinstance(result, RssLinkRecipe):
+            raise RuntimeError("RSS 站点协议 Module 不可用")
+        return result
+
+    def is_site_rss_expired(self, text: str) -> bool:
+        """
+        分发 RSS 过期响应解释。
+
+        :param text: RSS 响应正文
+        :return: 是否需要重新获取 RSS 地址
+        :raises RuntimeError: 模块没有提供明确判断
+        """
+        result = self._dispatcher.dispatch_strict("is_site_rss_expired", text=text)
+        if not isinstance(result, bool):
+            raise RuntimeError("RSS 站点协议 Module 不可用")
+        return result
+
+    def encrypt_site_payload(self, data_str: str, key: bytes) -> str:
+        """
+        分发旧插件所需的站点协议加密，不把协议包装放回通用安全模块。
+
+        :param data_str: 待加密的站点文本
+        :param key: 协议约定的密钥字节
+        :return: 兼容旧接口的加密载荷
+        :raises RuntimeError: 模块没有提供加密结果
+        """
+        result = self._dispatcher.dispatch_strict("encrypt_site_payload", data_str=data_str, key=key)
+        if not isinstance(result, str):
+            raise RuntimeError("站点加密协议 Module 不可用")
+        return result
+
+
+def configure_site_protocol_composition() -> None:
+    """
+    同时装配站点和 RSS 协议端口，不在此阶段物化 Module。
+    """
+    catalog = _SiteModuleCatalog()
+    adapter = _SiteModuleAdapter(ModuleInvocationDispatcher(
+        module_catalog=catalog, plugin_catalog=catalog,
+        plugin_error_handler=_raise_site_module_error,
+        system_error_handler=_raise_site_module_error,
+        rate_limit_handler=_raise_site_module_error,
+    ))
+    configure_site_protocol_port(cast(SiteProtocolPort, adapter))
+    configure_rss_site_port(cast(RssSitePort, adapter))
+
+
+def reset_site_protocol_composition() -> None:
+    """
+    逆序撤销站点与 RSS 协议端口，关闭后不再调用模块目录。
+    """
+    reset_rss_site_port()
+    reset_site_protocol_port()
 
 
 def _redirect_destination(url: str, response: Any) -> tuple[Optional[str], Optional[str]]:
@@ -369,7 +569,7 @@ class _SiteCookieCloudAdapter:
         """
         下载并返回 CookieCloud 的兼容二元结果。
         """
-        return CookieCloudHelper().download()
+        return CookieCloudHelper(domain_resolver=site_domain).download()
 
 
 def configure_site_access_composition() -> None:
@@ -378,6 +578,7 @@ def configure_site_access_composition() -> None:
     """
     reset_site_access_composition()
     try:
+        configure_site_protocol_composition()
         configure_rss_ports(
             http=cast(RssHttpPort, _RssHttpAdapter()),
             browser=cast(RssBrowserPort, _RssBrowserAdapter()),
@@ -408,3 +609,4 @@ def reset_site_access_composition() -> None:
     reset_torrent_port()
     reset_cookie_ports()
     reset_rss_ports()
+    reset_site_protocol_composition()

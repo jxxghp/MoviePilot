@@ -10,12 +10,6 @@ from lxml import etree
 from app.foundation.dom import DomUtils
 from app.foundation.url import split_netloc
 
-_SPECIAL_SITE_DOMAINS = (
-    "u2.dmhy.org",
-    "pt.ecust.pp.ua",
-    "pt.gtkpw.xyz",
-    "pt.gtk.pw",
-)
 
 def urls_match(first: str, second: str) -> bool:
     """
@@ -32,16 +26,13 @@ def urls_match(first: str, second: str) -> bool:
 
 def extract_domain(url: Optional[str]) -> str:
     """
-    按 MoviePilot 站点规则提取用于匹配的注册域名。
+    按通用层级规则提取域名，不解释具体站点的多级域名例外。
 
     :param url: 待解析的站点地址；None 或空字符串返回空域名
     :return: 注册域名；无法解析时返回空字符串
     """
     if not url:
         return ""
-    for domain in _SPECIAL_SITE_DOMAINS:
-        if domain in url:
-            return domain
     _scheme, netloc = split_netloc(url)
     if not netloc:
         return ""

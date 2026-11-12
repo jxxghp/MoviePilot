@@ -17,10 +17,13 @@ from app.application.site.contract import SiteSnapshot
 from app.application.site.observation import capture_site_search_observation
 from app.chain.download import DownloadChain
 from app.chain.site import SiteChain
+from app.domain.context import Context, TorrentInfo
 from app.modules.indexer import IndexerModule
+from app.modules.subtitle import SubtitleModule
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.runtime.rate import RequestRateLimiter
 from app.schemas.exception import RateLimitExceededException
+from app.schemas.site import Site
 
 
 class _CapabilitySpider:
@@ -84,7 +87,6 @@ def test_connection_uses_adapter_capability_and_current_site_config(monkeypatch,
     连接检测按声明能力执行，失败不回退网页，当前配置优先于目录中的旧凭据。
     """
     chain = SiteChain()
-    monkeypatch.setitem(chain.protocol_site_test, capability["parser"], chain._SiteChain__indexer_test)
     site = SiteSnapshot(id=42, name="更改后的名称", url="https://mirror.example/", domain="mirror.example",
                         apikey="current-synthetic-key", render=1, note={"frozen": {"setting": True}})
     chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
@@ -98,6 +100,7 @@ def test_connection_uses_adapter_capability_and_current_site_config(monkeypatch,
         保留真实索引模块能力分发，只替换模块管理器边界。
         """
         calls.append((method, kwargs))
+        kwargs.pop("raise_exception", None)
         return getattr(module, method)(**kwargs)
 
     monkeypatch.setattr(chain, "run_module", dispatch)
@@ -108,6 +111,51 @@ def test_connection_uses_adapter_capability_and_current_site_config(monkeypatch,
     assert calls[0][1]["site"]["apikey"] == site.apikey
     generic.assert_not_called()
     (chain.site_repository.success if result[0] else chain.site_repository.fail).assert_called_once()
+
+
+def test_missing_connection_module_does_not_fall_back_to_successful_page(monkeypatch):
+    """
+    模块没有回执不等于适配器不支持，网页成功不能掩盖模块不可用。
+    """
+    chain = SiteChain()
+    site = SiteSnapshot(id=42, name="专站", domain="site.example", url="https://site.example/")
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
+    monkeypatch.setattr(chain, "run_module", Mock(return_value=None))
+    generic = Mock(return_value=(True, "连接成功"))
+    monkeypatch.setattr(SiteChain, "_SiteChain__test", generic)
+    assert chain.test(site.url) == (False, "站点 Module 未提供连接检测结果")
+    generic.assert_not_called()
+    chain.site_repository.fail.assert_called_once_with("site.example")
+
+
+def test_registered_subtitle_capability_suppresses_page_and_uses_current_credentials(monkeypatch, capability):
+    """
+    任意注册的字幕 API 都阻止普通模块探测网页，并接收当前用户而不是资源包的旧凭据。
+    """
+    calls = []
+
+    def get_links(spider, page_url):
+        """
+        记录当前认证和详情地址，替代专站字幕网络请求。
+        """
+        calls.append((spider.indexer, page_url))
+        return ["https://subtitle.example/download"]
+
+    monkeypatch.setattr(_CapabilitySpider, "get_subtitle_links", get_links, raising=False)
+    site = Site(id=42, domain="mirror.example", url="https://mirror.example/", apikey="current-synthetic-key")
+    query = Mock(get_sync=Mock(return_value=site))
+    for name in ("app.modules.indexer", "app.modules.subtitle"):
+        monkeypatch.setattr(f"{name}.get_configured_site_query_service", Mock(return_value=query))
+        monkeypatch.setattr(f"{name}.SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value=capability))))
+    request = Mock(side_effect=AssertionError("已支持的字幕 API 不能访问网页"))
+    monkeypatch.setattr("app.modules.subtitle.RequestUtils", request)
+    context = Context(torrent_info=TorrentInfo(site=42, page_url="https://mirror.example/detail/123"))
+    assert object.__new__(SubtitleModule).site_subtitle_links(context) is None
+    assert object.__new__(IndexerModule).site_subtitle_links(context) == ["https://subtitle.example/download"]
+    assert calls[0][0]["apikey"] == site.apikey
+    assert calls[0][1] == context.torrent_info.page_url
+    request.assert_not_called()
 
 
 @pytest.mark.parametrize("status", [None, 200, 403])

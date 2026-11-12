@@ -643,10 +643,13 @@ def configure_plugin_system_services():
     from app.agent.llm.provider import LLMProviderManager
     from app.agent.skills.registry import SkillHelper
     from app.application.messaging.skill import register_skill_catalog_provider
+    from app.startup.composition.site import configure_site_protocol_composition, reset_site_protocol_composition
 
     register_skill_catalog_provider(lambda: SkillHelper())
     register_llm_provider_runtime(lambda: LLMProviderManager())
+    configure_site_protocol_composition()
     yield
+    reset_site_protocol_composition()
     reset_chain_network_ports()
     reset_chain_ports()
     reset_plugin_system()

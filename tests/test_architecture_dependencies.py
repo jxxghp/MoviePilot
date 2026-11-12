@@ -4,6 +4,7 @@
 
 import ast
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -546,6 +547,70 @@ def test_site_application_owners_use_single_word_module_names() -> None:
     assert (package / "throttle.py").is_file()
     assert all(path.stem.isalpha() for path in package.glob("*.py") if path.stem != "__init__")
     assert not (APP_ROOT / "application" / "site_throttle.py").exists()
+
+
+def test_site_specific_protocols_have_one_module_owner() -> None:
+    """
+    站点协议只归索引模块所有，公共层不保留旧路由、协议解析或具体站点常量。
+    """
+    owners = (APP_ROOT / "modules" / "indexer" / "__init__.py",
+              APP_ROOT / "modules" / "indexer" / "rss.py",
+              APP_ROOT / "modules" / "indexer" / "download.py",
+              APP_ROOT / "modules" / "indexer" / "spider" / "ttg.py")
+    assert all(path.is_file() for path in owners)
+    domains = {
+        node.value
+        for path in owners
+        for node in _walk_module(_parse_source(path))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        and re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", node.value)
+    }
+    protocol_names = {
+        key.value
+        for node in _parse_source(owners[0]).body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+        and node.target.id == "SPIDER_PARSER_CLASSES" and isinstance(node.value, ast.Dict)
+        for key in node.value.keys
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    }
+    common_paths = (
+        "chain/site.py", "chain/torrents.py", "chain/download/submission.py",
+        "application/rss.py", "application/torrent/download.py", "application/security/token.py",
+        "domain/site.py", "domain/torrent.py", "modules/subtitle/__init__.py", "api/endpoints/site.py",
+    )
+    retired_names = {
+        "special_site_test", "protocol_site_test", "is_special_site", "__indexer_test",
+        "__zhuque_test", "__mteam_test", "__milkie_test", "__sunnypt_test", "__yema_test",
+        "__yema_api_test", "__hddolby_test", "__rousi_test", "rss_link_conf", "_get_site_domain",
+        "_is_ttg_url", "_path_resource_id", "_first_download_form", "_FIRST_DOWNLOAD_MARKERS",
+        "_indirect_download_result", "_normalize_indirect_download_url",
+    }
+    violations = []
+    for relative in common_paths:
+        for node in _walk_module(_parse_source(APP_ROOT / relative)):
+            value = node.value if isinstance(node, ast.Constant) else getattr(node, "id", getattr(node, "attr", ""))
+            if isinstance(value, str) and (value in domains or value in protocol_names or value in retired_names):
+                violations.append(f"{relative}:{node.lineno}:{value}")
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in retired_names:
+                violations.append(f"{relative}:{node.lineno}:{node.name}")
+    assert violations == []
+
+
+def test_site_protocol_ports_do_not_import_module_implementations() -> None:
+    """
+    Application 和 Domain 只能声明或消费端口，不能反向静态导入索引模块。
+    """
+    paths = (APP_ROOT / "application" / "site" / "protocol.py", APP_ROOT / "application" / "rss.py",
+             APP_ROOT / "application" / "torrent" / "download.py", APP_ROOT / "domain" / "site.py",
+             APP_ROOT / "domain" / "torrent.py")
+    violations = []
+    for path in paths:
+        for node in _walk_module(_parse_source(path)):
+            modules = [node.module or ""] if isinstance(node, ast.ImportFrom) else \
+                [alias.name for alias in node.names] if isinstance(node, ast.Import) else []
+            violations.extend(f"{path.relative_to(APP_ROOT)}:{node.lineno}:{name}"
+                              for name in modules if name.startswith("app.modules"))
+    assert violations == []
 
 
 def test_hdarea_protocol_adapters_stay_in_indexer_packages() -> None:

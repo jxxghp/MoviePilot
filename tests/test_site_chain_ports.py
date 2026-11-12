@@ -399,6 +399,7 @@ def test_cookiecloud_adapter_closes_remote_response(monkeypatch) -> None:
     helper._key = "key"
     helper._password = "password"
     helper._enable_local = False
+    helper._domain_resolver = cookiecloud_module.site_rules.extract_domain
     monkeypatch.setattr(helper, "_CookieCloudHelper__sync_setting", lambda: None)
     monkeypatch.setattr(cookiecloud_module, "RequestUtils", FakeRequest)
     monkeypatch.setattr(

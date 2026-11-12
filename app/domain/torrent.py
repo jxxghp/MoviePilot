@@ -7,15 +7,10 @@ import binascii
 import hashlib
 import re
 from typing import TYPE_CHECKING, Optional, Union
-from urllib.parse import SplitResult, parse_qs, urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 if TYPE_CHECKING:
     from app.domain.context import TorrentInfo
-
-# TTG 详情页为 /t/{id}/，下载链接为 /dl/{id}/{auth}；auth 由每次搜索生成，几分钟后或多次请求后失效
-_TTG_HOST = "totheglory.im"
-_TTG_DETAIL_PATH = re.compile(r"/t/(\d+)/?")
-_TTG_DOWNLOAD_PATH = re.compile(r"/dl/(\d+)/[^/]+/?")
 
 
 def is_magnet_link(content: Union[str, bytes]) -> bool:
@@ -125,7 +120,10 @@ def download_hashes(content: Union[str, bytes]) -> frozenset[str]:
 
 def resource_identity(torrent: "TorrentInfo") -> Optional[tuple[str, str]]:
     """
-    按站点和稳定种子标识匹配资源，不把临时签名或标题当成种子 ID。
+    按显式字段和公开查询参数匹配资源；专站路径由 Module 解释。
+
+    :param torrent: 候选的站点、显式身份和公开定位地址
+    :return: 站点及明确资源标识；标题、票据或含糊的地址不产生身份
     """
     site = str(torrent.site or torrent.site_name or "")
     for name, prefix in (("torrent_id", "id"), ("info_hash", "hash")):
@@ -146,41 +144,17 @@ def resource_identity(torrent: "TorrentInfo") -> Optional[tuple[str, str]]:
             if values and len(values) == 1:
                 prefix = "hash" if name == "hash" else "id"
                 return site or parsed.netloc, f"{prefix}={values[0]}"
-        resource_id = _path_resource_id(parsed)
-        if resource_id:
-            return site or parsed.netloc, f"id={resource_id}"
     return None
-
-
-def _is_ttg_url(parsed: SplitResult) -> bool:
-    """
-    判断地址是否属于 TTG 站点（含子域名）。
-    """
-    host = parsed.hostname or ""
-    return host == _TTG_HOST or host.endswith(f".{_TTG_HOST}")
-
-
-def _path_resource_id(parsed: SplitResult) -> Optional[str]:
-    """
-    从已知站点的详情页或下载链接路径中提取稳定种子 ID。
-
-    馒头详情页为 /detail/{id}，换票请求参数不参与资源身份；
-    TTG 详情页为 /t/{id}/，下载链接为 /dl/{id}/{auth}，末段 auth 是临时签名，不参与资源身份。
-
-    :param parsed: 已拆分的 http(s) 地址
-    :return: 站内种子 ID；不是已知路径形态时返回 None
-    """
-    match = re.fullmatch(r"/detail/(\d+)/?", parsed.path)
-    if match is None and _is_ttg_url(parsed):
-        match = _TTG_DETAIL_PATH.fullmatch(parsed.path) or _TTG_DOWNLOAD_PATH.fullmatch(parsed.path)
-    return match[1] if match else None
 
 
 def is_expiring_download_url(url: Optional[str]) -> bool:
     """
     识别已知的短时签名下载链接；不推断签名的具体有效期。
 
-    支持查询参数中的时间戳加签名（t、sign），以及 TTG 放在下载路径末段的 auth 签名。
+    只识别查询参数中的时间戳加签名（t、sign）；专站路径票据由 Module 解释。
+
+    :param url: 下载地址或间接配方
+    :return: 是否带有完整的通用时间戳和签名参数
     """
     if not url or not url.startswith(("http://", "https://")):
         return False
@@ -189,9 +163,7 @@ def is_expiring_download_url(url: Optional[str]) -> bool:
         params = parse_qs(parsed.query)
     except ValueError:
         return False
-    if params.get("t") and params.get("sign"):
-        return True
-    return _is_ttg_url(parsed) and _TTG_DOWNLOAD_PATH.fullmatch(parsed.path) is not None
+    return bool(params.get("t") and params.get("sign"))
 
 
 def rate_limit_cooldown(message: Optional[str]) -> Optional[int]:

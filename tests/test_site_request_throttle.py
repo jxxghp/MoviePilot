@@ -82,7 +82,7 @@ def boundary(monkeypatch, tmp_path):
     ticket_port = Mock()
     ticket_port.post.return_value = _response(json.dumps({"data": URL}).encode())
     monkeypatch.setattr(submission, "_download_ports_snapshot", lambda: (ticket_port, Mock()))
-    chain = object.__new__(DownloadChain)
+    chain = DownloadChain()
     chain.post_message = Mock()
     module = object.__new__(IndexerModule)
     monkeypatch.setattr(IndexerModule, "_IndexerModule__search_check", staticmethod(lambda *_args: True))

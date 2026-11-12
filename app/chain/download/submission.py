@@ -10,7 +10,7 @@ from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
-from urllib.parse import urlencode, urljoin, urlparse
+from urllib.parse import urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import (
@@ -18,6 +18,7 @@ from app.application.directory import (
     validate_download_save_path,
 )
 from app.application.download.admission import SubscriptionDownloadGovernance, subscription_download_label
+from app.application.site.protocol import is_expiring_download_url, torrent_resource_identity
 
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -135,28 +136,6 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             enriched.site_ua = site.ua
         return enriched
 
-    @staticmethod
-    def _normalize_indirect_download_url(url: str, base_url: Optional[str] = None) -> str:
-        """
-        将两段式下载结果约束到索引器配置的可信 API 地址。
-
-        :param url: 换票接口返回的临时下载地址
-        :param base_url: 索引器配置的可信 API Base URL
-        :return: 使用可信 API 来源的临时下载地址
-        """
-        if not url or not base_url:
-            return url
-        base_parts = urlparse(base_url)
-        if not base_parts.scheme or not base_parts.netloc:
-            return url
-        url_parts = urlparse(url)
-        if not url_parts.netloc:
-            return urljoin(f"{base_url.rstrip('/')}/", url)
-        return url_parts._replace(
-            scheme=base_parts.scheme,
-            netloc=base_parts.netloc,
-        ).geturl()
-
     def _resolve_indirect_download_url(
             self,
             url: str,
@@ -235,7 +214,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
     def _indirect_download_response(self, response: Optional[DownloadResponsePort], request_params: Dict[str, Any],
                                     site: dict[str, object]) -> Optional[str]:
         """
-        在响应关闭前交给声明的适配器解析，或沿用通用配方；限流统一交给共享冷却。
+        在响应关闭前统一交给 Module 解释新旧配方；限流由共享冷却负责。
 
         :param response: 尚未关闭的原始换票响应，None 表示连接失败
         :param request_params: 索引器编码的换票协议及结果字段
@@ -244,70 +223,27 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         :raises ValueError: 适配器拒绝该响应或响应解析能力不可用
         :raises RateLimitExceededException: 任一协议返回明确限流
         """
-        if request_params.get("protocol"):
-            try:
-                payload = response.json() if response is not None else None
-            except ValueError:
-                payload = None
-            try:
-                url = self.run_module("parse_torrent_download_response", request_params=request_params,
-                                      status_code=response.status_code if response is not None else None,
-                                      payload=payload, raise_exception=True)
-                if not isinstance(url, str) or not url:
-                    raise ValueError("站点换票响应解析器不可用")
-                return url
-            except ValueError as err:
-                if torrent_rules.rate_limit_cooldown(str(err)) is not None:
-                    defer_site_request(site, str(err))
-                    raise RateLimitExceededException(str(err)) from err
-                raise
+        try:
+            payload = response.json() if response is not None else None
+        except ValueError:
+            payload = None
+        try:
+            url = self.run_module(
+                "parse_torrent_download_response", request_params=request_params,
+                status_code=response.status_code if response is not None else None,
+                payload=payload, response_text=response.text if response is not None else None, raise_exception=True,
+            )
+            if request_params.get("protocol") and (not isinstance(url, str) or not url):
+                raise ValueError("站点换票响应解析器不可用")
+        except ValueError as err:
+            if torrent_rules.rate_limit_cooldown(str(err)) is not None:
+                defer_site_request(site, str(err))
+                raise RateLimitExceededException(str(err)) from err
+            raise
         if error := torrent_rate_limit_error(response):
             defer_site_request(site, error)
             raise RateLimitExceededException(error)
-        if not response:
-            return None
-        return self._indirect_download_result(response, request_params)
-
-    def _indirect_download_result(self, response: DownloadResponsePort,
-                                  request_params: Dict[str, Any]) -> Optional[str]:
-        """
-        从成功换票响应提取并规范化下载地址，不承担 HTTP 请求或重试。
-
-        :param response: 已完成限流检查的换票响应
-        :param request_params: 索引器声明的结果字段、成功标志及可信 API 地址
-        :return: 可下载的临时地址；结果缺失或类型不符时为 None
-        """
-        if not request_params.get("result"):
-            return response.text
-        data: Any = response.json()
-        success_key = request_params.get("success")
-        if success_key and not data.get(success_key):
-            return None
-        for key in str(request_params.get("result")).split("."):
-            if not isinstance(data, dict):
-                return None
-            data = data.get(key)
-            if not data:
-                return None
-        result_path = request_params.get("result_path")
-        result_query_param = request_params.get("result_query_param")
-        if result_path and result_query_param:
-            if not isinstance(result_query_param, str):
-                return None
-            result_url = urljoin(
-                f"{str(request_params.get('result_base_url')).rstrip('/')}/",
-                str(result_path).lstrip("/"),
-            )
-            return f"{result_url}?{urlencode({result_query_param: data})}"
-        if not isinstance(data, str):
-            return None
-        base_url = request_params.get("result_base_url")
-        normalized_url = self._normalize_indirect_download_url(
-            url=data,
-            base_url=base_url if isinstance(base_url, str) else None,
-        )
-        logger.info("已获取到站点临时下载地址")
-        return normalized_url
+        return url if isinstance(url, str) else None
 
     def download_torrent(self, torrent: TorrentInfo,
                          channel: Optional[NotificationChannel] = None,
@@ -363,7 +299,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         """
         以资源身份和换票凭据隔离缓存，临时链接不参与键，凭据不写入文件名。
         """
-        identity = torrent_rules.resource_identity(torrent)
+        identity = torrent_resource_identity(torrent)
         if not torrent.enclosure or not torrent.enclosure.startswith("[") or identity is None:
             return None
         scope = json.dumps((identity, torrent.enclosure, torrent.site_cookie))
@@ -426,7 +362,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         """
         helper: TorrentHelper = cast(Any, TorrentHelper)()
         for attempt in range(2):
-            expiring = torrent_rules.is_expiring_download_url(url)
+            expiring = is_expiring_download_url(url)
             result = helper.download_torrent(
                 url=url,
                 cookie=cookie,
@@ -450,7 +386,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         """
         复用站点索引器查找同站同 ID 的新地址，不允许用同标题的其他资源替换。
         """
-        identity = torrent_rules.resource_identity(torrent)
+        identity = torrent_resource_identity(torrent)
         if not torrent.site or not torrent.title or identity is None:
             return False
         try:
@@ -458,7 +394,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             if not site:
                 return False
             for candidate in self.search_site_torrents(site=site, keyword=torrent.title):
-                if (torrent_rules.resource_identity(candidate) != identity
+                if (torrent_resource_identity(candidate) != identity
                         or not candidate.enclosure
                         or candidate.enclosure == torrent.enclosure
                         or not candidate.enclosure.startswith(("http://", "https://"))):

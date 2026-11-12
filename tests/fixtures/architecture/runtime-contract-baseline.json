@@ -333,9 +333,9 @@
       "app.helper.cookiecloud": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "adapters",
-        "replacement": "app.adapters.external.cookiecloud",
-        "target": "app.adapters.external.cookiecloud"
+        "owner": "sdk",
+        "replacement": "app.sdk._legacy.cookiecloud",
+        "target": "app.sdk._legacy.cookiecloud"
       },
       "app.helper.directory": {
         "introduced": "v3.0.0",
@@ -753,9 +753,9 @@
       "app.utils.site": {
         "introduced": "v3.0.0",
         "is_package": false,
-        "owner": "domain",
+        "owner": "sdk",
         "replacement": "app.sdk.network",
-        "target": "app.domain.site"
+        "target": "app.sdk._legacy.domain"
       },
       "app.utils.stdio": {
         "introduced": "v3.0.0",
@@ -6037,6 +6037,26 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "encrypt_site_payload": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SitePayloadEncryptionRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "data_str",
+        "key"
+      ],
+      "result_contract": "str",
+      "result_shape": "string",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "execute_transfer_plan": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6239,6 +6259,44 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "get_site_domain": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteDomainRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "url"
+      ],
+      "result_contract": "str",
+      "result_shape": "string",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "get_site_rss_recipe": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteRssRecipeRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "url"
+      ],
+      "result_contract": "RssLinkRecipe",
+      "result_shape": "any",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "get_torrent_trackers": {
       "aggregation": "ordered_mapping_merge",
       "error_policy": "isolate_provider",
@@ -6259,6 +6317,25 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "has_site_subtitle_api": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteSubtitleCapabilityRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "site"
+      ],
+      "result_contract": "bool",
+      "result_shape": "boolean",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "identify_music_by_fingerprint": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6274,6 +6351,63 @@
       "result_contract": "str | None",
       "result_shape": "string",
       "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "is_expiring_download_url": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentDownloadUrlRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "url"
+      ],
+      "result_contract": "bool",
+      "result_shape": "boolean",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "is_site_rss_expired": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "SiteRssResponseRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "text"
+      ],
+      "result_contract": "bool",
+      "result_shape": "boolean",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "is_torrent_download_confirmation": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentDownloadContentRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "content"
+      ],
+      "result_contract": "bool",
+      "result_shape": "boolean",
+      "supports_async": false,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
       "version": 1
@@ -7195,6 +7329,26 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "parse_torrent_download_confirmation": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentDownloadConfirmationRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "text",
+        "url"
+      ],
+      "result_contract": "tuple[str, dict[str, Any]] | None",
+      "result_shape": "any",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "parse_torrent_download_response": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -7202,7 +7356,8 @@
       "family": "site",
       "input_contract": "TorrentDownloadResponseRequest",
       "optional_parameters": [
-        "raise_exception"
+        "raise_exception",
+        "response_text"
       ],
       "plugin_short_circuit": true,
       "public_to_plugins": false,
@@ -7211,7 +7366,7 @@
         "request_params",
         "status_code"
       ],
-      "result_contract": "str",
+      "result_contract": "str | None",
       "result_shape": "string",
       "supports_async": false,
       "supports_sync": true,
@@ -7742,13 +7897,15 @@
       "execution": "sync_or_async",
       "family": "site",
       "input_contract": "SiteConnectionTestRequest",
-      "optional_parameters": [],
+      "optional_parameters": [
+        "raise_exception"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": false,
       "required_parameters": [
         "site"
       ],
-      "result_contract": "tuple[bool, str] | None",
+      "result_contract": "SiteConnectionResult",
       "result_shape": "any",
       "supports_async": false,
       "supports_sync": true,
@@ -8125,6 +8282,25 @@
       "result_contract": "list[DownloaderFile]",
       "result_shape": "list",
       "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
+    "torrent_resource_identity": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "site",
+      "input_contract": "TorrentResourceIdentityRequest",
+      "optional_parameters": [],
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "torrent"
+      ],
+      "result_contract": "tuple[str, str] | None",
+      "result_shape": "any",
+      "supports_async": false,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
       "version": 1
@@ -11024,7 +11200,7 @@
       {
         "kind": "import",
         "name": "nexusphp_encrypt",
-        "target": "app.application.security.token.nexusphp_encrypt"
+        "target": "app.application.site.protocol.nexusphp_encrypt"
       },
       {
         "kind": "import",
