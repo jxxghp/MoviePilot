@@ -168,7 +168,125 @@ def test_flux_torrent_spider_maps_media_types():
     assert FluxTorrentSpider._media_type({"category_newznab": 4000}) == MediaType.UNKNOWN.value
     assert FluxTorrentSpider._media_type({"category_name": "短剧"}) == MediaType.TV.value
     assert FluxTorrentSpider._media_type({"category_name": "电子书"}) == MediaType.COLLECTION.value
+    # 教育类没有对应的 Newznab 媒体号：保留站内分类名，不写「未知」，
+    # 教育影音也不能被当成电视剧。
+    assert FluxTorrentSpider._media_type({"category_name": "初中"}) == "初中"
+    assert FluxTorrentSpider._media_type({"category_name": "大学"}) == "大学"
+    assert FluxTorrentSpider._media_type({
+        "category_newznab": 8000, "category_name": "教育影音",
+    }) == "教育影音"
+    assert FluxTorrentSpider._media_type({
+        "category_newznab": 8000, "category_name": "初中",
+    }) == "初中"
     assert FluxTorrentSpider._media_type({}) == MediaType.UNKNOWN.value
+
+
+class _FakeResponseManager:
+    """
+    提供 RequestUtils.response_manager 的上下文管理器契约。
+    """
+
+    def __init__(self, response):
+        """
+        保存要回放的响应。
+        """
+        self._response = response
+
+    def __enter__(self):
+        """
+        返回回放的响应。
+        """
+        return self._response
+
+    def __exit__(self, *_exc):
+        """
+        不吞异常。
+        """
+        return False
+
+
+def _patch_connection(monkeypatch, response, captured: dict = None):
+    """
+    让连接检测拿到固定响应，并记录请求地址。
+    """
+    def fake_manager(_self, **kwargs):
+        """
+        回放预设响应。
+        """
+        if captured is not None:
+            captured.update(kwargs)
+        return _FakeResponseManager(response)
+
+    monkeypatch.setattr(
+        flux_torrent_module.RequestUtils, "response_manager", fake_manager
+    )
+
+
+def test_flux_torrent_test_connection_uses_api_token(monkeypatch):
+    """
+    连接检测应请求兼容层用户接口并复用开放 API 令牌。
+    """
+    captured = {}
+    _patch_connection(
+        monkeypatch,
+        _FakeResponse(_envelope({"id": 8, "username": "gntv"})),
+        captured,
+    )
+
+    assert FluxTorrentSpider(_build_indexer()).test_connection() == (
+        True, "连接成功",
+    )
+    assert captured["url"] == (
+        "https://flux.example/api/v1/compat/nexusphp/user.json"
+    )
+
+
+def test_flux_torrent_test_connection_requires_token(monkeypatch):
+    """
+    没有令牌时不应发起连接检测请求。
+    """
+    def fake_manager(*_args, **_kwargs):
+        """
+        记录不应发生的请求。
+        """
+        raise AssertionError("未配置令牌时不应发起请求")
+
+    monkeypatch.setattr(
+        flux_torrent_module.RequestUtils, "response_manager", fake_manager
+    )
+
+    assert FluxTorrentSpider(_build_indexer(apikey="")).test_connection() == (
+        False, "未配置开放 API Token（fxo_ 开头）",
+    )
+
+
+def test_flux_torrent_test_connection_surfaces_auth_error(monkeypatch):
+    """
+    鉴权失败时把兼容层信封里的原因透出来，而不是报 Cookie 失效。
+    """
+    _patch_connection(
+        monkeypatch,
+        _FakeResponse(
+            _envelope(None, code=2001, message="未认证"), status_code=401,
+        ),
+    )
+
+    success, message = FluxTorrentSpider(_build_indexer()).test_connection()
+
+    assert success is False
+    assert "未认证" in message
+
+
+def test_flux_torrent_test_connection_rejects_non_json(monkeypatch):
+    """
+    首页 HTML 等非兼容层响应不能被当成连接成功。
+    """
+    _patch_connection(monkeypatch, _FakeResponse(None))
+
+    success, message = FluxTorrentSpider(_build_indexer()).test_connection()
+
+    assert success is False
+    assert "兼容层" in message
 
 
 def test_flux_torrent_spider_requires_api_token(monkeypatch):
@@ -246,6 +364,9 @@ def test_flux_torrent_parser_reads_user_profile(monkeypatch):
         "ratio": 20.0,
         "ratio_infinite": False,
         "ratio_display": "20.0000",
+        "seeding": 11322,
+        "seeding_size": 588458459803,
+        "join_at": "2025-07-15T20:45:13+00:00",
     })
     monkeypatch.setattr(
         FluxTorrentSiteUserInfo,
@@ -269,6 +390,9 @@ def test_flux_torrent_parser_reads_user_profile(monkeypatch):
     assert parser.download == 1073741824
     assert parser.ratio == 20.0
     assert parser.bonus == 1024.0
+    assert parser.seeding == 11322
+    assert parser.seeding_size == 588458459803
+    assert parser.join_at and parser.join_at.startswith("2025-07-15")
     assert parser.err_msg is None
 
 
@@ -304,6 +428,105 @@ def test_flux_torrent_parser_handles_infinite_ratio(monkeypatch):
 
     assert parser.userid == 42
     assert parser.ratio == 0.0
+
+
+def test_flux_torrent_parser_falls_back_to_ptpp_seeding(monkeypatch):
+    """
+    老版本站点的 user.json 没有做种与注册时间时，用 PTPP 端点补齐。
+    """
+    legacy = _envelope({
+        "id": 8, "username": "gntv", "uploaded": 1, "downloaded": 1,
+        "seedbonus": 0, "class": 9, "class_name": "维护开发员",
+        "ratio": 1.0, "ratio_infinite": False,
+    })
+    ptpp = _envelope({
+        "id": 8, "name": "gntv", "seeding": 11322,
+        "seedingSize": 588458459803,
+        "joinTime": "2025-07-15T20:45:13+00:00",
+    })
+
+    def fake_page(_self, url, **_kwargs):
+        """
+        按地址回放用户接口与聚合端点。
+        """
+        if "ptppUserInfo" in url:
+            return json.dumps(ptpp)
+        return json.dumps(legacy)
+
+    monkeypatch.setattr(FluxTorrentSiteUserInfo, "_get_page_content", fake_page)
+    parser = FluxTorrentSiteUserInfo(
+        site_name="FluxTorrent", url=_SITE_URL, site_cookie=None,
+        apikey=_API_TOKEN, token=None, ua="MoviePilot-Test",
+    )
+    parser.parse()
+
+    assert parser.seeding == 11322
+    assert parser.seeding_size == 588458459803
+    assert parser.join_at and parser.join_at.startswith("2025-07-15")
+    assert parser.err_msg is None
+
+
+def test_flux_torrent_parser_skips_ptpp_when_profile_complete(monkeypatch):
+    """
+    新版本站点字段齐全时不再请求聚合端点，省掉一次开放 API 配额。
+    """
+    payload = _envelope({
+        "id": 8, "username": "gntv", "uploaded": 1, "downloaded": 1,
+        "seedbonus": 0, "class": 9, "class_name": "维护开发员",
+        "ratio": 1.0, "ratio_infinite": False,
+        "seeding": 11322, "seeding_size": 588458459803,
+        "join_at": "2025-07-15T20:45:13+00:00",
+    })
+    requested = []
+
+    def fake_page(_self, url, **_kwargs):
+        """
+        记录所有请求地址。
+        """
+        requested.append(url)
+        return json.dumps(payload)
+
+    monkeypatch.setattr(FluxTorrentSiteUserInfo, "_get_page_content", fake_page)
+    parser = FluxTorrentSiteUserInfo(
+        site_name="FluxTorrent", url=_SITE_URL, site_cookie=None,
+        apikey=_API_TOKEN, token=None, ua="MoviePilot-Test",
+    )
+    parser.parse()
+
+    assert parser.seeding == 11322
+    assert not any("ptppUserInfo" in url for url in requested)
+
+
+def test_flux_torrent_parser_keeps_profile_when_ptpp_unavailable(monkeypatch):
+    """
+    老站没部署聚合端点时，补充失败不能把用户资料判成解析失败。
+    """
+    legacy = _envelope({
+        "id": 7, "username": "legacy", "uploaded": 21474836480,
+        "downloaded": 1073741824, "seedbonus": 10, "class": 1,
+        "class_name": "普通用户", "ratio": 20.0, "ratio_infinite": False,
+    })
+
+    def fake_page(_self, url, **_kwargs):
+        """
+        聚合端点返回空响应，模拟站点未部署该接口。
+        """
+        if "ptppUserInfo" in url:
+            return ""
+        return json.dumps(legacy)
+
+    monkeypatch.setattr(FluxTorrentSiteUserInfo, "_get_page_content", fake_page)
+    parser = FluxTorrentSiteUserInfo(
+        site_name="FluxTorrent", url=_SITE_URL, site_cookie=None,
+        apikey=_API_TOKEN, token=None, ua="MoviePilot-Test",
+    )
+    parser.parse()
+
+    assert parser.username == "legacy"
+    assert parser.upload == 21474836480
+    assert parser.seeding == 0
+    assert parser.join_at is None
+    assert parser.err_msg is None
 
 
 def test_flux_torrent_parser_reports_business_error(monkeypatch):
