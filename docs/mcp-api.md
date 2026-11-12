@@ -130,9 +130,20 @@ Web 影视精确与标题 SSE 的 `manual_paging=true` 模式在最终 `done` �
   索引器内部未报告的丢弃原因不作推测。
 - `rule_groups` 包含 `name`、`status`、`reason`、`media_type` 和 `categories`。
   `effective` 表示规则适用，`skipped` 不增加拒绝数。标题搜索沿用过滤器的空媒体上下文。
-- `warnings` 使用 `{code,rule_group?}`，代码包括 `rule_group_not_applicable`、
+- `warnings` 使用 `{code,rule_group?,rule_ids?}`，代码包括 `rule_group_not_applicable`、
   `rule_group_missing`、`provider_error`、`provider_cooldown`、`provider_outcome_unknown`。
-  原始异常、下载地址和凭据不进入诊断。
+  所选且适用的规则组还会检查配置：`rule_id_invalid` 表示 ID 不符合解析语法，
+  `rule_id_missing` 表示引用的 ID 不存在，`rule_syntax_invalid` 表示运算符、括号或层级
+  语法无效。前两者通过可选 `rule_ids` 保留完整 ID，包括旧 ID 的外围空白；没有相关
+  ID 时省略该字段。配置告警不增加资源拒绝计数，也不意味着所有优先级层级都已执行。
+  原始解析异常、下载地址和凭据不进入诊断。
+
+升级时数据库迁移会将存量不符合 Python/Rust 语法的自定义 ID 转为英文字母和数字，
+并同步改写规则组中的完整操作数引用。保留规则名称、匹配内容、顺序、媒体范围和其它
+字段；与内置或已有 ID 冲突时追加数字后缀。仅包含数字或清理后为空的 ID 添加 `Rule`
+前缀。去除外围空白后无法唯一定位引用时中止迁移，需先通过自定义规则改名 API 修复，
+不会猜测引用归属或保存半套变更。新 ID 保持两套解析器的“至少包含一个字母”约束。
+升级前备份沿用数据库自动备份开关；数据降级不自动恢复失效 ID。
 
 `GET /api/v1/search/last/context` 按认证用户返回完整的 `params`、`results` 和可选
 `diagnostics`。同一用户并发搜索按完成顺序保存，异常或取消保留上次完整记录。普通
