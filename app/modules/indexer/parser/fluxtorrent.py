@@ -5,6 +5,7 @@
 import json
 from typing import Any, Dict, Optional, Tuple
 
+from app.foundation import temporal as time_tools
 from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 from app.runtime.log import logger
 
@@ -28,7 +29,9 @@ class FluxTorrentSiteUserInfo(SiteParserBase):
         self._user_basic_page = "api/v1/compat/nexusphp/user.json"
         self._user_basic_params = {}
         self._user_detail_page = None
-        self._user_traffic_page = None
+        # 老版本兼容层的 user.json 还没有做种与注册时间，用 PTPP 聚合端点补齐；
+        # 新版本已经返回时 `_parse_user_base_info` 会把这里置空，少发一次请求。
+        self._user_traffic_page = "api/v1/plugins/ptppUserInfo"
         self._torrent_seeding_page = None
         self._user_mail_unread_page = None
         self._sys_mail_unread_page = None
@@ -93,13 +96,55 @@ class FluxTorrentSiteUserInfo(SiteParserBase):
         else:
             self.ratio = float(user_info.get("ratio") or 0)
         self.bonus = float(user_info.get("seedbonus") or 0)
+        # 兼容层直接返回做种统计与注册时间；老版本没有这些字段时保持默认
+        # 0 / None，交给 PTPP 端点补齐，不能因此判成解析失败。
+        self.seeding = int(user_info.get("seeding") or 0)
+        self.seeding_size = int(
+            user_info.get("seeding_size") or user_info.get("seedingSize") or 0
+        )
+        join_at = user_info.get("join_at") or user_info.get("joinTime")
+        self.join_at = (
+            time_tools.normalize_datetime(str(join_at)) if join_at else None
+        )
+        # 三项字段齐全说明站点已是新版兼容层，不必再查一次聚合端点：
+        # 开放 API 有配额，两个端点的口径也不必再比一遍。
+        has_seeding = user_info.get("seeding") is not None
+        has_size = any(
+            user_info.get(key) is not None
+            for key in ("seeding_size", "seedingSize")
+        )
+        has_join = any(
+            user_info.get(key) is not None for key in ("join_at", "joinTime")
+        )
+        if has_seeding and has_size and has_join:
+            self._user_traffic_page = None
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        跳过独立流量页面，兼容层用户接口已经返回完整统计。
+        用 PTPP 聚合端点补齐老版本站点缺失的做种数与注册时间。
 
-        :param html_text: 未使用的页面文本
+        user.json 已经返回这些字段时不覆盖，避免两个端点口径互相打架。
+
+        :param html_text: ptppUserInfo 接口响应文本
         """
+        previous_error = self.err_msg
+        info = self._load_api_payload(html_text, "获取做种统计")
+        # 补充端点失败不能把已经成功的用户资料判成失败：
+        # 老站可能没有部署它，令牌也可能没有该接口权限。
+        if previous_error is None:
+            self.err_msg = None
+        if not info:
+            return
+        if not self.seeding:
+            self.seeding = int(info.get("seeding") or 0)
+        if not self.seeding_size:
+            self.seeding_size = int(info.get("seedingSize") or 0)
+        if not self.join_at:
+            join_time = info.get("joinTime")
+            self.join_at = (
+                time_tools.normalize_datetime(str(join_time))
+                if join_time else None
+            )
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
@@ -114,7 +159,7 @@ class FluxTorrentSiteUserInfo(SiteParserBase):
         multi_page: bool = False,
     ) -> Optional[str]:
         """
-        跳过独立做种列表，兼容层用户接口未提供做种统计。
+        跳过独立做种列表，统计已由 user.json / PTPP 端点给出。
 
         :param html_text: 未使用的页面文本
         :param multi_page: 是否为后续分页

@@ -57,7 +57,8 @@ _CATEGORY_NAME_MEDIA_TYPES: Dict[str, MediaType] = {
     "综艺": MediaType.TV,
     "动漫": MediaType.TV,
     "纪录片": MediaType.TV,
-    "教育影音": MediaType.TV,
+    # 教育影音不是剧集：映射成电视剧会把图书与课程资源标成剧集，
+    # 未识别的分类统一回落到站内分类名（见 _media_type）。
     "音乐": MediaType.MUSIC,
     "有声书": MediaType.COLLECTION,
     "电子书": MediaType.COLLECTION,
@@ -195,21 +196,77 @@ class FluxTorrentSpider:
             params["keyword"] = keyword
         return params
 
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        用开放 API Token 验证兼容层用户接口。
+
+        FluxTorrent 是前后端分离站点，首页 HTML 不含 NexusPHP 的登录标记，
+        通用网页检测会把有效令牌误判成「Cookie已失效」。这里与搜索、用户资料
+        解析共用同一枚令牌和同一套请求头，不做任何页面抓取。
+
+        :return: 令牌是否可用及认证或连接失败原因
+        """
+        if not self._api_token:
+            return False, "未配置开放 API Token（fxo_ 开头）"
+        with RequestUtils(
+            headers=self._request_headers(),
+            ua=self._user_agent,
+            proxies=self._proxy or {},
+            timeout=self._timeout,
+        ).response_manager(
+            method="GET",
+            url=f"{self._base_url}/user.json",
+            allow_redirects=False,
+        ) as response:
+            if response is None:
+                return False, "无法连接 FluxTorrent 兼容层接口"
+            if response.status_code != 200:
+                # 兼容层鉴权失败也是标准信封，把「未认证 / 权限不足」原样透出，
+                # 避免站长再去排查早已不需要的 Cookie。
+                try:
+                    payload = response.json()
+                except (TypeError, ValueError):
+                    payload = None
+                if isinstance(payload, dict) and payload.get("message"):
+                    return False, (
+                        f"开放 API Token 无效：{payload['message']}"
+                        f"（HTTP {response.status_code}）"
+                    )
+                return False, f"错误：{response.status_code} {response.reason}"
+            try:
+                payload = response.json()
+            except (TypeError, ValueError):
+                return False, "站点未返回 FluxTorrent 兼容层响应"
+            if not isinstance(payload, dict):
+                return False, "站点未返回 FluxTorrent 兼容层响应"
+            if payload.get("code") == 0 and isinstance(payload.get("data"), dict):
+                return True, "连接成功"
+            return False, str(
+                payload.get("message") or "开放 API Token 无效或已过期"
+            )
+
     @staticmethod
     def _media_type(item: Dict[str, Any]) -> str:
         """
         将兼容层种子分类映射为 MoviePilot 媒体类型。
 
+        标准号与通用分类名都不认识时回落到站内分类名：教育类（小学/初中/高中/
+        大学/教育影音）没有对应的 Newznab 媒体号，一律写「未知」既丢掉了站内
+        已有的分类信息，也分不出图书、课程与影音资源。
+
         :param item: 兼容层返回的种子记录
-        :return: MoviePilot 媒体类型，未识别时为未知类型
+        :return: MoviePilot 媒体类型或站内分类名，两者都缺失时为未知类型
         """
         newznab_id = item.get("category_newznab")
         media_type = None
         if isinstance(newznab_id, int):
             media_type = _NEWZNAB_MEDIA_TYPES.get(newznab_id)
+        site_category = str(item.get("category_name") or "").strip()
         if media_type is None:
-            media_type = _CATEGORY_NAME_MEDIA_TYPES.get(str(item.get("category_name") or "").strip())
-        return (media_type or MediaType.UNKNOWN).value
+            media_type = _CATEGORY_NAME_MEDIA_TYPES.get(site_category)
+        if media_type is not None:
+            return media_type.value
+        return site_category or MediaType.UNKNOWN.value
 
     @staticmethod
     def _volume_factors(promotion: Optional[str]) -> Tuple[float, float]:
