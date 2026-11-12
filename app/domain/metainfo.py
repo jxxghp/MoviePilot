@@ -17,7 +17,7 @@ from app.domain.meta.infopath import (
     should_use_parent_title_for_file_stem,
 )
 from app.domain.meta.metaanime import MetaAnime
-from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metabase import MetaBase, refine_subtitle_period_episode
 from app.domain.meta.metamusic import MetaMusic, infer_audio_lossless, normalize_audio_format
 from app.domain.meta.metavideo import MetaVideo
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
@@ -494,6 +494,7 @@ def _meta_from_rust(parsed: Optional[dict[str, Any]]) -> Optional[MetaBase]:
     }
     for key, value in fields.items():
         setattr(meta, key, value)
+    refine_subtitle_period_episode(meta)
     return meta
 
 
