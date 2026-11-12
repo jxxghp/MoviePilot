@@ -25,6 +25,7 @@ from app.application.image import (
     configure_wallpaper_providers,
     reset_wallpaper_providers,
 )
+from app.application.module import ModuleRuntime, configure_module_runtime
 from app.application.subscription.activity import SubscriptionActivityService
 from app.application.system import SystemService
 from app.chain._recognition import (
@@ -190,6 +191,13 @@ def configure_chain_runtime_context(
             system_service=system_service,
         )
     )
+
+
+def configure_module_runtime_provider() -> None:
+    """
+    在组合层登记惰性宿主模块运行时，不在此阶段实例化具体模块管理器。
+    """
+    configure_module_runtime(lambda: cast(ModuleRuntime, ModuleManager()))
 
 
 def reset_chain_services() -> None:

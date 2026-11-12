@@ -962,8 +962,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10117,
-  "edge_sha256": "220d35d404b1eb6a5b2900840a44af7d560a9d48e3250e0dbbee1e8714f79ebd",
+  "edge_count": 10121,
+  "edge_sha256": "f06f17caade13860d2d7e0865955ebcb940d3dcb5922dc784420932b2c4f460d",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -10091,6 +10091,7 @@
     "app.startup.composition.chain -> app.application.configuration",
     "app.startup.composition.chain -> app.application.directory",
     "app.startup.composition.chain -> app.application.image",
+    "app.startup.composition.chain -> app.application.module",
     "app.startup.composition.chain -> app.application.subscription",
     "app.startup.composition.chain -> app.application.subscription.activity",
     "app.startup.composition.chain -> app.application.system",
@@ -10877,9 +10878,12 @@
     "app.testing.bootstrap -> app.db.uow",
     "app.testing.bootstrap -> app.runtime",
     "app.testing.bootstrap -> app.runtime.config",
+    "app.testing.bootstrap -> app.runtime.settings",
     "app.testing.bootstrap -> app.startup",
     "app.testing.bootstrap -> app.startup.composition",
+    "app.testing.bootstrap -> app.startup.composition.chain",
     "app.testing.bootstrap -> app.startup.composition.configuration",
+    "app.testing.bootstrap -> app.startup.composition.site",
     "app.testing.bootstrap -> app.startup.initializers",
     "app.testing.bootstrap -> app.startup.initializers.cache",
     "app.testing.bootstrap -> app.startup.initializers.database",

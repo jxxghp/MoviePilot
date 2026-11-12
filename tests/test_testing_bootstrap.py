@@ -105,3 +105,29 @@ def test_mark_plugin_generation_prefers_pathlib_item_path():
 
     assert v2_item.markers == ["v2"]
     assert v1_item.markers == ["v1"]
+
+
+def test_prepare_backend_wires_site_protocol_for_standalone_plugin_runners():
+    """
+    不依赖后端 tests/conftest.py 的独立插件测试进程在调用 prepare_backend 后可直接解析站点域名协议。
+    """
+    import subprocess
+
+    project_root = Path(__file__).resolve().parents[1]
+    code = (
+        "from app.testing.bootstrap import prepare_backend; "
+        "prepare_backend(); "
+        "from app.runtime.extensions.module.manager import ModuleManager; "
+        "assert ModuleManager.get_existing_instance() is None; "
+        "from app.sdk.string import StringUtils; "
+        "assert StringUtils.get_url_domain('https://u2.dmhy.org/torrents.php') == 'u2.dmhy.org'; "
+        "assert StringUtils.get_url_domain('https://tracker.example.com/rss') == 'example.com'"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
