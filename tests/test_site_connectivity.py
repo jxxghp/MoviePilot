@@ -2,6 +2,7 @@
 站点连通性的协议路由、认证响应与统计持久化回归测试。
 """
 
+from typing import Optional
 from unittest.mock import ANY, MagicMock, Mock
 
 import pytest
@@ -248,6 +249,163 @@ def test_api_protocols_use_their_own_authentication(
         assert request["json_body"] == {}
     generic_test.assert_not_called()
     context.__exit__.assert_called_once_with(None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("protocol", "status_code", "payload", "expected"),
+    [
+        ("Milkie", None, None, "无法打开网站！"),
+        ("Milkie", 401, None, "API Key 无效或已过期"),
+        ("Milkie", 403, None, "API Key 无效或已过期"),
+        ("Milkie", 500, None, "错误：500 Server Error"),
+        ("RousiPro", None, None, "无法打开网站！"),
+        ("RousiPro", 401, None, "个人 API Key 已失效或权限不足"),
+        ("RousiPro", 403, None, "个人 API Key 已失效或权限不足"),
+        ("RousiPro", 500, None, "错误：500 Server Error"),
+        ("RousiPro", 200, ValueError("invalid JSON"), "站点返回了无效的用户数据"),
+        ("RousiPro", 200, TypeError("invalid JSON"), "站点返回了无效的用户数据"),
+        ("RousiPro", 200, ["invalid profile"], "个人 API Key 已失效或权限不足"),
+        ("SunnyPT", None, None, "无法连接 SunnyPT API 服务"),
+        ("SunnyPT", 401, None, "错误：401 Server Error"),
+        ("SunnyPT", 403, None, "错误：403 Server Error"),
+        ("SunnyPT", 500, None, "错误：500 Server Error"),
+        ("SunnyPT", 200, ValueError("invalid JSON"), "SunnyPT API 响应不是有效 JSON"),
+        ("SunnyPT", 200, TypeError("invalid JSON"), "SunnyPT API 响应不是有效 JSON"),
+        ("SunnyPT", 200, ["invalid profile"], "SunnyPT API 响应不是有效 JSON"),
+        ("SunnyPT", 200, {"code": 0, "data": {"download_allowed": False}}, "当前账号没有下载权限"),
+        ("Yema", None, None, "无法打开网站！"),
+        ("Yema", 401, None, "错误：401 Server Error"),
+        ("Yema", 403, None, "错误：403 Server Error"),
+        ("Yema", 500, None, "错误：500 Server Error"),
+    ],
+)
+def test_api_probe_failures_do_not_fall_back_to_page_or_cookie(
+    monkeypatch: pytest.MonkeyPatch, protocol: str, status_code: Optional[int],
+    payload: object, expected: str,
+) -> None:
+    """
+    适配器保留连接、认证、解码和下载权限失败，网页成功不能掩盖真实失败。
+
+    Yema 使用已配置 AuthKey 的主站，验证认证失败后不会改用仍然存在的旧 Cookie。
+
+    :param monkeypatch: 隔离站点目录、HTTP 出口和通用网页检测
+    :param protocol: 待验证的已注册认证协议
+    :param status_code: 回放的 HTTP 状态；None 表示未建立连接
+    :param payload: JSON 正文或解码时抛出的异常
+    :param expected: 必须保留到连接回执的用户可见失败原因
+    """
+    domain = "yemapt.org" if protocol == "Yema" else "protocol.test"
+    site = SiteSnapshot(
+        id=1, name="协议失败测试", domain=domain, url=f"https://www.{domain}/",
+        apikey="synthetic-key", cookie="session=still-present", render=1,
+    )
+    chain = SiteChain()
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(
+        get_indexer=Mock(return_value={"schema": protocol}),
+    )))
+    response = None if status_code is None else Mock(status_code=status_code, reason="Server Error")
+    if response is not None:
+        if isinstance(payload, Exception):
+            response.json.side_effect = payload
+        else:
+            response.json.return_value = payload
+    context = MagicMock()
+    context.__enter__.return_value = response
+    open_response = Mock(return_value=context)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
+    generic_test = Mock(return_value=(True, "网页连接成功"))
+    monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
+
+    assert chain.test(site.url) == (False, expected)
+
+    open_response.assert_called_once()
+    assert "cookie" not in open_response.call_args.kwargs
+    if response is not None:
+        if status_code == 200:
+            response.json.assert_called_once_with()
+        else:
+            response.json.assert_not_called()
+    context.__exit__.assert_called_once_with(None, None, None)
+    generic_test.assert_not_called()
+    chain.site_repository.fail.assert_called_once_with(domain)
+    chain.site_repository.success.assert_not_called()
+
+
+def test_yema_compatible_site_without_authkey_does_not_use_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    仅声明 Yema 开放协议的兼容站缺少 AuthKey 时，不擅自改用主站旧 Cookie 协议。
+
+    :param monkeypatch: 隔离兼容站资源和禁止发生的 HTTP、网页探测
+    """
+    site = SiteSnapshot(
+        id=1, name="Yema 兼容站", domain="protocol.test", url="https://protocol.test/",
+        cookie="session=still-present",
+    )
+    chain = SiteChain()
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(
+        get_indexer=Mock(return_value={"schema": "Yema"}),
+    )))
+    open_response = Mock(side_effect=AssertionError("缺少 AuthKey 时不能发送 Cookie"))
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
+    generic_test = Mock(return_value=(True, "网页连接成功"))
+    monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
+
+    assert chain.test(site.url) == (False, "未配置 AuthKey")
+
+    open_response.assert_not_called()
+    generic_test.assert_not_called()
+    chain.site_repository.fail.assert_called_once_with("protocol.test")
+    chain.site_repository.success.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("status_code", "payload", "expected"),
+    [(None, None, "无法打开网站！"), (401, None, "错误：401 Unauthorized"),
+     (200, {"success": False}, "Cookie已过期"), (200, ["invalid profile"], "Cookie已过期")],
+)
+def test_yema_legacy_cookie_failure_is_not_generic_success(
+    monkeypatch: pytest.MonkeyPatch, status_code: Optional[int], payload: object, expected: str,
+) -> None:
+    """
+    主站旧 Cookie 兼容检测保留连接、HTTP 和会话失效结果，并释放响应。
+
+    :param monkeypatch: 隔离主站资源、HTTP 出口和通用网页检测
+    :param status_code: 回放的 HTTP 状态；None 表示未建立连接
+    :param payload: 旧用户接口的 JSON 正文
+    :param expected: 旧协议应返回的用户可见失败原因
+    """
+    site = SiteSnapshot(
+        id=1, name="YemaPT", domain="yemapt.org", url="https://www.yemapt.org/", cookie="session=expired",
+    )
+    chain = SiteChain()
+    chain.site_repository = Mock(get_by_domain=Mock(return_value=site))
+    monkeypatch.setattr("app.chain.site.SitesHelper", Mock(return_value=Mock(get_indexer=Mock(return_value={}))))
+    response = None if status_code is None else Mock(
+        status_code=status_code, reason="Unauthorized", json=Mock(return_value=payload),
+    )
+    context = MagicMock()
+    context.__enter__.return_value = response
+    open_response = Mock(return_value=context)
+    monkeypatch.setattr(f"{__name__}._open_probe_response", open_response)
+    generic_test = Mock(return_value=(True, "网页连接成功"))
+    monkeypatch.setattr(SiteChain, "_SiteChain__test", generic_test)
+
+    assert chain.test(site.url) == (False, expected)
+
+    open_response.assert_called_once()
+    request = open_response.call_args.kwargs
+    assert request["method"] == "GET"
+    assert request["url"] == "https://www.yemapt.org/api/consumer/fetchSelfDetail"
+    assert request["cookie"] == site.cookie
+    assert "Authorization" not in request["headers"]
+    if response is not None and status_code != 200:
+        response.json.assert_not_called()
+    context.__exit__.assert_called_once_with(None, None, None)
+    generic_test.assert_not_called()
+    chain.site_repository.fail.assert_called_once_with("yemapt.org")
+    chain.site_repository.success.assert_not_called()
 
 
 @pytest.mark.parametrize(
