@@ -41,7 +41,7 @@ ci: improve docker build cache
 
 ### Rules
 
-- Local commits follow the active workflow, an approved plan, or current user authorization. Existing scoped authorization does not require a second confirmation, including when the confirmed project context defines a requested PR as tracking through merge. Push, PR, merge, and release each need coverage by that authorization; a PR request does not by itself authorize a release. Maintainer arrangements and local anchors follow `AGENTS.md`.
+- Local commits follow the active workflow, an approved plan, or current user authorization. Existing scoped authorization does not require a second confirmation. Push, PR, merge, and release each need coverage by that authorization, and a PR request does not by itself authorize a release. Maintainer arrangements and local anchors follow `AGENTS.md`.
 - Keep the subject line under 72 characters.
 - Use the imperative mood in the subject line ("add", "fix", "remove", not "added", "fixed", "removed").
 - If a commit introduces a breaking change, append `!` after the type and include `BREAKING CHANGE:` in the footer.

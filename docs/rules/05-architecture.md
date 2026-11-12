@@ -1,1434 +1,291 @@
 # 05 - Architecture and Modules
 
-## Directory Model
+This document defines the package boundaries, dependency directions, persistence
+and extension contracts, and machine-enforced architecture gates for the
+MoviePilot V3 backend.
 
-MoviePilot keeps the established product packages such as `app/chain`,
-`app/agent`, `app/modules`, `app/db`, `app/api`, `app/startup` and
-`app/workflow` in their original locations. The historical `app/core`,
-`app/helper` and `app/utils` roots are virtual compatibility packages only;
-physical Python sources must not be recreated there.
-
-The legacy roots have no physical directories in the source tree. Current
-images and update flows write site resources only to `app/application/site/`;
-plugin imports under `app.helper.*` are resolved exclusively by the exact
-runtime compatibility manifest.
-
-Capabilities migrated out of those legacy roots are organized by technical
-responsibility:
+## Core Direction
 
 ```text
-Entrypoints / Plugins
-        |
-        v
-API / Agent / CLI / Scheduler / Workflow
-        |
-        v
-Chain orchestration ---------> Application services
-        |                              |
-        +----------> Modules / DB <----+
-                       |
-                       v
-             Domain / Runtime contracts
-                       |
-                       v
-              Foundation / Adapters
-
-Startup remains the composition root. SDK and compatibility are boundaries,
-not dependencies of canonical implementation modules.
+Entrypoints (app/api, app/command, app/monitor, app/scheduler, app/agent, app/workflow, app/doctor)
+    -> Application & Use-Case Orchestration (app/application, app/chain)
+        -> Pure Domain Rules (app/domain, depending only on app/foundation and app/schemas)
+            -> Stateless Primitives (app/foundation)
 ```
 
-Directory grouping does not override dependency direction. The architecture
-gate builds the complete Python module graph and rejects cycles even when a
-cycle passes through an established package that was not moved.
+- `app/foundation` holds stateless, MoviePilot-agnostic Python primitives with
+  zero `app.*` imports and no runtime logging.
+- `app/domain` holds pure MoviePilot business rules, media metadata parsing,
+  immutable provider projections and offline vocabularies with no I/O, runtime
+  config, cache, HTTP or database access (importing only `app/foundation` and
+  pure value contracts in `app/schemas`).
+- `app/application` owns typed use cases, frozen DTOs/snapshots, and persistence
+  or technical `Protocol` ports (`app/api/endpoints/plugin.py` and other HTTP
+  controllers stay thin transport adapters over application services such as
+  `app/application/plugin/routes.py`).
+- `app/chain` coordinates cross-module workflows shared across API, scheduler,
+  CLI, Agent and events, reaching pluggable modules exclusively via
+  `run_module` method-name dispatch.
+- `app/adapters` implements concrete cache, HTTP, browser, web routing/middleware,
+  observability, OS/process, filesystem, Rust acceleration and third-party
+  vendor protocols.
+- `app/db` owns SQLAlchemy models, entity `Oper` classes and short-session
+  repository/UoW adapters implementing `app/application` persistence ports.
+- `app/runtime` owns process-wide settings, event bus, task registry, cache
+  contracts, bounded executors, stop state and module/plugin extension runtimes,
+  plus the lazy `app/runtime/compat` import overlay.
+- `app/startup` is the sole composition root wiring concrete adapters, DB
+  repositories, caches and lifecycle components into `HostRuntime`.
+- `app/sdk` curates the explicit public ABI exported to plugins (`_PluginBase`,
+  typed event snapshots, media/service contracts and narrow facades). Host
+  canonical implementations never import `app/sdk` or `app/runtime/compat`.
 
 ## Canonical Migrated Packages
 
-| Package | Ownership |
-|---|---|
-| `app/foundation/` | Stateless, config-free and I/O-free primitives: reflection and dynamic import, crypto, DOM parsing, identity, collections, singleton, text conversion/segmentation, URL and version helpers |
-| `app/domain/` | Pure MoviePilot business semantics for media, recognition, sites and torrents; `projection/` owns immutable external-source-to-`MediaInfo` field mapping; live configuration, persistence, transport and acceleration are injected |
-| `app/application/` | Focused stateful application services, configured capability selection and service-bound rules |
-| `app/runtime/` | Process-wide config, events, complete logging runtime, cache contracts/in-memory policy, execution, background-task ownership, localization, scheduling, restart state, concurrency, GC and rate limits |
-| `app/adapters/` | Concrete technical I/O and named external ecosystems, split by cache, network, system and external boundaries |
-| `app/sdk/` | Stable, deliberately curated imports for plugin authors |
-
-The packages above are the only top-level roots created by the legacy-module
-refactor. Existing product roots remain unchanged rather than being moved only
-to make the directory tree look symmetrical.
-
-### Application boundaries
-
-| Path | Ownership |
-|---|---|
-| `app/application/*.py` | Established single-word application services; same-domain implementations use subpackages, while old paths are routed only by the exact Compat/SDK boundaries |
-| `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity and search stay in their single-word modules |
-| `app/application/search/` | Search state and later search-plan use cases |
-| `app/application/site/throttle.py` | 站点搜索、换票与种子 HTTP 请求共享的间隔、次数窗口及远端冷却策略；使用 `runtime.rate.RequestRateLimiter` 原子记录实际请求起点，缓存命中不计费，等待与取消不提前占用额度 |
-| `app/application/site/protocol.py` | 站点协议的窄端口与冻结连接回执；通过启动注入的模块调度器解释域名、资源身份、短时票据、下载确认和独立字幕能力，不静态依赖 Module，不执行网络或数据库 I/O |
-| `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
-| `app/application/history/` | History use cases and persistence contracts; DownloadHistory and TransferHistory own deeply frozen DTOs plus typed query/write/staging ports |
-| `app/application/music/` | 多来源音乐目录编排；`observation.py` 沿用站点搜索的调用观察模式，隔离一次音乐识别的结果、候选摘要与请求/等待预算，不持有来源客户端、不改变旧模块返回合同；`recognition.py` 通过注入来源回调串行回退、汇总诊断，并按领域候选计划有界补充真实Artist身份别名，子来源共享祖先预算，`catalog.py` 声明目录查询所需的最小来源 Port |
-| `app/application/audio.py` | 本地音频标签与 CUE 证据读取；`use_music_cue` 在当前上下文绑定本次整理策略，`music_cue_enabled` 未绑定时通过 `runtime.settings` 读取 `MUSIC_CUE_ENABLE`，保持启动前独立读取能力。手动入口隔离策略，准入 options 保存有效值，执行入口恢复冻结策略，Chain 专辑缓存按同一有效值隔离；Domain CUE 解析器保持无配置依赖 |
-| `app/application/messaging/message.py` | 模板上下文按既有来源优先级选定音乐字段后，使用配置快照和 `app.foundation.text.convert` 应用简体开关；不调用识别 Chain、不改写标签或来源缓存，也不替换录音所属发行和多艺人署名 |
-| `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the typed runtime and persistence dependency aggregate, and `events.py` owns durable event write contracts plus replayable payload conversion |
-| `app/application/agent.py` | Agent orchestration facade and typed `AgentDataContext`; startup injects one explicit data context into the manager, memory, tool and scheduler owners without a process-wide persistence locator |
-| `app/application/invocation.py` | Frozen Agent write-call identity, claim and receipt contracts; the injected repository provides atomic claim, fenced settlement and unresolved-state reads, while `db/adapters/invocation.py` owns short transactions and cold-start recovery is invoked by startup |
-| `app/application/network.py` | System network-test target catalog, immutable public/private projections, URL and redirect admission, response validation and the injected transport Port; startup owns concrete HTTP Adapter assembly |
-| `app/application/community/` | `medals.py` 按实例管理员 GitHub 数字 ID 查询 MoviePilot-Wiki 社区勋章名单、管理同凭据缓存与过期回退；通过 Domain GitHub Port 注入异步传输，名单拉取与协议校验归 `adapters/external/github.py`，启动由 system 组合根装配，不作为插件 SDK |
-| `app/application/outbox.py` | Durable intent, transaction-only stager, short-transaction dispatch store, claim fencing and structured post-commit result contracts |
-| `app/application/transfer/` | Durable transfer use cases: `workflow.py` owns queue service orchestration; `models.py` owns admission/planning/task contracts; `jobs.py` owns in-process task views; `notifications.py` owns success/failure notification snapshots, batch waiting and quiet-window aggregation; `projection.py` owns domain projections; `execution.py` owns stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs; `recovery.py` owns read-only AI takeover admission plus failed/corrupt task cleanup and history detachment through the execution repository; `history.py` projects history write fields and file fingerprints; `feedback.py` owns failure stages, notification snapshots and message text, while Chain owns notification delivery and cleanup side effects |
-| `app/chain/transfer/music.py` | 音乐整理的纯标签准入、目录共识、发行分组与曲目上下文编排；`filter.py` 保留通用文件筛选和既有 mixin 调用契约。可信标签在本地完成分类与命名，分类的外部事实补充可由本次用例明确禁用，仍遵守用户策略与人工覆盖 |
-| `app/application/plugin/` | Plugin market catalog, installation command, installed-plugin identity contract and startup migration, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `identity.py`, `migration.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
-| `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
-| `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
-| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `ingress.py` owns the single channel-to-host loopback boundary; `interaction/` owns generic interaction state plus Agent choice contracts; `channel/admin.py` owns channel administrator resolution; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `webagent/` owns WebAgent notification events and stream transport; `agent.py` owns WebAgent application orchestration, display projection, session identity/persistence coordination, temporary attachment registry and audio preparation/transcription; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
-| `app/application/security/` | Authentication, authorization, frozen user/auth projections, atomic user aggregate commands, per-user configuration publication, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
-| `app/application/security/widget.py` / `app/application/widget.py` | 小组件专用只读登记、当前账号与权限校验，以及既有有界查询的最小展示投影；`db/adapters/widget.py` 以用户锁和短事务保护轮换、名额与撤销，组合根通过 `AuthenticationRuntime.widget_scope` 注入，不创建第二套登录或业务写入 API |
-
-订阅日志仍由 `runtime/log.py` 的通用资源作用域负责路由、等级和有界滚动写入；
-`application/subscription/observability.py` 只绑定订阅身份并汇总诊断省略数量。
-搜索、RSS 匹配、元数据刷新、重置和完成判定在单订阅边界绑定上下文。
-`api/endpoints/subexecution.py` 用资源 Cookie 校验归属并返回文本/SSE/ZIP，
-权限检查通过 `api/dependencies/subscription.py` 的短会话作用域完成，流读取不能占用请求级数据库事务。
-文件读取、滚动追踪和归档复用现有 SystemLogPort 及启动装配，ZIP 压缩复用已有受控工作线程。
-
-### Agent runtime boundaries
-
-| Path | Ownership |
-|---|---|
-| `app/agent/manager.py` | Stable `AgentManager` facade and process singleton identity; no session, lifecycle or scheduled-task implementation |
-| `app/agent/session.py` | Per-session queues, workers, active Agent instances, status projection, cancellation and deferred cleanup |
-| `app/agent/lifecycle.py` | Runtime generation admission, initialization, idle-session collection and bounded manager shutdown |
-| `app/agent/tasks.py` | Background prompts, durable scheduled-task execution and heartbeat wakeups |
-| `app/agent/orchestrator.py` | One `MoviePilotAgent` execution instance: prompt/tool/middleware assembly, model invocation, streaming and per-agent state; graph resources are registered with the graph owner immediately after acquisition |
-| `app/agent/graph.py` | Session-local compiled graph cache and model/controller ownership: one resource scope follows construction through publication and retirement; publication transfers ownership synchronously, cancellation retains unclosed resources, and consumers finish before their models close. Background learning delays model reclamation; shutdown seals in-flight scopes and refuses late publication. This is an internal owner, not an SDK or Compat export |
-| `app/agent/middleware/plan.py` | Current task objective, step status and evidence in graph state; sanitized snapshots travel through existing message persistence and never authorize tool effects |
-| `app/application/messaging/recall.py` / `app/agent/history/` | Application 持有独立消息库 DTO/Port 和后台维护服务；Agent 专属 SQLite/FTS5 schema、存储、检索、窗口与旧快照导入由 `agent/history/` 拥有，数据库位于 Agent 运行目录且不共享主库 Session。`db/adapters/recall.py` 仅负责一次性旧快照只读导出 |
-| `app/agent/learning/` / `app/agent/middleware/learning.py` | Agent 专属个人技能、稳定记忆和复盘生命周期；独立文件目录按用户隔离，模型仅能调用受控维护工具。`session.py` 管理计数及 TaskRegistry owner，`review.py` 复用最终模型请求并在派发处限制工具，`files.py` 只封装该存储的路径、进程锁与原子替换，不作为通用文件 Adapter。人工提案/技能控制命令经 messaging interaction 契约路由，只有宿主收到的用户原文可以触发，后台快照没有执行权限 |
-| `app/agent/middleware/selection.py` | First-turn tool selection and bounded, on-demand discovery within the same authorized catalog; discovered tool names remain local to the current user request |
-| `app/agent/middleware/invocation.py` | Claims write executions through the injected Application port; owns per-turn API deduplication, durable receipt projection and narrowly scoped read-only reconciliation |
-| `app/agent/middleware/output.py` | Bounded, expiring in-memory tool output and thread-scoped pagination; never persists raw tool results |
-| `app/agent/middleware/vision.py` | Request-only tool-image observations after compaction; complete tool-reply batches, per-invocation visual fallback and unchanged user authorization |
-| `app/agent/tools/result.py` | Pure interpretation of explicit tool outcomes and portable tool-image history; image observation copies never replace original user attachments |
-| `app/agent/guardrails/` / `app/agent/middleware/guardrails.py` | Agent 专属的 Hermes 循环检测与结束纠偏；纯控制器只产出决策，中间件在实际工具派发和模型边界应用，按宿主图线程隔离临时状态。不可替代授权、持久写入回执或业务成功校验；检测复用已有模型包装及策略后置节点，不能因增加图节点缩减任务预算；子任务 owner 在取消路径释放检测状态 |
-| `app/agent/api/arguments.py` | Canonical API request fingerprints from the generated operation schema and the executor's GET projection; no endpoint imports or live discovery |
-| `app/agent/shell.py` | Shared command interpreter, login mode, launch directory and subprocess text-encoding policy for run, pipe and PTY; preserves Windows default priority and UTF-8 behavior |
-| `app/agent/terminal/` | `ownership.py` owns host task identity, invocation context and lazy scope closure; `session.py` owns process state, input serialization and UTF-8 capture; `output.py` owns pure paging and bounded projections; `manager.py` owns launch, access grants and process lifecycle. Package root contains no implementation exports |
-| `app/agent/code/` / `app/agent/middleware/code.py` | Agent 专属持久 Python 会话、当前 cell 身份、只读工具交集、50次 RPC 预算与回执投影；复用真实 TerminalScope owner 和既有工具链，默认自动执行，不新增用户批准步骤。模型包装在工具筛选后、压缩前生成 helper 合同，不新增图节点；后台任务归 TaskRegistry，文件工作复用 Agent 有界线程池 |
-| `app/adapters/system/code/` | 通用本地 Python 子进程、生成客户端、私有 socket/令牌、随机输出分帧、父死亡看护与输出暂存。阻塞工作由调用方注入受控执行器；不导入 Agent、业务工具、配置或数据库，也不拥有用户及 API 权限策略 |
-| `app/agent/middleware/terminal.py` | Explicit child terminal grants and per-invocation scope binding; cached child graphs never receive mutable task identities, and sharing never bypasses tool role permissions |
-| `app/agent/policy/api.py` | Fixed `moviepilot_api` operation registry, HTTP route templates and per-operation authorization/effect policy; no arbitrary URL or method input |
-| `app/agent/policy/mcp.py` | Generated external MCP input-contract builder for the fixed API registry; owns exact English oneOf parameter projection, not runtime authorization |
-| `app/agent/tools/impl/service.py` | Admin-only external MCP wrappers for downloader, media-server and database Skill scripts; synchronous scripts run only through the Agent blocking executor |
-| `app/agent/tools/projection.py` | Pure MCP `tools/list` schema projection for clients that explicitly opt in via `X-MCP-Schema-Mode: compact`: contracts above the client compaction threshold are projected to an object schema (the root `type: object` is filled in when absent; operation/action enumerations preserved) so clients that strip composition keywords still receive usable parameters; full contracts stay on the REST tool endpoints and on the default `full` mode |
-
-`app.agent.AgentManager` remains the stable plugin-facing import and resolves lazily to
-`app.agent.manager.AgentManager`. Historical symbols formerly imported from
-`app.agent.orchestrator` are preserved only by exact Compat aliases; the physical
-orchestrator must not re-export manager/session implementations. The package root
-uses a reviewed symbol whitelist and must not restore an unbounded `__getattr__`
-forwarder.
-
-The policy and service modules above are host-internal owners. They are not SDK or
-Compat surfaces, and retired multiword module paths must not be restored as aliases.
-
-Application services may use domain rules and runtime contracts. They own the
-persistence Protocol needed by a use case, but must not import `app.db`,
-SQLAlchemy, Session, Oper classes or concrete adapters. `app/db/adapters/`
-implements those Protocols and startup injects the implementation. Multi-domain
-workflows still belong in the existing `app/chain/` package. `Chain`, `Service`
-and `Manager` remain class patterns; they do not create additional top-level
-directory categories.
-
-`app/api/endpoints/agent.py` must not recreate WebAgent file registries, audio
-conversion/transcription policy, traditional-message dispatch, Agent execution
-lifecycle, event-to-display projection or AgentChat snapshot writes. Those reusable
-state transitions belong to `app/application/messaging/agent.py` and its
-`webagent/` subpackage; the endpoint maps FastAPI principals and DTOs, translates
-upload/domain failures to HTTP responses, and frames Application events as SSE.
-
-### Runtime boundaries
-
-| Path | Ownership |
-|---|---|
-| `app/runtime/config.py` | Deployment configuration and resolved runtime settings |
-| `app/runtime/topology.py` | Process topology policy shared by startup and offline diagnostics |
-| `app/runtime/events.py` | Event contracts, dispatch and resolver registration |
-| `app/runtime/event/` | Event registry, explicit handler binding, dispatch barrier/concurrency and isolated error handling |
-| `app/runtime/observability/` | Low-cardinality metric contracts and no-op-capable observation facade |
-| `app/runtime/log.py` | Complete console/plugin/file logging runtime and shutdown |
-| `app/runtime/cache.py` | Cache protocols, memory implementations, decorators and proxies |
-| `app/runtime/resources.py` | Provider-neutral acquisition, observation and shutdown facade for process-owned optional resources |
-| `app/runtime/browser.py` | 进程内浏览器实例的同步/异步共享队列、完整存活期名额和跨线程取消检查；不创建或关闭具体浏览器 |
-| `app/runtime/tasks.py` | Lifespan-scoped ownership, cancellation and bounded shutdown waiting for in-process background tasks |
-| `app/runtime/execution.py` | Shared sync/async execution and cross-thread submission boundary with correlation propagation |
-| `app/runtime/priority.py` | 交互执行作用域、有限后台避让及每个事件循环共享的交互 anyio 配额；仅传播临时执行归属，不替代身份鉴权 |
-| `app/adapters/web/priority.py` | 从本进程登记的存活临时凭据恢复本机 Agent API 执行归属 |
-| `app/scheduler/admission.py` | 关键任务豁免、协程和同步调度入口的有限避让；保留原 generation 和句柄 owner |
-| `app/runtime/correlation.py` | Request/cross-thread correlation context and safe propagation into logs and child work |
-| `app/runtime/state.py` | Process restart and update state |
-| `app/runtime/dependencies/` | Runtime dependency profile selection in `profile.py` and loaded native payload activation detection in `native.py`; the package root contains no implementation or host re-exports |
-| `app/runtime/extensions/` | Module, plugin, configured-service and managed-resource discovery/registration/lifecycle adapters |
-| `app/runtime/compat/` | Standard-library-only exact legacy import routing, resource preflight scanning and DEBUG diagnostics |
-
-`app/startup/` remains the established composition root and is not nested under
-runtime. Its root contains only `composition/`, `initializers/` and `lifecycle/`:
-composition constructs and injects cross-layer dependencies, initializers expose
-domain-scoped startup/shutdown hooks, and lifecycle orders those hooks and decides
-restart policy. Reusable persistence implementations belong in `app/db/adapters/`,
-not startup. Lower-level runtime modules must not import startup.
-
-`startup/composition/cliagent.py` owns one exclusive CLI request process. It receives
-deployment settings explicitly and reuses the database, configuration, Agent and
-Chain composition owners. It may hold and close module/plugin lifecycle owners;
-this permission applies to that exact module, not its siblings or a subtree. It
-does not start Web, frontend, external site authentication or plugin synchronization.
-Shutdown drains Agent work and persistence before closing dependent database
-owners; an unconverged owner must retain its downstream dependencies and report
-failure.
-`startup/composition/configuration.py` owns configuration snapshot loading, typed
-runtime/settings construction and publication. `startup/composition/database.py`
-owns the process database worker, compatibility transaction runner, query services,
-plugin persistence and workflow query wiring. Initializers call these owners in
-startup order and must not recreate their concrete construction.
-`startup/composition/runtime.py` is the sole constructor of `HostRuntime`, its named
-domain Runtime projections and the legacy `ApiDataPorts` projection. It first creates
-one frozen `RuntimeDependencies` aggregate; Agent, Chain and HostRuntime must reuse the
-same repositories, transfer-execution ledger and message owners rather than constructing
-parallel instances. Importing this owner remains cold: concrete DB adapters are resolved
-only when composition functions run, and FastAPI `app.state` publication remains owned by
-the lifecycle layer.
-`startup/composition/chain.py` owns the no-argument Chain compatibility context,
-typed persistence/dispatch object graph, lazy legacy Transfer command binding and
-wallpaper-provider publication. It also owns MoviePilot Server share and filesystem
-Adapter wiring required by Chain ports. `initializers/chain.py` is only the lifecycle
-hook; `initializers/modules.py` passes the already constructed `RuntimeDependencies`
-in startup order and must not recreate those dependencies.
-`startup/composition/security.py` owns authentication, user lookup, PassKey and Web
-access provider assembly; it returns the persistence factories needed by the runtime
-owner, which alone constructs `AuthenticationRuntime`.
-`startup/composition/network.py` owns concrete network-test, image, internal-address,
-message-ingress, DoH and Chain synchronous network/system Adapter wiring while
-retaining lazy RuntimeSettings reads. Initializers call these owners in startup order
-and must not recreate their concrete construction.
-`startup/composition/domain.py` owns DNS/System/Rust Adapter assembly together
-with the single `RecognitionRuleService` used to publish media-recognition rule
-providers. `initializers/domain.py` is only the lifecycle hook and must not
-construct a parallel rule service or import concrete adapters.
-`startup/composition/site.py` owns RSS, site login, captcha, torrent and SiteChain
-network/browser/OCR Adapter assembly. `initializers/site.py` is only the lifecycle
-hook and must not import or construct those concrete adapters.
-`startup/composition/cache.py` owns concrete platform cache registration.
-`initializers/cache.py` is only the startup hook and must not import cache adapters.
-`startup/composition/resource.py` owns managed-resource Adapter construction and site
-resource installation. `initializers/resources.py` only exposes lifecycle hooks; the
-modules initializer retains only the decision to restart after an actual installation.
-`startup/composition/database.py` also owns the concrete transactional Workflow
-execution service; the modules initializer only invokes its configure/reset lifecycle.
-`startup/composition/outbox.py`
-owns durable handler validation, lazy event/notification replay binding and the
-short-transaction dispatcher factory. Initializers call this owner in
-startup order and must not recreate its concrete construction.
-`startup/composition/server.py` owns MoviePilot Server report/share service
-construction and registration, including lazy local-data readers and external
-transport callbacks; `initializers/modules.py` retains only its startup-order call
-and the later explicit network warmup. Database runtime
-`startup/composition/agent.py` owns the single `AgentDataContext`, chat persistence and
-autonomous-task repository/execution service set. The runtime owner projects those same
-objects into `AgentChatRuntime`. Agent composition may accept
-the Agent initializer's data-context registrar as a callback, but must not import
-`startup.initializers`; tool-manager, scheduler and Agent activation order remains in
-the initializer. Database runtime ownership rejects overlapping lifespans. After a
-successful worker shutdown, `initializers/modules.py` invokes the explicit reverse-order
-reset manifest: event/resource/security/Chain/managed-resource/Scheduler/tool/Agent,
-then transfer/outbox/workflow/server/runtime/database/network/configuration providers,
-and only afterward releases database connections. Startup rollback uses the same reset
-manifest and never materializes an owner merely to stop it. A failed database shutdown
-retains the runtime owner, every provider and the connection boundary for diagnosis and
-retry instead of publishing a second owner or silently entering a partial lifespan.
-Startup publishes its frozen, slotted `HostRuntime` through FastAPI `app.state`.
-API dependencies must narrow that object to a domain runtime (for example,
-`AgentChatRuntime`) instead of adding a string key to a global service map.
-Legacy registries may delegate the same object while domains migrate, but they
-must not construct a second set of service instances.
-The retired flat `app/runtime/dependencies.py` and
-`app/runtime/native_dependencies.py` modules must not return. Canonical host
-callers import `app.runtime.dependencies.profile` or
-`app.runtime.dependencies.native` directly; the package root is not an export
-facade, and plugin compatibility is added only through an exact SDK/Compat route
-when a verified plugin contract requires it.
-Canonical host consumers of the process-wide module, plugin, scheduler and
-system-configuration runtimes must call `get_module_manager()`,
-`get_plugin_manager()`, `get_scheduler()` and `get_configured_system_config()`
-explicitly. The class-shaped `ModuleManager` and `Scheduler` application facades,
-the concrete plugin manager class paths and DB `SystemConfigOper` remain
-compatibility or composition boundaries; host code must not import those facades
-or alias a getter back to a manager/Oper class name.
-API, Scheduler and Chain deployment values are exposed as frozen snapshots from
-`HostRuntime.configuration`; canonical callers must not add a fresh direct
-`settings` import when the required field belongs to an existing snapshot.
-
-The historical `app/scheduler.py` monolith must not be recreated. Scheduler
-implementation lives in the same-named `app/scheduler/` package: `catalog.py`
-owns built-in job declarations and APScheduler projection, `execution.py`,
-`bridge.py` and `progress.py` own execution and completion mechanics,
-`registry.py` is the sole owner of generations, active ownership, reservations
-and handles, `reconcile.py` owns dynamic Agent/Workflow/plugin job projection,
-and `lifecycle.py` owns init, reload and shutdown. Business Chain instances are
-constructed only by `app/startup/initializers/scheduler.py` and injected as the
-frozen callable-only `SchedulerServices`; files under `app/scheduler/` must not
-construct a business Chain. The `app.scheduler` package root lazily preserves
-only the historical `Scheduler` and `SchedulerChain` identities. New plugins use
-the narrow `app.sdk.scheduler` facade; internal Scheduler owners must not be
-re-exported from the package root, SDK or Compat.
-
-Complexity and concurrency governance covers the complete canonical execution
-surface rather than only public methods. `scripts/architecture/complexity.py`
-checks Ruff C901 (McCabe complexity, limit 15) and PLR1702 (nested blocks, limit 5)
-throughout `app/**/*.py`, excluding only runtime plugin copies in `app/plugins/**`.
-Complete AST traversal maps diagnostics to stable private/dunder/nested function
-owners, including definitions under `Match` and `TryStar`. Existing over-limit
-functions may only decrease; growth is rejected even by `--write`, and reductions
-must be recorded before the check passes. `--report` also records method/class/file
-line-span hotspots for review, but physical line counts never block CI. The former
-v1/v2 line-budget gates are retired; `scripts/architecture/complexity.py` and
-`scripts/architecture/mypy_ratchet.py` are the authoritative gate definitions.
-`scripts/architecture/concurrency.py` resolves canonical imports and aliases for
-native Thread, Timer, thread/process executors, Process, TaskGroup, event-loop
-task submission, asyncio task/thread helpers, and executor hand-off calls. It
-scans the complete `app/**` host tree and aggregates each canonical target by
-stable lexical owner and call count, so physical line movement is not semantic
-drift and multiple same-line calls cannot collapse. New owners/count growth and
-stale baselines after count reduction all block CI. `app/plugins/**`, `app/sdk/**`, and
-`app/runtime/compat/**` are excluded because their compatibility/runtime
-contracts are governed by their own exact manifests.
-
-`app.schemas` and the `app.db` package root are compatibility facades, not
-implementation dependency hubs. Host code imports concrete schema submodules; the schema root
-resolves its generated export manifest lazily for plugins and legacy callers.
-DB internals import `base`, `decorators`, `engine`, `session`, concrete models
-and Oper modules directly. `app.db.models.load_all_models()` is the explicit
-composition entry used before metadata creation or migration; importing one
-model must not import every table.
-
-`app/db/oper/` owns table-oriented SQLAlchemy access and receives a caller-owned
-Session. `app/db/adapters/` is the concrete persistence-adapter layer: it may
-depend on Application-owned Protocols, UoW/Session and Oper implementations.
-This deliberate dependency inversion is the only `DB implementation ->
-Application contract` direction; Application must remain free of DB imports.
-User, interaction, messaging, music, site, media-server, download, subscribe and transfer
-Chain consumers receive typed repositories through `ChainRuntimeContext`; `ChainBase` copies the
-context fields to instance-owned capabilities during construction. The deleted process-wide
-`chain/data.py` locator, migration-time `*PortProxy` classes and dynamic `__getattr__` forwarding
-must not be recreated; they had no host, SDK or plugin consumers. Workflow execution uses its
-owning `app.application.workflow` service directly and is not duplicated in the Chain context.
-Download-failure cooldown and media-server cache consumers use their typed Application DTO/Port
-contracts. Their DB adapters project ORM values before Session close and commit each local write
-in a separate short UoW, so remote media enumeration never holds a database transaction.
-Agent orchestration, memory, tools and scheduler receive the single typed `AgentDataContext`
-declared in `app/application/agent.py`. The deleted `agentdata.py` locator and its getter surface
-were host-internal migration scaffolding, never plugin ABI, and must not gain SDK/Compat aliases.
-Legacy public Agent imports remain exact SDK/Compat boundaries and must not be reintroduced as
-Oper aliases in canonical Agent modules.
-Monitor history checks use `get_transfer_history_repository()` from
-`app/application/history/`; old constructible Oper-style facades are available
-only through the exact SDK Legacy/Compat mapping.
-
-Durable transfer execution follows one explicit boundary. The Chain freezes each
-external file operation into the Application-owned contract in
-`app/application/transfer/execution.py`; `app/db/adapters/transfer/execution.py`
-uses short transactions to persist the task ledger and fences every state change
-with the current lease and attempt token. `app/db/oper/transferexecutionstep.py`
-remains table-oriented and never owns retry or recovery policy. External file I/O
-runs outside those transactions. A legacy or remote operation whose result cannot
-be proven as applied or not applied enters `manual_review` and must not be replayed
-automatically. Terminal history, pending state, execution-step cleanup and the
-optional outbox intent are committed only by the task-aware implementation in
-`app/db/adapters/chain.py`; canonical callers must not add a second settlement or
-direct pending-deletion path. Task-aware settlement never performs synchronous
-event publication inside the worker callback; the committed outbox owns delivery.
-History mutation and maintenance paths may delete or replace only legacy rows with
-no `transfer_task_id`, because durable receipts are recovery evidence rather than
-ordinary user-maintained history.
-Canonical Chain, API, Scheduler and Agent consumers read notification and media
-server configuration through the named helpers in `app/application/notification.py`
-and `app/application/mediaserver.py`. `ServiceConfigHelper` remains the parser at
-the startup/runtime module boundary and a plugin SDK compatibility export; it is
-not a second application-facing service directory.
-
-### Adapter boundaries
-
-| Path | Ownership |
-|---|---|
-| `app/adapters/cache/` | Redis and filesystem cache implementations and Redis clients |
-| `app/adapters/network/` | Generic HTTP, browser, DNS, Cloudflare and IP transport mechanisms |
-| `app/adapters/system/` | OS/filesystem/process facilities, stdio, display, packages, resources and optional Rust acceleration |
-| `app/adapters/external/` | CookieCloud, plugin market, OCR, IP-location providers and MoviePilot Server |
-| `app/adapters/web/` | FastAPI-specific technical adapters, including raw dynamic plugin routes |
-| `app/adapters/observability/` | Optional telemetry exporters; core code depends only on runtime observation ports |
-| `app/adapters/external/plugin/client.py` | Plugin-market transport, index/release queries and local-repository candidate resolution; `PluginHelper` is only the stable compatibility facade that delegates here |
-| `app/adapters/system/plugin/` | Plugin package, dependency and health I/O (`package.py`, `dependency.py`, `health.py`); `PluginPackageManager` is the unique physical package mutation owner |
-| `app/db/adapters/` | SQLAlchemy implementations of Application-owned persistence Protocols |
-
-Generic protocol transport belongs in `adapters/network`; a named product or
-ecosystem workflow belongs in `adapters/external`. An adapter may depend on
-foundation, domain models, schemas and narrowly required runtime contracts, but
-must not import application services, `runtime/extensions`, `runtime/compat` or
-the plugin SDK.
-
-RSS is not classified as a transport adapter merely because it uses HTTP. The
-current `RssHelper` combines feed parsing, torrent item semantics and execution of
-RSS link recipes with browser fallback, so it belongs to `app/application/rss.py`.
-Site-specific pages, selectors, form parameters and expiration responses belong to
-`app/modules/indexer/rss.py`; Application owns the frozen `RssLinkRecipe` and
-`RssSitePort`, and startup injects module dispatch and network/system Adapter implementations;
-no concrete Adapter import remains in the Application module. Likewise, the generated
-site extension owns the configured catalog/authentication/index capability and
-lives in `app/application/site/`; only its download and file installation
-mechanism remains in `app/adapters/system/resource.py`.
-
-HTTP(S) 地址的无 I/O 格式校验归属 `app/foundation/url.py` 的
-`UrlUtils.normalize_http_url()`，只去除首尾空白，不补协议或改写地址。
-RSS 用例在入口调用该能力，并拥有无效地址的跳过行为与返回约定；
-Foundation 不承担 RSS 内容判断、站点续期或运行日志职责。
-
-可选的进程级技术资源使用 Managed Resource 合同：实现及其 data-only
-`capability.toml` 与适配器同目录，`runtime/extensions` 只解释通用的同步/异步
-`start`、`stop` 生命周期，`startup` 负责构建 Capability Runtime。声明必须使用
-`on_first_use`，普通启动只发现声明；消费者通过 `app/runtime/resources.py`
-显式获取资源。关闭路径先释放消费者，再关闭已初始化 Runtime，未使用的资源不得因关闭而物化。
-应用级启动顺序使用 `app/startup/lifecycle/components.py` 的组件描述声明依赖、
-normal/safe-mode 范围、start/stop 顺序、超时预算和失败策略。新增进程级资源不得只在
-`lifespan()` 中追加过程代码，必须先进入可导出的生命周期清单并补顺序快照测试。
-Host Module 的 `stop()` 可以显式返回 `False` 表示资源 owner 尚未收敛；
-`HostModuleAdapter` 必须将它视为 stop 失败，Capability Runtime 保留原 owner 供后续重试，
-ModuleManager 与 startup 组合根继续关闭其余资源但必须向上返回未收敛，不得把记录日志等同于成功。
-同步和异步 Capability Runtime 的 `shutdown` 必须使用同一布尔收敛合同；Agent、Managed Resource
-等领域关闭入口必须直接传播 Runtime 的整体结果，不得以单个能力快照或无返回包装器覆盖失败。
-消息渠道模块必须通过 `_MessageChannelModuleBase._stop_service_instances()` 聚合多实例关闭结果；
-长连接、轮询或 Socket 服务只有在真实终止后才能返回成功，超时 owner 不得清空句柄。
-Agent 渠道流式回复的分段与停止共用 `StreamingHandler` 的唯一刷新任务；运行中补充输入只登记
-文本边界，不能另建发送任务或覆盖在途消息身份。旧回复的同步收口统一由
-`_finalize_current_message()` 等待宿主线程池完成，再发布新回复；停止同样等待在途刷新收敛。
-应用消息队列的监控线程遵守同一收敛语义：停止必须有限等待，回调阻塞导致线程仍存活时保留 owner
-并向 startup 返回 `False`，不得用无界 `join()` 阻塞生命周期或把日志当作成功。
-共享 `ThreadHelper` 必须追踪通过宿主 `submit()` 和旧兼容 `.pool.submit()` 接受的全部 Future；关闭时
-先封口新任务，再有限等待且保留未终止 owner，结果由 startup 聚合，不得恢复无界 executor shutdown。
-`app.runtime.execution.OwnedThreadPoolExecutor` 是进程级同步执行器有界收敛的唯一事实源；新的专用
-线程池不得复制 Future 追踪、worker join 或重试关闭实现。DoH 查询线程池也必须复用该 owner：恢复系统
-DNS 后有限等待，超时保留原 executor 并向 startup 返回 `False`，真实收敛前不得创建替代线程池或回填缓存。
-工作流节点线程池同样复用该 executor；所有 `WorkflowExecutor` 必须在 concrete `WorkflowManager` 登记，
-manager 停机先封口新执行并向活动 owner 发送本地取消，再有限等待执行线程和节点 worker。未收敛时必须
-保留动作注册表和执行 owner，并让工作流生命周期 fail-fast，禁止继续释放仍被动作使用的插件或模块依赖。
-准入在 manager 同一锁内按工作流 ID 互斥，不同 ID 可并发；先准入再重置执行状态。
-节点真实结束并完成 success/fail 终态事务后才释放同 ID owner，事务失败保留 owner 供收口重试。
-动作 timeout 是每次尝试的截止时间，调用前后和循环等待后均检查，并通过 runtime.cancel_token
-通知支持取消的动作；非协作同步调用只在真实返回后报告超时，不分离后台线程或提前释放 owner。
-Application 的图校验用于创建、更新、导入和已有定义运行：拒绝重复 ID、无效端点和循环，
-允许单动作或独立节点的无边图；无动作草稿可保存但不能执行。
-工作流读取统一使用 `app.application.workflow.WorkflowQueryService` 和冻结的 `WorkflowSnapshot`；
-`app.db.adapters.workflow.TransactionalWorkflowQueryRepository` 必须在自有短 Session 内完成 ORM 投影与
-嵌套 JSON 深拷贝。API、Agent、Chain、Scheduler、`WorkflowManager` 和中心服务分享不得读取 raw
-`WorkflowOper` 或把 ORM 带出 Session。旧 `WorkFlowManager` 拼写只由 Compat 符号覆盖承接，不进入
-canonical 模块定义或 `__all__`。
-工作流执行状态写入统一依赖 `app.application.workflow.WorkflowExecutionPort`；Chain 在一次执行中只获取
-一个事务端口，并由 `TransactionalWorkflowExecutionService` 为每次状态写入持有短 Session/UoW。
-canonical `app.db.oper.workflow.WorkflowOper` 只提供显式 Session 的 query/stage 方法；旧无 Session
-`start/success/fail/step/reset` 仅由 `app.sdk._legacy.workflow` 和精确 Compat 映射承接，且不进入
-`app.db.oper.__all__`。
-协程环境文件日志属于有界 E1 观测能力，只允许单一队列 writer；队列满时不得再以无界 executor
-形成第二条异步写入路径。日志关闭必须有限等待 writer 与文件处理器，未收敛时 `LoggerManager`
-保留原 owner 并让 lifespan 以关闭失败结束，不得先清空引用或用无界 `join()` 掩盖失败。
-API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/tasks.py`；登记器先于其他
-运行资源启动，并在资源释放前停止接收、取消和有限等待。需要崩溃恢复的 E2/E3 副作用仍应
-进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。
-浏览器空闲回收由 `BrowserSessionHelper` 持有，normal/safe 模式均在模块服务和 TaskRegistry
-启动后登记一个扫描任务；每 60 秒向已有会话线程投递条件关闭，不创建额外线程池或浏览器。
-空闲期从末次操作结束起计算 15 分钟，排队和在途操作受同一准入锁保护；关闭前复核会话、
-执行器、owner 和时间，旧关闭不能撤销同名新实例。TaskRegistry 取消扫描后等待已投递关闭，
-超时沿用登记器的 fail-fast 语义；最终全关仍在模块关闭阶段，不提前释放消费者资源。
-启动性能清单仅新增该组件：normal 33 → 34、safe 21 → 22，历史计时样本与三秒上限不变。
-Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新进程承载，不能在同一解释器中重建局部资源域。
-插件需要浏览器时使用 `app.sdk.browser`，由宿主浏览器适配器协调资源，不直接依赖资源实现。
-浏览器适配器在首次宿主调用或旧插件导入前包装 CloakBrowser 的六类启动入口，包根与
-`cloakbrowser.browser` 共享包装对象。SDK 内部嵌套启动沿用同一名额，名额在实例关闭成功
-或底层 Browser 断开时归还；Context 单独关闭事件不证明浏览器进程已经退出。
-项目固定使用 `cloakbrowser==0.6.5`，保留上游开始要求 key 前的无 key 免费内核。
-`CLOAKBROWSER_MAX_CONCURRENCY` 默认 3，`CLOAKBROWSER_QUEUE_TIMEOUT` 默认 60 秒，
-`CLOAKBROWSER_OPERATION_TIMEOUT` 默认 120 秒，`CLOAKBROWSER_CLOSE_TIMEOUT` 默认 5 秒。
-所有入口共用进程内 FIFO 队列，超时和取消只撤销等待者，不关闭其它任务持有的实例。
-Agent 异步动作直接等待既有会话专属线程，不能让排队取名额的调用占满公共工具线程，
-以免持有实例的会话无法继续操作或关闭。会话关闭失败保留原线程与句柄，在任务或全局
-收口时重试；真实关闭前不得归还容量或报告资源已经收敛。
-每个 owner 只登记一个生命周期监控线程；它通过 Playwright 连接身份和唯一启动标记追踪
-本次驱动及后代，操作或关闭超时后强制回收并在确认进程退出后才归还容量。操作结果可能未知时
-向 Agent 返回未知结果，禁止无依据地重放提交类动作。适配器的异步子任务仅用于启动/关闭取得
-终态，调用取消后仍由当前 owner 等待或有限收口，不作为无人负责的后台任务脱离；并发事实表
-精确登记这些入口及生命周期线程边界。
-插件需要飞书事件长连接时使用 `app.sdk.feishu.FeishuLongConnection`，与宿主飞书模块共用同一传输实现，不再各自依赖 lark-oapi。
-旧插件若直接导入有资源前置条件的第三方包，compat 在插件 import 前递归扫描源码并保守准备资源；
-无法精确解析的文件按全部已登记资源降级，最终可导入性仍由 Python loader 判断。
-
-`app/foundation/crypto.py` stays in foundation because it contains only generic
-RSA, digest and CryptoJS-compatible AES primitives and has no settings, policy,
-I/O or logging. Authentication, token, passkey, signing and two-factor policy
-still belongs in `app/application/security/`; callers decide how cryptographic
-failures are reported.
-
-### Domain subdomains
-
-`app/domain/` is a business package, not a synonym for every file whose name
-mentions media, site or torrent:
-
-| Subdomain | Modules and ownership |
-|---|---|
-| Media | `context.py` owns canonical `Context`, `MediaInfo` and `TorrentInfo` construction; `projection/` owns the pure, input-immutable TMDB/Douban/Bangumi/AniList field mappings and TMDB image-builder port; `media.py` owns source selection policy; identity representation/normalization stays in `schemas/media.py`; `title.py` owns title-candidate and search-keyword rules; `episode.py` owns episode-range display; `scraper.py` owns Kodi-style NFO reading and metadata document generation |
-| Classification | `classification/fields.py` owns the standard field and operator catalog; `classification/sources.py` owns fixture-verified built-in source capability levels; `classification/facts.py` owns canonical fact construction and cross-source country/genre normalization; `classification/evaluator.py` owns deterministic condition and policy evaluation; `classification/validation.py` owns publish-time structural and semantic validation. The package consumes only normalized classification schemas and facts, never concrete media-source modules or persisted configuration |
-| Recognition | `metainfo.py`, `meta/` and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video and music metadata |
-| Site | `site.py` owns generic domain parsing and interprets HTML into business states such as logged-in and checked-in; named domain exceptions belong to the indexer Module, configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
-| Torrent | `domain/torrent.py` owns magnet-link semantics, explicit/query-field resource identity and generic timestamp/signature recognition; named-site path identity and ticket rules belong to the indexer Module, configured download/file behavior stays in `application/torrent/download.py`, while cache recognition stays in `application/torrent/cache.py` |
-
-专站 API 的认证、信封校验和换票响应解释由 `app/modules/indexer/spider/` 的对应适配器拥有；
-资料解析器可复用同一索引模块内部的协议实现，不把这些细节放回通用 `domain/site.py` 或业务 Chain。
-域名优先绑定、资料/搜索协议别名及旧认证兼容全部归索引 Module；站点链只通过 `test_site` 分发。
-`SiteConnectionResult` 明确区分适配器接管和不支持；只有不支持时才能执行通用网页检测，
-缺少模块回执、能力缺失和真实 API 失败不能被网页成功掩盖。公共链不保留专站路由表或旧检测方法。
-`parse_torrent_download_response` 通过 `run_module(raise_exception=True)` 保留失败原因，
-新协议交给对应适配器，未声明协议的旧配方由 `modules/indexer/download.py` 解释，不在 Chain 重复实现。
-下载确认页控件和旧 SDK 的站点加密包装也由该 owner 解释；传输、限流、重试与来源安全边界仍由公共用例负责。
-预期的 API 拒绝不派生模块系统告警；站点协议能力都是宿主内部合同，不向插件开放。
-Application 通过 `SiteProtocolPort` / `RssSitePort` 消费启动注入的 `ModuleInvocationDispatcher`，
-Domain 不读取这些端口，不导入 Application、Module 或 Runtime。
-冷导入只增加 `application/site/protocol.py` 的声明模块：lifecycle/factory/main 的模块计数
-分别为 602/616/618；历史计时样本、三秒预算和生命周期组件清单均不变。
-TTG 旧路径和换票旧缓存仍经 Module 解释；检查点不保存 Cookie、API Key、fragment 或换票配方，
-无法按公开身份恢复下载的候选继续使用原页重取，不能因为新增下载能力而假定存量检查点具备 ID。
-旧 `app.utils.site` 和 `app.helper.cookiecloud` 通过精确 Legacy SDK 门面接入同一域名端口；
-地址/页面门面位于 `sdk/_legacy/domain.py`，不扩展 `sdk/_legacy/site.py` 的 DB Oper 导出面。
-CookieCloud 技术 Adapter 只接受注入的域名回调，不反向依赖 Module 或 Application。
-普通搜索在索引模块申请共享额度，多请求适配器通过
-`manages_request_throttle` 声明自行逐 HTTP 请求申请，搜索 Chain 不识别具体站点名称。
-
-`app/domain` may depend only on schemas and foundation. It must not read global
-settings, access DB/network/filesystem adapters, import Rust, discover services
-or initialize process runtime state.
-
-External media detail projection is one domain capability under
-`app/domain/projection/`. Its package root contains documentation only;
-`mapping.py`, `tmdb.py`, `douban.py`, `bangumi.py` and `anilist.py` are the only
-owners. Projection accepts read-only mappings and returns field changes without
-mutating either input. `MediaInfo` retains its canonical constructor, attributes
-and four setter ABI as thin delegates; host code imports source owners rather
-than calling its compatibility helpers. These internal owners do not create new
-SDK or Compat paths.
-
-Automatic media classification is a separate pure domain capability under
-`app/domain/classification/`. Its package root contains documentation only;
-callers import its focused child modules directly. `sources.py` declares only
-fixture-verified built-in field coverage, while `facts.py` converts canonical
-media objects into normalized `ClassificationFacts`. The evaluator therefore
-never reads raw source payloads; plugin fact admission, policy persistence and
-recognition lifecycle remain in their own Application, Runtime and Chain owners.
-
-Configured media-classification use cases belong to the same-named
-`app/application/classification/` package. Its package root contains
-documentation only; `catalog.py` merges pure standard fields with the currently
-registered source set, while undeclared dynamic-source capabilities remain
-absent instead of being misreported as unavailable. `contract.py` owns the
-atomic policy-state Port and stable conflict/corruption errors;
-`configuration.py` owns default initialization, publish validation, monotonic
-revision, bounded history, rollback and isolated process snapshots;
-`legacy.py` owns the pure, deterministic conversion between the read-only
-`category.yaml` contract and the versioned policy, including controlled TMDB
-extension facts; `runtime.py` owns legacy API projection and CAS publication
-without writing YAML; `execution.py` owns the input-immutable finalization of
-complete recognition results, current-revision evaluation, explicit manual
-overrides and invalid-policy legacy fallback; `analysis.py` owns the typed field catalog, explicit-fact
-preview and bounded, read-only impact comparison over partial recent-history
-facts. It must neither import concrete media-source modules nor write history,
-subscriptions or files, and CPU-bound batch evaluation runs outside the API
-event loop. The startup composition root injects the same execution port into
-the host runtime and every Chain context; source modules only construct source
-metadata and must not assign library categories. `app/api/endpoints/classification.py` owns the HTTP permission and
-structured `409`/`422` response mapping only; it composes read ports without
-moving classification semantics into the endpoint. `app/startup/composition/classification.py` is the only
-owner allowed to decide whether the one-time YAML migration runs: an existing
-`MediaClassificationPolicy` always wins, while invalid legacy input leaves the
-new runtime unavailable with structured diagnostics instead of publishing a
-partial policy. It may CAS-upgrade only the exact, history-free revision-1 legacy
-default by adding explicit music rules for `Album`, `Album/Compilation`, `EP`, and
-`Single`; user-edited policies always win. The display label
-`Album / Compilation` maps to the two path segments `Album` and `Compilation`, so
-spaces around the separator never become directory-name suffixes. The
-`app/db/adapters/classification.py` implementation stores `active + history` in
-the single `SystemConfigKey.MediaClassificationPolicy` value, verifies revision
-inside a short row-lock transaction and publishes the shared SystemConfig
-snapshot only after commit. The same adapter also owns directory-configuration
-mutation: policy and directory rows are locked in one fixed order, directory IDs
-are resolved against the transaction-local active policy, and policy CAS repeats
-directory-reference validation before commit. `DirectoryAwareSystemConfigService`
-routes every `Directories` write through that shared mutation boundary, so API,
-Agent, internal and offline configuration callers publish the exact normalized
-snapshot that was committed. `systemconfig.key` is non-null and uniquely indexed,
-so first-create races are rejected by the database as well as existing-row CAS.
-Plugin declaration discovery and validation remain owned by the plugin runtime
-and are supplied to this Application boundary rather than imported from the pure
-Domain package. `app/runtime/extensions/plugin/classification.py` owns the enabled-plugin
-source registry, namespace/type validation and fact filtering; lifecycle replacement and
-removal use the runtime instance ID so virtual instances remain isolated. The Application
-classification service reads immutable field and fact snapshots through composition-root
-providers, while `app/sdk/classification.py` is the stable public capability/version surface.
-
-`StringUtils` is not a canonical implementation type. Generic text, capacity,
-time, URL, DOM, hash and version functions live under `app.foundation`; media
-title, episode, site and torrent rules live in their owning domain modules. Host
-code must import those implementations directly. `app.sdk.string.StringUtils`
-only composes the complete historical static-method surface for plugins, and
-both `app.utils.string` and the retired `app.domain.string` resolve to that same
-SDK module through the compatibility manifest.
-
-## Established Packages That Stay in Place
-
-The following roots predate this migration and must not be moved or renamed as
-part of migrated-capability cleanup:
-
-- `app/agent/`
-- `app/api/`
-- `app/chain/`
-- `app/db/`
-- `app/doctor/`
-- `app/modules/`
-- `app/monitor/`
-- `app/plugins/`
-- `app/schemas/`
-- `app/startup/`
-- `app/testing/`
-- `app/workflow/`
-
-Necessary canonical import updates are allowed; changing their physical layout
-or product responsibilities requires a separate architectural decision.
+| Package | Responsibility and Ownership Boundary |
+| --- | --- |
+| `app/foundation/` | Generic reflection, collection/text/time utilities and pure helpers independent of MoviePilot state |
+| `app/domain/` | Pure business rules — `meta/` and `metainfo.py` (title/release recognition), `projection/` (immutable TMDB/Douban/Bangumi/AniList to `MediaInfo` mappers imported directly by host callers instead of legacy `MediaInfo` setters), media identity source policy (`media.py`), music release/disc/cover rules (`music.py`), torrent identity (`torrent.py`), search collection rules (`search.py`), `classification/`, `plugin.py` and `chat.py` |
+| `app/application/` | Typed use-case services, deeply frozen snapshots and port `Protocol` definitions (`subscription/`, `history/`, `transfer/`, `download/`, `search/`, `site/`, `plugin/`, `security/`, `server/`, `chain/`, `outbox.py`, `agent.py`, `workflow.py`, `scheduling.py`, `commands.py`, `system.py`, `network.py`, `notification.py`, `mediaserver.py`, `rss.py`, `rules.py`) |
+| `app/chain/` | Shared workflow orchestrators (`subscribe/`, `download/`, `transfer/`, `search/`, `media/` same-named packages plus focused chains and `_recognition.py`, `_messaging.py`, `_interaction.py`, `_music.py` mixins) |
+| `app/modules/` | Pluggable downloaders, media servers, metadata/lyrics sources, indexers, notifications and `filemanager` storages (shared boilerplate templates live in `app/modules/_base/`) |
+| `app/adapters/` | Technical I/O boundaries — `cache/backends.py` (Redis/file), `network/` (HTTP, browser, WebPush), `web/` (dynamic plugin route registry, correlation, priority, security and monitoring middleware/endpoints), `observability/` (telemetry exporters), `system/` (plugin package/dependency/health managers, resource installer, `rust.py` `moviepilot_rust` bridge, `code/`, display, timeout-guarded `fsproxy.py`) and `external/` (market transport, WeChat crypto and vendor clients) |
+| `app/db/` | `models/` (SQLAlchemy entities, `load_all_models()` explicit registration and `_identity.py` mapper normalization), `oper/` (entity data access), and `adapters/` (short-UoW repository, staging, `chain.py` settlement and Outbox implementations) |
+| `app/runtime/` | `config.py` / `settings.py`, `log.py` (dependency leaf), `cache.py`, `stop.py` (`StopState`), `tasks.py` (`TaskRegistry`), `execution.py` (`OwnedThreadPoolExecutor`), `correlation.py`, `topology.py`, `event/` bus owners, `extensions/` (`module/`, `plugin/`, `resource.py`) and `compat/` |
+| `app/agent/` | Session manager, lifecycle, background tasks, `MoviePilotAgent` orchestrator, `app/agent/graph.py` (`AgentGraphCache` / `GraphResources` owner), shell/terminal owners and `llm/` (`provider.py` facade over `catalog`, `discovery`, `auth`, `session`, `runtime`, plus `helper.py`) |
+| `app/startup/` | `composition/` (`HostRuntime` wiring where `startup/composition/server.py` owns MoviePilot Server report/share composition, `startup/composition/chain.py` owns `ChainRuntimeContext`, wallpaper and legacy transfer-command composition, and `app/startup/composition/outbox.py` owns replay handlers) and `initializers/` (ordered normal/safe-mode startup and bounded shutdown hooks) |
+| `app/sdk/` | Curated plugin-facing contracts (`plugin/`, `media`, `services`, `scheduler.py`, and private `_legacy/` compatibility shims) |
 
 ## Placement Decision Order
 
-Use these questions in order before creating or moving a migrated capability:
+1. Generic, stateless, independent of MoviePilot state and free of I/O -> `app/foundation`
+2. Pure MoviePilot business rule, metadata parser or provider projection -> `app/domain`
+3. Shared data contract or value schema -> `app/schemas`
+4. Focused application use case or port definition -> `app/application` (`messaging/` for message rendering, routing and interaction, and `site/` as the sole home for site resources)
+5. Multi-module workflow shared across entrypoints -> `app/chain`
+6. Process-wide config, events, logging, cache policy, bounded executors, task registry or stop state -> `app/runtime` (`extensions/` for module, plugin and managed-resource runtimes)
+7. Concrete cache, network, browser, web transport, observability, OS/process, filesystem or Rust bridge I/O -> matching technical package under `app/adapters` (`external/` for named third-party ecosystems)
+8. Public plugin contract or legacy import preservation -> curate in `app/sdk` or map lazily in `app/runtime/compat/manifest.py`
 
-1. Is it generic, stateless, independent of MoviePilot state and free of I/O?
-   Put it in `app/foundation`.
-2. Is it a pure MoviePilot business rule/model? Put it in `app/domain`.
-3. Does it read persisted configuration or coordinate one focused configured
-   capability? Put it in `app/application`.
-4. Is it authentication, authorization, signing, SSRF, URL/path safety, OTP,
-   passkey or two-factor policy? Put it in `app/application/security`.
-5. Is it message rendering, routing or interaction behavior? Put it in
-   `app/application/messaging`.
-6. Is it process-wide configuration, events, logging, cache policy, execution,
-   scheduling, concurrency, GC or restart state? Put it in `app/runtime`.
-7. Does it discover/manage modules, plugins or configured service providers?
-   Put it in `app/runtime/extensions`.
-8. Does it perform concrete cache, network, OS/process, filesystem, stdio,
-   package/resource or Rust I/O? Put it under the matching `app/adapters`
-   technical boundary.
-9. Does it implement a named external product/ecosystem? Put it in
-   `app/adapters/external`.
-10. Is it public to plugins or only preserving an old path? Curate it in
-    `app/sdk` or map it in `app/runtime/compat`. `app/sdk` owns plugin contract
-    types themselves, such as the `_PluginBase` abstract base class plugins
-    inherit; business implementation still belongs to its canonical layer and
-    never moves there.
+### Naming and Package Root Discipline
 
-Do not create generic `common`, `helper` or `utils` buckets. Reuse does not erase
-ownership.
-
-New production Python module filenames use one lowercase word. When one topic
-needs multiple modules, create a topic package and keep each child filename to
-one word, for example `runtime/event/{registry,binding,dispatch,errors}.py` or
-`application/subscription/{contract,delete,identity}.py`. Multiword production
-paths may remain only when the machine policy verifies a stable discovery
-identifier or records a path-specific reason and consumer evidence; an
-unstructured grandfathered filename list is forbidden. The same gate scans
-every package root: new roots are documentation-only or precise lazy facades
-unless a reviewed owner reason is recorded. Test filenames continue to follow
-pytest's descriptive `test_<behavior>.py` convention.
-
-Legacy module paths belong in `app/runtime/compat/manifest.py`. New
-implementation modules must not re-export old managers, helpers or Oper classes
-just to preserve imports or tests. A public runtime object whose path or identity
-is itself part of the plugin ABI stays at its established path as a thin facade;
-new plugin-facing symbols are exported deliberately through `app/sdk` and its
-architecture snapshot, not through incidental module globals.
-
-歌词来源插件通过 `get_module()` 注册 `music_lyrics_candidates(music)`，使用
-`app.sdk.media` 的 `MetaMusic`、`MusicInfo` 和 `MusicLyrics` 公共类型。插件拥有
-来源匹配与歌词内容下载；`LyricsChain` 聚合插件和内置来源候选，`ScrapingChain`
-拥有质量保护与存储写入。SDK 仅导出既有领域类型，不复制歌词解析或刮削实现。
-
-`app/modules/amll/` 拥有 AMLL 原生 HTTP 协议、录音匹配和 TTML 来源转换：
-`module.py` 编排搜索与下载，`matching.py` 核对身份，`lyrics.py` 安全转换为既有
-`MusicLyrics` / Lyricsfile。包根只提供 capability manifest 要求的惰性入口，
-宿主及测试中的具体实现依赖必须直接指向 owner 子模块。
+- Do not create generic `common`, `helper` or `utils` buckets, and never recreate
+  physical files under retired legacy roots (`app/core`, `app/helper`,
+  `app/utils`).
+- New production Python module filenames use a single lowercase word. When a
+  topic needs multiple files, create a topic package with single-word child
+  modules (for example `runtime/event/{registry,binding,dispatch,errors}.py` or
+  `application/subscription/{contract,delete,identity}.py`). Multiword paths
+  require machine-verified discovery identifiers or a recorded path-specific
+  reason. Test files keep descriptive `test_<behavior>.py` names.
+- Package roots (`__init__.py`), including `app/schemas` and `app/db`, stay
+  documentation-only or expose only the verified stable facade lazily (such as
+  `TransferChain`, `SubscribeChain`, `DownloadChain`, `SearchChain`,
+  `MediaChain`, while full ORM registration runs explicitly via
+  `app.db.models.load_all_models()`). Canonical host callers import concrete
+  child owners directly rather than re-exporting internal classes or ports from
+  package roots.
+- Legacy module paths belong in `app/runtime/compat/manifest.py`. New canonical
+  modules never re-export old managers, helpers or `Oper` classes just to
+  preserve historical imports.
 
 ## Existing Chain, Module and DB Layers
 
-音乐封面的文件名匹配与优先级是 `app/domain/music.py` 的纯规则；
-`transfer/filter.py` 和 `ScrapingChain` 经 `runtime/settings.py` 读取同一个全局配置。
-候选规划及 `transfer/music.py` 确认同目录唯一发行归属，图片走既有 durable 整理任务；
-`TransHandler` 保留图片名并定位到专辑根。在线失败后的图片读取由 `ScrapingChain` 经
-`StorageChain` 完成，不在领域层引入配置或 I/O，也不恢复未经证明的远端发行标识。
+### Chain and Scheduler Layer
 
-### Chain layer
+- Runtime shutdown state is owned by `StopState` in `app/runtime/stop.py`
+  (`global_vars` stop properties on `app/runtime/config.py` remain a legacy
+  plugin facade only).
+- Chains coordinate modules, application services, injected persistence ports,
+  events and caches while keeping the chain-to-chain static graph acyclic and
+  free of HTTP request objects or vendor SDKs (`qbittorrentapi`,
+  `transmission_rpc`, `smbclient`).
+- Chains invoke modules exclusively through `run_module` method-name dispatch
+  (`app/runtime/extensions/module/dispatcher.py` and `module/contracts.py`), and
+  direct imports of `app.modules` internals are forbidden. New chains and tests
+  inject `ChainRuntimeContext` (`app/application/chain/context.py`), while
+  no-argument `Chain()` remains supported via the startup provider.
+- `app/scheduler/` never constructs business `Chain` instances directly —
+  `app/startup/initializers/scheduler.py` injects callable-only
+  `SchedulerServices` and the `AgentTask` repository before lifecycle start.
+- Underscore files in `app/chain/` (`_recognition.py`, `_messaging.py`,
+  `_interaction.py`, `_music.py`) are feature mixins declaring minimal host
+  contracts via `app/chain/_contracts.py` rather than standalone chains.
+- Same-named orchestration packages (`transfer/`, `subscribe/`, `download/`,
+  `search/`, `media/`) keep class identity and event wrappers on `facade.py` and
+  isolate queue, planning, execution, settlement and cache adapters in
+  single-word owner modules, and retired single-file monoliths must not return.
 
-运行时停止信号统一由 `app/runtime/stop.py` 的 `StopState` 持有。业务代码应注入或读取
-`runtime_stop_state`，`app/runtime/config.py` 中的 `global_vars` 停止属性只作为旧插件和
-兼容测试的门面，不得新增依赖。Chain mixin 通过 `app/chain/_contracts.py` 声明最小宿主
-能力，并优先使用宿主提供的可替换工厂；具体 mixin 的反向导入按批次收敛。
+### Module and Agent Layer
 
-`app/chain/` implements use cases shared by API, CLI, Agent, scheduler and other
-entrypoints. Chains may coordinate modules, application services, injected
-persistence Ports, events and caches. New chain-to-chain dependencies are allowed only while the
-static graph remains acyclic. Backend protocol details and HTTP request objects
-do not belong here. Chains interact with modules exclusively through
-`run_module` dispatch on method-name contracts; direct imports of module
-internals (classes, exceptions, constants) are forbidden, so every module stays
-pluggable and a chain never names a concrete module implementation.
-The dispatch algorithm belongs to
-`app/runtime/extensions/module/dispatcher.py`; `ChainBase` remains the
-compatibility facade. New chains and tests inject the minimal
-`ChainRuntimeContext` from `app/application/chain/context.py`. No-argument
-`Chain()` remains supported through the startup-configured compatibility
-provider. High-frequency string methods are classified in
-`module/contracts.py`; unknown third-party plugin methods retain the frozen
-legacy aggregation contract, while the architecture baseline records every
-literal method and call site.
+- `app/modules/` implementations must not import other modules or chains
+  directly — cross-module coordination belongs in a chain, and shared value
+  types live in `app/schemas` (such as `MediaServerField` and
+  `MediaServerQueryOptions`, see [Media Server Query Contract](../media-server-query.md)).
+- `app/modules/_base/` (`downloader.py`, `mediaserver.py`, `notification.py`)
+  holds only shared connection, reconnect, auth and command-registration
+  templates typed by `TService`, never per-provider business logic.
+- Strict file existence checks use `get_file_item_strict(storage, path)`
+  returning `FileItemQueryResult(item=...)` (`None` means unsupported provider,
+  whereas `item=None` proves absence and storage/query errors raise). Destructive
+  cleanup never infers absence from nullable `get_file_item`.
+- Interactive management for notification channels, storages and LLM providers
+  shares one generic pass-through pattern (`channel_manage`, `storage_manage`,
+  `provider_manage` over `NotificationAction` / `StorageAction` /
+  `LlmProviderAction` and `ManageRequest` on
+  `POST /api/v1/{notification,storage,llm}/manage`, with the named OAuth
+  redirect callback `GET /api/v1/llm/provider-auth/callback/{provider_id}` as
+  the sole route exception). Chains and endpoints never hard-code
+  target-specific parameter schemas.
+- `app.agent` and `app.agent.llm` package roots contain no implementation or
+  eager exports. Host callers import concrete owners (`orchestrator.py`,
+  `graph.py`, `llm/helper.py`, `llm/provider.py`, `tools/base.py`,
+  `tools/manager.py`), while historical plugin paths
+  (`app.agent.llm.LLMHelper`, `app.helper.llm`) resolve through exact
+  `SYMBOL_ALIASES`. Models created by `LLMHelper.get_llm()` own dedicated HTTP
+  clients closed via `LLMHelper.close_llm()`.
 
-Underscore-prefixed files in `app/chain/` are feature-domain mixins for
-`ChainBase` and concrete chains, not chains themselves: `_recognition.py`
-(`RecognitionMixin`), `_messaging.py` (`MessageProcessingMixin` /
-`NotificationMixin`), `_interaction.py` (`InteractionChainMixin`, the shared
-slash-command delegation for `remote_list` / `parse_callback` /
-`handle_callback_interaction` / `handle_text_interaction`) and `_music.py`
-(`MusicSubscribeMixin`, the music single/album subscribe domain mixed into
-`SubscribeChain`).
+### DB, Repository, Outbox and Durable Transfer Layer
 
-Transfer orchestration is a same-named package. Its root exposes only the stable
-`TransferChain` and the plugin-used `task_lock` compatibility identity; `facade.py`
-composes the owner classes, while queue/recovery, planning, execution, settlement,
-history/notification and request construction stay in focused single-word child
-modules. The retired `app/chain/transfer.py` and `_transfer.py` monoliths must not
-return. Internal owner classes, `JobManager` and the durable runner are imported
-from their canonical child owners instead of being re-exported by the package root.
+- SQLAlchemy models live in `app/db/models/` and mirror `app/db/oper/`
+  one-for-one, except the verified `oper/site.py` (`Passkey`, `SiteIcon`,
+  `SiteStatistic`, `SiteUserData`) and `oper/agenttask.py` (`AgentTaskRun`)
+  consolidations. Every schema change requires an Alembic revision under
+  `database/versions/`.
+- Canonical Application, Chain, Agent, API, Workflow and Startup code accesses
+  persistence through Application-owned `Protocol` ports (`site/contract.py`,
+  `subscription/contract.py`, `history/`, `security/user.py`, `workflow.py`,
+  `download/failures.py`), never importing ORM models or `Oper` classes directly.
+  DB adapters project ORM rows into deeply frozen snapshots before closing short
+  `AsyncSession`/UoW scopes, and Session-reusing repositories stage within a
+  caller-owned UoW without committing it.
+- `Oper` classes handle persistence primitives and column-type coercion, while
+  translating `MediaInfo` / `MetaBase` into row patches belongs in
+  `app/application/`. Mapper-level invariants (`app/db/models/_identity.py`
+  normalizing `media_source` / `media_id` via `app/schemas/media.py`) ensure
+  `app/db` has zero dependency on `app/domain`.
+- **Durable post-commit Outbox** — `app/application/outbox.py` separates
+  in-transaction `OutboxStager` from short-transaction `OutboxDispatchStore`
+  (implemented in `app/db/adapters/outbox.py`, wired by
+  `app/startup/composition/subscription.py` and validated replay handlers in
+  `app/startup/composition/outbox.py`). Delivery is at-least-once with fenced
+  lease claims, bounded per-topic recovery workers (up to 20 via `ThreadHelper`),
+  and per-handler broadcast expansion (`event.handler.<sha256>`). `TaskRegistry`
+  (`app/runtime/tasks.py`) is strictly an in-process cancellation/shutdown
+  registry and never a substitute for durable persistence.
+- **Durable Transfer admission, step execution and atomic settlement** —
+  `app/application/transfer/` (`models.py`, `workflow.py`, `execution.py`) and
+  `app/db/adapters/transfer/` (`admission.py`, `execution.py`) manage
+  `accepted -> provider_pending -> planned` CAS checkpoints and lease-fenced
+  worker claims in short UoW scopes without using the Outbox as an execution
+  queue. All external filesystem I/O runs outside database transactions after
+  checkpoint commit in `app/modules/filemanager/`, any step whose side effect
+  cannot be proven enters `manual_review` rather than replaying blindly, and
+  terminal history rows, pending-task cleanup and Outbox intents commit
+  atomically through `app/db/adapters/chain.py` (never emitting events
+  synchronously inside worker callbacks). History rows carrying a
+  `transfer_task_id` serve as recovery receipts and are exempt from ordinary
+  history retention cleanup, `JobManager` display rows stay separate from live
+  lease receipts, and legacy `app.db.transferpending_oper` callers route solely
+  through `app/sdk/_legacy/transferpending.py`.
 
-Shared subscription metadata and media-key construction belongs to
-`app.application.subscription.contract`; `app.chain.subscribe` is a same-named package
-whose root exposes only the stable `SubscribeChain`. `facade.py` owns the class
-identity and event entry wrappers; `create.py`, `search.py`, `match.py`, `refresh.py`,
-`completion.py`, `music.py`, `reconcile.py`, `library.py` and `notify.py` are the single owners of their
-respective workflows, while `query.py`, `interaction.py`, `identity.py` and `policy.py`
-own the remaining focused capabilities. Startup imports the subscription share Port
-directly from `notify.py`; canonical callers import identity projection directly from
-`identity.py`. The retired `app/chain/subscribe.py` monolith must not return, package
-owners must not be re-exported, and `_music` must not import its concrete chain owner.
-`library.py` 消费整理完成事件，把本次交付的集号补写为订阅的入库集号并同步收缩缺失集数，
-使订阅卡片与日历在整理完成后立即反映媒体库状态；入库事实只按订阅目标范围内的集号写入，
-缺失集数与入库集号来自同一份事实。
-`music.py` 通过已注入的下载/整理历史 Port 关联成功入库文件，只读取本地音频标签和
-有效 CUE，按真实发行身份分组对账；发行身份与逐盘完整覆盖的纯规则归 `domain/music.py`。
-它通过既有订阅 mutation 写入事实和总曲目数，不新增数据库字段，也不从文件数量猜测完成。
-下载提交 owner 则按种子实际 hash、全部音频成功整理记录及仍存在的本地目标阻止音乐订阅重复提交；人工下载
-和未完整整理的任务保留原行为。新增 owner 使冷导入宿主模块数各增加 1：
-`app.startup.lifecycle` 598 → 599、`app.factory` 612 → 613、`app.main` 614 → 615；
-原有耗时预算、采样和生命周期约束保持不变。
-`app.chain.search.execution` reads the Application-owned `SubscriptionSiteBudget`
-contract to apply subscription-only keyword scheduling and IMDb query deduplication;
-the site budget and provider retain request admission, per-site intervals and cooldown
-ownership. Ordinary resource search retains its existing keyword policy.
-A concrete chain that exposes slash-command interaction inherits
-`InteractionChainMixin`, injects its handler class via `_interaction_handler_type` and
-implements only `_interaction_handler`; it must not re-export application-layer
-interaction managers.
+## Composition, Concurrency and Compatibility Boundaries
 
-Download orchestration is owned by the same-named `app.chain.download` package.
-种子缓存刷新按 `domain/torrent.py` 的站点和稳定种子身份更新访问参数；标题、副标题未变时
-保留已有识别结果，缺少稳定 ID 的历史资源沿用标题去重。下载链对带 `t` / `sign` 的普通
-HTTP 地址发生 401/403/404/410 时，通过现有站点索引器搜索一次，只接受同站同种子的新地址，
-最多重试一次，再沿用原失败通知与冷却流程；不推断签名 TTL，也不清除既有资源失败记录。
-`NO_CACHE_SITE_KEY` 默认留空，馒头同样采用增量缓存，下载时仍按已有协议逐次换票。
-显式配置的站点关键字继续作为不缓存的例外，空白项不匹配任何站点。
-Its root lazily exposes only the stable `DownloadChain`; `facade.py` composes the
-owner classes and keeps the `DownloadFileDeleted` event wrapper on that stable
-class identity. Selection, submission, batch execution, existence checks, failure
-cooldown, history settlement, post-processing, subtitle handling, task control and
-technical ports each have one focused single-word child module. Startup imports
-the download ports directly from `ports.py`; canonical callers must not obtain
-owners or ports from the package root. The retired `app/chain/download.py`
-monolith must not return, and no `source.py` copy or duplicate implementation may
-remain. Download history, file rows and the durable Outbox intent commit in one
-transaction; notifications, background post-processing and immediate event
-publication run only after that commit succeeds.
+- Startup registers cache backends before business modules load, and one-shot
+  security state (such as `PasskeyChallengeCache`) uses `AtomicCacheBackend`
+  `store/consume` without exposing concrete Redis classes to Application code.
+- Host code accesses process-wide managers and settings through explicit runtime
+  accessors (`get_module_manager()`, `get_plugin_manager()`, `get_scheduler()`,
+  `get_configured_system_config()`) rather than class-shaped compatibility
+  facades or `SystemConfigOper`.
+- Process-owned synchronous worker pools use `OwnedThreadPoolExecutor` in
+  `app/runtime/execution.py` for bounded shutdown. Lifecycle `stop()` hooks
+  follow a boolean convergence contract — when shutdown times out or returns
+  `False`, the component retains its live owner handle and reports
+  non-convergence upward instead of blocking unbounded `join()` or clearing
+  handles prematurely.
+- `app/runtime/compat` stores string mappings and resolves aliases lazily
+  without eager canonical imports. Migrated symbols on surviving modules use
+  post-loader allowlisted `SYMBOL_ALIASES` that are omitted from physical
+  `__all__` (`from ... import *` is unsupported for migrated symbols).
+- `app/startup/initializers/plugins.py` backs up stale legacy
+  `app/plugins/__init__.py` files left by in-UI upgrades to
+  `__init__.py.legacy-bak` and restores the clean namespace entrypoint before
+  plugin assembly. `app/plugins/**` holds runtime plugin copies and is excluded
+  from host refactors and dependency baselines.
+- Host code uses canonical paths only (`app.core`, `app.helper`, `app.utils` and
+  `app.log` are virtual paths reserved for `app/plugins/` and compatibility
+  tests), and delayed imports must not be used to disguise module dependency
+  cycles.
 
-`batch.py` keeps its candidate state in a private per-invocation runner, never on
-the shared Chain. After one selection/sort pass, it executes movie/music, whole
-season, labelled episode-pack and partial-pack phases in that order. The phases
-share failure cooldown and update missing seasons/episodes only after successful
-submission, using the rules in `app.application.download.selection`. Whole-season
-file inspection retains its metadata update even when coverage is insufficient,
-so later phases can still evaluate the candidate's identified episode range.
-Partial-pack inspection updates that range only after successful submission.
-The public `batch_download` signature and the supplied missing-map identity remain
-unchanged.
+### Architecture, Complexity and Concurrency Ratchet Gates
 
-Search orchestration is owned by the same-named `app.chain.search` package. Its
-root lazily exposes only the stable `SearchChain`; `facade.py` preserves the
-direct `SearchChain -> ChainBase` MRO, event identity and the three exact private
-provider hooks used by official plugins. Search planning, provider fan-out,
-pagination, result projection, result-state adaptation, title/media/music/subtitle
-workflows and AI recommendation coordination each have one focused single-word
-owner. Provider list and stream APIs consume the same batch/event facts, pending
-page tasks belong to the runtime task registry, and progress always converges in
-`finally`. Canonical callers must not import owner classes through the package root.
-The retired `app/chain/search.py` monolith, internal root re-exports and `source.py`
-copies must not return. Search state normalization and persistence remain owned by
-`app.application.search.state`; the Chain package only adapts its cache ports.
+`tests/fixtures/architecture/dependency-baseline.json` records generated module
+edges, SCCs and `direct_egress` fingerprints across `app` (excluding
+`app/plugins/**`), whereas human-reviewed policy lives separately in
+`tests/fixtures/architecture/dependency-policy.json` (`--write-host` never edits
+policy).
 
-Movies, TV and music share the state machine in `search/execution.py` and the
-filter/match/context pipeline in `search/result.py`. `search/music.py` owns only
-music keyword policy and compatibility forwarding methods, not another provider
-loop. `MetaInfo(..., mtype=...)` chooses the resource parser; `domain/music.py`
-owns pure music identity rules. Unconfirmed candidates retain their own parsed
-evidence and never receive the selected target's identity. Subscription search
-uses the same SearchChain instance and site-budget result handling for all media.
-
-Media recognition orchestration is owned by the same-named `app.chain.media`
-package. Its root lazily exposes only the stable `MediaChain`; `facade.py` preserves
-the direct `MediaChain -> ChainBase` MRO, Singleton class identity and official
-plugin method signatures. Recognition routing, plugin-event fallback, auxiliary
-source aggregation, identity projection, search, music catalog, audio-path evidence,
-album alignment and directory caching each have one focused single-word owner. The
-directory cache is bounded, isolates cached values from caller mutation, fingerprints
-file content metadata, preserves symbolic-link directory aliases and coalesces concurrent
-misses without letting a cancelled follower cancel the shared flight. Music catalog
-routing consumes the public `MusicMetadataSourceChain` contract instead of importing a
-private class from another Chain owner. Canonical callers must not
-import owner classes through the package root. The retired `app/chain/media.py`
-monolith, internal root re-exports and duplicate compatibility implementations must
-not return; historical scraping symbols continue only through the exact Compat
-overlay, while `MediaChain` remains the single canonical plugin facade.
-
-### Module layer
-
-`app/modules/` contains pluggable downloaders, media servers, metadata sources,
-message channels, indexers and storage providers. New direct module-to-module or
-module-to-chain dependencies are forbidden; cross-module orchestration belongs
-in a chain. Module internals stay sealed inside the module: shared constants,
-exceptions and value domains used by both modules and upper layers live in
-`schemas`, and module capabilities are exposed to chains only as dispatched
-method names. The directory remains unchanged because discovery and plugin code
-depend on this established runtime root.
-
-`download` 的 `custom_words` 是新增可选能力参数，下载链将规划时使用的原规则传给下载器，
-qBittorrent/Transmission 用同一规则选择文件。零匹配、目标集不完整或选择更新未确认均不写成功历史；
-启动结果未知须在下载器核实。添加失败后的已有任务只按原始种子或磁力 v1/v2 哈希确认，禁止名称/大小兜底。
-Module dispatcher 仅对合同明确声明的新增可选参数兼容旧签名；支持该参数或 `**kwargs` 的 provider
-完整接收参数，其他未知参数仍按原规则失败，不能用过滤掩盖 provider ABI 错误。
-
-媒体服务器查询的内容组与不可变选项由 `app.schemas.mediaserver` 的 `MediaServerField` 和
-`MediaServerQueryOptions` 定义；插件从 `app.sdk.services` 导入。链通过显式登记的可选 `query`
-参数传递内容需求，具体服务器协议翻译归各客户端；Emby/Jellyfin 公用的参数编译位于
-`app.modules._base.mediaserver`。应用服务与链不拼装 Emby 字段名或 Plex SDK 参数。
-默认选项保留旧行为，显式投影必须作用于真实请求与附加查询，不能用下载后丢字段替代远端裁剪。
-协议限制与各调用方需要的内容见 [媒体查询内容契约](../media-server-query.md)。
-
-SMB 同存储整理由 `app.modules.filemanager.storages.smb` 持有协议调用边界：
-复制调用 `smbclient.copyfile`（CopyChunk），共享内移动调用 `smbclient.rename`，硬链接调用
-`smbclient.link`；跨共享移动先用 SMB 查询确认目标未占用，服务端复制成功后才调用
-`smbclient.remove` 删除源文件。多共享挂载仍属于同一 SMB owner，路径首段选择已配置的共享。源目标同文件检查也通过 SMB 查询，不能使用本地临时下载/上传回退。
-下载器返回的远程路径保留存储 URI，整理 Chain 通过 `StorageChain` 查询源文件，
-不直接依赖 SMB SDK；断线后目标状态不明沿用持久步骤的保守恢复合同。
-宿主覆盖整理先在同目录暂存完整新文件，再将旧目标改名备份、提升新目标，确认后才清理旧备份和 move 源。
-步骤路径从冻结计划推导，DB 适配器逐项校验并要求前驱已持久成功；查询或操作结果未知时保留文件并隔离，
-禁止删除旧目标后盲目重放。`latest` 旧版本清理和宿主历史目的清理在新目标成功后执行，
-同存储重合目的不能整块删除新文件，本地符号链接路径在可超时的文件系统代理内规范化，并在清理前再次检查。
-暂存文件大小必须与源证据一致，清理源或备份前复核大小、类型及可用的稳定文件 ID，
-新目标还必须匹配提升步骤的持久凭据；旧快照缺少必要证据或文件已变更时保留文件并转人工复核。
-云盘修改时间可能延迟更新或缺失，不作为云盘整理执行阶段的文件身份校验依据。
-本地文件 ID 使用设备号和 inode，验证不额外读取整文件计算哈希。
-本地同路径还核对纳秒状态时间，防止等长改写并还原 mtime。硬链接及跟随源的软链接
-共享 inode；本次已落账的创建链接、改名和删除链接回执可以更新关联路径的状态时间，
-但必须保留原大小、类型、文件 ID 和修改时间核验。暂存前及备份前校验源身份，
-删除移动源时同时校验共享备份并记录删除后的备份身份；不能直接用当前查询替换旧凭据。
-外部 legacy transfer provider 继续遵循原有兼容合同。
-
-严格文件查询使用模块能力 `get_file_item_strict(storage, path)`。提供方不支持目标存储时返回
-`None`，调度继续寻找下一提供方；真正完成查询时返回 `FileItemQueryResult(item=...)`，
-其中 `item=None` 才能作为目标不存在的证据。存储不可用或查询失败必须抛出。
-`StorageChain.get_file_item_strict` 仅接受明确回执；旧插件的普通能力非空命中继续兼容，
-但空结果没有存储归属证明，不能用于删除历史等破坏性决策。旧插件如需声明“已确认不存在”，
-应实现新能力并返回回执；普通 `get_file_item` 的 nullable 查询合同不变。
-显式重新整理在清理旧目标前及删除失败后均使用严格查询，未知态保留历史和失败计数。
-
-SMB 目录快照不依赖祖先目录 mtime 推断后代变化，而在既有递归深度上限内逐层列举。
-存储通过 `snapshot_strict_query` 声明已实现 `get_item_strict` / `list_strict`；
-严格快照的任一查询失败必须返回 `None`，由远程轮询器保留旧基线并重试。
-只有确认目录清空或根路径不存在时才返回空字典。SMB 普通文件浏览继续允许容错回退，
-严格快照不能复用其部分结果；其他存储需按各自查询合同逐步接入。
-
-`app.modules.filemanager` is a lazy compatibility entrypoint. The concrete
-`FileManagerModule` implementation lives in `app.modules.filemanager.module`,
-while the historical capability path and class module identity remain
-`app.modules.filemanager:FileManagerModule`. Storage and transfer-handler
-submodules must not import the concrete module implementation through the
-package root.
-
-`app/modules/_base/` hosts the shared template base classes for module families
-(`downloader.py`, `mediaserver.py`, `notification.py`), each combining the
-family mixin with `_ModuleBase` and typed by `TService` (usage:
-`class QbittorrentModule(_DownloaderModuleBase[Qbittorrent])`). The base classes
-carry only verbatim-duplicated boilerplate — connection test, scheduled
-reconnect, torrent-info reading, query-status normalization for downloaders;
-authentication, media-exists check, inactive-server handling for media servers;
-admin resolution and command registration for message channels — while
-subclasses keep the differentiated API calls and override small hooks such as
-`_test_connection`, `_test_server` and `_is_inactive`. Discovery already skips
-the package (module discovery only enumerates first-level submodules and skips
-underscore-prefixed names), so no new exclusion rules are needed; do not grow
-this package with per-module business logic.
-
-Channels and storages that need login management or temporary-parameter
-initialization follow one generic contract instead of per-target APIs: modules
-implement `channel_manage(channel, action, **params)` or
-`storage_manage(storage, action, **params)`, route by the requested target
-identifier (returning `None` for other targets, accepting both enum members
-and plain strings), and interpret actions from the shared
-`schemas.types.NotificationAction` / `StorageAction` vocabulary plus opaque
-form parameters themselves. All results use the unified
-`{"success": bool, "message": ..., "data": ...}` shape.
-`NotificationChain.manage_channel` and `StorageChain.manage_storage` forward
-transparently and must stay free of any channel/storage-specific names or
-logic; new channels or storages adopt the same contract without touching the
-chains. The endpoint layer exposes this as two generic endpoints
-(`POST /api/v1/notification/manage`, `POST /api/v1/storage/manage`) taking the
-common `schemas.ManageRequest` body (`target` + `action` + `params`) and must
-never define target-specific names, parameters or response fields — the
-frontend supplies them and the endpoint passes them through untouched.
-
-LLM providers follow the same contract: `LLMProviderManager.provider_manage`
-dispatches actions from the shared `schemas.types.LlmProviderAction`
-vocabulary, seals default-value filling, key sanitization and error rewriting
-inside, and the endpoint layer exposes a single `POST /api/v1/llm/manage` with
-the same `ManageRequest` body. The only exception is the named OAuth callback
-route (`GET /api/v1/llm/provider-auth/callback/{provider_id}`), which stays
-named because external browsers redirect to that URL; the endpoint builds the
-callback URL from that route name and injects it as an action parameter.
-`app/agent/llm/provider.py` is the stable Provider facade only. Catalog and model
-metadata ownership lives in `catalog.py`; remote directory and SDK discovery I/O
-lives in `discovery.py`; persistent authorization and external OAuth protocols live
-in `auth.py`; temporary authorization state lives in `session.py`; unified client
-parameters live in `runtime.py`. The facade preserves the historical public method
-signatures while private behavior resolves directly to those owners. `LLMHelper`
-consumes the registered runtime and must not recreate provider discovery or legacy
-runtime fallbacks; management tests pass the facade directly to avoid a
-`provider_manage -> helper -> gateway -> provider_manage` call loop.
-
-`LLMHelper.get_llm()` 返回的 OpenAI/DeepSeek 模型独占其 `http_client` 和
-`http_async_client`；使用者通过 `LLMHelper.close_llm()` 在原事件循环释放连接。
-同步客户端关闭复用 `ThreadHelper.submit()` 的宿主线程池，不在事件循环阻塞等待。
-模型测试与标题生成在请求的 `finally` 中关闭；Agent 缓存图持有执行、摘要和子代理
-模型，图复核中丢弃的临时模型立即关闭，旧图则等待子代理与后台复盘退出后释放。
-关闭失败时 Agent 保留模型 owner 并重试，不遍历或关闭供应商 SDK 内部的共享客户端。
-
-`app.agent` and `app.agent.llm` package roots contain no implementation,
-dynamic forwarding or host export list. Canonical callers import the owning
-module directly, such as `app.agent.orchestrator`, `app.agent.llm.helper`,
-`app.agent.llm.capability`, `app.agent.llm.auth` or `app.agent.llm.provider`. Historical Agent package
-symbols and the verified `app.agent.llm.LLMHelper` plugin path are preserved only
-by exact `SYMBOL_ALIASES`; `app.helper.llm` is an exact module alias to
-`app.agent.llm.helper`, not an alias to the whole LLM package. Therefore
-`app.agent.llm.LLMHelper`, `app.agent.llm.helper.LLMHelper` and
-`app.helper.llm.LLMHelper` resolve to the same class without exposing provider,
-auth or capability owners through either package root. The verified tool ABI
-continues at `app.agent.tools.base.MoviePilotTool` and
-`app.agent.tools.manager.moviepilot_tool_manager`, including the existing
-`_load_tools()` compatibility call; those canonical owner modules are not
-re-exported from `app.agent`.
-
-### DB / Oper layer
-
-SQLAlchemy models stay under `app/db/models/`; the data access classes live in
-`app/db/oper/` and mirror them one-for-one (`models/subscribe.py` ↔
-`oper/subscribe.py`), so a filename carries only the entity and the package name
-carries the role. Two verified aggregation exceptions exist: the site family
-(`Passkey`, `SiteIcon`, `SiteStatistic`, `SiteUserData`) is consolidated in
-`oper/site.py`, and `AgentTaskRun` lives in `oper/agenttask.py`. DB adapters use
-Oper classes for ordinary entity access. Adapter-owned cross-row locks and
-compare-and-set transitions may issue focused SQLAlchemy statements when the
-atomic persistence invariant cannot be expressed by an entity Oper; those
-statements stay private to the adapter and require concurrency tests.
-
-Site persistence crosses the DB boundary only through the contracts in
-`app/application/site/contract.py`. `SessionSiteRepository` reuses a request
-`AsyncSession` and only projects or stages changes, while
-`TransactionalSiteRepository` owns one short Session/UoW per standalone
-operation. Both adapters project `Site`, `SiteIcon`, `SiteStatistic`, and
-`SiteUserData` to deeply frozen snapshots before the Session closes. Canonical
-Application, Chain, Agent, API, and Startup code must not import `SiteOper` or
-these ORM models. Historical plugin imports resolve through the exact SDK
-Legacy/Compat manifest only.
-
-Subscription persistence follows the same verified typed boundary.
-`app/application/subscription/contract.py` is the single owner of the deeply
-frozen subscription/history snapshots, media identity, write patch and shared
-query/write/staging repository protocols. `TransactionalSubscriptionRepository`
-owns a short Session/UoW for standalone Chain and Agent operations, while
-`SessionSubscriptionRepository` and `SessionSubscriptionHistoryRepository`
-reuse the request or Application-command Session and never commit it. All ORM
-projection completes before that Session closes. Canonical Application, Chain,
-Agent, API, Workflow and Startup code must not import the subscription Oper or
-ORM models. The historical module paths and package-root Oper symbols resolve
-only through `app/sdk/_legacy/subscribe.py` plus the exact Compat manifest and
-are not added to canonical package `__all__` exports.
-
-Application and Chain code reaches persistence through named Ports/Protocols;
-concrete DB adapters are the only layer that adapts those Ports to Oper/Session
-mechanics. Every schema change requires an Alembic migration under
-`database/versions/`.
-
-Oper classes take and return persistence values, not domain objects. Translating
-`MediaInfo` / `MetaBase` into a row is business logic and belongs in
-`app/application/` — see `application/subscription/write.py` and `application/history/`
-for the two write paths. Column-type coercion (numeric year to string, boolean
-switches to integers) stays in the Oper because it follows the column, not the
-caller.
-
-Invariants that must hold for *every* write are enforced at the mapper rather
-than at each call site: `app/db/models/_identity.py` normalizes
-`media_source` / `media_id` on `before_insert` / `before_update`, so a new write
-path cannot forget them. Identity representation rules themselves
-(alias folding, trimming, rejecting zero) live in `app/schemas/media.py`
-alongside the two identity mixins; `app/domain/media.py` keeps only source
-policy. `app/db` therefore has no dependency on `app/domain`.
-
-User identity is a single aggregate boundary. `app/application/security/user.py`
-owns frozen user/auth snapshots and the atomic create/update/delete command;
-`app/db/adapters/user.py` binds each mutation to one request UoW and locks the
-active-superuser set before a destructive change. The database enforces unique
-user names and cascades rename/delete to `UserConfig` and delete to `PassKey`.
-The configured user-configuration repository publishes its in-memory snapshot
-only after the user transaction commits, and reloads from the database if
-publication fails.
-
-History is a verified typed boundary: `app/application/history/` owns deeply
-frozen DownloadHistory and TransferHistory snapshots plus typed query/write and
-staging ports. `app/db/adapters/history/download.py` and
-`app/db/adapters/history/transfer.py` perform ORM projection and mutations inside
-short Session scopes; durable transfer settlement uses the staging port in its
-caller-owned transaction. Canonical callers never receive history ORM rows or
-raw Oper objects, while old plugin imports resolve only through SDK Legacy and
-the exact Compat manifest.
-
-Durable post-commit side effects have a separate boundary:
-
-- `app/application/outbox.py` separates `OutboxStager`, which only stages in the
-  caller's business transaction, from `OutboxDispatchStore`, whose claim,
-  complete and retry operations own independent short transactions.
-- `app/db/adapters/outbox.py` implements both roles with SQLAlchemy;
-  `app/startup/composition/subscription.py` injects transaction-scoped stagers and
-  stores, while `app/startup/composition/outbox.py` owns the validated replay handlers
-  and dispatcher factory.
-- Immediate request-thread delivery and the dispatcher both claim before
-  calling a handler. Lease acquisition is atomic, while complete/retry is fenced
-  by the claimed attempt so an expired owner cannot settle a newer claim.
-- Scheduled recovery owns at most 20 active topic workers, submitted through
-  the injected `ThreadHelper` port. Each worker processes a bounded batch in
-  sequence; a blocked transfer event cannot prevent a download notification
-  topic from running. Each scan renews active leases and excludes active topics
-  from new claims. An expired lease never releases a live in-process owner.
-  Scheduler shutdown seals recovery and waits for actual worker completion
-  before plugin, module or database teardown; a timeout preserves ownership and
-  fails shutdown rather than resetting bindings. Retry backoff starts when the
-  failed handler finishes, not when the message was claimed.
-- Durable broadcast topics first freeze their enabled handler identifiers and
-  persist one delivery per handler in a fenced short transaction. The parent
-  records that expansion in the same transaction; replay after a settlement
-  failure reuses the committed recipients. Parent completion confirms durable
-  expansion, while `event.handler.<sha256>` records track actual consumer
-  completion. Each stable handler has its own serial recovery topic, so a slow
-  plugin cannot serialize the same batch for its peers. All deliveries share the
-  existing 20-worker bound, lease renewal and shutdown ownership; no third-party
-  thread is abandoned or treated as complete on timeout. Child envelopes retain
-  the original event payload, idempotency key and correlation context. The
-  strict event API can select one registered handler; missing handlers retry
-  through reload, disabled handlers retain the existing skip behavior. An
-  individual failure retries only that delivery, never successful peers.
-- `PostCommitResult` distinguishes the committed business value from completed
-  and pending effects. This does not provide exactly-once delivery: a process may
-  stop after an external sink succeeds but before complete is persisted. Outbox
-  delivery is therefore at-least-once. Event payloads and the host correlation
-  context carry the stable event key, and consumers that support deduplication
-  should use it. Legacy notification plugins retain their existing method
-  signature, so the host must not claim provider-level exactly-once delivery.
-  Event handler failures still propagate to the strict dispatcher. The runtime
-  error policy bounds and deduplicates identical system alerts by event key,
-  handler and error within one process; every failed attempt remains in logs.
-  This alert cache is not a durable delivery receipt.
-- Terminal history is part of the shared data-maintenance policy and is cleaned
-  in bounded daily batches only when that policy is enabled. Completed intents
-  default to 30-day retention and dead letters to 90 days; both values are
-  user-configurable and `0` disables that status cleanup. Pending or processing
-  intents must never be removed by retention cleanup.
-- `app/runtime/tasks.py` is only the in-process TaskRegistry boundary. It owns
-  cancellation and bounded shutdown waiting, but it is not a durable queue and
-  must not replace an Outbox or persistent task table.
-
-The transfer queue owner tracks actual queued and executing task objects separately
-from `JobManager` display rows. Recovery reuses only an identical task/lease receipt;
-when no actual owner remains, a stale display row is replaced and the recovered
-work is queued. A display row alone must never acknowledge successful recovery.
-
-Transfer durable admission follows the same ownership direction without using
-the Outbox as an execution queue: `app/application/transfer/workflow.py` owns the typed
-admission and versioned planning-checkpoint contracts, while
-`app/db/adapters/transfer/admission.py` commits admission and the
-`accepted -> provider_pending -> planned` compare-and-set transitions in short
-Session/UoW scopes. `app/modules/filemanager/` owns the
-single pure-plan and checkpoint-execution implementation: all file writes occur
-after checkpoint commit, and planned recovery consumes frozen resolved context,
-target storage and ordered operations without online recognition or renaming.
-Legacy plugin `transfer` providers are frozen by exact identity, order, and ABI
-arguments in a provider-only checkpoint, then executed by the unified module
-dispatcher only after commit. The dispatcher resolves every frozen reference
-before the compatibility cleanup hook and propagates provider failures. Missing
-or failing providers therefore remain `provider_pending`; only an all-empty
-result permits host planning and a second CAS to `planned`. Host-only `plan_transfer` and
-`execute_transfer_plan` contracts never dispatch to plugins. `ChainBase.transfer`
-is the sole legacy caller facade and delegates the startup-injected durable
-command; `FileManagerModule.transfer` and `TransHandler.transfer_media` must not
-be recreated.
-
-Transfer execution ownership is orthogonal to those planning phases.
-`app/application/transfer/workflow.py` defines the claim, heartbeat, release and fenced
-mutation Port; `app/db/adapters/transfer/admission.py` implements each operation in a
-short UoW with a unique lease token. Any active lease rejects another claim,
-including one from the same process owner. Expired leases may be taken over with
-a new token and incremented attempt count, while the stale token cannot renew,
-checkpoint, record failure, release or delete the task. Startup replay and
-same-process recovery use the single scheduler owned by `TransferChain`; the
-scheduler claims before enqueueing, and queued or executing claims are renewed
-by one lifecycle-managed heartbeat owner. Lease ownership guarantees one
-database-authorized worker, not physical exactly-once behavior for an already
-issued file or legacy-plugin side effect; step idempotency and unknown outcomes
-remain explicit execution concerns.
-
-Manual admission explicitly replaces an inactive task with no history receipts,
-including damaged planning and execution records, to create a new task identity
-and current planning input without deleting source or target files. Automatic
-admission remains idempotent. History retry clears expired leases through CAS
-and preserves execution evidence; explicit abandonment may delete that evidence.
-A concurrent valid claim or heartbeat always prevents deletion. Queue admission uses the
-lifecycle lock without holding the heartbeat state lock across database I/O,
-and waiting producers observe shutdown so they cannot block owner convergence.
-
-Canonical host chains never obtain `TransferPendingOper`. The canonical Model,
-Oper and Application Port do not retain the historical `register`, `list_all`,
-`discard`, `clear` or `list_by_*` surface. The exact
-`app.db.transferpending_oper` mapping resolves instead to the private
-`app/sdk/_legacy/transferpending.py` facade, which preserves the old no-Session
-query ABI without becoming a host implementation. Its `register` delegates to
-canonical durable admission without overwriting an existing row, while
-`discard` and `clear` delete only rows whose `lease_token` is null; an active or
-expired claimed task remains exclusively owned by fenced recovery APIs.
-
-## Composition and Compatibility Boundaries
-
-- Startup registers concrete cache factories before decorated business modules
-  are imported. Cache contracts remain in `app/runtime/cache.py`; Redis/file
-  implementations remain in `app/adapters/cache/backends.py`.
-- Security-sensitive one-shot state uses the strict `AtomicCacheBackend`
-  `store/consume` contract. Memory and Redis implement atomic consume; startup
-  injects that capability through `PasskeyChallengeCache`, so Passkey
-  Application code never identifies or imports the Redis implementation.
-- `app/runtime/log.py` is a dependency leaf with no `app.*` imports. Foundation
-  emits no runtime logs; upper-layer owners decide whether failures are
-  operationally relevant.
-- `app/adapters/system/resource.py` only reports whether installation occurred;
-  `app/startup/initializers/modules.py` supplies the loaded site-resource
-  versions and decides whether to restart. The adapter never imports the site
-  application service.
-- Configured notification discovery lives in
-  `app/application/notification.py`. Web Push subscription and manual-send HTTP
-  behavior stays in `app/api/endpoints/message.py`; the Web Push protocol
-  (aes128gcm encryption, VAPID signing, delivery) is the network adapter
-  `app/adapters/network/webpush.py`, shared by that endpoint and `WebPushModule`.
-- System network testing lives in `app/application/network.py`: it owns the
-  server-only target catalog, exact legacy URL matching, HTTPS and credential
-  checks, per-target redirect allowlists and content validation. The System API
-  only authenticates, maps request fields and projects the standard response;
-  startup injects the concrete HTTP transport with certificate verification and
-  automatic redirects disabled.
-- System management use cases live in `app/application/system.py`: log discovery,
-  reading and polling, Wiki market synchronization and merge, runtime/system
-  setting mutation, configuration events, release queries, and update/restart
-  orchestration all depend on explicit Ports. `app/startup/composition/system.py`
-  injects the concrete HTTP, filesystem, MoviePilot Server, Rust and process-update
-  adapters into `HostRuntime.system`. The System endpoint retains authentication,
-  HTTP error/DTO projection, SSE framing and ZIP framing only; it must not import
-  those concrete adapters or the event bus directly.
-- `app/runtime/compat` stores string mappings and resolves aliases lazily. It may
-  not eagerly import canonical MoviePilot modules.
-- 已删除的 `app.db.<entity>_oper` 路径继续由精确模块映射提供给旧插件；其中订阅写入、
-  整理历史写入和拆分后的用户认证依赖通过 `app.sdk._legacy` 薄门面委托 canonical
-  Application/Oper，不把领域对象或 HTTP 依赖重新引回 DB 层。
-- 物理模块仍存在但公开符号已经迁走时（例如 `app.domain.media` 的身份原语、
-  `app.schemas` 的整理工作项），兼容 Finder 在标准 Loader 执行后叠加白名单符号路由；
-  canonical 模块不得为兼容而反向 import `app.runtime.compat`。
-- 符号级插件 ABI 只保证显式导入和属性访问；兼容符号不加入物理包的 `__all__`，
-  不支持依赖 `from ... import *` 获得迁移符号。宿主源码不得消费 `SYMBOL_ALIASES`
-  中的旧符号，必须直接导入 canonical owner，避免包根形成第二份宿主导出面。
-- 运行目录的 `app/plugins/__init__.py` 由后端源码提供。UI 内更新的插件目录迁移由
-  替换前的旧版本执行，旧版包根会随之进入新版运行目录并遮蔽兼容符号，使全部插件导入
-  失败；`app/startup/initializers/plugins.py` 在装配插件 Runtime 前把它备份为
-  `__init__.py.legacy-bak` 并写回命名空间入口，判定只看顶层类/函数/赋值，重新导入
-  canonical 对象的包根不动。运行目录只读时保留既有硬报错与诊断，不静默跳过。
-- Canonical implementation packages may not import `app/runtime/compat` or
-  `app/sdk`.
-- Host code uses canonical paths. Only `app/plugins/` and compatibility tests
-  may use `app.core`, `app.helper`, `app.utils` or `app.log`.
-- New plugins use `app.sdk`. In DEBUG mode, a legacy plugin import remains
-  functional and emits one actionable warning per plugin and legacy module.
-- Plugin compatibility changes belong only in curated SDK/Legacy exports or the
-  exact Compat manifest. `app/plugins/**` contains runtime plugin copies and is
-  excluded from host refactors, dependency baselines and ownership migrations.
-- Delayed imports are not accepted as a way to hide dependency cycles.
-
-### Dependency facts and semantic policy
-
-`tests/fixtures/architecture/dependency-baseline.json` is generated evidence: it
-records the complete host module graph, edges and SCCs while excluding
-`app/plugins/**`. It does not approve those facts. Human-reviewed classifications
-live separately in `tests/fixtures/architecture/dependency-policy.json`, and
-`scripts/architecture/baseline.py --write-host` must never create or update that
-policy.
-
-The semantic architecture test compares every SCC in the complete host graph with
-the exact member sets in policy. A new SCC, member expansion, changed member set,
-or stale policy entry fails. The current policy has one classification:
-
-- `contained_vendor`: the exact 29-module TMDB vendored SCC. It may have ordinary
-  one-way dependencies outside the package, but no outside module may join the SCC
-  and its member set may not grow.
-
-The target remains zero canonical host cycles except the precisely contained
-vendor component. `ChainBase` lives in `app.chain.base`; the physical package root
-has no eager export, and the old package-root symbol is available only through the
-exact Compat overlay backed by `app.sdk.chain`. `_PluginBase` and `PluginChain`
-live in `app.sdk.plugin.base`; `app/plugins/` is the plugin install namespace and
-its package root only documents that, so `app.plugins._PluginBase` and the historic
-spelling `app.plugins.PluginChian` resolve solely through the exact Compat overlay.
-
-The same fact/policy split governs direct Adapter imports. The generated
-dependency baseline records the original runtime imports from `app.application`
-and `app.chain` without parent-package expansion. Every current edge is an exact
-`temporary_debt` entry in dependency policy with a removal leaf; the target state
-is empty. New or replacement edges and stale policy entries fail. Application owns
-the Port required by its use case, startup injects the concrete Adapter, and Chain
-consumes the Application capability or an injected Port. A `canonical capability`
-never means permission to import a concrete `app.adapters.*` implementation.
-
-Direct egress is a separate boundary from Adapter imports. The generated
-`direct_egress` facts scan the complete host `app` tree except `app.plugins` and
-record raw transports, registered network SDKs and exact protocol operations.
-Each identity contains import provenance plus stable callable/operation uses and
-has no line number. The manual policy classifies every full fingerprint as either
-`temporary_debt` with a removal leaf and empty target state, or an
-`approved_exception` with an exact owner and reason. Canonical transports, SDKs,
-streaming protocols, contained vendor code, diagnostics and control planes are
-contained exceptions, not category-wide permissions. In policy, `owner: "$source"`
-means the fact's exact `source` module is the owner; it does not authorize sibling
-or child modules. Runtime wildcard imports from a registered egress root are
-forbidden. Updating the generated baseline never updates this policy; additions,
-fact changes, classification swaps and stale entries fail independently. Current
-debt may shrink without changing a fixed count, but no initial edge may grow or be
-reclassified. Tests independently freeze every initial edge fingerprint, so
-refreshing both generated facts and manual policy cannot hide growth on the same
-`source/target`; when debt is removed, its frozen edge and fingerprint must be
-removed in the same reviewed change so that it cannot return.
+- **Cycle policy** — zero canonical host cycles are permitted outside the single
+  `contained_vendor` 29-module TMDB vendored SCC, whose member set may not grow.
+- **Direct Adapter imports** — runtime edges from `app.application` or
+  `app.chain` to `app.adapters.*` are frozen as `temporary_debt` with explicit
+  removal owners and an empty target state, and new or replacement edges fail.
+- **Direct egress** — raw network transports, registered SDKs and protocol calls
+  are fingerprinted without line numbers and classified as `temporary_debt` or
+  exact `approved_exception` (`owner: "$source"`). Wildcard egress imports and
+  edge growth fail independently.
+- **Complexity and concurrency ratchets** — `scripts/architecture/complexity.py`
+  enforces non-growing Ruff `C901 <= 15` and `PLR1702 <= 5` ratchets, and
+  `scripts/architecture/concurrency.py` tracks lexical-owner baselines for
+  threads, processes, executors and async task spawns so unmanaged concurrency
+  primitives cannot be added silently.
 
 ## Permitted Call Directions
 
 | Direction | Status |
-|---|---|
+| --- | --- |
 | `entrypoint -> chain / application / injected persistence Port` | Allowed according to workflow complexity |
-| `chain -> module (only via run_module dispatch) / application / injected Port / canonical capability` | Allowed; direct `chain -> module`, `chain -> Oper` and `chain -> concrete adapter` imports forbidden |
-| `chain -> agent implementation` | Forbidden; chains reach Agent runtime only through `app/application/agent.py`; `app/startup/initializers/agent.py` registers lightweight providers during the explicit lifecycle stage and resets them on shutdown, while implementations are materialized only when the capability is enabled or first used |
-| `agent.tools -> api / scheduler / command` | Forbidden; tools use `app/application/plugin/routes.py`, `plugin/folders.py`, `scheduling.py` and `commands.py` application services |
-| `api -> factory` | Forbidden; the FastAPI route adapter is injected into `app/application/plugin/routes.py` by the composition root after creation |
-| `api / chain -> app.workflow` | Forbidden; workflow consumers use `app/application/workflow.py`, while only `app/workflow/**` and `app/startup/initializers/workflow.py` access the concrete runtime |
+| `chain -> module (via run_module only) / application / injected Port / canonical capability` | Allowed, while direct `chain -> module`, `chain -> Oper` and `chain -> concrete adapter` imports are forbidden |
+| `chain -> agent implementation` | Forbidden — chains use `app/application/agent.py` (providers registered in `app/startup/initializers/agent.py`) |
+| `agent.tools -> api / scheduler / command` | Forbidden — tools use `app/application/plugin/routes.py`, `plugin/folders.py`, `scheduling.py` and `commands.py` |
+| `api -> factory` | Forbidden — route registration is injected into `app/application/plugin/routes.py` by startup |
+| `api / chain -> app.workflow` | Forbidden — consumers use `app/application/workflow.py` |
 | `application -> domain / runtime contract` | Allowed |
-| `application -> DB / Oper / concrete adapter` | Forbidden; define a Protocol in Application and inject an implementation |
-| `db.adapters -> application persistence Protocol / db.oper / UoW` | Allowed; this is dependency inversion, not an upper-layer use-case call |
-| `module -> canonical capability / Application persistence Port` | Allowed; direct Oper imports are forbidden for new code |
+| `application -> DB / Oper / concrete adapter` | Forbidden — define a `Protocol` in Application and inject via startup |
+| `db.adapters -> application persistence Protocol / db.oper / UoW` | Allowed (dependency inversion) |
+| `module -> canonical capability / Application persistence Port` | Allowed, while new direct `Oper` imports are forbidden |
 | `module -> module / chain` | Forbidden for new code |
 | `adapter -> application / runtime.extensions / sdk / compat` | Forbidden |
-| `domain -> runtime / adapter / application / DB` | Forbidden |
+| `domain -> runtime / adapter / application / DB` | Forbidden (`domain` imports only `foundation` and `schemas`) |
 | `foundation -> other app packages` | Forbidden |
 | `canonical implementation -> sdk / compat` | Forbidden |
 | `compat -> canonical implementation at module import time` | Forbidden |
-| Any import that creates a module-level cycle | Forbidden; the complete host graph must match the exact reviewed SCC policy, and temporary debt must have a removal owner |
+| Any import creating an unapproved module cycle | Forbidden by SCC policy |
 
-Event producer and consumer facts share `scripts/architecture/event_facts.py` as
-their only collector. A send/register method name alone is not evidence: the
-receiver must resolve to the canonical `app.runtime.events.eventmanager`, an
-`EventManager` instance, or a proven injected Event publisher/manager port.
-Unknown same-name receivers are ignored. Positional and keyword event arguments,
-finite aliases and conditional enum choices must be resolved; only a proven
-receiver whose event value remains unknowable may produce a dynamic fact. The
-collector respects lexical shadowing and rebinds, distinguishes decorator
-application from obtaining a decorator factory, and never scans `app/plugins/**`
-as host code.
-
-The generated runtime baseline preserves every line-free call fact and its
-multiplicity. Consumer admission is separate and non-generated: every current
-consumer fingerprint, owner, classification and concrete reason must exactly
-match `runtime-contract-policy.json`. New, changed, duplicate, invalid and stale
-consumer identities fail independently, and `--write-host` never modifies the
-policy. The current host permits one dynamic consumer only: the configuration-
-driven workflow registration.
-
-事件契约校验诊断只记录模型名、异常类别或错误数量，不包含原始输入、动态字段名或异常文本，
-以免 Pydantic 的输入摘要泄露认证凭据。SDK `snapshot()` 保留原始 payload 引用作为旧 ABI 访问入口，
-同时深拷贝解析后的模型和嵌套扩展字段；修改 typed 快照不能回写原事件或其他快照。
+Event producer and consumer facts are collected solely by
+`scripts/architecture/event_facts.py` on proven `EventManager` receivers
+(ignoring `app/plugins/**`). Consumer admission is governed separately — every current consumer fingerprint, owner, classification and concrete reason must match `tests/fixtures/architecture/runtime-contract-policy.json` (`--write-host` never modifies policy, and only configuration-driven workflow registration is permitted as a dynamic consumer). Event validation diagnostics log model names and error counts without raw credential-bearing payloads, and SDK `snapshot()` deep-copies typed models so mutations cannot leak back into live events.
 
 ## Key File Locations
 
 | Path | Purpose |
-|---|---|
-| `app/application/agent.py` | Agent orchestration facade plus typed `AgentDataContext`; lightweight service providers register through `app/startup/initializers/agent.py`, with no static `application -> agent` edge or global persistence locator |
-| `app/application/network.py` | Server-owned network-test catalog, public/private DTOs, URL and redirect admission, content validation and the injected HTTPS transport Port |
-| `app/db/adapters/agent.py` | Agent task and plugin-data persistence implementations; ORM values are projected to Application snapshots before Session close |
-| `app/agent/manager.py` | Stable `AgentManager` construction facade and singleton identity |
-| `app/agent/session.py` | Session queue/worker/status/cancellation and deferred-cleanup owner |
-| `app/agent/lifecycle.py` | Agent manager admission, startup, idle collection and bounded shutdown owner |
-| `app/agent/tasks.py` | Background prompt, scheduled task and heartbeat execution owner |
-| `app/agent/orchestrator.py` | Per-session `MoviePilotAgent` execution and LLM/tool/middleware orchestration only |
-| `app/agent/shell.py` | Agent command interpreter/login/directory and subprocess UTF-8 policy shared by run, pipe and PTY |
-| `app/agent/terminal/` | Terminal ownership, explicit sharing and independent task cleanup; pure output paging stays outside the process manager, while lazy scope and global shutdown resolve only an already materialized manager |
-| `app/agent/loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
-| `app/agent/__init__.py` | Implementation-free package root; exact historical Agent symbols are supplied by the Compat overlay only, while host callers import `orchestrator.py` or the relevant owner directly |
-| `app/agent/llm/__init__.py` | Implementation-free package root; only the verified historical `LLMHelper` symbol is supplied by exact Compat routing |
-| `app/agent/llm/helper.py` | Canonical `LLMHelper` owner and exact target of the historical `app.helper.llm` module path |
-| `app/agent/llm/auth.py` | OAuth callback result presentation; escapes provider-controlled text before rendering HTML and is not re-exported from the package root |
-| `app/application/subscription/contract.py` | Deeply frozen Subscription/History DTOs, media identity, write patch and typed query/write/staging Repository contracts |
-| `app/application/subscription/write.py` | Subscription media translation and sync/async write-command orchestration |
-| `app/db/adapters/subscription.py` | Standalone short-transaction and caller-Session subscription/history adapters; ORM projection remains inside the Session |
-| `app/application/download/failures.py` | Frozen download-failure cooldown write/query DTOs and Chain persistence Port |
-| `app/db/adapters/download.py` | Short-session download-failure snapshot and mutation adapter |
-| `app/db/adapters/mediaserver.py` | Per-operation media-server cache query/upsert/cleanup transaction adapter |
-| `app/application/history/` | History use cases; deeply frozen DownloadHistory/TransferHistory DTOs and typed query/write/staging ports |
-| `app/db/adapters/history/download.py` | DownloadHistory short-session snapshot, query and mutation adapter |
-| `app/chain/download/` | Stable DownloadChain facade plus single-owner selection, submission, batch, existence, failure, history, post-processing, subtitle, task and technical-port modules |
-| `app/chain/search/` | Stable SearchChain facade plus shared execution, plan, provider, pagination, result, cache, title, media, music policy, subtitle, site and recommendation owners |
-| `app/chain/media/` | Stable MediaChain facade plus single-owner recognition, plugin, auxiliary, projection, search, catalog, path, album and bounded cache modules |
-| `app/db/adapters/history/transfer.py` | TransferHistory short-session snapshot/query/mutation adapter and caller-owned transaction stager |
-| `app/application/security/user.py` | Frozen user/auth projections and atomic user aggregate service contracts |
-| `app/db/adapters/user.py` | User projection plus request-UoW mutation adapter |
-| `app/db/adapters/configuration.py` | Commit-after UserConfig snapshot publication and fact-source reload adapter |
-| `app/application/outbox.py` | Durable intent, stager/store, claim fencing, topic handler and structured post-commit contracts |
-| `app/db/adapters/outbox.py` | SQLAlchemy Outbox transaction-only stagers and short-transaction claim/settlement stores |
-| `app/application/chain/events.py` | Chain durable-event write port, settlement projection and replayable payload conversion |
-| `app/application/transfer/` | `models.py` owns transfer task, durable admission and versioned planning contracts; `jobs.py` owns task views; `workflow.py` owns the queue use case; execution, recovery, notification and projection policies remain in their single-word modules |
-| `app/db/adapters/transfer/admission.py` | SQLAlchemy admission/checkpoint persistence, CAS state transition and detached snapshot adapter |
-| `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
-| `app/scheduler/` | Scheduler implementation package: stable facade plus catalog, execution/bridge/progress, registry, reconcile, lifecycle and maintenance owners; no business Chain construction |
-| `app/startup/initializers/scheduler.py` | Registers the concrete Scheduler and injects the AgentTask repository plus frozen callable-only `SchedulerServices` before lifecycle start |
-| `app/sdk/scheduler.py` | Narrow scheduling facade for new plugins; does not expose concrete Scheduler owners or lifecycle state |
-| `app/application/commands.py` | Command registry facade for Agent tools and endpoints; `Command` class registered by `app/startup/initializers/command.py` |
-| `app/application/workflow.py` | Workflow use cases, frozen query snapshot and typed runtime ports consumed by API, Agent, Chain and Scheduler; `WorkflowManager` is registered by `app/startup/initializers/workflow.py` |
-| `app/db/adapters/workflow.py` | Short-session Workflow query projection and execution-state transaction adapters |
-| `app/db/adapters/` | SQLAlchemy repository/UoW implementations for Application-owned persistence Protocols |
-| `app/startup/composition/` | HostRuntime, configuration snapshots and cross-layer adapter wiring |
-| `app/startup/initializers/` | Domain-scoped initialization and shutdown hooks |
-| `app/chain/agent.py` | `AgentChain(ChainBase)`: the chain-layer entry for Agent sessions; Agent runtime stays in `app/agent/` |
-| `app/runtime/config.py` | `ConfigModel`, `Settings` and deployment configuration |
-| `app/runtime/cache.py` | Cache contracts and memory policy, including strict atomic store/consume for one-shot security state |
-| `app/application/security/passkey.py` | Injected Passkey challenge cache port and one-shot challenge issue/consume policy |
-| `app/runtime/tasks.py` | TaskRegistry owner, cancellation and bounded shutdown waiting |
-| `app/runtime/execution.py` | Shared execution/thread-boundary helpers and context propagation |
-| `app/runtime/correlation.py` | Correlation ID context and propagation boundary |
-| `app/runtime/topology.py` | Single-worker full-runtime policy and safe-mode topology validation |
-| `app/runtime/events.py` | `EventManager`/`Event` compatibility facade and global `eventmanager` identity |
-| `app/runtime/event/registry.py` | Event subscriptions, enable/disable state and dispatch snapshots |
-| `app/runtime/event/binding.py` | Explicit module/plugin/host handler resolvers; unresolved classes are diagnosed and skipped, never implicitly constructed by the bus |
-| `app/runtime/event/dispatch.py` | Chain/broadcast ordering, concurrency, target-plugin filtering and isolated delivery |
-| `app/runtime/event/errors.py` | Handler failure notification and non-recursive `SystemError` downgrade policy |
-| `app/runtime/event/snapshot.py` | Read-only typed payload snapshots for the plugin SDK; never mutates or replaces the event ABI |
-| `app/runtime/extensions/module/dispatcher.py` | Plugin-first invocation, short-circuit, list merge, signature relay and sync/async execution |
-| `app/runtime/extensions/module/contracts.py` | High-frequency method families and frozen legacy fallback contract |
-| `app/application/chain/context.py` | Injectable Chain dependencies, no-argument compatibility provider and legacy Transfer command Port |
-| `app/startup/lifecycle/components.py` | Declarative normal/safe-mode lifecycle manifest, ordering and timeout budgets |
-| `app/runtime/extensions/module/manager.py` | Module discovery and lifecycle |
-| `app/runtime/extensions/plugin/manager.py` | Stable PluginManager ABI facade plus plugin discovery/lifecycle entrypoints; its constructor only consumes the startup-injected Runtime factory and does not build an environment or individual owner |
-| `app/runtime/extensions/plugin/runtime.py` | Frozen typed aggregate and construction primitive for plugin registry, lifecycle, catalog, dependency, monitor, projection, sync and package-system owners; it does not choose concrete startup dependencies |
-| `app/runtime/extensions/plugin/gate.py` | 插件生命周期的可重入执行权与钩子耗时快照；仅更新 owner 时持锁，竞争者立即拒绝，第三方代码在锁外执行；`admission.py` 在完整可变事务的副作用前取得同一运行时的根事务资格 |
-| `app/runtime/extensions/plugin/system.py` | Startup-injected market/package/dependency system-port facade, including delegation to the unique physical package deletion owner; it does not construct concrete adapters |
-| `app/runtime/extensions/plugin/dependency.py` | Virtual-instance dependency classification and runtime-status persistence owner |
-| `app/startup/initializers/plugins.py` | Plugin Runtime dependency-graph composition, concrete system/storage/catalog ports and lifecycle initialization |
-| `app/runtime/extensions/plugin/monitor.py` | Plugin file-change aggregation and monitor-thread lifecycle |
-| `app/runtime/extensions/plugin/projection.py` | Plugin commands, APIs, services, modules and actions projected from a running-registry snapshot |
-| `app/runtime/extensions/plugin/storage.py` | Injected plugin configuration/data persistence port; runtime code does not import DB Oper classes |
-| `app/application/plugin/catalog.py` | Plugin-market mapping, concurrent collection, generation merge, source/version deduplication and API catalog projection |
-| `app/application/plugin/install.py` | Compatibility, package installation, reporting, installed-list persistence and runtime reload command |
-| `app/application/plugin/routes.py` | Dynamic plugin-route registry protocol and registration/removal use cases; plugin response payloads remain raw unless the plugin chooses its own envelope |
-| `app/application/plugin/folders.py` | Plugin-folder query/mutation and clone/uninstall membership maintenance, compatible with current dictionary and legacy list storage shapes |
-| `app/application/plugin/release.py` | Trusted-source history and Release projection over startup-injected market/cache ports |
-| `app/application/plugin/rating.py` | Plugin statistics and rating use cases over a startup-injected MoviePilot Server port |
-| `app/application/plugin/runtime.py` | Plugin runtime port consumed by API, Agent and Workflow; the concrete `PluginManager` is registered only by startup |
-| `app/application/module.py` | Host module runtime port consumed by entrypoints; the concrete `ModuleManager` is registered only by startup |
-| `app/application/scheduling.py` | Scheduler runtime port consumed by API/Agent/application commands |
-| `app/application/server/report.py` | Server reporting use cases over injected local readers and transport callbacks |
-| `app/application/server/share.py` | Server sharing use cases over injected repositories and transport callbacks |
-| `app/domain/plugin.py` | Pure local-source, generation-compatibility and Release-install-plan rules |
-| `app/domain/chat.py` | 会话展示快照的纯时间戳兼容与选择状态合并规则；保留首次选择及回执时间，不读取交互管理器或持久化服务 |
-| `app/adapters/external/plugin/client.py` | `PluginMarketTransport`, the unique market transport, index/Release and local-candidate owner |
-| `app/adapters/system/plugin/package.py` | `PluginPackageManager`, the unique install, checkpoint, backup, restore and physical-delete owner |
-| `app/adapters/system/plugin/dependency.py` | `PluginDependencyInstaller`, enabled-source dependency inspection and constrained per-plugin recovery owner; `async_install` has two completion-owned worker boundaries for request preparation and fallback planning, while package subprocess cancellation remains with `PluginRuntimeHealth` |
-| `app/adapters/system/plugin/health.py` | `PluginRuntimeHealth`, the runtime-environment guard, pre/post-install check and recovery owner |
-| `app/startup/composition/plugin.py` | Constructs one market transport/client, package manager, runtime-health owner and dependency installer per lifespan; `PluginHelper` compatibility calls consume those same published owners |
-| `app/runtime/extensions/resource.py` | Data-only managed-resource registry and sync/async lifecycle adapters |
-| `app/runtime/resources.py` | Lightweight acquisition, state observation and shutdown facade |
-| `app/foundation/reflection.py` | Generic reflection and Python module discovery |
-| `app/adapters/network/http.py` | Shared synchronous and asynchronous HTTP clients |
-| `app/adapters/network/browser.py` | Browser launch facade and browser session implementation |
-| `app/adapters/system/display/` | On-first-use virtual display resource and legacy `DisplayHelper` facade |
-| `app/application/rss.py` | Configured RSS retrieval and parsing |
-| `app/application/site/sites.*` | Generated site catalog, authentication and index capability plus its colocated data bundle |
-| `app/runtime/cache.py` | Cache contracts, memory backend, decorators and proxies |
-| `app/adapters/cache/backends.py` | Redis and filesystem cache adapters |
-| `app/adapters/system/resource.py` | Runtime resource detection/download/installation |
-| `app/adapters/system/fsproxy.py` | Timeout-guarded local filesystem operations in a killable subprocess (with colocated `fsworker.py`) |
-| `app/adapters/external/wechat.py` | WeChat enterprise-message XML encryption/decryption protocol |
-| `app/application/rules.py` | Rule domain: user rule-group config access (`RuleHelper`), built-in torrent filter rule set and rule parser |
-| `app/adapters/external/market.py` | Exact legacy `PluginHelper` compatibility facade and install Gateway; canonical market behavior lives in `plugin/client.py` and host code must not import this facade |
-| `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |
-| `app/application/mediaserver.py` | Configured media-server discovery and identity matching |
-| `app/runtime/compat/manifest.py` | Exact legacy-to-canonical import manifest |
-| `app/sdk/` | Stable plugin imports, including provider-neutral browser launch functions and the Feishu event long connection |
-| `app/sdk/plugin/` | Plugin contract base class (`base.py`) and runtime manager facade (`manager.py`); the package root is a lazy export map so importing the contract does not load the managers |
+| --- | --- |
+| `app/startup/composition/` & `initializers/` | `HostRuntime` wiring (`outbox.py`, `plugin.py`, `server.py`, `chain.py`, `subscription.py`, `system.py`) and ordered normal/safe-mode lifecycle manifests (`lifecycle/components.py`) |
+| `app/runtime/compat/manifest.py` | Lazy string-mapped legacy module and `SYMBOL_ALIASES` manifest |
+| `app/sdk/` & `app/sdk/plugin/` | Curated plugin ABI (`base.py`, `manager.py`, `scheduler.py`, `media`, `services`, `_legacy/`) |
+| `app/runtime/extensions/module/` | `manager.py` discovery, `dispatcher.py` `run_module` execution and `contracts.py` method families |
+| `app/runtime/extensions/plugin/` | `manager.py` ABI facade, `runtime.py` aggregate, `gate.py` reentrant lock, `monitor.py`, `projection.py`, `dependency.py`, `storage.py`, `system.py` |
+| `app/application/plugin/` | Market `catalog.py`, `install.py`, dynamic `routes.py`, `folders.py`, `release.py`, `rating.py` and `runtime.py` port |
+| `app/adapters/external/plugin/client.py` & `system/plugin/` | `PluginMarketTransport`, `PluginPackageManager`, `PluginDependencyInstaller` and `PluginRuntimeHealth` |
+| `app/runtime/event/` & `events.py` | `EventManager` facade plus `registry.py`, `binding.py`, `dispatch.py`, `errors.py` and SDK `snapshot.py` |
+| `app/application/outbox.py` & `db/adapters/outbox.py` | Transaction-scoped `OutboxStager`, short-UoW `OutboxDispatchStore` and fenced recovery |
+| `app/application/transfer/` & `db/adapters/transfer/` | Durable transfer admission (`admission.py`), step execution (`execution.py`), atomic settlement (`db/adapters/chain.py`) and lease-fenced execution ports |
+| `app/application/subscription/` & `db/adapters/subscription.py` | Frozen subscription/history DTOs, media translation (`write.py`) and short-session/caller-Session repositories |
+| `app/application/history/` & `db/adapters/history/` | Frozen download/transfer history snapshots and query/write/staging ports |
+| `app/application/search/session.py` & `chain/search/` | Page-checkpoint search session ports, `SearchChain` facade and shared media/music execution |
+| `app/application/agent.py` & `app/agent/` | Agent facade, `AgentManager`, `graph.py` resource cache, session/task/lifecycle/shell/terminal owners and `llm/` (`provider.py`, `helper.py`) |
+| `app/application/system.py` & `network.py` | System settings/update/log/Wiki use cases and SSRF-guarded network-test catalog |
 
-Run `tests/test_architecture_dependencies.py` after every ownership or import
-change. It rejects physical legacy or retired canonical sources, forbidden
-upward dependencies, SDK/compat backreferences, any strongly connected
-component containing a migrated module, module-to-module or module-to-chain
-imports, entrypoint (`api`/`agent`/`monitor`/`workflow`/`doctor`) imports of
-`app.modules` internals, chain imports of `app.modules` internals (chains reach
-modules only through `run_module` dispatch), and downloader SDK
-(`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
-
-*Last Updated: 2026-08-29*
-
-分类词表由 `app/domain/classification/vocabulary.py` 拥有，供 `facts.py`、`fields.py` 和旧配置迁移复用；只含离线词表及纯选项投影，不读取运行时配置、数据库或具体来源模块。
-
-### 逐页搜索检查点
-
-- `domain/search.py`：纯收集规则（缺集关闭、站点已收录边界、页面连续性）。
-- `application/search/session.py`：检查点 Port 与不含凭据的候选快照。
-- `db/oper/searchsession.py` / `db/adapters/searchsession.py`：检查点读写与短 UoW；创建、保存、删除都在写入语句内校验队列任务租约和版本。`db/oper/subscriptionsearch.py` 在任务进入终态的同一事务中删除检查点。
-- `chain/search/scan.py`：`SearchSources` 提供来源与单页请求，自动订阅的 `SearchScan` 与手动分页 `chain/search/manual.py` 共用；手动分页不写数据库，页摘要走 Runtime 缓存门面。
-- 恢复候选的下载凭据经 `run_module("restore_search_torrent")` 由 Indexer 重建，Chain 不直接导入 Indexer 或数据库；该方法是宿主内部契约，不对插件公开。
+Run `tests/test_architecture_dependencies.py` after any ownership, package-root
+or import change.
