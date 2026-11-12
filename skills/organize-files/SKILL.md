@@ -40,8 +40,9 @@ recognition, transfer, and history tools are not available.
 7. Call `transfer.file` once per verified unit. For an album, transfer the album
    directory once only after its supported audio-file count is consistent with
    the selected album detail.
-8. If requested, call `media.scrape` after a successful transfer. Report actual
-   tag, cover, and lyrics counts; never assume all lyrics were found.
+8. If requested, call `media.scrape` after a successful transfer. Report its
+   actual message, including any preserved album track fields and lyrics counts;
+   never assume all tracks were overwritten or all lyrics were found.
 
 ## Structured Calls
 
