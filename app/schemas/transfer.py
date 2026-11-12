@@ -380,7 +380,10 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     episode_part: Optional[str] = Field(default=None, description="指定PART")
     episode_offset: Optional[str] = Field(default=None, description="集数偏移")
     min_filesize: Optional[int] = Field(default=0, description="最低文件大小阈值，单位为 MiB；0 不限制，启用时仅保留严格大于阈值的文件")
-    scrape: Optional[bool] = Field(default=False, description="刮削")
+    scrape: Optional[bool] = Field(
+        default=None,
+        description="刮削；为空时跟随目标目录的刮削设置",
+    )
     library_type_folder: Optional[bool] = Field(default=None, description="媒体库类型子目录")
     library_category_folder: Optional[bool] = Field(default=None, description="媒体库类别子目录")
     from_history: Optional[bool] = Field(default=False, description="复用历史识别信息")

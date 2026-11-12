@@ -1788,6 +1788,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         """
         为每张专辑按整批双向唯一证据对位，拒绝整轨 CUE 和身份冲突。
 
+        手动覆盖或已锁定具体发行版本时，允许用唯一曲序纠正旧曲名；仅拿到
+        发行组代表版本时仍要求曲名或艺人证据，避免不同版本的曲序差异误配。
         远端音频在对位与实际写入时分别下载，写入前重新核对证据；
         不依赖文件排序或把尚未匹配的剩余文件强行分配给曲目。
         """
@@ -1816,7 +1818,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 # 不完整的本地证据无法证明整批文件与线上曲目之间的双向唯一性。
                 continue
             aligned = align_music_tracks(
-                [meta for _, meta in eligible], tracks, allow_title_override=allow_title_override,
+                [meta for _, meta in eligible],
+                tracks,
+                allow_title_override=allow_title_override or bool(key[2]),
             )
             for index, remote in aligned.items():
                 item, meta = eligible[index]
