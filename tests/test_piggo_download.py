@@ -191,7 +191,7 @@ def test_missing_ticket_response_reports_failure(boundary):
     boundary.ticket.post.return_value = None
     errors = []
     boundary.chain.download_torrent(boundary.torrent, on_failure=errors.append)
-    assert errors == ["无法连接猪猪实验室 API"]
+    assert len(errors) == 1 and errors[0].startswith("换票失败：") and "无法连接猪猪实验室 API" in errors[0]
     boundary.port.request.assert_not_called()
 
 

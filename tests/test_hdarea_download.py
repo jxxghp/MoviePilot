@@ -158,7 +158,7 @@ def test_missing_ticket_response_preserves_failure_reason(boundary):
     boundary.ticket.post.return_value = None
     failures = []
     boundary.chain.download_torrent(boundary.torrent, on_failure=failures.append)
-    assert failures == ["无法连接 HDArea API"]
+    assert len(failures) == 1 and failures[0].startswith("换票失败：") and "无法连接 HDArea API" in failures[0]
     boundary.port.request.assert_not_called()
 
 

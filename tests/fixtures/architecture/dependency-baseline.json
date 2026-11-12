@@ -962,8 +962,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10115,
-  "edge_sha256": "6530f15d7ea0a0beac162389c68c0264aac83c47589e2c3af0446ce3423c9d47",
+  "edge_count": 10117,
+  "edge_sha256": "220d35d404b1eb6a5b2900840a44af7d560a9d48e3250e0dbbee1e8714f79ebd",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4895,6 +4895,8 @@
     "app.chain.download.submission -> app.domain.meta",
     "app.chain.download.submission -> app.domain.meta.metabase",
     "app.chain.download.submission -> app.domain.torrent",
+    "app.chain.download.submission -> app.foundation",
+    "app.chain.download.submission -> app.foundation.url",
     "app.chain.download.submission -> app.runtime",
     "app.chain.download.submission -> app.runtime.cache",
     "app.chain.download.submission -> app.runtime.events",
