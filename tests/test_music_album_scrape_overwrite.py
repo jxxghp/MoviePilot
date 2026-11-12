@@ -250,7 +250,7 @@ def test_overwrite_preserves_track_on_duration_conflict(tmp_path, monkeypatch):
 
 def test_automatic_overwrite_does_not_guess_from_position_alone(tmp_path, monkeypatch):
     """
-    自动刮削即使启用覆盖，也不能把手动选择专辑时的曲名纠正放宽到普通自动识别。
+    自动刮削仅拿到发行组代表版本时，不能只凭曲序推断另一个版本的曲名。
     """
     album = _album()
     path = _audio(tmp_path / "01.flac", "本地不同曲名", "本地歌手", 1)
@@ -261,6 +261,24 @@ def test_automatic_overwrite_does_not_guess_from_position_alone(tmp_path, monkey
     assert success
     assert "未可靠匹配" in message
     assert AudioMetadataHelper.read_tags(path).title == "本地不同曲名"
+
+
+def test_automatic_overwrite_uses_locked_release_track_credit(tmp_path, monkeypatch):
+    """
+    自动整理锁定具体发行版本时，覆盖策略应按唯一曲序写入线上曲名和艺人。
+    """
+    album = _album()
+    album.musicbrainz_release_id = _OTHER_RECORDING
+    for track in album.tracks:
+        track.musicbrainz_release_id = _OTHER_RECORDING
+    path = _audio(tmp_path / "01.flac", "The Story Of Us", "JJ Lin", 1)
+    chain = _chain(monkeypatch, album, "overwrite")
+
+    success, message = _scrape(chain, album, [_item(path)], overwrite=False)
+
+    result = AudioMetadataHelper.read_tags(path)
+    assert success and "匹配 1" in message
+    assert (result.title, result.artists) == ("正确一", ["线上歌手一"])
 
 
 def test_automatic_overwrite_corrects_position_with_strict_title_evidence(tmp_path, monkeypatch):

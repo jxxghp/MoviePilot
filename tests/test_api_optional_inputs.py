@@ -182,6 +182,25 @@ def test_manual_transfer_history_after_move_uses_destination_snapshot(batch):
     assert [item.path for item in items] == ["/library/movie.mkv"]
 
 
+def test_manual_transfer_default_scrape_follows_target_directory(monkeypatch):
+    """
+    未显式指定刮削时保留空值，让整理链按目标目录的刮削设置执行。
+    """
+    execute = Mock(return_value=(True, ""))
+    monkeypatch.setattr(transfer, "TransferChain", lambda: SimpleNamespace(manual_transfer=execute))
+
+    result = transfer.manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitem=FileItem(storage="local", path="/downloads/test.flac", type="file"),
+        ),
+        background=True,
+        history_query=Mock(),
+    )
+
+    assert result.success is True
+    assert execute.call_args.kwargs["scrape"] is None
+
+
 def test_manual_target_path_skips_source_without_path(monkeypatch):
     """
     缺少源路径的项被去重阶段过滤，不把当前工作目录用作整理路径匹配条件。
