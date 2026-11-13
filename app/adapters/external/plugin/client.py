@@ -45,7 +45,7 @@ from app.foundation.environment import is_free_threaded_runtime
 from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
 from app.foundation.version import compare_version
-from app.runtime.cache import AsyncCacheControls, async_fresh, cached, fresh, is_fresh
+from app.runtime.cache import AsyncCache, AsyncCacheControls, Cache, async_fresh, cached, fresh, is_fresh
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.tasks import get_task_registry
@@ -64,6 +64,8 @@ PLUGIN_INDEX_MAX_HISTORY_ENTRIES = 512
 PLUGIN_INDEX_MAX_NESTING = 64
 PLUGIN_INDEX_READ_CHUNK_SIZE = 64 * 1024
 PLUGIN_INDEX_REQUEST_TIMEOUT = 15
+# 索引不存在或暂时不可达时五分钟后重试，不沿用成功索引的半小时有效期。
+PLUGIN_INDEX_FAILURE_TTL = 300
 # 文档探测只在打开详情时执行，失败结果也缓存五分钟。
 PLUGIN_README_REQUEST_TIMEOUT = 5
 DEFAULT_PLUGIN_INDEX_FETCH_CONCURRENCY = 5
@@ -91,6 +93,12 @@ _PLUGIN_INDEX_FETCH_GATE = threading.BoundedSemaphore(
 class _PluginIndexTooLargeError(RuntimeError):
     """
     插件索引的声明长度或实际读取字节超过资源边界。
+    """
+
+
+class _PluginIndexUnavailableError(RuntimeError):
+    """
+    插件索引连接或 HTTP 状态暂时失败，可短暂缓存并保留库存不完整语义。
     """
 
 
@@ -251,6 +259,12 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     """
 
     _base_url = "https://raw.githubusercontent.com/{user}/{repo}/main/"
+    _index_failures = Cache(
+        cache_type="ttl", maxsize=1024, ttl=PLUGIN_INDEX_FAILURE_TTL, local_only=True,
+    )
+    _async_index_failures = AsyncCache(
+        cache_type="ttl", maxsize=1024, ttl=PLUGIN_INDEX_FAILURE_TTL, local_only=True,
+    )
     _index_future_lock = threading.Lock()
     _index_futures: dict[tuple[str, str], Future[Optional[PluginIndex]]] = {}
     _index_task_lock = threading.Lock()
@@ -1135,12 +1149,12 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         :raises RuntimeError: 连接失败、非成功状态或响应格式无效
         """
         if response is None:
-            raise RuntimeError("插件索引请求失败：连接失败")
+            raise _PluginIndexUnavailableError("插件索引请求失败：连接失败")
         status_code, content = response
         if status_code == 404:
             return None
         if status_code != 200:
-            raise RuntimeError(f"插件索引请求失败：HTTP {status_code}")
+            raise _PluginIndexUnavailableError(f"插件索引请求失败：HTTP {status_code}")
         payload = cls.__parse_plugin_index_response(content)
         if payload is None:
             raise RuntimeError("插件索引响应格式无效")
@@ -1377,20 +1391,28 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         except Exception as error:  # noqa: BLE001
             return None, error
 
-    @cached(maxsize=1024, ttl=1800, skip_none=False)
+    @cached(
+        maxsize=1024, ttl=1800, skip_none=False,
+        empty_ttl=PLUGIN_INDEX_FAILURE_TTL, empty_if=lambda value: value is None,
+    )
     def get_plugin_index_result(
             self,
             repo_url: str,
             package_version: Optional[str] = None,
     ) -> Optional[PluginIndex]:
         """
-        读取插件索引；404 返回 None，读取失败由调用方记录。
+        读取插件索引；404 和读取失败短暂缓存，失败仍由调用方记录。
         """
         request = self._build_plugin_index_request(repo_url, package_version)
         if request is None:
             raise ValueError("插件仓库地址无效")
         package_url, headers = request
         key = self._plugin_index_key(repo_url, package_version)
+        failure_key = repr(key)
+        if not is_fresh():
+            failure = self._index_failures.get(failure_key, region="plugin.index.failures")
+            if failure is not None:
+                raise _PluginIndexUnavailableError(failure)
         with self._index_future_lock:
             future = self._index_futures.get(key)
             if future is None:
@@ -1409,10 +1431,13 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             result = self._fetch_plugin_index_sync(package_url, headers)
         # 共享结果必须传播原始异常
         except BaseException as error:  # noqa: BLE001
+            if isinstance(error, _PluginIndexUnavailableError):
+                self._index_failures.set(failure_key, str(error), region="plugin.index.failures")
             future.set_exception(error)
             future.exception()
             raise
         else:
+            self._index_failures.delete(failure_key, region="plugin.index.failures")
             future.set_result(result)
             return result
         finally:
@@ -1834,14 +1859,17 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             logger.warning(f"获取插件 {pid} 元数据失败：{error}")
             return {}
 
-    @cached(maxsize=1024, ttl=1800, skip_none=False)
+    @cached(
+        maxsize=1024, ttl=1800, skip_none=False,
+        empty_ttl=PLUGIN_INDEX_FAILURE_TTL, empty_if=lambda value: value is None,
+    )
     async def async_get_plugin_index_result(
             self,
             repo_url: str,
             package_version: Optional[str] = None,
     ) -> Optional[PluginIndex]:
         """
-        异步读取插件索引；404 返回 None，读取失败由调用方记录。
+        异步读取插件索引；短暂缓存失败，但不把失败伪装成空的成功库存。
         """
         request = self._build_plugin_index_request(repo_url, package_version)
         if request is None:
@@ -1851,6 +1879,11 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             repo_url,
             package_version,
         )
+        failure_key = repr((repo_key, generation_key))
+        if not is_fresh():
+            failure = await self._async_index_failures.get(failure_key, region="plugin.index.failures")
+            if failure is not None:
+                raise _PluginIndexUnavailableError(failure)
         loop = asyncio.get_running_loop()
         task_key = (loop, repo_key, generation_key)
         with self._index_task_lock:
@@ -1881,7 +1914,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         # 单个调用方取消等待时不能连带取消共享请求。
         result, error = await asyncio.shield(task)
         if error is not None:
+            if isinstance(error, _PluginIndexUnavailableError):
+                await self._async_index_failures.set(failure_key, str(error), region="plugin.index.failures")
             raise error
+        await self._async_index_failures.delete(failure_key, region="plugin.index.failures")
         return result
 
     async def async_get_plugins(self, repo_url: str,

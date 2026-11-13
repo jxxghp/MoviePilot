@@ -3,6 +3,7 @@
 """
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -47,6 +48,32 @@ def _facade(**overrides):
     )
     defaults.update(overrides)
     return PluginCatalogFacade(**defaults)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("repo", ["https://github.com/Example/Plugins.git/", "https://github.com/unknown/plugins"])
+async def test_source_candidates_only_load_selected_configured_repository(monkeypatch, repo):
+    """
+    文档查询只读取所选配置仓库的兼容代际，未知来源不能触发网络扫描。
+    """
+    from app.runtime.extensions.plugin import catalog as catalog_module
+
+    collect = AsyncMock(return_value=[])
+    monkeypatch.setattr(catalog_module, "get_runtime_setting", lambda key: {
+        "PLUGIN_MARKET": "https://github.com/Other/Plugins,https://github.com/Example/Plugins",
+        "VERSION_FLAG": "v3",
+    }[key])
+    facade = _facade(
+        system=lambda: SimpleNamespace(compatible_flags=lambda _flag: ["v3", "v2"]),
+        market_catalog=lambda: SimpleNamespace(async_collect=collect),
+    )
+
+    assert await facade.async_online_candidates(repo_url=repo) == []
+    if "unknown" in repo:
+        collect.assert_not_awaited()
+    else:
+        assert collect.await_args.kwargs["markets"] == ["https://github.com/Example/Plugins"]
+        assert collect.await_args.kwargs["compatible_flags"] == ["v3", "v2"]
 
 
 @pytest.mark.asyncio

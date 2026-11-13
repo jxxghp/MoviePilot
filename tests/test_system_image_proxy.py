@@ -217,6 +217,106 @@ def isolated_image_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Ima
     return helper
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+@pytest.mark.parametrize("mirror_result", ["image", "missing", "html", "exception", "private"])
+async def test_github_images_use_safe_mirror_and_original_cache_key(monkeypatch, tmp_path, isolated_image_cache, mode, mirror_result):
+    """
+    GitHub 图标优先匿名访问已验证镜像，错误与非图片回退原始出口并共用原 URL 缓存。
+    """
+    url = "https://raw.githubusercontent.com/example/plugins/main/icons/demo.png"
+    mirror = f"https://mirror.example/{url}"
+    content = _image_bytes("PNG")
+    config = ChainRuntimeConfig(
+        media_extensions=(), cache_path=tmp_path, github_proxy="https://mirror.example/",
+        proxy={"all": "http://proxy.example:7890"},
+    )
+    monkeypatch.setattr(image_service, "get_chain_runtime_config_snapshot", lambda: config)
+    safe = Mock(return_value=mirror_result != "private")
+    async_safe = AsyncMock(return_value=mirror_result != "private")
+    monkeypatch.setattr(image_service.SecurityUtils, "is_safe_url", safe)
+    monkeypatch.setattr(image_service.SecurityUtils, "is_safe_url_async", async_safe)
+    calls = []
+
+    def respond(target, *, options):
+        """
+        区分镜像与原始出口，模拟真实图片和镜像常见故障。
+        """
+        calls.append((target, options))
+        if target == mirror:
+            if mirror_result == "exception":
+                raise TimeoutError("镜像超时")
+            if mirror_result == "missing":
+                return Mock(status_code=404)
+            if mirror_result == "html":
+                return Mock(status_code=200, content=b"<html>not an image</html>")
+        return Mock(status_code=200, content=content)
+
+    transport = _FakeImageTransport()
+    monkeypatch.setattr(transport, "get", Mock(side_effect=respond))
+    monkeypatch.setattr(transport, "async_get", AsyncMock(side_effect=respond))
+    configure_image_ports(transport=transport, internal_address=_FakeInternalAddress())
+    helper = isolated_image_cache
+    if mode == "async":
+        result = await helper.async_fetch_image_with_mime_type(url)
+        assert await helper.async_fetch_image_with_mime_type(url) == result
+        async_safe.assert_awaited_once()
+    else:
+        result = helper.fetch_image_with_mime_type(url)
+        assert helper.fetch_image_with_mime_type(url) == result
+        safe.assert_called_once()
+    assert result == (content, "image/png")
+    assert [target for target, _ in calls] == (
+        [url] if mirror_result == "private" else [mirror] if mirror_result == "image" else [mirror, url]
+    )
+    if calls[0][0] == mirror:
+        assert calls[0][1]["proxies"] is None
+        assert calls[0][1]["cookies"] is None
+        assert calls[0][1]["referer"] is None
+    if calls[-1][0] == url:
+        assert calls[-1][1]["proxies"] == config.proxy
+    assert helper.file_cache.get(helper._prepare_cache_path(url), region="images") == content
+    assert helper.file_cache.get(helper._prepare_cache_path(mirror), region="images") is None
+
+
+@pytest.mark.parametrize("url,cookies", [
+    ("https://raw.githubusercontent.com/example/plugins/main/icon.png", "session=private"),
+    ("https://raw.githubusercontent.com/example/plugins/main/icon.png?token=secret", None),
+    ("https://raw.githubusercontent.com.attacker.example/icon.png", None),
+    ("https://user:password@raw.githubusercontent.com/example/plugins/main/icon.png", None),
+    ("https://raw.githubusercontent.com:8443/example/plugins/main/icon.png", None),
+    ("https://raw.githubusercontent.com:invalid/example/plugins/main/icon.png", None),
+    ("https://images.example/icon.png", None),
+    ("https://api.github.com/repos/example/plugins", None),
+])
+def test_image_mirror_does_not_receive_private_or_unrelated_requests(monkeypatch, url, cookies):
+    """
+    带凭据的请求、非标准端口及非静态 GitHub 主机保持原始地址。
+    """
+    config = ChainRuntimeConfig(media_extensions=(), github_proxy="https://mirror.example/")
+    monkeypatch.setattr(image_service, "get_chain_runtime_config_snapshot", lambda: config)
+    request = ImageHelper._fetch_request(url, None, True, cookies)
+    assert ImageHelper._github_mirror_request(request, cookies) is None
+
+
+@pytest.mark.parametrize("url", [
+    "https://raw.githubusercontent.com/example/plugins/main/icon.png",
+    "https://avatars.githubusercontent.com/u/123",
+    "https://user-images.githubusercontent.com/123/icon.png",
+    "https://github.com/example/plugins/blob/main/icon.png?raw=true",
+])
+def test_public_github_static_image_mirrors_preserve_original_identity(monkeypatch, url):
+    """
+    公开静态主机与 GitHub 原图链接均可使用镜像，保留查询参数和原缓存键。
+    """
+    config = ChainRuntimeConfig(media_extensions=(), github_proxy="https://mirror.example/")
+    monkeypatch.setattr(image_service, "get_chain_runtime_config_snapshot", lambda: config)
+    request = ImageHelper._fetch_request(url, None, True, None)
+    mirror = ImageHelper._github_mirror_request(request, None)
+    assert mirror.url == f"https://mirror.example/{url}"
+    assert mirror.cache_path == request.cache_path
+
+
 def _mock_image_http(monkeypatch, respond):
     """
     替换同步和异步真实传输层，保留 HTTP 请求头与组合根的实际处理。

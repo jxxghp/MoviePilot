@@ -252,6 +252,13 @@ credential, or enable, rotate, or export widget grants on a user's behalf. Readi
 issue or rotate credentials. See `docs/widgets.md` for the protocol and user scope. System extensions
 must not hold the main login token.
 
+`GET /api/v1/plugin/history/{plugin_id}?force=false` reads one installed plugin (or instance)
+from its bound repository without aggregating the market; unknown plugins return 404
+and unbound plugins retain their local snapshot. Use `force=true` only
+when a fresh index is needed; `/plugin/history/{plugin_id}` retains its default refresh.
+Failed/missing indexes retry after five minutes; transport failures remain failures
+for installation admission. Documentation queries read only the selected configured repository.
+
 Plugin metadata may include `plugin_readme`, an optional HTTP(S) documentation link.
 The UI resolves missing links through the admin REST endpoint
 `GET /api/v1/plugin/readme/{plugin_id}?repo_url=...`, which returns `url` or null

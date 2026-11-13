@@ -528,9 +528,12 @@ class PluginCatalogQuery:
         identities: Callable[[list[str]], Awaitable[list[PluginIdentity]]],
         free_threaded: Callable[[], bool],
         readme_url: Optional[Callable[[str, str, Optional[str]], Awaitable[Optional[str]]]] = None,
+        source_candidates: Optional[Callable[[str], Awaitable[list[Plugin]]]] = None,
     ) -> None:
         """
         保存运行态目录、来源身份读取和解释器变体判定窄端口。
+
+        :param source_candidates: 只读取所选配置仓库的候选；未装配时不回退全市场扫描
         """
         self._installed_plugins = installed_plugins
         self._local_plugins = local_plugins
@@ -540,6 +543,7 @@ class PluginCatalogQuery:
         self._identities = identities
         self._free_threaded = free_threaded
         self._readme_url = readme_url
+        self._source_candidates = source_candidates
 
     async def documentation(self, plugin_id: str, repo_url: str) -> PluginDocumentation:
         """
@@ -549,11 +553,12 @@ class PluginCatalogQuery:
         :param repo_url: 用户当前查看或选择安装的仓库；本地来源只使用显式链接
         :return: 文档入口；不在目录中的来源、缺失文档均返回空入口
         """
-        candidates = (
-            self._local_repo_plugins()
-            if repo_url.startswith("local://")
-            else await self._online_candidates(False)
-        )
+        if repo_url.startswith("local://"):
+            candidates = self._local_repo_plugins()
+        elif self._source_candidates is not None:
+            candidates = await self._source_candidates(repo_url)
+        else:
+            return PluginDocumentation()
         matches = [
             plugin for plugin in candidates
             if (plugin.id or "").lower() == plugin_id.lower()
