@@ -1,16 +1,55 @@
 """
-种子身份与下载链接的纯领域判断规则。
+种子身份、下载链接与剧集文件选择的纯领域判断规则。
 """
 
 import base64
 import binascii
 import hashlib
 import re
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Optional, Union
 from urllib.parse import parse_qs, urlsplit
 
 if TYPE_CHECKING:
     from app.domain.context import TorrentInfo
+
+
+def select_episode_files(
+    files: Iterable[tuple[int, set[int], bool]], episodes: set[int],
+) -> tuple[list[int], list[int], set[int]]:
+    """
+    按视频覆盖集数选择文件，保留无集号的非视频附属文件。
+
+    多集文件与目标集有交集即选中，允许一并下载同文件中的其它集。仅请求一集且
+    只有一个单集或无集号视频时，沿用识别修正后的唯一视频兜底；附属文件不证明视频覆盖。
+
+    :param files: 文件索引、已按来源识别词解析的集数、是否为视频组成的条目
+    :param episodes: 本次需要完整覆盖的目标集数
+    :return: 需要下载的索引、不下载的索引、已选视频覆盖的集数；输入条目不会被修改
+    """
+    wanted: list[int] = []
+    unwanted: list[int] = []
+    matched: set[int] = set()
+    media_files: list[tuple[int, set[int]]] = []
+    for file_id, file_episodes, is_video in files:
+        if is_video:
+            media_files.append((file_id, file_episodes))
+        if file_episodes.intersection(episodes):
+            wanted.append(file_id)
+            if is_video:
+                matched.update(file_episodes)
+        elif not file_episodes and not is_video:
+            wanted.append(file_id)
+        else:
+            unwanted.append(file_id)
+    if not episodes.issubset(matched) and len(episodes) == 1 and len(media_files) == 1:
+        file_id, file_episodes = media_files[0]
+        # 无交集的多集视频不能用唯一视频规则冒充目标单集。
+        if len(file_episodes) <= 1:
+            unwanted.remove(file_id)
+            wanted.append(file_id)
+            matched.update(episodes)
+    return wanted, unwanted, matched
 
 
 def is_magnet_link(content: Union[str, bytes]) -> bool:

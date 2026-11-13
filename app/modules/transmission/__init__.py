@@ -156,6 +156,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         """
         读取种子内容并添加下载任务，按需选择剧集文件。
 
+        已有任务直接返回存在标志，不暂停或重选文件，包括 RPC 返回的重复添加结果。
+
         :param content: 本地种子路径、磁力链接或种子文件字节内容；普通 URL 不会由本方法下载
         :param download_dir: MoviePilot 侧的下载目录，会映射为下载器路径
         :param cookie: 传给下载器的站点 Cookie
@@ -195,7 +197,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             labels = get_runtime_setting('TORRENT_TAG').split(',')
         else:
             labels = None
-        added_torrent = server.add_torrent(
+        added_torrent, already_exists = server.add_torrent_with_status(
             content=torrent_content,
             download_dir=self.normalize_path(download_dir, downloader),
             is_paused=is_paused,
@@ -204,6 +206,9 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         )
         # TR 始终使用原始种子布局, 返回"Original"
         torrent_layout = "Original"
+
+        if added_torrent and already_exists:
+            return downloader or self.get_default_config_name(), added_torrent.hashString, torrent_layout, DOWNLOAD_TASK_ALREADY_EXISTS
 
         if not added_torrent:
             # 查询所有下载器的种子
@@ -230,12 +235,6 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                                 if get_runtime_setting('TORRENT_TAG') and get_runtime_setting('TORRENT_TAG') not in labels:
                                     labels.append(get_runtime_setting('TORRENT_TAG'))
                                     server.set_torrent_tag(ids=torrent_hash, tags=labels)
-                            if is_paused:
-                                selected, message = self._select_download_files(
-                                    server, torrent_hash, episodes or set(), custom_words,
-                                )
-                                if not selected:
-                                    return None, None, None, message
                             return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, DOWNLOAD_TASK_ALREADY_EXISTS
                 finally:
                     torrents.clear()
@@ -292,8 +291,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         """
         先确认任务暂停再按来源集数映射选集，确认启动状态后才返回成功。
 
-        本次只请求一集且种子只有一个视频文件时，即使文件名保留累计集号，也按
-        唯一视频文件兜底选中，避免识别后的季集与物理文件集号不一致导致误报缺集。
+        视频按目标集交集选择，保留无集号非视频附件；单集请求保留唯一视频兜底。
 
         :param server: 已配置的 Transmission 客户端
         :param torrent_hash: 需要暂停、选集并恢复的任务哈希
@@ -316,40 +314,23 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         state_failure = failure if paused else (
             f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
         )
-        wanted: list[int] = []
-        unwanted: list[int] = []
-        matched: set[int] = set()
         media_extensions = {
             str(extension).lower()
             for extension in get_runtime_setting("RMT_MEDIAEXT", [])
         }
-        media_files: list[tuple[int, set[int]]] = []
         try:
-            for item in torrent_files:
-                file_id = item.id
-                file_name = Path(item.name).name
-                file_path = Path(file_name)
-                meta = MetaInfo(file_name, custom_words=custom_words.splitlines() if custom_words else [])
-                file_episodes = set(meta.episode_list)
-                if file_path.suffix.lower() in media_extensions:
-                    media_files.append((file_id, file_episodes))
-                if file_episodes and file_episodes.issubset(episodes):
-                    wanted.append(file_id)
-                    matched.update(file_episodes)
-                else:
-                    unwanted.append(file_id)
+            wanted, unwanted, matched = torrent_rules.select_episode_files(
+                (
+                    (item.id, set(MetaInfo(
+                        Path(item.name).name,
+                        custom_words=custom_words.splitlines() if custom_words else [],
+                    ).episode_list), Path(item.name).suffix.lower() in media_extensions)
+                    for item in torrent_files
+                ), episodes,
+            )
         finally:
             torrent_files.clear()
-        if not set(episodes).issubset(matched) and len(episodes) == 1 and len(media_files) == 1:
-            file_id, file_episodes = media_files[0]
-            # 多集视频不能当作单集兜底，否则会把合集误选为目标单集。
-            if len(file_episodes) <= 1:
-                if file_id in unwanted:
-                    unwanted.remove(file_id)
-                if file_id not in wanted:
-                    wanted.append(file_id)
-                matched.update(episodes)
-        if not wanted or not set(episodes).issubset(matched):
+        if not episodes or not episodes.issubset(matched):
             return False, f"{state_failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
         if not server.set_files(torrent_hash, wanted) or not server.set_unwanted_files(torrent_hash, unwanted):
             return False, f"{state_failure}：文件选择设置未确认"

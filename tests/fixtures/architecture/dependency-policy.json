@@ -145,7 +145,7 @@
           {"source": "app.modules.qbittorrent.qbittorrent", "target": "qbittorrentapi", "kind": "network_sdk", "fingerprint": "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d"},
           {"source": "app.modules.slack.slack", "target": "slack_bolt", "kind": "network_sdk", "fingerprint": "d970999c7c77ca5e93ec8a2773fa0b3db10df63ecce780b5fd52ca038734666a"},
           {"source": "app.modules.slack.slack", "target": "slack_sdk", "kind": "network_sdk", "fingerprint": "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14"},
-          {"source": "app.modules.transmission.transmission", "target": "transmission_rpc", "kind": "network_sdk", "fingerprint": "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf"}
+          {"source": "app.modules.transmission.transmission", "target": "transmission_rpc", "kind": "network_sdk", "fingerprint": "43c697821ba063624f01a2c75f77f0ec9fe08a8e72a7ec991845c83c805bbc2b"}
         ]
       },
       {

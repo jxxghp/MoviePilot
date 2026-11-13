@@ -41,6 +41,7 @@ def _rejecting_server(module_cls):
         server.add_torrent.return_value = (False, [])
     elif module_cls is TransmissionModule:
         server.add_torrent.return_value = None
+        server.add_torrent_with_status.return_value = (None, False)
     else:
         server.add_torrent.return_value = False
     server.get_torrents.return_value = ([], False)

@@ -88,6 +88,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         category: Optional[str] = None,
         label: Optional[str] = None,
         downloader: Optional[str] = None,
+        custom_words: Optional[str] = None,
     ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         读取种子内容并添加下载任务，按需选择剧集文件。
@@ -99,6 +100,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param category: 下载器任务分类，当前下载器不使用
         :param label: 逗号分隔的任务标签；省略时使用系统种子标签
         :param downloader: 下载器配置名称，省略时使用默认实例
+        :param custom_words: 来源识别词，按行参与文件名识别，使选集结果与订阅一致
         :return: 下载器名称、任务哈希、内容布局和结果说明；无适用实例时返回 None，
             添加失败时前三项为空，说明包含失败原因
         """
@@ -206,7 +208,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
             else:
                 torrent_hash = added_torrent_hash
                 if episodes:
-                    selected, message = self._select_episode_files(server, torrent_hash, episodes)
+                    selected, message = self._select_episode_files(server, torrent_hash, episodes, custom_words)
                     if not selected:
                         return None, None, None, message
                     return (
@@ -224,28 +226,36 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                     )
 
     @staticmethod
-    def _select_episode_files(server: Rtorrent, torrent_hash: str, episodes: Set[int]) -> Tuple[bool, str]:
+    def _select_episode_files(
+        server: Rtorrent, torrent_hash: str, episodes: Set[int], custom_words: Optional[str] = None,
+    ) -> Tuple[bool, str]:
         """
         对暂停添加的任务完成选集，所有RPC均成功才允许下载链确认任务。
 
         :param server: 当前下载器客户端
         :param torrent_hash: 已暂停添加的任务Hash
-        :param episodes: 本次允许下载的目标集数
+        :param episodes: 本次需要完整覆盖的目标集数，多集文件按交集选择
+        :param custom_words: 来源识别词，按行参与物理文件名识别
         :return: 是否确认选集启动成功及结果说明
         """
         torrent_files = server.get_files(torrent_hash)
         if not torrent_files:
             return False, "获取种子文件失败，下载任务保留暂停状态，请检查下载器"
-        file_ids, selected_episodes = [], set()
-        for torrent_file in torrent_files:
-            meta = MetaInfo(torrent_file["name"])
-            if meta.episode_list and set(meta.episode_list).issubset(episodes):
-                selected_episodes.update(meta.episode_list)
-            else:
-                file_ids.append(torrent_file["id"])
-        if not selected_episodes:
+        media_extensions = {str(extension).lower() for extension in get_runtime_setting("RMT_MEDIAEXT", [])}
+        wanted, unwanted, selected_episodes = torrent_rules.select_episode_files(
+            (
+                (item["id"], set(MetaInfo(
+                    Path(item["name"]).name,
+                    custom_words=custom_words.splitlines() if custom_words else [],
+                ).episode_list), Path(item["name"]).suffix.lower() in media_extensions)
+                for item in torrent_files
+            ), episodes,
+        )
+        if not episodes or not episodes.issubset(selected_episodes):
             return False, "未匹配到目标集数，下载任务保留暂停状态"
-        if file_ids and not server.set_files(torrent_hash=torrent_hash, file_ids=file_ids, priority=0):
+        if unwanted and not server.set_files(torrent_hash=torrent_hash, file_ids=unwanted, priority=0):
+            return False, "设置选集优先级失败，下载任务保留暂停状态"
+        if not server.set_files(torrent_hash=torrent_hash, file_ids=wanted, priority=1):
             return False, "设置选集优先级失败，下载任务保留暂停状态"
         if not server.start_torrents(torrent_hash):
             stopped = server.stop_torrents(torrent_hash)
