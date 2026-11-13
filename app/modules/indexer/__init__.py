@@ -481,6 +481,20 @@ class IndexerModule(_ModuleBase):
             )
 
     @staticmethod
+    def __site_user_agent(site: dict[str, Any]) -> Optional[str]:
+        """
+        使用适配器声明的 User-Agent 规则构造下载上下文。
+
+        :param site: 包含搜索协议和当前用户配置的站点上下文
+        :return: 专站规则处理后的 User-Agent，普通站点保留当前配置值
+        """
+        parser_class = SPIDER_PARSER_CLASSES.get(str(site.get("parser") or ""))
+        get_user_agent = getattr(parser_class, "get_user_agent", None)
+        if callable(get_user_agent):
+            return cast(str, get_user_agent(site.get("ua")))
+        return cast(Optional[str], site.get("ua"))
+
+    @staticmethod
     def __parse_result(site: dict[str, Any], result_array: list[dict[str, Any]], seconds: int) -> List[TorrentInfo]:
         """
         解析搜索结果为 TorrentInfo 对象。
@@ -506,7 +520,7 @@ class IndexerModule(_ModuleBase):
                 site=site.get("id"),
                 site_name=site.get("name"),
                 site_cookie=site.get("cookie"),
-                site_ua=site.get("ua"),
+                site_ua=IndexerModule.__site_user_agent(site),
                 site_proxy=bool(site.get("proxy")),
                 site_order=int(site.get("pri") or 0),
                 site_downloader=site.get("downloader"),
@@ -575,7 +589,7 @@ class IndexerModule(_ModuleBase):
         if not torrent.enclosure and not allow_missing:
             return None
         torrent.site_cookie = site.get("cookie") or ""
-        torrent.site_ua = site.get("ua") or ""
+        torrent.site_ua = IndexerModule.__site_user_agent(site) or ""
         torrent.site_proxy = bool(site.get("proxy"))
         torrent.site_downloader = site.get("downloader") or ""
         return torrent

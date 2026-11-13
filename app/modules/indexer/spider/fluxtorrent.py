@@ -2,9 +2,12 @@
 通过 FluxTorrent 兼容层搜索种子并转换为通用索引结果。
 """
 
+import asyncio
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.application.site.throttle import async_wait_for_site_request, wait_for_site_request
 from app.foundation import temporal as time_tools
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -12,6 +15,9 @@ from app.schemas.types import MediaType
 
 # FluxTorrent 兼容层的只读接口前缀。
 _COMPAT_PREFIX = "/api/v1/compat/nexusphp"
+# 网关偶发 503 时，只读请求最多重试两次，分别退避三秒和六秒。
+_GATEWAY_RETRY_SECONDS = 3
+_GATEWAY_RETRIES = 2
 
 # 兼容层促销档位到下载、上传量系数的映射，与站点计费口径一致：
 # free 下载 0 / x2 上传 2 / x2free 0+2 / half 下载 0.5 / x2half 0.5+2 / p30 下载 0.3。
@@ -90,6 +96,74 @@ def site_api_token(site: Dict[str, Any]) -> str:
     return str(site.get("apikey") or site.get("token") or "").strip()
 
 
+def site_request_limits(site: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    构造兼容层请求共用的无凭据流控配置。
+
+    保留用户设置的请求间隔和次数窗口，使连接检测、搜索与用户资料请求
+    共用同一站点额度。
+
+    :param site: 站点索引配置或已保存的站点流控快照
+    :return: 只包含站点身份和流控字段的独立配置
+    """
+    limits = {key: site.get(key) for key in
+              ("id", "limit_seconds", "limit_interval", "limit_count")}
+    limits["domain"] = site_base_url(site)
+    return limits
+
+
+def get_api_response(
+    request: RequestUtils,
+    url: str,
+    limits: Dict[str, Any],
+    params: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """
+    在共享流控下请求只读 API，网关 503 最多退避重试两次。
+
+    :param request: 已配置认证头和网络选项的同步传输客户端
+    :param url: 只读 API 的完整地址
+    :param limits: 不含凭据的站点流控配置
+    :param params: 查询参数，未提供时不添加参数
+    :return: 最后一次响应或 None，由调用方解析并关闭
+    """
+    response = None
+    for attempt in range(_GATEWAY_RETRIES + 1):
+        wait_for_site_request(limits)
+        response = request.get_res(url=url, params=params, allow_redirects=False)
+        if response is None or response.status_code != 503 or attempt == _GATEWAY_RETRIES:
+            break
+        response.close()
+        time.sleep(_GATEWAY_RETRY_SECONDS * (attempt + 1))
+    return response
+
+
+async def async_get_api_response(
+    request: AsyncRequestUtils,
+    url: str,
+    limits: Dict[str, Any],
+    params: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """
+    异步申请同一站点额度，网关 503 使用可取消的延迟最多重试两次。
+
+    :param request: 已配置认证头和网络选项的异步传输客户端
+    :param url: 只读 API 的完整地址
+    :param limits: 不含凭据的站点流控配置
+    :param params: 查询参数，未提供时不添加参数
+    :return: 最后一次响应或 None，由调用方解析并关闭
+    """
+    response = None
+    for attempt in range(_GATEWAY_RETRIES + 1):
+        await async_wait_for_site_request(limits)
+        response = await request.get_res(url=url, params=params, allow_redirects=False)
+        if response is None or response.status_code != 503 or attempt == _GATEWAY_RETRIES:
+            break
+        await response.aclose()
+        await asyncio.sleep(_GATEWAY_RETRY_SECONDS * (attempt + 1))
+    return response
+
+
 class FluxTorrentSpider:
     """
     FluxTorrent 兼容层索引器。
@@ -100,6 +174,8 @@ class FluxTorrentSpider:
 
     # 兼容层单页容量上限为 50。
     _size = 50
+    # 每次实际 API 请求自行申请额度，模块入口无需重复等待。
+    manages_request_throttle = True
 
     def __init__(self, indexer: dict[str, Any]):
         """
@@ -112,8 +188,24 @@ class FluxTorrentSpider:
         self._site_url = site_base_url(indexer)
         self._api_token = site_api_token(indexer)
         self._proxy = get_runtime_setting("PROXY") if indexer.get("proxy") else None
-        self._user_agent = indexer.get("ua") or get_runtime_setting("USER_AGENT")
-        self._timeout = indexer.get("timeout") or 15
+        self._user_agent = self.get_user_agent(indexer.get("ua"))
+        self._timeout = indexer.get("timeout") or 30
+        self._rate_site = site_request_limits(indexer)
+
+    @staticmethod
+    def get_user_agent(ua: Optional[str]) -> str:
+        """
+        为 API 请求和种子下载选择站点自定义或默认浏览器 User-Agent。
+
+        好学网关会拒绝默认 MoviePilot 标识，返回 Nginx 503。资源合并填入的
+        宿主默认标识同样转换为浏览器标识，站点显式设置的其他值保持优先。
+
+        :param ua: 站点配置或资源合并后的 User-Agent
+        :return: 本次站点请求使用的 User-Agent
+        """
+        if not ua or ua == get_runtime_setting("USER_AGENT"):
+            return str(get_runtime_setting("NORMAL_USER_AGENT"))
+        return ua
 
     @classmethod
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
@@ -208,16 +300,16 @@ class FluxTorrentSpider:
         """
         if not self._api_token:
             return False, "未配置开放 API Token（fxo_ 开头）"
-        with RequestUtils(
+        response = get_api_response(RequestUtils(
             headers=self._request_headers(),
             ua=self._user_agent,
             proxies=self._proxy or {},
             timeout=self._timeout,
-        ).response_manager(
-            method="GET",
+        ),
             url=f"{self._base_url}/user.json",
-            allow_redirects=False,
-        ) as response:
+            limits=self._rate_site,
+        )
+        try:
             if response is None:
                 return False, "无法连接 FluxTorrent 兼容层接口"
             if response.status_code != 200:
@@ -244,6 +336,9 @@ class FluxTorrentSpider:
             return False, str(
                 payload.get("message") or "开放 API Token 无效或已过期"
             )
+        finally:
+            if response is not None:
+                response.close()
 
     @staticmethod
     def _media_type(item: Dict[str, Any]) -> str:
@@ -354,12 +449,16 @@ class FluxTorrentSpider:
             logger.warning(f"{self._name} 未配置开放 API 令牌")
             return True, []
         params = self._build_params(keyword, page)
-        response = RequestUtils(
+        response = get_api_response(RequestUtils(
             headers=self._request_headers(),
             proxies=self._proxy,
             timeout=self._timeout,
-        ).get_res(url=f"{self._base_url}/torrents.json", params=params)
-        return self._process_search_response(response)
+        ), url=f"{self._base_url}/torrents.json", limits=self._rate_site, params=params)
+        try:
+            return self._process_search_response(response)
+        finally:
+            if response is not None:
+                response.close()
 
     async def async_search(
         self,
@@ -377,9 +476,13 @@ class FluxTorrentSpider:
             logger.warning(f"{self._name} 未配置开放 API 令牌")
             return True, []
         params = self._build_params(keyword, page)
-        response = await AsyncRequestUtils(
+        response = await async_get_api_response(AsyncRequestUtils(
             headers=self._request_headers(),
             proxies=self._proxy,
             timeout=self._timeout,
-        ).get_res(url=f"{self._base_url}/torrents.json", params=params)
-        return self._process_search_response(response)
+        ), url=f"{self._base_url}/torrents.json", limits=self._rate_site, params=params)
+        try:
+            return self._process_search_response(response)
+        finally:
+            if response is not None:
+                await response.aclose()

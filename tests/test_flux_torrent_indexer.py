@@ -4,11 +4,15 @@
 
 import asyncio
 import json
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 import app.modules.indexer as indexer_module
 from app.foundation import temporal as time_tools
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser import SiteSchema
+from app.modules.indexer.parser import fluxtorrent as flux_parser_module
 from app.modules.indexer.parser.fluxtorrent import FluxTorrentSiteUserInfo
 from app.modules.indexer.spider import fluxtorrent as flux_torrent_module
 from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider
@@ -16,6 +20,19 @@ from app.schemas.types import MediaType
 
 _SITE_URL = "https://flux.example/"
 _API_TOKEN = "fxo_test_token"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_request_limits(monkeypatch):
+    """
+    隔离共享请求等待和站点查询，回放测试不消耗真实时间或站点配置。
+    """
+    monkeypatch.setattr(flux_torrent_module, "wait_for_site_request", Mock())
+    monkeypatch.setattr(flux_torrent_module, "async_wait_for_site_request", AsyncMock())
+    monkeypatch.setattr(
+        flux_parser_module, "site_request_config",
+        lambda _url: {"id": "flux", "domain": _SITE_URL},
+    )
 
 
 class _FakeResponse:
@@ -31,6 +48,7 @@ class _FakeResponse:
         self.status_code = status_code
         self.reason = "OK"
         self.text = json.dumps(payload) if payload is not None else ""
+        self.closed = False
 
     def __bool__(self) -> bool:
         """
@@ -43,6 +61,18 @@ class _FakeResponse:
         返回预设 JSON 数据。
         """
         return self._payload
+
+    def close(self):
+        """
+        记录同步响应释放，供重试和最终解析收尾断言。
+        """
+        self.closed = True
+
+    async def aclose(self):
+        """
+        记录异步响应释放，避免重试延迟期间继续持有连接。
+        """
+        self.closed = True
 
 
 def _build_indexer(**overrides) -> dict:
@@ -142,6 +172,174 @@ def test_flux_torrent_spider_maps_compat_items(monkeypatch):
     }]
 
 
+def test_flux_torrent_request_limits_preserve_user_settings():
+    """
+    用户配置的间隔与次数限制保持有效，流控快照不携带凭据。
+    """
+    limits = flux_torrent_module.site_request_limits(_build_indexer(
+        limit_seconds=8, limit_interval=60, limit_count=5,
+    ))
+
+    assert limits == {
+        "id": "flux", "domain": _SITE_URL.rstrip("/"),
+        "limit_seconds": 8, "limit_interval": 60, "limit_count": 5,
+    }
+    assert flux_torrent_module.site_request_limits(_build_indexer())["limit_seconds"] is None
+    assert FluxTorrentSpider.manages_request_throttle is True
+
+
+def test_flux_torrent_search_timeout_preserves_user_setting():
+    """
+    慢搜索默认等待三十秒，用户显式设置的超时时间继续优先。
+    """
+    assert FluxTorrentSpider(_build_indexer())._timeout == 30
+    assert FluxTorrentSpider(_build_indexer(timeout=45))._timeout == 45
+
+
+@pytest.mark.parametrize("ua", [None, "", "MoviePilot/3.2.6", "Custom-UA"])
+def test_flux_torrent_user_agent_reaches_api_and_download_context(monkeypatch, ua):
+    """
+    默认标识转换为浏览器标识，资料、搜索结果和检查点恢复沿用相同规则。
+    """
+    monkeypatch.setattr(flux_torrent_module, "get_runtime_setting", lambda key: {
+        "USER_AGENT": "MoviePilot/3.2.6", "NORMAL_USER_AGENT": "Browser-UA",
+    }[key])
+    site = _build_indexer(id=42, parser="FluxTorrent", ua=ua)
+    expected = "Custom-UA" if ua == "Custom-UA" else "Browser-UA"
+    spider = FluxTorrentSpider(site)
+    assert spider._request_headers()["User-Agent"] == expected
+    records = spider._parse_result(_torrent_items())
+    torrents = IndexerModule._IndexerModule__parse_result(site, records, seconds=0)
+    assert torrents[0].site_ua == expected
+    restored = IndexerModule.restore_search_torrent(site, torrents[0].to_dict())
+    assert restored.site_ua == expected
+    parser = FluxTorrentSiteUserInfo(
+        site_name="FluxTorrent", url=_SITE_URL, site_cookie=None,
+        apikey=_API_TOKEN, token=None, ua=ua,
+    )
+    parser._parse_site_page({})
+    assert parser._addition_headers["User-Agent"] == expected
+
+
+def test_standard_indexer_preserves_configured_user_agent():
+    """
+    普通站点搜索结果及检查点恢复保持原有 User-Agent 配置语义。
+    """
+    site = _build_indexer(id=42, ua="Custom-UA")
+    records = FluxTorrentSpider(site)._parse_result(_torrent_items())
+    torrents = IndexerModule._IndexerModule__parse_result(site, records, seconds=0)
+    assert torrents[0].site_ua == "Custom-UA"
+    restored = IndexerModule.restore_search_torrent(site, torrents[0].to_dict())
+    assert restored.site_ua == "Custom-UA"
+
+
+def test_flux_torrent_connection_and_search_wait_before_each_request(monkeypatch):
+    """
+    连接检测、同步搜索与异步搜索应在 HTTP 调用之前申请相同的站点额度。
+    """
+    events = []
+    expected_limits = flux_torrent_module.site_request_limits(_build_indexer())
+
+    def wait(limits):
+        """
+        记录同步请求额度申请并核对稳定站点身份。
+        """
+        assert limits == expected_limits
+        events.append("wait")
+
+    async def async_wait(limits):
+        """
+        记录异步请求额度申请并核对稳定站点身份。
+        """
+        wait(limits)
+
+    def search(_self, url, **_kwargs):
+        """
+        回放同步种子搜索响应。
+        """
+        events.append("connection" if url.endswith("user.json") else "search")
+        return _FakeResponse(_envelope({"items": _torrent_items()}))
+
+    async def async_search(_self, **_kwargs):
+        """
+        回放异步种子搜索响应。
+        """
+        events.append("async_search")
+        return _FakeResponse(_envelope({"items": _torrent_items()}))
+
+    monkeypatch.setattr(flux_torrent_module, "wait_for_site_request", wait)
+    monkeypatch.setattr(flux_torrent_module, "async_wait_for_site_request", async_wait)
+    monkeypatch.setattr(flux_torrent_module.RequestUtils, "get_res", search)
+    monkeypatch.setattr(flux_torrent_module.AsyncRequestUtils, "get_res", async_search)
+
+    spider = FluxTorrentSpider(_build_indexer())
+    assert spider.test_connection()[0]
+    assert not spider.search(keyword="Example")[0]
+    assert not asyncio.run(spider.async_search(keyword="Example"))[0]
+    assert events == ["wait", "connection", "wait", "search", "wait", "async_search"]
+
+
+def test_flux_torrent_userdata_waits_before_profile_and_legacy_statistics(monkeypatch):
+    """
+    资料刷新和老版本补充统计均须经过共享流控，沿用搜索与连接检测的站点身份。
+    """
+    events = []
+    expected_limits = flux_torrent_module.site_request_limits(_build_indexer())
+
+    def wait(limits):
+        """
+        核对资料刷新使用的站点额度与专站爬虫一致。
+        """
+        assert limits == expected_limits
+        events.append("wait")
+
+    def get_res(_self, url, **_kwargs):
+        """
+        回放缺少做种字段的资料以及后续补充统计。
+        """
+        events.append(url.rsplit("/", 1)[-1])
+        data = {"id": 42, "username": "tester"} if url.endswith("user.json") else {
+            "seeding": 12, "seedingSize": 1024, "joinTime": "2025-07-15T20:45:13+00:00",
+        }
+        return _FakeResponse(_envelope(data))
+
+    monkeypatch.setattr(flux_torrent_module, "wait_for_site_request", wait)
+    monkeypatch.setattr(flux_torrent_module.RequestUtils, "get_res", get_res)
+    parser = FluxTorrentSiteUserInfo(
+        site_name="FluxTorrent", url=_SITE_URL, site_cookie=None,
+        apikey=_API_TOKEN, token=None, ua="MoviePilot-Test",
+    )
+    parser.parse()
+
+    assert events == ["wait", "user.json", "wait", "ptppUserInfo"]
+    assert parser.seeding == 12
+    assert parser.seeding_size == 1024
+    assert parser.err_msg is None
+
+
+def test_flux_torrent_auth_failure_does_not_request_other_userdata_models(monkeypatch):
+    """
+    API 认证失败后保留失败结果，停止补充统计和网页模型回退，避免额外请求放大限流。
+    """
+    requests = []
+
+    def get_res(_self, url, **_kwargs):
+        """
+        记录真实资料入口发出的请求并回放认证失败。
+        """
+        requests.append(url)
+        return _FakeResponse(_envelope(None, code=2001, message="未认证"), status_code=401)
+
+    monkeypatch.setattr(flux_torrent_module.RequestUtils, "get_res", get_res)
+    monkeypatch.setattr(IndexerModule, "_site_schemas", [FluxTorrentSiteUserInfo])
+    module = object.__new__(IndexerModule)
+    result = module.refresh_userdata(_build_indexer(schema="FluxTorrent"))
+
+    assert result.userid is None
+    assert result.err_msg == "未认证"
+    assert requests == [f"{_SITE_URL}api/v1/compat/nexusphp/user.json"]
+
+
 def test_flux_torrent_spider_maps_promotion_factors():
     """
     促销档位应换算为站点计费口径的下载与上传倍率。
@@ -181,44 +379,20 @@ def test_flux_torrent_spider_maps_media_types():
     assert FluxTorrentSpider._media_type({}) == MediaType.UNKNOWN.value
 
 
-class _FakeResponseManager:
-    """
-    提供 RequestUtils.response_manager 的上下文管理器契约。
-    """
-
-    def __init__(self, response):
-        """
-        保存要回放的响应。
-        """
-        self._response = response
-
-    def __enter__(self):
-        """
-        返回回放的响应。
-        """
-        return self._response
-
-    def __exit__(self, *_exc):
-        """
-        不吞异常。
-        """
-        return False
-
-
 def _patch_connection(monkeypatch, response, captured: dict = None):
     """
     让连接检测拿到固定响应，并记录请求地址。
     """
-    def fake_manager(_self, **kwargs):
+    def fake_get_res(_self, **kwargs):
         """
         回放预设响应。
         """
         if captured is not None:
             captured.update(kwargs)
-        return _FakeResponseManager(response)
+        return response
 
     monkeypatch.setattr(
-        flux_torrent_module.RequestUtils, "response_manager", fake_manager
+        flux_torrent_module.RequestUtils, "get_res", fake_get_res
     )
 
 
@@ -245,14 +419,14 @@ def test_flux_torrent_test_connection_requires_token(monkeypatch):
     """
     没有令牌时不应发起连接检测请求。
     """
-    def fake_manager(*_args, **_kwargs):
+    def fake_get_res(*_args, **_kwargs):
         """
         记录不应发生的请求。
         """
         raise AssertionError("未配置令牌时不应发起请求")
 
     monkeypatch.setattr(
-        flux_torrent_module.RequestUtils, "response_manager", fake_manager
+        flux_torrent_module.RequestUtils, "get_res", fake_get_res
     )
 
     assert FluxTorrentSpider(_build_indexer(apikey="")).test_connection() == (
@@ -275,6 +449,96 @@ def test_flux_torrent_test_connection_surfaces_auth_error(monkeypatch):
 
     assert success is False
     assert "未认证" in message
+
+
+@pytest.mark.parametrize("operation", ["connection", "search", "userdata"])
+def test_flux_torrent_retries_gateway_503_once(monkeypatch, operation):
+    """
+    只读入口遇到网关 503 时先释放响应，延迟后重新申请额度并重试一次。
+    """
+    first = _FakeResponse(None, status_code=503)
+    second = _FakeResponse(_envelope({
+        "id": 42, "username": "tester", "items": _torrent_items(),
+        "seeding": 0, "seeding_size": 0, "join_at": "2025-07-15T20:45:13+00:00",
+    }))
+    request = Mock(side_effect=[first, second])
+    sleep = Mock()
+    monkeypatch.setattr(flux_torrent_module.RequestUtils, "get_res", request)
+    monkeypatch.setattr(flux_torrent_module.time, "sleep", sleep)
+
+    if operation == "connection":
+        assert FluxTorrentSpider(_build_indexer()).test_connection()[0]
+    elif operation == "search":
+        assert not FluxTorrentSpider(_build_indexer()).search(keyword="Example")[0]
+    else:
+        parser = FluxTorrentSiteUserInfo(
+            site_name="FluxTorrent", url=_SITE_URL, site_cookie=None,
+            apikey=_API_TOKEN, token=None, ua="MoviePilot-Test",
+        )
+        parser.parse()
+        assert parser.userid == 42
+        assert parser.err_msg is None
+
+    assert request.call_count == 2
+    assert first.closed and second.closed
+    sleep.assert_called_once_with(3)
+    assert flux_torrent_module.wait_for_site_request.call_count == 2
+    assert request.call_args.kwargs["allow_redirects"] is False
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 503])
+def test_flux_torrent_retry_is_bounded_and_preserves_final_failure(monkeypatch, status):
+    """
+    认证与限流失败保持原响应，连续 503 最多重试两次并将最终失败返回调用方。
+    """
+    response = _FakeResponse(_envelope(None, code=2001, message="接口失败"), status_code=status)
+    request = Mock(return_value=response)
+    sleep = Mock()
+    monkeypatch.setattr(flux_torrent_module.RequestUtils, "get_res", request)
+    monkeypatch.setattr(flux_torrent_module.time, "sleep", sleep)
+
+    assert not FluxTorrentSpider(_build_indexer()).test_connection()[0]
+    assert request.call_count == (3 if status == 503 else 1)
+    assert sleep.call_count == (2 if status == 503 else 0)
+    if status == 503:
+        assert [call.args[0] for call in sleep.call_args_list] == [3, 6]
+    assert response.closed
+
+
+def test_flux_torrent_async_gateway_retry_releases_response(monkeypatch):
+    """
+    异步 503 重试使用可等待的延迟并释放两次响应，结果与同步解析保持一致。
+    """
+    first = _FakeResponse(None, status_code=503)
+    second = _FakeResponse(_envelope({"items": _torrent_items()}))
+    request = AsyncMock(side_effect=[first, second])
+    sleep = AsyncMock()
+    monkeypatch.setattr(flux_torrent_module.AsyncRequestUtils, "get_res", request)
+    monkeypatch.setattr(flux_torrent_module.asyncio, "sleep", sleep)
+
+    error, torrents = asyncio.run(FluxTorrentSpider(_build_indexer()).async_search(keyword="Example"))
+
+    assert not error and len(torrents) == 1
+    assert request.await_count == 2
+    assert first.closed and second.closed
+    sleep.assert_awaited_once_with(3)
+    assert flux_torrent_module.async_wait_for_site_request.await_count == 2
+
+
+def test_flux_torrent_async_gateway_retry_can_be_cancelled(monkeypatch):
+    """
+    取消异步退避时传播取消信号，已释放失败响应且不继续发送请求。
+    """
+    response = _FakeResponse(None, status_code=503)
+    request = AsyncMock(return_value=response)
+    monkeypatch.setattr(flux_torrent_module.AsyncRequestUtils, "get_res", request)
+    monkeypatch.setattr(flux_torrent_module.asyncio, "sleep", AsyncMock(side_effect=asyncio.CancelledError))
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(FluxTorrentSpider(_build_indexer()).async_search(keyword="Example"))
+
+    assert response.closed
+    assert request.await_count == 1
 
 
 def test_flux_torrent_test_connection_rejects_non_json(monkeypatch):
@@ -618,7 +882,7 @@ def test_refresh_userdata_uses_declared_flux_torrent_schema(monkeypatch):
     assert result.ratio == 2.0
 
 
-class _BrokenResponse:
+class _BrokenResponse(_FakeResponse):
     """
     提供响应体不是 JSON 时的最小 HTTP 响应契约。
     """

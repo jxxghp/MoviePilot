@@ -458,3 +458,19 @@ MP 已有 API Key 搜索及临时下载地址的实现案例，但不会自动�
   批量辅种接口接收的是 `info_hash`，不能将青蛙辅种插件的 `pieces_hash` 当成同一种指纹。
 
 离线回归只使用合成凭据并替换网络边界；实际 API 验收结果需另外记录，HTTP 200 本身不能证明种子文件有效。
+
+### 好学 FluxTorrent 兼容层适配
+
+好学使用 `/api/v1/compat/nexusphp` 只读 JSON 兼容层，站点索引资源从 `3.0.28` 起声明 `FluxTorrent` 搜索和用户数据协议。
+登录站点后，在安全设置页面的「开放 API 令牌」中签发包含 `read` 权限的 `fxo_` 开头令牌，填入 MoviePilot 站点 **API Key**。
+API Key 为空时使用 **Token**。这枚开放 API 令牌与站点 RSS 的 passkey 分别管理。[好学安全设置](https://www.hxpt.org/my?tab=security)
+
+- 连接检测和用户资料使用 `GET /user.json`，读取等级、上传下载量、分享率、魔力、做种数量、做种体积和注册时间。
+  老版本接口缺少做种和注册信息时，通过 `/api/v1/plugins/ptppUserInfo` 补齐。
+- 搜索和最新列表使用 `GET /torrents.json`，页码从 1 开始，每页 50 条，关键词使用 `keyword`。
+  分类和促销倍率取兼容层字段，详情链接指向 `/torrent/{id}`，种子文件通过 `GET /download.php?id=...&apikey=...` 获取。
+- 连接检测、用户资料及同步、异步搜索共用站点设置的请求间隔和次数窗口。
+  只读 API 遇到 HTTP 503 时分别等待三秒和六秒，最多重试两次；持续失败保留失败结果。
+  认证失败直接结束本次用户解析并保留接口错误。
+- 好学网关会对默认 MoviePilot User-Agent 返回 HTTP 503，适配器使用默认浏览器标识，
+  并将相同标识传递给种子下载；站点手工设置的其他 User-Agent 优先。
