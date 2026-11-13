@@ -70,6 +70,14 @@ UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
 尚未声明无 GIL 支持，不能直接替换 free-threaded 的源码依赖。
 发布审计脚本会将这个已核实修复提交按 1.2.1 版本匹配漏洞公告，安装仍使用锁文件中的源码地址。
 
+#### Beautiful Soup 的 CSS 选择器
+
+锁文件将 Soup Sieve 更新到 4.0.1，覆盖 `CVE-2026-126192` 与 `CVE-2026-126190` 的修复。[兄弟选择器公告](https://github.com/facelessuser/soupsieve/security/advisories/GHSA-4j63-6c4x-wfg4)、[后代选择器公告](https://github.com/facelessuser/soupsieve/security/advisories/GHSA-mmhr-3c5m-f64f)
+
+更新时按锁文件同步环境，并运行完整解析回归及标准、free-threaded 两套依赖审计。
+4.x 的选择器将 `template` 内容作为独立作用域，查询其内容需在对应节点上执行。
+`iframe` 内容沿用所属文档作用域。来源 HTML 解析升级时需同时核对这些边界。[上游变更说明](https://github.com/facelessuser/soupsieve/releases/tag/4.0)
+
 #### CloakBrowser 内核、授权与排队
 
 项目固定使用 `cloakbrowser==0.6.5`，这是上游从 `0.7.0` 开始要求授权 key 之前的最后一个版本。
