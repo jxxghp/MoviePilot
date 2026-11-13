@@ -19,6 +19,7 @@ from app.adapters.cache.backends import FileBackend
 from app.application.site.observation import capture_site_search_observation
 from app.chain.download import DownloadChain
 from app.chain.search import provider
+from app.domain import torrent as torrent_rules
 from app.domain.context import TorrentInfo
 from app.modules.indexer import IndexerModule
 from app.runtime.rate import RequestRateLimiter
@@ -321,3 +322,67 @@ def test_remote_cooldown_cannot_be_shortened(boundary):
     assert throttle.site_request_cooldown(site) == 590
     with pytest.raises(RateLimitExceededException, match="600 seconds"):
         throttle.wait_for_site_request(site)
+
+
+def test_long_local_interval_defers_instead_of_sleeping(boundary):
+    """
+    超过原地等待上限的访问间隔立即返回限流原因，不休眠、不占用额度，到期后恢复。
+    """
+    site = {"id": 42, "limit_seconds": 3600}
+    throttle.wait_for_site_request(site)
+    boundary.clock.now += 10
+
+    with pytest.raises(RateLimitExceededException, match="还需等待 3590 秒") as error:
+        throttle.wait_for_site_request(site)
+
+    assert torrent_rules.rate_limit_cooldown(str(error.value)) == 3600
+    assert boundary.clock.waits == []
+    boundary.clock.now += 3590
+    throttle.wait_for_site_request(site)
+    assert boundary.clock.waits == []
+
+
+def test_long_count_window_defers_and_short_wait_still_sleeps(boundary):
+    """
+    计数窗口剩余时间超过上限时延后，未超过上限的等待仍按原语义原地完成。
+    """
+    site = {"id": 42, "limit_interval": 3600, "limit_count": 2, "limit_seconds": 60}
+    throttle.wait_for_site_request(site)
+    throttle.wait_for_site_request(site)
+
+    assert boundary.clock.waits == [60]
+    with pytest.raises(RateLimitExceededException, match="还需等待 3540 秒"):
+        throttle.wait_for_site_request(site)
+    assert boundary.clock.waits == [60]
+
+
+def test_torrent_download_after_search_returns_without_waiting(boundary):
+    """
+    搜索刚用掉一小时一次的额度后，同站取种子立即失败并按限流冷却，不阻塞调用线程。
+    """
+    boundary.query.get_sync.side_effect = lambda site_id: Site(id=site_id, limit_seconds=3600)
+    provider._search_site_page(
+        boundary.owner, site={"id": 42, "limit_seconds": 3600}, keyword="Series", media_type=None, page=0,
+    )
+    errors = []
+
+    content = boundary.chain.download_torrent(TorrentInfo(site=42, enclosure=URL, title="Series"),
+                                              on_failure=errors.append)
+
+    assert content == (None, "", [])
+    assert errors and errors[0].startswith("站点限流：站点设置的访问间隔或次数未到")
+    assert DownloadChain._download_failure_ttl(errors[0]) == 3600
+    boundary.port.request.assert_not_called()
+    assert boundary.clock.waits == []
+
+
+@pytest.mark.asyncio
+async def test_async_long_local_interval_defers(boundary, monkeypatch):
+    """
+    异步搜索同样不为超过上限的本地额度长时间挂起。
+    """
+    monkeypatch.setattr(throttle.asyncio, "sleep", AsyncMock(side_effect=AssertionError("不应等待")))
+    site = {"id": 42, "limit_seconds": 3600}
+    await throttle.async_wait_for_site_request(site)
+    with pytest.raises(RateLimitExceededException, match="还需等待 3600 秒"):
+        await throttle.async_wait_for_site_request(site)
