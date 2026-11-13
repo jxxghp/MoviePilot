@@ -836,14 +836,15 @@
           "from:transmission_rpc.session.SessionStats as SessionStats",
           "import:transmission_rpc as transmission_rpc"
         ],
-        "fingerprint": "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
+        "fingerprint": "43c697821ba063624f01a2c75f77f0ec9fe08a8e72a7ec991845c83c805bbc2b",
         "kind": "network_sdk",
         "source": "app.modules.transmission.transmission",
         "target": "transmission_rpc",
         "uses": [
           "Transmission.__login_transmission|call:Client",
           "Transmission.__sync_incomplete_file_suffix|call:get_session",
-          "Transmission.__sync_incomplete_file_suffix|call:set_session"
+          "Transmission.__sync_incomplete_file_suffix|call:set_session",
+          "Transmission.add_torrent_with_status|call:Torrent"
         ]
       },
       {

@@ -2,6 +2,8 @@
 Transmission 客户端连接与下载任务操作封装。
 """
 
+import base64
+import json
 import time
 from typing import List, Optional, Sequence, Tuple, Union
 from urllib.parse import urlsplit
@@ -294,6 +296,53 @@ class Transmission:
                     continue
                 return None
         return None
+
+    def add_torrent_with_status(
+        self, content: Union[str, bytes], is_paused: Optional[bool] = False,
+        download_dir: Optional[str] = None, labels: Optional[list[str]] = None,
+        cookie: Optional[str] = None,
+    ) -> Tuple[Optional[Torrent], bool]:
+        """
+        添加任务并保留 RPC 的重复标志，供宿主决定是否可以选集。
+
+        SDK 的 add_torrent 会合并 torrent-added 与 torrent-duplicate，无法证明任务
+        是本次创建。此处复用 SDK 传输以保留认证、超时和 409 会话重试，只单独解释添加响应。
+        不依靠添加前查询，避免另一个调用方同时添加相同种子的竞争窗口。
+
+        :param content: 种子 URL、磁力链接或文件字节内容
+        :param is_paused: 新任务是否以暂停状态添加
+        :param download_dir: 下载器保存目录，省略时使用默认目录
+        :param labels: 新任务的标签列表
+        :param cookie: 下载种子 URL 使用的站点 Cookie
+        :return: 种子对象与是否已存在；未连接、请求失败或响应无效时返回 (None, False)
+        """
+        arguments = {
+            key: value for key, value in {
+                "download-dir": download_dir, "paused": is_paused, "labels": labels, "cookies": cookie,
+            }.items() if value is not None
+        }
+        if isinstance(content, bytes) and not content.startswith(b"magnet:"):
+            arguments["metainfo"] = base64.b64encode(content).decode("ascii")
+        else:
+            arguments["filename"] = content.decode("utf-8") if isinstance(content, bytes) else content
+        if not self.trc and getattr(self, "_host", None) and getattr(self, "_port", None):
+            self.reconnect()
+        for attempt in range(2):
+            if not self.trc:
+                return None, False
+            try:
+                response = json.loads(self.trc._http_query({"method": "torrent-add", "arguments": arguments}))
+                if response.get("result") != "success":
+                    raise ValueError(f"添加种子失败：{response.get('result')}")
+                for key, already_exists in (("torrent-added", False), ("torrent-duplicate", True)):
+                    if fields := response.get("arguments", {}).get(key):
+                        return Torrent(fields=fields), already_exists
+                raise ValueError("添加种子响应缺少任务信息")
+            except Exception as err:
+                logger.error(f"添加种子出错：{str(err)}")
+                if attempt == 0:
+                    self.reconnect()
+        return None, False
 
     def start_torrents(self, ids: TorrentIds) -> bool:
         """

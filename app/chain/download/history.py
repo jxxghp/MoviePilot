@@ -82,6 +82,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
         """
         提交下载历史、文件明细和 durable 下载事件。
 
+        选集文件按集号交集保留，确保跨目标边界的多集视频也有文件明细。
+
         :param already_exists: 下载器中已存在同一任务时为 True，仅补记历史，不再重复通知与文件明细；
                                若整包全部媒体文件已记录过，同时为这个资源登记提交退避
         """
@@ -159,7 +161,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
                 # 与订阅选集使用相同识别词，避免偏移前的文件集数被目标集数过滤。
                 file_meta = MetaInfo(Path(cast(str, item.filepath)).stem, custom_words=custom_word_list)
                 file_episodes = set(file_meta.episode_list)
-                if file_meta.begin_episode and file_meta.begin_episode in episodes:
+                if file_episodes.intersection(episodes):
                     selected_files.append(item)
                 elif len(file_episodes) <= 1:
                     unmatched_single_files.append(item)

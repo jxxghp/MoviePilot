@@ -76,11 +76,15 @@ def test_selected_episode_file_resolves_its_own_hash(db, offset, durable):
 
 
 @pytest.mark.parametrize("durable", [False, True])
-def test_single_raw_episode_file_is_recorded_for_selected_episode(durable):
+@pytest.mark.parametrize("file_list", [
+    ["Show.S03E54.mp4"],
+    ["Show.S03E05E06.mp4", "Show.S03E07.mp4"],
+], ids=["unique-video", "cross-boundary-video"])
+def test_selected_video_file_is_recorded_for_selected_episode(durable, file_list):
     """
-    唯一视频文件的原始累计集号与目标季集不一致时，成功结算仍须写入文件明细。
+    唯一视频兜底或跨集视频命中非起始集时，成功结算仍须写入对应文件明细。
     """
-    selected_file = "Show.S03E54.mp4"
+    selected_file = file_list[0]
     meta = MetaInfo("Show.S03E06.mp4")
     media = MediaInfo(type=MediaType.TV, title="示例剧", tmdb_id=107371)
     torrent = TorrentInfo(title="Show.S03E54")
@@ -94,7 +98,7 @@ def test_single_raw_episode_file_is_recorded_for_selected_episode(durable):
 
     chain._settle_download_success(
         context=context, media=media, meta=meta, torrent=torrent,
-        folder_name="show", file_list=[selected_file],
+        folder_name="show", file_list=file_list,
         download_dir=Path("/downloads"), layout="Original", downloader="qb",
         download_hash="episode-6-hash", download_episodes="E06",
         episodes={6}, channel=None, source="subscribe", userid=None,

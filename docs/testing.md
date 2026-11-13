@@ -205,10 +205,16 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 
 ## 种子下载重试回归
 
-下载选集回归使用真实 qBittorrent/Transmission Module 与离线下载器端口，验证自定义识别词
+下载选集回归使用真实 qBittorrent/Transmission/rTorrent Module 与离线下载器端口，验证自定义识别词
 从订阅计划一直传到下载器文件选择；目标集数不匹配或优先级未确认时不启动任务，不能写成功历史。
 启动结果未知时尝试确认暂停；无法确认则明确要求检查下载器，不能宣称任务已停止。
 已有下载任务只按原始种子 info 字节或磁力中的 v1/v2 哈希确认，名称与大小相同不能接管任务。
+已有任务返回存在标志，保留启停状态和文件选择，包括之前暂停的任务；不再通过重复提交自动恢复选集。
+新任务的视频文件按目标集交集选择，允许多集文件连带下载相邻集；无集号的非视频附属文件保留，
+无集号视频不随整包附件自动选中。只有视频可证明目标集完整覆盖，单集请求仍允许唯一视频兜底。
+`tests/test_episode_file_selection.py` 覆盖三种下载器的一致规则，历史明细也按交集保留多集视频。
+`tests/test_transmission_add_status.py` 在 SDK HTTP 边界回放新增、重复和 409 会话握手，验证
+重复添加及响应丢失后的重试不会被宿主误当作可以暂停重选的新任务。
 
 `tests/test_download_category.py` 从真实下载链经过 qBittorrent 模块和客户端，在 SDK 边界检查
 音乐缺分类时使用“音乐”、已有分类优先，以及自动管理开关和指定路径的传递。

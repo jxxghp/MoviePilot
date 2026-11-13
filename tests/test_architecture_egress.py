@@ -143,7 +143,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.slack.slack", "slack_sdk"): "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14",
     # Session 类型使扫描器识别原有的两处 close；未新增发送或会话关闭路径。
     ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "6c4ea48dd83616375a48785f9de9f477268f9236029e57b17ca1d2bde538fd4c",
-    ("app.modules.transmission.transmission", "transmission_rpc"): "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
+    # 区分添加与重复响应时只新增 Torrent 值对象构造，仍复用原 SDK 传输与会话握手。
+    ("app.modules.transmission.transmission", "transmission_rpc"): "43c697821ba063624f01a2c75f77f0ec9fe08a8e72a7ec991845c83c805bbc2b",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
     ("app.startup.composition.network", "websocket"): "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000",
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",

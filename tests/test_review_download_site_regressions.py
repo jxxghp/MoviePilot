@@ -78,7 +78,7 @@ def test_f036_transmission_requests_limit_fields():
 
 @pytest.mark.parametrize('files,set_ok,start_ok', [
     (None, True, True),
-    ([{'id': 0, 'name': 'Demo.S01E01.mkv'}], True, True),
+    ([{'id': 0, 'name': 'Demo.S01E03E04.mkv'}], True, True),
     ([{'id': 0, 'name': 'Demo.S01E01.mkv'}, {'id': 1, 'name': 'Demo.S01E02.mkv'}], False, True),
     ([{'id': 0, 'name': 'Demo.S01E02.mkv'}], True, False),
 ])
@@ -94,7 +94,8 @@ def test_f037_rtorrent_selection_failure_never_reports_hash(monkeypatch, files, 
     module = object.__new__(RtorrentModule)
     monkeypatch.setattr(module, 'get_instance', lambda name: server)
     monkeypatch.setattr(module, 'normalize_path', lambda path, name: str(path))
-    monkeypatch.setattr('app.modules.rtorrent.get_runtime_setting', lambda key: '')
+    monkeypatch.setattr('app.modules.rtorrent.get_runtime_setting',
+                        lambda key, default=None: ['.mkv'] if key == 'RMT_MEDIAEXT' else '')
     can_start = bool(files and set_ok and any('E02' in f['name'] for f in files))
     result = module.download(content, Path('/downloads'), '', episodes={2}, downloader='rt')
     assert result[1] is None
