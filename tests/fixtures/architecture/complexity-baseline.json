@@ -88,7 +88,6 @@
       "app/modules/emby/emby.py:Emby.get_webhook_message": 18,
       "app/modules/filemanager/storages/alipan.py:AliPan.upload": 16,
       "app/modules/filemanager/storages/u115.py:U115Pan.upload": 33,
-      "app/modules/filemanager/transhandler.py:TransHandler.__resolve_overwrite": 16,
       "app/modules/filemanager/transhandler.py:TransHandler.__transfer_command": 19,
       "app/modules/filemanager/transhandler.py:TransHandler.execute_transfer_plan": 19,
       "app/modules/filter/__init__.py:FilterModule.__match_rule": 24,

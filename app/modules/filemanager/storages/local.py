@@ -609,20 +609,45 @@ class LocalStorage(StorageBase):
 
     def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
-        创建本地符号链接。
+        创建本地符号链接，遇到悬空目标时先创建私有链接再原子替换。
+
+        旧整理任务可能已冻结目标不存在的判定，重试仍需在存储边界处理残留链接。
 
         :param fileitem: 源文件项
         :param target_file: 完整目标链接路径
-        :return: 系统操作返回成功时为 True，否则为 False
+        :return: 创建或修复完成为 True；目标已变化、创建或替换失败为 False
         """
         if not fileitem.path:
             return False
         file_path = Path(fileitem.path)
-        code, message = SystemUtils.softlink(file_path, target_file)
+        link_file = target_file
+        try:
+            if target_file.is_symlink() and self.get_item_strict(target_file) is None:
+                link_file = target_file.with_name(f".{target_file.name}.{uuid.uuid4().hex}.mp")
+        except StorageQueryError as err:
+            logger.error(f"【本地】无法确认软链接目标状态：{err}")
+            return False
+        code, message = SystemUtils.softlink(file_path, link_file)
         if code != 0:
             logger.error(f"【本地】软链接文件失败：{message}")
             return False
-        return True
+        if link_file == target_file:
+            return True
+        try:
+            if not target_file.is_symlink() or self.get_item_strict(target_file) is not None:
+                logger.error(f"【本地】原悬空软链接状态已变化，保留当前目标：{target_file}")
+                return False
+            os.replace(link_file, target_file)
+            logger.info(f"【本地】已修复悬空软链接：{target_file} -> {file_path}")
+            return True
+        except (OSError, StorageQueryError) as err:
+            logger.error(f"【本地】替换悬空软链接失败：{err}")
+            return False
+        finally:
+            try:
+                link_file.unlink(missing_ok=True)
+            except OSError as err:
+                logger.warning(f"【本地】清理暂存软链接失败：{link_file} - {err}")
 
     def reflink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
