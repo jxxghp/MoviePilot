@@ -671,6 +671,7 @@ class TransHandler:
 
         未知目标状态返回失败结果；明确策略拒绝标记为覆盖跳过，以保留已有成功历史。
         字幕及其他附件优先覆盖；普通文件允许插件先作裁决，再按配置和音乐音质或大小判断。
+        本地链接有效性以目标路径的严格查询结果为准，悬空链接由存储适配器在落地时修复。
 
         :param fileitem: 源文件项，提供大小及附件判断信息
         :param meta: 源元数据，提供音乐音质信息
@@ -707,17 +708,8 @@ class TransHandler:
                 ".jpg", ".jpeg", ".png", ".webp"
             }, None
 
-        checked_target = target_file
-        over_flag = False
-        if target_storage == "local" and target_file.is_symlink():
-            checked_target = target_file.readlink()
-            if not checked_target.exists():
-                over_flag = True
-        if over_flag:
-            return True, False, None
-
         logger.info(
-            f"目的文件系统中已经存在同名文件 {checked_target}，"
+            f"目的文件系统中已经存在同名文件 {target_file}，"
             f"当前整理覆盖模式设置为 {overwrite_mode}"
         )
         event_data = TransferOverwriteCheckEventData(

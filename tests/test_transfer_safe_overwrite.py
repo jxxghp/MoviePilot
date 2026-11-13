@@ -9,7 +9,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Optional
+from typing import Callable, Optional
 from unittest.mock import Mock
 
 import pytest
@@ -17,8 +17,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.application.transfer.execution import (
+    TransferExecutionCommand,
     TransferExecutionLeaseLostError,
     TransferExecutionState,
+    TransferStepResult,
     TransferStepState,
     build_transfer_overwrite_paths,
 )
@@ -28,6 +30,7 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
 )
 from app.chain.transfer import execution as execution_module
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import TransactionalTransferExecutionRepository
 from app.db.base import Base
 from app.db.models.transferexecutionstep import TransferExecutionStep
@@ -500,6 +503,254 @@ def test_safe_overwrite_preserves_transfer_modes(tmp_path, monkeypatch, transfer
     if transfer_type == "link":
         assert source.samefile(target)
     assert target.is_symlink() is (transfer_type == "softlink")
+
+
+@pytest.mark.parametrize("mode", ["never", "size", "always", "latest"])
+@pytest.mark.parametrize("relative", [False, True])
+@pytest.mark.parametrize("durable", [False, True])
+def test_softlink_transfer_repairs_dangling_target_after_source_move(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        mode: str,
+        relative: bool,
+        durable: bool,
+) -> None:
+    """
+    下载文件移入存档目录后，重新整理应将悬空链接原子替换为指向新位置的链接。
+    """
+    original = tmp_path / "downloads" / "download.mkv"
+    source = tmp_path / "archive" / original.name
+    target = tmp_path / "library" / "Movie.2026.mkv"
+    for directory in (original.parent, source.parent, target.parent):
+        directory.mkdir()
+    original.write_bytes(b"archived-movie")
+    link_path = Path(os.path.relpath(original, target.parent)) if relative else original
+    target.symlink_to(link_path)
+    original.rename(source)
+    assert target.is_symlink() and not target.exists()
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode=mode)
+    runner = _durable_runner(repository_factory(checkpoint), checkpoint) if durable else None
+
+    result = _execute(checkpoint, monkeypatch, runner)
+
+    assert result.success
+    assert result.target_item.path == target.as_posix()
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert target.read_bytes() == source.read_bytes() == b"archived-movie"
+    assert not list(target.parent.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("mode", ["never", "size"])
+@pytest.mark.parametrize("relative", [False, True])
+def test_valid_softlink_obeys_overwrite_policy(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, relative: bool,
+) -> None:
+    """
+    有效的绝对或相对链接仍按覆盖策略处理，不能因相对路径被误判而替换。
+    """
+    original, source = tmp_path / "original.mkv", tmp_path / "new.mkv"
+    target = tmp_path / "library" / "Movie.2026.mkv"
+    target.parent.mkdir()
+    original.write_bytes(b"complete-old-version")
+    source.write_bytes(b"new")
+    link_path = Path(os.path.relpath(original, target.parent)) if relative else original
+    target.symlink_to(link_path)
+
+    result = _execute(
+        _checkpoint(source, target, transfer_type="softlink", mode=mode), monkeypatch, None,
+    )
+
+    assert not result.success
+    assert result.overwrite_skipped
+    assert target.readlink() == link_path
+    assert target.read_bytes() == original.read_bytes() == b"complete-old-version"
+    assert source.read_bytes() == b"new"
+    assert not list(target.parent.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("durable", [False, True])
+def test_dangling_softlink_repair_accepts_source_without_size_or_identity(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        durable: bool,
+) -> None:
+    """
+    旧源快照缺少大小和文件身份时，仍可按既有软链接语义修复悬空目标。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"movie")
+    target.symlink_to(tmp_path / "missing.mkv")
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode="never")
+    source_payload = {"storage": "local", "path": source.as_posix(), "type": "file"}
+    checkpoint = replace(
+        checkpoint,
+        planning_input=replace(checkpoint.planning_input, source_fileitem=source_payload),
+        items=(replace(checkpoint.items[0], source_fileitem=source_payload),),
+    )
+    runner = _durable_runner(repository_factory(checkpoint), checkpoint) if durable else None
+
+    result = _execute(checkpoint, monkeypatch, runner)
+
+    assert result.success
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert source.read_bytes() == target.read_bytes() == b"movie"
+    assert not list(tmp_path.glob(".*.mp"))
+
+
+@pytest.mark.parametrize("durable", [False, True])
+def test_failed_softlink_repair_preserves_dangling_target(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        durable: bool,
+) -> None:
+    """
+    新链接暂存失败时保留源文件和原悬空链接，便于再次重试。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"movie")
+    original_link = tmp_path / "missing.mkv"
+    target.symlink_to(original_link)
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode="never")
+    runner = _durable_runner(repository_factory(checkpoint), checkpoint) if durable else None
+    monkeypatch.setattr(LocalStorage, "softlink", lambda *_args: False)
+
+    if durable:
+        with pytest.raises(RuntimeError):
+            _execute(checkpoint, monkeypatch, runner)
+    else:
+        assert not _execute(checkpoint, monkeypatch, runner).success
+
+    assert source.read_bytes() == b"movie"
+    assert target.is_symlink() and not target.exists()
+    assert target.readlink() == original_link
+    assert not list(tmp_path.glob(".mp-*"))
+
+
+@pytest.mark.parametrize("after_promotion", [False, True])
+def test_dangling_softlink_repair_recovers_promotion_with_real_step_ledger(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        after_promotion: bool,
+) -> None:
+    """
+    替换悬空链接时在原子替换前后中断，持久步骤应按目标状态恢复并避免重复已完成操作。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"movie")
+    target.symlink_to(tmp_path / "missing.mkv")
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode="never")
+    repository = repository_factory(checkpoint)
+    real_replace = os.replace
+    softlink = Mock(wraps=LocalStorage.softlink)
+    monkeypatch.setattr(LocalStorage, "softlink", lambda self, *args: softlink(self, *args))
+    stopped = False
+
+    class ProcessStopped(BaseException):
+        """
+        在提升步骤记成功之前模拟进程退出。
+        """
+
+    def replace_link(staged: Path, destination: Path) -> None:
+        """
+        仅在首次替换之前或之后中断，恢复时允许真实替换。
+        """
+        nonlocal stopped
+        if stopped:
+            return real_replace(staged, destination)
+        stopped = True
+        if after_promotion:
+            real_replace(staged, destination)
+        raise ProcessStopped()
+
+    monkeypatch.setattr("app.modules.filemanager.storages.local.os.replace", replace_link)
+    with pytest.raises(ProcessStopped):
+        _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+    assert target.is_symlink()
+    assert target.exists() is after_promotion
+
+    result = _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    assert result.success
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert source.read_bytes() == target.read_bytes() == b"movie"
+    assert softlink.call_count == (1 if after_promotion else 2)
+    assert not list(tmp_path.glob(".mp-*"))
+    assert not list(tmp_path.glob(".*.mp"))
+
+
+@pytest.mark.parametrize("legacy_state", ["started", "failed"])
+def test_dangling_softlink_repair_replays_legacy_missing_target_decision(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        repository_factory: Callable[[TransferPlanCheckpoint], TransactionalTransferExecutionRepository],
+        legacy_state: str,
+) -> None:
+    """
+    升级前已持久化目标不存在判定的旧任务，恢复原落地步骤时也应修复悬空链接。
+    """
+    source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
+    source.write_bytes(b"movie")
+    target.symlink_to(tmp_path / "missing.mkv")
+    checkpoint = _checkpoint(source, target, transfer_type="softlink", mode="never")
+    repository = repository_factory(checkpoint)
+
+    class ProcessStopped(BaseException):
+        """
+        保留旧覆盖裁决与尚未完成的原目标落地步骤。
+        """
+
+    def stop_materialization(*_args: object) -> bool:
+        """
+        在副作用前中断，恢复时沿用旧 materialize_target 步骤。
+        """
+        raise ProcessStopped()
+
+    with monkeypatch.context() as old_version:
+        old_version.setattr(
+            TransHandler, "_TransHandler__resolve_overwrite", lambda *_args, **_kwargs: (False, False, None),
+        )
+        old_version.setattr(LocalStorage, "softlink", stop_materialization)
+        with pytest.raises(ProcessStopped):
+            _execute(checkpoint, monkeypatch, _durable_runner(repository, checkpoint))
+
+    runner = _durable_runner(repository, checkpoint)
+    if legacy_state == "failed":
+        step = repository.get_snapshot(task_id="safe-overwrite").steps[-1]
+        assert step.kind == "materialize_target"
+        command = TransferExecutionCommand(repository)
+        command.defer(
+            task_id="safe-overwrite", lease_token="lease", step=step,
+            error="File exists", evidence=TransferStepResult(payload={"target_exists": False}),
+            retry_due_at="2026-08-27 01:29:00.000000",
+        )
+        admissions = TransactionalTransferAdmissionRepository(repository._session_factory)
+        monkeypatch.setattr(admissions, "_lease_now", lambda: datetime(2026, 8, 27, 1, 30, tzinfo=timezone.utc))
+        admission = admissions.claim_task(task_id="safe-overwrite", owner_id="retry-worker", lease_seconds=120)
+        assert admission is not None
+        runner = execution_module._DurableTransferStepRunner(
+            task_id="safe-overwrite", lease_token=admission.lease_token,
+            checkpoint_fingerprint=checkpoint.fingerprint, repository=repository,
+        )
+
+    result = _execute(checkpoint, monkeypatch, runner)
+
+    assert result.success
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert source.read_bytes() == target.read_bytes() == b"movie"
+    steps = repository.get_snapshot(task_id="safe-overwrite").steps
+    decision = next(step for step in steps if step.kind == "resolve_overwrite")
+    assert decision.result.payload["over_flag"] is False
+    materialization = next(step for step in steps if step.kind == "materialize_target")
+    assert materialization.state is TransferStepState.SUCCEEDED
+    assert not list(tmp_path.glob(".*.mp"))
 
 
 @pytest.mark.parametrize("transfer_type", ["copy", "move", "link", "softlink"])
