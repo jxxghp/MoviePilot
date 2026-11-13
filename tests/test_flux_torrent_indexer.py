@@ -331,8 +331,8 @@ def test_flux_torrent_auth_failure_does_not_request_other_userdata_models(monkey
         return _FakeResponse(_envelope(None, code=2001, message="未认证"), status_code=401)
 
     monkeypatch.setattr(flux_torrent_module.RequestUtils, "get_res", get_res)
-    module = IndexerModule()
-    module.init_module()
+    monkeypatch.setattr(IndexerModule, "_site_schemas", [FluxTorrentSiteUserInfo])
+    module = object.__new__(IndexerModule)
     result = module.refresh_userdata(_build_indexer(schema="FluxTorrent"))
 
     assert result.userid is None
