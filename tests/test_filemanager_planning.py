@@ -13,8 +13,9 @@ from app.application.transfer.workflow import (
     TransferPlanItem,
     TransferPlanningInput,
 )
-from app.domain.context import MediaInfo
+from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.filemanager import transhandler as transhandler_module
 from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler
@@ -378,6 +379,53 @@ def test_module_preserves_admission_input_while_freezing_resolved_directory():
     assert checkpoint.resolved_meta["begin_episode"] == 1
     assert checkpoint.resolved_mediainfo_kind == "MediaInfo"
     assert checkpoint.resolved_mediainfo["title"] == "Test Show"
+
+
+@pytest.mark.parametrize("configured", [False, True])
+@pytest.mark.parametrize("renaming", [False, True])
+@pytest.mark.parametrize("extension", ["flac", "lrc", "jpg"])
+def test_manual_music_final_directory_preserves_filename_and_frozen_input(monkeypatch, configured, renaming, extension):
+    """
+    手动最终目录覆盖分类及模板目录，音频歌词仍重命名，封面保持原名且规划不写文件。
+    """
+    fileitem = _build_fileitem().model_copy(update={
+        "path": f"/downloads/song.{extension}", "name": f"song.{extension}", "extension": extension,
+    })
+    meta = MetaMusic(title="Selected Song", album="Album", artists=["Artist"], track_number=1,
+                     sample_rate=48000, duration=30)
+    info = MusicInfo.from_meta(meta)
+    planning = _build_input(fileitem, options={"music_target_path": "/chosen/OST/Album"})
+    fingerprint = planning.fingerprint
+    original_get_setting = transhandler_module.get_runtime_setting
+
+    def setting(name):
+        """
+        以跨目录条件模板验证先完整渲染再提取文件名，其他配置仍走隔离默认值。
+        """
+        if name == "RENAME_FORMAT":
+            return lambda _type: "{% if sample_rate %}{{sample_rate}}/{{album}}/{% endif %}{{track}} - {{title}}{{fileExt}}"
+        return original_get_setting(name)
+
+    monkeypatch.setattr(transhandler_module, "get_runtime_setting", setting)
+    directory = TransferDirectoryConf(
+        library_path="/configured-library", library_storage="alist", transfer_type="copy", renaming=renaming,
+        library_type_folder=True, library_category_folder=True, scraping=True, overwrite_mode="never",
+    ) if configured else None
+    checkpoint = FileManagerModule().plan_transfer(
+        fileitem=fileitem, meta=meta, mediainfo=info, target_directory=directory, target_path=Path("/default-root"),
+        target_storage="alist", transfer_type="copy", library_type_folder=True, library_category_folder=True,
+        source_oper=ReadOnlyTreeStorage({}), planning_input=planning,
+    )
+    target = Path(checkpoint.final_target_path)
+    assert target.parent == Path("/chosen/OST/Album")
+    assert target.name == ("song.jpg" if extension == "jpg" else f"01 - Selected Song.{extension}")
+    assert checkpoint.root_target_path == "/chosen/OST/Album"
+    assert checkpoint.planning_input.fingerprint == fingerprint
+    assert checkpoint.resolved_meta["sample_rate"] == 48000
+    assert checkpoint.resolved_meta["duration"] == 30
+    restored = TransferPlanCheckpoint.from_payload(checkpoint.to_payload())
+    assert restored.final_target_path == checkpoint.final_target_path
+    assert restored.planning_input.options["music_target_path"] == "/chosen/OST/Album"
 
 
 def _build_cleanup_checkpoint(monkeypatch, calls: list[str]):

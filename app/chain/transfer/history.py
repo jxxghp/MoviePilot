@@ -5,7 +5,7 @@
 import re
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union, cast
+from typing import Any, List, Literal, Optional, Tuple, Union, cast
 
 from app.application.audio import use_music_cue
 from app.application.transfer.models import TransferTask
@@ -32,6 +32,29 @@ from app.schemas.types import (
     MessageType,
     NotificationChannel,
 )
+
+
+def _manual_music_options_error(
+        files: list[FileItem], *, mtype: Optional[MediaType], music_type: Optional[str], media_id: Optional[str],
+        preview: Optional[bool], track_match: str, target_path: Optional[Path],
+) -> Optional[str]:
+    """
+    校验旧链调用方的音乐选项，避免绕过 HTTP Schema 后静默使用无效选择。
+    """
+    if track_match == "strict" and target_path is None:
+        return None
+    if mtype not in (None, MediaType.MUSIC):
+        return "音乐手动整理选项不能用于影视整理"
+    if target_path is not None and (not target_path.is_absolute() or ".." in target_path.parts):
+        return "音乐最终目录必须为不含上级跳转的绝对路径"
+    if track_match not in {"strict", "ignore_duration", "sequential"}:
+        return "不支持的音乐曲目对齐方式"
+    if track_match != "strict":
+        if music_type != MUSIC_ENTITY_ALBUM or (not preview and not media_id):
+            return "请先选择音乐专辑，再调整曲目对齐方式"
+        if any(item.storage != "local" for item in files):
+            return "调整曲目对齐方式需要读取本地音频，请先将所选音乐下载到本地"
+    return None
 
 
 def _recognize_manual_media(
@@ -83,7 +106,8 @@ class TransferHistoryOwner(_TransferOwnerBase):
         隔离本次 CUE 策略，批次与普通请求均保持既有整理入口兼容。
         """
         with use_music_cue(music_cue_enable):
-            if selected_fileitems is not None or report_results or skip_success:
+            if (selected_fileitems is not None or report_results or skip_success
+                    or "music_track_match" in transfer_kwargs or "music_target_path" in transfer_kwargs):
                 return cast(
                     Tuple[bool, Union[str, dict[str, Any]]],
                     self._execute_transfer(
@@ -222,6 +246,8 @@ class TransferHistoryOwner(_TransferOwnerBase):
             skip_success: bool = False,
             musicbrainz_release_id: Optional[str] = None,
             music_cue_enable: Optional[bool] = None,
+            music_track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
+            music_target_path: Optional[Path] = None,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -256,8 +282,18 @@ class TransferHistoryOwner(_TransferOwnerBase):
         :param skip_success: 预览和执行均跳过成功记录，优先于强制整理和重整
         :param musicbrainz_release_id: 指定属于 media_id 发行组的具体 MusicBrainz 发行版
         :param music_cue_enable: 本次是否识别 CUE，空值继承系统设置，不修改全局开关
+        :param music_track_match: 本次手选专辑的曲目对齐方式，默认严格校验
+        :param music_target_path: 本次音乐最终目录，仅应用文件名模板
         """
         logger.info(f"手动整理：{fileitem.path} ...")
+        options_error = _manual_music_options_error(
+            selected_fileitems or [fileitem], mtype=mtype, music_type=music_type, media_id=media_id,
+            preview=preview, track_match=music_track_match, target_path=music_target_path,
+        )
+        if options_error:
+            return False, options_error
+        if music_track_match != "strict" or music_target_path is not None:
+            mtype = MediaType.MUSIC
         explicit_identity = media_source is not None or media_id is not None
         if explicit_identity and (not media_source or not media_id):
             return False, "手动整理需要同时提供 media_source 和 media_id"
@@ -293,6 +329,11 @@ class TransferHistoryOwner(_TransferOwnerBase):
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
         )
+        if music_track_match != "strict":
+            transfer_kwargs["music_track_match"] = music_track_match
+        if music_target_path is not None:
+            transfer_kwargs["music_target_path"] = music_target_path
+            transfer_kwargs["target_path"] = target_path or music_target_path
         if media_source and media_id:
             # 有输入媒体ID时预先识别，音乐与影视统一走 recognize_media 按类型分发
             mediainfo = _recognize_manual_media(

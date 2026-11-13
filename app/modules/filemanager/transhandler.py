@@ -553,13 +553,9 @@ class TransHandler:
             )
             if self.__is_subtitle_file(fileitem):
                 final_target = self.__rename_subtitles(fileitem, final_target)
-            target_directory_path = DirectoryHelper.get_media_root_path(
-                rename_format,
-                rename_path=final_target,
-                media_type=mediainfo.type,
+            final_target, target_directory_path = self.__resolve_file_target_paths(
+                planning_input, mediainfo, target_path, final_target, rename_format,
             )
-            if not target_directory_path:
-                raise ValueError("重命名格式无效")
             if self.__is_media_image_file(fileitem):
                 # 封面保持原名并放到媒体根，不套用曲序/曲名模板或进入 Disc 子目录。
                 final_target = target_directory_path / Path(str(fileitem.path)).name
@@ -598,6 +594,28 @@ class TransHandler:
             overwrite_mode=overwrite_mode,
             preview=preview,
         )
+
+    @staticmethod
+    def __resolve_file_target_paths(
+            planning_input: TransferPlanningInput,
+            mediainfo: MediaInfo | MusicInfo,
+            target_path: Path,
+            rendered_path: Path,
+            rename_format: str,
+    ) -> tuple[Path, Path]:
+        """
+        解析模板文件与媒体根目录，手动音乐最终目录仅保留已渲染的文件名。
+
+        先渲染完整模板可保留跨目录层级的 Jinja 条件语义。
+        """
+        if mediainfo.type == MediaType.MUSIC and planning_input.options.get("music_target_path"):
+            return target_path / rendered_path.name, target_path
+        media_root = DirectoryHelper.get_media_root_path(
+            rename_format, rename_path=rendered_path, media_type=mediainfo.type,
+        )
+        if not media_root:
+            raise ValueError("重命名格式无效")
+        return rendered_path, media_root
 
     @staticmethod
     def __intercept_transfer(

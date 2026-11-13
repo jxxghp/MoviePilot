@@ -578,6 +578,14 @@ class FileManagerModule(_ModuleBase):
         :raises ValueError: 源路径、目标路径、整理方式或存储配置无效
         """
         handler = TransHandler()
+        music_target = (
+            planning_input.options.get("music_target_path")
+            if planning_input is not None and mediainfo.type == MediaType.MUSIC else None
+        )
+        music_target_path = Path(music_target) if isinstance(music_target, str) and music_target else None
+        target_path = music_target_path or target_path
+        library_type_folder = False if music_target_path else library_type_folder
+        library_category_folder = False if music_target_path else library_category_folder
         if (
                 fileitem.storage == "local"
                 and (not fileitem.path or not Path(fileitem.path).exists())
@@ -622,6 +630,8 @@ class FileManagerModule(_ModuleBase):
             logger.error(
                 f"{mediainfo.type.value if mediainfo.type else '未知类型'} {mediainfo.title_year} 未找到有效的媒体库目录，无法整理文件，源路径：{fileitem.path}")
             raise TransferPlanningRejectedError("未找到有效的媒体库目录")
+        target_path = music_target_path or target_path
+        need_rename = bool(music_target_path) or need_rename
         if not transfer_type:
             directory_name = target_directory.name if target_directory else "目标目录"
             logger.error(f"{directory_name} 未设置整理方式")
