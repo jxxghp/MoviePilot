@@ -2694,6 +2694,30 @@
           "description": "本次手动整理的 MusicBrainz 文字字形优先级；空值继承系统设置",
           "title": "Music Release Scripts"
         },
+        "music_target_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "本次音乐最终目录。填写后只应用文件名模板，类型、分类及专辑目录层级由此路径确定",
+          "title": "Music Target Path"
+        },
+        "music_track_match": {
+          "default": "strict",
+          "description": "本次手选专辑曲目对齐方式，支持严格校验、忽略时长或按源路径自然顺序套用。顺序模式要求曲目数一致",
+          "enum": [
+            "strict",
+            "ignore_duration",
+            "sequential"
+          ],
+          "title": "Music Track Match",
+          "type": "string"
+        },
         "music_type": {
           "anyOf": [
             {

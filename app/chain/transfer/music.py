@@ -84,13 +84,16 @@ class MusicReleaseGroup:
 def music_planning_input(
         owner: _TransferOwnerBase, task: TransferTask, context: MusicBatchContext,
         cleanup: Optional[FileItem], regions: Optional[list[str]], scripts: Optional[list[str]],
+        *, music_target_path: Optional[Path] = None,
 ) -> TransferPlanningInput:
     """
-    冻结需要重新识别的原发行范围，重启恢复不能扩大到未选择的其他专辑。
+    冻结原发行范围与本次最终目录，重启恢复沿用准入时的选择。
     """
     planning = cast(TransferPlanningInput, owner._TransferChain__build_planning_input(task, cleanup_dest_fileitem=cleanup))
     if not isinstance(task.meta, MetaMusic):
         return planning
+    if music_target_path is not None:
+        planning = replace(planning, options={**planning.options, "music_target_path": music_target_path.as_posix()})
     if task.preview:
         task.bind_music_preview_context(_music_preview_context(owner, task, context))
     recognition = task.mediainfo.raw_data.get("recognition", {}) if isinstance(task.mediainfo, MusicInfo) else {}

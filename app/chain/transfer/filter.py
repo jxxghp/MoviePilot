@@ -4,7 +4,7 @@
 import threading
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Optional, Protocol, Union, cast
+from typing import Any, Dict, Literal, Optional, Protocol, Union, cast
 
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
@@ -490,9 +490,11 @@ class FileFilterMixin(_TransferOwnerBase):
             self,
             file_items: list[tuple[FileItem, bool]],
             album: Optional[MusicAlbumInfo],
+            *,
+            track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
     ) -> tuple[dict[str, MusicInfo], Optional[str]]:
         """
-        对齐手选发行版的全部曲目，并拒绝混有重复版本的目录。
+        按本次策略对齐手选发行版；严格与忽略时长模式均要求唯一对位。
         """
         if not album:
             return {}, None
@@ -503,12 +505,18 @@ class FileFilterMixin(_TransferOwnerBase):
         ]
         if not audio_paths:
             return {}, None
-        aligned_tracks = MediaChain._align_selected_music_album(audio_paths, album)
+        aligned_tracks = MediaChain._align_selected_music_album(
+            audio_paths, album, **({"track_match": track_match} if track_match != "strict" else {}),
+        )
         if len(aligned_tracks) != len(audio_paths):
+            reason = (
+                "顺序套用要求所选音频（含 CUE 逻辑曲目）与发行版曲目数一致"
+                if track_match == "sequential" else
+                "存在重复版本、曲目信息冲突或无法唯一对位的曲目；请按单个发行版本选择文件并核对曲目"
+            )
             return {}, (
                 f"所选专辑只能对齐 {len(aligned_tracks)} / {len(audio_paths)} "
-                "个音频文件，存在重复版本、曲目信息冲突或无法唯一对位的曲目；"
-                "请按单个发行版本选择文件并核对曲目"
+                f"个音频文件，{reason}"
             )
         selected_tracks: dict[str, MusicInfo] = {}
         for resolved_path, track in aligned_tracks.items():

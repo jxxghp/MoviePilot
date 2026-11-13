@@ -517,6 +517,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         selected_fileitems: Optional[list[FileItem]] = None,
         report_results: bool = False,
         skip_success: bool = False,
+        music_track_match: Literal["strict", "ignore_duration", "sequential"] = "strict",
+        music_target_path: Optional[Path] = None,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         执行一个复杂目录的整理操作
@@ -553,6 +555,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param selected_fileitems: 前端显式选中的文件，按同一批次规划
         :param report_results: 返回实际阶段回执，后台接收不表示入库完成
         :param skip_success: 在预览、历史清理及任务准入前跳过成功记录
+        :param music_track_match: 手选专辑的曲目对齐方式，默认严格校验
+        :param music_target_path: 本次音乐最终目录，冻结后用于预览及恢复执行
         返回：成功标识，错误信息
         """
         selected_music_album: Optional[MusicAlbumInfo]
@@ -641,7 +645,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         file_items, inherited_meta_map = candidate_planner._plan_file_items(file_items)
 
         selected_music_track_map, selected_music_error = self._selected_music_track_map(
-            file_items, selected_music_album
+            file_items, selected_music_album,
+            **({"track_match": music_track_match} if music_track_match != "strict" else {}),
         )
         if selected_music_error:
             return False, selected_music_error
@@ -692,6 +697,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 music_release_scripts=music_release_scripts,
                 selected_music_track_map=selected_music_track_map,
                 submission=submission,
+                music_target_path=music_target_path,
             )
         except OperationInterrupted:
             return submission.result(False, [f"{fileitem.name} 已取消"], preview=False, preview_items=[])
@@ -791,6 +797,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         music_release_scripts: Optional[list[str]],
         selected_music_track_map: dict[str, MusicInfo],
         submission: _TransferSubmissionCollector,
+        music_target_path: Optional[Path] = None,
     ) -> Tuple[List[TransferTask], bool, List[str], int, set[Tuple[str, str]]]:
         """
         从冻结候选构建任务，并集中执行历史去重与 持久化 绑定。
@@ -983,7 +990,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 cleanup_intent = cleanup_dest_fileitem if not preview and not cleanup_intent_assigned else None
                 transfer_task.bind_planning_input(
                     self._build_music_planning_input(transfer_task, music_batch_context, cleanup_intent,
-                                                    music_release_regions, music_release_scripts)
+                                                    music_release_regions, music_release_scripts,
+                                                    music_target_path=music_target_path)
                 )
                 if (
                     recovery_admission
