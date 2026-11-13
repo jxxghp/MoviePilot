@@ -5,9 +5,13 @@
 import json
 from typing import Any, Dict, Optional, Tuple
 
+from app.adapters.network.http import RequestUtils
+from app.application.site.throttle import site_request_config
 from app.foundation import temporal as time_tools
 from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
+from app.modules.indexer.spider.fluxtorrent import FluxTorrentSpider, get_api_response, site_request_limits
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 
 class FluxTorrentSiteUserInfo(SiteParserBase):
@@ -19,6 +23,8 @@ class FluxTorrentSiteUserInfo(SiteParserBase):
 
     schema = SiteSchema.FluxTorrent
     request_mode = "apikey"
+    # 开放 API 认证失败时保留接口错误，避免继续尝试网页模型并触发网关限流。
+    allow_schema_fallback = False
 
     def _parse_site_page(self, html_text: SitePage) -> None:
         """
@@ -40,9 +46,35 @@ class FluxTorrentSiteUserInfo(SiteParserBase):
             "Authorization": f"Token {token}",
             "Accept": "application/json",
         }
-        if self._ua:
-            headers["User-Agent"] = self._ua
+        headers["User-Agent"] = FluxTorrentSpider.get_user_agent(self._ua)
         self._addition_headers = headers
+
+    def _get_page_content(
+        self,
+        url: str,
+        params: Optional[dict[str, object]] = None,
+        headers: Optional[dict[str, Optional[str]]] = None,
+        method: Optional[str] = None,
+    ) -> str:
+        """
+        使用只读 API 传输和共享流控读取资料，网关 503 最多退避重试两次。
+
+        :param url: 用户资料或补充统计接口的完整地址
+        :param params: 兼容基类参数，只读接口使用查询参数
+        :param headers: 兼容基类参数，认证头由开放 API 令牌构造
+        :param method: 兼容基类参数，只读接口始终使用 GET
+        :return: 接口响应文本，无响应时返回空字符串
+        """
+        response = get_api_response(RequestUtils(
+            headers=self._addition_headers,
+            proxies=get_runtime_setting("PROXY") if self._proxy else None,
+            timeout=60,
+        ), url=url, limits=site_request_limits(site_request_config(self._site_url)), params=params)
+        try:
+            return response.text if response is not None else ""
+        finally:
+            if response is not None:
+                response.close()
 
     def _load_api_payload(self, html_text: SitePage, operation: str) -> Optional[Dict[str, Any]]:
         """
@@ -84,6 +116,7 @@ class FluxTorrentSiteUserInfo(SiteParserBase):
         """
         user_info = self._load_api_payload(html_text, "获取用户信息")
         if not user_info:
+            self._user_traffic_page = None
             return
         self.userid = user_info.get("id")
         self.username = user_info.get("username")
