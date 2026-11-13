@@ -6,6 +6,7 @@ import asyncio
 import json
 import threading
 from contextlib import asynccontextmanager, contextmanager
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -19,10 +20,109 @@ from app.adapters.external.plugin.client import (
     _format_request_error,
 )
 from app.domain.plugin import split_plugin_market_repo_urls
+from app.runtime import cache as cache_module
+from app.runtime.cache import fresh
 from app.runtime.tasks import TaskRegistry
 
 SYNC_INDEX_REQUEST = "_PluginMarketTransport__request_plugin_index_with_fallback"
 ASYNC_INDEX_REQUEST = "_PluginMarketTransport__async_request_plugin_index_with_fallback"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+@pytest.mark.parametrize("failure_status", [None, 404, 503])
+async def test_failed_indexes_retry_after_short_cache_and_preserve_success_ttl(monkeypatch, mode, failure_status):
+    """
+    连接失败与缺失索引五分钟后重试，恢复后的成功索引继续保留三十分钟。
+    """
+    clock = [0.0]
+    original_init = cache_module.MemoryTLRUCache.__init__
+
+    def initialize_cache(self, *args, **kwargs):
+        """
+        将真实缓存的计时源替换为可前进的测试时钟。
+        """
+        original_init(self, *args, **kwargs, timer=lambda: clock[0])
+
+    monkeypatch.setattr(cache_module.MemoryTLRUCache, "__init__", initialize_cache)
+    monkeypatch.setattr(cache_module.MemoryBackend, "_region_caches", {})
+    helper = PluginMarketTransport()
+    repo = f"https://github.com/short-cache/{mode}-{failure_status}"
+    requests = []
+
+    def request(*_args, **_kwargs):
+        """
+        冷却期内返回故障，过期后模拟仓库恢复。
+        """
+        requests.append(clock[0])
+        if clock[0] < 300:
+            return None if failure_status is None else (failure_status, "")
+        return 200, '{"Demo": {"version": "1.0.0"}}'
+
+    async def async_request(*args, **kwargs):
+        """
+        让异步传输使用相同故障与恢复序列。
+        """
+        return request(*args, **kwargs)
+
+    monkeypatch.setattr(helper, SYNC_INDEX_REQUEST, request)
+    monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, async_request)
+
+    async def read():
+        """
+        通过所选真实入口读取仓库索引，保留原始三态合同。
+        """
+        if mode == "async":
+            return await helper.async_get_plugin_index_result(repo, "v3")
+        return helper.get_plugin_index_result(repo, "v3")
+
+    for now in (0, 1, 299):
+        clock[0] = now
+        if failure_status == 404:
+            assert await read() is None
+        else:
+            with pytest.raises(RuntimeError, match="插件索引请求失败"):
+                await read()
+    assert requests == [0]
+
+    clock[0] = 301
+    assert await read() == {"Demo": {"version": "1.0.0"}}
+    clock[0] = 602
+    assert await read() == {"Demo": {"version": "1.0.0"}}
+    assert requests == [0, 301]
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_bypasses_shared_negative_cache(monkeypatch):
+    """
+    同步和异步共用故障冷却，强制刷新可立即重试并发布恢复结果。
+    """
+    helper = PluginMarketTransport()
+    repo = "https://github.com/short-cache/force-recovery"
+    def sync_request(*_args, **_kwargs):
+        """
+        模拟同步入口首次连接仓库失败。
+        """
+        return None
+
+    async def async_request(*_args, **_kwargs):
+        """
+        模拟强制重试时仓库已经恢复。
+        """
+        return 200, '{"Demo": {"version": "2.0.0"}}'
+
+    monkeypatch.setattr(helper, SYNC_INDEX_REQUEST, sync_request)
+    request = AsyncMock(side_effect=async_request)
+    monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
+    with pytest.raises(RuntimeError):
+        helper.get_plugin_index_result(repo, "v3")
+    with pytest.raises(RuntimeError):
+        await helper.async_get_plugin_index_result(repo, "v3")
+    request.assert_not_awaited()
+    with fresh():
+        assert await helper.async_get_plugin_index_result(repo, "v3") == {"Demo": {"version": "2.0.0"}}
+    assert helper.get_plugin_index_result(repo, "v3") == {"Demo": {"version": "2.0.0"}}
+    request.assert_awaited_once()
 
 
 def test_plugin_index_request_timeout_is_bounded() -> None:

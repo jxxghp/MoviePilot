@@ -328,6 +328,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         proxy_server=settings.PROXY_SERVER,
         proxy_host=settings.PROXY_HOST,
         github_headers=settings.GITHUB_HEADERS,
+        github_proxy=settings.GITHUB_PROXY,
         cookiecloud_blacklist=settings.COOKIECLOUD_BLACKLIST,
         subscribe_mode=settings.SUBSCRIBE_MODE,
         no_cache_site_key=settings.NO_CACHE_SITE_KEY,

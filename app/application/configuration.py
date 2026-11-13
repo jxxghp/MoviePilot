@@ -419,6 +419,7 @@ class ChainRuntimeConfig:
     :param proxy_server: 供浏览器使用的代理连接参数，None 表示不配置代理
     :param proxy_host: 网络代理服务器地址
     :param github_headers: 访问 GitHub 时使用的请求头，可能包含授权凭据
+    :param github_proxy: GitHub 公开资源镜像前缀，空值时使用原始地址
     :param cookiecloud_blacklist: CookieCloud同步黑名单，多个域名,分割
     :param subscribe_mode: 订阅刷新模式：spider 使用站点搜索，rss 使用 RSS 订阅
     :param no_cache_site_key: 不缓存站点资源的域名关键字，多个使用,分隔；留空时所有站点使用缓存
@@ -511,6 +512,7 @@ class ChainRuntimeConfig:
     proxy_server: Any = None
     proxy_host: Optional[str] = None
     github_headers: Any = None
+    github_proxy: Optional[str] = None
     cookiecloud_blacklist: Any = None
     subscribe_mode: str = "spider"
     no_cache_site_key: str = ""

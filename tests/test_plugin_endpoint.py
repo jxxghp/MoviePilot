@@ -110,6 +110,28 @@ def _catalog_query(plugin_manager: MagicMock, persistence: MagicMock) -> PluginC
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("found", [False, True])
+async def test_single_plugin_metadata_avoids_market_aggregation(monkeypatch, found):
+    """
+    指定已安装插件 ID 时沿用绑定来源查询，不读取全市场；不存在时返回 404。
+    """
+    plugin = schemas.Plugin(id="Demo", installed=True) if found else None
+    history = AsyncMock(return_value=plugin)
+    catalog = MagicMock()
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_release_service", lambda: SimpleNamespace(history=history))
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_catalog_query", catalog)
+
+    if found:
+        assert await plugin_endpoint.plugin_history("Demo", force=False) == plugin
+    else:
+        with pytest.raises(plugin_endpoint.HTTPException) as error:
+            await plugin_endpoint.plugin_history("Demo", force=False)
+        assert error.value.status_code == 404
+    history.assert_awaited_once_with("Demo", force=False)
+    catalog.assert_not_called()
+
+
 def test_update_candidates_report_source_and_binding_relationship():
     """
     市场更新候选应标明仓库类型，并仅把当前绑定仓库视为可直接更新。

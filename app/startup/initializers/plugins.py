@@ -614,6 +614,7 @@ def configure_plugin_services() -> None:
             local_plugins=plugin_manager.get_local_plugins,
             local_repo_plugins=plugin_manager.get_local_repo_plugins,
             online_candidates=plugin_manager.async_get_online_plugin_candidates,
+            source_candidates=lambda repo_url: plugin_manager.async_get_online_plugin_candidates(repo_url=repo_url),
             process_plugins=plugin_manager.process_plugins_list,
             identities=persistence.list_identities,
             free_threaded=is_free_threaded_runtime,

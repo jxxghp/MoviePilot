@@ -67,6 +67,7 @@ def _query(candidates: list[Plugin], readme: AsyncMock) -> PluginCatalogQuery:
         local_plugins=lambda: [],
         local_repo_plugins=lambda: [item for item in candidates if item.is_local],
         online_candidates=AsyncMock(return_value=candidates),
+        source_candidates=AsyncMock(side_effect=lambda repo: [item for item in candidates if item.repo_url == repo]),
         process_plugins=lambda higher, base: catalog.merge(higher, base, [item.repo_url for item in candidates]),
         identities=AsyncMock(return_value=[]),
         free_threaded=lambda: False,
@@ -146,6 +147,8 @@ async def test_documentation_uses_selected_source_and_its_generation() -> None:
     result = await query.documentation("demo", "https://github.com/another/plugins")
     assert result.url == DOC
     readme.assert_awaited_once_with("Demo", "https://github.com/another/plugins", "v2")
+    query._source_candidates.assert_awaited_once_with("https://github.com/another/plugins")
+    query._online_candidates.assert_not_awaited()
 
 
 @pytest.mark.asyncio
