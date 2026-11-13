@@ -408,18 +408,19 @@ def test_manual_music_final_directory_preserves_filename_and_frozen_input(monkey
 
     monkeypatch.setattr(transhandler_module, "get_runtime_setting", setting)
     directory = TransferDirectoryConf(
-        library_path="/configured-library", library_storage="alist", transfer_type="copy", renaming=renaming,
+        library_path="/configured-library", library_storage="alist", transfer_type="reflink", renaming=renaming,
         library_type_folder=True, library_category_folder=True, scraping=True, overwrite_mode="never",
     ) if configured else None
     checkpoint = FileManagerModule().plan_transfer(
         fileitem=fileitem, meta=meta, mediainfo=info, target_directory=directory, target_path=Path("/default-root"),
-        target_storage="alist", transfer_type="copy", library_type_folder=True, library_category_folder=True,
+        target_storage="alist", transfer_type=None, library_type_folder=True, library_category_folder=True,
         source_oper=ReadOnlyTreeStorage({}), planning_input=planning,
     )
     target = Path(checkpoint.final_target_path)
     assert target.parent == Path("/chosen/OST/Album")
     assert target.name == ("song.jpg" if extension == "jpg" else f"01 - Selected Song.{extension}")
     assert checkpoint.root_target_path == "/chosen/OST/Album"
+    assert checkpoint.resolved_transfer_type == ("reflink" if configured else "copy")
     assert checkpoint.planning_input.fingerprint == fingerprint
     assert checkpoint.resolved_meta["sample_rate"] == 48000
     assert checkpoint.resolved_meta["duration"] == 30

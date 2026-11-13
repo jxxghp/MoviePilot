@@ -34,6 +34,7 @@ Preview and execute using the same source scope and options, and inspect sequent
 `music_target_path` is an optional absolute final music directory. It applies only the
 filename template and places tracks and companions in that directory. The task freezes
 this choice for recovery. With no online album, omit the media ID to use complete local tags.
+Automatic transfer inherits the matched directory policy and defaults to copying if no directory matches.
 
 
 ## Durable AI recognition correction
