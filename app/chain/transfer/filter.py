@@ -166,6 +166,9 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         :param task: 整理任务
         :return: 是否必须具备自动分类结果
         """
+        if (isinstance(task.mediainfo, MusicInfo) and task.planning_input
+                and task.planning_input.options.get("music_target_path")):
+            return False
         target_directory = task.target_directory
         if target_directory and DirectoryHelper.has_fixed_category(target_directory):
             return False

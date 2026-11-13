@@ -559,6 +559,8 @@ class FileManagerModule(_ModuleBase):
         目录配置优先于显式目标路径；未匹配配置时保留自定义路径能力并告警，
         未提供显式路径时业务拒绝，不自动使用存储根目录。
 
+        本次音乐最终目录沿用匹配目录的整理策略，未匹配目录且方式为自动时使用复制。
+
         :param fileitem: 文件信息
         :param meta: 预识别的元数据
         :param mediainfo: 识别的媒体信息
@@ -611,6 +613,7 @@ class FileManagerModule(_ModuleBase):
                                                need_category_folder=library_category_folder)
         elif target_path:
             explicit_target_path = target_path
+            transfer_type = transfer_type or ("copy" if music_target_path else None)
             need_scrape = scrape or False
             need_rename = True
             need_notify = False

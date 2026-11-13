@@ -333,7 +333,6 @@ class TransferHistoryOwner(_TransferOwnerBase):
             transfer_kwargs["music_track_match"] = music_track_match
         if music_target_path is not None:
             transfer_kwargs["music_target_path"] = music_target_path
-            transfer_kwargs["target_path"] = target_path or music_target_path
         if media_source and media_id:
             # 有输入媒体ID时预先识别，音乐与影视统一走 recognize_media 按类型分发
             mediainfo = _recognize_manual_media(
