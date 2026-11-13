@@ -11,6 +11,7 @@ from typing import Any, Callable, List, Optional, Tuple, Union, cast
 
 from jinja2 import Template
 
+from app.adapters.system.fsproxy import fsproxy
 from app.adapters.system.host import SystemUtils
 from app.application.audio import AudioMetadataHelper
 from app.application.classification.reference import (
@@ -844,7 +845,8 @@ class TransHandler:
         清理前比对冻结文件的大小、类型及可用身份；证据不足时保留文件。
 
         本地链接的查询沿用 stat 语义，硬链接和软链接均比较实际内容的身份。
-        本地必须核对修改时间，优先纳秒证据；同路径还核对状态时间，防止等长改写后还原 mtime。
+        本地必须核对修改时间，优先纳秒证据；同路径还核对状态时间。
+        FUSE 可在写入收尾后单独更新状态时间，完整身份一致时按挂载类型兼容。
         rename 合法改变状态时间，因此跨路径只比较修改时间。旧本地快照回退到秒级修改时间，
         缺少时间凭据时转人工复核。云盘修改时间可能在上传后变化或缺失，不参与校验。
 
@@ -867,21 +869,44 @@ class TransHandler:
             if expected.fileid != current.fileid:
                 raise TransferExecutionConflictError(f"文件 {expected.path} 已被替换，禁止清理")
         if expected.storage == "local":
-            expected_time: Optional[int | float]
-            current_time: Optional[int | float]
-            if expected.modify_time_ns is not None:
-                expected_time, current_time = expected.modify_time_ns, current.modify_time_ns
-            else:
-                expected_time, current_time = expected.modify_time, current.modify_time
-            if expected_time is None or current_time is None:
-                raise StorageQueryError(f"文件 {expected.path} 缺少修改时间身份凭据，需人工复核")
-            if expected_time != current_time:
-                raise TransferExecutionConflictError(f"文件 {expected.path} 的修改时间已变化，禁止清理")
-            if expected.path == current.path and expected.change_time_ns is not None:
-                if current.change_time_ns is None:
-                    raise StorageQueryError(f"文件 {expected.path} 缺少状态时间身份凭据，需人工复核")
-                if expected.change_time_ns != current.change_time_ns:
-                    raise TransferExecutionConflictError(f"文件 {expected.path} 的状态时间已变化，禁止清理")
+            TransHandler.__assert_local_file_version(expected, current)
+
+    @staticmethod
+    def __assert_local_file_version(expected: FileItem, current: FileItem) -> None:
+        """
+        在大小、类型和稳定 ID 已核对后，检查本地文件的时间版本凭据。
+
+        同路径状态时间可识别等长改写后还原 mtime 的变化。仅在稳定 ID 和纳秒修改时间
+        均一致且当前挂载确认为 FUSE 时，允许单独的 ctime 变化并记录告警。
+        旧快照凭据不足、挂载未知或查询失败时继续保留文件。
+
+        :param expected: 已完成基础身份核验的冻结本地文件
+        :param current: 当前严格查询结果
+        :raises TransferExecutionConflictError: 修改时间或不满足兼容条件的状态时间变化
+        :raises StorageQueryError: 缺少冻结快照要求的时间凭据
+        :raises OSError: FUSE 挂载识别失败
+        """
+        expected_time: Optional[int | float]
+        current_time: Optional[int | float]
+        if expected.modify_time_ns is not None:
+            expected_time, current_time = expected.modify_time_ns, current.modify_time_ns
+        else:
+            expected_time, current_time = expected.modify_time, current.modify_time
+        if expected_time is None or current_time is None:
+            raise StorageQueryError(f"文件 {expected.path} 缺少修改时间身份凭据，需人工复核")
+        if expected_time != current_time:
+            raise TransferExecutionConflictError(f"文件 {expected.path} 的修改时间已变化，禁止清理")
+        if expected.path != current.path or expected.change_time_ns is None:
+            return
+        if current.change_time_ns is None:
+            raise StorageQueryError(f"文件 {expected.path} 缺少状态时间身份凭据，需人工复核")
+        if expected.change_time_ns == current.change_time_ns:
+            return
+        if (expected.fileid and expected.modify_time_ns is not None
+                and fsproxy.is_fuse_path(Path(cast(str, current.path)))):
+            logger.warning(f"文件 {expected.path} 的 FUSE 状态时间已变化，大小、类型、文件 ID 和纳秒修改时间一致，继续清理")
+            return
+        raise TransferExecutionConflictError(f"文件 {expected.path} 的状态时间已变化，禁止清理")
 
     @classmethod
     def __inherit_shared_local_identity(cls, expected: FileItem, receipt: Optional[FileItem]) -> FileItem:

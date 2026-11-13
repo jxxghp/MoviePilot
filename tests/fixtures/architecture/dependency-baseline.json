@@ -962,8 +962,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10123,
-  "edge_sha256": "8d8cbb23d149ab386fb65d8766391d81b1f8e37484f52d4640f92c07c722167e",
+  "edge_count": 10124,
+  "edge_sha256": "3dac06b5d1ba3e44d6ed06f06c678f43767e1e8ee613cd4b7d2d09c07ccfd463",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7753,6 +7753,7 @@
     "app.modules.filemanager.storages.u115 -> app.schemas.types",
     "app.modules.filemanager.transhandler -> app.adapters",
     "app.modules.filemanager.transhandler -> app.adapters.system",
+    "app.modules.filemanager.transhandler -> app.adapters.system.fsproxy",
     "app.modules.filemanager.transhandler -> app.adapters.system.host",
     "app.modules.filemanager.transhandler -> app.application",
     "app.modules.filemanager.transhandler -> app.application.audio",
