@@ -285,6 +285,8 @@ JSON 使用十进制字符串避免浏览器数字精度丢失，客户端应原
 整理失败的 AI 接管应先读取 `transfer.history` 并核实媒体身份；对持久化任务使用
 `transfer.history.replan` 提交 `history_id`、接管时的 `task_id`/`settlement_revision`、`media_source`、`media_id`、`media_type`
 以及可选的 `season`/`episode`。该操作只接受没有文件副作用的识别拒绝，保留原任务、失败证据、结算回执和重试预算；排队受理不代表文件已经整理完成。
+`history_id` 放入 `path_params`，其余修正字段放入 `body`。预览与重新规划必须保留
+同一组已核实的来源、原生标识、媒体类型及季集，重新识别会直接查询该身份。
 
 认证补充：
 

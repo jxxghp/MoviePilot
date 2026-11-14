@@ -1,6 +1,6 @@
 ---
 name: transfer-failed-retry
-version: 6
+version: 7
 description: >-
   Analyze failed MoviePilot transfers, verify media identity and season/episode,
   and safely replan durable recognition rejections while preserving task identity,
@@ -49,3 +49,29 @@ Use structured `moviepilot_api` operations only; discover their current schemas.
 8. Report verified corrections, accepted/queued replans, confirmed transfer
    successes, and remaining blockers accurately. A queued replan is not a
    completed transfer. Never reset or remove failure/retry evidence.
+
+## 重新规划输入
+
+将失败历史 ID 放在 `path_params.history_id`，将原任务与结算版本放在 `body`。
+`media_source`、`media_id` 和 `media_type` 必须使用同一次媒体查询核实的值，
+预览与重新规划保留相同的身份及季集。`media_type` 使用 `movie` 或 `tv`。
+重新规划会清空旧识别结果并按提交的来源原生标识直接查询。
+收到受理结果后，用 `transfer.history` 核实该条历史的最终状态。
+
+以下示例的历史 ID、任务标识、结算版本和媒体身份均须替换为本次查询的实际值。
+
+```json
+{
+  "operation_id": "transfer.history.replan",
+  "path_params": {"history_id": 123},
+  "body": {
+    "task_id": "task-from-analysis-context",
+    "settlement_revision": 1,
+    "media_source": "themoviedb",
+    "media_id": "117061",
+    "media_type": "tv",
+    "season": 2,
+    "episode": 3
+  }
+}
+```

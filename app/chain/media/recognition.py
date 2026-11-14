@@ -21,6 +21,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.cache import async_fresh, fresh
 from app.runtime.log import logger
+from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     ChainEventType,
@@ -86,6 +87,7 @@ class _MetaRecognitionRequest:
     :param share_meta: 供共享识别与插件使用的元数据副本
     :param mtype: 调用方指定的媒体类型，None 时由元数据和来源决定
     :param media_source: 显式指定的媒体来源，None 时选择默认来源
+    :param media_id: 已核实的来源原生标识，None 时允许按标题和插件优先级识别
     :param episode_group: 电视剧识别使用的剧集组标识，None 表示未指定
     :param music_type: 音乐实体类型，None 时由元数据或默认规则选择
     :param is_music: 是否按音乐识别协议处理本次请求
@@ -96,6 +98,7 @@ class _MetaRecognitionRequest:
     share_meta: MetaBase
     mtype: Optional[MediaType]
     media_source: Optional[MediaSource]
+    media_id: Optional[str]
     episode_group: Optional[str]
     music_type: Optional[str]
     is_music: bool
@@ -240,11 +243,20 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         *,
         mtype: Optional[MediaType],
         media_source: Optional[MediaSource],
+        media_id: Optional[str],
         episode_group: Optional[str],
         music_type: Optional[str],
     ) -> _MetaRecognitionRequest:
         """
         为同步与异步标题识别冻结相同的元数据副本和来源语义。
+
+        :param metainfo: 保留原始季集信息的标题解析结果
+        :param mtype: 上游已核实的媒体类型
+        :param media_source: 请求级身份来源，须与显式 media_id 配对
+        :param media_id: 已核实的来源原生标识，None 时执行标题识别
+        :param episode_group: 需要保留的剧集组
+        :param music_type: 显式音乐实体类型
+        :return: 本次识别共享的冻结请求及原始元数据副本
         """
         return _MetaRecognitionRequest(
             title=metainfo.title or "",
@@ -252,6 +264,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             share_meta=deepcopy(metainfo),
             mtype=mtype,
             media_source=media_source,
+            media_id=media_id,
             episode_group=episode_group,
             music_type=music_type,
             is_music=mtype == MediaType.MUSIC or isinstance(metainfo, MetaMusic),
@@ -278,9 +291,24 @@ class MediaRecognitionOwner(_MediaOwnerBase):
     ) -> Optional[MediaInfo]:
         """
         统一识别结果的空值判定与成功日志，图片补充留给各 I/O 外壳。
+
+        显式指定身份时，插件补充结果也必须与已核实的来源、标识及媒体类型一致。
+
+        :param request: 包含已核实身份与类型约束的识别请求
+        :param mediainfo: 原生识别或辅助识别返回的候选
+        :return: 符合请求约束的媒体信息，无结果或身份冲突时返回 None
         """
         if not mediainfo:
             return None
+        if request.media_id is not None:
+            expected_identity = resolve_media_identity(
+                media_source=request.media_source, media_id=request.media_id,
+            )
+            identity_matches = all(expected_identity) and resolve_media_identity(media=mediainfo) == expected_identity
+            type_matches = request.mtype is None or mediainfo.type == request.mtype
+            if not (identity_matches and type_matches):
+                logger.warning(f"{request.title} 识别结果与已核实的媒体身份或类型不一致")
+                return None
         logger.info(
             f"{request.title} 识别到媒体信息："
             f"{(mediainfo.type or MediaType.UNKNOWN).value} {mediainfo.title_year}"
@@ -295,6 +323,8 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         obtain_images: bool = False,
         mtype: Optional[MediaType] = None,
         music_type: Optional[str] = None,
+        *,
+        media_id: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息
@@ -305,11 +335,14 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         :param obtain_images: 是否补充图片
         :param mtype: 上游已确定的媒体类型
         :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
+        :param media_id: 已核实的来源原生标识，须与 media_source 配对，提供时直接按身份识别
+        :return: 符合身份与类型约束的媒体信息，未命中时返回 None
         """
         mediainfo = self._recognize_with_fallback_by_meta(
             metainfo=metainfo,
             mtype=mtype,
             media_source=media_source,
+            media_id=media_id,
             episode_group=episode_group,
             obtain_images=obtain_images,
             music_type=music_type,
@@ -326,6 +359,8 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         episode_group: Optional[str] = None,
         obtain_images: bool = False,
         music_type: Optional[str] = None,
+        *,
+        media_id: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         根据标题识别媒体信息，必要时回退到辅助识别。
@@ -336,6 +371,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
         :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
+        :param media_id: 已核实的来源原生标识，提供时由原生识别校验身份并跳过标题辅助识别
         :return: 统一媒体信息
         """
         if not metainfo:
@@ -344,6 +380,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             metainfo,
             mtype=mtype,
             media_source=media_source,
+            media_id=media_id,
             episode_group=episode_group,
             music_type=music_type,
         )
@@ -356,6 +393,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                 meta=request.metainfo,
                 mtype=request.mtype,
                 media_source=request.media_source,
+                media_id=request.media_id,
                 share_meta=request.share_meta,
                 episode_group=request.episode_group,
                 music_type=request.music_type,
@@ -376,19 +414,22 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                 music_type=request.music_type,
             )
 
-        # 按 config 中设置的识别顺序识别，影视与音乐共用同一选择流程
-        mediainfo = self.select_recognize_source(
-            log_name=request.title,
-            log_context=request.title,
-            native_fn=native_recognize,
-            plugin_fn=plugin_recognize,
-            is_recognized=(
-                MediaRecognitionOwner._music_recognition_is_terminal
-                if request.is_music
-                else None
-            ),
-            plugin_event=request.plugin_event,
-        )
+        # 已核实身份直接查询，防止标题辅助识别覆盖来源、标识或季集。
+        if request.media_id is not None:
+            mediainfo = native_recognize()
+        else:
+            mediainfo = self.select_recognize_source(
+                log_name=request.title,
+                log_context=request.title,
+                native_fn=native_recognize,
+                plugin_fn=plugin_recognize,
+                is_recognized=(
+                    MediaRecognitionOwner._music_recognition_is_terminal
+                    if request.is_music
+                    else None
+                ),
+                plugin_event=request.plugin_event,
+            )
         mediainfo = MediaRecognitionOwner._accepted_recognition(request, mediainfo)
         if mediainfo is None:
             return None
@@ -407,6 +448,8 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         obtain_images: bool = False,
         mtype: Optional[MediaType] = None,
         music_type: Optional[str] = None,
+        *,
+        media_id: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         根据主副标题识别媒体信息（异步版本）
@@ -417,12 +460,14 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         :param obtain_images: 是否补充图片
         :param mtype: 上游已确定的媒体类型
         :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
+        :param media_id: 已核实的来源原生标识，须与 media_source 配对，提供时直接按身份识别
         :return: 统一媒体信息
         """
         mediainfo = await self._async_recognize_with_fallback_by_meta(
             metainfo=metainfo,
             mtype=mtype,
             media_source=media_source,
+            media_id=media_id,
             episode_group=episode_group,
             obtain_images=obtain_images,
             music_type=music_type,
@@ -439,6 +484,8 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         episode_group: Optional[str] = None,
         obtain_images: bool = False,
         music_type: Optional[str] = None,
+        *,
+        media_id: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
         异步根据标题识别媒体信息，必要时回退到辅助识别。
@@ -449,6 +496,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         :param episode_group: 剧集组
         :param obtain_images: 是否补充图片
         :param music_type: 音乐实体类型，用于约束显式音乐身份及插件结果
+        :param media_id: 已核实的来源原生标识，提供时由原生识别校验身份并跳过标题辅助识别
         :return: 统一媒体信息
         """
         if not metainfo:
@@ -457,6 +505,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             metainfo,
             mtype=mtype,
             media_source=media_source,
+            media_id=media_id,
             episode_group=episode_group,
             music_type=music_type,
         )
@@ -469,6 +518,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                 meta=request.metainfo,
                 mtype=request.mtype,
                 media_source=request.media_source,
+                media_id=request.media_id,
                 share_meta=request.share_meta,
                 episode_group=request.episode_group,
                 music_type=request.music_type,
@@ -489,19 +539,22 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                 music_type=request.music_type,
             )
 
-        # 按 config 中设置的识别顺序识别，影视与音乐共用同一选择流程
-        mediainfo = await self.async_select_recognize_source(
-            log_name=request.title,
-            log_context=request.title,
-            native_fn=native_recognize,
-            plugin_fn=plugin_recognize,
-            is_recognized=(
-                MediaRecognitionOwner._music_recognition_is_terminal
-                if request.is_music
-                else None
-            ),
-            plugin_event=request.plugin_event,
-        )
+        # 显式身份与同步入口保持相同的直查和失败语义。
+        if request.media_id is not None:
+            mediainfo = await native_recognize()
+        else:
+            mediainfo = await self.async_select_recognize_source(
+                log_name=request.title,
+                log_context=request.title,
+                native_fn=native_recognize,
+                plugin_fn=plugin_recognize,
+                is_recognized=(
+                    MediaRecognitionOwner._music_recognition_is_terminal
+                    if request.is_music
+                    else None
+                ),
+                plugin_event=request.plugin_event,
+            )
         mediainfo = MediaRecognitionOwner._accepted_recognition(request, mediainfo)
         if mediainfo is None:
             return None
