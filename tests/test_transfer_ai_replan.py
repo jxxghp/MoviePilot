@@ -27,7 +27,8 @@ from app.application.transfer.workflow import (
     TransferPlanCheckpoint,
     TransferPlanningInput,
 )
-from app.chain.transfer.execution import _DurableTransferStepRunner
+from app.chain.media import MediaChain
+from app.chain.transfer.execution import TransferExecutionOwner, _DurableTransferStepRunner
 from app.chain.transfer.facade import TransferChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
@@ -36,6 +37,7 @@ from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
 from app.db.models.transfersettlementreceipt import TransferSettlementReceipt
+from app.domain.context import MediaInfo
 from app.domain.meta.metavideo import MetaVideo
 from app.schemas.file import FileItem
 from app.schemas.history import TransferHistoryReplanRequest
@@ -126,7 +128,7 @@ def _correct(executions, history_id, task_id):
     )
 
 
-def test_replan_preserves_identity_evidence_budget_and_replays_correct_season(replan_store, tmp_path):
+def test_replan_preserves_identity_evidence_budget_and_replays_correct_season(replan_store, tmp_path, monkeypatch):
     """
     修正重启后仍使用同一任务与预算，并从 accepted 输入恢复正确身份和 S02E03。
     """
@@ -176,6 +178,18 @@ def test_replan_preserves_identity_evidence_budget_and_replays_correct_season(re
     assert task.meta.begin_season == 2 and task.meta.begin_episode == 3
     assert task.target_path.as_posix() == planning.target_path
     assert task.transfer_type == 'copy'
+    # 从真实修正、进程恢复和入队结果继续识别，覆盖原生标识完整下传。
+    media_chain = MediaChain()
+    expected = MediaInfo(media_source=MediaSource.TMDB, media_id='117061', type=MediaType.TV)
+    native_recognize = Mock(return_value=expected)
+    monkeypatch.setattr(media_chain, 'recognize_media', native_recognize)
+    monkeypatch.setattr(media_chain, 'obtain_images', Mock())
+    assert TransferExecutionOwner._recognize_task_meta(task, restore_history=False) is expected
+    assert native_recognize.call_args.kwargs['media_source'] is MediaSource.TMDB
+    assert native_recognize.call_args.kwargs['media_id'] == '117061'
+    assert native_recognize.call_args.kwargs['mtype'] is MediaType.TV
+    recognized_meta = native_recognize.call_args.kwargs['meta']
+    assert recognized_meta.begin_season == 2 and recognized_meta.begin_episode == 3
     admissions.release_claim(task_id=claimed.task_id, lease_token=replay.lease_token)
 
 

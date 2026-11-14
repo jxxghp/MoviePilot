@@ -6130,7 +6130,7 @@
           "title": "Episode"
         },
         "media_id": {
-          "description": "经媒体查询核实的来源原生 ID",
+          "description": "经媒体查询核实并与 media_source 原样配对的来源原生 ID，重新规划时直接按该身份识别",
           "minLength": 1,
           "title": "Media Id",
           "type": "string"
@@ -6140,7 +6140,7 @@
           "description": "元数据来源标识，保留与 media_id 一同返回的精确值。"
         },
         "media_type": {
-          "description": "经核实的电影或电视剧类型",
+          "description": "经核实的电影或电视剧类型，须与该来源原生 ID 对应",
           "enum": [
             "movie",
             "tv"

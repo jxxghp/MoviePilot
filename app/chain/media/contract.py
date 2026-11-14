@@ -314,9 +314,20 @@ if TYPE_CHECKING:
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
             music_type: Optional[str] = None,
+            *,
+            media_id: Optional[str] = None,
         ) -> Optional[MediaInfo]:
             """
             同步识别元数据并在需要时回退插件。
+
+            :param metainfo: 保留季集信息的标题解析结果
+            :param mtype: 上游已核实的媒体类型
+            :param media_source: 请求级识别来源
+            :param episode_group: 需要保留的剧集组
+            :param obtain_images: 是否补充媒体图片
+            :param music_type: 音乐实体类型约束
+            :param media_id: 已核实的来源原生标识，提供时直接按身份识别
+            :return: 符合身份与类型约束的媒体信息，未命中时返回 None
             """
             ...
 
@@ -328,9 +339,20 @@ if TYPE_CHECKING:
             episode_group: Optional[str] = None,
             obtain_images: bool = False,
             music_type: Optional[str] = None,
+            *,
+            media_id: Optional[str] = None,
         ) -> Optional[MediaInfo]:
             """
             异步识别元数据并在需要时回退插件。
+
+            :param metainfo: 保留季集信息的标题解析结果
+            :param mtype: 上游已核实的媒体类型
+            :param media_source: 请求级识别来源
+            :param episode_group: 需要保留的剧集组
+            :param obtain_images: 是否补充媒体图片
+            :param music_type: 音乐实体类型约束
+            :param media_id: 已核实的来源原生标识，提供时直接按身份识别
+            :return: 符合身份与类型约束的媒体信息，未命中时返回 None
             """
             ...
 

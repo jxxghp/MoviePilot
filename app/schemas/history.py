@@ -230,8 +230,11 @@ class TransferHistoryReplanRequest(RequiredMediaIdentityMixin, BaseModel):
     task_id: str = Field(min_length=1, description="接管上下文中的原始持久任务标识，必须与历史绑定一致")
     settlement_revision: int = Field(ge=1, description="接管上下文中的原始结算版本，拒绝分析期间已变化的任务")
     media_source: MediaSource = Field(description="经媒体查询核实的身份来源")
-    media_id: str = Field(min_length=1, description="经媒体查询核实的来源原生 ID")
-    media_type: Literal["movie", "tv"] = Field(description="经核实的电影或电视剧类型")
+    media_id: str = Field(
+        min_length=1,
+        description="经媒体查询核实并与 media_source 原样配对的来源原生 ID，重新规划时直接按该身份识别",
+    )
+    media_type: Literal["movie", "tv"] = Field(description="经核实的电影或电视剧类型，须与该来源原生 ID 对应")
     season: Optional[int] = Field(default=None, ge=0, description="修正后的季号，0 为特别篇；为空时保留原值")
     episode: Optional[int] = Field(default=None, ge=1, description="修正后的单集集号；为空时保留原集数范围")
 
