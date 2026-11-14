@@ -26,7 +26,9 @@ def test_recording_to_info_maps_listenbrainz_payload():
     assert info.artists == ["Daft Punk"]
     assert info.album == "Random Access Memories"
     assert info.listen_count == 12345
-    assert info.cover_url.endswith("/release-1/front-500")
+    # 浏览器无法直连 Cover Art Archive 跳转后的 archive.org，封面必须落在本站地址；
+    # 本地化不可用时应退回原始地址而不是无效的相对路径。
+    assert info.cover_url.startswith("/static/music/") or info.cover_url.endswith("/release-1/front-500")
 
 
 def test_music_chart_requests_requested_page(monkeypatch):
