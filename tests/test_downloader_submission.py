@@ -547,12 +547,12 @@ def test_transmission_empty_episode_selection_never_starts_task() -> None:
 
 
 @pytest.mark.parametrize("failure", ["unmatched", "missing_files", "priority", "start"])
-def test_selection_failure_keeps_paused_task_and_never_settles_success(downloader, failure):
+def test_selection_failure_releases_new_task_and_never_settles_success(downloader, failure):
     """
-    零匹配或下载器未确认选集时，不启动整包或把非空 hash 当成功。
+    零匹配或下载器未确认选集时，清理新增任务并保留文件，不能把非空 hash 当成功。
 
     文件列表为空时允许一次有界启动取元数据（#7347：暂停磁力无元数据时文件列表恒为空），
-    超时后仍恢复暂停、不记录成功。
+    超时后先请求暂停再清理任务，不记录成功。
     """
     module, server, content, torrent_hash = downloader
     words = None if failure == "unmatched" else _CUSTOM_WORDS
@@ -585,6 +585,7 @@ def test_selection_failure_keeps_paused_task_and_never_settles_success(downloade
         assert "保持暂停" in message
     chain._settle_accepted_download.assert_not_called()
     chain._record_rejected_download.assert_called_once()
+    server.delete_torrents.assert_called_once_with(delete_file=False, ids=torrent_hash)
 
 
 @pytest.mark.parametrize("version", ["v1", "v2", "hybrid"])

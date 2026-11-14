@@ -152,7 +152,9 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
     def download(self, content: Union[Path, str, bytes], download_dir: Path, cookie: str,
                  episodes: Optional[Set[int]] = None, category: Optional[str] = None, label: Optional[str] = None,
                  downloader: Optional[str] = None,
-                 custom_words: Optional[str] = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
+                 custom_words: Optional[str] = None,
+                 episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
+                 ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         读取种子内容并添加下载任务，按需选择剧集文件。
 
@@ -166,6 +168,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :param label: 逗号分隔的任务标签；省略时使用系统种子标签
         :param downloader: 下载器配置名称，省略时使用默认实例
         :param custom_words: 来源识别词，按行参与文件名识别，使选集结果与订阅一致
+        :param episode_selection: 目标季与已确认的季集对应关系；选集失败清理本次新增任务并保留文件
         :return: 下载器名称、任务哈希、内容布局和结果说明；无适用实例时返回 None，
             添加失败时前三项为空，说明包含失败原因
         """
@@ -245,9 +248,10 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             if is_paused:
                 selected, message = self._select_download_files(
                     server, torrent_hash, episodes or set(), custom_words,
+                    episode_selection,
                 )
                 if not selected:
-                    return None, None, None, message
+                    return None, None, None, self._discard_failed_selection(server, torrent_hash, message)
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
             else:
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
@@ -287,6 +291,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
     @staticmethod
     def _select_download_files(
             server: Transmission, torrent_hash: str, episodes: Set[int], custom_words: Optional[str],
+            episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
     ) -> Tuple[bool, str]:
         """
         先确认任务暂停再按来源集数映射选集，确认启动状态后才返回成功。
@@ -297,6 +302,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :param torrent_hash: 需要暂停、选集并恢复的任务哈希
         :param episodes: 需要完整匹配的目标集数；空集合不启动任务
         :param custom_words: 来源识别词，按行参与物理文件名识别
+        :param episode_selection: 目标季与已确认的季集对应关系，跨季冲突不参与唯一视频兜底
         :return: 是否确认选集及启动成功，以及失败时的下载器核查说明
         """
         if not server.ensure_torrent_state(torrent_hash, paused=True):
@@ -319,19 +325,14 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             for extension in get_runtime_setting("RMT_MEDIAEXT", [])
         }
         try:
-            wanted, unwanted, matched = torrent_rules.select_episode_files(
-                (
-                    (item.id, set(MetaInfo(
-                        Path(item.name).name,
-                        custom_words=custom_words.splitlines() if custom_words else [],
-                    ).episode_list), Path(item.name).suffix.lower() in media_extensions)
-                    for item in torrent_files
-                ), episodes,
+            wanted, unwanted, matched = torrent_rules.select_torrent_files(
+                ((item.id, item.name) for item in torrent_files),
+                episodes, media_extensions, custom_words, episode_selection,
             )
         finally:
             torrent_files.clear()
         if not episodes or not episodes.issubset(matched):
-            return False, f"{state_failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
+            return False, f"{state_failure}：未找到目标集数 {sorted(set(episodes) - matched)}，请检查季集映射"
         if not server.set_files(torrent_hash, wanted) or not server.set_unwanted_files(torrent_hash, unwanted):
             return False, f"{state_failure}：文件选择设置未确认"
         if not server.ensure_torrent_state(torrent_hash, paused=False):

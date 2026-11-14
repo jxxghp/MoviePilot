@@ -9,6 +9,7 @@ import pytest
 
 import app.chain.download.batch as download_batch
 import app.chain.download.selection as download_selection
+from app.application.torrent.download import TorrentHelper
 from app.chain.download import DownloadChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
@@ -23,6 +24,9 @@ def _context(
         season: int = 1,
         media_type: MediaType = MediaType.TV,
 ) -> Context:
+    """
+    构造指定媒体身份、季和集号的批量下载候选。
+    """
     meta = MetaInfo(f"{name} S{season:02d}")
     if episodes:
         meta.set_episode_list(list(episodes))
@@ -41,6 +45,9 @@ def _missing(
         season: int = 1,
         complete: bool = False,
 ) -> NotExistMediaInfo:
+    """
+    构造单季缺集或完整覆盖要求。
+    """
     return NotExistMediaInfo(
         season=season, episodes=list(episodes), total_episode=total,
         start_episode=1, require_complete_coverage=complete,
@@ -72,10 +79,32 @@ def batch(monkeypatch):
 
 
 def _submitted(chain) -> list[Context]:
+    """
+    按调用顺序提取批量下载提交的候选。
+    """
     return [
         call.args[0] if call.args else call.kwargs["context"]
         for call in chain.download_single.call_args_list
     ]
+
+
+def test_partial_pack_maps_file_episodes_before_missing_intersection(batch):
+    """
+    拆包候选检查也须先映射，避免目标 E05 在累计编号包中被提前丢弃。
+    """
+    context = _context("Show", episodes=tuple(range(1, 13)), season=2)
+    context.torrent_info.title = "Show.S01E13-E24"
+    batch.chain.download_torrent.return_value = (
+        b"torrent", None, [f"Show.S01E{episode:02}.mkv" for episode in range(13, 25)],
+    )
+    batch.helper.get_torrent_episodes = TorrentHelper.get_torrent_episodes
+    missing = {"tmdb:1": {2: _missing((5,), total=12, season=2)}}
+
+    downloaded, remaining = batch.chain.batch_download([context], missing)
+
+    assert downloaded == [context]
+    assert remaining == {}
+    assert batch.chain.download_single.call_args.kwargs["episodes"] == {5}
 
 
 def test_batch_preserves_phase_order_and_submission_options(batch):

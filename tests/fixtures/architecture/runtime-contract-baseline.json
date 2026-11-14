@@ -5687,7 +5687,8 @@
       "family": "downloader",
       "input_contract": "DownloadTaskRequest",
       "optional_parameters": [
-        "custom_words"
+        "custom_words",
+        "episode_selection"
       ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,

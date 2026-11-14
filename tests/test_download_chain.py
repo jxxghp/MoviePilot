@@ -954,9 +954,9 @@ class _FakeBatchTorrentHelper:
             results.append(context)
         return results
 
-    def get_torrent_episodes(self, _files, custom_words=None):
+    def get_torrent_episodes(self, _files, custom_words=None, episode_selection=None):
         """
-        记录自定义识别词配置，并返回预设剧集编号的副本。
+        记录自定义识别词配置，接受冻结的季集依据并返回预设剧集编号的副本。
         """
         type(self).received_custom_words = custom_words
         return list(self.episodes)
@@ -998,7 +998,7 @@ def _build_tv_context(episode_list=None):
             anilist_id=None,
         ),
         meta_info=meta,
-        torrent_info=SimpleNamespace(title="Test Show S01 2160p", site_name="TestSite"),
+        torrent_info=SimpleNamespace(title="Test Show S01 2160p", description=None, site_name="TestSite"),
         allowed_episodes=None,
         confirmed_full_coverage=False,
     )

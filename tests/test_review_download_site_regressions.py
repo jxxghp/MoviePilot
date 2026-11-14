@@ -90,7 +90,8 @@ def test_f037_rtorrent_selection_failure_never_reports_hash(monkeypatch, files, 
     server = SimpleNamespace(add_torrent=Mock(return_value=True),
         get_torrent_id_by_tag=Mock(return_value=Torrent.from_string(content).info_hash),
         get_files=Mock(return_value=files), set_files=Mock(return_value=set_ok),
-        start_torrents=Mock(return_value=start_ok), stop_torrents=Mock(return_value=True))
+        start_torrents=Mock(return_value=start_ok), stop_torrents=Mock(return_value=True),
+        delete_torrents=Mock(return_value=True))
     module = object.__new__(RtorrentModule)
     monkeypatch.setattr(module, 'get_instance', lambda name: server)
     monkeypatch.setattr(module, 'normalize_path', lambda path, name: str(path))
@@ -99,6 +100,7 @@ def test_f037_rtorrent_selection_failure_never_reports_hash(monkeypatch, files, 
     can_start = bool(files and set_ok and any('E02' in f['name'] for f in files))
     result = module.download(content, Path('/downloads'), '', episodes={2}, downloader='rt')
     assert result[1] is None
+    server.delete_torrents.assert_called_once_with(delete_file=False, ids=Torrent.from_string(content).info_hash)
     if not can_start:
         server.start_torrents.assert_not_called()
 

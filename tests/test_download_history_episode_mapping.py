@@ -87,7 +87,7 @@ def test_selected_video_file_is_recorded_for_selected_episode(durable, file_list
     selected_file = file_list[0]
     meta = MetaInfo("Show.S03E06.mp4")
     media = MediaInfo(type=MediaType.TV, title="示例剧", tmdb_id=107371)
-    torrent = TorrentInfo(title="Show.S03E54")
+    torrent = TorrentInfo(title="Show.S03E54" if len(file_list) == 1 else "Show.S03E05E06")
     context = Context(meta_info=meta, media_info=media, torrent_info=torrent)
     chain = DownloadChain.__new__(DownloadChain)
     chain.download_history_repository = MagicMock()
@@ -110,3 +110,34 @@ def test_selected_video_file_is_recorded_for_selected_episode(durable, file_list
     else:
         files = chain.download_history_repository.add.call_args.args[1]
     assert [file.filepath for file in files] == [selected_file]
+
+
+@pytest.mark.parametrize("durable", [False, True])
+def test_cross_season_mapping_records_only_the_physical_target(durable):
+    """
+    累计第 20 集映射为 S02E08 后，只记录真正选中的第 20 集，排除同号的第 8 集。
+    """
+    meta = MetaInfo("Show.S02E08")
+    torrent = TorrentInfo(title="Show.S01E20")
+    media = MediaInfo(type=MediaType.TV, title="示例剧", tmdb_id=107371)
+    context = Context(meta_info=meta, media_info=media, torrent_info=torrent)
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.download_history_repository = MagicMock()
+    chain.durable_event_writer = MagicMock() if durable else None
+    chain._build_download_notification = MagicMock(return_value=None)
+    chain._submit_download_added_task = MagicMock()
+    chain.eventmanager = MagicMock()
+
+    chain._settle_download_success(
+        context=context, media=media, meta=meta, torrent=torrent,
+        folder_name="show", file_list=["Show.S01E08.mkv", "Show.S01E20.mkv"],
+        download_dir=Path("/downloads"), layout="Original", downloader="qb",
+        download_hash="mapped-hash", download_episodes="E08", episodes={8}, channel=None,
+        source="subscribe", userid=None, username=None, torrent_content=b"torrent", custom_words=None,
+    )
+
+    if durable:
+        files = chain.durable_event_writer.download_added.call_args.kwargs["files"]
+    else:
+        files = chain.download_history_repository.add.call_args.args[1]
+    assert [file.filepath for file in files] == ["Show.S01E20.mkv"]

@@ -963,8 +963,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 10165,
-  "edge_sha256": "3256a88ae8af9a22db4a253019e9cd28ba510edce839b09886aacb0011e31389",
+  "edge_count": 10168,
+  "edge_sha256": "0d18e0059a0e92f3505b0fe57704f69f4c67a2571b70e64ed36ab89840dd386e",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4764,6 +4764,7 @@
     "app.chain.download.batch -> app.domain",
     "app.chain.download.batch -> app.domain.context",
     "app.chain.download.batch -> app.domain.episode",
+    "app.chain.download.batch -> app.domain.torrent",
     "app.chain.download.batch -> app.runtime",
     "app.chain.download.batch -> app.runtime.log",
     "app.chain.download.batch -> app.runtime.stop",
@@ -4832,7 +4833,7 @@
     "app.chain.download.history -> app.domain.context",
     "app.chain.download.history -> app.domain.meta",
     "app.chain.download.history -> app.domain.meta.metabase",
-    "app.chain.download.history -> app.domain.metainfo",
+    "app.chain.download.history -> app.domain.torrent",
     "app.chain.download.history -> app.runtime",
     "app.chain.download.history -> app.runtime.log",
     "app.chain.download.history -> app.schemas",
@@ -7249,6 +7250,8 @@
     "app.domain.title -> app.foundation.text",
     "app.domain.title -> app.schemas",
     "app.domain.title -> app.schemas.types",
+    "app.domain.torrent -> app.domain",
+    "app.domain.torrent -> app.domain.metainfo",
     "app.factory -> app.adapters",
     "app.factory -> app.adapters.observability",
     "app.factory -> app.adapters.observability.otel",

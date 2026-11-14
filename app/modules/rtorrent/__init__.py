@@ -89,6 +89,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         label: Optional[str] = None,
         downloader: Optional[str] = None,
         custom_words: Optional[str] = None,
+        episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
     ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         读取种子内容并添加下载任务，按需选择剧集文件。
@@ -101,6 +102,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param label: 逗号分隔的任务标签；省略时使用系统种子标签
         :param downloader: 下载器配置名称，省略时使用默认实例
         :param custom_words: 来源识别词，按行参与文件名识别，使选集结果与订阅一致
+        :param episode_selection: 目标季与已确认的季集对应关系；选集失败清理本次新增任务并保留文件
         :return: 下载器名称、任务哈希、内容布局和结果说明；无适用实例时返回 None，
             添加失败时前三项为空，说明包含失败原因
         """
@@ -208,9 +210,9 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
             else:
                 torrent_hash = added_torrent_hash
                 if episodes:
-                    selected, message = self._select_episode_files(server, torrent_hash, episodes, custom_words)
+                    selected, message = self._select_episode_files(server, torrent_hash, episodes, custom_words, episode_selection)
                     if not selected:
-                        return None, None, None, message
+                        return None, None, None, self._discard_failed_selection(server, torrent_hash, message)
                     return (
                         downloader or self.get_default_config_name(),
                         torrent_hash,
@@ -228,6 +230,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
     @staticmethod
     def _select_episode_files(
         server: Rtorrent, torrent_hash: str, episodes: Set[int], custom_words: Optional[str] = None,
+        episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
     ) -> Tuple[bool, str]:
         """
         对暂停添加的任务完成选集，所有RPC均成功才允许下载链确认任务。
@@ -236,23 +239,19 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         :param torrent_hash: 已暂停添加的任务Hash
         :param episodes: 本次需要完整覆盖的目标集数，多集文件按交集选择
         :param custom_words: 来源识别词，按行参与物理文件名识别
+        :param episode_selection: 目标季与已确认的季集对应关系，跨季冲突不参与唯一视频兜底
         :return: 是否确认选集启动成功及结果说明
         """
         torrent_files = server.get_files(torrent_hash)
         if not torrent_files:
             return False, "获取种子文件失败，下载任务保留暂停状态，请检查下载器"
         media_extensions = {str(extension).lower() for extension in get_runtime_setting("RMT_MEDIAEXT", [])}
-        wanted, unwanted, selected_episodes = torrent_rules.select_episode_files(
-            (
-                (item["id"], set(MetaInfo(
-                    Path(item["name"]).name,
-                    custom_words=custom_words.splitlines() if custom_words else [],
-                ).episode_list), Path(item["name"]).suffix.lower() in media_extensions)
-                for item in torrent_files
-            ), episodes,
+        wanted, unwanted, selected_episodes = torrent_rules.select_torrent_files(
+            ((item["id"], item["name"]) for item in torrent_files),
+            episodes, media_extensions, custom_words, episode_selection,
         )
         if not episodes or not episodes.issubset(selected_episodes):
-            return False, "未匹配到目标集数，下载任务保留暂停状态"
+            return False, "未匹配到目标集数，请检查季集映射，下载任务保留暂停状态"
         if unwanted and not server.set_files(torrent_hash=torrent_hash, file_ids=unwanted, priority=0):
             return False, "设置选集优先级失败，下载任务保留暂停状态"
         if not server.set_files(torrent_hash=torrent_hash, file_ids=wanted, priority=1):

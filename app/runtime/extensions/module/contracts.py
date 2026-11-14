@@ -1440,7 +1440,7 @@ _METHOD_CONTRACTS = {
         result_contract="DownloadTaskResult | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("content", "download_dir", "cookie", "episodes", "category", "label", "downloader"),
-        optional_parameters=("custom_words",),
+        optional_parameters=("custom_words", "episode_selection"),
     ),
     "download_added": ModuleMethodContract(
         family="downloader",

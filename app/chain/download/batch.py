@@ -10,6 +10,7 @@ from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain import episode as episode_rules
+from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
 )
@@ -238,6 +239,7 @@ class _BatchDownloadRun:
             return None
         episodes = _new_torrent_helper().get_torrent_episodes(
             files, custom_words=self.custom_words,
+            episode_selection=torrent_rules.episode_selection_for_context(context),
         )
         if partial:
             logger.info(f"{torrent.site_name} - {meta.org_string} 解析种子文件集数：{episodes}")

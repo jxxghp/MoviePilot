@@ -731,12 +731,16 @@ class TorrentHelper:
         return result
 
     @staticmethod
-    def get_torrent_episodes(files: list[str], custom_words: Optional[List[str]] = None) -> list[int]:
+    def get_torrent_episodes(
+            files: list[str], custom_words: Optional[List[str]] = None,
+            episode_selection: Optional[torrent_rules.EpisodeSelection] = None,
+    ) -> list[int]:
         """
         从种子的文件清单中获取所有集数
 
         :param files: 种子文件清单
         :param custom_words: 当前下载来源的临时自定义识别词
+        :param episode_selection: 目标季和已经确认的季集对应关系，冲突文件不贡献集数
         :return: 识别到的全部集数
         """
         episodes: list[int] = []
@@ -748,10 +752,9 @@ class TorrentHelper:
             if not file_path.suffix or file_path.suffix.lower() not in config.video_extensions:
                 continue
             # 只使用文件名识别
-            meta = MetaInfo(file_path.name, custom_words=custom_words)
-            if not meta.begin_episode:
-                continue
-            episodes = list(set(episodes).union(set(meta.episode_list)))
+            episodes = list(set(episodes).union(torrent_rules.torrent_file_episodes(
+                file_path.name, custom_words=custom_words, episode_selection=episode_selection,
+            )))
         return episodes
 
     def is_invalid(self, url: Optional[str]) -> bool:

@@ -865,6 +865,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             label=label,
             downloader=downloader or prepared.site_downloader,
             custom_words=custom_words,
+            episode_selection=torrent_rules.episode_selection_for_context(context) if episodes else None,
         )
         actual_downloader, download_hash, layout, error_msg = (
             result if result else (None, None, None, "未找到下载器")
