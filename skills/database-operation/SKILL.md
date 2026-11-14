@@ -343,6 +343,12 @@ and pass the flag only for an explicitly authorized repair.
 - Write boundary: Written by transfer settlement or the external registration API; never insert history rows directly. External rows preserve administrator audit and file verification evidence; actor_id is the authoritative identity and actor_name is a bounded display snapshot. Old rows have unknown origin.
 - Columns: `id`, `transfer_task_id`, `transfer_settlement_revision`, `origin`, `registration`, `src`, `src_storage`, `src_fileitem`, `dest`, `dest_storage`, `dest_fileitem`, `mode`, `type`, `media_category_id`, `category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `title`, `year`, `media_source`, `media_id`, `music_type`, `total_tracks`, `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, `bitrate`, `seasons`, `episodes`, `image`, `downloader`, `download_hash`, `status`, `errmsg`, `retry_count`, `auto_paused`, `failure_stage`, `recovery_action`, `cleanup_status`, `cleanup_error`, `date`, `files`, `episode_group`
 
+### `transfermanualidentityauthorization`
+- Purpose: Stores one-shot administrative grants that let a failed transfer's AI replanning bypass the exhausted automatic retry budget after a human confirmed the media identity.
+- Useful queries: Auditing who authorized a manual replan, when it was issued and consumed, and which media identity was confirmed.
+- Write boundary: Audit trail only; never rewrite issued_by or used_at, and treat unconsumed expired grants as dead.
+- Columns: `id`, `history_id`, `task_id`, `settlement_revision`, `source`, `issued_by`, `issued_at`, `expires_at`, `used_at`, `used_by`, `media_source`, `media_id`
+
 ### `transferpending`
 - Purpose: Durably stores pending transfer input, plans, checkpoints, leases, retries, and manual review state.
 - Useful queries: Diagnosing restart recovery, expired leases, retry_wait, terminal failures, or manual review.

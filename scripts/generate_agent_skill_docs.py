@@ -193,6 +193,13 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "Diagnosing restart recovery, expired leases, retry_wait, terminal failures, or manual review.",
         "Core durable state machine advanced only by planning, execution, retry, and review services.",
     ),
+    "transfermanualidentityauthorization": (
+        "Stores one-shot administrative grants that let a failed transfer's AI replanning bypass the "
+        "exhausted automatic retry budget after a human confirmed the media identity.",
+        "Auditing who authorized a manual replan, when it was issued and consumed, and which media identity "
+        "was confirmed.",
+        "Audit trail only; never rewrite issued_by or used_at, and treat unconsumed expired grants as dead.",
+    ),
     "transfersettlementreceipt": (
         "Stores immutable terminal settlement receipts with contiguous revisions per transfer task.",
         "Verifying that history, pending deletion, and execution fingerprints were settled reliably.",
