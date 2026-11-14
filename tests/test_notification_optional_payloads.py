@@ -18,6 +18,7 @@ from app.modules.synologychat.synologychat import SynologyChat
 from app.modules.vocechat import VoceChatModule
 from app.modules.vocechat.vocechat import VoceChat
 from app.modules.wechat import WechatModule
+from app.modules.wechat.wechat import WeChat
 from app.modules.wechat.wechatbot import WeChatBot
 from app.modules.wechatclawbot import WechatClawBotModule
 from app.schemas.message import Message, MessageResponse
@@ -63,6 +64,25 @@ def test_dingtalk_missing_torrent_does_not_hide_later_candidate(monkeypatch):
         title="Demo", page_url="https://site.test/details/1",
     ))])
     sent.assert_called_once_with(message, "2. [Demo](https://site.test/details/1)")
+
+
+@pytest.mark.parametrize(("link", "expected"), [
+    (None, "下载完成"),
+    ("https://mp.test/detail", "下载完成\n点击查看：https://mp.test/detail"),
+])
+def test_wechat_text_only_notification_does_not_render_none_title(link, expected, monkeypatch):
+    """
+    企业微信仅有正文的通知只发送正文，不把缺失的标题渲染为 None。
+    """
+    client = object.__new__(WeChat)
+    client._appid = "1"
+    client._send_msg_url = "https://wechat.test/send"
+    sent = Mock(return_value=True)
+    monkeypatch.setattr(client, "_WeChat__get_access_token", Mock(return_value=True))
+    monkeypatch.setattr(client, "_WeChat__post_request", sent)
+    assert client.send_msg(title=None, text="下载完成", link=link) is True
+    sent.assert_called_once()
+    assert sent.call_args.args[1]["text"]["content"] == expected
 
 
 @pytest.mark.parametrize(("module_class", "scheme", "method", "module_path"), [
