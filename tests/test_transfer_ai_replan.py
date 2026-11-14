@@ -33,6 +33,7 @@ from app.chain.transfer.facade import TransferChain
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import TransactionalTransferExecutionRepository
+from app.db.models.transferauthorization import TransferManualIdentityAuthorization
 from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
@@ -54,7 +55,8 @@ def replan_store(tmp_path):
     :yields: 准入端口、执行端口、会话工厂及终态写入器
     """
     engine = create_engine(f"sqlite:///{tmp_path / 'ai-replan.db'}")
-    for model in (TransferPending, TransferHistory, TransferExecutionStep, TransferSettlementReceipt):
+    for model in (TransferPending, TransferHistory, TransferExecutionStep, TransferSettlementReceipt,
+                  TransferManualIdentityAuthorization):
         model.__table__.create(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     try:

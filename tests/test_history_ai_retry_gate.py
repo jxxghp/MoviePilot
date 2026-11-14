@@ -95,7 +95,7 @@ def test_single_ai_redo_starts_agent_without_retrying_frozen_plan(monkeypatch):
     monkeypatch.setattr(history_endpoint, "_start_ai_redo_task", started)
     response = asyncio.run(history_endpoint.ai_redo_transfer_history(
         11, query=_HistoryQuery([TransferHistory(id=11, transfer_task_id="task-11")]),
-        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
+        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, current_user=None,
     ))
     assert response.success
     assert response.data["progress_key"].startswith("ai_redo_transfer_11_")
@@ -117,7 +117,7 @@ def test_ai_disabled_never_retries_durable_tasks(monkeypatch, batch):
     monkeypatch.setattr(history_endpoint, "_start_batch_ai_redo_task", started)
     kwargs = dict(query=_HistoryQuery([TransferHistory(id=11, transfer_task_id="task-11")]),
                   runtime_config=_runtime(ai_enabled=False), task_registry=object(),
-                  execution_repository=repository, _=None)
+                  execution_repository=repository, current_user=None)
     request = (history_endpoint.batch_ai_redo_transfer_history(
         BatchTransferHistoryRedoRequest(history_ids=[11]), **kwargs
     ) if batch else history_endpoint.ai_redo_transfer_history(11, **kwargs))
@@ -138,7 +138,7 @@ def test_single_ai_redo_rejects_protected_execution_states(monkeypatch, state):
     monkeypatch.setattr(history_endpoint, "_start_ai_redo_task", started)
     response = asyncio.run(history_endpoint.ai_redo_transfer_history(
         12, query=_HistoryQuery([TransferHistory(id=12, transfer_task_id="task-12")]),
-        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
+        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, current_user=None,
     ))
     assert not response.success
     assert "人工确认" in response.message if state is TransferExecutionState.MANUAL_REVIEW else "正在处理" in response.message
@@ -158,7 +158,7 @@ def test_batch_ai_redo_sends_all_eligible_records_to_agent(monkeypatch, mixed):
         BatchTransferHistoryRedoRequest(history_ids=[18, 19, 18]),
         query=_HistoryQuery([TransferHistory(id=18, transfer_task_id="task-18"),
                              TransferHistory(id=19, transfer_task_id=None if mixed else "task-19")]),
-        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
+        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, current_user=None,
     ))
     assert response.success
     assert response.data["history_ids"] == [18, 19]
@@ -179,7 +179,7 @@ def test_batch_rejection_has_no_partial_retry_side_effects(monkeypatch):
         BatchTransferHistoryRedoRequest(history_ids=[21, 22, 23]),
         query=_HistoryQuery([TransferHistory(id=21, transfer_task_id="task-21"),
                              TransferHistory(id=22, transfer_task_id="task-22"), TransferHistory(id=23)]),
-        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, _=None,
+        runtime_config=_runtime(), task_registry=object(), execution_repository=repository, current_user=None,
     ))
     assert not response.success and "第 22 条" in response.message
     started.assert_not_called()

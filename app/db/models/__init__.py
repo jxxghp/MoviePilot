@@ -66,6 +66,10 @@ _MODEL_EXPORTS = {
         "TransferSettlementReceipt",
     ),
     "TransferPending": ("app.db.models.transferpending", "TransferPending"),
+    "TransferManualIdentityAuthorization": (
+        "app.db.models.transferauthorization",
+        "TransferManualIdentityAuthorization",
+    ),
     "User": ("app.db.models.user", "User"),
     "UserConfig": ("app.db.models.userconfig", "UserConfig"),
     "Workflow": ("app.db.models.workflow", "Workflow"),

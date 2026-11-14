@@ -50,6 +50,7 @@ from app.application.history.registration import (
     RegistrationValidationError,
     TransferRegistrationCommand,
 )
+from app.application.transfer.authorization import authorization_actor_name
 from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionRepository,
@@ -507,6 +508,40 @@ def replan_transfer_history(
     return _SchemaResponse(success=result.accepted, message=result.message)
 
 
+async def _grant_manual_identity_authorization(
+        history: Any,
+        current_user: object,
+        execution_repository: TransferExecutionRepository,
+) -> None:
+    """
+    登记管理用户点击智能助手整理时产生的一次性身份修正授权。
+
+    授权只补全"自动重试预算已耗尽"这一条判断，因此没有持久任务或结算版本的历史不签发。
+    登记失败不让本次助手分析失败：预算未耗尽时本就不需要这张授权。
+
+    :param history: 本次点击对应的整理历史视图
+    :param current_user: 已通过管理权限校验的用户对象
+    :param execution_repository: 拥有短事务的执行仓储
+    """
+    task_id = getattr(history, "transfer_task_id", None)
+    settlement_revision = getattr(history, "transfer_settlement_revision", None)
+    if not task_id or not settlement_revision:
+        return
+    try:
+        granted = await asyncio.to_thread(
+            TransferExecutionCommand(execution_repository).grant_manual_identity_authorization,
+            history_id=history.id,
+            task_id=task_id,
+            settlement_revision=settlement_revision,
+            issued_by=authorization_actor_name(current_user),
+        )
+    except Exception as error:
+        logger.warning(f"整理历史 {history.id} 的人工身份授权登记失败：{error}")
+        return
+    if not granted:
+        logger.warning(f"整理历史 {history.id} 的任务或结算版本已变化，未登记人工身份授权")
+
+
 @router.post(
     "/transfer/{history_id}/ai-redo",
     summary="智能助手重新整理",
@@ -516,7 +551,7 @@ async def ai_redo_transfer_history(
     history_id: int,
     query: HistoryQueryService = Depends(get_history_query_service),
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
-    _: object = Depends(get_current_active_manage_user),
+    current_user: object = Depends(get_current_active_manage_user),
     task_registry: TaskRegistry = Depends(get_background_task_registry),
     execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
 ) -> Any:
@@ -536,6 +571,8 @@ async def ai_redo_transfer_history(
     )
     if rejection:
         return _SchemaResponse(success=False, message=rejection)
+
+    await _grant_manual_identity_authorization(history, current_user, execution_repository)
 
     prompt = build_manual_redo_prompt(history)
     progress_key = f"ai_redo_transfer_{history_id}_{int(time.time() * 1000)}"
@@ -558,7 +595,7 @@ async def batch_ai_redo_transfer_history(
     payload: _SchemaBatchTransferHistoryRedoRequest,
     query: HistoryQueryService = Depends(get_history_query_service),
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
-    _: object = Depends(get_current_active_manage_user),
+    current_user: object = Depends(get_current_active_manage_user),
     task_registry: TaskRegistry = Depends(get_background_task_registry),
     execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
 ) -> Any:
@@ -587,6 +624,9 @@ async def batch_ai_redo_transfer_history(
         )
         if rejection:
             return _SchemaResponse(success=False, message=f"第 {history.id} 条：{rejection}")
+
+    for history in histories:
+        await _grant_manual_identity_authorization(history, current_user, execution_repository)
 
     return _submit_batch_ai_redo(
         histories=histories,

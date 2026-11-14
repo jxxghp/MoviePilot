@@ -981,6 +981,22 @@ class TransferExecutionRepository(Protocol):
         :return: 是否接纳重新规划及持久调度状态
         """
 
+    def grant_manual_identity_authorization(
+            self, *, history_id: int, task_id: str, settlement_revision: int, issued_by: str,
+    ) -> bool:
+        """
+        记录管理用户为该失败历史签发的一次性身份修正授权。
+
+        授权只补全"自动重试预算已耗尽"这一条判断，并绑定结算版本且消费一次即失效；
+        失败阶段、文件副作用等安全限制不受影响。
+
+        :param history_id: 触发点击的整理历史标识
+        :param task_id: 该历史当前绑定的持久任务标识
+        :param settlement_revision: 签发的结算版本
+        :param issued_by: 通过管理权限校验的用户名称
+        :return: 授权已登记时为 True
+        """
+
     def discard_corrupt_task(
             self,
             *,
@@ -1347,6 +1363,27 @@ class TransferExecutionCommand:
             history_id=history_id, task_id=task_id, settlement_revision=settlement_revision,
             media_source=MediaSource(media_source).value, media_id=media_id.strip(),
             media_type=normalized_type.value, season=season, episode=episode, requested_by=requested_by,
+        )
+
+    def grant_manual_identity_authorization(
+            self, *, history_id: int, task_id: str, settlement_revision: int, issued_by: str,
+    ) -> bool:
+        """
+        登记管理用户点击智能助手整理时签发的一次性身份修正授权。
+
+        :param history_id: 触发点击的整理历史标识
+        :param task_id: 该历史当前绑定的持久任务标识
+        :param settlement_revision: 签发的结算版本
+        :param issued_by: 通过管理权限校验的用户名称
+        :return: 授权已登记时为 True
+        """
+        normalized_task_id = task_id.strip()
+        normalized_issued_by = issued_by.strip()
+        if history_id <= 0 or settlement_revision <= 0 or not normalized_task_id or not normalized_issued_by:
+            raise ValueError("人工授权缺少历史、结算版本、任务或签发身份")
+        return self._repository.grant_manual_identity_authorization(
+            history_id=history_id, task_id=normalized_task_id,
+            settlement_revision=settlement_revision, issued_by=normalized_issued_by,
         )
 
     def resolve_manual_review(

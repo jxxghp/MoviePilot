@@ -237,6 +237,7 @@
   },
   "app/api/endpoints/history.py:asyncio.to_thread": {
     "owners": {
+      "_grant_manual_identity_authorization": 1,
       "ai_redo_transfer_history": 1,
       "batch_ai_redo_transfer_history": 1
     },

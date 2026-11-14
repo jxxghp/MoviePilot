@@ -12,12 +12,18 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, load_only
 
 from app.application.history.retry import max_failed_retries
+from app.application.transfer.authorization import (
+    MANUAL_IDENTITY_AUTHORIZATION_SOURCE,
+    ManualIdentityAuthorization,
+    authorization_expiry,
+    authorization_rejection,
+)
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferExecutionConflictError,
@@ -55,6 +61,7 @@ from app.application.transfer.workflow import (
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
 )
+from app.db.models.transferauthorization import TransferManualIdentityAuthorization
 from app.db.models.transferexecutionstep import (
     TransferExecutionStep as TransferExecutionStepModel,
 )
@@ -64,6 +71,7 @@ from app.db.oper.transferexecutionstep import TransferExecutionStepOper
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.transferpending import TransferPendingOper
 from app.db.uow import SqlAlchemyUnitOfWork
+from app.runtime.log import logger
 
 _LEGACY_REVIEW_STEP_KIND = "legacy_execution_review"
 _UNHANDLED_REVIEW_STEP_KIND = "unhandled_execution_review"
@@ -1538,7 +1546,11 @@ class TransactionalTransferExecutionRepository:
                     raise TransferExecutionConflictError("整理任务正在处理中，暂时无法重新规划")
                 checkpoint, fingerprint = self._plan_identity(pending)
                 steps = TransferExecutionStepOper(session).list_by_task_id(task_id=pending.task_id)
-                self._validate_recognition_replan(pending, history, checkpoint, steps)
+                manual_identity = self._validate_recognition_replan(
+                    session, pending=pending, history=history, checkpoint=checkpoint, steps=steps,
+                    media_source=media_source, media_id=media_id, requested_by=requested_by,
+                    now_utc=now_utc,
+                )
                 self._validate_plan_steps(task_id=pending.task_id, checkpoint=checkpoint,
                                           checkpoint_fingerprint=fingerprint, steps=steps)
                 snapshot = self._project_snapshot(pending, steps)
@@ -1568,8 +1580,14 @@ class TransactionalTransferExecutionRepository:
                 pending.retry_generation += 1
                 pending.retry_count += 1
                 pending.retry_due_at = now_utc
-                pending.retry_requested_by = requested_by
-                pending.retry_reason = "智能助手核实媒体身份及季集后重新规划"
+                # 人工授权只补全预算门，重试计数和暂停标记保持原样，审计列标注授权来源。
+                pending.retry_requested_by = (
+                    f"{requested_by}+manual_identity" if manual_identity else requested_by
+                )
+                pending.retry_reason = (
+                    "管理用户确认媒体身份后由智能助手重新规划" if manual_identity
+                    else "智能助手核实媒体身份及季集后重新规划"
+                )
                 pending.updated_at = updated_at
                 transaction.commit()
                 return TransferRetryRequestResult(True, TransferExecutionState.RETRY_WAIT,
@@ -1578,26 +1596,41 @@ class TransactionalTransferExecutionRepository:
                 transaction.rollback()
                 raise
 
-    @staticmethod
     def _validate_recognition_replan(
-            pending: TransferPending, history: TransferHistory, checkpoint: TransferPlanCheckpoint,
-            steps: list[TransferExecutionStepModel],
-    ) -> None:
+            self, session: Session, *, pending: TransferPending, history: TransferHistory,
+            checkpoint: TransferPlanCheckpoint, steps: list[TransferExecutionStepModel],
+            media_source: str, media_id: str, requested_by: str, now_utc: str,
+    ) -> bool:
         """
         拒绝复核、过期回执、预算耗尽或任何可能含文件副作用的重新规划。
 
+        预算门先查管理用户签发的一次性授权：只有人工已在整理历史确认身份时才补全这一条，
+        其余安全性检查对全部调用方一视同仁。
+
+        :param session: 当前操作级事务，用于消费人工授权
         :param pending: 事务内已取得恢复权的任务
         :param history: 当前读取的失败历史
         :param checkpoint: 原始冻结计划
         :param steps: 原始持久执行步骤
+        :param media_source: 本次修正提交的媒体来源
+        :param media_id: 本次修正提交的来源原生标识
+        :param requested_by: 本次修正的请求身份
+        :param now_utc: 当前 UTC 时间，用于授权时效与消费审计
+        :return: 本次放行是否来自人工授权
         """
+        manual_identity = False
         if pending.execution_state != TransferExecutionState.FAILED.value:
             raise TransferExecutionConflictError("任务需要人工确认或正在处理，不能自动重新规划")
         if (history.status or pending.terminal_history_id != history.id
                 or pending.settlement_revision != history.transfer_settlement_revision):
             raise TransferExecutionConflictError("整理历史与任务结算版本已变化，请刷新后重试")
         if history.auto_paused or max(history.retry_count or 0, pending.retry_count) >= max_failed_retries():
-            raise TransferExecutionConflictError("整理任务自动重试次数已耗尽，请人工处理")
+            manual_identity = self._consume_manual_identity_authorization(
+                session, pending=pending, history=history, media_source=media_source,
+                media_id=media_id, requested_by=requested_by, now_utc=now_utc,
+            )
+            if not manual_identity:
+                raise TransferExecutionConflictError("整理任务自动重试次数已耗尽，请人工处理")
         stage = history.failure_stage or classify_transfer_failure(checkpoint.rejection_error).stage
         if stage not in {TransferFailureStage.RECOGNITION, TransferFailureStage.PLANNING}:
             raise TransferExecutionConflictError("当前失败需要先修复文件或存储配置，不能自动修正识别")
@@ -1611,6 +1644,149 @@ class TransactionalTransferExecutionRepository:
         step = steps[0]
         if step.phase != "planning" or step.kind != "reject" or step.state != TransferStepState.SUCCEEDED.value:
             raise TransferExecutionConflictError("存在文件操作或不确定执行证据，不能自动重新规划")
+        return manual_identity
+
+    def _consume_manual_identity_authorization(
+            self, session: Session, *, pending: TransferPending, history: TransferHistory,
+            media_source: str, media_id: str, requested_by: str, now_utc: str,
+    ) -> bool:
+        """
+        在同一事务内消费最近一条人工授权，并写回消费审计。
+
+        消费失败时保持记录不变，调用方按原有预算提示拒绝；事务回滚会一并撤销消费痕迹。
+
+        :param session: 当前操作级事务
+        :param pending: 事务内已取得恢复权的任务
+        :param history: 当前读取的失败历史
+        :param media_source: 本次修正提交的媒体来源
+        :param media_id: 本次修正提交的来源原生标识
+        :param requested_by: 消费该授权的请求身份
+        :param now_utc: 当前 UTC 时间
+        :return: 授权有效并被本次修正消费时为 True
+        """
+        record = session.scalars(
+            select(TransferManualIdentityAuthorization).where(
+                TransferManualIdentityAuthorization.history_id == history.id,
+                TransferManualIdentityAuthorization.task_id == pending.task_id,
+                TransferManualIdentityAuthorization.settlement_revision == pending.settlement_revision,
+            ).order_by(TransferManualIdentityAuthorization.id.desc()).limit(1)
+        ).first()
+        snapshot = None if record is None else ManualIdentityAuthorization(
+            history_id=record.history_id,
+            task_id=record.task_id,
+            settlement_revision=record.settlement_revision,
+            issued_by=record.issued_by,
+            issued_at=record.issued_at,
+            expires_at=record.expires_at,
+            used_at=record.used_at,
+            used_by=record.used_by,
+            media_source=record.media_source,
+            media_id=record.media_id,
+        )
+        rejection = authorization_rejection(
+            snapshot, history_id=history.id, task_id=pending.task_id,
+            settlement_revision=pending.settlement_revision, now_utc=now_utc,
+        )
+        if record is None or rejection:
+            logger.info(
+                "整理任务重试预算耗尽且没有可用人工授权：task_id=%s history_id=%s reason=%s",
+                pending.task_id, history.id, rejection,
+            )
+            return False
+        record.used_at = now_utc
+        record.used_by = requested_by
+        record.media_source = media_source
+        record.media_id = media_id
+        logger.info(
+            "消费人工身份修正授权：history_id=%s task_id=%s issued_by=%s issued_at=%s "
+            "media=%s:%s used_at=%s used_by=%s",
+            record.history_id, record.task_id, record.issued_by, record.issued_at,
+            media_source, media_id, now_utc, requested_by,
+        )
+        return True
+
+    def grant_manual_identity_authorization(
+            self, *, history_id: int, task_id: str, settlement_revision: int, issued_by: str,
+    ) -> bool:
+        """
+        记录管理用户在一个独立的短事务内签发的一次性身份修正授权。
+
+        只对仍绑定该持久任务和结算版本的失败历史签发；历史已被刷新或更换任务时返回 False，
+        由调用方决定是否提示重新分析，不会为其它任务留下可用授权。
+
+        同一整理任务重复点击时，新票据在同一事务内把该任务仍有效且未消费的旧票据提前置为过期，
+        因此任一时刻只有最新一次点击的授权可用；已消费票据保留原审计快照不受影响。
+
+        :param history_id: 触发点击的整理历史标识
+        :param task_id: 该历史当前绑定的持久任务标识
+        :param settlement_revision: 签发的结算版本
+        :param issued_by: 通过管理权限校验的用户名称
+        :return: 授权已登记时为 True
+        """
+        if history_id <= 0 or settlement_revision <= 0 or not task_id or not issued_by:
+            return False
+        now_utc, _ = self._times()
+        expires_at = authorization_expiry(now_utc)
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                history = TransferHistoryOper(session).get(history_id)
+                if (history is None or history.transfer_task_id != task_id
+                        or history.transfer_settlement_revision != settlement_revision):
+                    logger.info(
+                        "整理历史已变化，跳过人工身份授权签发：history_id=%s task_id=%s", history_id, task_id,
+                    )
+                    return False
+                # 必须先作废旧票据再插入新票据：新票据一旦进入会话，autoflush 会让它出现在
+                # 本次 UPDATE 的匹配集合里，把自己也置为过期。
+                superseded = self._supersede_stale_manual_identity_authorizations(
+                    session, history_id=history_id, task_id=task_id, now_utc=now_utc,
+                )
+                record = TransferManualIdentityAuthorization(
+                    history_id=history_id,
+                    task_id=task_id,
+                    settlement_revision=settlement_revision,
+                    source=MANUAL_IDENTITY_AUTHORIZATION_SOURCE,
+                    issued_by=issued_by[:128],
+                    issued_at=now_utc,
+                    expires_at=expires_at,
+                )
+                session.add(record)
+                transaction.commit()
+            except Exception:
+                self._rollback(transaction)
+                raise
+        logger.info(
+            "签发人工身份修正授权：history_id=%s task_id=%s settlement_revision=%s "
+            "issued_by=%s issued_at=%s expires_at=%s superseded=%s",
+            history_id, task_id, settlement_revision, issued_by, now_utc, expires_at, superseded,
+        )
+        return True
+
+    def _supersede_stale_manual_identity_authorizations(
+            self, session: Session, *, history_id: int, task_id: str, now_utc: str,
+    ) -> int:
+        """
+        把同一整理任务仍有效且未消费的旧授权提前置为过期，只保留最新一次签发可用。
+
+        作废只提前到期时刻，不删除记录也不改写消费审计，历史票据仍可事后核对；
+        已过期或已消费的票据不在影响范围内，因此重复签发不会掩盖真实消费痕迹。
+
+        :param session: 签发授权所在的短事务
+        :param history_id: 触发点击的整理历史标识
+        :param task_id: 该历史当前绑定的持久任务标识
+        :param now_utc: 本次签发时刻，作为旧授权的到期时刻
+        :return: 被提前作废的旧授权数量
+        """
+        updated = session.execute(
+            update(TransferManualIdentityAuthorization).where(
+                TransferManualIdentityAuthorization.history_id == history_id,
+                TransferManualIdentityAuthorization.task_id == task_id,
+                TransferManualIdentityAuthorization.used_at.is_(None),
+                TransferManualIdentityAuthorization.expires_at > now_utc,
+            ).values(expires_at=now_utc)
+        )
+        return int(updated.rowcount)
 
     def _replan_music_rejection(
             self, session: Session, *, pending: TransferPending, updated_at: str,
