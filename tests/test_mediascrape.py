@@ -32,6 +32,7 @@ with stub_modules(
     from app.schemas.file import FileItem
     from app.schemas.types import (
         EventType,
+        MediaSource,
         MediaType,
         ScrapingMetadata,
         ScrapingPolicy,
@@ -1156,6 +1157,37 @@ def test_scrape_metadata_tv(mock_recognize, mock_handle_tv, event_context) -> No
         overwrite=False,
         recursive=True,
     )
+
+
+@pytest.mark.parametrize("episode", [0, 1, None])
+def test_tv_file_scraping_preserves_zero_episode(monkeypatch, tv_context, episode) -> None:
+    """
+    文件刮削入口允许第零集参与识别和 NFO、图片生成，仅缺失集号时跳过。
+    """
+    episode_text = "" if episode is None else f".S01E{episode:02d}"
+    fileitem = FileItem(
+        path=f"/tv/Test.Show{episode_text}.mkv",
+        name=f"Test.Show{episode_text}.mkv",
+        type="file",
+        storage="local",
+    )
+    mediainfo = MediaInfo(type=MediaType.TV, media_source=MediaSource.TMDB, media_id="12345", tmdb_id=12345)
+    recognize = MagicMock(return_value=MediaInfo(type=MediaType.TV, tmdb_id=12345))
+    monkeypatch.setattr("app.chain.scraping.MediaChain", lambda: SimpleNamespace(recognize_media=recognize))
+
+    tv_context.media_chain.scrape_metadata(fileitem=fileitem, mediainfo=mediainfo)
+
+    if episode is None:
+        recognize.assert_not_called()
+        tv_context.media_chain._scrape_nfo_generic.assert_not_called()
+        tv_context.media_chain._scrape_images_generic.assert_not_called()
+        return
+    recognize.assert_called_once()
+    assert recognize.call_args.kwargs["meta"].begin_episode == episode
+    tv_context.media_chain._scrape_nfo_generic.assert_called_once()
+    assert tv_context.media_chain._scrape_nfo_generic.call_args.kwargs["episode_number"] == episode
+    tv_context.media_chain._scrape_images_generic.assert_called_once()
+    assert tv_context.media_chain._scrape_images_generic.call_args.kwargs["episode_number"] == episode
 
 
 @patch("app.chain.scraping.ScrapingChain._handle_movie_scraping")

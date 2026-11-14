@@ -2725,10 +2725,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             overwrite: bool,
     ) -> None:
         """
-        处理电视剧集文件刮削
+        重新识别电视剧集文件并生成 NFO 和图片，保留有效的第零集。
         """
         file_meta = MetaInfoPath(filepath)
-        if not file_meta.begin_episode:
+        if file_meta.begin_episode is None:
             logger.warn(f"{filepath.name} 无法识别文件集数！")
             return
 
