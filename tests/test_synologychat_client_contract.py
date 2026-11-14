@@ -67,12 +67,13 @@ def test_only_configured_token_is_accepted(configured_client, token, expected):
 
 @pytest.mark.parametrize(
     "title,text,caption",
-    [("head", None, "head"), (None, "body", "*None*\nbody"),
+    [("head", None, "head"), (None, "body", "body"), ("", "body", "body"),
+     (None, "body\n\nline", "body\nline"),
      ("head\nbody", None, "*head*\nbody"), ("head", "body\n\nline", "*head*\nbody\nline")],
 )
 def test_text_format_and_explicit_recipient_are_preserved(configured_client, title, text, caption):
     """
-    可空标题和多行正文保持原格式，显式用户 ID 仍按整数编码。
+    缺失标题时只发送正文，多行格式与显式用户 ID 的整数编码保持兼容。
     """
     client, transport = configured_client
     assert client.send_msg(title, text=text, userid="17") is True

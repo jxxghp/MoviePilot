@@ -4,8 +4,10 @@
 
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.parse import unquote
 
 import pytest
+from slack_sdk.models.blocks import ImageElement
 
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.modules.dingtalk import DingTalkModule
@@ -133,3 +135,93 @@ def test_slack_manifest_export_requires_object(manifest, expected):
     client._app_id = "app"
     client._manifest_client = SimpleNamespace(apps_manifest_export=Mock(return_value={"ok": True, "manifest": manifest}))
     assert client._export_manifest() == expected
+
+
+def _notification_client(client_class):
+    """
+    构造只记录最终发送内容的 Slack、VoceChat 与 Synology Chat 客户端。
+    """
+    sent = Mock(return_value=True)
+    client = object.__new__(client_class)
+    if client_class is Slack:
+        client._client = SimpleNamespace(chat_postMessage=sent)
+        client._channel = "C1"
+        client._service_name = "slack"
+    elif client_class is VoceChat:
+        client._client = Mock()
+        client._channel_id = 1
+        client._VoceChat__send_request = sent
+    else:
+        client._webhook_url = "https://chat.test"
+        client._token = "test"
+        client._SynologyChat__send_request = sent
+    return client, sent
+
+
+@pytest.mark.parametrize("client_class", [Slack, VoceChat, SynologyChat])
+@pytest.mark.parametrize("title", [None, ""])
+@pytest.mark.parametrize("kwargs", [
+    {"text": "仅正文"},
+    {"text": "仅正文", "image": "https://img.test/a.png"},
+    {"text": "仅正文", "link": "https://site.test/a"},
+])
+def test_text_only_notifications_do_not_render_none_title(client_class, title, kwargs):
+    """
+    只有正文的通知不能把缺失标题渲染成字面量 None。
+    """
+    client, sent = _notification_client(client_class)
+    result = client.send_msg(title=title, userid="1", **kwargs)
+    assert (result[0] if client_class is Slack else result) is True
+    assert sent.call_count == 1
+    rendered = unquote(str(sent.call_args))
+    assert "None" not in rendered
+    assert "仅正文" in rendered
+
+
+@pytest.mark.parametrize("client_class,caption", [
+    (Slack, "通知标题\n正文"),
+    (VoceChat, "**通知标题**\n正文"),
+    (SynologyChat, "*通知标题*\n正文"),
+])
+def test_notifications_preserve_existing_title_formatting(client_class, caption):
+    """
+    提供标题时保留各渠道既有的标题格式和正文。
+    """
+    client, sent = _notification_client(client_class)
+    client.send_msg(title="通知标题", text="正文", userid="1")
+    sent.assert_called_once()
+    if client_class is Slack:
+        assert sent.call_args.kwargs["text"] == caption
+    elif client_class is VoceChat:
+        assert sent.call_args.kwargs["caption"] == caption
+    else:
+        assert unquote(sent.call_args.args[0]["text"]) == caption
+
+
+@pytest.mark.parametrize("title", [None, ""])
+def test_slack_title_free_buttons_preserve_body_and_action(title):
+    """
+    无标题的按钮通知保留正文与回调动作，不生成缺失标题。
+    """
+    client, sent = _notification_client(Slack)
+    buttons = [[{"text": "继续", "callback_data": "continue"}]]
+    assert client.send_msg(title=title, text="正文", userid="1", buttons=buttons)[0] is True
+    payload = sent.call_args.kwargs
+    assert payload["text"] == "正文"
+    assert payload["blocks"][0]["text"]["text"] == "正文"
+    assert payload["blocks"][1]["elements"][0]["value"] == "continue"
+
+
+@pytest.mark.parametrize("title", [None, ""])
+@pytest.mark.parametrize("length", [2000, 2001])
+def test_slack_title_free_image_alt_text_respects_sdk_limit(title, length):
+    """
+    无标题图文通知的图片摘要遵守 SDK 长度限制，正文仍完整保留。
+    """
+    client, sent = _notification_client(Slack)
+    text = "文" * length
+    assert client.send_msg(title=title, text=text, image="https://img.test/a.png", userid="1")[0] is True
+    block = sent.call_args.kwargs["blocks"][0]
+    assert block["text"]["text"] == text
+    ImageElement(**block["accessory"]).validate_json()
+    assert block["accessory"]["alt_text"] == text[:2000]
