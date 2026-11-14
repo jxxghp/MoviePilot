@@ -5,7 +5,7 @@ VoceChat 机器人消息发送与文件下载客户端。
 import base64
 import re
 import threading
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 from urllib.parse import quote
 
 from app.adapters.network.http import RequestUtils
@@ -92,7 +92,7 @@ class VoceChat:
         """
         向指定用户或默认频道发送 Markdown 消息。
 
-        :param title: 消息标题，可与正文择一提供
+        :param title: 消息标题，可与正文择一提供；为空时只发送正文
         :param text: 消息正文
         :param image: 可选图片地址
         :param userid: 数字用户标识、UID#用户标识或 GID#频道标识；为空时使用默认频道
@@ -107,10 +107,12 @@ class VoceChat:
             return False
 
         try:
-            if text:
+            if title and text:
                 caption = f"**{title}**\n{text}"
-            else:
+            elif title:
                 caption = f"**{title}**"
+            else:
+                caption = cast(str, text)
 
             if image:
                 caption = f"{caption}\n![]({image})"

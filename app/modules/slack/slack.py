@@ -336,7 +336,7 @@ class Slack:
 
         仅首批编辑原消息，剩余批次作为新消息发送；后续失败不会撤销已发送的批次。
 
-        :param title: 消息标题，可与普通正文择一提供
+        :param title: 消息标题，可与普通正文择一提供；为空时只发送正文
         :param text: 普通正文，兼作通知摘要和格式化失败时的回退
         :param image: 可选图片地址
         :param link: 未提供按钮时显示的详情链接
@@ -358,7 +358,7 @@ class Slack:
                 channel = userid
             else:
                 channel = self.__find_public_channel()
-            message_text = f"{title}\n{text or ''}"
+            message_text = f"{title}\n{text or ''}" if title else (text or "")
             blocks = self._message_blocks(title, text, image, link, buttons, formatted_text)
             if buttons:
                 for button_row in buttons:
@@ -435,6 +435,8 @@ class Slack:
                         formatted_text: Optional[str]) -> List[Dict[str, Any]]:
         """
         选择渠道正文或原有图文结构，按钮仍由发送入口统一添加。
+
+        无标题时使用正文；图片说明使用正文时最多保留 2000 字符，避免超过 SDK 限制。
         """
         blocks: list[dict[str, Any]]
         blocks = cls._formatted_blocks(formatted_text) if formatted_text else []
@@ -445,18 +447,18 @@ class Slack:
         elif image:
             blocks.append({"type": "section", "text": {
                 "type": "mrkdwn",
-                "text": f"*{title}*\n{text or ''}"
+                "text": f"*{title}*\n{text or ''}" if title else (text or " ")
             }, 'accessory': {
                 "type": "image",
                 "image_url": f"{image}",
-                "alt_text": f"{title}"
+                "alt_text": title or (text or "image")[:2000]
             }})
         elif buttons or link:
             blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*{title}*\n{text or ''}",
+                    "text": f"*{title}*\n{text or ''}" if title else (text or " "),
                 },
             })
         return blocks
